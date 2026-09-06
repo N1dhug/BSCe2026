@@ -1,4 +1,4 @@
-from .Simulate import Simulate
+from models.Simulate import Simulate
 import numpy as np
 import torch 
 
