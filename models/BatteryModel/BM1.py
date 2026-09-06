@@ -1,10 +1,10 @@
 from models.BatteryModel.BatteryModel import BatteryModel
 import numpy as np
-import torch 
-import torchsde
 from scipy.integrate import solve_ivp
 from scipy.integrate import simpson as simps
 from scipy.optimize import minimize
+import torch 
+import torchsde
 
 class BM1(BatteryModel):
     def __init__(self, B, A, T, t_steps) :
