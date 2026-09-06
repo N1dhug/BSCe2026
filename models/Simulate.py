@@ -16,3 +16,16 @@ class Simulate:
         interp_y_vals = np.full(len(pr_x), y_interval[0])-np.cumsum(pr_x)
         pchip = PchipInterpolator(poi_x, interp_y_vals)
         return pchip
+
+    def md_vals(kappa, n):
+        poi_x = np.linspace(0.0, 1.0, n)
+        F = 0.5 * (1.0 + np.tanh(kappa * (poi_x - 0.5))/ np.tanh(kappa / 2.0))
+        F[0] = 0.0
+        F[-1] = 1.0
+
+        pr_x = np.zeros(n)
+        pr_x[1:] = 2.0 * np.diff(F)
+        pr_x[1:] *= 2.0 / np.sum(pr_x[1:])
+        pr_x[0] = 0.0
+
+        return poi_x, pr_x

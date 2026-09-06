@@ -1,0 +1,13 @@
+name: bsce2026
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - scipy
+  - pip:
+      - torch
+      - torchsde
