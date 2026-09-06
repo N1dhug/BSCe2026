@@ -1,4 +1,5 @@
 from models.BatteryModel.BatteryModel import BatteryModel
+from models.Solvers.EulerMaruyama import EulerMaruyama
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.integrate import simpson as simps
@@ -8,19 +9,7 @@ from scipy.optimize import minimize
 class BM1(BatteryModel):
     def __init__(self, B, A, T, t_steps):
         super().__init__(B, A, T, t_steps)
-
-    @staticmethod
-    def _apply_boundary(values, boundary):
-        values = np.asarray(values, dtype=float)
-        if boundary == "reflect":
-            reflected = np.mod(values, 2.0)
-            return np.where(reflected <= 1.0, reflected, 2.0 - reflected)
-        elif boundary == "clip":
-            return np.clip(values, 0.0, 1.0)
-        elif boundary == "none":
-            return values
-
-        raise ValueError("boundary must be 'reflect', 'clip', or 'none'.")
+        self.euler_maruyama = EulerMaruyama()
 
     def __phi(self, U, parameters, init_cond):
         simulated_U = self.simulate.price((self.t, U))
@@ -34,33 +23,32 @@ class BM1(BatteryModel):
     def _drift(self, t, X, parameters):
         U, f, g, C, k, Xi = parameters
         _, Bt, _, _, _, Dt = self.eval(t, X, U, f, g, k, Xi)
-        return np.asarray((Dt - Bt) / C)
+        return np.asarray((Dt - Bt) / C, dtype=float)
 
-    def _euler_maruyama_paths(self, init_cond, parameters, sigma_x, n_paths=1, seed=None, boundary="reflect"):
-        x0 = init_cond
-        n_paths = n_paths
-        rng = np.random.default_rng(seed)
+    def euler_maruyama_solver(
+        self,
+        init_cond,
+        parameters,
+        sigma_x,
+        n_paths=1,
+        seed=None,
+        boundary="reflect",
+    ):
+        def drift(t, X):
+            return self._drift(t, X, parameters)
 
-        paths = np.empty((n_paths, self.t_steps))
-        paths[:, 0] = x0
+        def diffusion(t, X):
+            return self.diffusion_coefficient(X, sigma_x)
 
-        for i in range(self.t_steps - 1):
-            t_i = float(self.t[i])
-            h = float(self.t[i + 1] - self.t[i])
-            X_i = paths[:, i]
-
-            drift = self._drift(t_i, X_i, parameters)
-            diffusion = np.asarray(self.diffusion_coefficient(X_i, sigma_x))
-            dW = np.sqrt(h) * rng.standard_normal(n_paths)
-
-            proposal = X_i + drift * h + diffusion * dW
-            paths[:, i + 1] = self._apply_boundary(proposal, boundary)
-
-        return paths
-
-    def euler_maruyama_solver(self, init_cond, parameters, sigma_x, n_paths=1, seed=None, boundary="reflect"):
-        var = sigma_x**2
-        paths = self._euler_maruyama_paths(init_cond, parameters, var, n_paths, seed, boundary)
+        paths = self.euler_maruyama.solve_paths(
+            t=self.t,
+            init_cond=init_cond,
+            drift=drift,
+            diffusion=diffusion,
+            n_paths=n_paths,
+            seed=seed,
+            boundary=boundary,
+        )
 
         Xt = paths[0] if n_paths == 1 else paths
         Ut = parameters[0](self.t)
@@ -74,9 +62,22 @@ class BM1(BatteryModel):
 
     def deterministic_solver(self, init_cond, parameters):
         solution = solve_ivp(
-        self.dXdt,self.T,init_cond,args=parameters, t_eval=self.t,)
+            self.dXdt,
+            self.T,
+            init_cond,
+            args=parameters,
+            t_eval=self.t,
+        )
         Xt = solution.y[0]
-        Ut, Bt, fXt, gUt, dt, Dt = self.eval(solution.t,Xt,parameters[0],parameters[1], parameters[2],parameters[4],parameters[5],)
+        Ut, Bt, fXt, gUt, dt, Dt = self.eval(
+            solution.t,
+            Xt,
+            parameters[0],
+            parameters[1],
+            parameters[2],
+            parameters[4],
+            parameters[5],
+        )
         return solution.t, Xt, Ut, Bt, fXt, gUt, dt, Dt
 
     def optimize(self, initial_u, init_cond, parameters):
