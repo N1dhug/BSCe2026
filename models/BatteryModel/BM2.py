@@ -49,38 +49,44 @@ class BM2(BatteryModel):
         return solution
     
 
-    def diffusion(self, t, X, sigma_x):
-        # X is expected to be a tensor with two elements.
-        noise_x2 = self.XtOx_dWt(t, X[:,0:1], sigma_x)
-        noise_x2 = noise_x2.squeeze(-1)  # Remove the last dimension to get the correct shape.
-        noise_x1 = torch.zeros_like(noise_x2)
-        # Return a stacked tensor; stacking ensures the correct shape.
-        return torch.stack([noise_x2, noise_x1], dim=1)
-    
-    def stochastic_solver(self, init_cond, parameters, sigma_x):
-        t = torch.linspace(self.T[0], self.T[1], self.t_steps, dtype=torch.float32)
+    def _drift(self, t, X, parameters):
+        U, f, g, C, k, Xi = parameters
+        _, Bt, _, _, _, Dt = self.eval(t, X, U, f, g, k, Xi)
+        return np.asarray((Dt - Bt) / C)
 
-        # Create lambda wrappers that supply the required parameters to the drift and diffusion methods.
+    def _euler_maruyama_paths(self, init_cond, parameters, sigma_x, n_paths=1, seed=None, boundary="reflect"):
+        x0 = init_cond
+        n_paths = n_paths
+        rng = np.random.default_rng(seed)
 
-        drift = lambda t, X: self.__ode(t, X, *parameters, stochastic = True)
-        diffusion = lambda t, X: self.diffusion(t, X, sigma_x)
-        X0 = torch.tensor(init_cond, dtype=torch.float32).unsqueeze(0)
-        
-        # Create a wrapper object with the required `noise_type` attribute
-        sde = lambda: None  
-        setattr(sde, "f", drift)
-        setattr(sde, "g", diffusion)
-        setattr(sde, "noise_type", "scalar") 
-        setattr(sde, "sde_type", "ito")         
+        paths = np.empty((n_paths, self.t_steps))
+        paths[:, 0] = x0
 
-        # Convert initial condition to tensor  
-        solution = torchsde.sdeint(sde, X0, t, method="srk")
-        Xt = solution.squeeze().numpy()
+        for i in range(self.t_steps - 1):
+            t_i = float(self.t[i])
+            h = float(self.t[i + 1] - self.t[i])
+            X_i = paths[:, i]
 
-        Xt = Xt[:, 0]
-        t = t.numpy()
-        Ut, Bt, fXt, gUt, dt, Dt = self.eval(t, Xt, parameters[0], parameters[1], parameters[2], parameters[4], parameters[5])
+            drift = self._drift(t_i, X_i, parameters)
+            diffusion = np.asarray(self.diffusion_coefficient(X_i, sigma_x))
+            dW = np.sqrt(h) * rng.standard_normal(n_paths)
 
-        return t, Xt, Ut, Bt, fXt, gUt, dt, Dt
-    
+            proposal = X_i + drift * h + diffusion * dW
+            paths[:, i + 1] = self._apply_boundary(proposal, boundary)
+
+        return paths
+
+    def euler_maruyama_solver(self, init_cond, parameters, sigma_x, n_paths=1, seed=None, boundary="reflect"):
+        var = sigma_x**2
+        paths = self._euler_maruyama_paths(init_cond, parameters, var, n_paths, seed, boundary)
+
+        Xt = paths[0] if n_paths == 1 else paths
+        Ut = parameters[0](self.t)
+        Bt = self.B(self.t)
+        fXt = parameters[1](Xt)
+        gUt = parameters[2](Ut)
+        dt = self.l(fXt, gUt, parameters[4])
+        Dt = self.D(Bt, parameters[5], dt)
+
+        return self.t.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt
 

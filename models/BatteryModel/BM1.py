@@ -34,14 +34,14 @@ class BM1(BatteryModel):
     def _drift(self, t, X, parameters):
         U, f, g, C, k, Xi = parameters
         _, Bt, _, _, _, Dt = self.eval(t, X, U, f, g, k, Xi)
-        return np.asarray((Dt - Bt) / C, dtype=float)
+        return np.asarray((Dt - Bt) / C)
 
     def _euler_maruyama_paths(self, init_cond, parameters, sigma_x, n_paths=1, seed=None, boundary="reflect"):
         x0 = init_cond
         n_paths = n_paths
         rng = np.random.default_rng(seed)
 
-        paths = np.empty((n_paths, self.t_steps), dtype=float)
+        paths = np.empty((n_paths, self.t_steps))
         paths[:, 0] = x0
 
         for i in range(self.t_steps - 1):
@@ -50,7 +50,7 @@ class BM1(BatteryModel):
             X_i = paths[:, i]
 
             drift = self._drift(t_i, X_i, parameters)
-            diffusion = np.asarray(self.diffusion_coefficient(X_i, sigma_x),dtype=float,)
+            diffusion = np.asarray(self.diffusion_coefficient(X_i, sigma_x))
             dW = np.sqrt(h) * rng.standard_normal(n_paths)
 
             proposal = X_i + drift * h + diffusion * dW
@@ -58,8 +58,9 @@ class BM1(BatteryModel):
 
         return paths
 
-    def euler_maruyama_solver(self, init_cond, parameters, sigma_x, n_paths=1, seed=None,boundary=" reflect"):
-        paths = self._euler_maruyama_paths(init_cond, parameters, sigma_x, n_paths, seed, boundary)
+    def euler_maruyama_solver(self, init_cond, parameters, sigma_x, n_paths=1, seed=None, boundary="reflect"):
+        var = sigma_x**2
+        paths = self._euler_maruyama_paths(init_cond, parameters, var, n_paths, seed, boundary)
 
         Xt = paths[0] if n_paths == 1 else paths
         Ut = parameters[0](self.t)
