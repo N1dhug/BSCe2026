@@ -48,7 +48,6 @@ T = (0.0, float(days))
 # 24 one-hour intervals require 25 grid points when both endpoints are kept.
 t_steps = 24 * days + 1
 t = np.linspace(T[0], T[1], t_steps)
-hours = 24.0 * t
 
 
 # ------------------------------------------------------------
@@ -83,7 +82,7 @@ U = sim.price(U_data)
 # ------------------------------------------------------------
 # 4) monotone decreasing f and g from md_vals + kappa
 # ------------------------------------------------------------
-n_md_points =  nine = 9
+n_md_points = 9
 kappa = 4.0
 
 poi_x, pr_x = md_vals(n_md_points, kappa)
