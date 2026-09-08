@@ -20,26 +20,6 @@ class FokkerPlanc:
     """
 
     @staticmethod
-    def _validate_time_grid(t):
-        t = np.asarray(t, dtype=float)
-        if t.ndim != 1 or len(t) < 2:
-            raise ValueError("t must be a one-dimensional array with at least two points.")
-        if np.any(np.diff(t) <= 0):
-            raise ValueError("t must be strictly increasing.")
-        return t
-
-    @staticmethod
-    def _validate_initial_condition(init_cond):
-        x0 = np.asarray(init_cond, dtype=float)
-        if x0.size != 1:
-            raise ValueError("FokkerPlanc currently supports one-dimensional initial conditions only.")
-
-        x0 = float(x0.reshape(-1)[0])
-        if not 0.0 <= x0 <= 1.0:
-            raise ValueError("init_cond must lie in [0, 1].")
-        return x0
-
-    @staticmethod
     def beta_basis(x, degree):
         """Return normalized Beta basis densities l_0, ..., l_degree.
 
@@ -50,27 +30,10 @@ class FokkerPlanc:
         """
         x = np.asarray(x, dtype=float)
         degree = int(degree)
-
-        if degree < 1:
-            raise ValueError("degree must be at least 1.")
-        if np.any((x <= 0.0) | (x >= 1.0)):
-            raise ValueError("Beta basis evaluation points must lie strictly inside (0, 1).")
-
         m = np.arange(degree + 1, dtype=float)[:, None]
         x_row = x[None, :]
-
-        log_coefficient = (
-            np.log(degree + 1.0)
-            + gammaln(degree + 1.0)
-            - gammaln(m + 1.0)
-            - gammaln(degree - m + 1.0)
-        )
-
-        log_basis = (
-            log_coefficient
-            + m * np.log(x_row)
-            + (degree - m) * np.log1p(-x_row)
-        )
+        log_coefficient = (np.log(degree + 1.0)+ gammaln(degree + 1.0)- gammaln(m + 1.0) - gammaln(degree - m + 1.0))
+        log_basis = (log_coefficient+ m * np.log(x_row) + (degree - m) * np.log1p(-x_row))
         return np.exp(log_basis)
 
     @staticmethod
@@ -98,6 +61,7 @@ class FokkerPlanc:
         if x0 <= component_means[0]:
             coefficients[0] = 1.0
             return coefficients
+        
         if x0 >= component_means[-1]:
             coefficients[-1] = 1.0
             return coefficients
@@ -123,14 +87,9 @@ class FokkerPlanc:
         """Project a density onto the non-negative Beta-mixture basis."""
         density = np.asarray(density, dtype=float)
         basis = np.asarray(basis, dtype=float)
-
         scale = np.sqrt(dx)
         coefficients, _ = nnls(basis.T * scale, density * scale)
-
         coefficient_mass = np.sum(coefficients)
-        if coefficient_mass <= 0.0:
-            raise RuntimeError("Beta-mixture projection produced zero total coefficient mass.")
-
         coefficients /= coefficient_mass
         projected = coefficients @ basis
         projected_mass = np.sum(projected) * dx
@@ -142,31 +101,23 @@ class FokkerPlanc:
     def _normalise_density(density, dx):
         density = np.maximum(np.asarray(density, dtype=float), 0.0)
         mass = np.sum(density) * dx
-        if not np.isfinite(mass) or mass <= 0.0:
-            raise RuntimeError("Fokker-Planck density lost all probability mass.")
         return density / mass
 
     @staticmethod
     def _flux_rhs(x, density, drift_values, diffusion_values):
-        """Conservative finite-volume RHS with zero probability flux boundaries."""
         dx = float(x[1] - x[0])
         density = np.asarray(density, dtype=float)
         drift_values = np.broadcast_to(np.asarray(drift_values, dtype=float), density.shape)
         diffusion_values = np.broadcast_to(np.asarray(diffusion_values, dtype=float), density.shape)
-
         diffusion_squared = np.square(diffusion_values)
-
         face_drift = 0.5 * (drift_values[:-1] + drift_values[1:])
         upwind_density = np.where(face_drift >= 0.0, density[:-1], density[1:])
         advective_flux = face_drift * upwind_density
-
         diffusive_quantity = diffusion_squared * density
         diffusive_flux = -0.5 * np.diff(diffusive_quantity) / dx
 
         flux = np.zeros(len(x) + 1, dtype=float)
         flux[1:-1] = advective_flux + diffusive_flux
-
-        # Reflecting/no-flux boundaries for a probability density on [0, 1].
         flux[0] = 0.0
         flux[-1] = 0.0
 
@@ -186,19 +137,8 @@ class FokkerPlanc:
 
         return cfl * min(advective_limit, diffusive_limit)
 
-    def solve(
-        self,
-        t,
-        init_cond,
-        drift,
-        diffusion,
-        degree=12,
-        x_steps=201,
-        cfl=0.45,
-        max_substeps=100000,
-    ):
+    def solve(self,t,init_cond,drift,diffusion,degree=12,x_steps=201,cfl=0.45,max_substeps=100000,):
         """Solve the one-dimensional Fokker-Planck equation.
-
         Parameters
         ----------
         t : array-like
@@ -218,15 +158,9 @@ class FokkerPlanc:
         max_substeps : int
             Safety limit for internal substeps per reported time interval.
         """
-        t = self._validate_time_grid(t)
-        x0 = self._validate_initial_condition(init_cond)
-        degree = int(degree)
-        x_steps = int(x_steps)
-
-        if x_steps < 20:
-            raise ValueError("x_steps must be at least 20.")
-        if not 0.0 < cfl < 1.0:
-            raise ValueError("cfl must lie in (0, 1).")
+        x0 = init_cond[0]
+        degree = degree
+        x_steps = x_steps
 
         dx = 1.0 / x_steps
         x = (np.arange(x_steps, dtype=float) + 0.5) * dx

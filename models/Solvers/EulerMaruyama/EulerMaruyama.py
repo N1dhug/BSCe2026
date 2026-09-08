@@ -18,16 +18,7 @@ class EulerMaruyama:
 
         raise ValueError("boundary must be 'reflect', 'clip', or 'none'.")
 
-    def solve_paths(
-        self,
-        t,
-        init_cond,
-        drift,
-        diffusion,
-        n_paths=1,
-        seed=None,
-        boundary="reflect",
-    ):
+    def solve_paths(self,t,init_cond,drift,diffusion,n_paths=1,seed=None,boundary="reflect",):
         """Solve dX = drift(t, X) dt + diffusion(t, X) dW on a supplied time grid."""
         t = np.asarray(t, dtype=float)
         n_paths = int(n_paths)

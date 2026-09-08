@@ -81,7 +81,7 @@ parameters = [U, f, g, C, k, Xi]
 
 model = BM1(B, A, T, t_steps)
 
-n_paths = 20_000
+n_paths = 100_000
 seed = 1
 
 em_t, Xt, Ut, Bt, fXt, gUt, delta_t, Dt = model.euler_maruyama_solver(

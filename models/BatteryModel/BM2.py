@@ -3,8 +3,6 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.integrate import simpson as simps
 from scipy.optimize import minimize
-import torch 
-import torchsde
 
 class BM2(BatteryModel):
     def __init__(self, B, A, T, t_steps) :
