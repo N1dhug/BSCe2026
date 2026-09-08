@@ -109,13 +109,17 @@ print(
 fig, axes = plt.subplots(4, 1, figsize=(11, 15), constrained_layout=True)
 ax_pdf, ax_state, ax_flow, ax_risk = axes
 
-mesh = ax_pdf.pcolormesh(hours, e_grid, density.T, shading="auto")
-ax_pdf.axhline(0.0, linestyle="--", linewidth=1.0)
-ax_pdf.axvline(price_step_hour, linestyle="--", label="Price step")
-ax_pdf.set_ylabel("Centered error e")
-ax_pdf.set_title("WM1 centered Fokker-Planck density rho(e,t)")
+# WM1's centered stochastic density is independent of the dynamic price U.
+# Unlike the BM1 visualization, we therefore do not use a time-density heatmap.
+# Show the final/representative centered-error probability density directly as
+# an ordinary 2D probability-density curve.
+ax_pdf.plot(e_grid, density[-1], linewidth=2.0, label="Centered error density")
+ax_pdf.axvline(0.0, linestyle="--", linewidth=1.0, label="Zero error")
+ax_pdf.set_xlabel("Centered error e")
+ax_pdf.set_ylabel("Probability density")
+ax_pdf.set_title("WM1 Fokker-Planck centered-error probability density")
+ax_pdf.grid(True)
 ax_pdf.legend(loc="best")
-fig.colorbar(mesh, ax=ax_pdf, label="Probability density")
 
 ax_state.step(hours, result["U"], where="post", label="Dynamic price U")
 ax_state.plot(hours, result["V"], linewidth=2.0, label="Mean volume m(t)")
