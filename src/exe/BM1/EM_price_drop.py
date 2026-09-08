@@ -1,4 +1,4 @@
-# run/runBM/BM1_EM_price_drop.py
+# src/exe/BM1/EM_price_drop.py
 # ------------------------------------------------------------
 # BM1 stochastic response to a single price drop.
 #
@@ -6,6 +6,8 @@
 # The probability density p(x,t) is estimated from many
 # Monte-Carlo trajectories.
 # ------------------------------------------------------------
+
+from pathlib import Path
 
 from src.models.BM1 import BM1
 from src.models.Simulate import Simulate
@@ -120,6 +122,8 @@ for i in range(t_steps):
 # 9) probability-density checks
 # ------------------------------------------------------------
 mass = np.sum(density, axis=1) * dx
+
+
 # ------------------------------------------------------------
 # 10) plots
 # ------------------------------------------------------------
@@ -203,5 +207,18 @@ ax_terminal.grid(True)
 ax_terminal.legend(loc="best")
 
 
+# ------------------------------------------------------------
+# Save figure
+# ------------------------------------------------------------
+
 fig.tight_layout()
-plt.show()
+
+# This file lives in src/exe/BM1, so parents[3] is the repository root.
+graph_dir = Path(__file__).resolve().parents[3] / "data" / "graphs"
+graph_dir.mkdir(parents=True, exist_ok=True)
+graph_path = graph_dir / "BM1_EM_price_drop.png"
+
+fig.savefig(graph_path, dpi=300, bbox_inches="tight")
+plt.close(fig)
+
+print(f"Saved graph to {graph_path}")
