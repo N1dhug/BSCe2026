@@ -2,13 +2,13 @@ class WM:
     def __init__(self):
         raise NotImplementedError("Unimplemented constructor")
 
-    def It(self):
+    def I(self):
         raise NotImplementedError("Unimplemented input equation")
 
-    def Ot(self):
+    def O(self):
         raise NotImplementedError("Unimplemented output equation")
 
-    def At(self):
+    def A(self):
         raise NotImplementedError("Unimplemented available-energy equation")
 
     def dVdt(self):
