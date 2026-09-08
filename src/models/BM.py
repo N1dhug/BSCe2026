@@ -1,8 +1,8 @@
-from models.Simulate import Simulate
+from src.models.Simulate import Simulate
 import numpy as np
 
 
-class BatteryModel:
+class BM:
     # Constructor
     def __init__(self, B, A, T, t_steps):
         self.simulate = Simulate()

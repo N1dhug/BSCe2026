@@ -7,8 +7,8 @@
 # Monte-Carlo trajectories.
 # ------------------------------------------------------------
 
-from models.BatteryModel.BM1 import BM1
-from models.Simulate import Simulate
+from src.models.BM1 import BM1
+from src.models.Simulate import Simulate
 import matplotlib.pyplot as plt
 import numpy as np
 

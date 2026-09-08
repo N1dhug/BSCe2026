@@ -31,6 +31,10 @@ class FokkerPlanc:
         degree = int(degree)
         m = np.arange(degree + 1, dtype=float)[:, None]
         x_row = x[None, :]
+
+        # For the Beta density, the normalizing constant is
+        #   B(m+1, degree-m+1)^{-1} = (degree+1) * C(degree,m).
+        # This is evaluated in log-space to preserve numerical stability.
         log_coefficient = (
             np.log(degree + 1.0)
             + gammaln(degree + 1.0)
@@ -47,6 +51,9 @@ class FokkerPlanc:
     @staticmethod
     def _normalise_basis_discretely(basis, dx):
         basis = np.asarray(basis, dtype=float)
+
+        # Each basis function is a density on [0,1], so the cell mass is
+        #   integral_0^1 l_m(x) dx ≈ sum_j l_m(x_j) * dx.
         masses = np.sum(basis, axis=1) * dx
         return basis / masses[:, None]
 
@@ -64,6 +71,9 @@ class FokkerPlanc:
 
         coefficients = np.zeros(degree + 1, dtype=float)
 
+        # The mean of the m-th Beta basis element is
+        #   E[l_m] = (m+1)/(degree+2),
+        # so the mixture mean is the convex combination of adjacent basis means.
         if x0 <= component_means[0]:
             coefficients[0] = 1.0
             return coefficients
@@ -116,7 +126,9 @@ class FokkerPlanc:
         if max_iter is None:
             max_iter = max(100, 20 * n_coefficients * n_coefficients)
 
-        # Strictly feasible starting point on the probability simplex.
+        # We solve a constrained projection onto the probability simplex,
+        # i.e. find c in R^n such that c_j >= 0 and sum_j c_j = 1 while
+        # minimizing the squared residual ||B c - p||_2^2.
         coefficients = np.full(n_coefficients, 1.0 / n_coefficients, dtype=float)
         active = np.zeros(n_coefficients, dtype=bool)
 
@@ -129,9 +141,11 @@ class FokkerPlanc:
             gram = free_matrix.T @ free_matrix
             rhs = free_matrix.T @ target
 
-            # KKT system for
-            #   min 0.5 ||A_F c_F - b||^2
-            #   s.t. 1^T c_F = 1.
+            # On a given face of the simplex, the KKT system is
+            #   [G  1] [c_F] = [A^T b]
+            #   [1^T 0] [λ  ]   [1   ]
+            # where G = A_F^T A_F and λ is the Lagrange multiplier for the
+            # equality constraint sum(c_F) = 1.
             kkt = np.block(
                 [
                     [gram, np.ones((free.size, 1), dtype=float)],
@@ -149,9 +163,10 @@ class FokkerPlanc:
             trial = solve_free_subproblem(active)
             free = ~active
 
-            # If the minimizer on the current face violates c >= 0, move from
-            # the current feasible point toward it only until the first free
-            # coefficient reaches zero, then add that constraint to the set.
+            # If the unconstrained minimizer on the active face violates
+            # non-negativity, we move along the segment from the current point to
+            # the trial point until some component hits zero; this is the usual
+            # boundary-hit step of an active-set method.
             if np.any(trial[free] < -tol):
                 direction = trial - coefficients
                 decreasing = free & (direction < -tol)
@@ -177,9 +192,9 @@ class FokkerPlanc:
                 active |= hit_boundary
                 continue
 
-            # The current face minimizer is feasible. Clean tiny numerical
-            # negatives, preserve the equality constraint, and test KKT
-            # optimality for coefficients fixed at zero.
+            # Once the current face minimizer is feasible, we keep the sum fixed,
+            # remove tiny numerical noise, and check the KKT conditions for active
+            # variables c_j = 0.
             coefficients = trial
             coefficients[np.abs(coefficients) <= tol] = 0.0
             coefficients = np.maximum(coefficients, 0.0)
@@ -196,8 +211,8 @@ class FokkerPlanc:
             residual = matrix @ coefficients - target
             gradient = matrix.T @ residual
 
-            # For free variables, stationarity gives grad_i + lambda = 0.
-            # Averaging over the free set gives a stable estimate of lambda.
+            # Stationarity on the free set gives grad_j + λ = 0, while for active
+            # variables c_j = 0 the KKT condition is grad_j + λ >= 0.
             lagrange_multiplier = -float(np.mean(gradient[free_indices]))
             reduced_gradient = gradient + lagrange_multiplier
 
@@ -209,8 +224,6 @@ class FokkerPlanc:
             optimality_tol = tol * gradient_scale
             active_reduced = reduced_gradient[active_indices]
 
-            # For c_j = 0, KKT requires grad_j + lambda >= 0. Release the
-            # most violating active constraint and resolve on the larger face.
             worst_position = int(np.argmin(active_reduced))
             if active_reduced[worst_position] >= -optimality_tol:
                 return coefficients
@@ -235,6 +248,9 @@ class FokkerPlanc:
         density = np.asarray(density, dtype=float)
         basis = np.asarray(basis, dtype=float)
 
+        # We solve the discrete least-squares problem with the mass matrix
+        # weighting sqrt(dx), so that the 2-norm approximates the L^2 norm on the
+        # grid: ||B c - p||_{L^2}^2 ≈ sum_j (B_j c - p_j)^2 dx.
         scale = np.sqrt(dx)
         matrix = basis.T * scale
         target = density * scale
@@ -256,10 +272,19 @@ class FokkerPlanc:
         drift_values = np.broadcast_to(np.asarray(drift_values, dtype=float), density.shape)
         diffusion_values = np.broadcast_to(np.asarray(diffusion_values, dtype=float), density.shape)
         diffusion_squared = np.square(diffusion_values)
+
+        # The Fokker-Planck equation is
+        #   ∂_t p = -∂_x (a(t,x) p) + 1/2 ∂_x^2 (σ(t,x)^2 p),
+        # where a = drift and σ = diffusion.
+        # The finite-volume form uses fluxes across cell faces:
+        #   p_t = -(F_{j+1/2} - F_{j-1/2}) / dx.
         face_drift = 0.5 * (drift_values[:-1] + drift_values[1:])
         upwind_density = np.where(face_drift >= 0.0, density[:-1], density[1:])
         advective_flux = face_drift * upwind_density
         diffusive_quantity = diffusion_squared * density
+
+        # The diffusion term is written as a conservative flux of the
+        # quantity σ^2 p, so the flux is -1/2 * ∂_x (σ^2 p).
         diffusive_flux = -0.5 * np.diff(diffusive_quantity) / dx
 
         flux = np.zeros(len(x) + 1, dtype=float)
@@ -274,6 +299,9 @@ class FokkerPlanc:
         max_drift = float(np.max(np.abs(drift_values)))
         max_diffusion_squared = float(np.max(np.square(diffusion_values)))
 
+        # For explicit advection-diffusion schemes, the timestep must satisfy
+        # the CFL condition. The advective bound is roughly dx/|a|, while the
+        # diffusive bound is dx^2 / |σ|^2, both scaled by cfl in (0,1).
         advective_limit = np.inf if max_drift == 0.0 else dx / max_drift
         diffusive_limit = (
             np.inf
@@ -301,11 +329,11 @@ class FokkerPlanc:
             Number of finite-volume cells on [0, 1].
         cfl : float
             Explicit stability factor in (0, 1).
-        max_substeps : int
-            Safety limit for internal substeps per reported time interval.
         """
 
-        # Initialize the finite-volume grid and Beta basis.
+        # The PDE is posed on the interval [0,1].  We discretize it in space on
+        # a uniform grid x_j = (j+1/2)dx with cell width dx = 1/N and evolve the
+        # density p_j(t) by an explicit conservative finite-volume update.
         x0 = init_cond[0]
         degree = degree
         x_steps = x_steps
@@ -331,7 +359,6 @@ class FokkerPlanc:
             target_time = float(t[n + 1])
             substeps = 0
 
-
             while current_time < target_time:
                 drift_values = np.broadcast_to(
                     np.asarray(drift(current_time, x), dtype=float), x.shape
@@ -351,6 +378,10 @@ class FokkerPlanc:
                 current_time += h
                 substeps += 1
 
+            # After each reporting interval, project the cellwise density back to a
+            # probability-simplex Beta mixture: p(x) ≈ sum_m c_m l_m(x), c_m >= 0,
+            # sum_m c_m = 1. This keeps the representation non-negative and
+            # mass-preserving at each output time.
             coefficients, density = self.project_density(density, basis, dx)
             coefficient_history[n + 1] = coefficients
             density_history[n + 1] = density
