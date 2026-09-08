@@ -27,15 +27,7 @@ class BM1(BatteryModel):
         _, Bt, _, _, _, Dt = self.eval(t, X, U, f, g, k, Xi)
         return np.asarray((Dt - Bt) / C, dtype=float)
 
-    def euler_maruyama_solver(
-        self,
-        init_cond,
-        parameters,
-        sigma_x,
-        n_paths=1,
-        seed=None,
-        boundary="reflect",
-    ):
+    def euler_maruyama_solver(self,init_cond,parameters,sigma_x,n_paths=1,seed=None,boundary="reflect"):
         def drift(t, X):
             return self._drift(t, X, parameters)
 
@@ -62,16 +54,7 @@ class BM1(BatteryModel):
 
         return self.t.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt
 
-    def fokker_planc_solver(
-        self,
-        init_cond,
-        parameters,
-        sigma_x,
-        degree=12,
-        x_steps=201,
-        cfl=0.45,
-        max_substeps=100000,
-    ):
+    def fokker_planc_solver(self,init_cond,parameters,sigma_x,degree=12,x_steps=201,cfl=0.45):
         """Solve the BM1 probability density with a Beta-mixture Fokker-Planck model.
 
         Returns
@@ -107,7 +90,6 @@ class BM1(BatteryModel):
             degree=degree,
             x_steps=x_steps,
             cfl=cfl,
-            max_substeps=max_substeps,
         )
 
         dx = 1.0 / len(x)

@@ -48,8 +48,6 @@ class FokkerPlanc:
     def _normalise_basis_discretely(basis, dx):
         basis = np.asarray(basis, dtype=float)
         masses = np.sum(basis, axis=1) * dx
-        if np.any(masses <= 0.0):
-            raise ValueError("Every Beta basis function must have positive discrete mass.")
         return basis / masses[:, None]
 
     @staticmethod
@@ -114,15 +112,7 @@ class FokkerPlanc:
         matrix = np.asarray(matrix, dtype=float)
         target = np.asarray(target, dtype=float)
 
-        if matrix.ndim != 2:
-            raise ValueError("matrix must be two-dimensional.")
-        if target.ndim != 1 or target.shape[0] != matrix.shape[0]:
-            raise ValueError("target must be one-dimensional and match matrix rows.")
-
         n_coefficients = matrix.shape[1]
-        if n_coefficients == 0:
-            raise ValueError("matrix must contain at least one coefficient column.")
-
         if max_iter is None:
             max_iter = max(100, 20 * n_coefficients * n_coefficients)
 
@@ -293,17 +283,7 @@ class FokkerPlanc:
 
         return cfl * min(advective_limit, diffusive_limit)
 
-    def solve(
-        self,
-        t,
-        init_cond,
-        drift,
-        diffusion,
-        degree=12,
-        x_steps=201,
-        cfl=0.45,
-        max_substeps=100000,
-    ):
+    def solve(self, t, init_cond, drift, diffusion, degree=12, x_steps=201,cfl=0.45):
         """Solve the one-dimensional Fokker-Planck equation.
         Parameters
         ----------
@@ -324,6 +304,8 @@ class FokkerPlanc:
         max_substeps : int
             Safety limit for internal substeps per reported time interval.
         """
+
+        # Initialize the finite-volume grid and Beta basis.
         x0 = init_cond[0]
         degree = degree
         x_steps = x_steps
@@ -343,10 +325,12 @@ class FokkerPlanc:
         density_history[0] = density
         coefficient_history[0] = coefficients
 
+        # Advance the Fokker-Planck equation with adaptive explicit substeps.
         for n in range(len(t) - 1):
             current_time = float(t[n])
             target_time = float(t[n + 1])
             substeps = 0
+
 
             while current_time < target_time:
                 drift_values = np.broadcast_to(
@@ -360,20 +344,12 @@ class FokkerPlanc:
                 remaining = target_time - current_time
                 h = remaining if not np.isfinite(stable_h) else min(remaining, stable_h)
 
-                if h <= 0.0 or not np.isfinite(h):
-                    raise RuntimeError("Could not determine a valid Fokker-Planck time step.")
-
                 rhs = self._flux_rhs(x, density, drift_values, diffusion_values)
                 density = density + h * rhs
                 density = self._normalise_density(density, dx)
 
                 current_time += h
                 substeps += 1
-                if substeps > max_substeps:
-                    raise RuntimeError(
-                        "Fokker-Planck solver exceeded max_substeps. "
-                        "Reduce x_steps, increase the model time resolution, or inspect the model parameters."
-                    )
 
             coefficients, density = self.project_density(density, basis, dx)
             coefficient_history[n + 1] = coefficients
