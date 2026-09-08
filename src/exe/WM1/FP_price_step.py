@@ -24,26 +24,35 @@ B_O = sim.energy((np.array([0.0, days]), np.array([0.30, 0.30])))
 B_I = sim.energy((np.array([0.0, days]), np.array([0.30, 0.30])))
 PE = sim.price((np.array([0.0, days]), np.array([0.50, 0.50])))
 
-# 3) Price step: high price -> low price at hour 12.
+# 3) Dynamic-price step U: high price -> low price at hour 12.
 price_step_hour = 12.0
 price_step_time = price_step_hour / 24.0
-P = sim.price(
+U = sim.price(
     (
         np.array([0.0, price_step_time, days]),
         np.array([0.75, 0.25, 0.25]),
     )
 )
 
-# 4) Updated WM1 simplex parameters.
-# alpha controls I = [B_I, 1-V, O, 1-P]
-# beta  controls O = [B_O, V, 1-P]
-# gamma controls A = [1-P, I, V, 1-PE]
+# 4) Updated WM1 simplex coefficients.
+#
+# At each time step WM1 constructs the model-input vectors
+#
+#     P_O = [B_O, V, 1-U]
+#     P_I = [B_I, 1-V, O, 1-U]
+#     P_A = [1-U, I, V, 1-PE]
+#
+# and evaluates
+#
+#     O = beta^T  P_O
+#     I = alpha^T P_I
+#     A = gamma^T P_A.
 alpha = np.array([0.20, 0.35, 0.25, 0.20])
 beta = np.array([0.35, 0.45, 0.20])
 gamma = np.array([0.30, 0.20, 0.10, 0.40])
 
 parameters = {
-    "P": P,
+    "U": U,
     "B_O": B_O,
     "B_I": B_I,
     "PE": PE,
@@ -53,7 +62,7 @@ parameters = {
     "theta": 0.0,
 }
 
-# 5) Stochastic settings from the no-inertia Appendix Section 4 model.
+# 5) Stochastic settings from the no-inertia WM1 model.
 init_cond = [0.50]
 sigma = 0.12
 degree = 24
@@ -91,7 +100,10 @@ print(f"Maximum |sum(c) - 1|:          {np.max(np.abs(coefficient_mass - 1.0)):.
 print(f"Minimum coefficient:           {np.min(coefficients):.3e}")
 print(f"Maximum P(V < 0):              {np.max(result['lower_violation']):.6f}")
 print(f"Maximum P(V > 1):              {np.max(result['upper_violation']):.6f}")
-print(f"Maximum total bound violation: {np.max(result['lower_violation'] + result['upper_violation']):.6f}")
+print(
+    f"Maximum total bound violation: "
+    f"{np.max(result['lower_violation'] + result['upper_violation']):.6f}"
+)
 
 # 7) Plots.
 fig, axes = plt.subplots(4, 1, figsize=(11, 15), constrained_layout=True)
@@ -105,7 +117,7 @@ ax_pdf.set_title("WM1 centered Fokker-Planck density rho(e,t)")
 ax_pdf.legend(loc="best")
 fig.colorbar(mesh, ax=ax_pdf, label="Probability density")
 
-ax_state.step(hours, result["P"], where="post", label="Dynamic price P")
+ax_state.step(hours, result["U"], where="post", label="Dynamic price U")
 ax_state.plot(hours, result["V"], linewidth=2.0, label="Mean volume m(t)")
 ax_state.fill_between(
     hours,
