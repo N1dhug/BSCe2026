@@ -1,13 +1,13 @@
-from models.BatteryModel.BatteryModel import BatteryModel
-from models.Solvers.EulerMaruyama import EulerMaruyama
-from models.Solvers.FokkerPlanc import FokkerPlanc
+from src.models.BM import BM
+from src.solvers.EulerMaruyama import EulerMaruyama
+from src.solvers.FokkerPlanc import FokkerPlanc
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.integrate import simpson as simps
 from scipy.optimize import minimize
 
 
-class BM1(BatteryModel):
+class BM1(BM):
     def __init__(self, B, A, T, t_steps):
         super().__init__(B, A, T, t_steps)
         self.euler_maruyama = EulerMaruyama()
