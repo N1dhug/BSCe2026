@@ -1,13 +1,15 @@
-# run/runBM/BM1_FP_price_drop.py
+# src/exe/BM1/FP_price_drop.py
 # ------------------------------------------------------------
 # BM1 stochastic response to a single price drop.
 #
 # The probability density p(x,t) is solved directly from the
 # Fokker-Planck equation using a Beta-mixture approximation.
 #
-# This run uses the same BM1 setup as BM1_EM_price_drop.py
+# This run uses the same BM1 setup as EM_price_drop.py
 # so the two solvers can later be compared directly.
 # ------------------------------------------------------------
+
+from pathlib import Path
 
 from src.models.BM1 import BM1
 from src.models.Simulate import Simulate
@@ -108,7 +110,14 @@ cfl = 0.45
 
 model = BM1(B, A, T, t_steps)
 
-fp_t, x_grid, density, coefficients, mean, Ut, Bt, expected_Dt = model.fokker_planc_solver(init_cond=init_cond, parameters=parameters, sigma_x=sigma_x, degree=degree, x_steps=x_steps, cfl=cfl)
+fp_t, x_grid, density, coefficients, mean, Ut, Bt, expected_Dt = model.fokker_planc_solver(
+    init_cond=init_cond,
+    parameters=parameters,
+    sigma_x=sigma_x,
+    degree=degree,
+    x_steps=x_steps,
+    cfl=cfl,
+)
 
 fp_hours = 24.0 * fp_t
 
@@ -166,7 +175,11 @@ print(f"Minimum density value:      {np.min(density):.3e}")
 # 10) plots
 # ------------------------------------------------------------
 
-fig, (ax_pdf, ax_state, ax_coefficients, ax_terminal) = plt.subplots(nrows=4, figsize=(11, 15), gridspec_kw={"height_ratios": [2.0, 1.0, 1.4, 1.0]})
+fig, (ax_pdf, ax_state, ax_coefficients, ax_terminal) = plt.subplots(
+    nrows=4,
+    figsize=(11, 15),
+    gridspec_kw={"height_ratios": [2.0, 1.0, 1.4, 1.0]},
+)
 
 
 # ------------------------------------------------------------
@@ -192,7 +205,13 @@ fig.colorbar(mesh, ax=ax_pdf, label="Probability density")
 
 ax_state.step(fp_hours, Ut, where="post", label="Price U(t)")
 ax_state.plot(fp_hours, mean, linewidth=2.0, label="E[X(t)]")
-ax_state.fill_between(fp_hours, np.clip(mean - std, 0.0, 1.0), np.clip(mean + std, 0.0, 1.0), alpha=0.2, label="E[X] +/- std")
+ax_state.fill_between(
+    fp_hours,
+    np.clip(mean - std, 0.0, 1.0),
+    np.clip(mean + std, 0.0, 1.0),
+    alpha=0.2,
+    label="E[X] +/- std",
+)
 
 ax_state.axvline(price_drop_hour, linestyle="--")
 
@@ -216,7 +235,12 @@ ax_coefficients.set_ylabel("Coefficient value")
 ax_coefficients.set_title(f"Beta-mixture coefficients, degree M = {degree}")
 ax_coefficients.set_ylim(bottom=0.0)
 ax_coefficients.grid(True)
-ax_coefficients.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), ncol=2, fontsize=8)
+ax_coefficients.legend(
+    loc="upper left",
+    bbox_to_anchor=(1.01, 1.0),
+    ncol=2,
+    fontsize=8,
+)
 
 
 # ------------------------------------------------------------
@@ -225,8 +249,17 @@ ax_coefficients.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0), ncol=2, fon
 
 terminal_hour = fp_hours[-1]
 
-ax_terminal.plot(x_grid, density[-1], linewidth=2.0, label=f"p(x, {terminal_hour:.0f} h)")
-ax_terminal.axvline(mean[-1], linestyle="--", label=f"E[X({terminal_hour:.0f} h)]")
+ax_terminal.plot(
+    x_grid,
+    density[-1],
+    linewidth=2.0,
+    label=f"p(x, {terminal_hour:.0f} h)",
+)
+ax_terminal.axvline(
+    mean[-1],
+    linestyle="--",
+    label=f"E[X({terminal_hour:.0f} h)]",
+)
 
 ax_terminal.set_xlabel("State of charge x")
 ax_terminal.set_ylabel("Probability density")
@@ -237,8 +270,17 @@ ax_terminal.legend(loc="best")
 
 
 # ------------------------------------------------------------
-# Final figure formatting
+# Save figure
 # ------------------------------------------------------------
 
 fig.tight_layout()
-plt.show()
+
+# This file lives in src/exe/BM1, so parents[3] is the repository root.
+graph_dir = Path(__file__).resolve().parents[3] / "data" / "graphs"
+graph_dir.mkdir(parents=True, exist_ok=True)
+graph_path = graph_dir / "BM1_FP_price_drop.png"
+
+fig.savefig(graph_path, dpi=300, bbox_inches="tight")
+plt.close(fig)
+
+print(f"Saved graph to {graph_path}")
