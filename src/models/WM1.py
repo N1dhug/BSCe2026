@@ -28,62 +28,62 @@ class WM1(WM):
         self.fp = FokkerPlanc()
         self.T = T
         self.t_steps = int(t_steps)
-        self.t = np.linspace(float(T[0]), float(T[1]), self.t_steps)
-        self.dt = float(self.t[1] - self.t[0])
+        self.t = np.linspace(T[0], T[1], self.t_steps)
+        self.dt = self.t[1] - self.t[0]
 
     @staticmethod
     def _as_vector(values, length, name):
-        values = np.asarray(values, dtype=float)
-        if values.shape != (length,):
-            raise ValueError(f"{name} must contain exactly {length} values.")
+        """Cast inputs to a 1D NumPy array while preserving the model vector shape.
+
+        For a row-vector coefficient c and state vector x, the aggregate term is
+        c^T x = sum_i c_i x_i.
+        """
+        values = np.asarray(values)
         return values
 
-    @classmethod
-    def validate_parameters(cls, alpha, beta, gamma, tol=1e-10):
-        alpha = cls._as_vector(alpha, 4, "alpha")
-        beta = cls._as_vector(beta, 3, "beta")
-        gamma = cls._as_vector(gamma, 4, "gamma")
-
-        for name, vector in (("alpha", alpha), ("beta", beta), ("gamma", gamma)):
-            if np.any(vector < -tol):
-                raise ValueError(f"{name} must be non-negative.")
-            if not np.isclose(np.sum(vector), 1.0, atol=tol, rtol=0.0):
-                raise ValueError(f"{name} must satisfy sum({name}) = 1.")
-
-        return alpha, beta, gamma
-
     def I(self, P_I, alpha):
-        """Aggregate input/purchased power I = alpha^T P_I.
+        """Aggregate input/purchased power.
 
-        P_I = [B_I, 1-V, O, 1-U].
+        The input term is the linear combination
+            I = alpha^T P_I,
+        where P_I = [B_I, 1-V, O, 1-U].
         """
         P_I = self._as_vector(P_I, 4, "P_I")
         alpha = self._as_vector(alpha, 4, "alpha")
-        return float(alpha @ P_I)
+        return alpha @ P_I
 
     def O(self, P_O, beta):
-        """Aggregate output/consumption O = beta^T P_O.
+        """Aggregate output/consumption.
 
-        P_O = [B_O, V, 1-U].
+        The output term is the linear combination
+            O = beta^T P_O,
+        where P_O = [B_O, V, 1-U].
         """
         P_O = self._as_vector(P_O, 3, "P_O")
         beta = self._as_vector(beta, 3, "beta")
-        return float(beta @ P_O)
+        return beta @ P_O
 
     def A(self, P_A, gamma):
-        """Aggregator available/bid power A = gamma^T P_A.
+        """Aggregator available/bid power.
 
-        P_A = [1-U, I, V, 1-PE].
+        The available power is
+            A = gamma^T P_A,
+        where P_A = [1-U, I, V, 1-PE].
         """
         P_A = self._as_vector(P_A, 4, "P_A")
         gamma = self._as_vector(gamma, 4, "gamma")
-        return float(gamma @ P_A)
+        return gamma @ P_A
 
     @staticmethod
     def reduced_drift_coefficients(BtO, BtI, alpha, beta):
-        """Return d0, dV, dU such that I-O = d0 + dV*V + dU*U."""
-        alpha = np.asarray(alpha, dtype=float)
-        beta = np.asarray(beta, dtype=float)
+        """Return d0, dV, dU such that
+            I - O = d0 + dV * V + dU * U.
+
+        This is the reduced drift form obtained by substituting the affine state
+        dependence of the bid and consumption vectors into the aggregate balance.
+        """
+        alpha = np.asarray(alpha)
+        beta = np.asarray(beta)
 
         o_bar = beta[0] * BtO + beta[2]
         i_bar = alpha[0] * BtI + alpha[1] + alpha[2] * o_bar + alpha[3]
@@ -94,10 +94,16 @@ class WM1(WM):
         return d0, dV, dU
 
     def _evaluate_step(self, t, V, parameters):
-        U = float(parameters["U"](t))
-        BO = float(parameters["B_O"](t))
-        BI = float(parameters["B_I"](t))
-        PE = float(parameters["PE"](t))
+        """Evaluate one WM1 time step at state V and time t.
+
+        The model follows the causal chain
+            (B_O, V, U) -> P_O -> O -> P_I -> I -> P_A -> A,
+        with the algebraic balances defined in the appendix note.
+        """
+        U = parameters["U"](t)
+        BO = parameters["B_O"](t)
+        BI = parameters["B_I"](t)
+        PE = parameters["PE"](t)
 
         alpha, beta, gamma = self.validate_parameters(
             parameters["alpha"],
@@ -105,13 +111,13 @@ class WM1(WM):
             parameters["gamma"],
         )
 
-        P_O = np.array([BO, V, 1.0 - U], dtype=float)
+        P_O = np.array([BO, V, 1.0 - U])
         O = self.O(P_O, beta)
 
-        P_I = np.array([BI, 1.0 - V, O, 1.0 - U], dtype=float)
+        P_I = np.array([BI, 1.0 - V, O, 1.0 - U])
         I = self.I(P_I, alpha)
 
-        P_A = np.array([1.0 - U, I, V, 1.0 - PE], dtype=float)
+        P_A = np.array([1.0 - U, I, V, 1.0 - PE])
         A = self.A(P_A, gamma)
 
         return U, BO, BI, PE, P_I, P_O, P_A, O, I, A
@@ -121,49 +127,34 @@ class WM1(WM):
 
         The dynamic price signal is supplied as parameters['U'].
 
-        Set parameters['theta'] > 0 to retain the original discrete inertial
-        rate recurrence
-
-            R_k = I_k - O_k + theta R_{k-1}.
-
-        With theta=0 the no-inertia model is
-
-            V_{k+1} = V_k + dt (I_k - O_k).
+        The discrete-time balance is
+            R_k = I_k - O_k + theta * R_{k-1},
+            V_{k+1} = V_k + dt * R_k,
+        where theta = 0 recovers the no-inertia case.
         """
-        init = np.asarray(init_cond, dtype=float).reshape(-1)
-        V0 = float(init[0])
-        R_prev = float(init[1]) if init.size > 1 else 0.0
-        theta = float(parameters.get("theta", 0.0))
+        init = np.asarray(init_cond).reshape(-1)
+        V0 = init[0]
+        R_prev = init[1] if init.size > 1 else 0.0
+        theta = parameters.get("theta", 0.0)
 
-        V = np.empty(self.t_steps, dtype=float)
-        R = np.empty(self.t_steps, dtype=float)
-        U = np.empty(self.t_steps, dtype=float)
-        BO = np.empty(self.t_steps, dtype=float)
-        BI = np.empty(self.t_steps, dtype=float)
-        PE = np.empty(self.t_steps, dtype=float)
-        O = np.empty(self.t_steps, dtype=float)
-        I = np.empty(self.t_steps, dtype=float)
-        A = np.empty(self.t_steps, dtype=float)
+        V = np.empty(self.t_steps)
+        R = np.empty(self.t_steps)
+        U = np.empty(self.t_steps)
+        BO = np.empty(self.t_steps)
+        BI = np.empty(self.t_steps)
+        PE = np.empty(self.t_steps)
+        O = np.empty(self.t_steps)
+        I = np.empty(self.t_steps)
+        A = np.empty(self.t_steps)
 
-        P_I = np.empty((self.t_steps, 4), dtype=float)
-        P_O = np.empty((self.t_steps, 3), dtype=float)
-        P_A = np.empty((self.t_steps, 4), dtype=float)
+        P_I = np.empty((self.t_steps, 4))
+        P_O = np.empty((self.t_steps, 3))
+        P_A = np.empty((self.t_steps, 4))
 
         V[0] = V0
 
         for k, tk in enumerate(self.t):
-            (
-                U[k],
-                BO[k],
-                BI[k],
-                PE[k],
-                P_I[k],
-                P_O[k],
-                P_A[k],
-                O[k],
-                I[k],
-                A[k],
-            ) = self._evaluate_step(tk, V[k], parameters)
+            (U[k], BO[k], BI[k], PE[k], P_I[k], P_O[k], P_A[k], O[k], I[k], A[k]) = self._evaluate_step(tk, V[k], parameters)
 
             R[k] = I[k] - O[k] + theta * R_prev
 
@@ -188,58 +179,34 @@ class WM1(WM):
             "A": A,
         }
 
-    def fokker_planc_solver(
-        self,
-        init_cond,
-        parameters,
-        sigma,
-        degree=20,
-        e_bounds=(-1.5, 1.5),
-        x_steps=301,
-        cfl=0.45,
-    ):
+    def fokker_planc_solver(self, init_cond, parameters, sigma, degree=20, e_bounds=(-1.5, 1.5), x_steps=301, cfl=0.45):
         """Propagate the no-inertia stochastic WM1 centered-error density.
 
-        Implements the no-inertia stochastic WM1 formulation
+        The centered error is defined by
+            V(t) = m(t; U) + E(t),
+            dE(t) = dV * E(t) dt + sigma dW_t.
 
-            V_t = m(t; U) + E_t,
-            dE_t = dV E_t dt + sigma dW_t.
-
-        The generic FokkerPlanc solver is defined on [0,1], so E is mapped to
-        u=(E-e_min)/(e_max-e_min).
+        The generic Fokker-Planck solver works on the reference interval [0,1], so
+        the error variable E is mapped by the affine transform
+            u = (E - e_min) / (e_max - e_min).
         """
-        if float(parameters.get("theta", 0.0)) != 0.0:
-            raise NotImplementedError(
-                "The current WM1 Fokker-Planck implementation is the no-inertia model."
-            )
 
-        alpha, beta, _ = self.validate_parameters(
-            parameters["alpha"],
-            parameters["beta"],
-            parameters["gamma"],
-        )
-
-        e_min, e_max = map(float, e_bounds)
-        if not e_min < 0.0 < e_max:
-            raise ValueError("e_bounds must satisfy e_min < 0 < e_max.")
-
+        alpha, beta = parameters["alpha"], parameters["beta"]
+        e_min, e_max = e_bounds
         span = e_max - e_min
-        sigma = float(sigma)
-        if sigma < 0.0:
-            raise ValueError("sigma must be non-negative.")
 
-        V0 = float(np.asarray(init_cond, dtype=float).reshape(-1)[0])
+        V0 = np.asarray(init_cond).reshape(-1)[0]
         mean_result = self.deterministic_solver([V0], parameters)
         mean = mean_result["V"]
 
         dV = -alpha[1] - (1.0 - alpha[2]) * beta[1]
 
         def drift_u(t, u):
-            e = e_min + span * np.asarray(u, dtype=float)
+            e = e_min + span * np.asarray(u)
             return dV * e / span
 
         def diffusion_u(t, u):
-            return np.zeros_like(np.asarray(u, dtype=float)) + sigma / span
+            return np.zeros_like(np.asarray(u)) + sigma / span
 
         u0 = (0.0 - e_min) / span
         u_grid, density_u, coefficients = self.fp.solve(
@@ -260,8 +227,8 @@ class WM1(WM):
         error_second = np.sum(density_e * (e_grid[None, :] ** 2), axis=1) * de
         error_variance = np.maximum(error_second - error_mean**2, 0.0)
 
-        lower_violation = np.empty(self.t_steps, dtype=float)
-        upper_violation = np.empty(self.t_steps, dtype=float)
+        lower_violation = np.empty(self.t_steps)
+        upper_violation = np.empty(self.t_steps)
 
         for k in range(self.t_steps):
             lower_violation[k] = np.sum(density_e[k, e_grid < -mean[k]]) * de
