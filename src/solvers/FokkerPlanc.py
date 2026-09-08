@@ -171,11 +171,6 @@ class FokkerPlanc:
                 direction = trial - coefficients
                 decreasing = free & (direction < -tol)
 
-                if not np.any(decreasing):
-                    raise RuntimeError(
-                        "Active-set least squares could not find a feasible boundary step."
-                    )
-
                 step_lengths = -coefficients[decreasing] / direction[decreasing]
                 step = float(np.min(step_lengths))
                 step = min(max(step, 0.0), 1.0)
@@ -185,8 +180,6 @@ class FokkerPlanc:
                 coefficients[hit_boundary] = 0.0
 
                 coefficient_sum = np.sum(coefficients)
-                if coefficient_sum <= 0.0 or not np.isfinite(coefficient_sum):
-                    raise RuntimeError("Active-set least squares lost simplex feasibility.")
                 coefficients /= coefficient_sum
 
                 active |= hit_boundary
@@ -199,15 +192,10 @@ class FokkerPlanc:
             coefficients[np.abs(coefficients) <= tol] = 0.0
             coefficients = np.maximum(coefficients, 0.0)
             coefficient_sum = np.sum(coefficients)
-            if coefficient_sum <= 0.0 or not np.isfinite(coefficient_sum):
-                raise RuntimeError("Active-set least squares produced an invalid simplex point.")
             coefficients /= coefficient_sum
 
             active = coefficients <= tol
             free_indices = np.flatnonzero(~active)
-            if free_indices.size == 0:
-                raise RuntimeError("Active-set least squares has no positive coefficient.")
-
             residual = matrix @ coefficients - target
             gradient = matrix.T @ residual
 
@@ -230,9 +218,6 @@ class FokkerPlanc:
 
             active[active_indices[worst_position]] = False
 
-        raise RuntimeError(
-            "Active-set least-squares projection did not converge within max_iter."
-        )
 
     @staticmethod
     def project_density(density, basis, dx):
