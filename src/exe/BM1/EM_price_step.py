@@ -1,12 +1,10 @@
-# src/exe/BM1/FP_price_drop.py
+# src/exe/BM1/EM_price_drop.py
 # ------------------------------------------------------------
 # BM1 stochastic response to a single price drop.
 #
-# The probability density p(x,t) is solved directly from the
-# Fokker-Planck equation using a Beta-mixture approximation.
-#
-# This run uses the same BM1 setup as EM_price_drop.py
-# so the two solvers can later be compared directly.
+# The stochastic SDE is solved using Euler-Maruyama.
+# The probability density p(x,t) is estimated from many
+# Monte-Carlo trajectories.
 # ------------------------------------------------------------
 
 from pathlib import Path
@@ -24,7 +22,7 @@ import numpy as np
 days = 4
 T = (0.0, float(days))
 
-# 24 one-hour intervals per day + initial point.
+# 24 one-hour intervals -> 25 points including both endpoints.
 t_steps = 24 * days + 1
 t = np.linspace(T[0], T[1], t_steps)
 hours = 24.0 * t
@@ -38,9 +36,6 @@ sim = Simulate()
 
 B_data = (np.array([0.0, 1.0]), np.array([0.3, 0.3]))
 B = sim.energy(B_data)
-
-# Available energy is not needed by the Fokker-Planck solver
-# itself, but BM1 expects it when the model object is created.
 A = B
 
 
@@ -83,116 +78,72 @@ parameters = [U, f, g, C, k, Xi]
 
 
 # ------------------------------------------------------------
-# 6) Fokker-Planck / Beta-mixture settings
-# ------------------------------------------------------------
-
-# Beta-series degree M.
-#
-# The density is approximated by:
-#
-#        M
-# p(x,t) = sum c_m(t) l_m(x)
-#        m=0
-#
-# degree=20 gives 21 Beta basis functions.
-degree = 20
-
-# Number of finite-volume cells on x in [0, 1].
-x_steps = 201
-
-# CFL stability factor for the internal explicit PDE solver.
-cfl = 0.45
-
-
-# ------------------------------------------------------------
-# 7) Fokker-Planck simulation
+# 6) Euler-Maruyama simulation
 # ------------------------------------------------------------
 
 model = BM1(B, A, T, t_steps)
 
-fp_t, x_grid, density, coefficients, mean, Ut, Bt, expected_Dt = model.fokker_planc_solver(
-    init_cond=init_cond,
-    parameters=parameters,
-    sigma_x=sigma_x,
-    degree=degree,
-    x_steps=x_steps,
-    cfl=cfl,
+n_paths = 100_000
+seed = 1
+
+em_t, Xt, Ut, Bt, fXt, gUt, delta_t, Dt = model.euler_maruyama_solver(
+    init_cond, parameters, sigma_x, n_paths=n_paths, seed=seed, boundary="reflect"
 )
 
-fp_hours = 24.0 * fp_t
+em_hours = 24.0 * em_t
 
 
 # ------------------------------------------------------------
-# 8) probability-density moments
+# 7) Monte-Carlo mean and variance
 # ------------------------------------------------------------
 
-# FokkerPlanc uses cell centres on [0, 1].
-dx = 1.0 / len(x_grid)
-
-# E[X^2]
-second_moment = np.sum(density * (x_grid[None, :] ** 2), axis=1) * dx
-
-# Var[X] = E[X^2] - E[X]^2
-variance = second_moment - mean**2
-
-# Protect against tiny negative values caused by
-# floating-point roundoff.
-variance = np.maximum(variance, 0.0)
-
+mean = np.mean(Xt, axis=0)
+variance = np.var(Xt, axis=0)
 std = np.sqrt(variance)
+
+
+# ------------------------------------------------------------
+# 8) estimate p(x,t) from Euler-Maruyama trajectories
+# ------------------------------------------------------------
+
+n_x_bins = 100
+
+x_edges = np.linspace(0.0, 1.0, n_x_bins + 1)
+x_grid = 0.5 * (x_edges[:-1] + x_edges[1:])
+dx = x_edges[1] - x_edges[0]
+
+density = np.zeros((t_steps, n_x_bins), dtype=float)
+
+for i in range(t_steps):
+    density[i], _ = np.histogram(Xt[:, i], bins=x_edges, density=True)
 
 
 # ------------------------------------------------------------
 # 9) probability-density checks
 # ------------------------------------------------------------
-
-# Integral p(x,t) dx should remain approximately one.
 mass = np.sum(density, axis=1) * dx
-
-# Because the Beta basis functions are normalized probability
-# densities, the mixture coefficients should also sum to one.
-coefficient_mass = np.sum(coefficients, axis=1)
-
-print("Fokker-Planck probability checks")
-print("--------------------------------")
-print(f"Minimum density mass:       {np.min(mass):.12f}")
-print(f"Maximum density mass:       {np.max(mass):.12f}")
-print(f"Maximum |mass - 1|:         {np.max(np.abs(mass - 1.0)):.3e}")
-
-print()
-
-print(f"Minimum coefficient sum:    {np.min(coefficient_mass):.12f}")
-print(f"Maximum coefficient sum:    {np.max(coefficient_mass):.12f}")
-print(f"Maximum |sum(c) - 1|:       {np.max(np.abs(coefficient_mass - 1.0)):.3e}")
-
-print()
-
-print(f"Minimum coefficient:        {np.min(coefficients):.3e}")
-print(f"Minimum density value:      {np.min(density):.3e}")
 
 
 # ------------------------------------------------------------
 # 10) plots
 # ------------------------------------------------------------
 
-fig, (ax_pdf, ax_state, ax_coefficients, ax_terminal) = plt.subplots(
-    nrows=4,
-    figsize=(11, 15),
-    gridspec_kw={"height_ratios": [2.0, 1.0, 1.4, 1.0]},
+fig, (ax_pdf, ax_state, ax_paths, ax_terminal) = plt.subplots(
+    nrows=4, figsize=(11, 15), gridspec_kw={"height_ratios": [2.0, 1.0, 1.4, 1.0]}
 )
 
 
 # ------------------------------------------------------------
-# Plot 1: Fokker-Planck probability density p(x,t)
+# Plot 1: empirical probability density p(x,t)
 # ------------------------------------------------------------
 
-mesh = ax_pdf.pcolormesh(fp_hours, x_grid, density.T, shading="auto")
+mesh = ax_pdf.pcolormesh(em_hours, x_grid, density.T, shading="auto")
 
-ax_pdf.plot(fp_hours, mean, linewidth=2.0, label="Fokker-Planck E[X(t)]")
+ax_pdf.plot(em_hours, mean, label="Monte-Carlo E[X(t)]")
 ax_pdf.axvline(price_drop_hour, linestyle="--", label="Price drop")
 
 ax_pdf.set_ylabel("State of charge x")
-ax_pdf.set_title("BM1 Fokker-Planck probability density p(x,t)")
+ax_pdf.set_title("Euler-Maruyama estimate of BM1 probability density p(x,t)")
 ax_pdf.set_ylim(0.0, 1.0)
 ax_pdf.legend(loc="best")
 
@@ -203,10 +154,11 @@ fig.colorbar(mesh, ax=ax_pdf, label="Probability density")
 # Plot 2: price signal and distribution moments
 # ------------------------------------------------------------
 
-ax_state.step(fp_hours, Ut, where="post", label="Price U(t)")
-ax_state.plot(fp_hours, mean, linewidth=2.0, label="E[X(t)]")
+ax_state.step(em_hours, Ut, where="post", label="Price U(t)")
+ax_state.plot(em_hours, mean, label="E[X(t)]")
+
 ax_state.fill_between(
-    fp_hours,
+    em_hours,
     np.clip(mean - std, 0.0, 1.0),
     np.clip(mean + std, 0.0, 1.0),
     alpha=0.2,
@@ -216,55 +168,41 @@ ax_state.fill_between(
 ax_state.axvline(price_drop_hour, linestyle="--")
 
 ax_state.set_ylabel("Price / SoC")
-ax_state.set_title("Price drop and Fokker-Planck distribution moments")
+ax_state.set_title("Price drop and Euler-Maruyama distribution moments")
 ax_state.set_ylim(0.0, 1.0)
 ax_state.grid(True)
 ax_state.legend(loc="best")
 
 
 # ------------------------------------------------------------
-# Plot 3: Beta-mixture coefficient evolution
+# Plot 3: individual Euler-Maruyama trajectories
 # ------------------------------------------------------------
 
-for m in range(coefficients.shape[1]):
-    ax_coefficients.plot(fp_hours, coefficients[:, m], label=f"c{m}")
+n_paths_to_plot = min(50, n_paths)
 
-ax_coefficients.axvline(price_drop_hour, linestyle="--")
+for i in range(n_paths_to_plot):
+    ax_paths.plot(em_hours, Xt[i], alpha=0.15)
 
-ax_coefficients.set_ylabel("Coefficient value")
-ax_coefficients.set_title(f"Beta-mixture coefficients, degree M = {degree}")
-ax_coefficients.set_ylim(bottom=0.0)
-ax_coefficients.grid(True)
-ax_coefficients.legend(
-    loc="upper left",
-    bbox_to_anchor=(1.01, 1.0),
-    ncol=2,
-    fontsize=8,
-)
+ax_paths.plot(em_hours, mean, linewidth=2.5, label="E[X(t)]")
+ax_paths.axvline(price_drop_hour, linestyle="--", label="Price drop")
+
+ax_paths.set_ylabel("State of charge")
+ax_paths.set_title(f"{n_paths_to_plot} Euler-Maruyama sample paths")
+ax_paths.set_ylim(0.0, 1.0)
+ax_paths.grid(True)
+ax_paths.legend(loc="best")
 
 
 # ------------------------------------------------------------
 # Plot 4: terminal probability density
 # ------------------------------------------------------------
 
-terminal_hour = fp_hours[-1]
-
-ax_terminal.plot(
-    x_grid,
-    density[-1],
-    linewidth=2.0,
-    label=f"p(x, {terminal_hour:.0f} h)",
-)
-ax_terminal.axvline(
-    mean[-1],
-    linestyle="--",
-    label=f"E[X({terminal_hour:.0f} h)]",
-)
+ax_terminal.plot(x_grid, density[-1], label="p(x, 24 h)")
+ax_terminal.axvline(mean[-1], linestyle="--", label="E[X(24 h)]")
 
 ax_terminal.set_xlabel("State of charge x")
 ax_terminal.set_ylabel("Probability density")
-ax_terminal.set_title("Terminal Fokker-Planck probability density")
-ax_terminal.set_xlim(0.0, 1.0)
+ax_terminal.set_title("Terminal Euler-Maruyama probability density")
 ax_terminal.grid(True)
 ax_terminal.legend(loc="best")
 
@@ -278,7 +216,7 @@ fig.tight_layout()
 # This file lives in src/exe/BM1, so parents[3] is the repository root.
 graph_dir = Path(__file__).resolve().parents[3] / "data" / "graphs"
 graph_dir.mkdir(parents=True, exist_ok=True)
-graph_path = graph_dir / "BM1_FP_price_drop.png"
+graph_path = graph_dir / "BM1_EM_price_step.png"
 
 fig.savefig(graph_path, dpi=300, bbox_inches="tight")
 plt.close(fig)

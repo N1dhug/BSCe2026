@@ -47,8 +47,8 @@ U = sim.price(
 #     O = beta^T  P_O
 #     I = alpha^T P_I
 #     A = gamma^T P_A.
-alpha = np.array([0.20, 0.35, 0.25, 0.20])
-beta = np.array([0.35, 0.45, 0.20])
+alpha = np.array([0.15, 0.25, 0.15, 0.45])
+beta  = np.array([0.30, 0.45, 0.25])
 gamma = np.array([0.30, 0.20, 0.10, 0.40])
 
 parameters = {
