@@ -15,6 +15,22 @@ class BMValidation:
         return scalar
 
     @staticmethod
+    def finite_array(values, name):
+        array = np.asarray(values, dtype=float)
+        if array.size == 0:
+            raise ValueError(f"{name} must not be empty.")
+        if not np.all(np.isfinite(array)):
+            raise ValueError(f"{name} must contain finite values.")
+        return array
+
+    @classmethod
+    def bounded_array(cls, values, lower, upper, name, tol=1e-10):
+        array = cls.finite_array(values, name)
+        if np.any(array < lower - tol) or np.any(array > upper + tol):
+            raise ValueError(f"{name} values must lie in [{lower}, {upper}].")
+        return array
+
+    @staticmethod
     def positive_scalar(value, name):
         scalar = BMValidation.finite_scalar(value, name)
         if scalar <= 0.0:
@@ -91,10 +107,15 @@ class BMValidation:
         return values
 
     @classmethod
+    def state(cls, state):
+        values = np.asarray(state)
+        if values.size == 0:
+            raise ValueError("state must contain a state-of-charge value.")
+        return values
+
+    @classmethod
     def diffusion(cls, X, sigma_x):
-        values = np.asarray(X, dtype=float)
-        if not np.all(np.isfinite(values)):
-            raise ValueError("X must contain finite values.")
+        values = cls.finite_array(X, "X")
         sigma_x = cls.finite_scalar(sigma_x, "sigma_x")
         if sigma_x < 0.0:
             raise ValueError("sigma_x must be non-negative.")
@@ -103,3 +124,12 @@ class BMValidation:
     @classmethod
     def dynamics(cls, U, f, g, C, k, Xi):
         return cls.parameters([U, f, g, C, k, Xi])
+
+    @classmethod
+    def response_values(cls, Ut, Bt, fXt, gUt):
+        return (
+            cls.bounded_array(Ut, 0.0, 1.0, "U(t)"),
+            cls.bounded_array(Bt, 0.0, 1.0, "B(t)"),
+            cls.bounded_array(fXt, -1.0, 1.0, "f(X)"),
+            cls.bounded_array(gUt, -1.0, 1.0, "g(U)"),
+        )
