@@ -1,6 +1,7 @@
-from src.model.BM import BM
+from src.model.base.BM import BM
 from src.method.EulerMaruyama import EulerMaruyama
 from src.method.FokkerPlanc import FokkerPlanc
+from src.validation.model.BM1 import BM1Validation
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.integrate import simpson as simps
@@ -15,6 +16,7 @@ class BM1(BM):
 
     def __phi(self, U, parameters, init_cond):
         simulated_U = self.simulate.price((self.t, U))
+        parameters = list(parameters)
         parameters[0] = simulated_U
         t, _, _, _, _, _, _, Dt = self.deterministic_solver(init_cond, parameters)
         At = self.A(t)
@@ -26,6 +28,10 @@ class BM1(BM):
         return np.asarray((Dt - Bt) / C, dtype=float)
 
     def euler_maruyama_solver(self, init_cond, parameters, sigma_x, n_paths=1, seed=None, boundary="reflect"):
+        init_cond, parameters, sigma_x = BM1Validation.stochastic_inputs(
+            init_cond, parameters, sigma_x
+        )
+
         def drift(t, X):
             return self._drift(t, X, parameters)
 
@@ -42,7 +48,7 @@ class BM1(BM):
             boundary=boundary,
         )
 
-        Xt = paths[0] if n_paths == 1 else paths
+        Xt = paths[0] if paths.shape[0] == 1 else paths
         Ut = parameters[0](self.t)
         Bt = self.B(self.t)
         fXt = parameters[1](Xt)
@@ -52,6 +58,10 @@ class BM1(BM):
         return self.t.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt
 
     def fokker_planc_solver(self, init_cond, parameters, sigma_x, degree=12, x_steps=201, cfl=0.45):
+        init_cond, parameters, sigma_x = BM1Validation.stochastic_inputs(
+            init_cond, parameters, sigma_x
+        )
+
         def drift(t, X):
             return self._drift(t, X, parameters)
 
@@ -86,6 +96,7 @@ class BM1(BM):
         return self.t.copy(), x, p, coefficients, EXt, Ut, Bt, EDt
 
     def deterministic_solver(self, init_cond, parameters):
+        init_cond, parameters = BM1Validation.model_inputs(init_cond, parameters)
         solution = solve_ivp(self.dXdt, self.T, init_cond, args=parameters, t_eval=self.t)
         Xt = solution.y[0]
         Ut, Bt, fXt, gUt, dt, Dt = self.eval(
@@ -94,6 +105,9 @@ class BM1(BM):
         return solution.t, Xt, Ut, Bt, fXt, gUt, dt, Dt
 
     def optimize(self, initial_u, init_cond, parameters):
+        initial_u, init_cond, parameters = BM1Validation.optimize_inputs(
+            initial_u, init_cond, parameters
+        )
         bounds = [(0, 1) for _ in range(len(initial_u))]
         phi = lambda U: self.__phi(U, parameters, init_cond)
         return minimize(phi, initial_u, bounds=bounds)
