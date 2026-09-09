@@ -1,5 +1,7 @@
 import numpy as np
 
+from src.validation.solver.ActiveSet import ActiveSetValidation
+
 
 class ActiveSet:
     """Generic active-set solvers for small convex constrained least-squares problems."""
@@ -7,22 +9,11 @@ class ActiveSet:
     @staticmethod
     def simplex_least_squares(matrix, target, tol=1e-10, max_iter=None):
         """Solve min 0.5*||A c-b||^2 subject to c >= 0 and sum(c)=1."""
-        matrix = np.asarray(matrix, dtype=float)
-        target = np.asarray(target, dtype=float)
-
-        if matrix.ndim != 2:
-            raise ValueError("matrix must be two-dimensional.")
-        if target.ndim != 1:
-            target = target.reshape(-1)
-        if matrix.shape[0] != target.size:
-            raise ValueError("matrix row count must match target length.")
+        matrix, target, tol, max_iter = ActiveSetValidation.simplex_least_squares(
+            matrix, target, tol, max_iter
+        )
 
         n_coefficients = matrix.shape[1]
-        if n_coefficients == 0:
-            raise ValueError("matrix must contain at least one coefficient column.")
-        if max_iter is None:
-            max_iter = max(100, 20 * n_coefficients * n_coefficients)
-
         coefficients = np.full(n_coefficients, 1.0 / n_coefficients, dtype=float)
         active = np.zeros(n_coefficients, dtype=bool)
 
