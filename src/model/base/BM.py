@@ -20,23 +20,26 @@ class BM:
         Bt = self.B(t)
         fXt = f(Xt)
         gUt = g(Ut)
+        Ut, Bt, fXt, gUt = BMValidation.response_values(Ut, Bt, fXt, gUt)
         dt = self.l(fXt, gUt, k)
         Dt = self.D(Bt, Xi, dt)
         return Ut, Bt, fXt, gUt, dt, Dt
 
     def l(self, fXt, gUt, k):
+        fXt = BMValidation.bounded_array(fXt, -1.0, 1.0, "f(X)")
+        gUt = BMValidation.bounded_array(gUt, -1.0, 1.0, "g(U)")
         k = BMValidation.positive_scalar(k, "k")
         return 2 / (1 + np.exp(-k * (fXt + gUt))) - 1
 
     def D(self, Bt, Xi, dt):
+        Bt = BMValidation.bounded_array(Bt, 0.0, 1.0, "B(t)")
+        dt = BMValidation.bounded_array(dt, -1.0, 1.0, "delta(t)")
         Xi = BMValidation.unit_scalar(Xi, "Xi")
         return Bt + dt * Xi * ((dt >= 0) * (1 - Bt) + (dt < 0) * Bt)
 
     def dXdt(self, t, state, U, f, g, C, k, Xi, stochastic=False):
         U, f, g, C, k, Xi = BMValidation.dynamics(U, f, g, C, k, Xi)
-        state = np.asarray(state)
-        if state.size == 0:
-            raise ValueError("state must contain a state-of-charge value.")
+        state = BMValidation.state(state)
         Xt = state.reshape(-1)[0]
         if stochastic and hasattr(Xt, "item"):
             try:
