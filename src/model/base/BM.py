@@ -1,20 +1,21 @@
-from src.model.Simulate import Simulate
+from src.tool.Simulate import Simulate
+from src.validation.model.BM import BMValidation
 import numpy as np
 
 
 class BM:
     def __init__(self, B, A, T, t_steps):
+        B, A, T, t_steps = BMValidation.constructor(B, A, T, t_steps)
         self.simulate = Simulate()
         self.B = B
         self.A = A
         self.T = T
-        self.t_steps = int(t_steps)
-        if self.t_steps < 2:
-            raise ValueError("t_steps must be at least 2.")
+        self.t_steps = t_steps
         self.t = np.linspace(T[0], T[1], self.t_steps)
         self.dt = float(self.t[1] - self.t[0])
 
     def eval(self, t, Xt, U, f, g, k, Xi):
+        U, f, g, _, k, Xi = BMValidation.dynamics(U, f, g, 1.0, k, Xi)
         Ut = U(t)
         Bt = self.B(t)
         fXt = f(Xt)
@@ -24,13 +25,19 @@ class BM:
         return Ut, Bt, fXt, gUt, dt, Dt
 
     def l(self, fXt, gUt, k):
+        k = BMValidation.positive_scalar(k, "k")
         return 2 / (1 + np.exp(-k * (fXt + gUt))) - 1
 
     def D(self, Bt, Xi, dt):
+        Xi = BMValidation.unit_scalar(Xi, "Xi")
         return Bt + dt * Xi * ((dt >= 0) * (1 - Bt) + (dt < 0) * Bt)
 
     def dXdt(self, t, state, U, f, g, C, k, Xi, stochastic=False):
-        Xt = state[0]
+        U, f, g, C, k, Xi = BMValidation.dynamics(U, f, g, C, k, Xi)
+        state = np.asarray(state)
+        if state.size == 0:
+            raise ValueError("state must contain a state-of-charge value.")
+        Xt = state.reshape(-1)[0]
         if stochastic and hasattr(Xt, "item"):
             try:
                 Xt = Xt.item()
@@ -40,6 +47,7 @@ class BM:
         return [(Dt - Bt) / C]
 
     def diffusion_coefficient(self, X, sigma_x):
+        X, sigma_x = BMValidation.diffusion(X, sigma_x)
         return sigma_x * X * (1 - X)
 
     def XtOx_dWt(self, t, X, sigma_x):
