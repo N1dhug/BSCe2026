@@ -1,8 +1,9 @@
 import numpy as np
 
-from src.model.WM import WM
-from src.model.Simulate import Simulate
+from src.model.base.WM import WM
+from src.tool.Simulate import Simulate
 from src.method.FokkerPlanc import FokkerPlanc
+from src.validation.model.WM1 import WM1Validation
 
 
 class WM1(WM):
@@ -13,45 +14,31 @@ class WM1(WM):
     """
 
     def __init__(self, T, t_steps):
+        T, t_steps = WM1Validation.constructor(T, t_steps)
         self.simulate = Simulate()
         self.fp = FokkerPlanc()
         self.T = T
-        self.t_steps = int(t_steps)
+        self.t_steps = t_steps
         self.t = np.linspace(T[0], T[1], self.t_steps)
         self.dt = self.t[1] - self.t[0]
 
-    @staticmethod
-    def _as_vector(values, length, name):
-        values = np.asarray(values, dtype=float).reshape(-1)
-        if values.size != length:
-            raise ValueError(f"{name} must contain {length} entries.")
-        return values
-
-    @classmethod
-    def validate_parameters(cls, alpha, beta, gamma, tol=1e-10):
-        alpha = cls._as_vector(alpha, 4, "alpha")
-        beta = cls._as_vector(beta, 3, "beta")
-        gamma = cls._as_vector(gamma, 4, "gamma")
-        for name, values in (("alpha", alpha), ("beta", beta), ("gamma", gamma)):
-            if np.any(values < -tol) or np.any(values > 1.0 + tol):
-                raise ValueError(f"{name} coefficients must lie in [0, 1].")
-            if not np.isclose(np.sum(values), 1.0, atol=tol, rtol=0.0):
-                raise ValueError(f"{name} coefficients must sum to 1.")
-        return alpha, beta, gamma
-
     def I(self, P_I, alpha):
-        return self._as_vector(alpha, 4, "alpha") @ self._as_vector(P_I, 4, "P_I")
+        P_I, alpha = WM1Validation.linear_map(P_I, alpha, 4, "P_I", "alpha")
+        return alpha @ P_I
 
     def O(self, P_O, beta):
-        return self._as_vector(beta, 3, "beta") @ self._as_vector(P_O, 3, "P_O")
+        P_O, beta = WM1Validation.linear_map(P_O, beta, 3, "P_O", "beta")
+        return beta @ P_O
 
     def A(self, P_A, gamma):
-        return self._as_vector(gamma, 4, "gamma") @ self._as_vector(P_A, 4, "P_A")
+        P_A, gamma = WM1Validation.linear_map(P_A, gamma, 4, "P_A", "gamma")
+        return gamma @ P_A
 
     @staticmethod
     def reduced_drift_coefficients(BtO, BtI, alpha, beta):
-        alpha = np.asarray(alpha, dtype=float)
-        beta = np.asarray(beta, dtype=float)
+        BtO, BtI, alpha, beta = WM1Validation.reduced_drift_inputs(
+            BtO, BtI, alpha, beta
+        )
         o_bar = beta[0] * BtO + beta[2]
         i_bar = alpha[0] * BtI + alpha[1] + alpha[2] * o_bar + alpha[3]
         d0 = i_bar - o_bar
@@ -60,13 +47,13 @@ class WM1(WM):
         return d0, dV, dU
 
     def _evaluate_step(self, t, V, parameters):
-        U = parameters["U"](t)
-        BO = parameters["B_O"](t)
-        BI = parameters["B_I"](t)
-        PE = parameters["PE"](t)
-        alpha, beta, gamma = self.validate_parameters(
-            parameters["alpha"], parameters["beta"], parameters["gamma"]
-        )
+        U = WM1Validation.signal_value(parameters["U"](t), "U(t)")
+        BO = WM1Validation.signal_value(parameters["B_O"](t), "B_O(t)")
+        BI = WM1Validation.signal_value(parameters["B_I"](t), "B_I(t)")
+        PE = WM1Validation.signal_value(parameters["PE"](t), "PE(t)")
+        alpha = parameters["alpha"]
+        beta = parameters["beta"]
+        gamma = parameters["gamma"]
 
         P_O = np.array([BO, V, 1.0 - U])
         O = self.O(P_O, beta)
@@ -77,10 +64,10 @@ class WM1(WM):
         return U, BO, BI, PE, P_I, P_O, P_A, O, I, A
 
     def deterministic_solver(self, init_cond, parameters):
-        init = np.asarray(init_cond).reshape(-1)
+        init, parameters = WM1Validation.deterministic_inputs(init_cond, parameters)
         V0 = init[0]
         R_prev = init[1] if init.size > 1 else 0.0
-        theta = parameters.get("theta", 0.0)
+        theta = parameters["theta"]
 
         V = np.empty(self.t_steps)
         R = np.empty(self.t_steps)
@@ -112,15 +99,15 @@ class WM1(WM):
         }
 
     def fokker_planc_solver(self, init_cond, parameters, sigma, degree=20, e_bounds=(-1.5, 1.5), x_steps=301, cfl=0.45):
-        alpha, beta, _ = self.validate_parameters(
-            parameters["alpha"], parameters["beta"], parameters["gamma"]
+        init_cond, parameters, sigma, e_bounds = WM1Validation.fokker_planc_inputs(
+            init_cond, parameters, sigma, e_bounds
         )
+        alpha = parameters["alpha"]
+        beta = parameters["beta"]
         e_min, e_max = e_bounds
         span = e_max - e_min
-        if span <= 0.0:
-            raise ValueError("e_bounds must satisfy e_min < e_max.")
 
-        V0 = np.asarray(init_cond).reshape(-1)[0]
+        V0 = init_cond[0]
         mean_result = self.deterministic_solver([V0], parameters)
         mean = mean_result["V"]
         dV = -alpha[1] - (1.0 - alpha[2]) * beta[1]
