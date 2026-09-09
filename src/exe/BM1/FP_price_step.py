@@ -276,7 +276,7 @@ ax_terminal.legend(loc="best")
 fig.tight_layout()
 
 # This file lives in src/exe/BM1, so parents[3] is the repository root.
-graph_dir = Path(__file__).resolve().parents[3] / "data" / "graphs"
+graph_dir = Path(__file__).resolve().parents[3] / "files" / "output" / "graphs"
 graph_dir.mkdir(parents=True, exist_ok=True)
 graph_path = graph_dir / "BM1_FP_price_step.png"
 

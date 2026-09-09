@@ -6,8 +6,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.models.Simulate import Simulate
-from src.models.WM1 import WM1
+from src.tool.Simulate import Simulate
+from src.model.WM1 import WM1
 
 
 # 1) Time grid: four days, hourly reporting.
@@ -164,7 +164,7 @@ ax_risk.grid(True)
 ax_risk.legend(loc="best")
 
 # This file lives in src/exe/WM1, so parents[3] is the repository root.
-graph_dir = Path(__file__).resolve().parents[3] / "data" / "graphs"
+graph_dir = Path(__file__).resolve().parents[3] / "files" / "output" / "graphs"
 graph_dir.mkdir(parents=True, exist_ok=True)
 graph_path = graph_dir / "WM1_FP_price_step.png"
 fig.savefig(graph_path, dpi=300, bbox_inches="tight")
