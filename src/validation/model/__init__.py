@@ -1,4 +1,4 @@
-"""Model-layer validation public API."""
+"""Model-validation public API."""
 
 from .BM import BMValidation
 from .BM1 import BM1Validation
