@@ -2,7 +2,7 @@ import numpy as np
 
 from src.model.base.WM import WM
 from src.tool.Simulate import Simulate
-from src.method.FokkerPlanc import FokkerPlanc
+from src.method.FokkerPlanc import BM1FokkerPlanc
 from src.validation.model.WM1 import WM1Validation
 
 
@@ -16,7 +16,7 @@ class WM1(WM):
     def __init__(self, T, t_steps):
         T, t_steps = WM1Validation.constructor(T, t_steps)
         self.simulate = Simulate()
-        self.fp = FokkerPlanc()
+        self.fp = BM1FokkerPlanc()
         self.T = T
         self.t_steps = t_steps
         self.t = np.linspace(T[0], T[1], self.t_steps)
