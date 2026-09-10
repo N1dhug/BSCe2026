@@ -1,7 +1,7 @@
 import numpy as np
 
 from src.model.base.WM import WM
-from src.method.WM2FokkerPlanc import WM2FokkerPlanc
+from src.method.FokkerPlanc import WM2FokkerPlanc
 from src.validation.model.WM2 import WM2Validation
 
 
