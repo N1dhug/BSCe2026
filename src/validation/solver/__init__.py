@@ -1,3 +1,5 @@
+"""Solver-layer validation public API."""
+
 from .ActiveSet import ActiveSetValidation
 from .FokkerPlanc2D import FokkerPlanc2DValidation
 
