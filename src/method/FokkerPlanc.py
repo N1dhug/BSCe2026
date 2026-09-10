@@ -219,7 +219,7 @@ class WM2FokkerPlanc:
             v_steps,
             r_steps,
             cfl,
-        ) = WM2BM1FokkerPlancValidation.solve_inputs(
+        ) = WM2FokkerPlancValidation.solve_inputs(
             t, init_cond, parameters, v_bounds, r_bounds, v_steps, r_steps, cfl
         )
         alpha = parameters["alpha"]
@@ -229,7 +229,7 @@ class WM2FokkerPlanc:
         sigma_O = parameters["sigma_O"]
 
         if initial_density is None:
-            std_V, std_R = WM2BM1FokkerPlancValidation.initial_std(initial_std)
+            std_V, std_R = WM2FokkerPlancValidation.initial_std(initial_std)
             initial_density = self.gaussian_initial_density(
                 init_cond[0], init_cond[1], std_V, std_R
             )
