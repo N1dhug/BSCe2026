@@ -12,7 +12,7 @@ from src.tool.Simulate import Simulate
 
 
 # 1) Time grid: four days, hourly reporting.
-days = 4
+days = 10
 t_interval = (0.0, float(days))
 t_steps = 24 * days + 1
 t = np.linspace(t_interval[0], t_interval[1], t_steps)
@@ -53,19 +53,16 @@ U = sim.price(
 #     I = alpha^T P_I
 #     A = gamma^T P_A.
 #
-# These alpha/beta values satisfy WM2's global equilibrium restriction:
-# V*(B_O, B_I, U) lies in [0.1, 0.9] at all eight corners of
-# (B_O, B_I, U) in [0,1]^3. They also give d_V = -0.65 < 0.
-alpha = np.array([0.05, 0.20, 0.10, 0.65])
-beta = np.array([0.15, 0.50, 0.35])
+alpha = np.array([0, 0.1, 0.1, 0.8])
+beta = np.array([0.1, 0.85, 0.05])
 gamma = np.array([0.25, 0.25, 0.25, 0.25])
 
 # kappa_R = 4 is above the non-oscillatory threshold -4*d_V = 2.6 for
 # these coefficients. Diffusion remains strictly positive and grows with O:
 #     g(O) = sigma_0 + sigma_O * O.
-kappa_R = 4.0
-sigma_0 = 0.02
-sigma_O = 0.08
+kappa_R = 0.5
+sigma_0 = 0.04
+sigma_O = 0.10
 
 parameters = {
     "U": U,
