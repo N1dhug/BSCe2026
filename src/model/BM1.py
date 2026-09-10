@@ -1,6 +1,6 @@
 from src.model.base.BM import BM
 from src.method.EulerMaruyama import EulerMaruyama
-from src.method.FokkerPlanc import FokkerPlanc
+from src.method.FokkerPlanc import BM1FokkerPlanc
 from src.validation.model.BM1 import BM1Validation
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -12,7 +12,7 @@ class BM1(BM):
     def __init__(self, B, A, T, t_steps):
         super().__init__(B, A, T, t_steps)
         self.euler_maruyama = EulerMaruyama()
-        self.fokker_planc = FokkerPlanc()
+        self.fokker_planc = BM1FokkerPlanc()
 
     def __phi(self, U, parameters, init_cond):
         simulated_U = self.simulate.price((self.t, U))
