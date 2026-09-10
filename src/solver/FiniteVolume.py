@@ -1,10 +1,10 @@
 import numpy as np
 
-from src.validation.solver.FokkerPlanc2D import FokkerPlanc2DValidation
+from src.validation.solver.FiniteVolume import FiniteVolume2DValidation
 
 
-class FokkerPlanc2D:
-    """Generic 2D finite-volume Fokker-Planck solver.
+class FiniteVolume2D:
+    """Generic two-dimensional finite-volume PDE solver.
 
     Solves p_t = -d_v(a_v p) - d_r(a_r p) + 1/2 d_rr(g^2 p)
     on a truncated rectangular computational domain. Drift uses conservative
@@ -38,7 +38,7 @@ class FokkerPlanc2D:
         return flux
 
     @staticmethod
-    def _thomas(lower, diagonal, upper, rhs):
+    def _solve_tridiagonal(lower, diagonal, upper, rhs):
         n = len(diagonal)
         c = upper.copy()
         d = rhs.copy()
@@ -65,7 +65,7 @@ class FokkerPlanc2D:
                 continue
             diagonal = np.full(nr, 1.0 + 2.0 * lam)
             off = np.full(nr - 1, -lam)
-            result[i] = cls._thomas(off, diagonal, off, density[i])
+            result[i] = cls._solve_tridiagonal(off, diagonal, off, density[i])
         return result
 
     @staticmethod
@@ -82,12 +82,12 @@ class FokkerPlanc2D:
         v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0),
         v_steps=161, r_steps=161, cfl=0.8,
     ):
-        t = FokkerPlanc2DValidation.time_grid(t)
-        v_min, v_max = FokkerPlanc2DValidation.bounds(v_bounds, "v_bounds")
-        r_min, r_max = FokkerPlanc2DValidation.bounds(r_bounds, "r_bounds")
-        v_steps = FokkerPlanc2DValidation.integer(v_steps, "v_steps")
-        r_steps = FokkerPlanc2DValidation.integer(r_steps, "r_steps")
-        cfl = FokkerPlanc2DValidation.cfl(cfl)
+        t = FiniteVolume2DValidation.time_grid(t)
+        v_min, v_max = FiniteVolume2DValidation.bounds(v_bounds, "v_bounds")
+        r_min, r_max = FiniteVolume2DValidation.bounds(r_bounds, "r_bounds")
+        v_steps = FiniteVolume2DValidation.integer(v_steps, "v_steps")
+        r_steps = FiniteVolume2DValidation.integer(r_steps, "r_steps")
+        cfl = FiniteVolume2DValidation.cfl(cfl)
 
         dv = (v_max - v_min) / v_steps
         dr = (r_max - r_min) / r_steps
@@ -96,7 +96,7 @@ class FokkerPlanc2D:
         V, R = np.meshgrid(v, r, indexing="ij")
 
         density0 = initial_density(V, R) if callable(initial_density) else initial_density
-        density = FokkerPlanc2DValidation.density(density0, (v_steps, r_steps), dv, dr)
+        density = FiniteVolume2DValidation.density(density0, (v_steps, r_steps), dv, dr)
 
         history = np.empty((len(t), v_steps, r_steps), dtype=float)
         mass_history = np.empty(len(t), dtype=float)
@@ -107,13 +107,13 @@ class FokkerPlanc2D:
             current = float(t[n])
             target = float(t[n + 1])
             while current < target - 1e-15:
-                av = FokkerPlanc2DValidation.field(
+                av = FiniteVolume2DValidation.field(
                     drift_v(current, V, R), density.shape, "drift_v"
                 )
-                ar = FokkerPlanc2DValidation.field(
+                ar = FiniteVolume2DValidation.field(
                     drift_r(current, V, R), density.shape, "drift_r"
                 )
-                g = FokkerPlanc2DValidation.field(
+                g = FiniteVolume2DValidation.field(
                     diffusion_r(current, V, R), density.shape, "diffusion_r",
                     nonnegative=True,
                 )

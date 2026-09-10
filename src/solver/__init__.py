@@ -1,6 +1,6 @@
 """Generic solver-layer public API."""
 
 from .ActiveSet import ActiveSet
-from .FokkerPlanc2D import FokkerPlanc2D
+from .FiniteVolume import FiniteVolume2D
 
-__all__ = ["ActiveSet", "FokkerPlanc2D"]
+__all__ = ["ActiveSet", "FiniteVolume2D"]

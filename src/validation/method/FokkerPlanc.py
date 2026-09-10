@@ -1,7 +1,10 @@
 import numpy as np
 
+from src.validation.model.WM2 import WM2Validation
+from src.validation.solver.FiniteVolume import FiniteVolume2DValidation
 
-class FokkerPlancValidation:
+
+class BM1FokkerPlancValidation:
     """Input and numerical-state validation for the Fokker-Planck method."""
 
     @staticmethod
@@ -171,3 +174,25 @@ class FokkerPlancValidation:
         if not np.isfinite(h) or h <= 0.0:
             raise RuntimeError("Fokker-Planck method produced a non-positive substep.")
         return float(h)
+
+
+class WM2FokkerPlancValidation:
+    @classmethod
+    def solve_inputs(
+        cls, t, init_cond, parameters, v_bounds, r_bounds, v_steps, r_steps, cfl
+    ):
+        t = FiniteVolume2DValidation.time_grid(t)
+        init_cond, parameters = WM2Validation.fp_inputs(init_cond, parameters)
+        v_bounds = FiniteVolume2DValidation.bounds(v_bounds, "v_bounds")
+        r_bounds = FiniteVolume2DValidation.bounds(r_bounds, "r_bounds")
+        v_steps = FiniteVolume2DValidation.integer(v_steps, "v_steps")
+        r_steps = FiniteVolume2DValidation.integer(r_steps, "r_steps")
+        cfl = FiniteVolume2DValidation.cfl(cfl)
+        return t, init_cond, parameters, v_bounds, r_bounds, v_steps, r_steps, cfl
+
+    @staticmethod
+    def initial_std(initial_std):
+        values = np.asarray(initial_std, dtype=float).reshape(-1)
+        if values.size != 2 or not np.all(np.isfinite(values)) or np.any(values <= 0.0):
+            raise ValueError("initial_std must contain positive finite [std_V, std_R].")
+        return float(values[0]), float(values[1])

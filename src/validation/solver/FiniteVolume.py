@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class FokkerPlanc2DValidation:
+class FiniteVolume2DValidation:
     @staticmethod
     def bounds(values, name):
         values = np.asarray(values, dtype=float).reshape(-1)
