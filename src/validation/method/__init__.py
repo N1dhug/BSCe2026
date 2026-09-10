@@ -1,4 +1,4 @@
-"""Method-layer validation public API."""
+"""Method-validation public API."""
 
 from .EulerMaruyama import EulerMaruyamaValidation
 from .FokkerPlanc import FokkerPlancValidation
