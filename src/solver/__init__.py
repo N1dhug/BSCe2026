@@ -1,4 +1,4 @@
-"""Solver-layer public API."""
+"""Generic solver-layer public API."""
 
 from .ActiveSet import ActiveSet
 from .FokkerPlanc2D import FokkerPlanc2D
