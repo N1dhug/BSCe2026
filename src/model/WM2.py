@@ -81,10 +81,7 @@ class WM2(WM):
         kappa_R = parameters["kappa_R"]
 
         for k, tk in enumerate(self.t):
-            (
-                U[k], B_O[k], B_I[k], PE[k], P_I[k], P_O[k], P_A[k],
-                O[k], I[k], A[k],
-            ) = self._evaluate_step(tk, V[k], parameters)
+            U[k], B_O[k], B_I[k], PE[k], P_I[k], P_O[k], P_A[k], O[k], I[k], A[k] = self._evaluate_step(tk, V[k], parameters)
             R_dot[k] = kappa_R * ((I[k] - O[k]) - R[k])
             if k < self.t_steps - 1:
                 V[k + 1] = V[k] + self.dt * R[k]
@@ -97,11 +94,7 @@ class WM2(WM):
             "O": O, "I": I, "A": A,
         }
 
-    def fokker_planc_solver(
-        self, init_cond, parameters, initial_density=None,
-        initial_std=(0.02, 0.02), v_bounds=(-0.5, 1.5),
-        r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8,
-    ):
+    def fokker_planc_solver(self, init_cond, parameters, initial_density=None, initial_std=(0.02, 0.02), v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
         return self.fp.solve(
             self.t, init_cond, parameters,
             initial_density=initial_density, initial_std=initial_std,

@@ -197,31 +197,8 @@ class WM2FokkerPlanc:
 
         return density
 
-    def solve(
-        self,
-        t,
-        init_cond,
-        parameters,
-        initial_density=None,
-        initial_std=(0.02, 0.02),
-        v_bounds=(-0.5, 1.5),
-        r_bounds=(-1.0, 1.0),
-        v_steps=161,
-        r_steps=161,
-        cfl=0.8,
-    ):
-        (
-            t,
-            init_cond,
-            parameters,
-            v_bounds,
-            r_bounds,
-            v_steps,
-            r_steps,
-            cfl,
-        ) = WM2FokkerPlancValidation.solve_inputs(
-            t, init_cond, parameters, v_bounds, r_bounds, v_steps, r_steps, cfl
-        )
+    def solve(self, t, init_cond, parameters, initial_density=None, initial_std=(0.02, 0.02), v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
+        t, init_cond, parameters, v_bounds, r_bounds, v_steps, r_steps, cfl = WM2FokkerPlancValidation.solve_inputs(t, init_cond, parameters, v_bounds, r_bounds, v_steps, r_steps, cfl)
         alpha = parameters["alpha"]
         beta = parameters["beta"]
         kappa_R = parameters["kappa_R"]

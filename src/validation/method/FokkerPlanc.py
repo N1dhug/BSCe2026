@@ -178,9 +178,7 @@ class BM1FokkerPlancValidation:
 
 class WM2FokkerPlancValidation:
     @classmethod
-    def solve_inputs(
-        cls, t, init_cond, parameters, v_bounds, r_bounds, v_steps, r_steps, cfl
-    ):
+    def solve_inputs(cls, t, init_cond, parameters, v_bounds, r_bounds, v_steps, r_steps, cfl):
         t = FiniteVolume2DValidation.time_grid(t)
         init_cond, parameters = WM2Validation.fp_inputs(init_cond, parameters)
         v_bounds = FiniteVolume2DValidation.bounds(v_bounds, "v_bounds")

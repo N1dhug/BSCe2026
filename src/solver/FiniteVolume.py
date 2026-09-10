@@ -77,11 +77,7 @@ class FiniteVolume2D:
         limit = min(limit_v, limit_r)
         return np.inf if not np.isfinite(limit) else cfl * limit
 
-    def solve(
-        self, t, initial_density, drift_v, drift_r, diffusion_r,
-        v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0),
-        v_steps=161, r_steps=161, cfl=0.8,
-    ):
+    def solve(self, t, initial_density, drift_v, drift_r, diffusion_r, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
         t = FiniteVolume2DValidation.time_grid(t)
         v_min, v_max = FiniteVolume2DValidation.bounds(v_bounds, "v_bounds")
         r_min, r_max = FiniteVolume2DValidation.bounds(r_bounds, "r_bounds")
