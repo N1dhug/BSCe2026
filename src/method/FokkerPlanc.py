@@ -4,8 +4,8 @@ from scipy.special import gammaln
 from src.solver.ActiveSet import ActiveSet
 from src.solver.FiniteVolume import FiniteVolume2D
 from src.validation.method.FokkerPlanc import (
-    BM1BM1FokkerPlancValidation,
-    WM2BM1FokkerPlancValidation,
+    BM1FokkerPlancValidation,
+    WM2FokkerPlancValidation,
 )
 
 
