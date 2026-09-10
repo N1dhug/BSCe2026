@@ -1,6 +1,7 @@
-from .base.BM import BM
+"""Model-layer public API."""
+
+from .base import BM, WM
 from .BM1 import BM1
-from .base.WM import WM
 from .WM1 import WM1
 from .WM2 import WM2
 
