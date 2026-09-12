@@ -156,28 +156,3 @@ class ActiveSetValidation:
             tol,
             max_iter,
         )
-
-    @classmethod
-    def simplex_least_squares(cls, matrix, target, tol, max_iter):
-        """Validation retained for the convenience least-squares wrapper."""
-        matrix = np.asarray(matrix, dtype=float)
-        target = np.asarray(target, dtype=float)
-
-        if matrix.ndim != 2:
-            raise ValueError("matrix must be two-dimensional.")
-        if matrix.shape[0] == 0 or matrix.shape[1] == 0:
-            raise ValueError(
-                "matrix must contain at least one row and one coefficient column."
-            )
-        if not np.all(np.isfinite(matrix)):
-            raise ValueError("matrix must contain finite values.")
-
-        target = target.reshape(-1)
-        if target.size != matrix.shape[0]:
-            raise ValueError("matrix row count must match target length.")
-        if not np.all(np.isfinite(target)):
-            raise ValueError("target must contain finite values.")
-
-        tol = cls._tolerance(tol)
-        max_iter = cls._max_iter(max_iter, matrix.shape[1])
-        return matrix, target, tol, max_iter
