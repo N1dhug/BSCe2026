@@ -91,10 +91,39 @@ r_steps = 101
 cfl = 0.80
 initial_std = (0.025, 0.015)
 
+# Initial probability density is constructed in the executable layer and then
+# passed unchanged through model -> method -> finite-volume solver.
+initial_density = inputs.initial_density(
+    "gaussian",
+    mean=(init_cond[0], init_cond[1]),
+    std=initial_std,
+)
+
+# Alternative examples supported by InputBuilder:
+# initial_density = inputs.initial_density(
+#     "uniform", v_range=(0.45, 0.55), r_range=(-0.02, 0.02)
+# )
+# initial_density = inputs.initial_density(
+#     "beta",
+#     v_range=v_bounds,
+#     r_range=r_bounds,
+#     v_shape=(8.0, 8.0),
+#     r_shape=(6.0, 6.0),
+# )
+
 # 6) Solve deterministic mean dynamics and the full two-dimensional
 # Fokker-Planck equation for p(V, R, t).
 deterministic = model.deterministic_solver(init_cond, parameters)
-fp = model.fokker_planc_solver(init_cond=init_cond, parameters=parameters, initial_std=initial_std, v_bounds=v_bounds, r_bounds=r_bounds, v_steps=v_steps, r_steps=r_steps, cfl=cfl)
+fp = model.fokker_planc_solver(
+    init_cond=init_cond,
+    parameters=parameters,
+    initial_density=initial_density,
+    v_bounds=v_bounds,
+    r_bounds=r_bounds,
+    v_steps=v_steps,
+    r_steps=r_steps,
+    cfl=cfl,
+)
 
 # 7) Evaluate expected affine outputs from E[V]. Because O, I and A are affine,
 # evaluating them at E[V] is exactly their expectation.
