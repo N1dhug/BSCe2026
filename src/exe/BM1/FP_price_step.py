@@ -12,7 +12,7 @@
 from pathlib import Path
 
 from src.model.BM1 import BM1
-from src.tool.Simulate import Simulate
+from src.exe.tool.InputBuilder import InputBuilder
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -34,10 +34,10 @@ hours = 24.0 * t
 # 2) baseline consumption
 # ------------------------------------------------------------
 
-sim = Simulate()
+inputs = InputBuilder()
 
 B_data = (np.array([0.0, 1.0]), np.array([0.3, 0.3]))
-B = sim.energy(B_data)
+B = inputs.energy(B_data)
 
 # Available energy is not needed by the Fokker-Planck solver
 # itself, but BM1 expects it when the model object is created.
@@ -52,7 +52,7 @@ price_drop_hour = 12.0
 price_drop_time = price_drop_hour / 24.0
 
 U_data = (np.array([0.0, price_drop_time, 1.0]), np.array([0.75, 0.25, 0.25]))
-U = sim.price(U_data)
+U = inputs.price(U_data)
 
 
 # ------------------------------------------------------------
@@ -62,11 +62,11 @@ U = sim.price(U_data)
 n = 10
 kappa = 5
 
-poi_x, pr_x = sim.md_vals(kappa, n)
-poi_u, pr_u = sim.md_vals(kappa, n)
+poi_x, pr_x = inputs.md_vals(kappa, n)
+poi_u, pr_u = inputs.md_vals(kappa, n)
 
-f = sim.md(poi_x, pr_x)
-g = sim.md(poi_u, pr_u)
+f = inputs.md(poi_x, pr_x)
+g = inputs.md(poi_u, pr_u)
 
 
 # ------------------------------------------------------------
