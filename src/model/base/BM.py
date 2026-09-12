@@ -1,4 +1,3 @@
-from src.tool.Simulate import Simulate
 from src.validation.model.BM import BMValidation
 import numpy as np
 
@@ -6,7 +5,6 @@ import numpy as np
 class BM:
     def __init__(self, B, A, T, t_steps):
         B, A, T, t_steps = BMValidation.constructor(B, A, T, t_steps)
-        self.simulate = Simulate()
         self.B = B
         self.A = A
         self.T = T
