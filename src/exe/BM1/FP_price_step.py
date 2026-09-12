@@ -186,7 +186,16 @@ fig, (ax_pdf, ax_state, ax_coefficients, ax_terminal) = plt.subplots(
 # Plot 1: Fokker-Planck probability density p(x,t)
 # ------------------------------------------------------------
 
-mesh = ax_pdf.pcolormesh(fp_hours, x_grid, density.T, shading="auto")
+heatmap_probability = density / np.max(density)
+
+mesh = ax_pdf.pcolormesh(
+    fp_hours,
+    x_grid,
+    heatmap_probability.T,
+    shading="auto",
+    vmin=0.0,
+    vmax=1.0,
+)
 
 ax_pdf.plot(fp_hours, mean, linewidth=2.0, label="Fokker-Planck E[X(t)]")
 ax_pdf.axvline(price_drop_hour, linestyle="--", label="Price drop")
@@ -196,7 +205,7 @@ ax_pdf.set_title("BM1 Fokker-Planck probability density p(x,t)")
 ax_pdf.set_ylim(0.0, 1.0)
 ax_pdf.legend(loc="best")
 
-fig.colorbar(mesh, ax=ax_pdf, label="Probability density")
+fig.colorbar(mesh, ax=ax_pdf, label="Normalized probability density")
 
 
 # ------------------------------------------------------------
