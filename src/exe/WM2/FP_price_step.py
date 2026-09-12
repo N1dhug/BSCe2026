@@ -176,6 +176,7 @@ print(f"Minimum diffusion scale g(E[O]): {np.min(mean_g):.6f}")
 v_grid = fp["v_grid"]
 mass = fp["mass"]
 normalised_marginal_v = fp["marginal_v"] / mass[:, None]
+heatmap_probability = normalised_marginal_v / np.max(normalised_marginal_v)
 
 fig, axes = plt.subplots(4, 1, figsize=(11, 16), constrained_layout=True)
 ax_pdf, ax_state, ax_rate, ax_flow = axes
@@ -183,10 +184,12 @@ ax_pdf, ax_state, ax_rate, ax_flow = axes
 mesh = ax_pdf.pcolormesh(
     hours,
     v_grid,
-    normalised_marginal_v.T,
+    heatmap_probability.T,
     shading="auto",
+    vmin=0.0,
+    vmax=1.0,
 )
-fig.colorbar(mesh, ax=ax_pdf, label="Probability density")
+fig.colorbar(mesh, ax=ax_pdf, label="Normalized probability density")
 ax_pdf.plot(hours, mean_v, linewidth=1.8, label="E[V]")
 ax_pdf.plot(hours, V_star, linestyle="--", linewidth=1.4, label="V*(B,U)")
 ax_pdf.axhline(0.0, linestyle=":", linewidth=1.0)
