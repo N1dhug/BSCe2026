@@ -5,7 +5,6 @@ from src.validation.model.BM1 import BM1Validation
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.integrate import simpson as simps
-from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 
 
@@ -16,13 +15,7 @@ class BM1(BM):
         self.fokker_planc = BM1FokkerPlanc()
 
     def __phi(self, U, parameters, init_cond):
-        simulated_U = interp1d(
-            self.t,
-            U,
-            kind="previous",
-            bounds_error=False,
-            fill_value="extrapolate",
-        )
+        simulated_U = self.simulate.price((self.t, U))
         parameters = list(parameters)
         parameters[0] = simulated_U
         t, _, _, _, _, _, _, Dt = self.deterministic_solver(init_cond, parameters)
@@ -45,15 +38,7 @@ class BM1(BM):
         def diffusion(t, X):
             return self.diffusion_coefficient(X, sigma_x)
 
-        paths = self.euler_maruyama.solve_paths(
-            t=self.t,
-            init_cond=init_cond,
-            drift=drift,
-            diffusion=diffusion,
-            n_paths=n_paths,
-            seed=seed,
-            boundary=boundary,
-        )
+        paths = self.euler_maruyama.solve_paths(t=self.t,init_cond=init_cond,drift=drift,diffusion=diffusion,n_paths=n_paths,seed=seed,boundary=boundary)
 
         Xt = paths[0] if paths.shape[0] == 1 else paths
         Ut = parameters[0](self.t)
