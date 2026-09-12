@@ -198,31 +198,33 @@ class WM2FokkerPlanc:
         dU = (1.0 - alpha[2]) * beta[2] - alpha[3]
         return d0, dV, dU
 
-    @staticmethod
-    def gaussian_initial_density(V0, R0, std_V, std_R):
-        norm = 1.0 / (2.0 * np.pi * std_V * std_R)
-
-        def density(V, R):
-            exponent = -0.5 * (
-                np.square((V - V0) / std_V) + np.square((R - R0) / std_R)
-            )
-            return norm * np.exp(exponent)
-
-        return density
-
-    def solve(self, t, init_cond, parameters, initial_density=None, initial_std=(0.02, 0.02), v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
-        t, init_cond, parameters, v_bounds, r_bounds, v_steps, r_steps, cfl = WM2FokkerPlancValidation.solve_inputs(t, init_cond, parameters, v_bounds, r_bounds, v_steps, r_steps, cfl)
+    def solve(self, t, init_cond, parameters, initial_density, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
+        (
+            t,
+            init_cond,
+            parameters,
+            initial_density,
+            v_bounds,
+            r_bounds,
+            v_steps,
+            r_steps,
+            cfl,
+        ) = WM2FokkerPlancValidation.solve_inputs(
+            t,
+            init_cond,
+            parameters,
+            initial_density,
+            v_bounds,
+            r_bounds,
+            v_steps,
+            r_steps,
+            cfl,
+        )
         alpha = parameters["alpha"]
         beta = parameters["beta"]
         kappa_R = parameters["kappa_R"]
         sigma_0 = parameters["sigma_0"]
         sigma_O = parameters["sigma_O"]
-
-        if initial_density is None:
-            std_V, std_R = WM2FokkerPlancValidation.initial_std(initial_std)
-            initial_density = self.gaussian_initial_density(
-                init_cond[0], init_cond[1], std_V, std_R
-            )
 
         def fields(time, V):
             U = float(parameters["U"](time))
@@ -249,7 +251,18 @@ class WM2FokkerPlanc:
                 )
             return np.broadcast_to(g, R.shape)
 
-        result = self.solver.solve(t,initial_density,drift_v,drift_r,diffusion_r,v_bounds=v_bounds,r_bounds=r_bounds,v_steps=v_steps,r_steps=r_steps,cfl=cfl,)
+        result = self.solver.solve(
+            t,
+            initial_density,
+            drift_v,
+            drift_r,
+            diffusion_r,
+            v_bounds=v_bounds,
+            r_bounds=r_bounds,
+            v_steps=v_steps,
+            r_steps=r_steps,
+            cfl=cfl,
+        )
 
         p = result["density"]
         v = result["v_grid"]
