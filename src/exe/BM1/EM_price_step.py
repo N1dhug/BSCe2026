@@ -9,8 +9,8 @@
 
 from pathlib import Path
 
-from src.models.BM1 import BM1
-from src.models.Simulate import Simulate
+from src.model.BM1 import BM1
+from src.tool.Simulate import Simulate
 import matplotlib.pyplot as plt
 import numpy as np
 
