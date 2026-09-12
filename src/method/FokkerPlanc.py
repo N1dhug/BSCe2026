@@ -74,7 +74,20 @@ class BM1FokkerPlanc:
         scale = np.sqrt(dx)
         matrix = basis.T * scale
         target = density * scale
-        coefficients = ActiveSet.simplex_least_squares(matrix, target)
+
+        # 0.5 * ||A c - b||^2
+        # = 0.5 * c.T @ (A.T @ A) @ c - (A.T @ b).T @ c + constant.
+        # The Beta-mixture constraints are passed explicitly to the generic QP solver.
+        n_coefficients = basis.shape[0]
+        hessian = matrix.T @ matrix
+        linear = -(matrix.T @ target)
+        coefficients = ActiveSet.solve(
+            hessian,
+            linear,
+            A_eq=np.ones((1, n_coefficients), dtype=float),
+            b_eq=np.array([1.0], dtype=float),
+            lb=np.zeros(n_coefficients, dtype=float),
+        )
         projected = coefficients @ basis
         return coefficients, projected
 
