@@ -57,12 +57,9 @@ alpha = np.array([0, 0.1, 0.1, 0.8])
 beta = np.array([0.1, 0.85, 0.05])
 gamma = np.array([0.25, 0.25, 0.25, 0.25])
 
-# kappa_R = 4 is above the non-oscillatory threshold -4*d_V = 2.6 for
-# these coefficients. Diffusion remains strictly positive and grows with O:
-#     g(O) = sigma_0 + sigma_O * O.
-kappa_R = 0.5
-sigma_0 = 0.04
-sigma_O = 0.10
+kappa_R = 3.46
+sigma_0 = 0.1
+sigma_O = 0.5
 
 parameters = {
     "U": U,
@@ -82,7 +79,7 @@ model = WM2(t_interval, t_steps)
 # 5) Start at the expected equilibrium associated with the pre-step price.
 V0 = model.expected_equilibrium(B_O_level, B_I_level, price_before, alpha, beta)
 R0 = 0.0
-init_cond = [V0, R0]
+init_cond = [V0*2, R0]
 
 # Computational bounds are numerical truncation only; V=0 and V=1 are not
 # pathwise boundaries in WM2. The selected V domain also keeps O >= 0 for the
@@ -97,16 +94,7 @@ initial_std = (0.025, 0.015)
 # 6) Solve deterministic mean dynamics and the full two-dimensional
 # Fokker-Planck equation for p(V, R, t).
 deterministic = model.deterministic_solver(init_cond, parameters)
-fp = model.fokker_planc_solver(
-    init_cond=init_cond,
-    parameters=parameters,
-    initial_std=initial_std,
-    v_bounds=v_bounds,
-    r_bounds=r_bounds,
-    v_steps=v_steps,
-    r_steps=r_steps,
-    cfl=cfl,
-)
+fp = model.fokker_planc_solver(init_cond=init_cond, parameters=parameters, initial_std=initial_std, v_bounds=v_bounds, r_bounds=r_bounds, v_steps=v_steps, r_steps=r_steps, cfl=cfl)
 
 # 7) Evaluate expected affine outputs from E[V]. Because O, I and A are affine,
 # evaluating them at E[V] is exactly their expectation.
@@ -120,35 +108,16 @@ std_v = np.sqrt(np.maximum(fp["var_v"], 0.0))
 std_r = np.sqrt(np.maximum(fp["var_r"], 0.0))
 
 mean_O = beta[0] * B_O_values + beta[1] * mean_v + beta[2] * (1.0 - U_values)
-mean_I = (
-    alpha[0] * B_I_values
-    + alpha[1] * (1.0 - mean_v)
-    + alpha[2] * mean_O
-    + alpha[3] * (1.0 - U_values)
-)
-mean_A = (
-    gamma[0] * (1.0 - U_values)
-    + gamma[1] * mean_I
-    + gamma[2] * mean_v
-    + gamma[3] * (1.0 - PE_values)
-)
+mean_I = (alpha[0] * B_I_values+ alpha[1] * (1.0 - mean_v)+ alpha[2] * mean_O+ alpha[3] * (1.0 - U_values))
+mean_A = (gamma[0] * (1.0 - U_values) + gamma[1] * mean_I+ gamma[2] * mean_v+ gamma[3] * (1.0 - PE_values))
+
 mean_g = sigma_0 + sigma_O * mean_O
 
-V_star = np.array(
-    [
-        model.expected_equilibrium(bo, bi, u, alpha, beta)
-        for bo, bi, u in zip(B_O_values, B_I_values, U_values)
-    ]
-)
+V_star = np.array([model.expected_equilibrium(bo, bi, u, alpha, beta)for bo, bi, u in zip(B_O_values, B_I_values, U_values)])
 
 # 8) Report parameter and numerical checks.
 dV = model.reduced_drift_coefficients(B_O_level, B_I_level, alpha, beta)[1]
-corner_equilibria = np.array(
-    [
-        model.expected_equilibrium(bo, bi, u, alpha, beta)
-        for bo, bi, u in product((0.0, 1.0), repeat=3)
-    ]
-)
+corner_equilibria = np.array([model.expected_equilibrium(bo, bi, u, alpha, beta) for bo, bi, u in product((0.0, 1.0), repeat=3)])
 
 print("WM2 Fokker-Planck single price-step example")
 print("-------------------------------------------")

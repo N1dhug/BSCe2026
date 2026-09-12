@@ -249,18 +249,7 @@ class WM2FokkerPlanc:
                 )
             return np.broadcast_to(g, R.shape)
 
-        result = self.solver.solve(
-            t,
-            initial_density,
-            drift_v,
-            drift_r,
-            diffusion_r,
-            v_bounds=v_bounds,
-            r_bounds=r_bounds,
-            v_steps=v_steps,
-            r_steps=r_steps,
-            cfl=cfl,
-        )
+        result = self.solver.solve(t,initial_density,drift_v,drift_r,diffusion_r,v_bounds=v_bounds,r_bounds=r_bounds,v_steps=v_steps,r_steps=r_steps,cfl=cfl,)
 
         p = result["density"]
         v = result["v_grid"]

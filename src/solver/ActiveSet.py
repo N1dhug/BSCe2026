@@ -43,10 +43,7 @@ class ActiveSet:
             rhs.append(-lb[finite_lb])
 
         if not matrices:
-            return (
-                np.empty((0, n_variables), dtype=float),
-                np.empty(0, dtype=float),
-            )
+            return (np.empty((0, n_variables), dtype=float), np.empty(0, dtype=float))
         return np.vstack(matrices), np.concatenate(rhs)
 
     @staticmethod
@@ -72,11 +69,10 @@ class ActiveSet:
             method="highs",
         )
         if not result.success:
-            raise ValueError(
-                "The supplied linear equality, inequality, and bound constraints are infeasible."
-            )
+            raise ValueError("The supplied linear equality, inequality, and bound constraints are infeasible.")
 
         x = np.asarray(result.x, dtype=float)
+
         if not ActiveSet._is_feasible(x, G, h, A_eq, b_eq, 10.0 * tol):
             raise RuntimeError("Phase-I feasibility solve returned an infeasible point.")
         return x
@@ -89,71 +85,25 @@ class ActiveSet:
             return direction, np.empty(0, dtype=float)
 
         kkt = np.block(
-            [
-                [hessian, constraints.T],
-                [
-                    constraints,
-                    np.zeros(
-                        (constraints.shape[0], constraints.shape[0]), dtype=float
-                    ),
-                ],
-            ]
+            [[hessian, constraints.T],
+             [constraints,np.zeros((constraints.shape[0], constraints.shape[0]), dtype=float)]]
         )
-        rhs = np.concatenate(
-            (-gradient, np.zeros(constraints.shape[0], dtype=float))
-        )
+        rhs = np.concatenate((-gradient, np.zeros(constraints.shape[0], dtype=float)))
         solution, *_ = np.linalg.lstsq(kkt, rhs, rcond=None)
         return solution[:n_variables], solution[n_variables:]
 
     @staticmethod
-    def solve(
-        hessian,
-        linear,
-        A_ub=None,
-        b_ub=None,
-        A_eq=None,
-        b_eq=None,
-        lb=None,
-        ub=None,
-        x0=None,
-        tol=1e-10,
-        max_iter=None,
-    ):
+    def solve(hessian,linear,A_ub=None,b_ub=None,A_eq=None, b_eq=None,lb=None,ub=None,x0=None,tol=1e-10,max_iter=None):
         """Solve a convex QP with affine equality/inequality and box constraints."""
-        (
-            hessian,
-            linear,
-            A_ub,
-            b_ub,
-            A_eq,
-            b_eq,
-            lb,
-            ub,
-            x0,
-            tol,
-            max_iter,
-        ) = ActiveSetValidation.quadratic_program(
-            hessian,
-            linear,
-            A_ub,
-            b_ub,
-            A_eq,
-            b_eq,
-            lb,
-            ub,
-            x0,
-            tol,
-            max_iter,
-        )
+        # Validate and normalize the QP input data
+        hessian, linear, A_ub, b_ub, A_eq, b_eq, lb, ub, x0, tol, max_iter = (ActiveSetValidation.quadratic_program(hessian,linear,A_ub,b_ub,A_eq, b_eq,lb,ub,x0,tol, max_iter))
 
         n_variables = hessian.shape[0]
         G, h = ActiveSet._canonical_inequalities(A_ub, b_ub, lb, ub)
 
         if x0 is None:
             if G.shape[0] or A_eq.shape[0]:
-                x = ActiveSet._find_feasible_point(
-                    n_variables, G, h, A_eq, b_eq, tol
-                )
+                x = ActiveSet._find_feasible_point(n_variables, G, h, A_eq, b_eq, tol)
             else:
                 x = np.zeros(n_variables, dtype=float)
         else:
@@ -174,15 +124,12 @@ class ActiveSet:
                 constraints = (
                     np.vstack((A_eq, active_inequalities))
                     if A_eq.shape[0]
-                    else active_inequalities.copy()
-                )
+                    else active_inequalities.copy())
             else:
                 constraints = A_eq.copy()
 
             gradient = hessian @ x + linear
-            direction, multipliers = ActiveSet._solve_equality_qp(
-                hessian, gradient, constraints
-            )
+            direction, multipliers = ActiveSet._solve_equality_qp(hessian, gradient, constraints)
 
             direction_scale = max(1.0, float(np.linalg.norm(x, ord=np.inf)))
             if float(np.linalg.norm(direction, ord=np.inf)) <= tol * direction_scale:
@@ -193,15 +140,9 @@ class ActiveSet:
                 stationarity_scale = max(
                     1.0, float(np.linalg.norm(gradient, ord=np.inf))
                 )
-                if (
-                    float(np.linalg.norm(stationarity, ord=np.inf))
-                    > 100.0 * tol * stationarity_scale
-                ):
-                    raise RuntimeError(
-                        "Active-set KKT solve failed to obtain a stationary direction; "
-                        "the convex QP may be unbounded or numerically singular."
-                    )
-
+                if (float(np.linalg.norm(stationarity, ord=np.inf)) > 100.0 * tol * stationarity_scale):
+                    raise RuntimeError("Active-set KKT solve failed to obtain a stationary direction; ""the convex QP may be unbounded or numerically singular.")
+                
                 if active_indices.size == 0:
                     return x
 
@@ -226,6 +167,7 @@ class ActiveSet:
                 for index in range(G.shape[0]):
                     if index in working or G_direction[index] <= tol:
                         continue
+                    
                     candidate = slack[index] / G_direction[index]
                     if candidate < alpha:
                         alpha = max(0.0, float(candidate))
