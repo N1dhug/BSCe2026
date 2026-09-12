@@ -242,26 +242,3 @@ class ActiveSet:
                 )
 
         raise RuntimeError("Active-set convex-QP solver did not converge.")
-
-    @staticmethod
-    def simplex_least_squares(matrix, target, tol=1e-10, max_iter=None):
-        """Solve min 0.5*||A c-b||^2 subject to c >= 0 and sum(c)=1.
-
-        This is a convenience wrapper around the generic convex-QP interface.
-        """
-        matrix, target, tol, max_iter = ActiveSetValidation.simplex_least_squares(
-            matrix, target, tol, max_iter
-        )
-
-        n_coefficients = matrix.shape[1]
-        hessian = matrix.T @ matrix
-        linear = -(matrix.T @ target)
-        return ActiveSet.solve(
-            hessian,
-            linear,
-            A_eq=np.ones((1, n_coefficients), dtype=float),
-            b_eq=np.array([1.0], dtype=float),
-            lb=np.zeros(n_coefficients, dtype=float),
-            tol=tol,
-            max_iter=max_iter,
-        )
