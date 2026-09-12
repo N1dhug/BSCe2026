@@ -137,7 +137,16 @@ fig, (ax_pdf, ax_state, ax_paths, ax_terminal) = plt.subplots(
 # Plot 1: empirical probability density p(x,t)
 # ------------------------------------------------------------
 
-mesh = ax_pdf.pcolormesh(em_hours, x_grid, density.T, shading="auto")
+heatmap_probability = density / np.max(density)
+
+mesh = ax_pdf.pcolormesh(
+    em_hours,
+    x_grid,
+    heatmap_probability.T,
+    shading="auto",
+    vmin=0.0,
+    vmax=1.0,
+)
 
 ax_pdf.plot(em_hours, mean, label="Monte-Carlo E[X(t)]")
 ax_pdf.axvline(price_drop_hour, linestyle="--", label="Price drop")
@@ -147,7 +156,7 @@ ax_pdf.set_title("Euler-Maruyama estimate of BM1 probability density p(x,t)")
 ax_pdf.set_ylim(0.0, 1.0)
 ax_pdf.legend(loc="best")
 
-fig.colorbar(mesh, ax=ax_pdf, label="Probability density")
+fig.colorbar(mesh, ax=ax_pdf, label="Normalized probability density")
 
 
 # ------------------------------------------------------------
