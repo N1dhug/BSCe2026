@@ -89,27 +89,53 @@ r_bounds = (-0.40, 0.40)
 v_steps = 101
 r_steps = 101
 cfl = 0.80
-initial_std = (0.025, 0.015)
 
 # Initial probability density is constructed in the executable layer and then
 # passed unchanged through model -> method -> finite-volume solver.
-initial_density = inputs.initial_density(
-    "gaussian",
-    mean=(init_cond[0], init_cond[1]),
-    std=initial_std,
+#
+# Use a three-component product-Beta mixture. The V components are centred
+# around the deterministic initial state while the R components are centred
+# around small negative, zero and positive initial rates. Symmetric weights
+# preserve E[V(0)] = init_cond[0] and E[R(0)] = init_cond[1], while the full
+# density is deliberately non-Gaussian and multimodal.
+mixture_weights = np.array([0.25, 0.50, 0.25])
+
+v_density_range = (0.0, 1.0)
+v_component_means = np.array(
+    [init_cond[0] - 0.10, init_cond[0], init_cond[0] + 0.10]
+)
+if np.any((v_component_means <= 0.0) | (v_component_means >= 1.0)):
+    raise ValueError("Chosen WM2 beta-mixture V component means must lie in (0, 1).")
+v_concentration = 80.0
+v_shapes = np.column_stack(
+    (
+        v_concentration * v_component_means,
+        v_concentration * (1.0 - v_component_means),
+    )
 )
 
-# Alternative examples supported by InputBuilder:
-# initial_density = inputs.initial_density(
-#     "uniform", v_range=(0.45, 0.55), r_range=(-0.02, 0.02)
-# )
-# initial_density = inputs.initial_density(
-#     "beta",
-#     v_range=v_bounds,
-#     r_range=r_bounds,
-#     v_shape=(8.0, 8.0),
-#     r_shape=(6.0, 6.0),
-# )
+r_density_range = (-0.15, 0.15)
+r_component_means = np.array([-0.025, 0.0, 0.025])
+r_unit_means = (
+    (r_component_means - r_density_range[0])
+    / (r_density_range[1] - r_density_range[0])
+)
+r_concentration = 100.0
+r_shapes = np.column_stack(
+    (
+        r_concentration * r_unit_means,
+        r_concentration * (1.0 - r_unit_means),
+    )
+)
+
+initial_density = inputs.initial_density(
+    "beta_mixture",
+    v_range=v_density_range,
+    r_range=r_density_range,
+    v_shapes=v_shapes,
+    r_shapes=r_shapes,
+    weights=mixture_weights,
+)
 
 # 6) Solve deterministic mean dynamics and the full two-dimensional
 # Fokker-Planck equation for p(V, R, t).
@@ -158,6 +184,14 @@ print(
     f"[{np.min(corner_equilibria):.6f}, {np.max(corner_equilibria):.6f}]"
 )
 print(f"Initial V*(U={price_before:.2f}):         {V0:.6f}")
+print(
+    "Initial beta-mixture V means:      "
+    + np.array2string(v_component_means, precision=4)
+)
+print(
+    "Initial beta-mixture R means:      "
+    + np.array2string(r_component_means, precision=4)
+)
 print(
     f"Post-step V*(U={price_after:.2f}):       "
     f"{model.expected_equilibrium(B_O_level, B_I_level, price_after, alpha, beta):.6f}"
