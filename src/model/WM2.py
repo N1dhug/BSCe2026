@@ -94,10 +94,15 @@ class WM2(WM):
             "O": O, "I": I, "A": A,
         }
 
-    def fokker_planc_solver(self, init_cond, parameters, initial_density=None, initial_std=(0.02, 0.02), v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
+    def fokker_planc_solver(self, init_cond, parameters, initial_density, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
         return self.fp.solve(
-            self.t, init_cond, parameters,
-            initial_density=initial_density, initial_std=initial_std,
-            v_bounds=v_bounds, r_bounds=r_bounds,
-            v_steps=v_steps, r_steps=r_steps, cfl=cfl,
+            self.t,
+            init_cond,
+            parameters,
+            initial_density=initial_density,
+            v_bounds=v_bounds,
+            r_bounds=r_bounds,
+            v_steps=v_steps,
+            r_steps=r_steps,
+            cfl=cfl,
         )

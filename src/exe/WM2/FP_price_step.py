@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.model.WM2 import WM2
-from src.tool.Simulate import Simulate
+from src.exe.tool.InputBuilder import InputBuilder
 
 
 # 1) Time grid: four days, hourly reporting.
@@ -18,23 +18,23 @@ t_steps = 24 * days + 1
 t = np.linspace(t_interval[0], t_interval[1], t_steps)
 hours = 24.0 * t
 
-sim = Simulate()
+inputs = InputBuilder()
 
 # 2) Exogenous signals. Keep the synthetic baselines constant so the response
 # visible after hour 24 is caused by the single price step.
 B_O_level = 0.30
 B_I_level = 0.30
 PE_level = 0.50
-B_O = sim.energy((np.array([0.0, days]), np.array([B_O_level, B_O_level])))
-B_I = sim.energy((np.array([0.0, days]), np.array([B_I_level, B_I_level])))
-PE = sim.price((np.array([0.0, days]), np.array([PE_level, PE_level])))
+B_O = inputs.energy((np.array([0.0, days]), np.array([B_O_level, B_O_level])))
+B_I = inputs.energy((np.array([0.0, days]), np.array([B_I_level, B_I_level])))
+PE = inputs.price((np.array([0.0, days]), np.array([PE_level, PE_level])))
 
 # 3) Single price step: high price -> low price at hour 24.
 price_before = 0.75
 price_after = 0.25
 price_step_hour = 24.0
 price_step_time = price_step_hour / 24.0
-U = sim.price(
+U = inputs.price(
     (
         np.array([0.0, price_step_time, days]),
         np.array([price_before, price_after, price_after]),
@@ -91,10 +91,39 @@ r_steps = 101
 cfl = 0.80
 initial_std = (0.025, 0.015)
 
+# Initial probability density is constructed in the executable layer and then
+# passed unchanged through model -> method -> finite-volume solver.
+initial_density = inputs.initial_density(
+    "gaussian",
+    mean=(init_cond[0], init_cond[1]),
+    std=initial_std,
+)
+
+# Alternative examples supported by InputBuilder:
+# initial_density = inputs.initial_density(
+#     "uniform", v_range=(0.45, 0.55), r_range=(-0.02, 0.02)
+# )
+# initial_density = inputs.initial_density(
+#     "beta",
+#     v_range=v_bounds,
+#     r_range=r_bounds,
+#     v_shape=(8.0, 8.0),
+#     r_shape=(6.0, 6.0),
+# )
+
 # 6) Solve deterministic mean dynamics and the full two-dimensional
 # Fokker-Planck equation for p(V, R, t).
 deterministic = model.deterministic_solver(init_cond, parameters)
-fp = model.fokker_planc_solver(init_cond=init_cond, parameters=parameters, initial_std=initial_std, v_bounds=v_bounds, r_bounds=r_bounds, v_steps=v_steps, r_steps=r_steps, cfl=cfl)
+fp = model.fokker_planc_solver(
+    init_cond=init_cond,
+    parameters=parameters,
+    initial_density=initial_density,
+    v_bounds=v_bounds,
+    r_bounds=r_bounds,
+    v_steps=v_steps,
+    r_steps=r_steps,
+    cfl=cfl,
+)
 
 # 7) Evaluate expected affine outputs from E[V]. Because O, I and A are affine,
 # evaluating them at E[V] is exactly their expectation.

@@ -6,7 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.tool.Simulate import Simulate
+from src.exe.tool.InputBuilder import InputBuilder
 from src.model.WM1 import WM1
 
 
@@ -17,17 +17,17 @@ t_steps = 24 * days + 1
 t = np.linspace(T[0], T[1], t_steps)
 hours = 24.0 * t
 
-sim = Simulate()
+inputs = InputBuilder()
 
 # 2) Exogenous baselines and grid price.
-B_O = sim.energy((np.array([0.0, days]), np.array([0.30, 0.30])))
-B_I = sim.energy((np.array([0.0, days]), np.array([0.30, 0.30])))
-PE = sim.price((np.array([0.0, days]), np.array([0.50, 0.50])))
+B_O = inputs.energy((np.array([0.0, days]), np.array([0.30, 0.30])))
+B_I = inputs.energy((np.array([0.0, days]), np.array([0.30, 0.30])))
+PE = inputs.price((np.array([0.0, days]), np.array([0.50, 0.50])))
 
 # 3) Dynamic-price step U: high price -> low price at hour 12.
 price_step_hour = 12.0
 price_step_time = price_step_hour / 24.0
-U = sim.price(
+U = inputs.price(
     (
         np.array([0.0, price_step_time, days]),
         np.array([0.75, 0.25, 0.25]),

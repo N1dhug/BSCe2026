@@ -5,6 +5,7 @@ from src.validation.model.BM1 import BM1Validation
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.integrate import simpson as simps
+from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 
 
@@ -15,7 +16,13 @@ class BM1(BM):
         self.fokker_planc = BM1FokkerPlanc()
 
     def __phi(self, U, parameters, init_cond):
-        simulated_U = self.simulate.price((self.t, U))
+        simulated_U = interp1d(
+            self.t,
+            U,
+            kind="previous",
+            bounds_error=False,
+            fill_value="extrapolate",
+        )
         parameters = list(parameters)
         parameters[0] = simulated_U
         t, _, _, _, _, _, _, Dt = self.deterministic_solver(init_cond, parameters)
