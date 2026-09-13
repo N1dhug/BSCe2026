@@ -199,19 +199,8 @@ class WM2(WM):
         """Fit normalized B_I/B_O feature weights by convex QP."""
         data = WM2Validation.fit_data(input_data, self.t_steps)
         X_BI, X_BO = WM2Validation.baseline_features(baseline_feature_vec, self.t_steps)
-        current = WM2Validation.reduced_fit_conditions(
-            current_conditions, self.t_steps
-        )
-        state = self._solve_deterministic(
-            current["init_cond"],
-            current["U"],
-            current["B_O"],
-            current["B_I"],
-            current["PE"],
-            current["I_coeff"],
-            current["d_coeff"],
-            current["kappa_R"],
-        )
+        current = WM2Validation.reduced_fit_conditions(current_conditions, self.t_steps)
+        state = self._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], current["I_coeff"], current["d_coeff"], current["kappa_R"])
 
         c = current["I_coeff"]
         n_I = X_BI.shape[1]
@@ -235,19 +224,8 @@ class WM2(WM):
         updated["B_O_weights"] = weights[n_I:]
         updated["B_I"] = X_BI @ weights[:n_I]
         updated["B_O"] = X_BO @ weights[n_I:]
-        validated_updated = WM2Validation.reduced_fit_conditions(
-            updated, self.t_steps
-        )
-        updated["deterministic_state"] = self._solve_deterministic(
-            validated_updated["init_cond"],
-            validated_updated["U"],
-            validated_updated["B_O"],
-            validated_updated["B_I"],
-            validated_updated["PE"],
-            validated_updated["I_coeff"],
-            validated_updated["d_coeff"],
-            validated_updated["kappa_R"],
-        )
+        validated_updated = WM2Validation.reduced_fit_conditions(updated, self.t_steps)
+        updated["deterministic_state"] = self._solve_deterministic(validated_updated["init_cond"], validated_updated["U"], validated_updated["B_O"], validated_updated["B_I"], validated_updated["PE"], validated_updated["I_coeff"], validated_updated["d_coeff"], validated_updated["kappa_R"])
         return updated
 
     def _select_alpha_beta(self, current_conditions, input_data):
@@ -259,9 +237,7 @@ class WM2(WM):
         fitted reduced coefficient exactly.
         """
         data = WM2Validation.fit_data(input_data, self.t_steps)
-        current = WM2Validation.reduced_fit_conditions(
-            current_conditions, self.t_steps
-        )
+        current = WM2Validation.reduced_fit_conditions(current_conditions, self.t_steps)
 
         A_eq, b_eq = WM2Validation.alpha_beta_reconstruction_equalities(current["I_coeff"], current["d_coeff"])
 
@@ -310,9 +286,7 @@ class WM2(WM):
         """Fit sigma_0 and sigma_O after alpha/beta selection."""
         data = WM2Validation.fit_data(input_data, self.t_steps)
         alpha, beta = WM2Validation.reduction_inputs(current_conditions["alpha"], current_conditions["beta"])
-        current = WM2Validation.reduced_fit_conditions(
-            current_conditions, self.t_steps
-        )
+        current = WM2Validation.reduced_fit_conditions(current_conditions, self.t_steps)
         input_coeff, drift_coeff = self.reduced_coefficients(alpha, beta)
         state = self._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], input_coeff, drift_coeff, current["kappa_R"])
 
