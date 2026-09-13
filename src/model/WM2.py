@@ -289,7 +289,7 @@ class WM2(WM):
         )
         A_D, b_D = self._equilibrium_constraints_scaled()
 
-        kappa_max = max(10.0 * self._FIT_EPS, 1.0 / self.dt)
+        kappa_max = 1.0
         lb = np.array(
             [-np.inf, -np.inf, -np.inf, -np.inf, -np.inf, self._FIT_EPS]
         )
