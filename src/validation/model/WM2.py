@@ -11,16 +11,24 @@ class WM2Validation(WM1Validation):
     def parameters(cls, parameters):
         validated = super().parameters(parameters)
         validated.pop("theta", None)
-        validated["kappa_R"] = cls._finite_scalar(parameters.get("kappa_R"), "kappa_R")
-        validated["sigma_0"] = cls._finite_scalar(parameters.get("sigma_0"), "sigma_0")
-        validated["sigma_O"] = cls._finite_scalar(parameters.get("sigma_O"), "sigma_O")
+        validated["kappa_R"] = cls._finite_scalar(
+            parameters.get("kappa_R"), "kappa_R"
+        )
+        validated["sigma_0"] = cls._finite_scalar(
+            parameters.get("sigma_0"), "sigma_0"
+        )
+        validated["sigma_O"] = cls._finite_scalar(
+            parameters.get("sigma_O"), "sigma_O"
+        )
         if validated["kappa_R"] <= 0.0:
             raise ValueError("kappa_R must be positive.")
         if validated["sigma_0"] <= 0.0:
             raise ValueError("sigma_0 must be positive.")
         if validated["sigma_O"] <= 0.0:
             raise ValueError("sigma_O must be positive.")
-        cls.expected_equilibrium_parameters(validated["alpha"], validated["beta"])
+        cls.expected_equilibrium_parameters(
+            validated["alpha"], validated["beta"]
+        )
         return validated
 
     @classmethod
@@ -43,8 +51,7 @@ class WM2Validation(WM1Validation):
         alpha = cls.simplex(alpha, 4, "alpha")
         beta = cls.simplex(beta, 3, "beta")
         dV = -alpha[1] - (1.0 - alpha[2]) * beta[1]
-        if dV >= -tol:
-            raise ValueError("WM2 requires d_V < 0 so the expected equilibrium is stable.")
+        cls.stable_drift_coefficient(dV, tol=tol)
 
         equilibria = []
         for B_O, B_I, U in itertools.product((0.0, 1.0), repeat=3):
@@ -57,9 +64,161 @@ class WM2Validation(WM1Validation):
             if V_star < -tol or V_star > 1.0 + tol:
                 raise ValueError(
                     "WM2 parameterization is inadmissible: expected equilibrium "
-                    f"V*(B_O={B_O}, B_I={B_I}, U={U})={V_star:.6g} lies outside [0, 1]."
+                    f"V*(B_O={B_O}, B_I={B_I}, U={U})={V_star:.6g} "
+                    "lies outside [0, 1]."
                 )
         return dV, equilibria
+
+    @classmethod
+    def stable_drift_coefficient(cls, dV, tol=1e-10):
+        dV = cls._finite_scalar(dV, "d_V")
+        if dV >= -tol:
+            raise ValueError(
+                "WM2 requires d_V < 0 so the expected equilibrium is stable."
+            )
+        return dV
+
+    @classmethod
+    def fit_data(cls, input_data, t_steps):
+        if not isinstance(input_data, dict):
+            raise TypeError("input_data must be a dictionary.")
+        if "I" not in input_data or "U" not in input_data:
+            raise ValueError("input_data must contain normalized I and U arrays.")
+
+        t_steps = cls._integer(t_steps, "t_steps", 2)
+
+        def fit_vector(value, name):
+            vector = np.asarray(value, dtype=float).reshape(-1)
+            if vector.size != t_steps:
+                raise ValueError(
+                    f"{name} must contain exactly {t_steps} samples."
+                )
+            if not np.all(np.isfinite(vector)):
+                raise ValueError(f"{name} must contain finite values.")
+            return vector
+
+        I_data = fit_vector(input_data["I"], "input_data['I']")
+        U = fit_vector(input_data["U"], "input_data['U']")
+        PE = fit_vector(
+            input_data.get("PE", np.zeros(t_steps, dtype=float)),
+            "input_data['PE']",
+        )
+
+        for vector, name in ((I_data, "I"), (U, "U"), (PE, "PE")):
+            if np.any(vector < 0.0) or np.any(vector > 1.0):
+                raise ValueError(
+                    f"Normalized {name} data must lie in [0, 1]."
+                )
+
+        return {"I": I_data, "U": U, "PE": PE}
+
+    @classmethod
+    def baseline_features(cls, baseline_feature_vec, t_steps):
+        t_steps = cls._integer(t_steps, "t_steps", 2)
+
+        if isinstance(baseline_feature_vec, dict):
+            if (
+                "B_I" not in baseline_feature_vec
+                or "B_O" not in baseline_feature_vec
+            ):
+                raise ValueError(
+                    "baseline_feature_vec must contain B_I and B_O matrices."
+                )
+            X_I = np.asarray(baseline_feature_vec["B_I"], dtype=float)
+            X_O = np.asarray(baseline_feature_vec["B_O"], dtype=float)
+        else:
+            X_I = np.asarray(baseline_feature_vec, dtype=float)
+            X_O = X_I.copy()
+
+        if X_I.ndim == 1:
+            X_I = X_I[:, None]
+        if X_O.ndim == 1:
+            X_O = X_O[:, None]
+
+        if X_I.ndim != 2 or X_O.ndim != 2:
+            raise ValueError(
+                "Baseline features must be one- or two-dimensional."
+            )
+        if X_I.shape[0] != t_steps or X_O.shape[0] != t_steps:
+            raise ValueError(
+                "Baseline features must have one row per time step."
+            )
+        if X_I.shape[1] == 0 or X_O.shape[1] == 0:
+            raise ValueError("At least one baseline feature is required.")
+        if not np.all(np.isfinite(X_I)) or not np.all(np.isfinite(X_O)):
+            raise ValueError("Baseline features must be finite.")
+        if (
+            np.any(X_I < 0.0)
+            or np.any(X_I > 1.0)
+            or np.any(X_O < 0.0)
+            or np.any(X_O > 1.0)
+        ):
+            raise ValueError(
+                "Baseline features must be normalized to [0, 1]. "
+                "Do not include price, V, R, or functions derived from them."
+            )
+
+        return X_I, X_O
+
+    @classmethod
+    def reduced_fit_conditions(cls, current_conditions, t_steps):
+        if not isinstance(current_conditions, dict):
+            raise TypeError("current_conditions must be a dictionary.")
+
+        required = (
+            "init_cond",
+            "I_coeff",
+            "d_coeff",
+            "B_I",
+            "B_O",
+            "U",
+            "kappa_R",
+        )
+        missing = [name for name in required if name not in current_conditions]
+        if missing:
+            raise ValueError(
+                "current_conditions is missing required entries: "
+                + ", ".join(missing)
+                + "."
+            )
+
+        t_steps = cls._integer(t_steps, "t_steps", 2)
+        init_cond = cls.initial_condition(current_conditions["init_cond"])
+        I_coeff = cls.vector(
+            current_conditions["I_coeff"], 5, "I_coeff"
+        )
+        d_coeff = cls.vector(
+            current_conditions["d_coeff"], 5, "d_coeff"
+        )
+
+        def trajectory(value, name):
+            vector = np.asarray(value, dtype=float).reshape(-1)
+            if vector.size != t_steps:
+                raise ValueError(
+                    f"{name} must contain exactly {t_steps} samples."
+                )
+            if not np.all(np.isfinite(vector)):
+                raise ValueError(f"{name} must contain finite values.")
+            return vector
+
+        B_I = trajectory(current_conditions["B_I"], "B_I")
+        B_O = trajectory(current_conditions["B_O"], "B_O")
+        U = trajectory(current_conditions["U"], "U")
+        kappa_R = cls._finite_scalar(
+            current_conditions["kappa_R"], "kappa_R"
+        )
+        if kappa_R <= 0.0:
+            raise ValueError("kappa_R must be positive.")
+
+        return {
+            "init_cond": init_cond,
+            "I_coeff": I_coeff,
+            "d_coeff": d_coeff,
+            "B_I": B_I,
+            "B_O": B_O,
+            "U": U,
+            "kappa_R": kappa_R,
+        }
 
     @classmethod
     def fp_inputs(cls, init_cond, parameters):
