@@ -415,114 +415,45 @@ class WM2(WM):
         return updated
 
     def _select_alpha_beta(self, current_conditions, input_data):
-        """Select simplex alpha/beta vectors after reduced-fit convergence."""
+        """Recover alpha/beta exactly from the converged reduced WM2 fit.
+
+        The reconstruction is an equality-constrained convex QP.  The equality
+        system fixes beta from the difference between the reduced input and
+        drift maps and requires the selected alpha/beta pair to reproduce every
+        fitted reduced coefficient exactly.
+        """
         data = WM2Validation.fit_data(input_data, self.t_steps)
         current = WM2Validation.reduced_fit_conditions(
             current_conditions, self.t_steps
         )
-        reduced_state = self._solve_deterministic(
-            current["init_cond"],
-            current["U"],
-            current["B_O"],
-            current["B_I"],
-            current["PE"],
-            current["I_coeff"],
-            current["d_coeff"],
-            current["kappa_R"],
+
+        A_eq, b_eq = WM2Validation.alpha_beta_reconstruction_equalities(
+            current["I_coeff"], current["d_coeff"]
         )
 
-        V = reduced_state["V"]
-        U = current["U"]
-        B_I = current["B_I"]
-        B_O = current["B_O"]
-
-        # The final reduced drift determines the latent output target through
-        # O = I_data - D.  Beta is therefore identified against an output
-        # implied jointly by the reduced model and the observed purchases.
-        O_target = data["I"] - reduced_state["D"]
-        X_beta = np.column_stack((B_O, V, 1.0 - U))
-        simplex_beta = np.ones((1, 3))
-        beta = self._least_squares_qp(
-            X_beta,
-            O_target,
-            A_eq=simplex_beta,
-            b_eq=np.ones(1),
-            lb=np.zeros(3),
-            ub=np.ones(3),
+        selected = self._least_squares_qp(
+            np.eye(7, dtype=float),
+            np.zeros(7, dtype=float),
+            A_eq=A_eq,
+            b_eq=b_eq,
+            lb=np.zeros(7, dtype=float),
+            ub=np.ones(7, dtype=float),
             ridge=self._FIT_RIDGE,
         )
-
-        alpha = np.array([1.0, 0.0, 0.0, 0.0])
-        previous = None
-
-        for iteration in range(8):
-            O_beta = X_beta @ beta
-            X_alpha = np.column_stack(
-                (B_I, 1.0 - V, O_beta, 1.0 - U)
-            )
-            A_alpha, b_alpha = WM2Validation.alpha_equilibrium_constraints(
-                beta
-            )
-
-            try:
-                alpha = self._least_squares_qp(
-                    X_alpha,
-                    data["I"],
-                    A_ub=A_alpha,
-                    b_ub=b_alpha,
-                    A_eq=np.ones((1, 4)),
-                    b_eq=np.ones(1),
-                    lb=np.zeros(4),
-                    ub=np.ones(4),
-                    ridge=self._FIT_RIDGE,
-                )
-            except ValueError:
-                if iteration != 0:
-                    raise
-                beta = np.array([0.0, 1.0, 0.0])
-                continue
-
-            A_beta, b_beta = WM2Validation.beta_equilibrium_constraints(
-                alpha
-            )
-            beta_new = self._least_squares_qp(
-                X_beta,
-                O_target,
-                A_ub=A_beta,
-                b_ub=b_beta,
-                A_eq=simplex_beta,
-                b_eq=np.ones(1),
-                lb=np.zeros(3),
-                ub=np.ones(3),
-                ridge=self._FIT_RIDGE,
-            )
-
-            pair = np.concatenate((alpha, beta_new))
-            if previous is not None and np.max(np.abs(pair - previous)) <= 1e-8:
-                beta = beta_new
-                break
-            previous = pair
-            beta = beta_new
-
-        O_beta = X_beta @ beta
-        X_alpha = np.column_stack((B_I, 1.0 - V, O_beta, 1.0 - U))
-        A_alpha, b_alpha = WM2Validation.alpha_equilibrium_constraints(beta)
-        alpha = self._least_squares_qp(
-            X_alpha,
-            data["I"],
-            A_ub=A_alpha,
-            b_ub=b_alpha,
-            A_eq=np.ones((1, 4)),
-            b_eq=np.ones(1),
-            lb=np.zeros(4),
-            ub=np.ones(4),
-            ridge=self._FIT_RIDGE,
-        )
+        alpha = selected[:4]
+        beta = selected[4:]
 
         WM2Validation.expected_equilibrium_parameters(alpha, beta)
         selected_input, selected_drift = self.reduced_coefficients(
             alpha, beta
         )
+        selected_input, selected_drift = WM2Validation.exact_reduced_match(
+            selected_input,
+            selected_drift,
+            current["I_coeff"],
+            current["d_coeff"],
+        )
+
         selected_state = self._solve_deterministic(
             current["init_cond"],
             current["U"],
@@ -543,7 +474,6 @@ class WM2(WM):
         updated["d_coeff"] = selected_drift
         updated["selected_input_coeff"] = selected_input
         updated["selected_d_coeff"] = selected_drift
-        updated["reduced_fit_state"] = reduced_state
         updated["deterministic_state"] = selected_state
         updated["selected_model_loss"] = float(
             np.mean((data["I"] - selected_state["I"]) ** 2)
