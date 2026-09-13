@@ -39,21 +39,15 @@ class WM2(WM):
         self.fp = WM2FokkerPlanc()
 
     def I(self, P_I, alpha):
-        P_I, alpha = WM2Validation.linear_map(
-            P_I, alpha, 4, "P_I", "alpha"
-        )
+        P_I, alpha = WM2Validation.linear_map(P_I, alpha, 4, "P_I", "alpha")
         return alpha @ P_I
 
     def O(self, P_O, beta):
-        P_O, beta = WM2Validation.linear_map(
-            P_O, beta, 3, "P_O", "beta"
-        )
+        P_O, beta = WM2Validation.linear_map(P_O, beta, 3, "P_O", "beta")
         return beta @ P_O
 
     def A(self, P_A, gamma):
-        P_A, gamma = WM2Validation.linear_map(
-            P_A, gamma, 4, "P_A", "gamma"
-        )
+        P_A, gamma = WM2Validation.linear_map(P_A, gamma, 4, "P_A", "gamma")
         return gamma @ P_A
 
     @staticmethod
@@ -64,27 +58,9 @@ class WM2(WM):
         a_B, a_V, a_O, a_U = alpha
         b_B, b_V, b_U = beta
 
-        input_coeff = np.array(
-            [
-                a_V + a_U + a_O * b_U,
-                a_B,
-                a_O * b_B,
-                -a_V + a_O * b_V,
-                -a_U - a_O * b_U,
-            ],
-            dtype=float,
-        )
+        input_coeff = np.array([a_V + a_U + a_O * b_U, a_B, a_O * b_B, -a_V + a_O * b_V, -a_U - a_O * b_U], dtype=float)
 
-        drift_coeff = np.array(
-            [
-                a_V + a_U + (a_O - 1.0) * b_U,
-                a_B,
-                (a_O - 1.0) * b_B,
-                -a_V + (a_O - 1.0) * b_V,
-                (1.0 - a_O) * b_U - a_U,
-            ],
-            dtype=float,
-        )
+        drift_coeff = np.array([a_V + a_U + (a_O - 1.0) * b_U, a_B, (a_O - 1.0) * b_B, -a_V + (a_O - 1.0) * b_V, (1.0 - a_O) * b_U - a_U], dtype=float)
         return input_coeff, drift_coeff
 
     @classmethod
@@ -112,33 +88,14 @@ class WM2(WM):
         PE = np.empty(self.t_steps)
 
         for k, tk in enumerate(self.t):
-            U[k] = WM2Validation.signal_value(
-                parameters["U"](tk), "U(t)"
-            )
-            B_O[k] = WM2Validation.signal_value(
-                parameters["B_O"](tk), "B_O(t)"
-            )
-            B_I[k] = WM2Validation.signal_value(
-                parameters["B_I"](tk), "B_I(t)"
-            )
-            PE[k] = WM2Validation.signal_value(
-                parameters["PE"](tk), "PE(t)"
-            )
+            U[k] = WM2Validation.signal_value(parameters["U"](tk), "U(t)")
+            B_O[k] = WM2Validation.signal_value(parameters["B_O"](tk), "B_O(t)")
+            B_I[k] = WM2Validation.signal_value(parameters["B_I"](tk), "B_I(t)")
+            PE[k] = WM2Validation.signal_value(parameters["PE"](tk), "PE(t)")
 
         return U, B_O, B_I, PE
 
-    def _solve_deterministic(
-        self,
-        init_cond,
-        U,
-        B_O,
-        B_I,
-        PE,
-        input_coeff,
-        drift_coeff,
-        kappa_R,
-        gamma=None,
-    ):
+    def _solve_deterministic(self, init_cond, U, B_O, B_I, PE, input_coeff, drift_coeff, kappa_R, gamma=None):
         """Canonical deterministic WM2 propagation in reduced coordinates."""
         V = np.empty(self.t_steps)
         R = np.empty(self.t_steps)
@@ -154,9 +111,7 @@ class WM2(WM):
         V[0], R[0] = init_cond
 
         for k in range(self.t_steps):
-            reduced_point = np.array(
-                [1.0, B_I[k], B_O[k], V[k], U[k]], dtype=float
-            )
+            reduced_point = np.array([1.0, B_I[k], B_O[k], V[k], U[k]], dtype=float)
             I[k] = input_coeff @ reduced_point
             D[k] = drift_coeff @ reduced_point
             O[k] = I[k] - D[k]
@@ -165,9 +120,7 @@ class WM2(WM):
             P_I[k] = np.array([B_I[k], 1.0 - V[k], O[k], 1.0 - U[k]])
 
             if gamma is not None:
-                P_A[k] = np.array(
-                    [1.0 - U[k], I[k], V[k], 1.0 - PE[k]]
-                )
+                P_A[k] = np.array([1.0 - U[k], I[k], V[k], 1.0 - PE[k]])
                 A[k] = gamma @ P_A[k]
 
             R_dot[k] = kappa_R * (D[k] - R[k])
@@ -176,117 +129,44 @@ class WM2(WM):
                 R[k + 1] = R[k] + self.dt * R_dot[k]
 
         return {
-            "t": self.t.copy(),
-            "V": V,
-            "R": R,
-            "R_dot": R_dot,
-            "U": np.asarray(U, dtype=float).copy(),
-            "B_O": np.asarray(B_O, dtype=float).copy(),
-            "B_I": np.asarray(B_I, dtype=float).copy(),
-            "PE": np.asarray(PE, dtype=float).copy(),
-            "P_I": P_I,
-            "P_O": P_O,
-            "P_A": P_A,
-            "O": O,
-            "I": I,
-            "D": D,
-            "A": A,
-            "input_coeff": np.asarray(input_coeff, dtype=float).copy(),
-            "drift_coeff": np.asarray(drift_coeff, dtype=float).copy(),
+            "t": self.t.copy(), "V": V, "R": R, "R_dot": R_dot,
+            "U": np.asarray(U, dtype=float).copy(), "B_O": np.asarray(B_O, dtype=float).copy(), "B_I": np.asarray(B_I, dtype=float).copy(), "PE": np.asarray(PE, dtype=float).copy(),
+            "P_I": P_I, "P_O": P_O, "P_A": P_A, "O": O, "I": I, "D": D, "A": A,
+            "input_coeff": np.asarray(input_coeff, dtype=float).copy(), "drift_coeff": np.asarray(drift_coeff, dtype=float).copy(),
         }
 
     def deterministic_solver(self, init_cond, parameters):
-        init_cond, parameters = WM2Validation.deterministic_inputs(
-            init_cond, parameters
-        )
+        init_cond, parameters = WM2Validation.deterministic_inputs(init_cond, parameters)
         U, B_O, B_I, PE = self._sample_signals(parameters)
-        input_coeff, drift_coeff = self.reduced_coefficients(
-            parameters["alpha"], parameters["beta"]
-        )
-        return self._solve_deterministic(
-            init_cond,
-            U,
-            B_O,
-            B_I,
-            PE,
-            input_coeff,
-            drift_coeff,
-            parameters["kappa_R"],
-            gamma=parameters["gamma"],
-        )
+        input_coeff, drift_coeff = self.reduced_coefficients(parameters["alpha"], parameters["beta"])
+        return self._solve_deterministic(init_cond, U, B_O, B_I, PE, input_coeff, drift_coeff, parameters["kappa_R"], gamma=parameters["gamma"])
 
     @staticmethod
-    def _least_squares_qp(
-        X,
-        y,
-        A_ub=None,
-        b_ub=None,
-        A_eq=None,
-        b_eq=None,
-        lb=None,
-        ub=None,
-        ridge=1e-10,
-    ):
+    def _least_squares_qp(X, y, A_ub=None, b_ub=None, A_eq=None, b_eq=None, lb=None, ub=None, ridge=1e-10):
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=float).reshape(-1)
         n = X.shape[1]
         scale = max(1, X.shape[0])
         H = 2.0 * (X.T @ X) / scale + ridge * np.eye(n)
         f = -2.0 * (X.T @ y) / scale
-        return ActiveSet.solve(
-            H,
-            f,
-            A_ub=A_ub,
-            b_ub=b_ub,
-            A_eq=A_eq,
-            b_eq=b_eq,
-            lb=lb,
-            ub=ub,
-            tol=1e-9,
-        )
+        return ActiveSet.solve(H, f, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, tol=1e-9)
 
     def _optimize_WM2_params(self, current_conditions, input_data):
         """Fit the deterministic reduced WM2 block with convex QPs."""
         data = WM2Validation.fit_data(input_data, self.t_steps)
-        current = WM2Validation.reduced_fit_conditions(
-            current_conditions, self.t_steps
-        )
-        state = self._solve_deterministic(
-            current["init_cond"],
-            current["U"],
-            current["B_O"],
-            current["B_I"],
-            current["PE"],
-            current["I_coeff"],
-            current["d_coeff"],
-            current["kappa_R"],
-        )
+        current = WM2Validation.reduced_fit_conditions(current_conditions, self.t_steps)
+        state = self._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], current["I_coeff"], current["d_coeff"], current["kappa_R"])
 
         B_I = current["B_I"]
         B_O = current["B_O"]
         U = data["U"]
 
-        X_I = np.column_stack(
-            (np.ones(self.t_steps), B_I, B_O, state["V"], U)
-        )
+        X_I = np.column_stack((np.ones(self.t_steps), B_I, B_O, state["V"], U))
         A_ub = np.vstack((X_I, -X_I))
-        b_ub = np.concatenate(
-            (np.ones(self.t_steps), np.zeros(self.t_steps))
-        )
-        input_coeff = self._least_squares_qp(
-            X_I,
-            data["I"],
-            A_ub=A_ub,
-            b_ub=b_ub,
-            ridge=self._FIT_RIDGE,
-        )
+        b_ub = np.concatenate((np.ones(self.t_steps), np.zeros(self.t_steps)))
+        input_coeff = self._least_squares_qp(X_I, data["I"], A_ub=A_ub, b_ub=b_ub, ridge=self._FIT_RIDGE)
 
-        no_V = (
-            input_coeff[0]
-            + input_coeff[1] * B_I
-            + input_coeff[2] * B_O
-            + input_coeff[4] * U
-        )
+        no_V = input_coeff[0] + input_coeff[1] * B_I + input_coeff[2] * B_O + input_coeff[4] * U
         if abs(input_coeff[3]) > 1e-5:
             V_proxy = (data["I"] - no_V) / input_coeff[3]
             V_proxy += current["init_cond"][0] - V_proxy[0]
@@ -298,33 +178,12 @@ class WM2(WM):
         R_proxy[0] = current["init_cond"][1]
         R_dot_proxy = np.gradient(R_proxy, self.dt)
 
-        X_D = np.column_stack(
-            (
-                np.ones(self.t_steps),
-                B_I,
-                B_O,
-                V_proxy,
-                U,
-                -R_proxy,
-            )
-        )
+        X_D = np.column_stack((np.ones(self.t_steps), B_I, B_O, V_proxy, U, -R_proxy))
         A_D, b_D = WM2Validation.scaled_equilibrium_constraints()
 
-        lb = np.array(
-            [-np.inf, -np.inf, -np.inf, -np.inf, -np.inf, self._FIT_EPS]
-        )
-        ub = np.array(
-            [np.inf, np.inf, np.inf, -self._FIT_EPS, np.inf, np.inf]
-        )
-        scaled = self._least_squares_qp(
-            X_D,
-            R_dot_proxy,
-            A_ub=A_D,
-            b_ub=b_D,
-            lb=lb,
-            ub=ub,
-            ridge=self._FIT_RIDGE,
-        )
+        lb = np.array([-np.inf, -np.inf, -np.inf, -np.inf, -np.inf, self._FIT_EPS])
+        ub = np.array([np.inf, np.inf, np.inf, -self._FIT_EPS, np.inf, np.inf])
+        scaled = self._least_squares_qp(X_D, R_dot_proxy, A_ub=A_D, b_ub=b_D, lb=lb, ub=ub, ridge=self._FIT_RIDGE)
 
         updated = dict(current_conditions)
         updated["I_coeff"] = input_coeff
@@ -332,29 +191,14 @@ class WM2(WM):
         updated["d_coeff"] = scaled[:5] / scaled[5]
         updated["V_proxy"] = V_proxy
         updated["R_proxy"] = R_proxy
-        validated_updated = WM2Validation.reduced_fit_conditions(
-            updated, self.t_steps
-        )
-        updated["deterministic_state"] = self._solve_deterministic(
-            validated_updated["init_cond"],
-            validated_updated["U"],
-            validated_updated["B_O"],
-            validated_updated["B_I"],
-            validated_updated["PE"],
-            validated_updated["I_coeff"],
-            validated_updated["d_coeff"],
-            validated_updated["kappa_R"],
-        )
+        validated_updated = WM2Validation.reduced_fit_conditions(updated, self.t_steps)
+        updated["deterministic_state"] = self._solve_deterministic(validated_updated["init_cond"], validated_updated["U"], validated_updated["B_O"], validated_updated["B_I"], validated_updated["PE"], validated_updated["I_coeff"], validated_updated["d_coeff"], validated_updated["kappa_R"])
         return updated
 
-    def _optimize_B_params(
-        self, current_conditions, baseline_feature_vec, input_data
-    ):
+    def _optimize_B_params(self, current_conditions, baseline_feature_vec, input_data):
         """Fit normalized B_I/B_O feature weights by convex QP."""
         data = WM2Validation.fit_data(input_data, self.t_steps)
-        X_BI, X_BO = WM2Validation.baseline_features(
-            baseline_feature_vec, self.t_steps
-        )
+        X_BI, X_BO = WM2Validation.baseline_features(baseline_feature_vec, self.t_steps)
         current = WM2Validation.reduced_fit_conditions(
             current_conditions, self.t_steps
         )
@@ -384,15 +228,7 @@ class WM2(WM):
         A_eq[2, :n_I] = np.sum(X_BI, axis=0)
         A_eq[2, n_I:] = -np.sum(X_BO, axis=0)
 
-        weights = self._least_squares_qp(
-            X,
-            y,
-            A_eq=A_eq,
-            b_eq=b_eq,
-            lb=np.zeros(n_I + n_O),
-            ub=np.ones(n_I + n_O),
-            ridge=self._FIT_RIDGE,
-        )
+        weights = self._least_squares_qp(X, y, A_eq=A_eq, b_eq=b_eq, lb=np.zeros(n_I + n_O), ub=np.ones(n_I + n_O), ridge=self._FIT_RIDGE)
 
         updated = dict(current_conditions)
         updated["B_I_weights"] = weights[:n_I]
@@ -427,43 +263,17 @@ class WM2(WM):
             current_conditions, self.t_steps
         )
 
-        A_eq, b_eq = WM2Validation.alpha_beta_reconstruction_equalities(
-            current["I_coeff"], current["d_coeff"]
-        )
+        A_eq, b_eq = WM2Validation.alpha_beta_reconstruction_equalities(current["I_coeff"], current["d_coeff"])
 
-        selected = self._least_squares_qp(
-            np.eye(7, dtype=float),
-            np.zeros(7, dtype=float),
-            A_eq=A_eq,
-            b_eq=b_eq,
-            lb=np.zeros(7, dtype=float),
-            ub=np.ones(7, dtype=float),
-            ridge=self._FIT_RIDGE,
-        )
+        selected = self._least_squares_qp(np.eye(7, dtype=float), np.zeros(7, dtype=float), A_eq=A_eq, b_eq=b_eq, lb=np.zeros(7, dtype=float), ub=np.ones(7, dtype=float), ridge=self._FIT_RIDGE)
         alpha = selected[:4]
         beta = selected[4:]
 
         WM2Validation.expected_equilibrium_parameters(alpha, beta)
-        selected_input, selected_drift = self.reduced_coefficients(
-            alpha, beta
-        )
-        selected_input, selected_drift = WM2Validation.exact_reduced_match(
-            selected_input,
-            selected_drift,
-            current["I_coeff"],
-            current["d_coeff"],
-        )
+        selected_input, selected_drift = self.reduced_coefficients(alpha, beta)
+        selected_input, selected_drift = WM2Validation.exact_reduced_match(selected_input, selected_drift, current["I_coeff"], current["d_coeff"])
 
-        selected_state = self._solve_deterministic(
-            current["init_cond"],
-            current["U"],
-            current["B_O"],
-            current["B_I"],
-            current["PE"],
-            selected_input,
-            selected_drift,
-            current["kappa_R"],
-        )
+        selected_state = self._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], selected_input, selected_drift, current["kappa_R"])
 
         updated = dict(current_conditions)
         updated["alpha"] = alpha
@@ -475,9 +285,7 @@ class WM2(WM):
         updated["selected_input_coeff"] = selected_input
         updated["selected_d_coeff"] = selected_drift
         updated["deterministic_state"] = selected_state
-        updated["selected_model_loss"] = float(
-            np.mean((data["I"] - selected_state["I"]) ** 2)
-        )
+        updated["selected_model_loss"] = float(np.mean((data["I"] - selected_state["I"]) ** 2))
         return updated
 
     @staticmethod
@@ -495,45 +303,24 @@ class WM2(WM):
             lo = max(0, k - half)
             hi = min(n, k + half + 1)
             segment = residual[lo:hi]
-            result[k] = (
-                np.std(segment, ddof=1) if segment.size > 1 else 0.0
-            )
+            result[k] = np.std(segment, ddof=1) if segment.size > 1 else 0.0
         return result
 
     def _optimize_uncertainty_params(self, current_conditions, input_data):
         """Fit sigma_0 and sigma_O after alpha/beta selection."""
         data = WM2Validation.fit_data(input_data, self.t_steps)
-        alpha, beta = WM2Validation.reduction_inputs(
-            current_conditions["alpha"], current_conditions["beta"]
-        )
+        alpha, beta = WM2Validation.reduction_inputs(current_conditions["alpha"], current_conditions["beta"])
         current = WM2Validation.reduced_fit_conditions(
             current_conditions, self.t_steps
         )
         input_coeff, drift_coeff = self.reduced_coefficients(alpha, beta)
-        state = self._solve_deterministic(
-            current["init_cond"],
-            current["U"],
-            current["B_O"],
-            current["B_I"],
-            current["PE"],
-            input_coeff,
-            drift_coeff,
-            current["kappa_R"],
-        )
+        state = self._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], input_coeff, drift_coeff, current["kappa_R"])
 
         residual = data["I"] - state["I"]
         local_std = self._local_std(residual)
         X = np.column_stack((np.ones(self.t_steps), state["O"]))
 
-        sigma = self._least_squares_qp(
-            X,
-            local_std,
-            A_ub=-X,
-            b_ub=np.zeros(self.t_steps),
-            lb=np.array([self._FIT_EPS, self._FIT_EPS]),
-            ub=np.array([np.inf, np.inf]),
-            ridge=self._FIT_RIDGE,
-        )
+        sigma = self._least_squares_qp(X, local_std, A_ub=-X, b_ub=np.zeros(self.t_steps), lb=np.array([self._FIT_EPS, self._FIT_EPS]), ub=np.array([np.inf, np.inf]), ridge=self._FIT_RIDGE)
 
         updated = dict(current_conditions)
         updated["sigma_0"] = float(sigma[0])
@@ -551,9 +338,7 @@ class WM2(WM):
         """
         data = WM2Validation.fit_data(input_data, self.t_steps)
         init_cond = WM2Validation.initial_condition(initial_conditions)
-        X_BI, X_BO = WM2Validation.baseline_features(
-            baseline_feature_vec, self.t_steps
-        )
+        X_BI, X_BO = WM2Validation.baseline_features(baseline_feature_vec, self.t_steps)
 
         mean_I = float(np.mean(data["I"]))
         current = {
@@ -571,47 +356,19 @@ class WM2(WM):
             "B_O_weights": None,
         }
 
-        validated_current = WM2Validation.reduced_fit_conditions(
-            current, self.t_steps
-        )
-        state = self._solve_deterministic(
-            validated_current["init_cond"],
-            validated_current["U"],
-            validated_current["B_O"],
-            validated_current["B_I"],
-            validated_current["PE"],
-            validated_current["I_coeff"],
-            validated_current["d_coeff"],
-            validated_current["kappa_R"],
-        )
-        previous_loss = float(
-            np.mean((data["I"] - state["I"]) ** 2)
-        )
+        validated_current = WM2Validation.reduced_fit_conditions(current, self.t_steps)
+        state = self._solve_deterministic(validated_current["init_cond"], validated_current["U"], validated_current["B_O"], validated_current["B_I"], validated_current["PE"], validated_current["I_coeff"], validated_current["d_coeff"], validated_current["kappa_R"])
+        previous_loss = float(np.mean((data["I"] - state["I"]) ** 2))
         history = [previous_loss]
         relative_tol = 1e-6
 
         for _ in range(50):
             candidate = self._optimize_WM2_params(current, data)
-            candidate = self._optimize_B_params(
-                candidate,
-                {"B_I": X_BI, "B_O": X_BO},
-                data,
-            )
+            candidate = self._optimize_B_params(candidate, {"B_I": X_BI, "B_O": X_BO}, data)
             candidate = self._optimize_WM2_params(candidate, data)
 
-            validated_candidate = WM2Validation.reduced_fit_conditions(
-                candidate, self.t_steps
-            )
-            state = self._solve_deterministic(
-                validated_candidate["init_cond"],
-                validated_candidate["U"],
-                validated_candidate["B_O"],
-                validated_candidate["B_I"],
-                validated_candidate["PE"],
-                validated_candidate["I_coeff"],
-                validated_candidate["d_coeff"],
-                validated_candidate["kappa_R"],
-            )
+            validated_candidate = WM2Validation.reduced_fit_conditions(candidate, self.t_steps)
+            state = self._solve_deterministic(validated_candidate["init_cond"], validated_candidate["U"], validated_candidate["B_O"], validated_candidate["B_I"], validated_candidate["PE"], validated_candidate["I_coeff"], validated_candidate["d_coeff"], validated_candidate["kappa_R"])
             loss = float(np.mean((data["I"] - state["I"]) ** 2))
             history.append(loss)
 
@@ -636,34 +393,10 @@ class WM2(WM):
         current["converged_iterations"] = len(history) - 1
         return current
 
-    def fokker_planc_solver(
-        self,
-        init_cond,
-        parameters,
-        initial_density,
-        v_bounds=(-0.5, 1.5),
-        r_bounds=(-1.0, 1.0),
-        v_steps=161,
-        r_steps=161,
-        cfl=0.8,
-    ):
-        init_cond, validated = WM2Validation.deterministic_inputs(
-            init_cond, parameters
-        )
-        _, drift_coeff = self.reduced_coefficients(
-            validated["alpha"], validated["beta"]
-        )
+    def fokker_planc_solver(self, init_cond, parameters, initial_density, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
+        init_cond, validated = WM2Validation.deterministic_inputs(init_cond, parameters)
+        _, drift_coeff = self.reduced_coefficients(validated["alpha"], validated["beta"])
         fp_parameters = dict(validated)
         fp_parameters["d_coeff"] = drift_coeff
 
-        return self.fp.solve(
-            self.t,
-            init_cond,
-            fp_parameters,
-            initial_density=initial_density,
-            v_bounds=v_bounds,
-            r_bounds=r_bounds,
-            v_steps=v_steps,
-            r_steps=r_steps,
-            cfl=cfl,
-        )
+        return self.fp.solve(self.t, init_cond, fp_parameters, initial_density=initial_density, v_bounds=v_bounds, r_bounds=r_bounds, v_steps=v_steps, r_steps=r_steps, cfl=cfl)
