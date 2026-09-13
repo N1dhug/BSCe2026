@@ -3,6 +3,7 @@ from scipy.special import gammaln
 
 from src.solver.ActiveSet import ActiveSet
 from src.solver.FiniteVolume import FiniteVolume2D
+from src.validation.model.WM2 import WM2Validation
 from src.validation.method.FokkerPlanc import (
     BM1FokkerPlancValidation,
     WM2FokkerPlancValidation,

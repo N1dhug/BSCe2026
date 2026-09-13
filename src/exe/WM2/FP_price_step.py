@@ -30,8 +30,8 @@ B_I = inputs.energy((np.array([0.0, days]), np.array([B_I_level, B_I_level])))
 PE = inputs.price((np.array([0.0, days]), np.array([PE_level, PE_level])))
 
 # 3) Single price step: high price -> low price at hour 24.
-price_before = 0.75
-price_after = 0.25
+price_before = 0.25
+price_after = 0.75
 price_step_hour = 24.0
 price_step_time = price_step_hour / 24.0
 U = inputs.price(
@@ -57,9 +57,9 @@ alpha = np.array([0, 0.1, 0.1, 0.8])
 beta = np.array([0.1, 0.85, 0.05])
 gamma = np.array([0.25, 0.25, 0.25, 0.25])
 
-kappa_R = 3.46
-sigma_0 = 0.1
-sigma_O = 0.5
+kappa_R = 1
+sigma_0 = 0.025
+sigma_O = 0.075
 
 parameters = {
     "U": U,
@@ -79,13 +79,13 @@ model = WM2(t_interval, t_steps)
 # 5) Start at the expected equilibrium associated with the pre-step price.
 V0 = model.expected_equilibrium(B_O_level, B_I_level, price_before, alpha, beta)
 R0 = 0.0
-init_cond = [V0*2, R0]
+init_cond = [V0, R0]
 
 # Computational bounds are numerical truncation only; V=0 and V=1 are not
 # pathwise boundaries in WM2. The selected V domain also keeps O >= 0 for the
 # synthetic signals used in this executable.
-v_bounds = (-0.10, 1.10)
-r_bounds = (-0.40, 0.40)
+v_bounds = (-0.2, 1.5)
+r_bounds = (-1, 1)
 v_steps = 101
 r_steps = 101
 cfl = 0.80

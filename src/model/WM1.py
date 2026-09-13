@@ -141,6 +141,5 @@ class WM1(WM):
             "e_grid": e_grid, "density_e": density_e, "coefficients": coefficients,
             "error_mean": error_mean, "error_variance": error_variance,
             "lower_violation": lower_violation, "upper_violation": upper_violation,
-            "sigma": sigma, "e_bounds": (e_min, e_max),
-        })
+            "sigma": sigma, "e_bounds": (e_min, e_max)})
         return result
