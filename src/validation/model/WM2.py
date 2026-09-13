@@ -254,8 +254,11 @@ class WM2Validation(WM1Validation):
         return np.asarray(rows, dtype=float), np.asarray(rhs, dtype=float)
 
     @classmethod
-    def alpha_equilibrium_constraints(cls, beta):
+    def alpha_equilibrium_constraints(cls, beta, stability_eps=1e-8):
         beta = cls.simplex(beta, 3, "beta")
+        stability_eps = cls._finite_scalar(stability_eps, "stability_eps")
+        if stability_eps <= 0.0:
+            raise ValueError("stability_eps must be positive.")
         rows = []
         rhs = []
 
@@ -272,11 +275,17 @@ class WM2Validation(WM1Validation):
             rows.append(numerator + dV)
             rhs.append(O0 + beta[1])
 
+        rows.append(np.array([0.0, -1.0, beta[1], 0.0]))
+        rhs.append(beta[1] - stability_eps)
+
         return np.asarray(rows, dtype=float), np.asarray(rhs, dtype=float)
 
     @classmethod
-    def beta_equilibrium_constraints(cls, alpha):
+    def beta_equilibrium_constraints(cls, alpha, stability_eps=1e-8):
         alpha = cls.simplex(alpha, 4, "alpha")
+        stability_eps = cls._finite_scalar(stability_eps, "stability_eps")
+        if stability_eps <= 0.0:
+            raise ValueError("stability_eps must be positive.")
         rows = []
         rhs = []
         coupling = alpha[2] - 1.0
@@ -300,6 +309,9 @@ class WM2Validation(WM1Validation):
             )
             rows.append(coupling * q_with_v)
             rhs.append(-upper_constant)
+
+        rows.append(np.array([0.0, coupling, 0.0]))
+        rhs.append(alpha[1] - stability_eps)
 
         return np.asarray(rows, dtype=float), np.asarray(rhs, dtype=float)
 
