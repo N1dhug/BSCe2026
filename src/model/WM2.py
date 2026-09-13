@@ -245,21 +245,6 @@ class WM2(WM):
             tol=1e-9,
         )
 
-    def _fit_state(self, current_conditions):
-        current = WM2Validation.reduced_fit_conditions(
-            current_conditions, self.t_steps
-        )
-        return self._solve_deterministic(
-            current["init_cond"],
-            current["U"],
-            current["B_O"],
-            current["B_I"],
-            current["PE"],
-            current["I_coeff"],
-            current["d_coeff"],
-            current["kappa_R"],
-        )
-
     def _optimize_WM2_params(self, current_conditions, input_data):
         """Fit the deterministic reduced WM2 block with convex QPs."""
         data = WM2Validation.fit_data(input_data, self.t_steps)
@@ -347,7 +332,19 @@ class WM2(WM):
         updated["d_coeff"] = scaled[:5] / scaled[5]
         updated["V_proxy"] = V_proxy
         updated["R_proxy"] = R_proxy
-        updated["deterministic_state"] = self._fit_state(updated)
+        validated_updated = WM2Validation.reduced_fit_conditions(
+            updated, self.t_steps
+        )
+        updated["deterministic_state"] = self._solve_deterministic(
+            validated_updated["init_cond"],
+            validated_updated["U"],
+            validated_updated["B_O"],
+            validated_updated["B_I"],
+            validated_updated["PE"],
+            validated_updated["I_coeff"],
+            validated_updated["d_coeff"],
+            validated_updated["kappa_R"],
+        )
         return updated
 
     def _optimize_B_params(
@@ -402,7 +399,19 @@ class WM2(WM):
         updated["B_O_weights"] = weights[n_I:]
         updated["B_I"] = X_BI @ weights[:n_I]
         updated["B_O"] = X_BO @ weights[n_I:]
-        updated["deterministic_state"] = self._fit_state(updated)
+        validated_updated = WM2Validation.reduced_fit_conditions(
+            updated, self.t_steps
+        )
+        updated["deterministic_state"] = self._solve_deterministic(
+            validated_updated["init_cond"],
+            validated_updated["U"],
+            validated_updated["B_O"],
+            validated_updated["B_I"],
+            validated_updated["PE"],
+            validated_updated["I_coeff"],
+            validated_updated["d_coeff"],
+            validated_updated["kappa_R"],
+        )
         return updated
 
     def _select_alpha_beta(self, current_conditions, input_data):
@@ -629,7 +638,19 @@ class WM2(WM):
             "B_O_weights": None,
         }
 
-        state = self._fit_state(current)
+        validated_current = WM2Validation.reduced_fit_conditions(
+            current, self.t_steps
+        )
+        state = self._solve_deterministic(
+            validated_current["init_cond"],
+            validated_current["U"],
+            validated_current["B_O"],
+            validated_current["B_I"],
+            validated_current["PE"],
+            validated_current["I_coeff"],
+            validated_current["d_coeff"],
+            validated_current["kappa_R"],
+        )
         previous_loss = float(
             np.mean((data["I"] - state["I"]) ** 2)
         )
@@ -645,7 +666,19 @@ class WM2(WM):
             )
             candidate = self._optimize_WM2_params(candidate, data)
 
-            state = self._fit_state(candidate)
+            validated_candidate = WM2Validation.reduced_fit_conditions(
+                candidate, self.t_steps
+            )
+            state = self._solve_deterministic(
+                validated_candidate["init_cond"],
+                validated_candidate["U"],
+                validated_candidate["B_O"],
+                validated_candidate["B_I"],
+                validated_candidate["PE"],
+                validated_candidate["I_coeff"],
+                validated_candidate["d_coeff"],
+                validated_candidate["kappa_R"],
+            )
             loss = float(np.mean((data["I"] - state["I"]) ** 2))
             history.append(loss)
 
