@@ -5,7 +5,7 @@ from src.validation.model.WM1 import WM1Validation
 
 
 class WM2Validation(WM1Validation):
-    """Validation rules for Water Model 2."""
+    """Validation and admissibility rules for Water Model 2."""
 
     @classmethod
     def parameters(cls, parameters):
@@ -47,9 +47,22 @@ class WM2Validation(WM1Validation):
         return cls.initial_condition(init_cond), cls.parameters(parameters)
 
     @classmethod
+    def reduction_inputs(cls, alpha, beta):
+        return (
+            cls.simplex(alpha, 4, "alpha"),
+            cls.simplex(beta, 3, "beta"),
+        )
+
+    @classmethod
+    def reduced_coefficients(cls, input_coeff, drift_coeff):
+        return (
+            cls.vector(input_coeff, 5, "input_coeff"),
+            cls.vector(drift_coeff, 5, "drift_coeff"),
+        )
+
+    @classmethod
     def expected_equilibrium_parameters(cls, alpha, beta, tol=1e-10):
-        alpha = cls.simplex(alpha, 4, "alpha")
-        beta = cls.simplex(beta, 3, "beta")
+        alpha, beta = cls.reduction_inputs(alpha, beta)
         dV = -alpha[1] - (1.0 - alpha[2]) * beta[1]
         cls.stable_drift_coefficient(dV, tol=tol)
 
@@ -172,6 +185,7 @@ class WM2Validation(WM1Validation):
             "B_I",
             "B_O",
             "U",
+            "PE",
             "kappa_R",
         )
         missing = [name for name in required if name not in current_conditions]
@@ -184,14 +198,11 @@ class WM2Validation(WM1Validation):
 
         t_steps = cls._integer(t_steps, "t_steps", 2)
         init_cond = cls.initial_condition(current_conditions["init_cond"])
-        I_coeff = cls.vector(
-            current_conditions["I_coeff"], 5, "I_coeff"
-        )
-        d_coeff = cls.vector(
-            current_conditions["d_coeff"], 5, "d_coeff"
+        I_coeff, d_coeff = cls.reduced_coefficients(
+            current_conditions["I_coeff"], current_conditions["d_coeff"]
         )
 
-        def trajectory(value, name):
+        def trajectory(value, name, normalized=False):
             vector = np.asarray(value, dtype=float).reshape(-1)
             if vector.size != t_steps:
                 raise ValueError(
@@ -199,11 +210,16 @@ class WM2Validation(WM1Validation):
                 )
             if not np.all(np.isfinite(vector)):
                 raise ValueError(f"{name} must contain finite values.")
+            if normalized and (
+                np.any(vector < 0.0) or np.any(vector > 1.0)
+            ):
+                raise ValueError(f"{name} must lie in [0, 1].")
             return vector
 
-        B_I = trajectory(current_conditions["B_I"], "B_I")
-        B_O = trajectory(current_conditions["B_O"], "B_O")
-        U = trajectory(current_conditions["U"], "U")
+        B_I = trajectory(current_conditions["B_I"], "B_I", normalized=True)
+        B_O = trajectory(current_conditions["B_O"], "B_O", normalized=True)
+        U = trajectory(current_conditions["U"], "U", normalized=True)
+        PE = trajectory(current_conditions["PE"], "PE", normalized=True)
         kappa_R = cls._finite_scalar(
             current_conditions["kappa_R"], "kappa_R"
         )
@@ -217,9 +233,97 @@ class WM2Validation(WM1Validation):
             "B_I": B_I,
             "B_O": B_O,
             "U": U,
+            "PE": PE,
             "kappa_R": kappa_R,
         }
 
+    @staticmethod
+    def scaled_equilibrium_constraints():
+        rows = []
+        rhs = []
+        for B_I, B_O, U in itertools.product((0.0, 1.0), repeat=3):
+            numerator = np.array([1.0, B_I, B_O, 0.0, U, 0.0])
+            rows.append(-numerator)
+            rhs.append(0.0)
+
+            upper = numerator.copy()
+            upper[3] += 1.0
+            rows.append(upper)
+            rhs.append(0.0)
+
+        return np.asarray(rows, dtype=float), np.asarray(rhs, dtype=float)
+
+    @classmethod
+    def alpha_equilibrium_constraints(cls, beta):
+        beta = cls.simplex(beta, 3, "beta")
+        rows = []
+        rhs = []
+
+        for B_I, B_O, U in itertools.product((0.0, 1.0), repeat=3):
+            O0 = beta[0] * B_O + beta[2] * (1.0 - U)
+            numerator = np.array(
+                [B_I, 1.0, O0, 1.0 - U], dtype=float
+            )
+            dV = np.array([0.0, -1.0, beta[1], 0.0], dtype=float)
+
+            rows.append(-numerator)
+            rhs.append(-O0)
+
+            rows.append(numerator + dV)
+            rhs.append(O0 + beta[1])
+
+        return np.asarray(rows, dtype=float), np.asarray(rhs, dtype=float)
+
+    @classmethod
+    def beta_equilibrium_constraints(cls, alpha):
+        alpha = cls.simplex(alpha, 4, "alpha")
+        rows = []
+        rhs = []
+        coupling = alpha[2] - 1.0
+
+        for B_I, B_O, U in itertools.product((0.0, 1.0), repeat=3):
+            q = np.array([B_O, 0.0, 1.0 - U], dtype=float)
+            constant = (
+                alpha[0] * B_I
+                + alpha[1]
+                + alpha[3] * (1.0 - U)
+            )
+
+            rows.append(-coupling * q)
+            rhs.append(constant)
+
+            q_with_v = q.copy()
+            q_with_v[1] += 1.0
+            upper_constant = (
+                alpha[0] * B_I
+                + alpha[3] * (1.0 - U)
+            )
+            rows.append(coupling * q_with_v)
+            rhs.append(-upper_constant)
+
+        return np.asarray(rows, dtype=float), np.asarray(rhs, dtype=float)
+
+    @staticmethod
+    def diffusion_scale(values):
+        values = np.asarray(values, dtype=float)
+        if not np.all(np.isfinite(values)):
+            raise ValueError("WM2 diffusion scale must be finite.")
+        if np.any(values < 0.0):
+            raise ValueError(
+                "WM2 produced negative g(O) on the selected numerical domain; "
+                "choose an admissible domain/parameterization with O >= 0."
+            )
+        return values
+
     @classmethod
     def fp_inputs(cls, init_cond, parameters):
-        return cls.initial_condition(init_cond), cls.parameters(parameters)
+        init_cond = cls.initial_condition(init_cond)
+        parameters = cls.parameters(parameters)
+        if "d_coeff" not in parameters:
+            raise ValueError(
+                "WM2 Fokker-Planck parameters must include reduced d_coeff."
+            )
+        parameters["d_coeff"] = cls.vector(
+            parameters["d_coeff"], 5, "d_coeff"
+        )
+        return init_cond, parameters
