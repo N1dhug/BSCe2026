@@ -189,15 +189,6 @@ class WM2FokkerPlanc:
     def __init__(self, solver=None):
         self.solver = FiniteVolume2D() if solver is None else solver
 
-    @staticmethod
-    def _reduced_coefficients(B_O, B_I, alpha, beta):
-        o_bar = beta[0] * B_O + beta[2]
-        i_bar = alpha[0] * B_I + alpha[1] + alpha[2] * o_bar + alpha[3]
-        d0 = i_bar - o_bar
-        dV = -alpha[1] - (1.0 - alpha[2]) * beta[1]
-        dU = (1.0 - alpha[2]) * beta[2] - alpha[3]
-        return d0, dV, dU
-
     def solve(self, t, init_cond, parameters, initial_density, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
         (
             t,
@@ -220,8 +211,8 @@ class WM2FokkerPlanc:
             r_steps,
             cfl,
         )
-        alpha = parameters["alpha"]
         beta = parameters["beta"]
+        d = parameters["d_coeff"]
         kappa_R = parameters["kappa_R"]
         sigma_0 = parameters["sigma_0"]
         sigma_O = parameters["sigma_O"]
@@ -230,25 +221,20 @@ class WM2FokkerPlanc:
             U = float(parameters["U"](time))
             B_O = float(parameters["B_O"](time))
             B_I = float(parameters["B_I"](time))
-            d0, dV, dU = self._reduced_coefficients(B_O, B_I, alpha, beta)
+            D = d[0] + d[1] * B_I + d[2] * B_O + d[3] * V + d[4] * U
             O = beta[0] * B_O + beta[1] * V + beta[2] * (1.0 - U)
-            return U, d0, dV, dU, O
+            return D, O
 
         def drift_v(time, V, R):
             return R
 
         def drift_r(time, V, R):
-            U, d0, dV, dU, _ = fields(time, V)
-            return kappa_R * (d0 + dV * V + dU * U - R)
+            D, _ = fields(time, V)
+            return kappa_R * (D - R)
 
         def diffusion_r(time, V, R):
-            _, _, _, _, O = fields(time, V)
-            g = sigma_0 + sigma_O * O
-            if np.any(g < 0.0):
-                raise ValueError(
-                    "WM2 produced negative g(O) on the selected numerical domain; "
-                    "choose an admissible domain/parameterization with O >= 0."
-                )
+            _, O = fields(time, V)
+            g = WM2Validation.diffusion_scale(sigma_0 + sigma_O * O)
             return np.broadcast_to(g, R.shape)
 
         result = self.solver.solve(
