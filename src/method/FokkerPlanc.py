@@ -63,9 +63,7 @@ class BM1FokkerPlanc:
         matrix = basis.T * scale
         target = density * scale
 
-        # 0.5 * ||A c - b||^2
-        # = 0.5 * c.T @ (A.T @ A) @ c - (A.T @ b).T @ c + constant.
-        # Pass the Beta-mixture constraints directly to the generic QP solver.
+        # Expand 0.5 * ||A c - b||^2 into the generic QP objective and pass the mixture constraints directly.
         n_coefficients = basis.shape[0]
         hessian = matrix.T @ matrix
         linear = -(matrix.T @ target)
