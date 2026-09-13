@@ -279,7 +279,7 @@ class WM2Validation(WM1Validation):
             rows.append(row)
             rhs.append(value)
 
-        # Simplex equalities.
+        # Enforce simplex normalization for alpha and beta.
         rows.append(np.array([1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]))
         rhs.append(1.0)
         rows.append(np.array([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]))
