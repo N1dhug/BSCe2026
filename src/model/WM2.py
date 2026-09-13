@@ -58,8 +58,7 @@ class WM2(WM):
     def expected_equilibrium(cls, B_O, B_I, U, alpha, beta):
         U = WM2Validation.signal_value(U, "U")
         d0, dV, dU = cls.reduced_drift_coefficients(B_O, B_I, alpha, beta)
-        if dV >= 0.0:
-            raise ValueError("Expected equilibrium requires stable d_V < 0.")
+        WM2Validation.stable_drift_coefficient(dV)
         return -(d0 + dU * U) / dV
 
     def _evaluate_step(self, t, V, parameters):
@@ -117,67 +116,6 @@ class WM2(WM):
             "O": O, "I": I, "A": A,
         }
 
-    def _prepare_fit_data(self, input_data):
-        if not isinstance(input_data, dict):
-            raise TypeError("input_data must be a dictionary.")
-        if "I" not in input_data or "U" not in input_data:
-            raise ValueError("input_data must contain normalized I and U arrays.")
-
-        def vec(value, name):
-            x = np.asarray(value, dtype=float).reshape(-1)
-            if x.size != self.t_steps:
-                raise ValueError(
-                    f"{name} must contain exactly {self.t_steps} samples."
-                )
-            if not np.all(np.isfinite(x)):
-                raise ValueError(f"{name} must contain finite values.")
-            return x
-
-        I_data = vec(input_data["I"], "input_data['I']")
-        U = vec(input_data["U"], "input_data['U']")
-        PE = vec(
-            input_data.get("PE", np.zeros(self.t_steps)),
-            "input_data['PE']",
-        )
-        for x, name in ((I_data, "I"), (U, "U"), (PE, "PE")):
-            if np.any(x < 0.0) or np.any(x > 1.0):
-                raise ValueError(f"Normalized {name} data must lie in [0, 1].")
-        return {"I": I_data, "U": U, "PE": PE}
-
-    def _prepare_baseline_features(self, baseline_feature_vec):
-        if isinstance(baseline_feature_vec, dict):
-            if "B_I" not in baseline_feature_vec or "B_O" not in baseline_feature_vec:
-                raise ValueError(
-                    "baseline_feature_vec must contain B_I and B_O matrices."
-                )
-            X_I = np.asarray(baseline_feature_vec["B_I"], dtype=float)
-            X_O = np.asarray(baseline_feature_vec["B_O"], dtype=float)
-        else:
-            X_I = np.asarray(baseline_feature_vec, dtype=float)
-            X_O = X_I.copy()
-
-        if X_I.ndim == 1:
-            X_I = X_I[:, None]
-        if X_O.ndim == 1:
-            X_O = X_O[:, None]
-        if X_I.ndim != 2 or X_O.ndim != 2:
-            raise ValueError("Baseline features must be one- or two-dimensional.")
-        if X_I.shape[0] != self.t_steps or X_O.shape[0] != self.t_steps:
-            raise ValueError("Baseline features must have one row per time step.")
-        if X_I.shape[1] == 0 or X_O.shape[1] == 0:
-            raise ValueError("At least one baseline feature is required.")
-        if not np.all(np.isfinite(X_I)) or not np.all(np.isfinite(X_O)):
-            raise ValueError("Baseline features must be finite.")
-        if (
-            np.any(X_I < 0.0) or np.any(X_I > 1.0)
-            or np.any(X_O < 0.0) or np.any(X_O > 1.0)
-        ):
-            raise ValueError(
-                "Baseline features must be normalized to [0,1]. "
-                "Do not include price, V, R, or functions derived from them."
-            )
-        return X_I, X_O
-
     @staticmethod
     def _least_squares_qp(
         X, y, A_ub=None, b_ub=None, A_eq=None, b_eq=None,
@@ -198,20 +136,16 @@ class WM2(WM):
         )
 
     def _simulate_reduced(self, current_conditions):
-        init_cond = np.asarray(
-            current_conditions["init_cond"], dtype=float
-        ).reshape(-1)
-        if init_cond.size != 2:
-            raise ValueError("Reduced fitting requires initial_conditions=[V0,R0].")
-        c = np.asarray(current_conditions["I_coeff"], dtype=float).reshape(-1)
-        d = np.asarray(current_conditions["d_coeff"], dtype=float).reshape(-1)
-        if c.size != 5 or d.size != 5:
-            raise ValueError("I_coeff and d_coeff must each have five entries.")
-
-        B_I = np.asarray(current_conditions["B_I"], dtype=float)
-        B_O = np.asarray(current_conditions["B_O"], dtype=float)
-        U = np.asarray(current_conditions["U"], dtype=float)
-        kappa = float(current_conditions["kappa_R"])
+        validated = WM2Validation.reduced_fit_conditions(
+            current_conditions, self.t_steps
+        )
+        init_cond = validated["init_cond"]
+        c = validated["I_coeff"]
+        d = validated["d_coeff"]
+        B_I = validated["B_I"]
+        B_O = validated["B_O"]
+        U = validated["U"]
+        kappa = validated["kappa_R"]
 
         V = np.empty(self.t_steps)
         R = np.empty(self.t_steps)
@@ -252,7 +186,7 @@ class WM2(WM):
 
     def _optimize_WM2_params(self, current_conditions, input_data):
         """Solve the deterministic WM2 fitting block using convex QPs."""
-        data = self._prepare_fit_data(input_data)
+        data = WM2Validation.fit_data(input_data, self.t_steps)
         state = self._simulate_reduced(current_conditions)
         B_I = np.asarray(current_conditions["B_I"])
         B_O = np.asarray(current_conditions["B_O"])
@@ -289,12 +223,11 @@ class WM2(WM):
         )
         A_D, b_D = self._equilibrium_constraints_scaled()
 
-        kappa_max = 1.0
         lb = np.array(
             [-np.inf, -np.inf, -np.inf, -np.inf, -np.inf, self._FIT_EPS]
         )
         ub = np.array(
-            [np.inf, np.inf, np.inf, -self._FIT_EPS, np.inf, kappa_max]
+            [np.inf, np.inf, np.inf, -self._FIT_EPS, np.inf, np.inf]
         )
         q = self._least_squares_qp(
             X_D, R_dot_proxy,
@@ -316,8 +249,8 @@ class WM2(WM):
         self, current_conditions, baseline_feature_vec, input_data
     ):
         """Solve normalized B_I/B_O feature weights as one convex QP."""
-        data = self._prepare_fit_data(input_data)
-        X_BI, X_BO = self._prepare_baseline_features(baseline_feature_vec)
+        data = WM2Validation.fit_data(input_data, self.t_steps)
+        X_BI, X_BO = WM2Validation.baseline_features(baseline_feature_vec, self.t_steps)
         state = self._simulate_reduced(current_conditions)
         c = np.asarray(current_conditions["I_coeff"])
         n_I = X_BI.shape[1]
@@ -369,7 +302,7 @@ class WM2(WM):
 
     def _optimize_uncertainty_params(self, current_conditions, input_data):
         """Fit sigma_0 and sigma_O after deterministic convergence."""
-        data = self._prepare_fit_data(input_data)
+        data = WM2Validation.fit_data(input_data, self.t_steps)
         state = self._simulate_reduced(current_conditions)
         residual = data["I"] - state["I"]
         local_std = self._local_std(residual)
@@ -400,9 +333,9 @@ class WM2(WM):
         are alternated until improvement is negligible or a candidate degrades
         the fit.  The uncertainty parameters are fitted only afterwards.
         """
-        data = self._prepare_fit_data(input_data)
+        data = WM2Validation.fit_data(input_data, self.t_steps)
         init_cond = WM2Validation.initial_condition(initial_conditions)
-        X_BI, X_BO = self._prepare_baseline_features(baseline_feature_vec)
+        X_BI, X_BO = WM2Validation.baseline_features(baseline_feature_vec, self.t_steps)
 
         mean_I = float(np.mean(data["I"]))
         current = {
@@ -413,7 +346,7 @@ class WM2(WM):
             "B_O": np.full(self.t_steps, mean_I),
             "I_coeff": np.array([0.0, 1.0, 0.0, 0.0, 0.0]),
             "d_coeff": np.array([0.25, 0.0, 0.0, -0.5, 0.0]),
-            "kappa_R": min(1.0, 0.5 / self.dt),
+            "kappa_R": 0.5 / self.dt,
             "sigma_0": self._FIT_EPS,
             "sigma_O": self._FIT_EPS,
             "B_I_weights": None,
