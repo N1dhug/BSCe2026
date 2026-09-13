@@ -1,7 +1,6 @@
 from src.validation.model.BM import BMValidation
 import numpy as np
 
-
 class BM:
     def __init__(self, B, A, T, t_steps):
         B, A, T, t_steps = BMValidation.constructor(B, A, T, t_steps)

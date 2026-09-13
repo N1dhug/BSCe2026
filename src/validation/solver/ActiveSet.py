@@ -1,6 +1,5 @@
 import numpy as np
 
-
 class ActiveSetValidation:
     """Input validation for generic convex quadratic programs."""
 
@@ -40,9 +39,7 @@ class ActiveSetValidation:
         if matrix.ndim == 1:
             matrix = matrix.reshape(1, -1)
         if matrix.ndim != 2 or matrix.shape[1] != n_variables:
-            raise ValueError(
-                f"{name} must be a two-dimensional array with {n_variables} columns."
-            )
+            raise ValueError(f"{name} must be a two-dimensional array with {n_variables} columns.")
         if not np.all(np.isfinite(matrix)):
             raise ValueError(f"{name} must contain finite values.")
         return matrix
@@ -84,20 +81,7 @@ class ActiveSetValidation:
         return values
 
     @classmethod
-    def quadratic_program(
-        cls,
-        hessian,
-        linear,
-        A_ub,
-        b_ub,
-        A_eq,
-        b_eq,
-        lb,
-        ub,
-        x0,
-        tol,
-        max_iter,
-    ):
+    def quadratic_program(cls, hessian, linear, A_ub, b_ub, A_eq, b_eq, lb, ub, x0, tol, max_iter,):
         hessian = np.asarray(hessian, dtype=float)
         if hessian.ndim != 2 or hessian.shape[0] == 0:
             raise ValueError("hessian must be a non-empty square matrix.")
@@ -143,16 +127,4 @@ class ActiveSetValidation:
 
         max_iter = cls._max_iter(max_iter, n_variables)
 
-        return (
-            hessian,
-            linear,
-            A_ub,
-            b_ub,
-            A_eq,
-            b_eq,
-            lb,
-            ub,
-            x0,
-            tol,
-            max_iter,
-        )
+        return (hessian, linear, A_ub, b_ub, A_eq, b_eq, lb, ub, x0, tol, max_iter,)

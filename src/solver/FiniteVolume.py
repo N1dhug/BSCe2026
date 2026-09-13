@@ -2,7 +2,6 @@ import numpy as np
 
 from src.validation.solver.FiniteVolume import FiniteVolume2DValidation
 
-
 class FiniteVolume2D:
     """Generic two-dimensional finite-volume PDE solver.
 
@@ -103,16 +102,9 @@ class FiniteVolume2D:
             current = float(t[n])
             target = float(t[n + 1])
             while current < target - 1e-15:
-                av = FiniteVolume2DValidation.field(
-                    drift_v(current, V, R), density.shape, "drift_v"
-                )
-                ar = FiniteVolume2DValidation.field(
-                    drift_r(current, V, R), density.shape, "drift_r"
-                )
-                g = FiniteVolume2DValidation.field(
-                    diffusion_r(current, V, R), density.shape, "diffusion_r",
-                    nonnegative=True,
-                )
+                av = FiniteVolume2DValidation.field(drift_v(current, V, R), density.shape, "drift_v")
+                ar = FiniteVolume2DValidation.field(drift_r(current, V, R), density.shape, "drift_r")
+                g = FiniteVolume2DValidation.field(diffusion_r(current, V, R), density.shape, "diffusion_r", nonnegative=True,)
                 stable_h = self._stable_step(dv, dr, av, ar, cfl)
                 remaining = target - current
                 h = remaining if not np.isfinite(stable_h) else min(remaining, stable_h)
@@ -121,9 +113,7 @@ class FiniteVolume2D:
 
                 flux_v = self._upwind_flux_v(density, av)
                 flux_r = self._upwind_flux_r(density, ar)
-                advected = density - h * (
-                    np.diff(flux_v, axis=0) / dv + np.diff(flux_r, axis=1) / dr
-                )
+                advected = density - h * (np.diff(flux_v, axis=0) / dv + np.diff(flux_r, axis=1) / dr)
                 advected = np.maximum(advected, 0.0)
                 density = self._implicit_r_diffusion(advected, g, h, dr)
                 density = np.maximum(density, 0.0)
@@ -132,11 +122,4 @@ class FiniteVolume2D:
             history[n + 1] = density
             mass_history[n + 1] = np.sum(density) * dv * dr
 
-        return {
-            "v_grid": v,
-            "r_grid": r,
-            "density": history,
-            "mass": mass_history,
-            "dv": dv,
-            "dr": dr,
-        }
+        return {"v_grid": v, "r_grid": r, "density": history, "mass": mass_history, "dv": dv, "dr": dr,}

@@ -5,7 +5,6 @@ from src.method.FokkerPlanc import WM2FokkerPlanc
 from src.solver.ActiveSet import ActiveSet
 from src.validation.model.WM2 import WM2Validation
 
-
 class WM2(WM):
     """Water Model 2 with reduced internal deterministic dynamics.
 
@@ -128,12 +127,7 @@ class WM2(WM):
                 V[k + 1] = V[k] + self.dt * R[k]
                 R[k + 1] = R[k] + self.dt * R_dot[k]
 
-        return {
-            "t": self.t.copy(), "V": V, "R": R, "R_dot": R_dot,
-            "U": np.asarray(U, dtype=float).copy(), "B_O": np.asarray(B_O, dtype=float).copy(), "B_I": np.asarray(B_I, dtype=float).copy(), "PE": np.asarray(PE, dtype=float).copy(),
-            "P_I": P_I, "P_O": P_O, "P_A": P_A, "O": O, "I": I, "D": D, "A": A,
-            "input_coeff": np.asarray(input_coeff, dtype=float).copy(), "drift_coeff": np.asarray(drift_coeff, dtype=float).copy(),
-        }
+        return {"t": self.t.copy(), "V": V, "R": R, "R_dot": R_dot, "U": np.asarray(U, dtype=float).copy(), "B_O": np.asarray(B_O, dtype=float).copy(), "B_I": np.asarray(B_I, dtype=float).copy(), "PE": np.asarray(PE, dtype=float).copy(), "P_I": P_I, "P_O": P_O, "P_A": P_A, "O": O, "I": I, "D": D, "A": A, "input_coeff": np.asarray(input_coeff, dtype=float).copy(), "drift_coeff": np.asarray(drift_coeff, dtype=float).copy(),}
 
     def deterministic_solver(self, init_cond, parameters):
         init_cond, parameters = WM2Validation.deterministic_inputs(init_cond, parameters)
@@ -315,20 +309,7 @@ class WM2(WM):
         X_BI, X_BO = WM2Validation.baseline_features(baseline_feature_vec, self.t_steps)
 
         mean_I = float(np.mean(data["I"]))
-        current = {
-            "init_cond": init_cond.copy(),
-            "U": data["U"].copy(),
-            "PE": data["PE"].copy(),
-            "B_I": np.full(self.t_steps, mean_I),
-            "B_O": np.full(self.t_steps, mean_I),
-            "I_coeff": np.array([0.0, 1.0, 0.0, 0.0, 0.0]),
-            "d_coeff": np.array([0.25, 0.0, 0.0, -0.5, 0.0]),
-            "kappa_R": 0.5 / self.dt,
-            "sigma_0": self._FIT_EPS,
-            "sigma_O": self._FIT_EPS,
-            "B_I_weights": None,
-            "B_O_weights": None,
-        }
+        current = {"init_cond": init_cond.copy(), "U": data["U"].copy(), "PE": data["PE"].copy(), "B_I": np.full(self.t_steps, mean_I), "B_O": np.full(self.t_steps, mean_I), "I_coeff": np.array([0.0, 1.0, 0.0, 0.0, 0.0]), "d_coeff": np.array([0.25, 0.0, 0.0, -0.5, 0.0]), "kappa_R": 0.5 / self.dt, "sigma_0": self._FIT_EPS, "sigma_O": self._FIT_EPS, "B_I_weights": None, "B_O_weights": None,}
 
         validated_current = WM2Validation.reduced_fit_conditions(current, self.t_steps)
         state = self._solve_deterministic(validated_current["init_cond"], validated_current["U"], validated_current["B_O"], validated_current["B_I"], validated_current["PE"], validated_current["I_coeff"], validated_current["d_coeff"], validated_current["kappa_R"])

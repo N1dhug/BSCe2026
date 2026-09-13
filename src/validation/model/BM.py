@@ -1,6 +1,5 @@
 import numpy as np
 
-
 class BMValidation:
     """Validation rules shared by Battery Model implementations."""
 
@@ -127,9 +126,4 @@ class BMValidation:
 
     @classmethod
     def response_values(cls, Ut, Bt, fXt, gUt):
-        return (
-            cls.bounded_array(Ut, 0.0, 1.0, "U(t)"),
-            cls.bounded_array(Bt, 0.0, 1.0, "B(t)"),
-            cls.bounded_array(fXt, -1.0, 1.0, "f(X)"),
-            cls.bounded_array(gUt, -1.0, 1.0, "g(U)"),
-        )
+        return (cls.bounded_array(Ut, 0.0, 1.0, "U(t)"), cls.bounded_array(Bt, 0.0, 1.0, "B(t)"), cls.bounded_array(fXt, -1.0, 1.0, "f(X)"), cls.bounded_array(gUt, -1.0, 1.0, "g(U)"),)

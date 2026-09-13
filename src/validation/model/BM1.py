@@ -2,7 +2,6 @@ import numpy as np
 
 from src.validation.model.BM import BMValidation
 
-
 class BM1Validation:
     """Validation for BM1 solver and optimizer entry points."""
 

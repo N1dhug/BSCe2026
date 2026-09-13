@@ -1,6 +1,5 @@
 import numpy as np
 
-
 class FiniteVolume2DValidation:
     @staticmethod
     def bounds(values, name):

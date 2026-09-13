@@ -3,7 +3,6 @@ from scipy.optimize import linprog
 
 from src.validation.solver.ActiveSet import ActiveSetValidation
 
-
 class ActiveSet:
     """Active-set solver for convex quadratic programs with linear constraints.
 
@@ -59,15 +58,7 @@ class ActiveSet:
 
     @staticmethod
     def _find_feasible_point(n_variables, G, h, A_eq, b_eq, tol):
-        result = linprog(
-            np.zeros(n_variables, dtype=float),
-            A_ub=G if G.shape[0] else None,
-            b_ub=h if G.shape[0] else None,
-            A_eq=A_eq if A_eq.shape[0] else None,
-            b_eq=b_eq if A_eq.shape[0] else None,
-            bounds=[(None, None)] * n_variables,
-            method="highs",
-        )
+        result = linprog(np.zeros(n_variables, dtype=float), A_ub=G if G.shape[0] else None, b_ub=h if G.shape[0] else None, A_eq=A_eq if A_eq.shape[0] else None, b_eq=b_eq if A_eq.shape[0] else None, bounds=[(None, None)] * n_variables, method="highs",)
         if not result.success:
             raise ValueError("The supplied linear equality, inequality, and bound constraints are infeasible.")
 
@@ -84,10 +75,7 @@ class ActiveSet:
             direction, *_ = np.linalg.lstsq(hessian, -gradient, rcond=None)
             return direction, np.empty(0, dtype=float)
 
-        kkt = np.block(
-            [[hessian, constraints.T],
-             [constraints,np.zeros((constraints.shape[0], constraints.shape[0]), dtype=float)]]
-        )
+        kkt = np.block([[hessian, constraints.T], [constraints,np.zeros((constraints.shape[0], constraints.shape[0]), dtype=float)]])
         rhs = np.concatenate((-gradient, np.zeros(constraints.shape[0], dtype=float)))
         solution, *_ = np.linalg.lstsq(kkt, rhs, rcond=None)
         return solution[:n_variables], solution[n_variables:]
@@ -95,7 +83,7 @@ class ActiveSet:
     @staticmethod
     def solve(hessian,linear,A_ub=None,b_ub=None,A_eq=None, b_eq=None,lb=None,ub=None,x0=None,tol=1e-10,max_iter=None):
         """Solve a convex QP with affine equality/inequality and box constraints."""
-        # Validate and normalize the QP input data
+        # Validate and normalize the QP inputs.
         hessian, linear, A_ub, b_ub, A_eq, b_eq, lb, ub, x0, tol, max_iter = (ActiveSetValidation.quadratic_program(hessian,linear,A_ub,b_ub,A_eq, b_eq,lb,ub,x0,tol, max_iter))
 
         n_variables = hessian.shape[0]
@@ -121,10 +109,7 @@ class ActiveSet:
             active_indices = np.array(sorted(working), dtype=int)
             if active_indices.size:
                 active_inequalities = G[active_indices]
-                constraints = (
-                    np.vstack((A_eq, active_inequalities))
-                    if A_eq.shape[0]
-                    else active_inequalities.copy())
+                constraints = (np.vstack((A_eq, active_inequalities)) if A_eq.shape[0] else active_inequalities.copy())
             else:
                 constraints = A_eq.copy()
 
@@ -137,9 +122,7 @@ class ActiveSet:
                 if constraints.shape[0]:
                     stationarity = stationarity + constraints.T @ multipliers
 
-                stationarity_scale = max(
-                    1.0, float(np.linalg.norm(gradient, ord=np.inf))
-                )
+                stationarity_scale = max(1.0, float(np.linalg.norm(gradient, ord=np.inf)))
                 if (float(np.linalg.norm(stationarity, ord=np.inf)) > 100.0 * tol * stationarity_scale):
                     raise RuntimeError("Active-set KKT solve failed to obtain a stationary direction; ""the convex QP may be unbounded or numerically singular.")
                 
@@ -147,11 +130,7 @@ class ActiveSet:
                     return x
 
                 inequality_multipliers = multipliers[A_eq.shape[0] :]
-                multiplier_scale = max(
-                    1.0,
-                    float(np.max(np.abs(inequality_multipliers))),
-                    float(np.linalg.norm(gradient, ord=np.inf)),
-                )
+                multiplier_scale = max(1.0, float(np.max(np.abs(inequality_multipliers))), float(np.linalg.norm(gradient, ord=np.inf)),)
                 worst = int(np.argmin(inequality_multipliers))
                 if inequality_multipliers[worst] >= -tol * multiplier_scale:
                     return x
@@ -179,8 +158,6 @@ class ActiveSet:
                 working.add(int(blocking))
 
             if not ActiveSet._is_feasible(x, G, h, A_eq, b_eq, 100.0 * tol):
-                raise RuntimeError(
-                    "Active-set iteration lost feasibility beyond numerical tolerance."
-                )
+                raise RuntimeError("Active-set iteration lost feasibility beyond numerical tolerance.")
 
         raise RuntimeError("Active-set convex-QP solver did not converge.")

@@ -1,6 +1,5 @@
 import numpy as np
 
-
 class EulerMaruyamaValidation:
     """Input validation for the generic Euler-Maruyama method."""
 

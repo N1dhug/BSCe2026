@@ -4,7 +4,6 @@ from src.model.base.WM import WM
 from src.method.FokkerPlanc import BM1FokkerPlanc
 from src.validation.model.WM1 import WM1Validation
 
-
 class WM1(WM):
     """Updated Water Model 1.
 
@@ -34,9 +33,7 @@ class WM1(WM):
 
     @staticmethod
     def reduced_drift_coefficients(BtO, BtI, alpha, beta):
-        BtO, BtI, alpha, beta = WM1Validation.reduced_drift_inputs(
-            BtO, BtI, alpha, beta
-        )
+        BtO, BtI, alpha, beta = WM1Validation.reduced_drift_inputs(BtO, BtI, alpha, beta)
         o_bar = beta[0] * BtO + beta[2]
         i_bar = alpha[0] * BtI + alpha[1] + alpha[2] * o_bar + alpha[3]
         d0 = i_bar - o_bar
@@ -82,24 +79,16 @@ class WM1(WM):
         V[0] = V0
 
         for k, tk in enumerate(self.t):
-            (U[k], BO[k], BI[k], PE[k], P_I[k], P_O[k], P_A[k], O[k], I[k], A[k]) = self._evaluate_step(
-                tk, V[k], parameters
-            )
+            (U[k], BO[k], BI[k], PE[k], P_I[k], P_O[k], P_A[k], O[k], I[k], A[k]) = self._evaluate_step(tk, V[k], parameters)
             R[k] = I[k] - O[k] + theta * R_prev
             if k < self.t_steps - 1:
                 V[k + 1] = V[k] + self.dt * R[k]
             R_prev = R[k]
 
-        return {
-            "t": self.t.copy(), "V": V, "R": R, "U": U, "B_O": BO,
-            "B_I": BI, "PE": PE, "P_I": P_I, "P_O": P_O, "P_A": P_A,
-            "O": O, "I": I, "A": A,
-        }
+        return {"t": self.t.copy(), "V": V, "R": R, "U": U, "B_O": BO, "B_I": BI, "PE": PE, "P_I": P_I, "P_O": P_O, "P_A": P_A, "O": O, "I": I, "A": A,}
 
     def fokker_planc_solver(self, init_cond, parameters, sigma, degree=20, e_bounds=(-1.5, 1.5), x_steps=301, cfl=0.45):
-        init_cond, parameters, sigma, e_bounds = WM1Validation.fokker_planc_inputs(
-            init_cond, parameters, sigma, e_bounds
-        )
+        init_cond, parameters, sigma, e_bounds = WM1Validation.fokker_planc_inputs(init_cond, parameters, sigma, e_bounds)
         alpha = parameters["alpha"]
         beta = parameters["beta"]
         e_min, e_max = e_bounds
@@ -118,10 +107,7 @@ class WM1(WM):
             return np.zeros_like(np.asarray(u)) + sigma / span
 
         u0 = (0.0 - e_min) / span
-        u_grid, density_u, coefficients = self.fp.solve(
-            self.t, [u0], drift_u, diffusion_u,
-            degree=degree, x_steps=x_steps, cfl=cfl,
-        )
+        u_grid, density_u, coefficients = self.fp.solve(self.t, [u0], drift_u, diffusion_u, degree=degree, x_steps=x_steps, cfl=cfl,)
 
         e_grid = e_min + span * u_grid
         density_e = density_u / span
@@ -137,9 +123,5 @@ class WM1(WM):
             upper_violation[k] = np.sum(density_e[k, e_grid > 1.0 - mean[k]]) * de
 
         result = dict(mean_result)
-        result.update({
-            "e_grid": e_grid, "density_e": density_e, "coefficients": coefficients,
-            "error_mean": error_mean, "error_variance": error_variance,
-            "lower_violation": lower_violation, "upper_violation": upper_violation,
-            "sigma": sigma, "e_bounds": (e_min, e_max)})
+        result.update({"e_grid": e_grid, "density_e": density_e, "coefficients": coefficients, "error_mean": error_mean, "error_variance": error_variance, "lower_violation": lower_violation, "upper_violation": upper_violation, "sigma": sigma, "e_bounds": (e_min, e_max)})
         return result

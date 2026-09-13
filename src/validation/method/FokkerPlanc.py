@@ -3,7 +3,6 @@ import numpy as np
 from src.validation.model.WM2 import WM2Validation
 from src.validation.solver.FiniteVolume import FiniteVolume2DValidation
 
-
 class BM1FokkerPlancValidation:
     """Input and numerical-state validation for the Fokker-Planck method."""
 
@@ -175,37 +174,19 @@ class BM1FokkerPlancValidation:
             raise RuntimeError("Fokker-Planck method produced a non-positive substep.")
         return float(h)
 
-
 class WM2FokkerPlancValidation:
     @classmethod
-    def solve_inputs(
-        cls,
-        t,
-        init_cond,
-        parameters,
-        initial_density,
-        v_bounds,
-        r_bounds,
-        v_steps,
-        r_steps,
-        cfl,
-    ):
+    def solve_inputs(cls, t, init_cond, parameters, initial_density, v_bounds, r_bounds, v_steps, r_steps, cfl,):
         t = FiniteVolume2DValidation.time_grid(t)
         init_cond, parameters = WM2Validation.fp_inputs(init_cond, parameters)
         if initial_density is None:
-            raise ValueError(
-                "WM2 requires initial_density to be supplied by the executable layer."
-            )
+            raise ValueError("WM2 requires initial_density to be supplied by the executable layer.")
         if not callable(initial_density):
             array = np.asarray(initial_density, dtype=float)
             if array.ndim != 2 or array.size == 0:
-                raise ValueError(
-                    "initial_density must be a callable or a non-empty 2D array."
-                )
+                raise ValueError("initial_density must be a callable or a non-empty 2D array.")
             if not np.all(np.isfinite(array)) or np.any(array < 0.0):
-                raise ValueError(
-                    "initial_density arrays must contain finite non-negative values."
-                )
+                raise ValueError("initial_density arrays must contain finite non-negative values.")
             initial_density = array
 
         v_bounds = FiniteVolume2DValidation.bounds(v_bounds, "v_bounds")
@@ -213,14 +194,4 @@ class WM2FokkerPlancValidation:
         v_steps = FiniteVolume2DValidation.integer(v_steps, "v_steps")
         r_steps = FiniteVolume2DValidation.integer(r_steps, "r_steps")
         cfl = FiniteVolume2DValidation.cfl(cfl)
-        return (
-            t,
-            init_cond,
-            parameters,
-            initial_density,
-            v_bounds,
-            r_bounds,
-            v_steps,
-            r_steps,
-            cfl,
-        )
+        return (t, init_cond, parameters, initial_density, v_bounds, r_bounds, v_steps, r_steps, cfl,)

@@ -1,6 +1,5 @@
 import numpy as np
 
-
 class WM1Validation:
     """Validation rules for the updated Water Model 1."""
 
@@ -59,11 +58,7 @@ class WM1Validation:
 
     @classmethod
     def coefficients(cls, alpha, beta, gamma):
-        return (
-            cls.simplex(alpha, 4, "alpha"),
-            cls.simplex(beta, 3, "beta"),
-            cls.simplex(gamma, 4, "gamma"),
-        )
+        return (cls.simplex(alpha, 4, "alpha"), cls.simplex(beta, 3, "beta"), cls.simplex(gamma, 4, "gamma"),)
 
     @classmethod
     def parameters(cls, parameters):
@@ -80,9 +75,7 @@ class WM1Validation:
             if not callable(validated[name]):
                 raise TypeError(f"parameters['{name}'] must be callable.")
 
-        alpha, beta, gamma = cls.coefficients(
-            validated["alpha"], validated["beta"], validated["gamma"]
-        )
+        alpha, beta, gamma = cls.coefficients(validated["alpha"], validated["beta"], validated["gamma"])
         validated["alpha"] = alpha
         validated["beta"] = beta
         validated["gamma"] = gamma
