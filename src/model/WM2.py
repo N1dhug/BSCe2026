@@ -519,6 +519,7 @@ class WM2(WM):
             ridge=self._FIT_RIDGE,
         )
 
+        WM2Validation.expected_equilibrium_parameters(alpha, beta)
         selected_input, selected_drift = self.reduced_coefficients(
             alpha, beta
         )
@@ -538,6 +539,8 @@ class WM2(WM):
         updated["beta"] = beta
         updated["reduced_fit_input_coeff"] = current["I_coeff"].copy()
         updated["reduced_fit_d_coeff"] = current["d_coeff"].copy()
+        updated["I_coeff"] = selected_input
+        updated["d_coeff"] = selected_drift
         updated["selected_input_coeff"] = selected_input
         updated["selected_d_coeff"] = selected_drift
         updated["reduced_fit_state"] = reduced_state
