@@ -232,72 +232,49 @@ class WM2Validation(WM1Validation):
         return np.asarray(rows, dtype=float), np.asarray(rhs, dtype=float)
 
     @classmethod
-    def alpha_beta_reconstruction_equalities(cls, input_coeff, drift_coeff, tol=1e-8):
-        """Build exact linear equalities for alpha/beta reconstruction.
-
-        The variable ordering is
-
-            x = [alpha_B, alpha_V, alpha_O, alpha_U,
-                 beta_B, beta_V, beta_U].
-
-        For an exactly representable reduced WM2 system, beta is fixed by the
-        difference between the reduced input and drift maps:
-
-            beta_B = c_BO - d_BO,
-            beta_V = c_V  - d_V,
-            beta_U = c_0  - d_0 = d_U - c_U.
-
-        Once beta is fixed, both reduced maps are affine in alpha, so exact
-        reconstruction is an equality-constrained convex QP.
-        """
+    def structural_recovery_inputs(cls, input_coeff, drift_coeff, tol=1e-8):
+        """Validate exact structural recovery and return the implied beta."""
         input_coeff, drift_coeff = cls.reduced_coefficients(input_coeff, drift_coeff)
         tol = cls._finite_scalar(tol, "tol")
         if tol <= 0.0:
             raise ValueError("tol must be positive.")
 
-        beta = np.array([input_coeff[2] - drift_coeff[2], input_coeff[3] - drift_coeff[3], input_coeff[0] - drift_coeff[0],], dtype=float,)
-
+        beta = np.array([input_coeff[2] - drift_coeff[2], input_coeff[3] - drift_coeff[3], input_coeff[0] - drift_coeff[0]], dtype=float)
         if not np.isclose(drift_coeff[1], input_coeff[1], atol=tol, rtol=0.0):
-            raise ValueError("Reduced WM2 fit is not exactly representable: " "d_BI must equal i_BI.")
-        if not np.isclose(drift_coeff[4] - input_coeff[4], beta[2], atol=tol, rtol=0.0,):
-            raise ValueError("Reduced WM2 fit is not exactly representable: " "d_U - i_U must equal beta_U = i_0 - d_0.")
+            raise ValueError("Reduced WM2 fit is not exactly representable: d_BI must equal c_BI.")
+        if not np.isclose(drift_coeff[4] - input_coeff[4], beta[2], atol=tol, rtol=0.0):
+            raise ValueError("Reduced WM2 fit is not exactly representable: d_U - c_U must equal beta_U = c_0 - d_0.")
         if np.any(beta < -tol) or np.any(beta > 1.0 + tol):
-            raise ValueError("Reduced WM2 fit is not exactly representable by simplex beta: " "the implied beta coefficients lie outside [0, 1].")
+            raise ValueError("Reduced WM2 fit is not exactly representable by simplex beta: the implied beta coefficients lie outside [0, 1].")
         if not np.isclose(np.sum(beta), 1.0, atol=tol, rtol=0.0):
-            raise ValueError("Reduced WM2 fit is not exactly representable by simplex beta: " "the implied beta coefficients do not sum to one.")
+            raise ValueError("Reduced WM2 fit is not exactly representable by simplex beta: the implied beta coefficients do not sum to one.")
 
         beta = np.clip(beta, 0.0, 1.0)
-        b_B, b_V, b_U = beta
+        beta /= np.sum(beta)
+        if beta[0] <= tol and beta[1] <= tol:
+            raise ValueError("WM2 structural recovery is non-identifiable for beta = [0, 0, 1]: alpha_O and alpha_U cannot be recovered separately.")
+        return input_coeff, drift_coeff, beta, tol
 
-        rows = []
-        rhs = []
+    @classmethod
+    def recovered_structural_coefficients(cls, alpha, beta, tol=1e-8):
+        """Validate and normalize directly recovered alpha/beta coefficients."""
+        tol = cls._finite_scalar(tol, "tol")
+        if tol <= 0.0:
+            raise ValueError("tol must be positive.")
 
-        # Fix beta to the values implied by the reduced maps.
-        for j, value in enumerate(beta):
-            row = np.zeros(7, dtype=float)
-            row[4 + j] = 1.0
-            rows.append(row)
-            rhs.append(value)
+        alpha = cls.vector(alpha, 4, "recovered alpha")
+        beta = cls.vector(beta, 3, "recovered beta")
+        for values, name in ((alpha, "recovered alpha"), (beta, "recovered beta")):
+            if np.any(values < -tol) or np.any(values > 1.0 + tol):
+                raise ValueError(f"{name} coefficients must lie in [0, 1].")
+            if not np.isclose(np.sum(values), 1.0, atol=tol, rtol=0.0):
+                raise ValueError(f"{name} coefficients must sum to 1.")
 
-        # Enforce simplex normalization for alpha and beta.
-        rows.append(np.array([1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]))
-        rhs.append(1.0)
-        rows.append(np.array([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]))
-        rhs.append(1.0)
-
-        # Enforce the exact reduced input map c = [c0, c_BI, c_BO, c_V, c_U].
-        input_rows = (np.array([0.0, 1.0, b_U, 1.0, 0.0, 0.0, 0.0]), np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), np.array([0.0, 0.0, b_B, 0.0, 0.0, 0.0, 0.0]), np.array([0.0, -1.0, b_V, 0.0, 0.0, 0.0, 0.0]), np.array([0.0, 0.0, -b_U, -1.0, 0.0, 0.0, 0.0]),)
-        for row, value in zip(input_rows, input_coeff):
-            rows.append(row)
-            rhs.append(value)
-
-        # Enforce the exact reduced drift map with constant beta terms moved to the right-hand side.
-        drift_rhs = np.array([drift_coeff[0] + b_U, drift_coeff[1], drift_coeff[2] + b_B, drift_coeff[3] + b_V, drift_coeff[4] - b_U,], dtype=float,)
-        for row, value in zip(input_rows, drift_rhs):
-            rows.append(row)
-            rhs.append(value)
-
-        return np.asarray(rows, dtype=float), np.asarray(rhs, dtype=float)
+        alpha = np.clip(alpha, 0.0, 1.0)
+        beta = np.clip(beta, 0.0, 1.0)
+        alpha /= np.sum(alpha)
+        beta /= np.sum(beta)
+        return alpha, beta
 
     @classmethod
     def exact_reduced_match(cls, selected_input, selected_drift, target_input, target_drift, tol=1e-7,):
