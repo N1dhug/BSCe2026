@@ -3,6 +3,7 @@ import numpy as np
 class FiniteVolume2DValidation:
     @staticmethod
     def bounds(values, name):
+        # Verify inputs
         values = np.asarray(values, dtype=float).reshape(-1)
         if values.size != 2 or not np.all(np.isfinite(values)):
             raise ValueError(f"{name} must contain two finite values.")
@@ -13,6 +14,7 @@ class FiniteVolume2DValidation:
 
     @staticmethod
     def integer(value, name, minimum=3):
+        # Verify inputs
         if isinstance(value, (bool, np.bool_)):
             raise TypeError(f"{name} must be an integer.")
         ivalue = int(value)
@@ -22,6 +24,7 @@ class FiniteVolume2DValidation:
 
     @staticmethod
     def cfl(value):
+        # Verify inputs
         value = float(value)
         if not np.isfinite(value) or not 0.0 < value <= 1.0:
             raise ValueError("cfl must lie in (0, 1].")
@@ -29,6 +32,7 @@ class FiniteVolume2DValidation:
 
     @staticmethod
     def time_grid(t):
+        # Verify inputs
         t = np.asarray(t, dtype=float).reshape(-1)
         if t.size < 2 or not np.all(np.isfinite(t)) or np.any(np.diff(t) <= 0.0):
             raise ValueError("t must be a strictly increasing finite time grid.")
@@ -36,6 +40,7 @@ class FiniteVolume2DValidation:
 
     @staticmethod
     def density(density, shape, dv, dr):
+        # Verify inputs
         density = np.asarray(density, dtype=float)
         if density.shape != shape:
             raise ValueError(f"initial density must have shape {shape}.")
@@ -48,6 +53,7 @@ class FiniteVolume2DValidation:
 
     @staticmethod
     def field(values, shape, name, nonnegative=False):
+        # Verify inputs
         values = np.asarray(values, dtype=float)
         if values.shape != shape:
             try:

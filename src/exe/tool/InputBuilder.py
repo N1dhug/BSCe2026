@@ -7,21 +7,25 @@ class InputBuilder:
 
     @staticmethod
     def energy(energy_data):
+        # Build input function
         t_e, e = energy_data
         return interp1d(t_e, e, kind="linear", bounds_error=False, fill_value="extrapolate")
 
     @staticmethod
     def price(price_data):
+        # Build input function
         t_p, p = price_data
         return interp1d(t_p, p, kind="previous", bounds_error=False, fill_value="extrapolate")
 
     @staticmethod
     def md(poi_x, pr_x, y_interval=(1.0, -1.0)):
+        # Build input function
         interp_y_vals = np.full(len(pr_x), y_interval[0]) - np.cumsum(pr_x)
         return PchipInterpolator(poi_x, interp_y_vals)
 
     @staticmethod
     def md_vals(kappa, n):
+        # Build input function
         poi_x = np.linspace(0.0, 1.0, n)
         F = 0.5 * (1.0 + np.tanh(kappa * (poi_x - 0.5)) / np.tanh(kappa / 2.0))
         F[0] = 0.0
@@ -41,6 +45,7 @@ class InputBuilder:
         gaussian_mixture. The finite-volume solver performs the final discrete
         normalization on its computational grid.
         """
+        # Build initial density
         kind = str(distribution).strip().lower().replace("-", "_")
 
         if kind in {"gaussian", "normal"}:
@@ -49,6 +54,7 @@ class InputBuilder:
             norm = 1.0 / (2.0 * np.pi * std[0] * std[1])
 
             def density(V, R):
+                # Evaluate density
                 exponent = -0.5 * (np.square((V - mean[0]) / std[0]) + np.square((R - mean[1]) / std[1]))
                 return norm * np.exp(exponent)
 
@@ -60,6 +66,7 @@ class InputBuilder:
             norm = 1.0 / ((v_range[1] - v_range[0]) * (r_range[1] - r_range[0]))
 
             def density(V, R):
+                # Evaluate density
                 inside = ((V >= v_range[0]) & (V <= v_range[1]) & (R >= r_range[0]) & (R <= r_range[1]))
                 return norm * inside.astype(float)
 
@@ -72,6 +79,7 @@ class InputBuilder:
             r_shape = InputBuilder._positive_pair(kwargs.get("r_shape"), "r_shape")
 
             def scaled_beta(x, bounds, shape):
+                # Evaluate scaled beta density
                 lo, hi = bounds
                 z = (x - lo) / (hi - lo)
                 inside = (z > 0.0) & (z < 1.0)
@@ -83,6 +91,7 @@ class InputBuilder:
                 return result
 
             def density(V, R):
+                # Evaluate density
                 return scaled_beta(V, v_range, v_shape) * scaled_beta(R, r_range, r_shape)
 
             return density
@@ -113,6 +122,7 @@ class InputBuilder:
                 weights = weights / total
 
             def scaled_beta(x, bounds, shape):
+                # Evaluate scaled beta density
                 lo, hi = bounds
                 z = (x - lo) / (hi - lo)
                 inside = (z > 0.0) & (z < 1.0)
@@ -124,6 +134,7 @@ class InputBuilder:
                 return result
 
             def density(V, R):
+                # Evaluate density
                 result = np.zeros(np.broadcast(V, R).shape, dtype=float)
                 for weight, v_shape, r_shape in zip(weights, v_shapes, r_shapes):
                     result += weight * scaled_beta(V, v_range, v_shape) * scaled_beta(R, r_range, r_shape)
@@ -156,6 +167,7 @@ class InputBuilder:
             norms = 1.0 / (2.0 * np.pi * stds[:, 0] * stds[:, 1])
 
             def density(V, R):
+                # Evaluate density
                 result = np.zeros(np.broadcast(V, R).shape, dtype=float)
                 for weight, mean, std, norm in zip(weights, means, stds, norms):
                     exponent = -0.5 * (np.square((V - mean[0]) / std[0]) + np.square((R - mean[1]) / std[1]))
@@ -168,6 +180,7 @@ class InputBuilder:
 
     @staticmethod
     def _pair(values, name):
+        # Verify inputs
         array = np.asarray(values, dtype=float).reshape(-1)
         if array.size != 2 or not np.all(np.isfinite(array)):
             raise ValueError(f"{name} must contain exactly two finite values.")
@@ -175,6 +188,7 @@ class InputBuilder:
 
     @staticmethod
     def _positive_pair(values, name):
+        # Verify inputs
         pair = InputBuilder._pair(values, name)
         if pair[0] <= 0.0 or pair[1] <= 0.0:
             raise ValueError(f"{name} must contain strictly positive values.")
@@ -182,6 +196,7 @@ class InputBuilder:
 
     @staticmethod
     def _ordered_pair(values, name):
+        # Verify inputs
         pair = InputBuilder._pair(values, name)
         if pair[0] >= pair[1]:
             raise ValueError(f"{name} must satisfy lower < upper.")

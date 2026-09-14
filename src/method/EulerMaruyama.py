@@ -7,6 +7,7 @@ class EulerMaruyama:
 
     @staticmethod
     def apply_boundary(values, boundary):
+        # Apply boundary condition
         values, boundary = EulerMaruyamaValidation.boundary_values(values, boundary)
         if boundary == "reflect":
             reflected = np.mod(values, 2.0)
@@ -17,6 +18,7 @@ class EulerMaruyama:
 
     def solve_paths(self, t, init_cond, drift, diffusion, n_paths=1, seed=None, boundary="reflect"):
         """Solve dX = drift(t,X)dt + diffusion(t,X)dW on a supplied time grid."""
+        # Solve stochastic paths
         t, x0, drift, diffusion, n_paths, seed, boundary = EulerMaruyamaValidation.solve_inputs(t, init_cond, drift, diffusion, n_paths, seed, boundary)
 
         rng = np.random.default_rng(seed)

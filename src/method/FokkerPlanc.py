@@ -16,6 +16,7 @@ class BM1FokkerPlanc:
 
     @staticmethod
     def beta_basis(x, degree):
+        # Build beta basis
         x, degree = BM1FokkerPlancValidation.beta_basis_inputs(x, degree)
         m = np.arange(degree + 1, dtype=float)[:, None]
         x_row = x[None, :]
@@ -25,11 +26,13 @@ class BM1FokkerPlanc:
 
     @staticmethod
     def _normalise_basis_discretely(basis, dx):
+        # Normalize basis
         basis, dx, masses = BM1FokkerPlancValidation.basis_normalisation_inputs(basis, dx)
         return basis / masses[:, None]
 
     @staticmethod
     def initial_coefficients(init_cond, degree):
+        # Initialize mixture coefficients
         x0, degree = BM1FokkerPlancValidation.initial_coefficients_inputs(init_cond, degree)
         component_means = (np.arange(degree + 1, dtype=float) + 1.0) / (degree + 2.0)
         coefficients = np.zeros(degree + 1, dtype=float)
@@ -52,12 +55,14 @@ class BM1FokkerPlanc:
 
     @staticmethod
     def mixture_density(coefficients, basis):
+        # Evaluate mixture density
         coefficients, basis = BM1FokkerPlancValidation.mixture_inputs(coefficients, basis)
         return coefficients @ basis
 
     @staticmethod
     def project_density(density, basis, dx):
         """Project p onto a nonnegative, unit-mass Beta mixture."""
+        # Project density
         density, basis, dx = BM1FokkerPlancValidation.projection_inputs(density, basis, dx)
         scale = np.sqrt(dx)
         matrix = basis.T * scale
@@ -73,6 +78,7 @@ class BM1FokkerPlanc:
 
     @staticmethod
     def _normalise_density(density, dx):
+        # Normalize density
         density, dx = BM1FokkerPlancValidation.density_inputs(density, dx)
         density = np.maximum(density, 0.0)
         mass = BM1FokkerPlancValidation.positive_mass(np.sum(density) * dx)
@@ -80,6 +86,7 @@ class BM1FokkerPlanc:
 
     @staticmethod
     def _flux_rhs(x, density, drift_values, diffusion_values):
+        # Compute flux update
         x, density, drift_values, diffusion_values = BM1FokkerPlancValidation.flux_inputs(x, density, drift_values, diffusion_values)
         dx = float(x[1] - x[0])
         diffusion_squared = np.square(diffusion_values)
@@ -96,6 +103,7 @@ class BM1FokkerPlanc:
 
     @staticmethod
     def _stable_step(dx, drift_values, diffusion_values, cfl):
+        # Compute stable time step
         dx = BM1FokkerPlancValidation.positive_scalar(dx, "dx")
         cfl = BM1FokkerPlancValidation.cfl(cfl)
         drift_values = BM1FokkerPlancValidation.field_values(drift_values, np.asarray(drift_values).shape, "drift")
@@ -108,6 +116,7 @@ class BM1FokkerPlanc:
 
     def solve(self, t, init_cond, drift, diffusion, degree=12, x_steps=201, cfl=0.45):
         """Solve the one-dimensional Fokker-Planck equation."""
+        # Solve Fokker-Planck system
         t, x0, drift, diffusion, degree, x_steps, cfl = BM1FokkerPlancValidation.solve_inputs(t, init_cond, drift, diffusion, degree, x_steps, cfl)
 
         dx = 1.0 / x_steps
@@ -148,9 +157,11 @@ class WM2FokkerPlanc:
     """WM2-specific 2D Fokker-Planck construction and post-processing."""
 
     def __init__(self, solver=None):
+        # Initialize solver
         self.solver = FiniteVolume2D() if solver is None else solver
 
     def solve(self, t, init_cond, parameters, initial_density, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
+        # Solve Fokker-Planck system
         (t, init_cond, parameters, initial_density, v_bounds, r_bounds, v_steps, r_steps, cfl,) = WM2FokkerPlancValidation.solve_inputs(t, init_cond, parameters, initial_density, v_bounds, r_bounds, v_steps, r_steps, cfl,)
         beta = parameters["beta"]
         d = parameters["d_coeff"]
@@ -159,6 +170,7 @@ class WM2FokkerPlanc:
         sigma_O = parameters["sigma_O"]
 
         def fields(time, V):
+            # Evaluate model fields
             U = float(parameters["U"](time))
             B_O = float(parameters["B_O"](time))
             B_I = float(parameters["B_I"](time))
@@ -167,13 +179,16 @@ class WM2FokkerPlanc:
             return D, O
 
         def drift_v(time, V, R):
+            # Evaluate volume drift
             return R
 
         def drift_r(time, V, R):
+            # Evaluate rate drift
             D, _ = fields(time, V)
             return kappa_R * (D - R)
 
         def diffusion_r(time, V, R):
+            # Evaluate rate diffusion
             _, O = fields(time, V)
             g = WM2Validation.diffusion_scale(sigma_0 + sigma_O * O)
             return np.broadcast_to(g, R.shape)

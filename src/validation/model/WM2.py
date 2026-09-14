@@ -8,6 +8,7 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def parameters(cls, parameters):
+        # Verify inputs
         validated = super().parameters(parameters)
         validated.pop("theta", None)
         validated["kappa_R"] = cls._finite_scalar(parameters.get("kappa_R"), "kappa_R")
@@ -24,6 +25,7 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def initial_condition(cls, init_cond, allow_rate=True):
+        # Verify inputs
         values = np.asarray(init_cond, dtype=float).reshape(-1)
         if values.size != 2:
             raise ValueError("WM2 init_cond must contain exactly [V0, R0].")
@@ -35,18 +37,22 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def deterministic_inputs(cls, init_cond, parameters):
+        # Verify inputs
         return cls.initial_condition(init_cond), cls.parameters(parameters)
 
     @classmethod
     def reduction_inputs(cls, alpha, beta):
+        # Verify inputs
         return (cls.simplex(alpha, 4, "alpha"), cls.simplex(beta, 3, "beta"),)
 
     @classmethod
     def reduced_coefficients(cls, input_coeff, drift_coeff):
+        # Verify inputs
         return (cls.vector(input_coeff, 5, "input_coeff"), cls.vector(drift_coeff, 5, "drift_coeff"),)
 
     @classmethod
     def expected_equilibrium_parameters(cls, alpha, beta, tol=1e-10):
+        # Verify equilibrium conditions
         alpha, beta = cls.reduction_inputs(alpha, beta)
         dV = -alpha[1] - (1.0 - alpha[2]) * beta[1]
         cls.stable_drift_coefficient(dV, tol=tol)
@@ -65,6 +71,7 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def stable_drift_coefficient(cls, dV, tol=1e-10):
+        # Verify stability
         dV = cls._finite_scalar(dV, "d_V")
         if dV >= -tol:
             raise ValueError("WM2 requires d_V < 0 so the expected equilibrium is stable.")
@@ -72,6 +79,7 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def fit_data(cls, input_data, t_steps):
+        # Verify inputs
         if not isinstance(input_data, dict):
             raise TypeError("input_data must be a dictionary.")
         if "I" not in input_data or "U" not in input_data:
@@ -80,6 +88,7 @@ class WM2Validation(WM1Validation):
         t_steps = cls._integer(t_steps, "t_steps", 2)
 
         def fit_vector(value, name):
+            # Verify inputs
             vector = np.asarray(value, dtype=float).reshape(-1)
             if vector.size != t_steps:
                 raise ValueError(f"{name} must contain exactly {t_steps} samples.")
@@ -99,6 +108,7 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def baseline_features(cls, baseline_feature_vec, t_steps):
+        # Verify inputs
         t_steps = cls._integer(t_steps, "t_steps", 2)
 
         if isinstance(baseline_feature_vec, dict):
@@ -130,6 +140,7 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def reduced_fit_conditions(cls, current_conditions, t_steps):
+        # Verify inputs
         if not isinstance(current_conditions, dict):
             raise TypeError("current_conditions must be a dictionary.")
 
@@ -143,6 +154,7 @@ class WM2Validation(WM1Validation):
         I_coeff, d_coeff = cls.reduced_coefficients(current_conditions["I_coeff"], current_conditions["d_coeff"])
 
         def trajectory(value, name, normalized=False):
+            # Verify inputs
             vector = np.asarray(value, dtype=float).reshape(-1)
             if vector.size != t_steps:
                 raise ValueError(f"{name} must contain exactly {t_steps} samples.")
@@ -164,6 +176,7 @@ class WM2Validation(WM1Validation):
 
     @staticmethod
     def scaled_equilibrium_constraints():
+        # Build constraints
         rows = []
         rhs = []
         for B_I, B_O, U in itertools.product((0.0, 1.0), repeat=3):
@@ -180,6 +193,7 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def alpha_equilibrium_constraints(cls, beta, stability_eps=1e-8):
+        # Build constraints
         beta = cls.simplex(beta, 3, "beta")
         stability_eps = cls._finite_scalar(stability_eps, "stability_eps")
         if stability_eps <= 0.0:
@@ -205,6 +219,7 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def beta_equilibrium_constraints(cls, alpha, stability_eps=1e-8):
+        # Build constraints
         alpha = cls.simplex(alpha, 4, "alpha")
         stability_eps = cls._finite_scalar(stability_eps, "stability_eps")
         if stability_eps <= 0.0:
@@ -234,6 +249,7 @@ class WM2Validation(WM1Validation):
     @classmethod
     def structural_recovery_inputs(cls, input_coeff, drift_coeff, tol=1e-8):
         """Validate exact structural recovery and return the implied beta."""
+        # Verify structural recovery
         input_coeff, drift_coeff = cls.reduced_coefficients(input_coeff, drift_coeff)
         tol = cls._finite_scalar(tol, "tol")
         if tol <= 0.0:
@@ -258,6 +274,7 @@ class WM2Validation(WM1Validation):
     @classmethod
     def recovered_structural_coefficients(cls, alpha, beta, tol=1e-8):
         """Validate and normalize directly recovered alpha/beta coefficients."""
+        # Verify structural recovery
         tol = cls._finite_scalar(tol, "tol")
         if tol <= 0.0:
             raise ValueError("tol must be positive.")
@@ -278,6 +295,7 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def exact_reduced_match(cls, selected_input, selected_drift, target_input, target_drift, tol=1e-7,):
+        # Verify structural recovery
         selected_input, selected_drift = cls.reduced_coefficients(selected_input, selected_drift)
         target_input, target_drift = cls.reduced_coefficients(target_input, target_drift)
         tol = cls._finite_scalar(tol, "tol")
@@ -292,6 +310,7 @@ class WM2Validation(WM1Validation):
 
     @staticmethod
     def diffusion_scale(values):
+        # Verify diffusion scale
         values = np.asarray(values, dtype=float)
         if not np.all(np.isfinite(values)):
             raise ValueError("WM2 diffusion scale must be finite.")
@@ -301,6 +320,7 @@ class WM2Validation(WM1Validation):
 
     @classmethod
     def fp_inputs(cls, init_cond, parameters):
+        # Verify inputs
         init_cond = cls.initial_condition(init_cond)
         parameters = cls.parameters(parameters)
         if "d_coeff" not in parameters:

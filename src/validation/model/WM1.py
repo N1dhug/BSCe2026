@@ -5,6 +5,7 @@ class WM1Validation:
 
     @staticmethod
     def _finite_scalar(value, name):
+        # Verify inputs
         array = np.asarray(value, dtype=float)
         if array.size != 1:
             raise ValueError(f"{name} must be a scalar.")
@@ -15,6 +16,7 @@ class WM1Validation:
 
     @staticmethod
     def _integer(value, name, minimum):
+        # Verify inputs
         if isinstance(value, (bool, np.bool_)):
             raise TypeError(f"{name} must be an integer.")
         try:
@@ -29,6 +31,7 @@ class WM1Validation:
 
     @classmethod
     def constructor(cls, T, t_steps):
+        # Verify inputs
         interval = np.asarray(T, dtype=float).reshape(-1)
         if interval.size != 2:
             raise ValueError("T must contain exactly [t_start, t_end].")
@@ -40,6 +43,7 @@ class WM1Validation:
 
     @staticmethod
     def vector(values, length, name):
+        # Verify inputs
         vector = np.asarray(values, dtype=float).reshape(-1)
         if vector.size != length:
             raise ValueError(f"{name} must contain {length} entries.")
@@ -49,6 +53,7 @@ class WM1Validation:
 
     @classmethod
     def simplex(cls, values, length, name, tol=1e-10):
+        # Verify inputs
         vector = cls.vector(values, length, name)
         if np.any(vector < -tol) or np.any(vector > 1.0 + tol):
             raise ValueError(f"{name} coefficients must lie in [0, 1].")
@@ -58,10 +63,12 @@ class WM1Validation:
 
     @classmethod
     def coefficients(cls, alpha, beta, gamma):
+        # Verify inputs
         return (cls.simplex(alpha, 4, "alpha"), cls.simplex(beta, 3, "beta"), cls.simplex(gamma, 4, "gamma"),)
 
     @classmethod
     def parameters(cls, parameters):
+        # Verify inputs
         if not isinstance(parameters, dict):
             raise TypeError("parameters must be a dictionary.")
 
@@ -84,6 +91,7 @@ class WM1Validation:
 
     @classmethod
     def initial_condition(cls, init_cond, allow_rate=True):
+        # Verify inputs
         values = np.asarray(init_cond, dtype=float).reshape(-1)
         allowed_sizes = (1, 2) if allow_rate else (1,)
         if values.size not in allowed_sizes:
@@ -98,6 +106,7 @@ class WM1Validation:
 
     @classmethod
     def signal_value(cls, value, name):
+        # Verify inputs
         scalar = cls._finite_scalar(value, name)
         if not 0.0 <= scalar <= 1.0:
             raise ValueError(f"{name} must lie in [0, 1].")
@@ -105,16 +114,19 @@ class WM1Validation:
 
     @classmethod
     def linear_map(cls, P, coefficients, length, vector_name, coefficient_name):
+        # Verify inputs
         P = cls.vector(P, length, vector_name)
         coefficients = cls.simplex(coefficients, length, coefficient_name)
         return P, coefficients
 
     @classmethod
     def deterministic_inputs(cls, init_cond, parameters):
+        # Verify inputs
         return cls.initial_condition(init_cond, allow_rate=True), cls.parameters(parameters)
 
     @classmethod
     def fokker_planc_inputs(cls, init_cond, parameters, sigma, e_bounds):
+        # Verify inputs
         init_cond = cls.initial_condition(init_cond, allow_rate=False)
         parameters = cls.parameters(parameters)
 
@@ -138,6 +150,7 @@ class WM1Validation:
 
     @classmethod
     def reduced_drift_inputs(cls, BtO, BtI, alpha, beta):
+        # Verify inputs
         BtO = cls.signal_value(BtO, "BtO")
         BtI = cls.signal_value(BtI, "BtI")
         alpha = cls.simplex(alpha, 4, "alpha")

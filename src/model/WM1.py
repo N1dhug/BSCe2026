@@ -12,6 +12,7 @@ class WM1(WM):
     """
 
     def __init__(self, T, t_steps):
+        # Initialize variables
         T, t_steps = WM1Validation.constructor(T, t_steps)
         self.fp = BM1FokkerPlanc()
         self.T = T
@@ -20,19 +21,23 @@ class WM1(WM):
         self.dt = self.t[1] - self.t[0]
 
     def I(self, P_I, alpha):
+        # Evaluate model map
         P_I, alpha = WM1Validation.linear_map(P_I, alpha, 4, "P_I", "alpha")
         return alpha @ P_I
 
     def O(self, P_O, beta):
+        # Evaluate model map
         P_O, beta = WM1Validation.linear_map(P_O, beta, 3, "P_O", "beta")
         return beta @ P_O
 
     def A(self, P_A, gamma):
+        # Evaluate model map
         P_A, gamma = WM1Validation.linear_map(P_A, gamma, 4, "P_A", "gamma")
         return gamma @ P_A
 
     @staticmethod
     def reduced_drift_coefficients(BtO, BtI, alpha, beta):
+        # Compute reduced drift
         BtO, BtI, alpha, beta = WM1Validation.reduced_drift_inputs(BtO, BtI, alpha, beta)
         o_bar = beta[0] * BtO + beta[2]
         i_bar = alpha[0] * BtI + alpha[1] + alpha[2] * o_bar + alpha[3]
@@ -42,6 +47,7 @@ class WM1(WM):
         return d0, dV, dU
 
     def _evaluate_step(self, t, V, parameters):
+        # Evaluate model step
         U = WM1Validation.signal_value(parameters["U"](t), "U(t)")
         BO = WM1Validation.signal_value(parameters["B_O"](t), "B_O(t)")
         BI = WM1Validation.signal_value(parameters["B_I"](t), "B_I(t)")
@@ -59,6 +65,7 @@ class WM1(WM):
         return U, BO, BI, PE, P_I, P_O, P_A, O, I, A
 
     def deterministic_solver(self, init_cond, parameters):
+        # Solve deterministic model
         init, parameters = WM1Validation.deterministic_inputs(init_cond, parameters)
         V0 = init[0]
         R_prev = init[1] if init.size > 1 else 0.0
@@ -88,6 +95,7 @@ class WM1(WM):
         return {"t": self.t.copy(), "V": V, "R": R, "U": U, "B_O": BO, "B_I": BI, "PE": PE, "P_I": P_I, "P_O": P_O, "P_A": P_A, "O": O, "I": I, "A": A,}
 
     def fokker_planc_solver(self, init_cond, parameters, sigma, degree=20, e_bounds=(-1.5, 1.5), x_steps=301, cfl=0.45):
+        # Solve Fokker-Planck model
         init_cond, parameters, sigma, e_bounds = WM1Validation.fokker_planc_inputs(init_cond, parameters, sigma, e_bounds)
         alpha = parameters["alpha"]
         beta = parameters["beta"]
@@ -100,10 +108,12 @@ class WM1(WM):
         dV = -alpha[1] - (1.0 - alpha[2]) * beta[1]
 
         def drift_u(t, u):
+            # Evaluate centered drift
             e = e_min + span * np.asarray(u)
             return dV * e / span
 
         def diffusion_u(t, u):
+            # Evaluate centered diffusion
             return np.zeros_like(np.asarray(u)) + sigma / span
 
         u0 = (0.0 - e_min) / span

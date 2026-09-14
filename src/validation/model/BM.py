@@ -5,6 +5,7 @@ class BMValidation:
 
     @staticmethod
     def finite_scalar(value, name):
+        # Verify inputs
         array = np.asarray(value, dtype=float)
         if array.size != 1:
             raise ValueError(f"{name} must be a scalar.")
@@ -15,6 +16,7 @@ class BMValidation:
 
     @staticmethod
     def finite_array(values, name):
+        # Verify inputs
         array = np.asarray(values, dtype=float)
         if array.size == 0:
             raise ValueError(f"{name} must not be empty.")
@@ -24,6 +26,7 @@ class BMValidation:
 
     @classmethod
     def bounded_array(cls, values, lower, upper, name, tol=1e-10):
+        # Verify inputs
         array = cls.finite_array(values, name)
         if np.any(array < lower - tol) or np.any(array > upper + tol):
             raise ValueError(f"{name} values must lie in [{lower}, {upper}].")
@@ -31,6 +34,7 @@ class BMValidation:
 
     @staticmethod
     def positive_scalar(value, name):
+        # Verify inputs
         scalar = BMValidation.finite_scalar(value, name)
         if scalar <= 0.0:
             raise ValueError(f"{name} must be strictly positive.")
@@ -38,6 +42,7 @@ class BMValidation:
 
     @staticmethod
     def unit_scalar(value, name):
+        # Verify inputs
         scalar = BMValidation.finite_scalar(value, name)
         if not 0.0 <= scalar <= 1.0:
             raise ValueError(f"{name} must lie in [0, 1].")
@@ -45,12 +50,14 @@ class BMValidation:
 
     @staticmethod
     def callable_input(value, name):
+        # Verify inputs
         if not callable(value):
             raise TypeError(f"{name} must be callable.")
         return value
 
     @classmethod
     def constructor(cls, B, A, T, t_steps):
+        # Verify inputs
         B = cls.callable_input(B, "B")
         A = cls.callable_input(A, "A")
 
@@ -77,6 +84,7 @@ class BMValidation:
 
     @classmethod
     def parameters(cls, parameters):
+        # Verify inputs
         try:
             values = list(parameters)
         except TypeError as exc:
@@ -96,6 +104,7 @@ class BMValidation:
 
     @classmethod
     def initial_condition(cls, init_cond):
+        # Verify inputs
         values = np.asarray(init_cond, dtype=float).reshape(-1)
         if values.size != 1:
             raise ValueError("BM1 init_cond must contain exactly one state value.")
@@ -107,6 +116,7 @@ class BMValidation:
 
     @classmethod
     def state(cls, state):
+        # Verify inputs
         values = np.asarray(state)
         if values.size == 0:
             raise ValueError("state must contain a state-of-charge value.")
@@ -114,6 +124,7 @@ class BMValidation:
 
     @classmethod
     def diffusion(cls, X, sigma_x):
+        # Verify inputs
         values = cls.finite_array(X, "X")
         sigma_x = cls.finite_scalar(sigma_x, "sigma_x")
         if sigma_x < 0.0:
@@ -122,8 +133,10 @@ class BMValidation:
 
     @classmethod
     def dynamics(cls, U, f, g, C, k, Xi):
+        # Verify inputs
         return cls.parameters([U, f, g, C, k, Xi])
 
     @classmethod
     def response_values(cls, Ut, Bt, fXt, gUt):
+        # Verify inputs
         return (cls.bounded_array(Ut, 0.0, 1.0, "U(t)"), cls.bounded_array(Bt, 0.0, 1.0, "B(t)"), cls.bounded_array(fXt, -1.0, 1.0, "f(X)"), cls.bounded_array(gUt, -1.0, 1.0, "g(U)"),)

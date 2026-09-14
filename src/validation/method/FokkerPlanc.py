@@ -8,6 +8,7 @@ class BM1FokkerPlancValidation:
 
     @staticmethod
     def _integer(value, name, minimum):
+        # Verify inputs
         if isinstance(value, (bool, np.bool_)):
             raise TypeError(f"{name} must be an integer.")
         try:
@@ -22,6 +23,7 @@ class BM1FokkerPlancValidation:
 
     @staticmethod
     def positive_scalar(value, name):
+        # Verify inputs
         array = np.asarray(value, dtype=float)
         if array.size != 1:
             raise ValueError(f"{name} must be a scalar.")
@@ -32,10 +34,12 @@ class BM1FokkerPlancValidation:
 
     @classmethod
     def degree(cls, degree):
+        # Verify inputs
         return cls._integer(degree, "degree", 0)
 
     @staticmethod
     def cfl(value):
+        # Verify inputs
         array = np.asarray(value, dtype=float)
         if array.size != 1:
             raise ValueError("cfl must be a scalar.")
@@ -46,6 +50,7 @@ class BM1FokkerPlancValidation:
 
     @classmethod
     def beta_basis_inputs(cls, x, degree):
+        # Verify inputs
         x = np.asarray(x, dtype=float)
         if x.ndim != 1 or x.size == 0:
             raise ValueError("x must be a non-empty one-dimensional grid.")
@@ -57,6 +62,7 @@ class BM1FokkerPlancValidation:
 
     @classmethod
     def initial_coefficients_inputs(cls, init_cond, degree):
+        # Verify inputs
         array = np.asarray(init_cond, dtype=float).reshape(-1)
         if array.size != 1 or not np.all(np.isfinite(array)):
             raise ValueError("init_cond must contain exactly one finite value.")
@@ -67,6 +73,7 @@ class BM1FokkerPlancValidation:
 
     @classmethod
     def solve_inputs(cls, t, init_cond, drift, diffusion, degree, x_steps, cfl):
+        # Verify inputs
         t = np.asarray(t, dtype=float)
         if t.ndim != 1 or t.size < 2:
             raise ValueError("t must be a one-dimensional grid with at least two points.")
@@ -89,6 +96,7 @@ class BM1FokkerPlancValidation:
 
     @classmethod
     def basis_normalisation_inputs(cls, basis, dx):
+        # Verify inputs
         basis = np.asarray(basis, dtype=float)
         if basis.ndim != 2 or basis.size == 0:
             raise ValueError("basis must be a non-empty two-dimensional array.")
@@ -102,6 +110,7 @@ class BM1FokkerPlancValidation:
 
     @staticmethod
     def mixture_inputs(coefficients, basis):
+        # Verify inputs
         coefficients = np.asarray(coefficients, dtype=float).reshape(-1)
         basis = np.asarray(basis, dtype=float)
         if basis.ndim != 2:
@@ -118,6 +127,7 @@ class BM1FokkerPlancValidation:
 
     @classmethod
     def projection_inputs(cls, density, basis, dx):
+        # Verify inputs
         density = np.asarray(density, dtype=float).reshape(-1)
         basis = np.asarray(basis, dtype=float)
         if basis.ndim != 2:
@@ -130,6 +140,7 @@ class BM1FokkerPlancValidation:
 
     @classmethod
     def density_inputs(cls, density, dx):
+        # Verify inputs
         density = np.asarray(density, dtype=float)
         if density.ndim != 1 or density.size == 0:
             raise ValueError("density must be a non-empty one-dimensional array.")
@@ -139,12 +150,14 @@ class BM1FokkerPlancValidation:
 
     @staticmethod
     def positive_mass(mass):
+        # Verify probability mass
         if not np.isfinite(mass) or mass <= 0.0:
             raise RuntimeError("Fokker-Planck density lost positive finite mass.")
         return float(mass)
 
     @staticmethod
     def field_values(values, shape, name):
+        # Verify inputs
         try:
             values = np.broadcast_to(np.asarray(values, dtype=float), shape)
         except ValueError as exc:
@@ -155,6 +168,7 @@ class BM1FokkerPlancValidation:
 
     @classmethod
     def flux_inputs(cls, x, density, drift_values, diffusion_values):
+        # Verify inputs
         x = np.asarray(x, dtype=float)
         density = np.asarray(density, dtype=float)
         if x.ndim != 1 or density.ndim != 1 or x.size != density.size or x.size < 2:
@@ -170,6 +184,7 @@ class BM1FokkerPlancValidation:
 
     @staticmethod
     def positive_substep(h):
+        # Verify inputs
         if not np.isfinite(h) or h <= 0.0:
             raise RuntimeError("Fokker-Planck method produced a non-positive substep.")
         return float(h)
@@ -177,6 +192,7 @@ class BM1FokkerPlancValidation:
 class WM2FokkerPlancValidation:
     @classmethod
     def solve_inputs(cls, t, init_cond, parameters, initial_density, v_bounds, r_bounds, v_steps, r_steps, cfl,):
+        # Verify inputs
         t = FiniteVolume2DValidation.time_grid(t)
         init_cond, parameters = WM2Validation.fp_inputs(init_cond, parameters)
         if initial_density is None:

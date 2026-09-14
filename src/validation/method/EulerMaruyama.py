@@ -7,6 +7,7 @@ class EulerMaruyamaValidation:
 
     @staticmethod
     def _positive_integer(value, name):
+        # Verify inputs
         if isinstance(value, (bool, np.bool_)):
             raise TypeError(f"{name} must be an integer.")
         try:
@@ -21,6 +22,7 @@ class EulerMaruyamaValidation:
 
     @classmethod
     def boundary(cls, boundary):
+        # Verify inputs
         if boundary not in cls.BOUNDARIES:
             allowed = ", ".join(sorted(cls.BOUNDARIES))
             raise ValueError(f"boundary must be one of: {allowed}.")
@@ -28,6 +30,7 @@ class EulerMaruyamaValidation:
 
     @classmethod
     def boundary_values(cls, values, boundary):
+        # Verify inputs
         values = np.asarray(values, dtype=float)
         if not np.all(np.isfinite(values)):
             raise ValueError("Boundary values must be finite.")
@@ -35,6 +38,7 @@ class EulerMaruyamaValidation:
 
     @classmethod
     def solve_inputs(cls, t, init_cond, drift, diffusion, n_paths, seed, boundary):
+        # Verify inputs
         t = np.asarray(t, dtype=float)
         if t.ndim != 1 or t.size < 2:
             raise ValueError("t must be a one-dimensional grid with at least two points.")
@@ -62,6 +66,7 @@ class EulerMaruyamaValidation:
 
     @staticmethod
     def step_values(drift_values, diffusion_values, shape):
+        # Verify inputs
         try:
             drift_values = np.broadcast_to(np.asarray(drift_values, dtype=float), shape)
         except ValueError as exc:

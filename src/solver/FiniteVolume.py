@@ -14,6 +14,7 @@ class FiniteVolume2D:
 
     @staticmethod
     def _upwind_flux_v(density, drift_v):
+        # Compute volume flux
         nv, nr = density.shape
         flux = np.zeros((nv + 1, nr), dtype=float)
         face = 0.5 * (drift_v[:-1] + drift_v[1:])
@@ -26,6 +27,7 @@ class FiniteVolume2D:
 
     @staticmethod
     def _upwind_flux_r(density, drift_r):
+        # Compute rate flux
         nv, nr = density.shape
         flux = np.zeros((nv, nr + 1), dtype=float)
         face = 0.5 * (drift_r[:, :-1] + drift_r[:, 1:])
@@ -38,6 +40,7 @@ class FiniteVolume2D:
 
     @staticmethod
     def _solve_tridiagonal(lower, diagonal, upper, rhs):
+        # Solve tridiagonal system
         n = len(diagonal)
         c = upper.copy()
         d = rhs.copy()
@@ -54,6 +57,7 @@ class FiniteVolume2D:
 
     @classmethod
     def _implicit_r_diffusion(cls, density, diffusion, h, dr):
+        # Apply implicit diffusion
         nv, nr = density.shape
         result = np.empty_like(density)
         row_diffusion_squared = np.mean(np.square(diffusion), axis=1)
@@ -69,6 +73,7 @@ class FiniteVolume2D:
 
     @staticmethod
     def _stable_step(dv, dr, drift_v, drift_r, cfl):
+        # Compute stable time step
         max_v = float(np.max(np.abs(drift_v)))
         max_r = float(np.max(np.abs(drift_r)))
         limit_v = np.inf if max_v == 0.0 else dv / max_v
@@ -77,6 +82,7 @@ class FiniteVolume2D:
         return np.inf if not np.isfinite(limit) else cfl * limit
 
     def solve(self, t, initial_density, drift_v, drift_r, diffusion_r, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
+        # Solve finite-volume system
         t = FiniteVolume2DValidation.time_grid(t)
         v_min, v_max = FiniteVolume2DValidation.bounds(v_bounds, "v_bounds")
         r_min, r_max = FiniteVolume2DValidation.bounds(r_bounds, "r_bounds")

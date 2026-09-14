@@ -23,6 +23,7 @@ class ActiveSet:
 
     @staticmethod
     def _canonical_inequalities(A_ub, b_ub, lb, ub):
+        # Build inequality constraints
         n_variables = lb.size
         matrices = []
         rhs = []
@@ -47,6 +48,7 @@ class ActiveSet:
 
     @staticmethod
     def _is_feasible(x, G, h, A_eq, b_eq, tol):
+        # Check feasibility
         scale = max(1.0, float(np.max(np.abs(x))) if x.size else 1.0)
         feasibility_tol = tol * scale
 
@@ -58,6 +60,7 @@ class ActiveSet:
 
     @staticmethod
     def _find_feasible_point(n_variables, G, h, A_eq, b_eq, tol):
+        # Find feasible point
         result = linprog(np.zeros(n_variables, dtype=float), A_ub=G if G.shape[0] else None, b_ub=h if G.shape[0] else None, A_eq=A_eq if A_eq.shape[0] else None, b_eq=b_eq if A_eq.shape[0] else None, bounds=[(None, None)] * n_variables, method="highs",)
         if not result.success:
             raise ValueError("The supplied linear equality, inequality, and bound constraints are infeasible.")
@@ -70,6 +73,7 @@ class ActiveSet:
 
     @staticmethod
     def _solve_equality_qp(hessian, gradient, constraints):
+        # Solve equality-constrained QP
         n_variables = hessian.shape[0]
         if constraints.shape[0] == 0:
             direction, *_ = np.linalg.lstsq(hessian, -gradient, rcond=None)
@@ -83,6 +87,7 @@ class ActiveSet:
     @staticmethod
     def solve(hessian,linear,A_ub=None,b_ub=None,A_eq=None, b_eq=None,lb=None,ub=None,x0=None,tol=1e-10,max_iter=None):
         """Solve a convex QP with affine equality/inequality and box constraints."""
+        # Solve quadratic program
         # Validate and normalize the QP inputs.
         hessian, linear, A_ub, b_ub, A_eq, b_eq, lb, ub, x0, tol, max_iter = (ActiveSetValidation.quadratic_program(hessian,linear,A_ub,b_ub,A_eq, b_eq,lb,ub,x0,tol, max_iter))
 

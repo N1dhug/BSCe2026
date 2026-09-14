@@ -7,16 +7,19 @@ class BM1Validation:
 
     @staticmethod
     def model_inputs(init_cond, parameters):
+        # Verify inputs
         return BMValidation.initial_condition(init_cond), BMValidation.parameters(parameters)
 
     @staticmethod
     def stochastic_inputs(init_cond, parameters, sigma_x):
+        # Verify inputs
         init_cond, parameters = BM1Validation.model_inputs(init_cond, parameters)
         _, sigma_x = BMValidation.diffusion(init_cond, sigma_x)
         return init_cond, parameters, sigma_x
 
     @staticmethod
     def optimize_inputs(initial_u, init_cond, parameters):
+        # Verify inputs
         initial_u = np.asarray(initial_u, dtype=float)
         if initial_u.ndim != 1 or initial_u.size == 0:
             raise ValueError("initial_u must be a non-empty one-dimensional vector.")

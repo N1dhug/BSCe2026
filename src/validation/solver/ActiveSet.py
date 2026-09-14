@@ -5,6 +5,7 @@ class ActiveSetValidation:
 
     @staticmethod
     def _tolerance(tol):
+        # Verify inputs
         tol_array = np.asarray(tol, dtype=float)
         if tol_array.size != 1:
             raise ValueError("tol must be a scalar.")
@@ -15,6 +16,7 @@ class ActiveSetValidation:
 
     @staticmethod
     def _max_iter(max_iter, n_variables):
+        # Verify inputs
         if max_iter is None:
             return max(100, 20 * n_variables * n_variables)
 
@@ -32,6 +34,7 @@ class ActiveSetValidation:
 
     @staticmethod
     def _matrix(matrix, n_variables, name):
+        # Verify inputs
         if matrix is None:
             return np.empty((0, n_variables), dtype=float)
 
@@ -46,6 +49,7 @@ class ActiveSetValidation:
 
     @staticmethod
     def _rhs(rhs, n_rows, name):
+        # Verify inputs
         if n_rows == 0:
             if rhs is None:
                 return np.empty(0, dtype=float)
@@ -65,6 +69,7 @@ class ActiveSetValidation:
 
     @staticmethod
     def _bound(bound, n_variables, default, name):
+        # Verify inputs
         if bound is None:
             return np.full(n_variables, default, dtype=float)
 
@@ -82,6 +87,7 @@ class ActiveSetValidation:
 
     @classmethod
     def quadratic_program(cls, hessian, linear, A_ub, b_ub, A_eq, b_eq, lb, ub, x0, tol, max_iter,):
+        # Verify inputs
         hessian = np.asarray(hessian, dtype=float)
         if hessian.ndim != 2 or hessian.shape[0] == 0:
             raise ValueError("hessian must be a non-empty square matrix.")

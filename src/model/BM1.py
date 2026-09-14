@@ -9,11 +9,13 @@ from scipy.optimize import minimize
 
 class BM1(BM):
     def __init__(self, B, A, T, t_steps):
+        # Initialize variables
         super().__init__(B, A, T, t_steps)
         self.euler_maruyama = EulerMaruyama()
         self.fokker_planc = BM1FokkerPlanc()
 
     def __phi(self, U, parameters, init_cond):
+        # Compute initial state
         simulated_U = self.simulate.price((self.t, U))
         parameters = list(parameters)
         parameters[0] = simulated_U
@@ -22,17 +24,21 @@ class BM1(BM):
         return simps(np.square(Dt - At), t)
 
     def _drift(self, t, X, parameters):
+        # Evaluate drift
         U, f, g, C, k, Xi = parameters
         _, Bt, _, _, _, Dt = self.eval(t, X, U, f, g, k, Xi)
         return np.asarray((Dt - Bt) / C, dtype=float)
 
     def euler_maruyama_solver(self, init_cond, parameters, sigma_x, n_paths=1, seed=None, boundary="reflect"):
+        # Solve stochastic model
         init_cond, parameters, sigma_x = BM1Validation.stochastic_inputs(init_cond, parameters, sigma_x)
 
         def drift(t, X):
+            # Evaluate drift
             return self._drift(t, X, parameters)
 
         def diffusion(t, X):
+            # Evaluate diffusion
             return self.diffusion_coefficient(X, sigma_x)
 
         paths = self.euler_maruyama.solve_paths(t=self.t,init_cond=init_cond,drift=drift,diffusion=diffusion,n_paths=n_paths,seed=seed,boundary=boundary)
@@ -47,12 +53,15 @@ class BM1(BM):
         return self.t.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt
 
     def fokker_planc_solver(self, init_cond, parameters, sigma_x, degree=12, x_steps=201, cfl=0.45):
+        # Solve Fokker-Planck model
         init_cond, parameters, sigma_x = BM1Validation.stochastic_inputs(init_cond, parameters, sigma_x)
 
         def drift(t, X):
+            # Evaluate drift
             return self._drift(t, X, parameters)
 
         def diffusion(t, X):
+            # Evaluate diffusion
             return self.diffusion_coefficient(X, sigma_x)
 
         x, p, coefficients = self.fokker_planc.solve(t=self.t, init_cond=init_cond, drift=drift, diffusion=diffusion, degree=degree, x_steps=x_steps, cfl=cfl,)
@@ -75,6 +84,7 @@ class BM1(BM):
         return self.t.copy(), x, p, coefficients, EXt, Ut, Bt, EDt
 
     def deterministic_solver(self, init_cond, parameters):
+        # Solve deterministic model
         init_cond, parameters = BM1Validation.model_inputs(init_cond, parameters)
         solution = solve_ivp(self.dXdt, self.T, init_cond, args=parameters, t_eval=self.t)
         Xt = solution.y[0]
@@ -82,6 +92,7 @@ class BM1(BM):
         return solution.t, Xt, Ut, Bt, fXt, gUt, dt, Dt
 
     def optimize(self, initial_u, init_cond, parameters):
+        # Optimize price signal
         initial_u, init_cond, parameters = BM1Validation.optimize_inputs(initial_u, init_cond, parameters)
         bounds = [(0, 1) for _ in range(len(initial_u))]
         phi = lambda U: self.__phi(U, parameters, init_cond)
