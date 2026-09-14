@@ -19,11 +19,11 @@ class WM2(WM):
         D = I - O
           = d0 + d_BI B_I + d_BO B_O + d_V V + d_U U.
 
-    Parameter fitting works directly in these reduced coordinates.  After the
-    reduced deterministic fit converges, alpha and beta are selected to best
-    reproduce the fitted reduced model and observed purchased input.  Only then
-    are sigma_0 and sigma_O fitted, because the diffusion scale depends on the
-    beta-defined output O.
+    Parameter fitting works directly in these reduced coordinates. After the
+    reduced deterministic fit converges, beta and alpha are recovered directly
+    from the fitted reduced coefficients and then validated against the exact
+    reduced maps. Only then are sigma_0 and sigma_O fitted, because the
+    diffusion scale depends on the beta-defined output O.
     """
 
     _FIT_EPS = 1e-8
@@ -222,40 +222,40 @@ class WM2(WM):
         updated["deterministic_state"] = self._solve_deterministic(validated_updated["init_cond"], validated_updated["U"], validated_updated["B_O"], validated_updated["B_I"], validated_updated["PE"], validated_updated["I_coeff"], validated_updated["d_coeff"], validated_updated["kappa_R"])
         return updated
 
-    def _select_alpha_beta(self, current_conditions, input_data):
-        """Recover alpha/beta exactly from the converged reduced WM2 fit.
-
-        The reconstruction is an equality-constrained convex QP.  The equality
-        system fixes beta from the difference between the reduced input and
-        drift maps and requires the selected alpha/beta pair to reproduce every
-        fitted reduced coefficient exactly.
-        """
+    def _recover_alpha_beta(self, current_conditions, input_data):
+        """Recover alpha and beta directly from the converged reduced WM2 fit."""
         data = WM2Validation.fit_data(input_data, self.t_steps)
         current = WM2Validation.reduced_fit_conditions(current_conditions, self.t_steps)
+        input_coeff, drift_coeff, beta, tol = WM2Validation.structural_recovery_inputs(current["I_coeff"], current["d_coeff"])
 
-        A_eq, b_eq = WM2Validation.alpha_beta_reconstruction_equalities(current["I_coeff"], current["d_coeff"])
+        a_B = input_coeff[1]
+        if beta[0] >= beta[1] and beta[0] > tol:
+            a_O = input_coeff[2] / beta[0]
+        else:
+            a_O = (input_coeff[0] + input_coeff[3] + input_coeff[4]) / beta[1]
 
-        selected = self._least_squares_qp(np.eye(7, dtype=float), np.zeros(7, dtype=float), A_eq=A_eq, b_eq=b_eq, lb=np.zeros(7, dtype=float), ub=np.ones(7, dtype=float), ridge=self._FIT_RIDGE)
-        alpha = selected[:4]
-        beta = selected[4:]
+        a_V = a_O * beta[1] - input_coeff[3]
+        a_U = -input_coeff[4] - a_O * beta[2]
+        alpha = np.array([a_B, a_V, a_O, a_U], dtype=float)
+        alpha, beta = WM2Validation.recovered_structural_coefficients(alpha, beta, tol=tol)
 
         WM2Validation.expected_equilibrium_parameters(alpha, beta)
-        selected_input, selected_drift = self.reduced_coefficients(alpha, beta)
-        selected_input, selected_drift = WM2Validation.exact_reduced_match(selected_input, selected_drift, current["I_coeff"], current["d_coeff"])
+        recovered_input, recovered_drift = self.reduced_coefficients(alpha, beta)
+        recovered_input, recovered_drift = WM2Validation.exact_reduced_match(recovered_input, recovered_drift, input_coeff, drift_coeff)
 
-        selected_state = self._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], selected_input, selected_drift, current["kappa_R"])
+        recovered_state = self._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], recovered_input, recovered_drift, current["kappa_R"])
 
         updated = dict(current_conditions)
         updated["alpha"] = alpha
         updated["beta"] = beta
-        updated["reduced_fit_input_coeff"] = current["I_coeff"].copy()
-        updated["reduced_fit_d_coeff"] = current["d_coeff"].copy()
-        updated["I_coeff"] = selected_input
-        updated["d_coeff"] = selected_drift
-        updated["selected_input_coeff"] = selected_input
-        updated["selected_d_coeff"] = selected_drift
-        updated["deterministic_state"] = selected_state
-        updated["selected_model_loss"] = float(np.mean((data["I"] - selected_state["I"]) ** 2))
+        updated["reduced_fit_input_coeff"] = input_coeff.copy()
+        updated["reduced_fit_d_coeff"] = drift_coeff.copy()
+        updated["I_coeff"] = recovered_input
+        updated["d_coeff"] = recovered_drift
+        updated["recovered_input_coeff"] = recovered_input
+        updated["recovered_d_coeff"] = recovered_drift
+        updated["deterministic_state"] = recovered_state
+        updated["recovered_model_loss"] = float(np.mean((data["I"] - recovered_state["I"]) ** 2))
         return updated
 
     @staticmethod
@@ -277,7 +277,7 @@ class WM2(WM):
         return result
 
     def _optimize_uncertainty_params(self, current_conditions, input_data):
-        """Fit sigma_0 and sigma_O after alpha/beta selection."""
+        """Fit sigma_0 and sigma_O after direct alpha/beta recovery."""
         data = WM2Validation.fit_data(input_data, self.t_steps)
         alpha, beta = WM2Validation.reduction_inputs(current_conditions["alpha"], current_conditions["beta"])
         current = WM2Validation.reduced_fit_conditions(current_conditions, self.t_steps)
@@ -341,7 +341,7 @@ class WM2(WM):
                 break
 
         current["reduced_fit_loss"] = previous_loss
-        current = self._select_alpha_beta(current, data)
+        current = self._recover_alpha_beta(current, data)
         current = self._optimize_uncertainty_params(current, data)
         current["loss_history"] = np.asarray(history)
         current["deterministic_loss"] = previous_loss
