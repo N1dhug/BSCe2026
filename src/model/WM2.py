@@ -147,7 +147,7 @@ class WM2(WM):
         return self._solve_deterministic(init_cond, U, B_O, B_I, PE, input_coeff, drift_coeff, parameters["kappa_R"], gamma=parameters["gamma"])
 
     @staticmethod
-    def _least_squares_qp(X, y, A_ub=None, b_ub=None, A_eq=None, b_eq=None, lb=None, ub=None, ridge=1e-10):
+    def _least_squares_qp(X, y, A_ub=None, b_ub=None, A_eq=None, b_eq=None, lb=None, ub=None, ridge=1e-10, max_iter=10000):
         # Build and solve QP
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=float).reshape(-1)
@@ -155,7 +155,7 @@ class WM2(WM):
         scale = max(1, X.shape[0])
         H = 2.0 * (X.T @ X) / scale + ridge * np.eye(n)
         f = -2.0 * (X.T @ y) / scale
-        return ActiveSet.solve(H, f, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, tol=1e-9)
+        return ActiveSet.solve(H, f, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, tol=1e-9, max_iter=max_iter)
 
     def fit_params_proxy(self, input_data, initial_conditions, baseline_feature_vec):
         """Fit WM2 using the legacy proxy-state reduced-parameter method."""
