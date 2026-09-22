@@ -1,5 +1,5 @@
 """Parameter-estimation strategies."""
 
-from src.params.WM2 import BruteParams, ProxyParams, UncertaintyParams
+from src.params.WM2 import BaseParams, BruteParams, ProxyParams
 
-__all__ = ["BruteParams", "ProxyParams", "UncertaintyParams"]
+__all__ = ["BaseParams", "BruteParams", "ProxyParams"]
