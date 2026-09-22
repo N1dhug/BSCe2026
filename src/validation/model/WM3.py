@@ -6,34 +6,33 @@ class WM3Validation(WM1Validation):
     """Validation rules for Water Model 3."""
 
     @classmethod
-    def constructor(cls, T, t_steps, L, H):
+    def constructor(cls, T, t_steps, L):
         # Verify constructor inputs
         T, t_steps = super().constructor(T, t_steps)
         if not callable(L): raise TypeError("L must be callable.")
-        if not callable(H): raise TypeError("H must be callable.")
-        return T, t_steps, L, H
+        return T, t_steps, L
 
     @classmethod
     def coefficients(cls, alpha, beta, gamma):
         # Verify WM3 coefficient simplices
-        return cls.simplex(alpha, 3, "alpha"), cls.simplex(beta, 4, "beta"), cls.simplex(gamma, 4, "gamma")
+        return cls.simplex(alpha, 3, "alpha"), cls.simplex(beta, 3, "beta"), cls.simplex(gamma, 4, "gamma")
 
     @classmethod
     def reduction_inputs(cls, alpha, beta):
         # Verify reduced-map coefficients
-        return cls.simplex(alpha, 3, "alpha"), cls.simplex(beta, 4, "beta")
+        return cls.simplex(alpha, 3, "alpha"), cls.simplex(beta, 3, "beta")
 
     @classmethod
     def parameters(cls, parameters):
         # Verify model parameters
         if not isinstance(parameters, dict): raise TypeError("parameters must be a dictionary.")
 
-        required = ("U", "Time", "Chill_factor", "PE", "alpha", "beta", "gamma", "kappa_R")
+        required = ("U", "Time", "PE", "alpha", "beta", "gamma", "kappa_R")
         missing = [name for name in required if name not in parameters]
         if missing: raise ValueError("parameters is missing required entries: " + ", ".join(missing) + ".")
 
         validated = dict(parameters)
-        for name in ("U", "Time", "Chill_factor", "PE"):
+        for name in ("U", "Time", "PE"):
             if not callable(validated[name]): raise TypeError(f"parameters['{name}'] must be callable.")
 
         alpha, beta, gamma = cls.coefficients(validated["alpha"], validated["beta"], validated["gamma"])
@@ -71,11 +70,6 @@ class WM3Validation(WM1Validation):
         return cls.signal_value(value, name)
 
     @classmethod
-    def reduced_drift_inputs(cls, L_value, H_value, alpha, beta):
-        # Verify reduced drift inputs
-        return cls.feature_value(L_value, "L_value"), cls.feature_value(H_value, "H_value"), cls.simplex(alpha, 3, "alpha"), cls.simplex(beta, 4, "beta")
-
-    @classmethod
     def stable_drift_coefficient(cls, dV, tol=1e-10):
         # Verify stability
         dV = cls._finite_scalar(dV, "d_V")
@@ -89,7 +83,7 @@ class WM3Validation(WM1Validation):
         if tol <= 0.0: raise ValueError("tol must be positive.")
 
         alpha = cls.vector(alpha, 3, "recovered alpha")
-        beta = cls.vector(beta, 4, "recovered beta")
+        beta = cls.vector(beta, 3, "recovered beta")
         for values, name in ((alpha, "recovered alpha"), (beta, "recovered beta")):
             if np.any(values < -tol) or np.any(values > 1.0 + tol): raise ValueError(f"{name} coefficients must lie in [0, 1].")
             if not np.isclose(np.sum(values), 1.0, atol=tol, rtol=0.0): raise ValueError(f"{name} coefficients must sum to 1.")
@@ -103,7 +97,7 @@ class WM3Validation(WM1Validation):
         # Verify fitting data
         if not isinstance(input_data, dict): raise TypeError("input_data must be a dictionary.")
 
-        required = ("I", "U", "Time", "Chill_factor")
+        required = ("I", "U", "Time")
         missing = [name for name in required if name not in input_data]
         if missing: raise ValueError("input_data is missing required entries: " + ", ".join(missing) + ".")
 
@@ -118,10 +112,9 @@ class WM3Validation(WM1Validation):
         I = fit_vector(input_data["I"], "input_data['I']")
         U = fit_vector(input_data["U"], "input_data['U']")
         Time = fit_vector(input_data["Time"], "input_data['Time']")
-        Chill = fit_vector(input_data["Chill_factor"], "input_data['Chill_factor']")
         PE = fit_vector(input_data.get("PE", np.zeros(t_steps, dtype=float)), "input_data['PE']")
 
         for vector, name in ((I, "I"), (U, "U"), (PE, "PE")):
             if np.any(vector < 0.0) or np.any(vector > 1.0): raise ValueError(f"Normalized {name} data must lie in [0, 1].")
 
-        return {"I": I, "U": U, "PE": PE, "Time": Time, "Chill_factor": Chill}
+        return {"I": I, "U": U, "PE": PE, "Time": Time}
