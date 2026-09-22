@@ -130,8 +130,9 @@ fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True, constrained_layout=
 
 axes[0].plot(sample, simulated_I, linewidth=1.3, label="Aggregate simulated input")
 axes[0].plot(sample, fitted_I, linewidth=2.0, label="WM3 fitted input")
-axes[0].set_ylabel("Normalized input I")
-axes[0].set_title("WM3 fit to noisy aggregate user consumption")
+axes[0].plot(sample, U, linewidth=1.2, linestyle="--", label="Price U")
+axes[0].set_ylabel("Normalized value")
+axes[0].set_title("WM3 fit to noisy aggregate user consumption with price signal")
 axes[0].grid(True)
 axes[0].legend(loc="best")
 
