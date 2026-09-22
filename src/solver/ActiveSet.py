@@ -72,6 +72,23 @@ class ActiveSet:
         return x
 
     @staticmethod
+    def _independent_working_set(G, indices, A_eq):
+        # Keep only inequality rows that add rank beyond the equality/current active set.
+        selected = []
+        constraints = A_eq.copy()
+        rank = np.linalg.matrix_rank(constraints) if constraints.shape[0] else 0
+
+        for index in indices:
+            row = G[int(index)][None, :]
+            candidate = row if constraints.shape[0] == 0 else np.vstack((constraints, row))
+            candidate_rank = np.linalg.matrix_rank(candidate)
+            if candidate_rank > rank:
+                selected.append(int(index))
+                constraints, rank = candidate, candidate_rank
+            if rank >= G.shape[1]: break
+        return set(selected)
+
+    @staticmethod
     def _solve_equality_qp(hessian, gradient, constraints):
         # Solve equality-constrained QP
         n_variables = hessian.shape[0]
@@ -106,7 +123,7 @@ class ActiveSet:
 
         if G.shape[0]:
             slack = h - G @ x
-            working = set(np.flatnonzero(slack <= tol).tolist())
+            working = ActiveSet._independent_working_set(G, np.flatnonzero(slack <= tol), A_eq)
         else:
             working = set()
 
@@ -160,7 +177,7 @@ class ActiveSet:
             x = x + alpha * direction
 
             if blocking is not None and alpha < 1.0 - tol:
-                working.add(int(blocking))
+                working = ActiveSet._independent_working_set(G, sorted(working | {int(blocking)}), A_eq)
 
             if not ActiveSet._is_feasible(x, G, h, A_eq, b_eq, 100.0 * tol):
                 raise RuntimeError("Active-set iteration lost feasibility beyond numerical tolerance.")
