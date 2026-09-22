@@ -3,30 +3,17 @@ import numpy as np
 from src.model.base.WM import WM
 from src.validation.model.WM3 import WM3Validation
 
-
 class WM3(WM):
     """Water Model 3 with direct exogenous output features.
 
-    WM3 removes the separately estimated WM2 baseline and models output from
-    the flexibility state, price, and two user-supplied feature maps:
+    P_O = [V, 1-U, L(Time), H(Chill_factor)], O = beta @ P_O
+    P_I = [1-V, 1-U, O], I = alpha @ P_I
+    P_A = [1-U, I, V, 1-PE], A = gamma @ P_A
 
-        P_O = [V, 1 - U, L(Time), H(Chill_factor)]
-        O   = beta @ P_O
+    dV/dt = R
+    dR/dt = kappa_R * (I - O - R)
 
-        P_I = [1 - V, 1 - U, O]
-        I   = alpha @ P_I
-
-        P_A = [1 - U, I, V, 1 - PE]
-        A   = gamma @ P_A
-
-    The inertial state dynamics are retained from WM2:
-
-        dV/dt = R
-        dR/dt = kappa_R * (I - O - R)
-
-    L and H are fixed feature functions supplied to the constructor. They are
-    not estimated by this class. WM3 intentionally contains no parameter
-    estimation routines.
+    L and H are supplied feature functions. WM3 performs no parameter fitting.
     """
 
     def __init__(self, T, t_steps, L, H):
@@ -56,30 +43,21 @@ class WM3(WM):
 
     @staticmethod
     def reduced_drift_coefficients(L_value, H_value, alpha, beta):
-        """Return D = d0 + dV V + dU U for fixed exogenous features."""
-        L_value, H_value, alpha, beta = WM3Validation.reduced_drift_inputs(
-            L_value, H_value, alpha, beta
-        )
-
+        # Compute reduced drift
+        L_value, H_value, alpha, beta = WM3Validation.reduced_drift_inputs(L_value, H_value, alpha, beta)
         a_V, a_U, a_O = alpha
         b_V, b_U, b_L, b_H = beta
 
-        d0 = (
-            a_V
-            + a_U
-            + (a_O - 1.0) * (b_U + b_L * L_value + b_H * H_value)
-        )
+        d0 = a_V + a_U + (a_O - 1.0) * (b_U + b_L * L_value + b_H * H_value)
         dV = -a_V + (a_O - 1.0) * b_V
         dU = (1.0 - a_O) * b_U - a_U
         return d0, dV, dU
 
     @classmethod
     def expected_equilibrium(cls, L_value, H_value, U, alpha, beta):
-        # Compute expected equilibrium for fixed exogenous features
+        # Compute expected equilibrium
         U = WM3Validation.signal_value(U, "U")
-        d0, dV, dU = cls.reduced_drift_coefficients(
-            L_value, H_value, alpha, beta
-        )
+        d0, dV, dU = cls.reduced_drift_coefficients(L_value, H_value, alpha, beta)
         WM3Validation.stable_drift_coefficient(dV)
         return -(d0 + dU * U) / dV
 
@@ -87,53 +65,26 @@ class WM3(WM):
         # Evaluate model step
         U = WM3Validation.signal_value(parameters["U"](t), "U(t)")
         PE = WM3Validation.signal_value(parameters["PE"](t), "PE(t)")
-
-        time_value = WM3Validation.finite_feature_input(
-            parameters["Time"](t), "Time(t)"
-        )
-        chill_value = WM3Validation.finite_feature_input(
-            parameters["Chill_factor"](t), "Chill_factor(t)"
-        )
-        L_value = WM3Validation.feature_value(
-            self.L(time_value), "L(Time(t))"
-        )
-        H_value = WM3Validation.feature_value(
-            self.H(chill_value), "H(Chill_factor(t))"
-        )
+        Time = WM3Validation.finite_feature_input(parameters["Time"](t), "Time(t)")
+        Chill = WM3Validation.finite_feature_input(parameters["Chill_factor"](t), "Chill_factor(t)")
+        Lt = WM3Validation.feature_value(self.L(Time), "L(Time(t))")
+        Ht = WM3Validation.feature_value(self.H(Chill), "H(Chill_factor(t))")
 
         alpha = parameters["alpha"]
         beta = parameters["beta"]
         gamma = parameters["gamma"]
 
-        P_O = np.array([V, 1.0 - U, L_value, H_value], dtype=float)
+        P_O = np.array([V, 1.0 - U, Lt, Ht], dtype=float)
         O = self.O(P_O, beta)
-
         P_I = np.array([1.0 - V, 1.0 - U, O], dtype=float)
         I = self.I(P_I, alpha)
-
         P_A = np.array([1.0 - U, I, V, 1.0 - PE], dtype=float)
         A = self.A(P_A, gamma)
-
-        return (
-            U,
-            PE,
-            time_value,
-            chill_value,
-            L_value,
-            H_value,
-            P_I,
-            P_O,
-            P_A,
-            O,
-            I,
-            A,
-        )
+        return U, PE, Time, Chill, Lt, Ht, P_I, P_O, P_A, O, I, A
 
     def deterministic_solver(self, init_cond, parameters):
-        # Solve deterministic inertial WM3
-        init_cond, parameters = WM3Validation.deterministic_inputs(
-            init_cond, parameters
-        )
+        # Solve deterministic model
+        init_cond, parameters = WM3Validation.deterministic_inputs(init_cond, parameters)
 
         V = np.empty(self.t_steps)
         R = np.empty(self.t_steps)
@@ -142,8 +93,8 @@ class WM3(WM):
         PE = np.empty(self.t_steps)
         Time = np.empty(self.t_steps)
         Chill = np.empty(self.t_steps)
-        L_values = np.empty(self.t_steps)
-        H_values = np.empty(self.t_steps)
+        Lt = np.empty(self.t_steps)
+        Ht = np.empty(self.t_steps)
         O = np.empty(self.t_steps)
         I = np.empty(self.t_steps)
         D = np.empty(self.t_steps)
@@ -156,21 +107,7 @@ class WM3(WM):
         kappa_R = parameters["kappa_R"]
 
         for k, tk in enumerate(self.t):
-            (
-                U[k],
-                PE[k],
-                Time[k],
-                Chill[k],
-                L_values[k],
-                H_values[k],
-                P_I[k],
-                P_O[k],
-                P_A[k],
-                O[k],
-                I[k],
-                A[k],
-            ) = self._evaluate_step(tk, V[k], parameters)
-
+            U[k], PE[k], Time[k], Chill[k], Lt[k], Ht[k], P_I[k], P_O[k], P_A[k], O[k], I[k], A[k] = self._evaluate_step(tk, V[k], parameters)
             D[k] = I[k] - O[k]
             R_dot[k] = kappa_R * (D[k] - R[k])
 
@@ -178,22 +115,4 @@ class WM3(WM):
                 V[k + 1] = V[k] + self.dt * R[k]
                 R[k + 1] = R[k] + self.dt * R_dot[k]
 
-        return {
-            "t": self.t.copy(),
-            "V": V,
-            "R": R,
-            "R_dot": R_dot,
-            "U": U,
-            "PE": PE,
-            "Time": Time,
-            "Chill_factor": Chill,
-            "L": L_values,
-            "H": H_values,
-            "P_I": P_I,
-            "P_O": P_O,
-            "P_A": P_A,
-            "O": O,
-            "I": I,
-            "D": D,
-            "A": A,
-        }
+        return {"t": self.t.copy(), "V": V, "R": R, "R_dot": R_dot, "U": U, "PE": PE, "Time": Time, "Chill_factor": Chill, "L": Lt, "H": Ht, "P_I": P_I, "P_O": P_O, "P_A": P_A, "O": O, "I": I, "D": D, "A": A}
