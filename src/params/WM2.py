@@ -98,7 +98,8 @@ class ProxyParams(BaseParams):
         X_I = np.column_stack((np.ones(self.model.t_steps), B_I, B_O, state["V"], U))
         A_ub = np.vstack((X_I, -X_I))
         b_ub = np.concatenate((np.ones(self.model.t_steps), np.zeros(self.model.t_steps)))
-        input_coeff = self.model._least_squares_qp(X_I, data["I"], A_ub=A_ub, b_ub=b_ub, ridge=self.model._FIT_RIDGE)
+        x0 = np.zeros(X_I.shape[1]); x0[0] = 0.5
+        input_coeff = self.model._least_squares_qp(X_I, data["I"], A_ub=A_ub, b_ub=b_ub, ridge=self.model._FIT_RIDGE, x0=x0)
 
         no_V = input_coeff[0] + input_coeff[1] * B_I + input_coeff[2] * B_O + input_coeff[4] * U
         if abs(input_coeff[3]) > 1e-5:
