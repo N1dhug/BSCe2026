@@ -4,8 +4,8 @@ import numpy as np
 from src.validation.model.WM2 import WM2Validation
 
 
-class UncertaintyParams:
-    """Fit WM2 diffusion parameters sigma_0 and sigma_O from deterministic residuals."""
+class BaseParams:
+    """Shared WM2 parameter-fit functionality."""
 
     def __init__(self, model):
         self.model = model
@@ -42,12 +42,52 @@ class UncertaintyParams:
         updated.update({"sigma_0": float(sigma[0]), "sigma_O": float(sigma[1]), "residual": residual, "local_std": local_std, "deterministic_state": state})
         return updated
 
+    def _optimize_B_params(self, current_conditions, baseline_feature_vec, input_data):
+        data = WM2Validation.fit_data(input_data, self.model.t_steps)
+        X_BI, X_BO = WM2Validation.baseline_features(baseline_feature_vec, self.model.t_steps)
+        current = WM2Validation.reduced_fit_conditions(current_conditions, self.model.t_steps)
+        state = self.model._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], current["I_coeff"], current["d_coeff"], current["kappa_R"])
+
+        c = current["I_coeff"]
+        n_I, n_O = X_BI.shape[1], X_BO.shape[1]
+        fixed = c[0] + c[3] * state["V"] + c[4] * data["U"]
+        X = np.column_stack((c[1] * X_BI, c[2] * X_BO))
+        y = data["I"] - fixed
+
+        A_eq = np.zeros((3, n_I + n_O))
+        A_eq[0, :n_I], A_eq[1, n_I:] = 1.0, 1.0
+        A_eq[2, :n_I], A_eq[2, n_I:] = np.sum(X_BI, axis=0), -np.sum(X_BO, axis=0)
+        weights = self.model._least_squares_qp(X, y, A_eq=A_eq, b_eq=np.array([1.0, 1.0, 0.0]), lb=np.zeros(n_I + n_O), ub=np.ones(n_I + n_O), ridge=self.model._FIT_RIDGE)
+
+        updated = dict(current_conditions)
+        updated.update({"B_I_weights": weights[:n_I], "B_O_weights": weights[n_I:], "B_I": X_BI @ weights[:n_I], "B_O": X_BO @ weights[n_I:]})
+        validated = WM2Validation.reduced_fit_conditions(updated, self.model.t_steps)
+        updated["deterministic_state"] = self.model._solve_deterministic(validated["init_cond"], validated["U"], validated["B_O"], validated["B_I"], validated["PE"], validated["I_coeff"], validated["d_coeff"], validated["kappa_R"])
+        return updated
+
+    def _recover_alpha_beta(self, current_conditions, input_data):
+        data = WM2Validation.fit_data(input_data, self.model.t_steps)
+        current = WM2Validation.reduced_fit_conditions(current_conditions, self.model.t_steps)
+        input_coeff, drift_coeff, beta, tol = WM2Validation.structural_recovery_inputs(current["I_coeff"], current["d_coeff"])
+
+        a_B = input_coeff[1]
+        a_O = input_coeff[2] / beta[0] if beta[0] >= beta[1] and beta[0] > tol else (input_coeff[0] + input_coeff[3] + input_coeff[4]) / beta[1]
+        a_V = a_O * beta[1] - input_coeff[3]
+        a_U = -input_coeff[4] - a_O * beta[2]
+        alpha, beta = WM2Validation.recovered_structural_coefficients(np.array([a_B, a_V, a_O, a_U], dtype=float), beta, tol=tol)
+
+        WM2Validation.expected_equilibrium_parameters(alpha, beta)
+        recovered_input, recovered_drift = self.model.reduced_coefficients(alpha, beta)
+        recovered_input, recovered_drift = WM2Validation.exact_reduced_match(recovered_input, recovered_drift, input_coeff, drift_coeff)
+        recovered_state = self.model._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], recovered_input, recovered_drift, current["kappa_R"])
+
+        updated = dict(current_conditions)
+        updated.update({"alpha": alpha, "beta": beta, "reduced_fit_input_coeff": input_coeff.copy(), "reduced_fit_d_coeff": drift_coeff.copy(), "I_coeff": recovered_input, "d_coeff": recovered_drift, "recovered_input_coeff": recovered_input, "recovered_d_coeff": recovered_drift, "deterministic_state": recovered_state, "recovered_model_loss": float(np.mean((data["I"] - recovered_state["I"]) ** 2))})
+        return updated
+
 
 class ProxyParams(BaseParams):
     """Legacy proxy-state WM2 reduced-parameter estimator."""
-
-    def __init__(self, model):
-        super().__init__(model)
 
     def _optimize_WM2_params(self, current_conditions, input_data):
         data = WM2Validation.fit_data(input_data, self.model.t_steps)
@@ -121,9 +161,6 @@ class ProxyParams(BaseParams):
 
 class BruteParams(BaseParams):
     """Grid-refined WM2 fit over c_V, d_V and kappa_R with a convex inner C/D/state QP."""
-
-    def __init__(self, model):
-        super().__init__(model)
 
     @staticmethod
     def _transition_stable(dt, d_v, kappa_r, tol=1e-10):
@@ -216,8 +253,9 @@ class BruteParams(BaseParams):
                             candidate = self._solve_inner(data, init_cond, B_I, B_O, c_v, d_v, kappa_r)
                         except (ValueError, RuntimeError, np.linalg.LinAlgError):
                             continue
-                        score = float(candidate["recovered_model_loss"])
+
                         if not candidate.get("structural_viable", False): continue
+                        score = float(candidate["recovered_model_loss"])
                         if level_best is None or score < level_best["score"]: level_best = {"score": score, "c_v": float(c_v), "d_v": float(d_v), "rho": float(rho), "kappa_R": float(kappa_r), "alpha": candidate["alpha"].copy(), "beta": candidate["beta"].copy(), "result": candidate}
 
             history.append({"level": level, "tested": tested, "pruned": pruned, "best_loss": np.inf if level_best is None else level_best["score"]})
@@ -233,7 +271,7 @@ class BruteParams(BaseParams):
     def _search_all(self, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps):
         branch_results = {branch: self._search_branch(branch, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps) for branch in ("under", "critical", "over")}
         valid = [item for item in branch_results.values() if item is not None]
-        if not valid: raise RuntimeError("WM2 brute-force parameter search found no admissible grid candidate.")
+        if not valid: raise RuntimeError("WM2 brute-force parameter search found no structurally admissible grid candidate.")
         return min(valid, key=lambda item: item["score"]), branch_results
 
     def fit(self, input_data, initial_conditions, baseline_feature_vec, *, grid_points=10, refinements=3, baseline_iterations=2, c_v_range=(-1.0, 1.0), d_v_range=(-1.0, -1e-4), ratio_eps=1e-3):
@@ -269,47 +307,4 @@ class BruteParams(BaseParams):
         result.update({"alpha": best["alpha"].copy(), "beta": best["beta"].copy(), "B_I_weights": last_BI_weights, "B_O_weights": last_BO_weights})
         result = self._fit_uncertainty_params(result, data)
         result.update({"fit_method": "brute", "brute_branch": best["branch"], "brute_score": float(best["score"]), "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": all_searches, "deterministic_loss": float(result["recovered_model_loss"])})
-        return result\n    def _optimize_B_params(self, current_conditions, baseline_feature_vec, input_data):
-        data = WM2Validation.fit_data(input_data, self.model.t_steps)
-        X_BI, X_BO = WM2Validation.baseline_features(baseline_feature_vec, self.model.t_steps)
-        current = WM2Validation.reduced_fit_conditions(current_conditions, self.model.t_steps)
-        state = self.model._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], current["I_coeff"], current["d_coeff"], current["kappa_R"])
-
-        c = current["I_coeff"]
-        n_I, n_O = X_BI.shape[1], X_BO.shape[1]
-        fixed = c[0] + c[3] * state["V"] + c[4] * data["U"]
-        X = np.column_stack((c[1] * X_BI, c[2] * X_BO))
-        y = data["I"] - fixed
-
-        A_eq = np.zeros((3, n_I + n_O))
-        A_eq[0, :n_I], A_eq[1, n_I:] = 1.0, 1.0
-        A_eq[2, :n_I], A_eq[2, n_I:] = np.sum(X_BI, axis=0), -np.sum(X_BO, axis=0)
-        weights = self.model._least_squares_qp(X, y, A_eq=A_eq, b_eq=np.array([1.0, 1.0, 0.0]), lb=np.zeros(n_I + n_O), ub=np.ones(n_I + n_O), ridge=self.model._FIT_RIDGE)
-
-        updated = dict(current_conditions)
-        updated.update({"B_I_weights": weights[:n_I], "B_O_weights": weights[n_I:], "B_I": X_BI @ weights[:n_I], "B_O": X_BO @ weights[n_I:]})
-        validated = WM2Validation.reduced_fit_conditions(updated, self.model.t_steps)
-        updated["deterministic_state"] = self.model._solve_deterministic(validated["init_cond"], validated["U"], validated["B_O"], validated["B_I"], validated["PE"], validated["I_coeff"], validated["d_coeff"], validated["kappa_R"])
-        return updated
-
-    def _recover_alpha_beta(self, current_conditions, input_data):
-        data = WM2Validation.fit_data(input_data, self.model.t_steps)
-        current = WM2Validation.reduced_fit_conditions(current_conditions, self.model.t_steps)
-        input_coeff, drift_coeff, beta, tol = WM2Validation.structural_recovery_inputs(current["I_coeff"], current["d_coeff"])
-
-        a_B = input_coeff[1]
-        a_O = input_coeff[2] / beta[0] if beta[0] >= beta[1] and beta[0] > tol else (input_coeff[0] + input_coeff[3] + input_coeff[4]) / beta[1]
-        a_V = a_O * beta[1] - input_coeff[3]
-        a_U = -input_coeff[4] - a_O * beta[2]
-        alpha, beta = WM2Validation.recovered_structural_coefficients(np.array([a_B, a_V, a_O, a_U], dtype=float), beta, tol=tol)
-
-        WM2Validation.expected_equilibrium_parameters(alpha, beta)
-        recovered_input, recovered_drift = self.model.reduced_coefficients(alpha, beta)
-        recovered_input, recovered_drift = WM2Validation.exact_reduced_match(recovered_input, recovered_drift, input_coeff, drift_coeff)
-        recovered_state = self.model._solve_deterministic(current["init_cond"], current["U"], current["B_O"], current["B_I"], current["PE"], recovered_input, recovered_drift, current["kappa_R"])
-
-        updated = dict(current_conditions)
-        updated.update({"alpha": alpha, "beta": beta, "reduced_fit_input_coeff": input_coeff.copy(), "reduced_fit_d_coeff": drift_coeff.copy(), "I_coeff": recovered_input, "d_coeff": recovered_drift, "recovered_input_coeff": recovered_input, "recovered_d_coeff": recovered_drift, "deterministic_state": recovered_state, "recovered_model_loss": float(np.mean((data["I"] - recovered_state["I"]) ** 2))})
-        return updated
-
-
+        return result
