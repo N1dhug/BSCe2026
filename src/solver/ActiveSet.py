@@ -60,16 +60,39 @@ class ActiveSet:
 
     @staticmethod
     def _find_feasible_point(n_variables, G, h, A_eq, b_eq, tol):
-        # Find feasible point
-        result = linprog(np.zeros(n_variables, dtype=float), A_ub=G if G.shape[0] else None, b_ub=h if G.shape[0] else None, A_eq=A_eq if A_eq.shape[0] else None, b_eq=b_eq if A_eq.shape[0] else None, bounds=[(None, None)] * n_variables, method="highs",)
-        if not result.success:
-            raise ValueError("The supplied linear equality, inequality, and bound constraints are infeasible.")
+        # Prefer a relative-interior feasible point to avoid a degenerate initial working set.
+        if G.shape[0]:
+            scales = np.linalg.norm(G, axis=1)
+            c = np.zeros(n_variables + 1, dtype=float); c[-1] = -1.0
+            A_margin = np.column_stack((G, scales))
+            E_margin = np.column_stack((A_eq, np.zeros(A_eq.shape[0]))) if A_eq.shape[0] else None
+            interior = linprog(c, A_ub=A_margin, b_ub=h, A_eq=E_margin, b_eq=b_eq if A_eq.shape[0] else None, bounds=[(None, None)] * n_variables + [(0.0, 1.0)], method="highs")
+            if interior.success and interior.x[-1] > 10.0 * tol:
+                x = np.asarray(interior.x[:-1], dtype=float)
+                if ActiveSet._is_feasible(x, G, h, A_eq, b_eq, 10.0 * tol): return x
+
+        result = linprog(np.zeros(n_variables, dtype=float), A_ub=G if G.shape[0] else None, b_ub=h if G.shape[0] else None, A_eq=A_eq if A_eq.shape[0] else None, b_eq=b_eq if A_eq.shape[0] else None, bounds=[(None, None)] * n_variables, method="highs")
+        if not result.success: raise ValueError("The supplied linear equality, inequality, and bound constraints are infeasible.")
 
         x = np.asarray(result.x, dtype=float)
-
-        if not ActiveSet._is_feasible(x, G, h, A_eq, b_eq, 10.0 * tol):
-            raise RuntimeError("Phase-I feasibility solve returned an infeasible point.")
+        if not ActiveSet._is_feasible(x, G, h, A_eq, b_eq, 10.0 * tol): raise RuntimeError("Phase-I feasibility solve returned an infeasible point.")
         return x
+
+    @staticmethod
+    def _independent_active_set(G, indices, A_eq):
+        # Keep only active inequalities that add an independent constraint row.
+        selected = []
+        constraints = A_eq.copy()
+        rank = np.linalg.matrix_rank(constraints) if constraints.shape[0] else 0
+
+        for index in indices:
+            candidate = G[index][None, :] if constraints.shape[0] == 0 else np.vstack((constraints, G[index]))
+            candidate_rank = np.linalg.matrix_rank(candidate)
+            if candidate_rank > rank:
+                selected.append(int(index))
+                constraints, rank = candidate, candidate_rank
+            if rank >= G.shape[1]: break
+        return set(selected)
 
     @staticmethod
     def _solve_equality_qp(hessian, gradient, constraints):
@@ -106,7 +129,7 @@ class ActiveSet:
 
         if G.shape[0]:
             slack = h - G @ x
-            working = set(np.flatnonzero(slack <= tol).tolist())
+            working = ActiveSet._independent_active_set(G, np.flatnonzero(slack <= tol), A_eq)
         else:
             working = set()
 
@@ -160,7 +183,7 @@ class ActiveSet:
             x = x + alpha * direction
 
             if blocking is not None and alpha < 1.0 - tol:
-                working.add(int(blocking))
+                working = ActiveSet._independent_active_set(G, sorted(working | {int(blocking)}), A_eq)
 
             if not ActiveSet._is_feasible(x, G, h, A_eq, b_eq, 100.0 * tol):
                 raise RuntimeError("Active-set iteration lost feasibility beyond numerical tolerance.")
