@@ -6,13 +6,7 @@ from src.validation.model.WM3 import WM3Validation
 
 
 class BruteParams:
-    """Grid-refined WM3 fit over underdamped and critically damped responses.
-
-    The outer search fixes c_V, d_V, alpha_O and the damping ratio. For each
-    candidate these values determine beta_V, alpha_V and alpha_U exactly.
-    The remaining beta coefficients [beta_U, beta_L, beta_H] and latent
-    trajectories [V, R] are then obtained from one convex least-squares QP.
-    """
+    """Grid-refined WM3 fit over underdamped and critically damped responses."""
 
     def __init__(self, model):
         self.model = model
@@ -24,15 +18,9 @@ class BruteParams:
 
     def _prepare_data(self, input_data):
         data = WM3Validation.fit_data(input_data, self.model.t_steps)
-        L = np.empty(self.model.t_steps)
-        H = np.empty(self.model.t_steps)
-
-        for k in range(self.model.t_steps):
-            L[k] = WM3Validation.feature_value(self.model.L(data["Time"][k]), "L(Time)")
-            H[k] = WM3Validation.feature_value(self.model.H(data["Chill_factor"][k]), "H(Chill_factor)")
-
+        L = np.array([WM3Validation.feature_value(self.model.L(value), "L(Time)") for value in data["Time"]], dtype=float)
         prepared = dict(data)
-        prepared.update({"L": L, "H": H})
+        prepared["L"] = L
         return prepared
 
     def _solve_inner(self, data, init_cond, c_v, d_v, alpha_o, kappa_r):
@@ -43,36 +31,35 @@ class BruteParams:
         tol = 1e-9
 
         if beta_v < -tol or beta_v > 1.0 + tol: raise ValueError("beta_V is outside [0, 1].")
-        if alpha_v < -tol or alpha_u < -tol or alpha_o < -tol or alpha_v > 1.0 + tol or alpha_u > 1.0 + tol or alpha_o > 1.0 + tol: raise ValueError("alpha is outside the simplex.")
+        if min(alpha_v, alpha_u, alpha_o) < -tol or max(alpha_v, alpha_u, alpha_o) > 1.0 + tol: raise ValueError("alpha is outside the simplex.")
 
         beta_v = float(np.clip(beta_v, 0.0, 1.0))
-        alpha = np.array([alpha_v, alpha_u, alpha_o], dtype=float)
-        alpha = np.clip(alpha, 0.0, 1.0)
+        alpha = np.clip(np.array([alpha_v, alpha_u, alpha_o], dtype=float), 0.0, 1.0)
         alpha /= np.sum(alpha)
 
-        i_b, i_v, i_r = slice(0, 3), slice(3, 3 + n), slice(3 + n, 3 + 2 * n)
-        n_var = 3 + 2 * n
-        F = np.column_stack((1.0 - data["U"], data["L"], data["H"]))
+        i_b, i_v, i_r = slice(0, 2), slice(2, 2 + n), slice(2 + n, 2 + 2 * n)
+        n_var = 2 + 2 * n
+        F = np.column_stack((1.0 - data["U"], data["L"]))
         fixed = alpha[0] + alpha[1] - alpha[1] * data["U"]
 
         X = np.zeros((n, n_var), dtype=float)
         X[:, i_b] = alpha[2] * F
-        X[np.arange(n), 3 + np.arange(n)] = c_v
+        X[np.arange(n), 2 + np.arange(n)] = c_v
         y = data["I"] - fixed
 
         eq_rows, eq_rhs = [], []
-        row = np.zeros(n_var); row[3] = 1.0; eq_rows.append(row); eq_rhs.append(float(init_cond[0]))
-        row = np.zeros(n_var); row[3 + n] = 1.0; eq_rows.append(row); eq_rhs.append(float(init_cond[1]))
+        row = np.zeros(n_var); row[2] = 1.0; eq_rows.append(row); eq_rhs.append(float(init_cond[0]))
+        row = np.zeros(n_var); row[2 + n] = 1.0; eq_rows.append(row); eq_rhs.append(float(init_cond[1]))
 
         for k in range(n - 1):
             row = np.zeros(n_var)
-            row[3 + k + 1], row[3 + k], row[3 + n + k] = 1.0, -1.0, -dt
+            row[2 + k + 1], row[2 + k], row[2 + n + k] = 1.0, -1.0, -dt
             eq_rows.append(row); eq_rhs.append(0.0)
 
             row = np.zeros(n_var)
-            row[3 + n + k + 1] = 1.0
-            row[3 + n + k] = -(1.0 - kappa_r * dt)
-            row[3 + k] = -kappa_r * dt * d_v
+            row[2 + n + k + 1] = 1.0
+            row[2 + n + k] = -(1.0 - kappa_r * dt)
+            row[2 + k] = -kappa_r * dt * d_v
             row[i_b] = -kappa_r * dt * (alpha[2] - 1.0) * F[k]
             eq_rows.append(row); eq_rhs.append(kappa_r * dt * fixed[k])
 
@@ -82,15 +69,16 @@ class BruteParams:
 
         ub_rows, ub_rhs = [X, -X], [1.0 - fixed, fixed]
         for L_value in (0.0, 1.0):
-            for H_value in (0.0, 1.0):
-                for U_value in (0.0, 1.0):
-                    features = np.array([1.0 - U_value, L_value, H_value], dtype=float)
-                    constant = alpha[0] + alpha[1] - alpha[1] * U_value
-                    q = (alpha[2] - 1.0) * features
-                    row = np.zeros(n_var); row[i_b] = -q
-                    ub_rows.append(row[None, :]); ub_rhs.append(np.array([constant]))
-                    row = np.zeros(n_var); row[i_b] = q
-                    ub_rows.append(row[None, :]); ub_rhs.append(np.array([-d_v - constant]))
+            for U_value in (0.0, 1.0):
+                features = np.array([1.0 - U_value, L_value], dtype=float)
+                constant = alpha[0] + alpha[1] - alpha[1] * U_value
+                q = (alpha[2] - 1.0) * features
+
+                row = np.zeros(n_var); row[i_b] = -q
+                ub_rows.append(row[None, :]); ub_rhs.append(np.array([constant]))
+
+                row = np.zeros(n_var); row[i_b] = q
+                ub_rows.append(row[None, :]); ub_rhs.append(np.array([-d_v - constant]))
 
         A_ub, b_ub = np.vstack(ub_rows), np.concatenate(ub_rhs)
         lb, ub = np.full(n_var, -np.inf), np.full(n_var, np.inf)
@@ -100,17 +88,17 @@ class BruteParams:
         solution = self.model._least_squares_qp(X, y, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
         qp_solve_time = perf_counter() - qp_start
 
-        beta = np.array([beta_v, solution[0], solution[1], solution[2]], dtype=float)
+        beta = np.array([beta_v, solution[0], solution[1]], dtype=float)
         alpha, beta = WM3Validation.recovered_structural_coefficients(alpha, beta)
         input_coeff, drift_coeff = self.model.reduced_coefficients(alpha, beta)
 
-        if not np.isclose(input_coeff[3], c_v, atol=1e-7, rtol=0.0): raise ValueError("Recovered WM3 c_V does not match the brute-force candidate.")
-        if not np.isclose(drift_coeff[3], d_v, atol=1e-7, rtol=0.0): raise ValueError("Recovered WM3 d_V does not match the brute-force candidate.")
+        if not np.isclose(input_coeff[2], c_v, atol=1e-7, rtol=0.0): raise ValueError("Recovered WM3 c_V does not match the brute-force candidate.")
+        if not np.isclose(drift_coeff[2], d_v, atol=1e-7, rtol=0.0): raise ValueError("Recovered WM3 d_V does not match the brute-force candidate.")
 
-        state = self.model._solve_deterministic(init_cond, data["U"], data["PE"], data["Time"], data["Chill_factor"], data["L"], data["H"], input_coeff, drift_coeff, kappa_r)
+        state = self.model._solve_deterministic(init_cond, data["U"], data["PE"], data["Time"], data["L"], input_coeff, drift_coeff, kappa_r)
         loss = float(np.mean((data["I"] - state["I"]) ** 2))
 
-        return {"init_cond": np.asarray(init_cond, dtype=float).copy(), "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(), "Chill_factor": data["Chill_factor"].copy(), "L": data["L"].copy(), "H": data["H"].copy(), "alpha": alpha, "beta": beta, "I_coeff": input_coeff, "d_coeff": drift_coeff, "kappa_R": float(kappa_r), "latent_V": solution[i_v].copy(), "latent_R": solution[i_r].copy(), "deterministic_state": state, "recovered_model_loss": loss, "structural_viable": True, "brute_c_V": float(c_v), "brute_d_V": float(d_v), "brute_alpha_O": float(alpha_o), "brute_kappa_R": float(kappa_r), "qp_solve_time": qp_solve_time}
+        return {"init_cond": np.asarray(init_cond, dtype=float).copy(), "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(), "L": data["L"].copy(), "alpha": alpha, "beta": beta, "I_coeff": input_coeff, "d_coeff": drift_coeff, "kappa_R": float(kappa_r), "latent_V": solution[i_v].copy(), "latent_R": solution[i_r].copy(), "deterministic_state": state, "recovered_model_loss": loss, "structural_viable": True, "brute_c_V": float(c_v), "brute_d_V": float(d_v), "brute_alpha_O": float(alpha_o), "brute_kappa_R": float(kappa_r), "qp_solve_time": qp_solve_time}
 
     @staticmethod
     def _refined_interval(values, best, global_lo, global_hi):
@@ -198,7 +186,7 @@ class BruteParams:
         if not valid: raise RuntimeError("WM3 brute-force parameter search found no structurally admissible underdamped or critically damped grid candidate.")
         return min(valid, key=lambda item: item["score"]), branch_results
 
-    def fit(self, input_data, initial_conditions, *, grid_points=10, alpha_points=5, refinements=3, c_v_range=(-1.0, 1.0), d_v_range=(-1.0, -1e-4), alpha_o_range=(0.0, 1.0), ratio_eps=1e-3, verbose=True, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, grid_points=4, alpha_points=4, refinements=2, c_v_range=(-1.0, 1.0), d_v_range=(-1.0, -1e-4), alpha_o_range=(0.0, 1.0), ratio_eps=1e-3, verbose=True, progress_every=25):
         data = self._prepare_data(input_data)
         init_cond = WM3Validation.initial_condition(initial_conditions)
         grid_points, alpha_points, refinements, progress_every = int(grid_points), int(alpha_points), int(refinements), int(progress_every)
