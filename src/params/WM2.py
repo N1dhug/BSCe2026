@@ -1,4 +1,6 @@
 import itertools
+from time import perf_counter
+
 import numpy as np
 
 from src.validation.model.WM2 import WM2Validation
@@ -207,14 +209,16 @@ class BruteParams(BaseParams):
         row = np.zeros(n_var); row[4], row[0] = 1.0, -1.0; ub_rows.append(row[None, :]); ub_rhs.append(np.array([0.0]))
         A_ub, b_ub = np.vstack(ub_rows), np.concatenate(ub_rhs)
 
+        qp_start = perf_counter()
         solution = self.model._least_squares_qp(X, data["I"], A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, ridge=self.model._FIT_RIDGE)
+        qp_solve_time = perf_counter() - qp_start
         c_bar, d_bar = solution[i_c], solution[i_d]
         input_coeff = np.array([c_bar[0], c_bar[1], c_bar[2], c_v, c_bar[3]], dtype=float)
         drift_coeff = np.array([d_bar[0], d_bar[1], d_bar[2], d_v, d_bar[3]], dtype=float)
 
         current = {"init_cond": np.asarray(init_cond, dtype=float).copy(), "U": data["U"].copy(), "PE": data["PE"].copy(), "B_I": np.asarray(B_I, dtype=float).copy(), "B_O": np.asarray(B_O, dtype=float).copy(), "I_coeff": input_coeff, "d_coeff": drift_coeff, "kappa_R": float(kappa_r), "sigma_0": self.model._FIT_EPS, "sigma_O": self.model._FIT_EPS, "latent_V": solution[i_v].copy(), "latent_R": solution[i_r].copy()}
         current = self._recover_alpha_beta(current, data)
-        current.update({"structural_viable": True, "brute_c_V": float(c_v), "brute_d_V": float(d_v), "brute_kappa_R": float(kappa_r)})
+        current.update({"structural_viable": True, "brute_c_V": float(c_v), "brute_d_V": float(d_v), "brute_kappa_R": float(kappa_r), "qp_solve_time": qp_solve_time})
         return current
 
     @staticmethod
@@ -225,17 +229,22 @@ class BruteParams(BaseParams):
         if hi <= lo: hi = min(global_hi, lo + max(width, 1e-8))
         return lo, hi
 
-    def _search_branch(self, branch, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps):
+    def _search_branch(self, branch, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps, verbose, progress_every):
         c_bounds, d_bounds = tuple(map(float, c_v_range)), tuple(map(float, d_v_range))
         rho_global = {"under": (ratio_eps, 1.0 - ratio_eps), "critical": (1.0, 1.0), "over": (1.0 + ratio_eps, 2.0)}[branch]
         c_local, d_local, rho_local = c_bounds, d_bounds, rho_global
         best, history = None, []
+        branch_start = perf_counter()
 
         for level in range(refinements):
             c_grid = np.linspace(*c_local, grid_points)
             d_grid = np.linspace(*d_local, grid_points)
             rho_grid = np.array([1.0]) if branch == "critical" else np.linspace(*rho_local, grid_points)
             level_best, tested, pruned = None, 0, 0
+            qp_times = []
+            level_start = perf_counter()
+            total_candidates = len(c_grid) * len(d_grid) * len(rho_grid)
+            if verbose: print(f"[brute] branch={branch} refinement={level + 1}/{refinements} candidates={total_candidates}")
 
             for d_v in d_grid:
                 if d_v >= -self.model._FIT_EPS: continue
@@ -250,38 +259,53 @@ class BruteParams(BaseParams):
                             pruned += 1
                             continue
                         tested += 1
+                        candidate_start = perf_counter()
                         try:
                             candidate = self._solve_inner(data, init_cond, B_I, B_O, c_v, d_v, kappa_r)
                         except (ValueError, RuntimeError, np.linalg.LinAlgError):
+                            candidate_time = perf_counter() - candidate_start
+                            if verbose and tested % progress_every == 0:
+                                elapsed = perf_counter() - level_start
+                                print(f"[brute] branch={branch} refinement={level + 1} tested={tested} pruned={pruned} elapsed={elapsed:.2f}s last_candidate={candidate_time:.4f}s status=failed")
                             continue
+
+                        qp_times.append(float(candidate["qp_solve_time"]))
+                        if verbose and (tested == 1 or tested % progress_every == 0):
+                            elapsed = perf_counter() - level_start
+                            mean_qp = float(np.mean(qp_times))
+                            print(f"[brute] branch={branch} refinement={level + 1} tested={tested} pruned={pruned} elapsed={elapsed:.2f}s last_qp={qp_times[-1]:.4f}s mean_qp={mean_qp:.4f}s")
 
                         if not candidate.get("structural_viable", False): continue
                         score = float(candidate["recovered_model_loss"])
                         if level_best is None or score < level_best["score"]: level_best = {"score": score, "c_v": float(c_v), "d_v": float(d_v), "rho": float(rho), "kappa_R": float(kappa_r), "alpha": candidate["alpha"].copy(), "beta": candidate["beta"].copy(), "result": candidate}
 
-            history.append({"level": level, "tested": tested, "pruned": pruned, "best_loss": np.inf if level_best is None else level_best["score"]})
+            level_elapsed = perf_counter() - level_start
+            mean_qp = float(np.mean(qp_times)) if qp_times else np.nan
+            history.append({"level": level, "tested": tested, "pruned": pruned, "best_loss": np.inf if level_best is None else level_best["score"], "elapsed": level_elapsed, "mean_qp_solve_time": mean_qp, "qp_solves": len(qp_times)})
+            if verbose: print(f"[brute] branch={branch} refinement={level + 1} complete tested={tested} pruned={pruned} qp_solves={len(qp_times)} elapsed={level_elapsed:.2f}s mean_qp={mean_qp:.4f}s")
             if level_best is None: break
             best = level_best
             c_local = self._refined_interval(c_grid, best["c_v"], *c_bounds)
             d_local = self._refined_interval(d_grid, best["d_v"], *d_bounds)
             if branch != "critical": rho_local = self._refined_interval(rho_grid, best["rho"], *rho_global)
 
-        if best is not None: best.update({"history": history, "branch": branch})
+        if best is not None: best.update({"history": history, "branch": branch, "elapsed": perf_counter() - branch_start})
         return best
 
-    def _search_all(self, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps):
-        branch_results = {branch: self._search_branch(branch, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps) for branch in ("under", "critical", "over")}
+    def _search_all(self, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps, verbose, progress_every):
+        branch_results = {branch: self._search_branch(branch, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps, verbose, progress_every) for branch in ("under", "critical", "over")}
         valid = [item for item in branch_results.values() if item is not None]
         if not valid: raise RuntimeError("WM2 brute-force parameter search found no structurally admissible grid candidate.")
         return min(valid, key=lambda item: item["score"]), branch_results
 
-    def fit(self, input_data, initial_conditions, baseline_feature_vec, *, grid_points=10, refinements=3, baseline_iterations=2, c_v_range=(-1.0, 1.0), d_v_range=(-1.0, -1e-4), ratio_eps=1e-3):
+    def fit(self, input_data, initial_conditions, baseline_feature_vec, *, grid_points=10, refinements=3, baseline_iterations=2, c_v_range=(-1.0, 1.0), d_v_range=(-1.0, -1e-4), ratio_eps=1e-3, verbose=True, progress_every=25):
         data = WM2Validation.fit_data(input_data, self.model.t_steps)
         init_cond = WM2Validation.initial_condition(initial_conditions)
         X_BI, X_BO = WM2Validation.baseline_features(baseline_feature_vec, self.model.t_steps)
-        grid_points, refinements, baseline_iterations = int(grid_points), int(refinements), int(baseline_iterations)
+        grid_points, refinements, baseline_iterations, progress_every = int(grid_points), int(refinements), int(baseline_iterations), int(progress_every)
 
         if grid_points < 2 or refinements < 1 or baseline_iterations < 1: raise ValueError("grid_points >= 2, refinements >= 1, and baseline_iterations >= 1 are required.")
+        if progress_every < 1: raise ValueError("progress_every must be at least 1.")
         if not c_v_range[0] < c_v_range[1]: raise ValueError("c_v_range must be increasing.")
         if not d_v_range[0] < d_v_range[1] < 0.0: raise ValueError("d_v_range must be increasing and strictly negative.")
         if not 0.0 < ratio_eps < 0.5: raise ValueError("ratio_eps must lie in (0, 0.5).")
@@ -291,8 +315,10 @@ class BruteParams(BaseParams):
         all_searches, best = [], None
         last_BI_weights = last_BO_weights = None
 
+        fit_start = perf_counter()
         for baseline_iter in range(baseline_iterations):
-            best, branches = self._search_all(data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps)
+            if verbose: print(f"[brute] baseline iteration {baseline_iter + 1}/{baseline_iterations}")
+            best, branches = self._search_all(data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps, verbose, progress_every)
             all_searches.append({"baseline_iteration": baseline_iter, "branches": branches})
             result = best["result"]
             if baseline_iter == baseline_iterations - 1: break
@@ -307,5 +333,5 @@ class BruteParams(BaseParams):
         result = dict(best["result"])
         result.update({"alpha": best["alpha"].copy(), "beta": best["beta"].copy(), "B_I_weights": last_BI_weights, "B_O_weights": last_BO_weights})
         result = self._fit_uncertainty_params(result, data)
-        result.update({"fit_method": "brute", "brute_branch": best["branch"], "brute_score": float(best["score"]), "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": all_searches, "deterministic_loss": float(result["recovered_model_loss"])})
+        result.update({"fit_method": "brute", "brute_branch": best["branch"], "brute_score": float(best["score"]), "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": all_searches, "brute_fit_time": perf_counter() - fit_start, "deterministic_loss": float(result["recovered_model_loss"])})
         return result
