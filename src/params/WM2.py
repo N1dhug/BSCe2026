@@ -310,10 +310,11 @@ class BruteParams(BaseParams):
         if not d_v_range[0] < d_v_range[1] < 0.0: raise ValueError("d_v_range must be increasing and strictly negative.")
         if not 0.0 < ratio_eps < 0.5: raise ValueError("ratio_eps must lie in (0, 0.5).")
 
-        mean_I = float(np.mean(data["I"]))
-        B_I, B_O = np.full(self.model.t_steps, mean_I), np.full(self.model.t_steps, mean_I)
+        n_I, n_O = X_BI.shape[1], X_BO.shape[1]
+        last_BI_weights = np.full(n_I, 1.0 / n_I)
+        last_BO_weights = np.full(n_O, 1.0 / n_O)
+        B_I, B_O = X_BI @ last_BI_weights, X_BO @ last_BO_weights
         all_searches, best = [], None
-        last_BI_weights = last_BO_weights = None
 
         fit_start = perf_counter()
         for baseline_iter in range(baseline_iterations):
