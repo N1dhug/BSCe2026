@@ -27,8 +27,8 @@ B_I = inputs.energy((np.array([0.0, days]), np.array([B_I_level, B_I_level])))
 PE = inputs.price((np.array([0.0, days]), np.array([PE_level, PE_level])))
 
 # Build the dynamic-price step.
-price_before = 0.25
-price_after = 0.75
+price_before = 0.75
+price_after = 0.25
 price_step_hour = 24.0
 price_step_time = price_step_hour / 24.0
 U = inputs.price((np.array([0.0, price_step_time, days]), np.array([price_before, price_after, price_after]),))
@@ -38,9 +38,9 @@ alpha = np.array([0, 0.1, 0.1, 0.8])
 beta = np.array([0.1, 0.85, 0.05])
 gamma = np.array([0.25, 0.25, 0.25, 0.25])
 
-kappa_R = 1
-sigma_0 = 0.025
-sigma_O = 0.075
+kappa_R = 0.5
+sigma_0 = 0.1
+sigma_O = 0.4
 
 parameters = {"U": U, "B_O": B_O, "B_I": B_I, "PE": PE, "alpha": alpha, "beta": beta, "gamma": gamma, "kappa_R": kappa_R, "sigma_0": sigma_0, "sigma_O": sigma_O,}
 
