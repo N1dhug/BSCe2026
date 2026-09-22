@@ -483,6 +483,8 @@ class BruteParams:
         B_O = np.full(self.model.t_steps, mean_I)
         all_searches = []
         best = None
+        last_BI_weights = None
+        last_BO_weights = None
 
         for baseline_iter in range(baseline_iterations):
             best, branches = self._search_all(
@@ -501,28 +503,12 @@ class BruteParams:
                 break
             B_I = updated["B_I"]
             B_O = updated["B_O"]
+            last_BI_weights = updated.get("B_I_weights")
+            last_BO_weights = updated.get("B_O_weights")
 
         result = dict(best["result"])
-        # Fit baseline weights once more for the final candidate, then re-run the
-        # local search so the reported C/D and latent state correspond to them.
-        try:
-            baseline_result = self._shared._optimize_B_params(
-                result, {"B_I": X_BI, "B_O": X_BO}, data
-            )
-            B_I = baseline_result["B_I"]
-            B_O = baseline_result["B_O"]
-            final_best, final_branches = self._search_all(
-                data, init_cond, B_I, B_O, grid_points, 1,
-                c_v_range, d_v_range, ratio_eps
-            )
-            result = dict(final_best["result"])
-            result["B_I_weights"] = baseline_result.get("B_I_weights")
-            result["B_O_weights"] = baseline_result.get("B_O_weights")
-            best = final_best
-            all_searches.append({"baseline_iteration": "final", "branches": final_branches})
-        except (ValueError, RuntimeError, np.linalg.LinAlgError):
-            pass
-
+        result["B_I_weights"] = last_BI_weights
+        result["B_O_weights"] = last_BO_weights
         result = self._shared._optimize_uncertainty_params(result, data)
         result["fit_method"] = "brute"
         result["brute_branch"] = best["branch"]
