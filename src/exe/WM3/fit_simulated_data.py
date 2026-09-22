@@ -5,6 +5,7 @@ from time import perf_counter
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.optimize import lsq_linear
 
 from src.model.WM3 import WM3
 
@@ -23,43 +24,36 @@ def daily_profile(hour):
 
 
 def fit_linear_time_feature(hour, input_data):
-    """Fit the best single wrapped 24-hour line and return normalized L(Time)."""
+    """Fit the best wrapped 24-hour line subject only to 0 <= L(Time) <= 1."""
     hour = np.asarray(hour, dtype=float) % 24.0
     input_data = np.asarray(input_data, dtype=float)
 
     best = None
     for origin in range(24):
         x = ((hour - origin) % 24.0) / 24.0
-        X = np.column_stack((np.ones(x.size), x))
-        coeff, *_ = np.linalg.lstsq(X, input_data, rcond=None)
-        prediction = X @ coeff
+
+        # Parameterize the line by its values at x=0 and x=1:
+        # L(x) = (1-x) L0 + x L1.
+        # Bounding L0,L1 in [0,1] guarantees the entire line stays in [0,1]
+        # without forcing it to span the full interval.
+        X = np.column_stack((1.0 - x, x))
+        result = lsq_linear(X, input_data, bounds=(0.0, 1.0))
+        endpoints = result.x
+        prediction = X @ endpoints
         mse = float(np.mean((input_data - prediction) ** 2))
+
         if best is None or mse < best["mse"]:
-            best = {"origin": origin, "coeff": coeff, "mse": mse}
+            best = {"origin": origin, "endpoints": endpoints, "coeff": np.array([endpoints[0], endpoints[1] - endpoints[0]]), "mse": mse}
 
     origin = best["origin"]
-    intercept, slope = best["coeff"]
+    L0, L1 = best["endpoints"]
 
-    def raw_prediction(value):
+    def L(value):
         x = ((np.asarray(value, dtype=float) % 24.0 - origin) % 24.0) / 24.0
-        return intercept + slope * x
+        result = (1.0 - x) * L0 + x * L1
+        return float(result) if np.ndim(result) == 0 else result
 
-    grid = np.arange(24, dtype=float)
-    raw_grid = raw_prediction(grid)
-    lo, hi = float(np.min(raw_grid)), float(np.max(raw_grid))
-
-    if np.isclose(lo, hi):
-        def L(value):
-            value = np.asarray(value, dtype=float)
-            result = np.full_like(value, 0.5, dtype=float)
-            return float(result) if result.ndim == 0 else result
-    else:
-        def L(value):
-            result = (raw_prediction(value) - lo) / (hi - lo)
-            result = np.clip(result, 0.0, 1.0)
-            return float(result) if np.ndim(result) == 0 else result
-
-    best.update({"raw_min": lo, "raw_max": hi})
+    best.update({"min": float(min(L0, L1)), "max": float(max(L0, L1))})
     return L, best
 
 
@@ -87,7 +81,8 @@ user_input = user_offset + user_scale * base[None, :] + user_price * (0.5 - U)[N
 user_input = np.clip(user_input, 0.0, 1.0)
 simulated_I = np.mean(user_input, axis=0)
 
-# L(Time) is one wrapped 24-hour linear OLS fit to the aggregate input data.
+# L(Time) is one wrapped 24-hour constrained linear fit to aggregate input.
+# It only has to remain inside [0,1]; it is not rescaled to fill [0,1].
 L, L_fit = fit_linear_time_feature(time_of_day, simulated_I)
 
 model = WM3((0.0, (hours - 1) / 24.0), hours, L)
@@ -118,7 +113,9 @@ print(f"Days:           {days}")
 print(f"Runtime:        {elapsed:.3f} s")
 print(f"MSE:            {mse:.6e}")
 print(f"L origin:       {L_fit['origin']:02d}:00")
-print(f"L OLS slope:    {L_fit['coeff'][1]:.6f}")
+print(f"L intercept:    {L_fit['coeff'][0]:.6f}")
+print(f"L slope:        {L_fit['coeff'][1]:.6f}")
+print(f"L range:        [{L_fit['min']:.6f}, {L_fit['max']:.6f}]")
 print(f"L OLS MSE:      {L_fit['mse']:.6e}")
 print(f"Branch:         {fit['brute_branch']}")
 print(f"Score:          {fit['brute_score']:.6e}")
