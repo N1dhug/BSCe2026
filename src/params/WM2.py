@@ -163,7 +163,7 @@ class ProxyParams(BaseParams):
 
 
 class BruteParams(BaseParams):
-    """Grid-refined WM2 fit over c_V, d_V and kappa_R with a convex inner C/D/state QP."""
+    """Grid-refined WM2 fit over underdamped and critically damped responses."""
 
     @staticmethod
     def _transition_stable(dt, d_v, kappa_r, tol=1e-10):
@@ -231,7 +231,7 @@ class BruteParams(BaseParams):
 
     def _search_branch(self, branch, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps, verbose, progress_every):
         c_bounds, d_bounds = tuple(map(float, c_v_range)), tuple(map(float, d_v_range))
-        rho_global = {"under": (ratio_eps, 1.0 - ratio_eps), "critical": (1.0, 1.0), "over": (1.0 + ratio_eps, 2.0)}[branch]
+        rho_global = {"under": (ratio_eps, 1.0 - ratio_eps), "critical": (1.0, 1.0)}[branch]
         c_local, d_local, rho_local = c_bounds, d_bounds, rho_global
         best, history = None, []
         branch_start = perf_counter()
@@ -293,9 +293,9 @@ class BruteParams(BaseParams):
         return best
 
     def _search_all(self, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps, verbose, progress_every):
-        branch_results = {branch: self._search_branch(branch, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps, verbose, progress_every) for branch in ("under", "critical", "over")}
+        branch_results = {branch: self._search_branch(branch, data, init_cond, B_I, B_O, grid_points, refinements, c_v_range, d_v_range, ratio_eps, verbose, progress_every) for branch in ("under", "critical")}
         valid = [item for item in branch_results.values() if item is not None]
-        if not valid: raise RuntimeError("WM2 brute-force parameter search found no structurally admissible grid candidate.")
+        if not valid: raise RuntimeError("WM2 brute-force parameter search found no structurally admissible underdamped or critically damped grid candidate.")
         return min(valid, key=lambda item: item["score"]), branch_results
 
     def fit(self, input_data, initial_conditions, baseline_feature_vec, *, grid_points=10, refinements=3, baseline_iterations=2, c_v_range=(-1.0, 1.0), d_v_range=(-1.0, -1e-4), ratio_eps=1e-3, verbose=True, progress_every=25):
