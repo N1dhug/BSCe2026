@@ -83,13 +83,110 @@ class BM1(BM):
 
         return self.t.copy(), x, p, coefficients, EXt, Ut, Bt, EDt
 
-    def deterministic_solver(self, init_cond, parameters):
+    def deterministic_solver(
+        self,
+        init_cond,
+        parameters,
+        *,
+        t_eval=None,
+        breakpoints=None,
+        rtol=1.0e-3,
+        atol=1.0e-6,
+        max_step=np.inf,
+    ):
+        """Solve deterministic BM1, restarting at known input discontinuities.
+
+        ``t_eval`` controls only the returned output grid. ``breakpoints`` are
+        internal integration boundaries and need not occur in ``t_eval``.
+        Existing calls without optional arguments retain ``self.t`` and
+        SciPy's default tolerances.
+        """
         # Solve deterministic model
-        init_cond, parameters = BM1Validation.model_inputs(init_cond, parameters)
-        solution = solve_ivp(self.dXdt, self.T, init_cond, args=parameters, t_eval=self.t)
-        Xt = solution.y[0]
-        Ut, Bt, fXt, gUt, dt, Dt = self.eval(solution.t, Xt, parameters[0], parameters[1], parameters[2], parameters[4], parameters[5])
-        return solution.t, Xt, Ut, Bt, fXt, gUt, dt, Dt
+        if t_eval is None:
+            t_eval = self.t.copy()
+
+        (
+            init_cond,
+            parameters,
+            t_eval,
+            breakpoints,
+            rtol,
+            atol,
+            max_step,
+        ) = BM1Validation.deterministic_inputs(
+            init_cond,
+            parameters,
+            t_eval,
+            breakpoints,
+            self.T,
+            rtol,
+            atol,
+            max_step,
+        )
+
+        interval_edges = np.concatenate(
+            ([self.T[0]], breakpoints, [self.T[1]])
+        )
+        Xt = np.empty(t_eval.size, dtype=float)
+        current_state = init_cond
+
+        for index, (left, right) in enumerate(
+            zip(interval_edges[:-1], interval_edges[1:])
+        ):
+            first_interval = index == 0
+            final_interval = index == len(interval_edges) - 2
+
+            def segment_rhs(
+                t,
+                state,
+                left=left,
+                right=right,
+                first=first_interval,
+                final=final_interval,
+            ):
+                # Use the correct one-sided input at each internal boundary.
+                if not first and t <= left:
+                    model_time = np.nextafter(left, right)
+                elif not final and t >= right:
+                    model_time = np.nextafter(right, left)
+                else:
+                    model_time = t
+                return self.dXdt(model_time, state, *parameters)
+
+            solution = solve_ivp(
+                segment_rhs,
+                (left, right),
+                current_state,
+                dense_output=True,
+                rtol=rtol,
+                atol=atol,
+                max_step=max_step,
+            )
+            if not solution.success:
+                raise RuntimeError(
+                    f"solve_ivp failed on interval [{left}, {right}]: "
+                    f"{solution.message}"
+                )
+
+            if final_interval:
+                output_mask = (t_eval >= left) & (t_eval <= right)
+            else:
+                output_mask = (t_eval >= left) & (t_eval < right)
+            if np.any(output_mask):
+                Xt[output_mask] = solution.sol(t_eval[output_mask])[0]
+
+            current_state = solution.y[:, -1]
+
+        Ut, Bt, fXt, gUt, dt, Dt = self.eval(
+            t_eval,
+            Xt,
+            parameters[0],
+            parameters[1],
+            parameters[2],
+            parameters[4],
+            parameters[5],
+        )
+        return t_eval.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt
 
     def optimize(self, initial_u, init_cond, parameters):
         # Optimize price signal

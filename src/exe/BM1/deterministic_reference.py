@@ -6,15 +6,16 @@ This is the F1 reference experiment.  The benchmark uses
 
 a constant baseline, and a price step aligned with every Euler grid.  Under
 these assumptions BM1 has an exact, intervalwise solution.  The script
-compares that solution with the existing ``solve_ivp`` interface and with
-Euler-Maruyama at ``sigma_x=0`` and ``boundary="none"``.
+compares that solution with both the legacy and breakpoint-aware
+``solve_ivp`` interfaces and with Euler-Maruyama at ``sigma_x=0`` and
+``boundary="none"``.
 
 Run this module from the repository root:
 
     python -m src.exe.BM1.deterministic_reference
 
-The script is diagnostic: warnings describe behavior in the current model
-implementation and do not modify BM1 or hide errors with boundary handling.
+The script is diagnostic: it reports both solver paths without modifying BM1
+state or hiding errors with boundary handling.
 """
 
 from pathlib import Path
@@ -38,7 +39,12 @@ K = 2.0
 XI = 1.0
 
 STEPS_PER_DAY = (24, 48, 96, 192)
-IVP_WARNING_TOL = 1.0e-4
+DEFAULT_BREAKPOINT_TOL = 1.0e-4
+CONTROLLED_IVP_TOL = 1.0e-7
+IMPROVEMENT_FACTOR = 100.0
+IVP_RTOL = 1.0e-9
+IVP_ATOL = 1.0e-11
+IVP_OUTPUT_POINTS = 200
 ENERGY_TOL = 1.0e-12
 STATE_TOL = 1.0e-12
 
@@ -241,10 +247,38 @@ def sanity_checks(euler_results):
     }
 
 
-def save_figure(ivp_result, finest_euler, B, U):
+def deterministic_result_is_consistent(result, expected_t, model, parameters):
+    """Check the deterministic solver's unchanged eight-array interface."""
+    if len(result) != 8:
+        return False
+
+    arrays = [np.asarray(values, dtype=float) for values in result]
+    if any(values.shape != expected_t.shape for values in arrays):
+        return False
+    if any(not np.all(np.isfinite(values)) for values in arrays):
+        return False
+    if not np.array_equal(arrays[0], expected_t):
+        return False
+
+    recomputed = model.eval(
+        arrays[0],
+        arrays[1],
+        parameters[0],
+        parameters[1],
+        parameters[2],
+        parameters[4],
+        parameters[5],
+    )
+    return all(
+        np.allclose(values, expected, rtol=1.0e-12, atol=1.0e-12)
+        for values, expected in zip(arrays[2:], recomputed)
+    )
+
+
+def save_figure(legacy_ivp_result, ivp_result, finest_euler, B, U):
     """Save the benchmark state, inputs, equilibria, and demand plot."""
+    legacy_t, legacy_state = legacy_ivp_result[0], legacy_ivp_result[1]
     t_ivp, state_ivp = ivp_result[0], ivp_result[1]
-    exact_ivp = exact_state(t_ivp)
 
     plot_t = np.linspace(T[0], T[1], 1001)
     plot_price = np.asarray(U(plot_t), dtype=float)
@@ -267,10 +301,16 @@ def save_figure(ivp_result, finest_euler, B, U):
 
     axes[0].plot(hours, plot_exact_state, linewidth=2.5, label="Exact X(t)")
     axes[0].plot(
+        24.0 * legacy_t,
+        legacy_state,
+        linestyle="--",
+        label="Legacy solve_ivp",
+    )
+    axes[0].plot(
         24.0 * t_ivp,
         state_ivp,
-        linestyle="--",
-        label="Existing solve_ivp",
+        linestyle="-.",
+        label="Breakpoint-aware solve_ivp (tight tolerances)",
     )
     axes[0].plot(
         24.0 * finest_euler["t"],
@@ -321,32 +361,123 @@ def main():
     B, U = build_inputs()
     parameters = [U, linear_state_response, linear_price_response, C, K, XI]
 
-    # Use the finest common output grid for the existing solve_ivp interface.
+    # Keep one legacy call to verify backward compatibility and expose the
+    # original discontinuity error.
     model = BM1(B, B, T, STEPS_PER_DAY[-1] + 1)
-    ivp_result = model.deterministic_solver([X0], parameters)
+    legacy_ivp_result = model.deterministic_solver([X0], parameters)
+    legacy_t, legacy_state = legacy_ivp_result[0], legacy_ivp_result[1]
+    legacy_difference = np.abs(legacy_state - exact_state(legacy_t))
+    legacy_error = float(np.max(legacy_difference))
+    legacy_error_time = float(legacy_t[np.argmax(legacy_difference)])
+
+    # Compare breakpoint handling against the legacy call at identical default
+    # tolerances, so the measured improvement comes only from segmentation.
+    breakpoint_ivp_result = model.deterministic_solver(
+        [X0], parameters, breakpoints=[PRICE_STEP_TIME]
+    )
+    breakpoint_t = breakpoint_ivp_result[0]
+    breakpoint_state = breakpoint_ivp_result[1]
+    breakpoint_difference = np.abs(
+        breakpoint_state - exact_state(breakpoint_t)
+    )
+    breakpoint_error = float(np.max(breakpoint_difference))
+    breakpoint_error_time = float(
+        breakpoint_t[np.argmax(breakpoint_difference)]
+    )
+    improvement = (
+        legacy_error / breakpoint_error if breakpoint_error > 0.0 else np.inf
+    )
+
+    # The custom output grid deliberately omits the breakpoint. This verifies
+    # that the solver still integrates to the breakpoint internally before it
+    # continues with the new price.
+    ivp_t_eval = np.linspace(T[0], T[1], IVP_OUTPUT_POINTS)
+    ivp_result = model.deterministic_solver(
+        [X0],
+        parameters,
+        t_eval=ivp_t_eval,
+        breakpoints=[PRICE_STEP_TIME],
+        rtol=IVP_RTOL,
+        atol=IVP_ATOL,
+    )
     ivp_t, ivp_state = ivp_result[0], ivp_result[1]
     ivp_difference = np.abs(ivp_state - exact_state(ivp_t))
     ivp_error = float(np.max(ivp_difference))
     ivp_error_time = float(ivp_t[np.argmax(ivp_difference)])
 
+    breakpoint_indices = np.flatnonzero(
+        np.isclose(breakpoint_t, PRICE_STEP_TIME, rtol=0.0, atol=1.0e-14)
+    )
+    right_continuous_output = (
+        breakpoint_indices.size == 1
+        and np.isclose(
+            breakpoint_ivp_result[2][breakpoint_indices[0]],
+            PRICE_AFTER,
+            rtol=0.0,
+            atol=1.0e-14,
+        )
+    )
+
     euler_results = [run_euler(steps, B, U) for steps in STEPS_PER_DAY]
     orders = observed_orders(euler_results)
     checks = sanity_checks(euler_results)
-    graph_path = save_figure(ivp_result, euler_results[-1], B, U)
+    checks.update(
+        {
+            "legacy deterministic API keeps the model grid": (
+                deterministic_result_is_consistent(
+                    legacy_ivp_result, model.t, model, parameters
+                )
+            ),
+            "breakpoint call keeps the default output grid": (
+                deterministic_result_is_consistent(
+                    breakpoint_ivp_result, model.t, model, parameters
+                )
+            ),
+            "custom deterministic output grid is honored": (
+                deterministic_result_is_consistent(
+                    ivp_result, ivp_t_eval, model, parameters
+                )
+            ),
+            "default-tolerance breakpoint solve_ivp reaches target accuracy": (
+                breakpoint_error <= DEFAULT_BREAKPOINT_TOL
+            ),
+            "breakpoint-aware solve_ivp reaches target accuracy": (
+                ivp_error <= CONTROLLED_IVP_TOL
+            ),
+            "breakpoint handling improves the legacy error": (
+                improvement >= IMPROVEMENT_FACTOR
+            ),
+            "breakpoint output uses the right-continuous price": (
+                right_continuous_output
+            ),
+        }
+    )
+    graph_path = save_figure(
+        legacy_ivp_result, ivp_result, euler_results[-1], B, U
+    )
+    checks["reference figure is saved"] = (
+        graph_path.is_file() and graph_path.stat().st_size > 0
+    )
 
     print("BM1 deterministic F1 verification")
     print("==================================")
     print()
-    print("Exact vs existing solve_ivp")
-    print(f"max |X_ivp - X_exact| = {ivp_error:.6e}")
-    print(f"largest error at t      = {ivp_error_time:.6f} days")
-    if ivp_error <= IVP_WARNING_TOL:
-        print(f"PASS solve_ivp error <= {IVP_WARNING_TOL:.1e}")
+    print("Exact vs solve_ivp")
+    print(f"legacy max error          = {legacy_error:.6e}")
+    print(f"legacy largest error at t = {legacy_error_time:.6f} days")
+    print(f"breakpoint max error      = {breakpoint_error:.6e}")
+    print(f"breakpoint error at t     = {breakpoint_error_time:.6f} days")
+    print(f"same-tolerance improvement = {improvement:.3e}")
+    print(f"high-accuracy max error   = {ivp_error:.6e}")
+    print(f"high-accuracy error at t  = {ivp_error_time:.6f} days")
+    if breakpoint_error <= DEFAULT_BREAKPOINT_TOL:
+        print(f"PASS default breakpoint error <= {DEFAULT_BREAKPOINT_TOL:.1e}")
     else:
-        print(
-            f"WARN solve_ivp error > {IVP_WARNING_TOL:.1e}; "
-            "the price discontinuity needs controlled integration"
-        )
+        print(f"FAIL default breakpoint error > {DEFAULT_BREAKPOINT_TOL:.1e}")
+    if ivp_error <= CONTROLLED_IVP_TOL:
+        print(f"PASS controlled error <= {CONTROLLED_IVP_TOL:.1e}")
+    else:
+        print(f"FAIL controlled error > {CONTROLLED_IVP_TOL:.1e}")
 
     print()
     print("Euler convergence")
@@ -379,9 +510,10 @@ def main():
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
         print()
-        print("One or more sanity checks failed; inspect these before changing BM1:")
+        print("One or more F1-B checks failed; inspect these before continuing:")
         for name in failed:
             print(f"- {name}")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

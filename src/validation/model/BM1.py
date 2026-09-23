@@ -11,6 +11,67 @@ class BM1Validation:
         return BMValidation.initial_condition(init_cond), BMValidation.parameters(parameters)
 
     @staticmethod
+    def deterministic_inputs(
+        init_cond,
+        parameters,
+        t_eval,
+        breakpoints,
+        interval,
+        rtol,
+        atol,
+        max_step,
+    ):
+        """Validate deterministic solver inputs and numerical controls."""
+        init_cond, parameters = BM1Validation.model_inputs(init_cond, parameters)
+
+        t_eval = np.asarray(t_eval, dtype=float)
+        if t_eval.ndim != 1 or t_eval.size == 0:
+            raise ValueError("t_eval must be a non-empty one-dimensional grid.")
+        if not np.all(np.isfinite(t_eval)):
+            raise ValueError("t_eval must contain finite values.")
+        if np.any(np.diff(t_eval) <= 0.0):
+            raise ValueError("t_eval must be strictly increasing.")
+
+        t_start, t_end = interval
+        if np.any(t_eval < t_start) or np.any(t_eval > t_end):
+            raise ValueError("t_eval values must lie inside the model time interval.")
+
+        if breakpoints is None:
+            breakpoints = np.empty(0, dtype=float)
+        else:
+            breakpoints = np.asarray(breakpoints, dtype=float)
+            if breakpoints.ndim != 1:
+                raise ValueError("breakpoints must be a one-dimensional array.")
+            if not np.all(np.isfinite(breakpoints)):
+                raise ValueError("breakpoints must contain finite values.")
+            if np.any(np.diff(breakpoints) <= 0.0):
+                raise ValueError("breakpoints must be strictly increasing.")
+            if np.any(breakpoints <= t_start) or np.any(breakpoints >= t_end):
+                raise ValueError(
+                    "breakpoints must lie strictly inside the model time interval."
+                )
+
+        rtol = BMValidation.positive_scalar(rtol, "rtol")
+        atol = BMValidation.positive_scalar(atol, "atol")
+
+        max_step_array = np.asarray(max_step, dtype=float)
+        if max_step_array.size != 1:
+            raise ValueError("max_step must be a scalar.")
+        max_step = float(max_step_array.reshape(-1)[0])
+        if np.isnan(max_step) or max_step <= 0.0:
+            raise ValueError("max_step must be positive or np.inf.")
+
+        return (
+            init_cond,
+            parameters,
+            t_eval,
+            breakpoints,
+            rtol,
+            atol,
+            max_step,
+        )
+
+    @staticmethod
     def stochastic_inputs(init_cond, parameters, sigma_x):
         # Verify inputs
         init_cond, parameters = BM1Validation.model_inputs(init_cond, parameters)
