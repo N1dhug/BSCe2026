@@ -18,6 +18,63 @@ class InputBuilder:
         return interp1d(t_p, p, kind="previous", bounds_error=False, fill_value="extrapolate")
 
     @staticmethod
+    def price_intervals(price_data):
+        """Build a right-continuous price from one value per interval.
+
+        ``price_data`` contains ``(interval_edges, interval_prices)`` with
+        ``N + 1`` strictly increasing edges and exactly ``N`` normalized price
+        values. The final edge uses the price from the final interval, so it
+        does not require an extra terminal price decision.
+        """
+        try:
+            interval_edges, interval_prices = price_data
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "price_data must contain (interval_edges, interval_prices)."
+            ) from exc
+
+        interval_edges = np.asarray(interval_edges, dtype=float)
+        interval_prices = np.asarray(interval_prices, dtype=float)
+
+        if interval_edges.ndim != 1 or interval_edges.size < 2:
+            raise ValueError(
+                "interval_edges must be a one-dimensional array with at least "
+                "two values."
+            )
+        if not np.all(np.isfinite(interval_edges)):
+            raise ValueError("interval_edges must contain finite values.")
+        if np.any(np.diff(interval_edges) <= 0.0):
+            raise ValueError("interval_edges must be strictly increasing.")
+
+        if interval_prices.ndim != 1 or interval_prices.size == 0:
+            raise ValueError(
+                "interval_prices must be a non-empty one-dimensional array."
+            )
+        if not np.all(np.isfinite(interval_prices)):
+            raise ValueError("interval_prices must contain finite values.")
+        if np.any(interval_prices < 0.0) or np.any(interval_prices > 1.0):
+            raise ValueError("interval_prices must lie in [0, 1].")
+        if interval_edges.size != interval_prices.size + 1:
+            raise ValueError(
+                "price_intervals requires N + 1 interval_edges for N "
+                "interval_prices."
+            )
+
+        internal_edges = interval_edges[1:-1].copy()
+        prices = interval_prices.copy()
+
+        def interval_price(t):
+            query = np.asarray(t, dtype=float)
+            if not np.all(np.isfinite(query)):
+                raise ValueError("Price evaluation times must be finite.")
+
+            indices = np.searchsorted(internal_edges, query, side="right")
+            values = prices[indices]
+            return float(values) if query.ndim == 0 else values
+
+        return interval_price
+
+    @staticmethod
     def md(poi_x, pr_x, y_interval=(1.0, -1.0)):
         # Build input function
         interp_y_vals = np.full(len(pr_x), y_interval[0]) - np.cumsum(pr_x)

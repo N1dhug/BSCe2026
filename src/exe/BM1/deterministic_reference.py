@@ -32,6 +32,12 @@ T = (0.0, 1.0)
 PRICE_STEP_TIME = 0.5
 PRICE_BEFORE = 0.75
 PRICE_AFTER = 0.25
+# F1-C price grid: N + 1 interval edges define exactly N price decisions.
+PRICE_INTERVAL_EDGES = np.array(
+    [T[0], PRICE_STEP_TIME, T[1]], dtype=float
+)
+PRICE_INTERVAL_VALUES = np.array([PRICE_BEFORE, PRICE_AFTER], dtype=float)
+INTERNAL_PRICE_BREAKPOINTS = PRICE_INTERVAL_EDGES[1:-1]
 X0 = 0.5
 BASELINE = 0.3
 C = 1.0
@@ -65,11 +71,8 @@ def build_inputs():
     B = inputs.energy(
         (np.array(T, dtype=float), np.array([BASELINE, BASELINE], dtype=float))
     )
-    U = inputs.price(
-        (
-            np.array([T[0], PRICE_STEP_TIME, T[1]], dtype=float),
-            np.array([PRICE_BEFORE, PRICE_AFTER, PRICE_AFTER], dtype=float),
-        )
+    U = inputs.price_intervals(
+        (PRICE_INTERVAL_EDGES, PRICE_INTERVAL_VALUES)
     )
     return B, U
 
@@ -164,8 +167,8 @@ def constant_price_run(price, initial_state=X0, xi=XI, steps_per_day=192):
     B = inputs.energy(
         (np.array(T, dtype=float), np.array([BASELINE, BASELINE], dtype=float))
     )
-    U = inputs.price(
-        (np.array(T, dtype=float), np.array([price, price], dtype=float))
+    U = inputs.price_intervals(
+        (np.array(T, dtype=float), np.array([price], dtype=float))
     )
     model = BM1(B, B, T, steps_per_day + 1)
     parameters = [U, linear_state_response, linear_price_response, C, K, xi]
@@ -191,8 +194,8 @@ def boundary_drift_checks():
     )
 
     for price in prices:
-        U = inputs.price(
-            (np.array(T, dtype=float), np.array([price, price], dtype=float))
+        U = inputs.price_intervals(
+            (np.array(T, dtype=float), np.array([price], dtype=float))
         )
         model = BM1(B, B, T, 2)
         parameters = [U, linear_state_response, linear_price_response, C, K, XI]
@@ -244,6 +247,45 @@ def sanity_checks(euler_results):
             and np.max(all_states) <= 1.0 + STATE_TOL
         ),
         "Euler energy identity": max_energy_error <= ENERGY_TOL,
+    }
+
+
+def price_parameterization_checks(U, output_t):
+    """Check the F1-C one-price-per-interval representation."""
+    legacy_U = InputBuilder.price(
+        (
+            PRICE_INTERVAL_EDGES,
+            np.array([PRICE_BEFORE, PRICE_AFTER, PRICE_AFTER], dtype=float),
+        )
+    )
+    step_left = np.nextafter(PRICE_STEP_TIME, T[0])
+    step_right = np.nextafter(PRICE_STEP_TIME, T[1])
+    probe_t = np.array(
+        [T[0], step_left, PRICE_STEP_TIME, step_right, T[1]], dtype=float
+    )
+    expected_price = np.array(
+        [PRICE_BEFORE, PRICE_BEFORE, PRICE_AFTER, PRICE_AFTER, PRICE_AFTER],
+        dtype=float,
+    )
+    comparison_t = np.linspace(T[0], T[1], 1001)
+
+    return {
+        "N price intervals use exactly N decision values": (
+            PRICE_INTERVAL_EDGES.size == PRICE_INTERVAL_VALUES.size + 1
+        ),
+        "interval price is right-continuous through the terminal edge": (
+            np.array_equal(np.asarray(U(probe_t), dtype=float), expected_price)
+        ),
+        "interval price matches the legacy benchmark signal": (
+            np.array_equal(
+                np.asarray(U(comparison_t), dtype=float),
+                np.asarray(legacy_U(comparison_t), dtype=float),
+            )
+        ),
+        "price decisions are independent of the output grid": (
+            PRICE_INTERVAL_VALUES.size != output_t.size
+            and np.asarray(U(output_t), dtype=float).shape == output_t.shape
+        ),
     }
 
 
@@ -373,7 +415,7 @@ def main():
     # Compare breakpoint handling against the legacy call at identical default
     # tolerances, so the measured improvement comes only from segmentation.
     breakpoint_ivp_result = model.deterministic_solver(
-        [X0], parameters, breakpoints=[PRICE_STEP_TIME]
+        [X0], parameters, breakpoints=INTERNAL_PRICE_BREAKPOINTS
     )
     breakpoint_t = breakpoint_ivp_result[0]
     breakpoint_state = breakpoint_ivp_result[1]
@@ -396,7 +438,7 @@ def main():
         [X0],
         parameters,
         t_eval=ivp_t_eval,
-        breakpoints=[PRICE_STEP_TIME],
+        breakpoints=INTERNAL_PRICE_BREAKPOINTS,
         rtol=IVP_RTOL,
         atol=IVP_ATOL,
     )
@@ -421,6 +463,7 @@ def main():
     euler_results = [run_euler(steps, B, U) for steps in STEPS_PER_DAY]
     orders = observed_orders(euler_results)
     checks = sanity_checks(euler_results)
+    checks.update(price_parameterization_checks(U, ivp_t_eval))
     checks.update(
         {
             "legacy deterministic API keeps the model grid": (
