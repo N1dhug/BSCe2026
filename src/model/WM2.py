@@ -170,10 +170,6 @@ class WM2(WM):
         """
         return BruteParams(self).fit(input_data, initial_conditions, baseline_feature_vec, **kwargs)
 
-    def fit_params(self, input_data, initial_conditions, baseline_feature_vec):
-        """Backward-compatible alias for the proxy parameter estimator."""
-        return self.fit_params_proxy(input_data, initial_conditions, baseline_feature_vec)
-
     def fokker_planc_solver(self, init_cond, parameters, initial_density, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
         # Solve Fokker-Planck model
         init_cond, validated = WM2Validation.deterministic_inputs(init_cond, parameters)

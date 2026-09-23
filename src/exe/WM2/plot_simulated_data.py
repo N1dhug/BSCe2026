@@ -12,7 +12,7 @@ hours = 24 * days
 time_hours = np.arange(hours)
 
 baseline = Simple(days=days, mean=0.5, sin_coeff=(0.25,), cos_coeff=(0.10,), std=0.0).data()
-simulated_I = Simple(days=days, mean=0.5, sin_coeff=(0.10,), cos_coeff=(0.04,), std=0.01, seed=1).data()
+simulated_I = Simple(days=days, mean=0.5, sin_coeff=(0.50,), cos_coeff=(0.5,), std=0.2, seed=1).data()
 U = np.array([
     0.35, 0.30, 0.28, 0.25, 0.27, 0.32,
     0.40, 0.52, 0.65, 0.72, 0.68, 0.60,
