@@ -79,8 +79,18 @@ class BM1Validation:
         return init_cond, parameters, sigma_x
 
     @staticmethod
-    def optimize_inputs(initial_u, init_cond, parameters):
-        # Verify inputs
+    def optimize_inputs(
+        initial_u,
+        interval_edges,
+        init_cond,
+        parameters,
+        t_eval,
+        interval,
+        rtol,
+        atol,
+        max_step,
+    ):
+        """Validate the interval controls and deterministic objective grid."""
         initial_u = np.asarray(initial_u, dtype=float)
         if initial_u.ndim != 1 or initial_u.size == 0:
             raise ValueError("initial_u must be a non-empty one-dimensional vector.")
@@ -89,5 +99,55 @@ class BM1Validation:
         if np.any(initial_u < 0.0) or np.any(initial_u > 1.0):
             raise ValueError("initial_u values must lie in [0, 1].")
 
-        init_cond, parameters = BM1Validation.model_inputs(init_cond, parameters)
-        return initial_u, init_cond, parameters
+        interval_edges = np.asarray(interval_edges, dtype=float)
+        if interval_edges.ndim != 1:
+            raise ValueError("interval_edges must be a one-dimensional array.")
+        if interval_edges.size != initial_u.size + 1:
+            raise ValueError(
+                "interval_edges must contain N + 1 values for N price decisions."
+            )
+        if not np.all(np.isfinite(interval_edges)):
+            raise ValueError("interval_edges must contain finite values.")
+        if np.any(np.diff(interval_edges) <= 0.0):
+            raise ValueError("interval_edges must be strictly increasing.")
+
+        t_start, t_end = interval
+        if interval_edges[0] != t_start or interval_edges[-1] != t_end:
+            raise ValueError(
+                "interval_edges must start and end at the model time interval."
+            )
+
+        (
+            init_cond,
+            parameters,
+            t_eval,
+            _,
+            rtol,
+            atol,
+            max_step,
+        ) = BM1Validation.deterministic_inputs(
+            init_cond,
+            parameters,
+            t_eval,
+            interval_edges[1:-1],
+            interval,
+            rtol,
+            atol,
+            max_step,
+        )
+
+        if t_eval.size < 2 or t_eval[0] != t_start or t_eval[-1] != t_end:
+            raise ValueError(
+                "The optimization t_eval grid must span the full model interval."
+            )
+
+        return (
+            initial_u.copy(),
+            interval_edges.copy(),
+            init_cond,
+            parameters,
+            t_eval,
+            rtol,
+            atol,
+            max_step,
+        )

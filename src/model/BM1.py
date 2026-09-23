@@ -2,6 +2,7 @@ from src.model.base.BM import BM
 from src.method.EulerMaruyama import EulerMaruyama
 from src.method.FokkerPlanc import BM1FokkerPlanc
 from src.validation.model.BM1 import BM1Validation
+from src.exe.tool.InputBuilder import InputBuilder
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.integrate import simpson as simps
@@ -14,14 +15,44 @@ class BM1(BM):
         self.euler_maruyama = EulerMaruyama()
         self.fokker_planc = BM1FokkerPlanc()
 
-    def __phi(self, U, parameters, init_cond):
-        # Compute initial state
-        simulated_U = self.simulate.price((self.t, U))
-        parameters = list(parameters)
-        parameters[0] = simulated_U
-        t, _, _, _, _, _, _, Dt = self.deterministic_solver(init_cond, parameters)
-        At = self.A(t)
-        return simps(np.square(Dt - At), t)
+    def __phi(
+        self,
+        interval_prices,
+        interval_edges,
+        parameters,
+        init_cond,
+        t_eval,
+        rtol,
+        atol,
+        max_step,
+    ):
+        # Build one right-continuous price value per decision interval.
+        simulated_U = InputBuilder.price_intervals(
+            (interval_edges, interval_prices)
+        )
+        simulated_parameters = list(parameters)
+        simulated_parameters[0] = simulated_U
+
+        t, _, _, _, _, _, _, Dt = self.deterministic_solver(
+            init_cond,
+            simulated_parameters,
+            t_eval=t_eval,
+            breakpoints=interval_edges[1:-1],
+            rtol=rtol,
+            atol=atol,
+            max_step=max_step,
+        )
+        At = np.asarray(self.A(t), dtype=float)
+        try:
+            At = np.broadcast_to(At, Dt.shape)
+        except ValueError as exc:
+            raise ValueError(
+                "A(t) must return one target value per objective-grid point."
+            ) from exc
+        if not np.all(np.isfinite(At)):
+            raise ValueError("A(t) must return finite target values.")
+
+        return float(simps(np.square(Dt - At), x=t))
 
     def _drift(self, t, X, parameters):
         # Evaluate drift
@@ -188,9 +219,62 @@ class BM1(BM):
         )
         return t_eval.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt
 
-    def optimize(self, initial_u, init_cond, parameters):
-        # Optimize price signal
-        initial_u, init_cond, parameters = BM1Validation.optimize_inputs(initial_u, init_cond, parameters)
-        bounds = [(0, 1) for _ in range(len(initial_u))]
-        phi = lambda U: self.__phi(U, parameters, init_cond)
-        return minimize(phi, initial_u, bounds=bounds)
+    def optimize(
+        self,
+        initial_u,
+        init_cond,
+        parameters,
+        *,
+        interval_edges,
+        t_eval=None,
+        rtol=1.0e-6,
+        atol=1.0e-8,
+        max_step=np.inf,
+        options=None,
+    ):
+        """Optimize one normalized price value per supplied time interval."""
+        if t_eval is None:
+            t_eval = self.t.copy()
+
+        (
+            initial_u,
+            interval_edges,
+            init_cond,
+            parameters,
+            t_eval,
+            rtol,
+            atol,
+            max_step,
+        ) = BM1Validation.optimize_inputs(
+            initial_u,
+            interval_edges,
+            init_cond,
+            parameters,
+            t_eval,
+            self.T,
+            rtol,
+            atol,
+            max_step,
+        )
+
+        bounds = [(0.0, 1.0) for _ in range(initial_u.size)]
+
+        def phi(interval_prices):
+            return self.__phi(
+                interval_prices,
+                interval_edges,
+                parameters,
+                init_cond,
+                t_eval,
+                rtol,
+                atol,
+                max_step,
+            )
+
+        return minimize(
+            phi,
+            initial_u,
+            method="L-BFGS-B",
+            bounds=bounds,
+            options=options,
+        )
