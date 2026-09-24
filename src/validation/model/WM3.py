@@ -107,19 +107,17 @@ class WM3Validation(WM1Validation):
 
     @classmethod
     def recovered_structural_coefficients(cls, alpha, beta, tol=1e-8):
-        # Verify directly recovered structural coefficients used by the current L-only fitter
+        # Verify directly recovered structural coefficients
         tol = cls._finite_scalar(tol, "tol")
         if tol <= 0.0: raise ValueError("tol must be positive.")
 
-        alpha = cls.vector(alpha, 3, "recovered alpha")
-        beta = cls.vector(beta, 3, "recovered beta")
+        alpha, beta = cls.vector(alpha, 3, "recovered alpha"), cls.beta_coefficients(beta)
         for values, name in ((alpha, "recovered alpha"), (beta, "recovered beta")):
             if np.any(values < -tol) or np.any(values > 1.0 + tol): raise ValueError(f"{name} coefficients must lie in [0, 1].")
             if not np.isclose(np.sum(values), 1.0, atol=tol, rtol=0.0): raise ValueError(f"{name} coefficients must sum to 1.")
 
         alpha, beta = np.clip(alpha, 0.0, 1.0), np.clip(beta, 0.0, 1.0)
-        alpha, beta = alpha / np.sum(alpha), beta / np.sum(beta)
-        return alpha, beta
+        return alpha / np.sum(alpha), beta / np.sum(beta)
 
     @classmethod
     def fit_data(cls, input_data, t_steps):
