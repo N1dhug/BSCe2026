@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.model.base.WM import WM
+from src.model.base.wm import WM
 from src.method.fokker_planc import BM1FokkerPlanc
 from src.validation.model.wm_1 import WM1Validation
 
