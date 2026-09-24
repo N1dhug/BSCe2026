@@ -13,9 +13,9 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.integrate import simpson
 from scipy.interpolate import interp1d
 
+from src.method.objective import tracking_error
 from src.tools.input_generator.input_builder import input_builder
 from src.model.bm_1 import bm_1
 
@@ -79,11 +79,6 @@ def solve_prices(model, prices):
         rtol=RTOL,
         atol=ATOL,
     )
-
-
-def tracking_objective(demand, target):
-    """Evaluate the same integrated squared tracking error as bm_1.optimize."""
-    return float(simpson(np.square(demand - target), x=OBJECTIVE_T))
 
 
 def raises_value_error(action):
@@ -194,8 +189,12 @@ def main():
     model = bm_1(baseline, target, T, OBJECTIVE_T.size)
 
     initial_result = solve_prices(model, INITIAL_PRICES)
-    known_objective = tracking_objective(target_demand, target_demand)
-    initial_objective = tracking_objective(initial_result[7], target_demand)
+    known_objective = tracking_error(
+        OBJECTIVE_T, target_demand, target_demand
+    )
+    initial_objective = tracking_error(
+        OBJECTIVE_T, initial_result[7], target_demand
+    )
 
     result = model.optimize(
         INITIAL_PRICES,
@@ -208,8 +207,8 @@ def main():
         options={"ftol": 1.0e-15, "gtol": 1.0e-10, "maxiter": 200},
     )
     optimized_result = solve_prices(model, result.x)
-    optimized_objective = tracking_objective(
-        optimized_result[7], target_demand
+    optimized_objective = tracking_error(
+        OBJECTIVE_T, optimized_result[7], target_demand
     )
 
     graph_path = save_figure(

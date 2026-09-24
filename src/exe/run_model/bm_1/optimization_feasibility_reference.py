@@ -16,8 +16,14 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.integrate import simpson
 
+from src.diagnostics.bm_1 import (
+    constant_demand_capacity_certificate,
+    constant_demand_implied_state,
+    linear_response_demand_envelope,
+    linear_response_required_price,
+)
+from src.method.objective import tracking_error
 from src.tools.input_generator.input_builder import input_builder
 from src.model.bm_1 import bm_1
 
@@ -126,42 +132,6 @@ def capacity_target(t):
     return as_scalar_if_needed(query, demand)
 
 
-def target_implied_state(t, demand):
-    """Return the exact implied state for a constant demand and baseline."""
-    query = np.asarray(t, dtype=float)
-    state = X0 + (demand - BASELINE) * (query - T[0]) / C
-    return as_scalar_if_needed(query, state)
-
-
-def benchmark_required_price(state, demand):
-    """Invert the linear benchmark responses to obtain the required price."""
-    state = np.asarray(state, dtype=float)
-    demand = np.asarray(demand, dtype=float)
-
-    positive = demand >= BASELINE
-    delta = np.empty_like(demand)
-    delta[positive] = (
-        (demand[positive] - BASELINE) / (XI * (1.0 - BASELINE))
-    )
-    delta[~positive] = (
-        (demand[~positive] - BASELINE) / (XI * BASELINE)
-    )
-    if np.any(np.abs(delta) >= 1.0):
-        raise ValueError("Target demand requires |delta| >= 1.")
-
-    return 1.0 - state - np.arctanh(delta) / K
-
-
-def benchmark_demand_envelope(state):
-    """Return attainable demand bounds at a given state for U in [0, 1]."""
-    state = np.asarray(state, dtype=float)
-    minimum = BASELINE * (1.0 - XI * np.tanh(K * state))
-    maximum = BASELINE + XI * (1.0 - BASELINE) * np.tanh(
-        K * (1.0 - state)
-    )
-    return minimum, maximum
-
-
 def solve_prices(
     model,
     interval_edges,
@@ -182,11 +152,6 @@ def solve_prices(
         atol=atol,
         max_step=max_step,
     )
-
-
-def tracking_objective(t, demand, target):
-    """Return the integrated squared tracking error."""
-    return float(simpson(np.square(demand - target), x=t))
 
 
 def optimize_from_starts(model, interval_edges, starts):
@@ -312,7 +277,7 @@ def save_figure(
     axes[1, 1].axhline(1.0, color="black", linewidth=1.0)
     axes[1, 1].set_title(
         f"Capacity target A(t) = {CAPACITY_TARGET:.2f}, "
-        f"J = {tracking_objective(OBJECTIVE_T, capacity_demand, capacity_values):.3e}"
+        f"J = {tracking_error(OBJECTIVE_T, capacity_demand, capacity_values):.3e}"
     )
     axes[1, 1].set_xlabel("Time [hours]")
     axes[1, 1].set_ylabel("State X")
@@ -338,8 +303,19 @@ def main():
         price_bound_target_state(OBJECTIVE_T), dtype=float
     )
     target_demand = np.asarray(price_bound_target(OBJECTIVE_T), dtype=float)
-    required_price = benchmark_required_price(target_state, target_demand)
-    _, maximum_demand = benchmark_demand_envelope(target_state)
+    required_price = linear_response_required_price(
+        target_state,
+        target_demand,
+        BASELINE,
+        XI,
+        K,
+    )
+    _, maximum_demand = linear_response_demand_envelope(
+        target_state,
+        BASELINE,
+        XI,
+        K,
+    )
     envelope_gap = target_demand - maximum_demand
 
     price_model = bm_1(baseline, price_bound_target, T, OBJECTIVE_T.size)
@@ -357,7 +333,7 @@ def main():
         RTOL,
         ATOL,
     )
-    price_objective = tracking_objective(
+    price_objective = tracking_error(
         OBJECTIVE_T,
         price_solution[7],
         target_demand,
@@ -372,7 +348,7 @@ def main():
         FINE_ATOL,
         max_step=(T[1] - T[0]) / (FINE_T.size - 1),
     )
-    fine_objective = tracking_objective(
+    fine_objective = tracking_error(
         FINE_T,
         fine_solution[7],
         np.asarray(price_bound_target(FINE_T), dtype=float),
@@ -386,7 +362,7 @@ def main():
         RTOL,
         ATOL,
     )
-    initial_objective = tracking_objective(
+    initial_objective = tracking_error(
         OBJECTIVE_T,
         initial_solution[7],
         target_demand,
@@ -401,16 +377,22 @@ def main():
     # non-zero lower bound independently of optimizer convergence.
     capacity_values = np.asarray(capacity_target(OBJECTIVE_T), dtype=float)
     capacity_required_state = np.asarray(
-        target_implied_state(OBJECTIVE_T, CAPACITY_TARGET), dtype=float
+        constant_demand_implied_state(
+            OBJECTIVE_T,
+            CAPACITY_TARGET,
+            BASELINE,
+            C,
+            X0,
+            initial_time=T[0],
+        ),
+        dtype=float,
     )
-    target_energy = (
-        (CAPACITY_TARGET - BASELINE) * (T[1] - T[0])
-    )
-    upper_capacity = C * (1.0 - X0)
-    excess_energy = target_energy - upper_capacity
-    objective_lower_bound = excess_energy**2 / (T[1] - T[0])
-    capacity_violation_time = (
-        T[0] + upper_capacity / (CAPACITY_TARGET - BASELINE)
+    capacity_certificate = constant_demand_capacity_certificate(
+        CAPACITY_TARGET,
+        BASELINE,
+        C,
+        X0,
+        T,
     )
 
     capacity_model = bm_1(baseline, capacity_target, T, OBJECTIVE_T.size)
@@ -428,7 +410,7 @@ def main():
         RTOL,
         ATOL,
     )
-    capacity_objective = tracking_objective(
+    capacity_objective = tracking_error(
         OBJECTIVE_T,
         capacity_solution[7],
         capacity_values,
@@ -442,7 +424,7 @@ def main():
         FINE_ATOL,
         max_step=(T[1] - T[0]) / (FINE_T.size - 1),
     )
-    capacity_fine_objective = tracking_objective(
+    capacity_fine_objective = tracking_error(
         FINE_T,
         capacity_fine_solution[7],
         np.asarray(capacity_target(FINE_T), dtype=float),
@@ -516,13 +498,16 @@ def main():
             and np.max(price_solution[1]) <= 1.0 + 1.0e-12
         ),
         "capacity target violates the upper state bound": (
-            capacity_required_state[-1] > 1.0
+            capacity_certificate.violated_boundary == "upper"
+            and capacity_certificate.required_final_state > 1.0
         ),
         "capacity violation occurs inside the model horizon": (
-            T[0] < capacity_violation_time < T[1]
+            capacity_certificate.violation_time is not None
+            and T[0] < capacity_certificate.violation_time < T[1]
         ),
         "capacity certificate has positive excess energy": (
-            excess_energy > 0.0 and objective_lower_bound > 0.0
+            capacity_certificate.excess_energy > 0.0
+            and capacity_certificate.objective_lower_bound > 0.0
         ),
         "all capacity-case multistarts converge": all(
             result.success for result in capacity_results
@@ -543,7 +528,8 @@ def main():
             atol=1.0e-10,
         ),
         "capacity objective respects the analytical lower bound": (
-            capacity_objective >= objective_lower_bound - 1.0e-10
+            capacity_objective
+            >= capacity_certificate.objective_lower_bound - 1.0e-10
         ),
         "best capacity-case state remains in [0, 1]": (
             np.min(capacity_solution[1]) >= -1.0e-12
@@ -571,10 +557,22 @@ def main():
     print()
     print("Capacity certificate")
     print(f"constant target demand    = {CAPACITY_TARGET:.6f}")
-    print(f"required final state      = {capacity_required_state[-1]:.6f}")
-    print(f"capacity violation time   = {24.0 * capacity_violation_time:.6f} hours")
-    print(f"target excess energy      = {excess_energy:.6e}")
-    print(f"objective lower bound     = {objective_lower_bound:.6e}")
+    print(
+        f"required final state      = "
+        f"{capacity_certificate.required_final_state:.6f}"
+    )
+    print(
+        f"capacity violation time   = "
+        f"{24.0 * capacity_certificate.violation_time:.6f} hours"
+    )
+    print(
+        f"target excess energy      = "
+        f"{capacity_certificate.excess_energy:.6e}"
+    )
+    print(
+        f"objective lower bound     = "
+        f"{capacity_certificate.objective_lower_bound:.6e}"
+    )
     print(f"optimized prices          = {capacity_best.x}")
     print(f"optimized objective       = {capacity_objective:.6e}")
     print(f"fine-grid objective       = {capacity_fine_objective:.6e}")

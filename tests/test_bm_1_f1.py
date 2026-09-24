@@ -15,6 +15,13 @@ import numpy as np
 from scipy.integrate import simpson
 from scipy.interpolate import interp1d
 
+from src.diagnostics import (
+    constant_demand_capacity_certificate,
+    constant_demand_implied_state,
+    linear_response_demand_envelope,
+    linear_response_required_price,
+)
+from src.method import tracking_error
 from src.model.bm_1 import bm_1
 from src.tools.input_generator.input_builder import input_builder
 
@@ -286,6 +293,36 @@ class OptimizationRegressionTests(unittest.TestCase):
 
     def test_optimized_objective_is_reproducibly_near_zero(self):
         self.assertLessEqual(self.recomputed_objective, 1.0e-12)
+        public_objective = self.model.evaluate_tracking_objective(
+            self.result.x,
+            [X0],
+            build_parameters(PRICE_EDGES, self.result.x),
+            interval_edges=PRICE_EDGES,
+            t_eval=self.OBJECTIVE_GRID,
+            rtol=1.0e-9,
+            atol=1.0e-11,
+        )
+        shared_objective = tracking_error(
+            self.OBJECTIVE_GRID,
+            self.optimized[7],
+            self.target_demand,
+        )
+        self.assertTrue(
+            np.isclose(
+                public_objective,
+                self.recomputed_objective,
+                rtol=1.0e-12,
+                atol=1.0e-16,
+            )
+        )
+        self.assertTrue(
+            np.isclose(
+                shared_objective,
+                self.recomputed_objective,
+                rtol=1.0e-12,
+                atol=1.0e-16,
+            )
+        )
         self.assertTrue(
             np.isclose(
                 self.result.fun,
@@ -344,10 +381,18 @@ class FeasibilityDiagnosticRegressionTests(unittest.TestCase):
     def test_price_bound_certificate_recovers_forbidden_price(self):
         state = self.price_bound_state(self.OBJECTIVE_GRID)
         target = self.price_bound_target(self.OBJECTIVE_GRID)
-        normalized_delta = (target - BASELINE) / (XI * (1.0 - BASELINE))
-        required_price = 1.0 - state - np.arctanh(normalized_delta) / K
-        admissible_maximum = BASELINE + XI * (1.0 - BASELINE) * np.tanh(
-            K * (1.0 - state)
+        required_price = linear_response_required_price(
+            state,
+            target,
+            BASELINE,
+            XI,
+            K,
+        )
+        _, admissible_maximum = linear_response_demand_envelope(
+            state,
+            BASELINE,
+            XI,
+            K,
         )
 
         self.assertGreaterEqual(np.min(state), 0.0)
@@ -388,23 +433,109 @@ class FeasibilityDiagnosticRegressionTests(unittest.TestCase):
 
     def test_capacity_certificate_proves_nonzero_minimum_error(self):
         capacity_target = 0.82
-        duration = T[1] - T[0]
-        required_final_state = X0 + (capacity_target - BASELINE) * duration / C
-        available_energy = C * (1.0 - X0)
-        target_energy = (capacity_target - BASELINE) * duration
-        excess_energy = target_energy - available_energy
-        lower_bound = excess_energy**2 / duration
-        violation_time = T[0] + available_energy / (
-            capacity_target - BASELINE
+        required_state = constant_demand_implied_state(
+            self.OBJECTIVE_GRID,
+            capacity_target,
+            BASELINE,
+            C,
+            X0,
+            initial_time=T[0],
+        )
+        certificate = constant_demand_capacity_certificate(
+            capacity_target,
+            BASELINE,
+            C,
+            X0,
+            T,
         )
 
-        self.assertAlmostEqual(required_final_state, 1.02, places=12)
-        self.assertGreater(required_final_state, 1.0)
-        self.assertGreater(violation_time, T[0])
-        self.assertLess(violation_time, T[1])
-        self.assertAlmostEqual(excess_energy, 0.02, places=12)
-        self.assertAlmostEqual(lower_bound, 4.0e-4, places=12)
-        self.assertGreater(lower_bound, 0.0)
+        self.assertFalse(certificate.feasible)
+        self.assertEqual(certificate.violated_boundary, "upper")
+        self.assertAlmostEqual(required_state[-1], 1.02, places=12)
+        self.assertAlmostEqual(
+            certificate.required_final_state, 1.02, places=12
+        )
+        self.assertGreater(certificate.violation_time, T[0])
+        self.assertLess(certificate.violation_time, T[1])
+        self.assertAlmostEqual(certificate.excess_energy, 0.02, places=12)
+        self.assertAlmostEqual(
+            certificate.objective_lower_bound, 4.0e-4, places=12
+        )
+
+        feasible = constant_demand_capacity_certificate(
+            BASELINE,
+            BASELINE,
+            C,
+            X0,
+            T,
+        )
+        self.assertTrue(feasible.feasible)
+        self.assertIsNone(feasible.violation_time)
+        self.assertEqual(feasible.objective_lower_bound, 0.0)
+
+        exact_upper_boundary = constant_demand_capacity_certificate(
+            0.8,
+            BASELINE,
+            C,
+            X0,
+            T,
+        )
+        self.assertTrue(exact_upper_boundary.feasible)
+        self.assertAlmostEqual(
+            exact_upper_boundary.required_final_state, 1.0, places=12
+        )
+
+        lower = constant_demand_capacity_certificate(
+            0.0,
+            0.7,
+            C,
+            X0,
+            T,
+        )
+        self.assertFalse(lower.feasible)
+        self.assertEqual(lower.violated_boundary, "lower")
+        self.assertAlmostEqual(lower.required_final_state, -0.2, places=12)
+        self.assertAlmostEqual(lower.excess_energy, 0.2, places=12)
+        self.assertAlmostEqual(lower.objective_lower_bound, 0.04, places=12)
+
+    def test_diagnostics_reject_invalid_inputs(self):
+        with self.assertRaises(ValueError):
+            linear_response_required_price(
+                X0,
+                1.0,
+                BASELINE,
+                XI,
+                K,
+            )
+        with self.assertRaises(ValueError):
+            linear_response_demand_envelope(
+                np.array([]),
+                BASELINE,
+                XI,
+                K,
+            )
+        with self.assertRaises(ValueError):
+            constant_demand_capacity_certificate(
+                0.5,
+                BASELINE,
+                0.0,
+                X0,
+                T,
+            )
+        with self.assertRaises(ValueError):
+            constant_demand_implied_state(
+                np.array([]),
+                0.5,
+                BASELINE,
+                C,
+                X0,
+            )
+        with self.assertRaises(ValueError):
+            tracking_error(
+                np.array([0.0, 1.0]),
+                np.array([0.2]),
+                np.array([0.2, 0.2]),
+            )
 
 
 if __name__ == "__main__":
