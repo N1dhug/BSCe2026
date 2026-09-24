@@ -20,7 +20,8 @@ class input_data:
         if not self.path.exists(): raise FileNotFoundError(f"Input workbook not found: {self.path}")
         data = pd.read_excel(self.path, sheet_name=self.SHEET_NAME, header=[0, 1], engine="openpyxl")
         data.columns = self._clean_columns(data.columns)
-        return self._impute_missing(self._coerce_measurements(self._build_datetime_index(data))).sort_index()
+        data = self._coerce_measurements(self._build_datetime_index(data)).sort_index()
+        return self._impute_missing(self._complete_hourly_index(data))
 
     @staticmethod
     def _clean_columns(columns):
@@ -114,6 +115,14 @@ class input_data:
         data, cols = data.copy(), [c for c in data.columns if c not in self.META]
         data[cols] = data[cols].apply(pd.to_numeric, errors="coerce")
         return data
+
+    def _complete_hourly_index(self, data):
+        if data.empty: return data.copy()
+        if data.index.has_duplicates:
+            duplicates = data.index[data.index.duplicated()].unique()
+            raise ValueError(f"Duplicate input timestamps found: {list(duplicates[:10])}")
+        index = pd.date_range(data.index.min().floor("h"), data.index.max().ceil("h"), freq="h", name="Datetime")
+        return data.reindex(index)
 
     def _impute_missing(self, data):
         data, cols = data.copy(), [c for c in data.columns if c not in self.META]
