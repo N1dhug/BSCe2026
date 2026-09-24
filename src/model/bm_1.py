@@ -1,4 +1,4 @@
-from src.model.base.BM import BM
+from src.model.base.bm import BM
 from src.method.euler_maruyama import EulerMaruyama
 from src.method.fokker_planc import BM1FokkerPlanc
 from src.validation.model.bm_1 import BM1Validation
