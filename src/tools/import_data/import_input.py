@@ -71,9 +71,13 @@ class input_data:
 
     def _build_datetime_index(self, data):
         if self.DATE_COLUMN not in data.columns: raise ValueError(f"Worksheet '{self.SHEET_NAME}' does not contain '{self.DATE_COLUMN}'.")
-        date = self._date_series(data[self.DATE_COLUMN])
-        time = self._time_delta(data[self.TIME_COLUMN]) if self.TIME_COLUMN in data.columns else pd.Series(pd.Timedelta(0), index=data.index)
-        timestamp = date.dt.normalize() + time
+        date = data[self.DATE_COLUMN].ffill()
+        if self.TIME_COLUMN in data.columns:
+            time = data[self.TIME_COLUMN]
+            timestamp = pd.to_datetime(date.astype(str).str.strip() + " " + time.astype(str).str.strip(), dayfirst=True, errors="coerce")
+            fallback = timestamp.isna()
+            if fallback.any(): timestamp.loc[fallback] = self._date_series(date.loc[fallback]).dt.normalize() + self._time_delta(time.loc[fallback])
+        else: timestamp = self._date_series(date)
 
         valid = timestamp.notna()
         if not valid.all():
@@ -83,9 +87,7 @@ class input_data:
                 bad = data.index[~valid][has_measurement]
                 rows = list(bad[:10])
                 sample = data.loc[rows, [c for c in (self.DATE_COLUMN, self.TIME_COLUMN) if c in data.columns]].to_dict("records")
-                date_ok = int(date.loc[bad].notna().sum())
-                time_ok = int(time.loc[bad].notna().sum())
-                raise ValueError(f"Could not parse date/time for {len(bad)} data row(s); date parsed={date_ok}/{len(bad)}, time parsed={time_ok}/{len(bad)}, first rows={rows}, raw values={sample}.")
+                raise ValueError(f"Could not parse date/time for {len(bad)} data row(s); first rows={rows}, raw values={sample}.")
             data, timestamp = data.loc[valid].copy(), timestamp.loc[valid]
 
         data = data.copy()
