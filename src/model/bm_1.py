@@ -2,10 +2,10 @@ from src.model.base.bm import bm
 from src.method.euler_maruyama import euler_maruyama
 from src.method.fokker_planc import bm_1_fokker_planc
 from src.validation.model.bm_1 import bm_1_validation
-from src.exe.tool.input_builder import input_builder
+from src.tools.input_generator.input_builder import input_builder
+from src.method.objective import tracking_error
 import numpy as np
 from scipy.integrate import solve_ivp
-from scipy.integrate import simpson as simps
 from scipy.optimize import minimize
 
 class bm_1(bm):
@@ -15,7 +15,7 @@ class bm_1(bm):
         self.euler_maruyama = euler_maruyama()
         self.fokker_planc = bm_1_fokker_planc()
 
-    def __phi(
+    def _evaluate_tracking_objective(
         self,
         interval_prices,
         interval_edges,
@@ -42,17 +42,7 @@ class bm_1(bm):
             atol=atol,
             max_step=max_step,
         )
-        At = np.asarray(self.A(t), dtype=float)
-        try:
-            At = np.broadcast_to(At, Dt.shape)
-        except ValueError as exc:
-            raise ValueError(
-                "A(t) must return one target value per objective-grid point."
-            ) from exc
-        if not np.all(np.isfinite(At)):
-            raise ValueError("A(t) must return finite target values.")
-
-        return float(simps(np.square(Dt - At), x=t))
+        return tracking_error(t, Dt, self.A(t))
 
     def _drift(self, t, X, parameters):
         # Evaluate drift
@@ -219,6 +209,54 @@ class bm_1(bm):
         )
         return t_eval.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt
 
+    def evaluate_tracking_objective(
+        self,
+        interval_prices,
+        init_cond,
+        parameters,
+        *,
+        interval_edges,
+        t_eval=None,
+        rtol=1.0e-6,
+        atol=1.0e-8,
+        max_step=np.inf,
+    ):
+        """Evaluate the deterministic demand-tracking objective for prices."""
+        if t_eval is None:
+            t_eval = self.t.copy()
+
+        (
+            interval_prices,
+            interval_edges,
+            init_cond,
+            parameters,
+            t_eval,
+            rtol,
+            atol,
+            max_step,
+        ) = bm_1_validation.optimize_inputs(
+            interval_prices,
+            interval_edges,
+            init_cond,
+            parameters,
+            t_eval,
+            self.T,
+            rtol,
+            atol,
+            max_step,
+        )
+
+        return self._evaluate_tracking_objective(
+            interval_prices,
+            interval_edges,
+            parameters,
+            init_cond,
+            t_eval,
+            rtol,
+            atol,
+            max_step,
+        )
+
     def optimize(
         self,
         initial_u,
@@ -260,7 +298,7 @@ class bm_1(bm):
         bounds = [(0.0, 1.0) for _ in range(initial_u.size)]
 
         def phi(interval_prices):
-            return self.__phi(
+            return self._evaluate_tracking_objective(
                 interval_prices,
                 interval_edges,
                 parameters,

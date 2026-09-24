@@ -1,5 +1,5 @@
-"""Validation public API for model, method, and solver layers."""
+"""Validation public API for model, method, solver, and diagnostic layers."""
 
-from . import method, model, solver
+from . import diagnostics, method, model, solver
 
-__all__ = ["model", "method", "solver"]
+__all__ = ["diagnostics", "model", "method", "solver"]

@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.interpolate import PchipInterpolator, interp1d
 from scipy.special import betaln
-
 from src.validation.tools.input_generator.input_builder import input_builder_validation
 
 

@@ -12,7 +12,7 @@ compares that solution with both the legacy and breakpoint-aware
 
 Run this module from the repository root:
 
-    python -m src.exe.bm_1.deterministic_reference
+    python -B -m src.exe.run_model.bm_1.deterministic_reference
 
 The script is diagnostic: it reports both solver paths without modifying bm_1
 state or hiding errors with boundary handling.
@@ -23,7 +23,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.exe.tool.input_builder import input_builder
+from src.tools.input_generator.input_builder import input_builder
 from src.model.bm_1 import bm_1
 
 
@@ -390,7 +390,7 @@ def save_figure(legacy_ivp_result, ivp_result, finest_euler, B, U):
         axis.axvline(24.0 * PRICE_STEP_TIME, color="black", alpha=0.4, linestyle="--")
 
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[3] / "files" / "output" / "graphs"
+    graph_dir = Path(__file__).resolve().parents[4] / "files" / "output" / "graphs"
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / "bm_1_deterministic_reference.png"
     fig.savefig(graph_path, dpi=300, bbox_inches="tight")
