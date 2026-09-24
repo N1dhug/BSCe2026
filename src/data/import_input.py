@@ -8,58 +8,37 @@ import pandas as pd
 class InputData:
     """Import/query consumption data from the internal 2022 sheet."""
 
-    SHEET_NAME = "2022 med dato (3)"
-    DATE_COLUMN = "Dato"
-    TIME_COLUMN = "Time"
+    SHEET_NAME, DATE_COLUMN, TIME_COLUMN = "2022 med dato (3)", "Dato", "Time"
     META = ("År", "Måned", DATE_COLUMN, TIME_COLUMN)
 
     def __init__(self, path: str | Path):
-        self.path = Path(path)
+        self.path, self.data = Path(path), None
         self.data = self._load()
 
     def _load(self):
-        if not self.path.exists():
-            raise FileNotFoundError(f"Input workbook not found: {self.path}")
-
+        if not self.path.exists(): raise FileNotFoundError(f"Input workbook not found: {self.path}")
         data = pd.read_excel(self.path, sheet_name=self.SHEET_NAME, header=[0, 1], engine="openpyxl")
         data.columns = self._clean_columns(data.columns)
-        data = self._build_datetime_index(data)
-        data = self._coerce_measurements(data)
-        data = self._impute_missing(data)
-        return data.sort_index()
+        return self._impute_missing(self._coerce_measurements(self._build_datetime_index(data))).sort_index()
 
     @staticmethod
     def _clean_columns(columns):
-        return pd.Index([
-            str(bottom).strip() if str(top).startswith("Unnamed")
-            else f"{str(top).strip()}_{str(bottom).strip()}"
-            for top, bottom in columns
-        ])
+        return pd.Index([str(bottom).strip() if str(top).startswith("Unnamed") else f"{str(top).strip()}_{str(bottom).strip()}" for top, bottom in columns])
 
     def _build_datetime_index(self, data):
-        if self.DATE_COLUMN not in data.columns:
-            raise ValueError(f"Worksheet '{self.SHEET_NAME}' does not contain '{self.DATE_COLUMN}'.")
-
+        if self.DATE_COLUMN not in data.columns: raise ValueError(f"Worksheet '{self.SHEET_NAME}' does not contain '{self.DATE_COLUMN}'.")
         date = pd.to_datetime(data[self.DATE_COLUMN], dayfirst=True, errors="coerce")
-
         if self.TIME_COLUMN in data.columns:
             time = data[self.TIME_COLUMN]
-            numeric = pd.to_timedelta(pd.to_numeric(time, errors="coerce"), unit="D")
-            string = pd.to_timedelta(time.astype(str), errors="coerce")
-            timestamp = date.dt.normalize() + numeric.fillna(string)
-        else:
-            timestamp = date
-
-        if timestamp.isna().any():
-            raise ValueError(f"Could not parse date/time for {int(timestamp.isna().sum())} row(s).")
-
+            timestamp = date.dt.normalize() + pd.to_timedelta(pd.to_numeric(time, errors="coerce"), unit="D").fillna(pd.to_timedelta(time.astype(str), errors="coerce"))
+        else: timestamp = date
+        if timestamp.isna().any(): raise ValueError(f"Could not parse date/time for {int(timestamp.isna().sum())} row(s).")
         data = data.copy()
         data.index = pd.DatetimeIndex(timestamp, name="Datetime")
         return data
 
     @property
-    def metadata_columns(self):
-        return [c for c in self.META if c in self.data.columns]
+    def metadata_columns(self): return [c for c in self.META if c in self.data.columns]
 
     @property
     def measurement_columns(self):
@@ -67,8 +46,7 @@ class InputData:
         return [c for c in self.data.columns if c not in meta]
 
     @staticmethod
-    def measurement_id(column):
-        return column.rsplit("_", 1)[0]
+    def measurement_id(column): return column.rsplit("_", 1)[0]
 
     @staticmethod
     def measurement_tag(column):
@@ -76,16 +54,13 @@ class InputData:
         return parts[1] if len(parts) == 2 else ""
 
     def _coerce_measurements(self, data):
-        data = data.copy()
-        cols = [c for c in data.columns if c not in self.META]
+        data, cols = data.copy(), [c for c in data.columns if c not in self.META]
         data[cols] = data[cols].apply(pd.to_numeric, errors="coerce")
         return data
 
     def _impute_missing(self, data):
-        data = data.copy()
-        cols = [c for c in data.columns if c not in self.META]
-        if cols:
-            data[cols] = data[cols].interpolate(method="time", limit_direction="both").ffill().bfill()
+        data, cols = data.copy(), [c for c in data.columns if c not in self.META]
+        if cols: data[cols] = data[cols].interpolate(method="time", limit_direction="both").ffill().bfill()
         return data
 
     def _select_period(self, start, end):
@@ -105,18 +80,14 @@ class InputData:
         if month is None:
             date = pd.Timestamp(date)
             year, month = date.year, date.month
-        else:
-            year = int(date)
-
+        else: year = int(date)
         start = pd.Timestamp(year=year, month=int(month), day=1)
         return self._select_period(start, start + pd.offsets.MonthBegin(1))
 
     def by_tag(self, tag):
         tag = tag.strip().upper()
-        cols = [c for c in self.measurement_columns if self.measurement_tag(c).upper() == tag]
-        return self.data[cols].copy()
+        return self.data[[c for c in self.measurement_columns if self.measurement_tag(c).upper() == tag]].copy()
 
     def by_id(self, measurement_id):
         measurement_id = str(measurement_id)
-        cols = [c for c in self.measurement_columns if self.measurement_id(c) == measurement_id]
-        return self.data[cols].copy()
+        return self.data[[c for c in self.measurement_columns if self.measurement_id(c) == measurement_id]].copy()
