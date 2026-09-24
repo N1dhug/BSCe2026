@@ -1,7 +1,7 @@
 """Numerical-method public API."""
 
-from . import FokkerPlanc
+from . import fokker_planc
 from .euler_maruyama import EulerMaruyama
-from .fokker_planc import BM1FokkerPlanc, WM2FokkerPlanc
+from .fokker_planc import BM1FokkerPlanc, WMFokkerPlanc
 
-__all__ = ["EulerMaruyama", "FokkerPlanc", "BM1FokkerPlanc", "WM2FokkerPlanc",]
+__all__ = ["EulerMaruyama", "fokker_planc", "BM1FokkerPlanc", "WMFokkerPlanc",]

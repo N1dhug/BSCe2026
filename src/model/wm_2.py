@@ -1,7 +1,7 @@
 import numpy as np
 
 from src.model.base.wm import WM
-from src.method.fokker_planc import WM2FokkerPlanc
+from src.method.fokker_planc import WMFokkerPlanc
 from src.params.wm_2 import BruteParams, ProxyParams
 from src.solver.active_set import ActiveSet
 from src.validation.model.wm_2 import WM2Validation
@@ -37,7 +37,7 @@ class WM2(WM):
         self.t_steps = t_steps
         self.t = np.linspace(T[0], T[1], t_steps)
         self.dt = self.t[1] - self.t[0]
-        self.fp = WM2FokkerPlanc()
+        self.fp = WMFokkerPlanc()
 
     def I(self, P_I, alpha):
         # Evaluate input map
@@ -172,9 +172,27 @@ class WM2(WM):
 
     def fokker_planc_solver(self, init_cond, parameters, initial_density, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
         # Solve Fokker-Planck model
-        init_cond, validated = WM2Validation.deterministic_inputs(init_cond, parameters)
-        _, drift_coeff = self.reduced_coefficients(validated["alpha"], validated["beta"])
-        fp_parameters = dict(validated)
-        fp_parameters["d_coeff"] = drift_coeff
+        _, parameters = WM2Validation.deterministic_inputs(init_cond, parameters)
+        _, d = self.reduced_coefficients(parameters["alpha"], parameters["beta"])
+        beta, kappa_R = parameters["beta"], parameters["kappa_R"]
+        sigma_0, sigma_O = parameters["sigma_0"], parameters["sigma_O"]
 
-        return self.fp.solve(self.t, init_cond, fp_parameters, initial_density=initial_density, v_bounds=v_bounds, r_bounds=r_bounds, v_steps=v_steps, r_steps=r_steps, cfl=cfl)
+        def fields(time, V):
+            U = float(parameters["U"](time))
+            B_O = float(parameters["B_O"](time))
+            B_I = float(parameters["B_I"](time))
+            D = d[0] + d[1] * B_I + d[2] * B_O + d[3] * V + d[4] * U
+            O = beta[0] * B_O + beta[1] * V + beta[2] * (1.0 - U)
+            return D, O
+
+        def drift_v(time, V, R): return R
+
+        def drift_r(time, V, R):
+            D, _ = fields(time, V)
+            return kappa_R * (D - R)
+
+        def diffusion_r(time, V, R):
+            _, O = fields(time, V)
+            return WM2Validation.diffusion_scale(sigma_0 + sigma_O * O)
+
+        return self.fp.solve(self.t, initial_density, drift_v, drift_r, diffusion_r, v_bounds=v_bounds, r_bounds=r_bounds, v_steps=v_steps, r_steps=r_steps, cfl=cfl)

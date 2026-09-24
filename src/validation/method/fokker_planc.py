@@ -1,6 +1,5 @@
 import numpy as np
 
-from src.validation.model.wm_2 import WM2Validation
 from src.validation.solver.finite_volume import FiniteVolume2DValidation
 
 class BM1FokkerPlancValidation:
@@ -189,25 +188,22 @@ class BM1FokkerPlancValidation:
             raise RuntimeError("Fokker-Planck method produced a non-positive substep.")
         return float(h)
 
-class WM2FokkerPlancValidation:
+class WMFokkerPlancValidation:
     @classmethod
-    def solve_inputs(cls, t, init_cond, parameters, initial_density, v_bounds, r_bounds, v_steps, r_steps, cfl,):
+    def solve_inputs(cls, t, initial_density, drift_v, drift_r, diffusion_r, v_bounds, r_bounds, v_steps, r_steps, cfl):
         # Verify inputs
         t = FiniteVolume2DValidation.time_grid(t)
-        init_cond, parameters = WM2Validation.fp_inputs(init_cond, parameters)
-        if initial_density is None:
-            raise ValueError("WM2 requires initial_density to be supplied by the executable layer.")
+        for function, name in ((drift_v, "drift_v"), (drift_r, "drift_r"), (diffusion_r, "diffusion_r")):
+            if not callable(function): raise TypeError(f"{name} must be callable.")
+        if initial_density is None: raise ValueError("WM Fokker-Planck requires initial_density.")
         if not callable(initial_density):
-            array = np.asarray(initial_density, dtype=float)
-            if array.ndim != 2 or array.size == 0:
-                raise ValueError("initial_density must be a callable or a non-empty 2D array.")
-            if not np.all(np.isfinite(array)) or np.any(array < 0.0):
-                raise ValueError("initial_density arrays must contain finite non-negative values.")
-            initial_density = array
+            initial_density = np.asarray(initial_density, dtype=float)
+            if initial_density.ndim != 2 or initial_density.size == 0: raise ValueError("initial_density must be callable or a non-empty 2D array.")
+            if not np.all(np.isfinite(initial_density)) or np.any(initial_density < 0.0): raise ValueError("initial_density must contain finite non-negative values.")
 
         v_bounds = FiniteVolume2DValidation.bounds(v_bounds, "v_bounds")
         r_bounds = FiniteVolume2DValidation.bounds(r_bounds, "r_bounds")
         v_steps = FiniteVolume2DValidation.integer(v_steps, "v_steps")
         r_steps = FiniteVolume2DValidation.integer(r_steps, "r_steps")
         cfl = FiniteVolume2DValidation.cfl(cfl)
-        return (t, init_cond, parameters, initial_density, v_bounds, r_bounds, v_steps, r_steps, cfl,)
+        return t, initial_density, drift_v, drift_r, diffusion_r, v_bounds, r_bounds, v_steps, r_steps, cfl

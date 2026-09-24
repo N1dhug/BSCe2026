@@ -3,8 +3,7 @@ from scipy.special import gammaln
 
 from src.solver.active_set import ActiveSet
 from src.solver.finite_volume import FiniteVolume2D
-from src.validation.model.wm_2 import WM2Validation
-from src.validation.method.fokker_planc import (BM1FokkerPlancValidation, WM2FokkerPlancValidation,)
+from src.validation.method.fokker_planc import BM1FokkerPlancValidation, WMFokkerPlancValidation
 
 class BM1FokkerPlanc:
     """One-dimensional Beta-mixture Fokker-Planck method used by BM1/wm_1.
@@ -153,61 +152,28 @@ class BM1FokkerPlanc:
 
         return x, density_history, coefficient_history
 
-class WM2FokkerPlanc:
-    """WM2-specific 2D Fokker-Planck construction and post-processing."""
+class WMFokkerPlanc:
+    """General two-dimensional Fokker-Planck method for inertial Water Models."""
 
     def __init__(self, solver=None):
         # Initialize solver
         self.solver = FiniteVolume2D() if solver is None else solver
 
-    def solve(self, t, init_cond, parameters, initial_density, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
+    def solve(self, t, initial_density, drift_v, drift_r, diffusion_r, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
         # Solve Fokker-Planck system
-        (t, init_cond, parameters, initial_density, v_bounds, r_bounds, v_steps, r_steps, cfl,) = WM2FokkerPlancValidation.solve_inputs(t, init_cond, parameters, initial_density, v_bounds, r_bounds, v_steps, r_steps, cfl,)
-        beta = parameters["beta"]
-        d = parameters["d_coeff"]
-        kappa_R = parameters["kappa_R"]
-        sigma_0 = parameters["sigma_0"]
-        sigma_O = parameters["sigma_O"]
+        t, initial_density, drift_v, drift_r, diffusion_r, v_bounds, r_bounds, v_steps, r_steps, cfl = WMFokkerPlancValidation.solve_inputs(t, initial_density, drift_v, drift_r, diffusion_r, v_bounds, r_bounds, v_steps, r_steps, cfl)
+        result = self.solver.solve(t, initial_density, drift_v, drift_r, diffusion_r, v_bounds=v_bounds, r_bounds=r_bounds, v_steps=v_steps, r_steps=r_steps, cfl=cfl)
 
-        def fields(time, V):
-            # Evaluate model fields
-            U = float(parameters["U"](time))
-            B_O = float(parameters["B_O"](time))
-            B_I = float(parameters["B_I"](time))
-            D = d[0] + d[1] * B_I + d[2] * B_O + d[3] * V + d[4] * U
-            O = beta[0] * B_O + beta[1] * V + beta[2] * (1.0 - U)
-            return D, O
-
-        def drift_v(time, V, R):
-            # Evaluate volume drift
-            return R
-
-        def drift_r(time, V, R):
-            # Evaluate rate drift
-            D, _ = fields(time, V)
-            return kappa_R * (D - R)
-
-        def diffusion_r(time, V, R):
-            # Evaluate rate diffusion
-            _, O = fields(time, V)
-            g = WM2Validation.diffusion_scale(sigma_0 + sigma_O * O)
-            return np.broadcast_to(g, R.shape)
-
-        result = self.solver.solve(t, initial_density, drift_v, drift_r, diffusion_r, v_bounds=v_bounds, r_bounds=r_bounds, v_steps=v_steps, r_steps=r_steps, cfl=cfl,)
-
-        p = result["density"]
-        v = result["v_grid"]
-        r = result["r_grid"]
-        dv = result["dv"]
-        dr = result["dr"]
+        p, v, r = result["density"], result["v_grid"], result["r_grid"]
+        dv, dr = result["dv"], result["dr"]
         marginal_v = np.sum(p, axis=2) * dr
         marginal_r = np.sum(p, axis=1) * dv
         mass = result["mass"]
         safe_mass = np.where(mass > 0.0, mass, np.nan)
         mean_v = np.sum(marginal_v * v[None, :], axis=1) * dv / safe_mass
         mean_r = np.sum(marginal_r * r[None, :], axis=1) * dr / safe_mass
-        var_v = (np.sum(marginal_v * np.square(v[None, :] - mean_v[:, None]), axis=1) * dv / safe_mass)
-        var_r = (np.sum(marginal_r * np.square(r[None, :] - mean_r[:, None]), axis=1) * dr / safe_mass)
+        var_v = np.sum(marginal_v * np.square(v[None, :] - mean_v[:, None]), axis=1) * dv / safe_mass
+        var_r = np.sum(marginal_r * np.square(r[None, :] - mean_r[:, None]), axis=1) * dr / safe_mass
 
         result.update({"t": t.copy(), "marginal_v": marginal_v, "marginal_r": marginal_r, "mean_v": mean_v, "mean_r": mean_r, "var_v": var_v, "var_r": var_r,})
         return result

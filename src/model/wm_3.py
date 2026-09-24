@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.method.wm_3_fokker_planc import WM3FokkerPlanc
+from src.method.fokker_planc import WMFokkerPlanc
 from src.model.base.wm import WM
 from src.params.wm_3 import BruteParams
 from src.solver.active_set import ActiveSet
@@ -31,7 +31,7 @@ class WM3(WM):
         self.dt = self.t[1] - self.t[0]
         self.L = L
         self.H = (lambda _x: 0.0) if H is None else H
-        self.fp = WM3FokkerPlanc()
+        self.fp = WMFokkerPlanc()
 
     def I(self, P_I, alpha):
         P_I, alpha = WM3Validation.linear_map(P_I, alpha, 3, "P_I", "alpha")
@@ -192,16 +192,31 @@ class WM3(WM):
     def fokker_planc_solver(self, init_cond, parameters, initial_density,
                             v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0),
                             v_steps=161, r_steps=161, cfl=0.8):
-        init_cond, validated = WM3Validation.fokker_planc_inputs(init_cond, parameters)
-        _, drift_coeff = self.reduced_coefficients(validated["alpha"], validated["beta"])
+        _, parameters = WM3Validation.fokker_planc_inputs(init_cond, parameters)
+        _, d = self.reduced_coefficients(parameters["alpha"], parameters["beta"])
+        beta, kappa_R = parameters["beta"], parameters["kappa_R"]
+        sigma_0, sigma_O = parameters["sigma_0"], parameters["sigma_O"]
 
-        fp_parameters = dict(validated)
-        fp_parameters["d_coeff"] = drift_coeff
-        fp_parameters["L"] = self.L
-        fp_parameters["H"] = self.H
+        def fields(time, V):
+            U = float(parameters["U"](time))
+            L = float(self.L(parameters["Time"](time)))
+            H = float(self.H(parameters["Temp"](time)))
+            D = d[0] + d[1] * L + d[2] * V + d[3] * U + d[4] * H
+            O = beta[0] * V + beta[1] * (1.0 - U) + beta[2] * L + beta[3] * H
+            return D, O
+
+        def drift_v(time, V, R): return R
+
+        def drift_r(time, V, R):
+            D, _ = fields(time, V)
+            return kappa_R * (D - R)
+
+        def diffusion_r(time, V, R):
+            _, O = fields(time, V)
+            return sigma_0 + sigma_O * O
 
         return self.fp.solve(
-            self.t, init_cond, fp_parameters, initial_density=initial_density,
+            self.t, initial_density, drift_v, drift_r, diffusion_r,
             v_bounds=v_bounds, r_bounds=r_bounds,
             v_steps=v_steps, r_steps=r_steps, cfl=cfl
         )
