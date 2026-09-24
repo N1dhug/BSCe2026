@@ -25,14 +25,43 @@ class input_data:
     def _clean_columns(columns):
         return pd.Index([str(bottom).strip() if str(top).startswith("Unnamed") else f"{str(top).strip()}_{str(bottom).strip()}" for top, bottom in columns])
 
+    @staticmethod
+    def _time_delta(time):
+        numeric = pd.to_numeric(time, errors="coerce")
+        delta = pd.Series(pd.NaT, index=time.index, dtype="timedelta64[ns]")
+        fractional = numeric.notna() & (numeric.abs() < 1)
+        hours = numeric.notna() & ~fractional & (numeric >= 0) & (numeric <= 24)
+        delta.loc[fractional] = pd.to_timedelta(numeric.loc[fractional], unit="D")
+        delta.loc[hours] = pd.to_timedelta(numeric.loc[hours], unit="h")
+
+        remaining = delta.isna() & time.notna()
+        if remaining.any():
+            text = time.loc[remaining].astype(str).str.strip()
+            parsed = pd.to_timedelta(text, errors="coerce")
+            range_start = text.str.extract(r"^\s*(\d{1,2})(?::(\d{2}))?\s*(?:-|–|to)")[0]
+            range_minute = text.str.extract(r"^\s*(\d{1,2})(?::(\d{2}))?\s*(?:-|–|to)")[1]
+            range_hour = pd.to_numeric(range_start, errors="coerce")
+            range_minute = pd.to_numeric(range_minute, errors="coerce").fillna(0)
+            range_delta = pd.to_timedelta(range_hour, unit="h") + pd.to_timedelta(range_minute, unit="m")
+            parsed = parsed.where(parsed.notna(), range_delta)
+            delta.loc[remaining] = parsed
+        return delta
+
     def _build_datetime_index(self, data):
         if self.DATE_COLUMN not in data.columns: raise ValueError(f"Worksheet '{self.SHEET_NAME}' does not contain '{self.DATE_COLUMN}'.")
-        date = pd.to_datetime(data[self.DATE_COLUMN], dayfirst=True, errors="coerce")
-        if self.TIME_COLUMN in data.columns:
-            time = data[self.TIME_COLUMN]
-            timestamp = date.dt.normalize() + pd.to_timedelta(pd.to_numeric(time, errors="coerce"), unit="D").fillna(pd.to_timedelta(time.astype(str), errors="coerce"))
+        date = pd.to_datetime(data[self.DATE_COLUMN], dayfirst=True, errors="coerce").ffill()
+        if self.TIME_COLUMN in data.columns: timestamp = date.dt.normalize() + self._time_delta(data[self.TIME_COLUMN])
         else: timestamp = date
-        if timestamp.isna().any(): raise ValueError(f"Could not parse date/time for {int(timestamp.isna().sum())} row(s).")
+
+        valid = timestamp.notna()
+        if not valid.all():
+            measurement_cols = [c for c in data.columns if c not in self.META]
+            has_measurement = data.loc[~valid, measurement_cols].apply(pd.to_numeric, errors="coerce").notna().any(axis=1)
+            if has_measurement.any():
+                rows = list(data.index[~valid][has_measurement][:10])
+                raise ValueError(f"Could not parse date/time for {int(has_measurement.sum())} data row(s); first affected Excel data rows: {rows}.")
+            data, timestamp = data.loc[valid].copy(), timestamp.loc[valid]
+
         data = data.copy()
         data.index = pd.DatetimeIndex(timestamp, name="Datetime")
         return data
