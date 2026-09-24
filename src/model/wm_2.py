@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.model.base.WM import WM
+from src.model.base.wm import WM
 from src.method.fokker_planc import WM2FokkerPlanc
 from src.params.wm_2 import BruteParams, ProxyParams
 from src.solver.active_set import ActiveSet
