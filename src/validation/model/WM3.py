@@ -2,29 +2,40 @@ import numpy as np
 
 from src.validation.model.WM1 import WM1Validation
 
+
 class WM3Validation(WM1Validation):
     """Validation rules for Water Model 3."""
 
     @classmethod
-    def constructor(cls, T, t_steps, L):
+    def constructor(cls, T, t_steps, L, H=None):
         # Verify constructor inputs
         T, t_steps = super().constructor(T, t_steps)
         if not callable(L): raise TypeError("L must be callable.")
-        return T, t_steps, L
+        if H is not None and not callable(H): raise TypeError("H must be callable.")
+        return T, t_steps, L, H
+
+    @classmethod
+    def beta_coefficients(cls, beta):
+        # Accept legacy [beta_V, beta_U, beta_L] or complete [beta_V, beta_U, beta_L, beta_H]
+        values = np.asarray(beta, dtype=float).reshape(-1)
+        if values.size == 3:
+            values = cls.simplex(values, 3, "beta")
+            return np.array([values[0], values[1], values[2], 0.0], dtype=float)
+        return cls.simplex(values, 4, "beta")
 
     @classmethod
     def coefficients(cls, alpha, beta, gamma):
         # Verify WM3 coefficient simplices
-        return cls.simplex(alpha, 3, "alpha"), cls.simplex(beta, 3, "beta"), cls.simplex(gamma, 4, "gamma")
+        return cls.simplex(alpha, 3, "alpha"), cls.beta_coefficients(beta), cls.simplex(gamma, 4, "gamma")
 
     @classmethod
     def reduction_inputs(cls, alpha, beta):
         # Verify reduced-map coefficients
-        return cls.simplex(alpha, 3, "alpha"), cls.simplex(beta, 3, "beta")
+        return cls.simplex(alpha, 3, "alpha"), cls.beta_coefficients(beta)
 
     @classmethod
     def parameters(cls, parameters):
-        # Verify model parameters
+        # Verify deterministic model parameters
         if not isinstance(parameters, dict): raise TypeError("parameters must be a dictionary.")
 
         required = ("U", "Time", "PE", "alpha", "beta", "gamma", "kappa_R")
@@ -34,15 +45,28 @@ class WM3Validation(WM1Validation):
         validated = dict(parameters)
         for name in ("U", "Time", "PE"):
             if not callable(validated[name]): raise TypeError(f"parameters['{name}'] must be callable.")
+        if "Temp" in validated and not callable(validated["Temp"]): raise TypeError("parameters['Temp'] must be callable.")
+        validated.setdefault("Temp", lambda _t: 0.0)
 
         alpha, beta, gamma = cls.coefficients(validated["alpha"], validated["beta"], validated["gamma"])
         validated["alpha"], validated["beta"], validated["gamma"] = alpha, beta, gamma
         validated["kappa_R"] = cls._finite_scalar(validated["kappa_R"], "kappa_R")
-
         if validated["kappa_R"] <= 0.0: raise ValueError("kappa_R must be positive.")
 
         a_V, _, a_O = alpha
         cls.stable_drift_coefficient(-a_V + (a_O - 1.0) * beta[0])
+        return validated
+
+    @classmethod
+    def diffusion_parameters(cls, parameters):
+        # Verify stochastic diffusion parameters
+        validated = cls.parameters(parameters)
+        missing = [name for name in ("sigma_0", "sigma_O") if name not in parameters]
+        if missing: raise ValueError("parameters is missing required stochastic entries: " + ", ".join(missing) + ".")
+        validated["sigma_0"] = cls._finite_scalar(parameters["sigma_0"], "sigma_0")
+        validated["sigma_O"] = cls._finite_scalar(parameters["sigma_O"], "sigma_O")
+        if validated["sigma_0"] <= 0.0: raise ValueError("sigma_0 must be positive.")
+        if validated["sigma_O"] < 0.0: raise ValueError("sigma_O must be nonnegative.")
         return validated
 
     @classmethod
@@ -58,6 +82,11 @@ class WM3Validation(WM1Validation):
     def deterministic_inputs(cls, init_cond, parameters):
         # Verify inputs
         return cls.initial_condition(init_cond), cls.parameters(parameters)
+
+    @classmethod
+    def fokker_planc_inputs(cls, init_cond, parameters):
+        # Verify stochastic solver inputs
+        return cls.initial_condition(init_cond), cls.diffusion_parameters(parameters)
 
     @classmethod
     def finite_feature_input(cls, value, name):
@@ -78,7 +107,7 @@ class WM3Validation(WM1Validation):
 
     @classmethod
     def recovered_structural_coefficients(cls, alpha, beta, tol=1e-8):
-        # Verify directly recovered structural coefficients
+        # Verify directly recovered structural coefficients used by the current L-only fitter
         tol = cls._finite_scalar(tol, "tol")
         if tol <= 0.0: raise ValueError("tol must be positive.")
 
@@ -112,9 +141,10 @@ class WM3Validation(WM1Validation):
         I = fit_vector(input_data["I"], "input_data['I']")
         U = fit_vector(input_data["U"], "input_data['U']")
         Time = fit_vector(input_data["Time"], "input_data['Time']")
+        Temp = fit_vector(input_data.get("Temp", np.zeros(t_steps, dtype=float)), "input_data['Temp']")
         PE = fit_vector(input_data.get("PE", np.zeros(t_steps, dtype=float)), "input_data['PE']")
 
         for vector, name in ((I, "I"), (U, "U"), (PE, "PE")):
             if np.any(vector < 0.0) or np.any(vector > 1.0): raise ValueError(f"Normalized {name} data must lie in [0, 1].")
 
-        return {"I": I, "U": U, "PE": PE, "Time": Time}
+        return {"I": I, "U": U, "PE": PE, "Time": Time, "Temp": Temp}
