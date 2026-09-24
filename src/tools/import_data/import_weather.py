@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 
-class WeatherData:
+class weather_data:
     """Download and aggregate hourly DMI climate data for the DK1 area."""
 
     BASE_URL = "https://opendataapi.dmi.dk/v2/climateData/collections/10kmGridValue/items"
@@ -22,7 +22,7 @@ class WeatherData:
     @staticmethod
     def _utc(value):
         timestamp = pd.Timestamp(value)
-        if timestamp.tzinfo is None: timestamp = timestamp.tz_localize(WeatherData.LOCAL_TIMEZONE)
+        if timestamp.tzinfo is None: timestamp = timestamp.tz_localize(weather_data.LOCAL_TIMEZONE)
         return timestamp.tz_convert("UTC")
 
     @staticmethod
@@ -33,7 +33,7 @@ class WeatherData:
         if isinstance(value, (list, tuple)):
             if len(value) >= 2 and all(isinstance(x, (int, float)) for x in value[:2]): yield float(value[0]), float(value[1])
             else:
-                for item in value: yield from WeatherData._coordinates(item)
+                for item in value: yield from weather_data._coordinates(item)
 
     @classmethod
     def _cell_center(cls, geometry):

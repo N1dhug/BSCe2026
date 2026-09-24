@@ -1,19 +1,19 @@
-from src.model.base.bm import BM
-from src.method.euler_maruyama import EulerMaruyama
-from src.method.fokker_planc import BM1FokkerPlanc
-from src.validation.model.bm_1 import BM1Validation
-from src.exe.tool.InputBuilder import InputBuilder
+from src.model.base.bm import bm
+from src.method.euler_maruyama import euler_maruyama
+from src.method.fokker_planc import bm_1_fokker_planc
+from src.validation.model.bm_1 import bm_1_validation
+from src.exe.tool.input_builder import input_builder
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.integrate import simpson as simps
 from scipy.optimize import minimize
 
-class BM1(BM):
+class bm_1(bm):
     def __init__(self, B, A, T, t_steps):
         # Initialize variables
         super().__init__(B, A, T, t_steps)
-        self.euler_maruyama = EulerMaruyama()
-        self.fokker_planc = BM1FokkerPlanc()
+        self.euler_maruyama = euler_maruyama()
+        self.fokker_planc = bm_1_fokker_planc()
 
     def __phi(
         self,
@@ -27,7 +27,7 @@ class BM1(BM):
         max_step,
     ):
         # Build one right-continuous price value per decision interval.
-        simulated_U = InputBuilder.price_intervals(
+        simulated_U = input_builder.price_intervals(
             (interval_edges, interval_prices)
         )
         simulated_parameters = list(parameters)
@@ -62,7 +62,7 @@ class BM1(BM):
 
     def euler_maruyama_solver(self, init_cond, parameters, sigma_x, n_paths=1, seed=None, boundary="reflect"):
         # Solve stochastic model
-        init_cond, parameters, sigma_x = BM1Validation.stochastic_inputs(init_cond, parameters, sigma_x)
+        init_cond, parameters, sigma_x = bm_1_validation.stochastic_inputs(init_cond, parameters, sigma_x)
 
         def drift(t, X):
             # Evaluate drift
@@ -85,7 +85,7 @@ class BM1(BM):
 
     def fokker_planc_solver(self, init_cond, parameters, sigma_x, degree=12, x_steps=201, cfl=0.45):
         # Solve Fokker-Planck model
-        init_cond, parameters, sigma_x = BM1Validation.stochastic_inputs(init_cond, parameters, sigma_x)
+        init_cond, parameters, sigma_x = bm_1_validation.stochastic_inputs(init_cond, parameters, sigma_x)
 
         def drift(t, X):
             # Evaluate drift
@@ -125,7 +125,7 @@ class BM1(BM):
         atol=1.0e-6,
         max_step=np.inf,
     ):
-        """Solve deterministic BM1, restarting at known input discontinuities.
+        """Solve deterministic bm_1, restarting at known input discontinuities.
 
         ``t_eval`` controls only the returned output grid. ``breakpoints`` are
         internal integration boundaries and need not occur in ``t_eval``.
@@ -144,7 +144,7 @@ class BM1(BM):
             rtol,
             atol,
             max_step,
-        ) = BM1Validation.deterministic_inputs(
+        ) = bm_1_validation.deterministic_inputs(
             init_cond,
             parameters,
             t_eval,
@@ -245,7 +245,7 @@ class BM1(BM):
             rtol,
             atol,
             max_step,
-        ) = BM1Validation.optimize_inputs(
+        ) = bm_1_validation.optimize_inputs(
             initial_u,
             interval_edges,
             init_cond,

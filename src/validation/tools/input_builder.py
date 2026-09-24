@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class InputBuilderValidation:
+class input_builder_validation:
     """Validation rules for executable input builders."""
 
     DISTRIBUTIONS = {"gaussian", "normal", "uniform", "beta", "beta_mixture", "gaussian_mixture", "normal_mixture"}

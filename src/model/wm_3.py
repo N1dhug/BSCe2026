@@ -1,13 +1,13 @@
 import numpy as np
 
-from src.method.fokker_planc import WMFokkerPlanc
-from src.model.base.wm import WM
-from src.params.wm_3 import BruteParams
-from src.solver.active_set import ActiveSet
-from src.validation.model.wm_3 import WM3Validation
+from src.method.fokker_planc import wm_fokker_planc
+from src.model.base.wm import wm
+from src.params.wm_3 import brute_params
+from src.solver.active_set import active_set
+from src.validation.model.wm_3 import wm_3_validation
 
 
-class WM3(WM):
+class wm_3(wm):
     """Complete Water Model 3.
 
     P_I = [1-V, 1-U, O], I = alpha @ P_I
@@ -24,33 +24,33 @@ class WM3(WM):
     _FIT_RIDGE = 1e-10
 
     def __init__(self, T, t_steps, L, H=None):
-        T, t_steps, L, H = WM3Validation.constructor(T, t_steps, L, H)
+        T, t_steps, L, H = wm_3_validation.constructor(T, t_steps, L, H)
         self.T = T
         self.t_steps = t_steps
         self.t = np.linspace(T[0], T[1], t_steps)
         self.dt = self.t[1] - self.t[0]
         self.L = L
         self.H = (lambda _x: 0.0) if H is None else H
-        self.fp = WMFokkerPlanc()
+        self.fp = wm_fokker_planc()
 
     def I(self, P_I, alpha):
-        P_I, alpha = WM3Validation.linear_map(P_I, alpha, 3, "P_I", "alpha")
+        P_I, alpha = wm_3_validation.linear_map(P_I, alpha, 3, "P_I", "alpha")
         return alpha @ P_I
 
     def O(self, P_O, beta):
-        beta = WM3Validation.beta_coefficients(beta)
+        beta = wm_3_validation.beta_coefficients(beta)
         P_O = np.asarray(P_O, dtype=float).reshape(-1)
         if P_O.size == 3: P_O = np.append(P_O, 0.0)
         if P_O.size != 4 or not np.all(np.isfinite(P_O)): raise ValueError("P_O must contain [V, 1-U, L, H].")
         return beta @ P_O
 
     def A(self, P_A, gamma):
-        P_A, gamma = WM3Validation.linear_map(P_A, gamma, 4, "P_A", "gamma")
+        P_A, gamma = wm_3_validation.linear_map(P_A, gamma, 4, "P_A", "gamma")
         return gamma @ P_A
 
     @staticmethod
     def reduced_coefficients(alpha, beta):
-        alpha, beta = WM3Validation.reduction_inputs(alpha, beta)
+        alpha, beta = wm_3_validation.reduction_inputs(alpha, beta)
         a_V, a_U, a_O = alpha
         b_V, b_U, b_L, b_H = beta
 
@@ -73,47 +73,47 @@ class WM3(WM):
 
     @classmethod
     def reduced_drift_coefficients(cls, L_value, alpha, beta, H_value=0.0):
-        L_value = WM3Validation.feature_value(L_value, "L_value")
-        H_value = WM3Validation.feature_value(H_value, "H_value")
+        L_value = wm_3_validation.feature_value(L_value, "L_value")
+        H_value = wm_3_validation.feature_value(H_value, "H_value")
         _, d = cls.reduced_coefficients(alpha, beta)
         return d[0] + d[1] * L_value + d[4] * H_value, d[2], d[3]
 
     @classmethod
     def expected_equilibrium(cls, L_value, U, alpha, beta, H_value=0.0):
-        U = WM3Validation.signal_value(U, "U")
+        U = wm_3_validation.signal_value(U, "U")
         d0, dV, dU = cls.reduced_drift_coefficients(L_value, alpha, beta, H_value)
-        WM3Validation.stable_drift_coefficient(dV)
+        wm_3_validation.stable_drift_coefficient(dV)
         return -(d0 + dU * U) / dV
 
     @staticmethod
     def drift(V, R, U, L, H, alpha, beta, kappa_R):
         V = float(V)
         R = float(R)
-        U = WM3Validation.signal_value(U, "U")
-        L = WM3Validation.feature_value(L, "L")
-        H = WM3Validation.feature_value(H, "H")
-        kappa_R = WM3Validation._finite_scalar(kappa_R, "kappa_R")
+        U = wm_3_validation.signal_value(U, "U")
+        L = wm_3_validation.feature_value(L, "L")
+        H = wm_3_validation.feature_value(H, "H")
+        kappa_R = wm_3_validation._finite_scalar(kappa_R, "kappa_R")
         if kappa_R <= 0.0: raise ValueError("kappa_R must be positive.")
 
-        _, d = WM3.reduced_coefficients(alpha, beta)
+        _, d = wm_3.reduced_coefficients(alpha, beta)
         D = d @ np.array([1.0, L, V, U, H], dtype=float)
         return np.array([R, kappa_R * (D - R)], dtype=float)
 
     @staticmethod
     def diffusion(V, U, L, H, beta, sigma_0, sigma_O):
         V = float(V)
-        U = WM3Validation.signal_value(U, "U")
-        L = WM3Validation.feature_value(L, "L")
-        H = WM3Validation.feature_value(H, "H")
-        beta = WM3Validation.beta_coefficients(beta)
-        sigma_0 = WM3Validation._finite_scalar(sigma_0, "sigma_0")
-        sigma_O = WM3Validation._finite_scalar(sigma_O, "sigma_O")
+        U = wm_3_validation.signal_value(U, "U")
+        L = wm_3_validation.feature_value(L, "L")
+        H = wm_3_validation.feature_value(H, "H")
+        beta = wm_3_validation.beta_coefficients(beta)
+        sigma_0 = wm_3_validation._finite_scalar(sigma_0, "sigma_0")
+        sigma_O = wm_3_validation._finite_scalar(sigma_O, "sigma_O")
         if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
         if sigma_O < 0.0: raise ValueError("sigma_O must be nonnegative.")
 
         O = beta @ np.array([V, 1.0 - U, L, H], dtype=float)
         g = sigma_0 + sigma_O * O
-        if g < 0.0: raise ValueError("WM3 diffusion scale g(O) must be nonnegative.")
+        if g < 0.0: raise ValueError("wm_3 diffusion scale g(O) must be nonnegative.")
         return np.array([0.0, g], dtype=float)
 
     def _sample_signals(self, parameters):
@@ -125,12 +125,12 @@ class WM3(WM):
         H = np.empty(self.t_steps)
 
         for k, tk in enumerate(self.t):
-            U[k] = WM3Validation.signal_value(parameters["U"](tk), "U(t)")
-            PE[k] = WM3Validation.signal_value(parameters["PE"](tk), "PE(t)")
-            Time[k] = WM3Validation.finite_feature_input(parameters["Time"](tk), "Time(t)")
-            Temp[k] = WM3Validation.finite_feature_input(parameters["Temp"](tk), "Temp(t)")
-            L[k] = WM3Validation.feature_value(self.L(Time[k]), "L(Time(t))")
-            H[k] = WM3Validation.feature_value(self.H(Temp[k]), "H(Temp(t))")
+            U[k] = wm_3_validation.signal_value(parameters["U"](tk), "U(t)")
+            PE[k] = wm_3_validation.signal_value(parameters["PE"](tk), "PE(t)")
+            Time[k] = wm_3_validation.finite_feature_input(parameters["Time"](tk), "Time(t)")
+            Temp[k] = wm_3_validation.finite_feature_input(parameters["Temp"](tk), "Temp(t)")
+            L[k] = wm_3_validation.feature_value(self.L(Time[k]), "L(Time(t))")
+            H[k] = wm_3_validation.feature_value(self.H(Temp[k]), "H(Temp(t))")
 
         return U, PE, Time, Temp, L, H
 
@@ -181,7 +181,7 @@ class WM3(WM):
         }
 
     def deterministic_solver(self, init_cond, parameters):
-        init_cond, parameters = WM3Validation.deterministic_inputs(init_cond, parameters)
+        init_cond, parameters = wm_3_validation.deterministic_inputs(init_cond, parameters)
         U, PE, Time, Temp, L, H = self._sample_signals(parameters)
         input_coeff, drift_coeff = self.reduced_coefficients(parameters["alpha"], parameters["beta"])
         return self._solve_deterministic(
@@ -192,7 +192,7 @@ class WM3(WM):
     def fokker_planc_solver(self, init_cond, parameters, initial_density,
                             v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0),
                             v_steps=161, r_steps=161, cfl=0.8):
-        _, parameters = WM3Validation.fokker_planc_inputs(init_cond, parameters)
+        _, parameters = wm_3_validation.fokker_planc_inputs(init_cond, parameters)
         _, d = self.reduced_coefficients(parameters["alpha"], parameters["beta"])
         beta, kappa_R = parameters["beta"], parameters["kappa_R"]
         sigma_0, sigma_O = parameters["sigma_0"], parameters["sigma_O"]
@@ -230,13 +230,13 @@ class WM3(WM):
         scale = max(1, X.shape[0])
         H = 2.0 * (X.T @ X) / scale + ridge * np.eye(n)
         f = -2.0 * (X.T @ y) / scale
-        return ActiveSet.solve(
+        return active_set.solve(
             H, f, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq,
             lb=lb, ub=ub, x0=x0, tol=1e-9, max_iter=max_iter
         )
 
     def fit_params_brute(self, input_data, initial_conditions, **kwargs):
-        return BruteParams(self).fit(input_data, initial_conditions, **kwargs)
+        return brute_params(self).fit(input_data, initial_conditions, **kwargs)
 
     def fit_params(self, input_data, initial_conditions, **kwargs):
         return self.fit_params_brute(input_data, initial_conditions, **kwargs)

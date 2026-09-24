@@ -1,4 +1,4 @@
-"""Reference verification for deterministic BM1 price optimization (F1-D).
+"""Reference verification for deterministic bm_1 price optimization (F1-D).
 
 The target demand is generated from a known two-interval price signal.  The
 optimizer starts from different prices and must recover the feasible target
@@ -16,8 +16,8 @@ import numpy as np
 from scipy.integrate import simpson
 from scipy.interpolate import interp1d
 
-from src.exe.tool.InputBuilder import InputBuilder
-from src.model.bm_1 import BM1
+from src.exe.tool.input_builder import input_builder
+from src.model.bm_1 import bm_1
 
 
 T = (0.0, 1.0)
@@ -51,14 +51,14 @@ def linear_price_response(u):
 
 def build_baseline():
     """Return the constant normalized baseline used by the benchmark."""
-    return InputBuilder.energy(
+    return input_builder.energy(
         (np.array(T, dtype=float), np.array([BASELINE, BASELINE], dtype=float))
     )
 
 
 def build_parameters(prices):
-    """Build BM1 parameters for one price value per interval."""
-    price = InputBuilder.price_intervals((INTERVAL_EDGES, prices))
+    """Build bm_1 parameters for one price value per interval."""
+    price = input_builder.price_intervals((INTERVAL_EDGES, prices))
     return [
         price,
         linear_state_response,
@@ -70,7 +70,7 @@ def build_parameters(prices):
 
 
 def solve_prices(model, prices):
-    """Solve BM1 for a candidate price vector on the objective grid."""
+    """Solve bm_1 for a candidate price vector on the objective grid."""
     return model.deterministic_solver(
         [X0],
         build_parameters(prices),
@@ -82,7 +82,7 @@ def solve_prices(model, prices):
 
 
 def tracking_objective(demand, target):
-    """Evaluate the same integrated squared tracking error as BM1.optimize."""
+    """Evaluate the same integrated squared tracking error as bm_1.optimize."""
     return float(simpson(np.square(demand - target), x=OBJECTIVE_T))
 
 
@@ -117,7 +117,7 @@ def save_figure(target_result, initial_result, optimized_result, optimized_price
         label="Optimized demand",
     )
     axes[0].set_ylabel("Normalized demand")
-    axes[0].set_title("BM1 deterministic price optimization (F1-D)")
+    axes[0].set_title("bm_1 deterministic price optimization (F1-D)")
     axes[0].grid(True)
     axes[0].legend(loc="best")
 
@@ -132,9 +132,9 @@ def save_figure(target_result, initial_result, optimized_result, optimized_price
     axes[1].grid(True)
     axes[1].legend(loc="best")
 
-    known_price = InputBuilder.price_intervals((INTERVAL_EDGES, KNOWN_PRICES))
-    initial_price = InputBuilder.price_intervals((INTERVAL_EDGES, INITIAL_PRICES))
-    optimized_price = InputBuilder.price_intervals(
+    known_price = input_builder.price_intervals((INTERVAL_EDGES, KNOWN_PRICES))
+    initial_price = input_builder.price_intervals((INTERVAL_EDGES, INITIAL_PRICES))
+    optimized_price = input_builder.price_intervals(
         (INTERVAL_EDGES, optimized_prices)
     )
     axes[2].step(
@@ -181,7 +181,7 @@ def save_figure(target_result, initial_result, optimized_result, optimized_price
 def main():
     """Generate a feasible target and verify deterministic optimization."""
     baseline = build_baseline()
-    generator = BM1(baseline, baseline, T, OBJECTIVE_T.size)
+    generator = bm_1(baseline, baseline, T, OBJECTIVE_T.size)
     target_result = solve_prices(generator, KNOWN_PRICES)
     target_demand = target_result[7]
 
@@ -191,7 +191,7 @@ def main():
         kind="linear",
         bounds_error=True,
     )
-    model = BM1(baseline, target, T, OBJECTIVE_T.size)
+    model = bm_1(baseline, target, T, OBJECTIVE_T.size)
 
     initial_result = solve_prices(model, INITIAL_PRICES)
     known_objective = tracking_objective(target_demand, target_demand)
@@ -283,7 +283,7 @@ def main():
     )
     price_error = float(np.max(np.abs(result.x - KNOWN_PRICES)))
 
-    print("BM1 deterministic optimization F1-D verification")
+    print("bm_1 deterministic optimization F1-D verification")
     print("================================================")
     print()
     print(f"known prices             = {KNOWN_PRICES}")

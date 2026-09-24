@@ -1,4 +1,4 @@
-"""Simulate the stochastic WM2 response to a single dynamic-price step."""
+"""Simulate the stochastic wm_2 response to a single dynamic-price step."""
 
 from itertools import product
 from pathlib import Path
@@ -6,8 +6,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.model.wm_2 import WM2
-from src.exe.tool.InputBuilder import InputBuilder
+from src.model.wm_2 import wm_2
+from src.exe.tool.input_builder import input_builder
 
 # Configure the time grid.
 days = 10
@@ -16,7 +16,7 @@ t_steps = 24 * days + 1
 t = np.linspace(t_interval[0], t_interval[1], t_steps)
 hours = 24.0 * t
 
-inputs = InputBuilder()
+inputs = input_builder()
 
 # Keep synthetic baselines constant so the response isolates the price step.
 B_O_level = 0.30
@@ -44,7 +44,7 @@ sigma_O = 0.4
 
 parameters = {"U": U, "B_O": B_O, "B_I": B_I, "PE": PE, "alpha": alpha, "beta": beta, "gamma": gamma, "kappa_R": kappa_R, "sigma_0": sigma_0, "sigma_O": sigma_O,}
 
-model = WM2(t_interval, t_steps)
+model = wm_2(t_interval, t_steps)
 
 # Initialize at the pre-step expected equilibrium.
 V0 = model.expected_equilibrium(B_O_level, B_I_level, price_before, alpha, beta)
@@ -64,7 +64,7 @@ mixture_weights = np.array([0.25, 0.50, 0.25])
 v_density_range = (0.0, 1.0)
 v_component_means = np.array([init_cond[0] - 0.10, init_cond[0], init_cond[0] + 0.10])
 if np.any((v_component_means <= 0.0) | (v_component_means >= 1.0)):
-    raise ValueError("Chosen WM2 beta-mixture V component means must lie in (0, 1).")
+    raise ValueError("Chosen wm_2 beta-mixture V component means must lie in (0, 1).")
 v_concentration = 80.0
 v_shapes = np.column_stack((v_concentration * v_component_means, v_concentration * (1.0 - v_component_means),))
 
@@ -102,7 +102,7 @@ V_star = np.array([model.expected_equilibrium(bo, bi, u, alpha, beta)for bo, bi,
 dV = model.reduced_drift_coefficients(B_O_level, B_I_level, alpha, beta)[1]
 corner_equilibria = np.array([model.expected_equilibrium(bo, bi, u, alpha, beta) for bo, bi, u in product((0.0, 1.0), repeat=3)])
 
-print("WM2 Fokker-Planck single price-step example")
+print("wm_2 Fokker-Planck single price-step example")
 print("-------------------------------------------")
 print(f"d_V:                              {dV:.6f}")
 print(f"kappa_R:                          {kappa_R:.6f}")
@@ -134,7 +134,7 @@ ax_pdf.axhline(0.0, linestyle=":", linewidth=1.0)
 ax_pdf.axhline(1.0, linestyle=":", linewidth=1.0)
 ax_pdf.axvline(price_step_hour, linestyle="--", linewidth=1.0)
 ax_pdf.set_ylabel("Flexibility state V")
-ax_pdf.set_title("WM2 Fokker-Planck marginal density of V")
+ax_pdf.set_title("wm_2 Fokker-Planck marginal density of V")
 ax_pdf.legend(loc="best")
 
 ax_state.step(hours, U_values, where="post", label="Price U")
@@ -156,7 +156,7 @@ ax_rate.fill_between(hours, mean_r - std_r, mean_r + std_r, alpha=0.20, label="E
 ax_rate.axhline(0.0, linestyle=":")
 ax_rate.axvline(price_step_hour, linestyle="--")
 ax_rate.set_ylabel("Rate R")
-ax_rate.set_title("WM2 inertial-rate response")
+ax_rate.set_title("wm_2 inertial-rate response")
 ax_rate.grid(True)
 ax_rate.legend(loc="best")
 

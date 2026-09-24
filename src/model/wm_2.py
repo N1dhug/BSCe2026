@@ -1,12 +1,12 @@
 import numpy as np
 
-from src.model.base.wm import WM
-from src.method.fokker_planc import WMFokkerPlanc
-from src.params.wm_2 import BruteParams, ProxyParams
-from src.solver.active_set import ActiveSet
-from src.validation.model.wm_2 import WM2Validation
+from src.model.base.wm import wm
+from src.method.fokker_planc import wm_fokker_planc
+from src.params.wm_2 import brute_params, proxy_params
+from src.solver.active_set import active_set
+from src.validation.model.wm_2 import wm_2_validation
 
-class WM2(WM):
+class wm_2(wm):
     """Water Model 2 with reduced internal deterministic dynamics.
 
     Public model parameters retain alpha, beta and gamma.  Alpha and beta are
@@ -32,33 +32,33 @@ class WM2(WM):
 
     def __init__(self, T, t_steps):
         # Initialize variables
-        T, t_steps = WM2Validation.constructor(T, t_steps)
+        T, t_steps = wm_2_validation.constructor(T, t_steps)
         self.T = T
         self.t_steps = t_steps
         self.t = np.linspace(T[0], T[1], t_steps)
         self.dt = self.t[1] - self.t[0]
-        self.fp = WMFokkerPlanc()
+        self.fp = wm_fokker_planc()
 
     def I(self, P_I, alpha):
         # Evaluate input map
-        P_I, alpha = WM2Validation.linear_map(P_I, alpha, 4, "P_I", "alpha")
+        P_I, alpha = wm_2_validation.linear_map(P_I, alpha, 4, "P_I", "alpha")
         return alpha @ P_I
 
     def O(self, P_O, beta):
         # Evaluate output map
-        P_O, beta = WM2Validation.linear_map(P_O, beta, 3, "P_O", "beta")
+        P_O, beta = wm_2_validation.linear_map(P_O, beta, 3, "P_O", "beta")
         return beta @ P_O
 
     def A(self, P_A, gamma):
         # Evaluate availability map
-        P_A, gamma = WM2Validation.linear_map(P_A, gamma, 4, "P_A", "gamma")
+        P_A, gamma = wm_2_validation.linear_map(P_A, gamma, 4, "P_A", "gamma")
         return gamma @ P_A
 
     @staticmethod
     def reduced_coefficients(alpha, beta):
         """Reduce alpha/beta to the affine purchased-input and drift maps."""
         # Compute reduced coefficients
-        alpha, beta = WM2Validation.reduction_inputs(alpha, beta)
+        alpha, beta = wm_2_validation.reduction_inputs(alpha, beta)
 
         a_B, a_V, a_O, a_U = alpha
         b_B, b_V, b_U = beta
@@ -71,8 +71,8 @@ class WM2(WM):
     @classmethod
     def reduced_drift_coefficients(cls, B_O, B_I, alpha, beta):
         # Compute reduced drift
-        B_O = WM2Validation.signal_value(B_O, "B_O")
-        B_I = WM2Validation.signal_value(B_I, "B_I")
+        B_O = wm_2_validation.signal_value(B_O, "B_O")
+        B_I = wm_2_validation.signal_value(B_I, "B_I")
         _, d = cls.reduced_coefficients(alpha, beta)
         d0 = d[0] + d[1] * B_I + d[2] * B_O
         return d0, d[3], d[4]
@@ -80,11 +80,11 @@ class WM2(WM):
     @classmethod
     def expected_equilibrium(cls, B_O, B_I, U, alpha, beta):
         # Compute expected equilibrium
-        B_O = WM2Validation.signal_value(B_O, "B_O")
-        B_I = WM2Validation.signal_value(B_I, "B_I")
-        U = WM2Validation.signal_value(U, "U")
+        B_O = wm_2_validation.signal_value(B_O, "B_O")
+        B_I = wm_2_validation.signal_value(B_I, "B_I")
+        U = wm_2_validation.signal_value(U, "U")
         _, d = cls.reduced_coefficients(alpha, beta)
-        WM2Validation.stable_drift_coefficient(d[3])
+        wm_2_validation.stable_drift_coefficient(d[3])
         numerator = d[0] + d[1] * B_I + d[2] * B_O + d[4] * U
         return -numerator / d[3]
 
@@ -96,15 +96,15 @@ class WM2(WM):
         PE = np.empty(self.t_steps)
 
         for k, tk in enumerate(self.t):
-            U[k] = WM2Validation.signal_value(parameters["U"](tk), "U(t)")
-            B_O[k] = WM2Validation.signal_value(parameters["B_O"](tk), "B_O(t)")
-            B_I[k] = WM2Validation.signal_value(parameters["B_I"](tk), "B_I(t)")
-            PE[k] = WM2Validation.signal_value(parameters["PE"](tk), "PE(t)")
+            U[k] = wm_2_validation.signal_value(parameters["U"](tk), "U(t)")
+            B_O[k] = wm_2_validation.signal_value(parameters["B_O"](tk), "B_O(t)")
+            B_I[k] = wm_2_validation.signal_value(parameters["B_I"](tk), "B_I(t)")
+            PE[k] = wm_2_validation.signal_value(parameters["PE"](tk), "PE(t)")
 
         return U, B_O, B_I, PE
 
     def _solve_deterministic(self, init_cond, U, B_O, B_I, PE, input_coeff, drift_coeff, kappa_R, gamma=None):
-        """Canonical deterministic WM2 propagation in reduced coordinates."""
+        """Canonical deterministic wm_2 propagation in reduced coordinates."""
         # Solve deterministic dynamics
         V = np.empty(self.t_steps)
         R = np.empty(self.t_steps)
@@ -141,7 +141,7 @@ class WM2(WM):
 
     def deterministic_solver(self, init_cond, parameters):
         # Solve deterministic model
-        init_cond, parameters = WM2Validation.deterministic_inputs(init_cond, parameters)
+        init_cond, parameters = wm_2_validation.deterministic_inputs(init_cond, parameters)
         U, B_O, B_I, PE = self._sample_signals(parameters)
         input_coeff, drift_coeff = self.reduced_coefficients(parameters["alpha"], parameters["beta"])
         return self._solve_deterministic(init_cond, U, B_O, B_I, PE, input_coeff, drift_coeff, parameters["kappa_R"], gamma=parameters["gamma"])
@@ -155,24 +155,24 @@ class WM2(WM):
         scale = max(1, X.shape[0])
         H = 2.0 * (X.T @ X) / scale + ridge * np.eye(n)
         f = -2.0 * (X.T @ y) / scale
-        return ActiveSet.solve(H, f, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, x0=x0, tol=1e-9, max_iter=max_iter)
+        return active_set.solve(H, f, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, x0=x0, tol=1e-9, max_iter=max_iter)
 
     def fit_params_proxy(self, input_data, initial_conditions, baseline_feature_vec):
-        """Fit WM2 using the legacy proxy-state reduced-parameter method."""
-        return ProxyParams(self).fit(input_data, initial_conditions, baseline_feature_vec)
+        """Fit wm_2 using the legacy proxy-state reduced-parameter method."""
+        return proxy_params(self).fit(input_data, initial_conditions, baseline_feature_vec)
 
     def fit_params_brute(self, input_data, initial_conditions, baseline_feature_vec, **kwargs):
-        """Fit WM2 using the grid-refined latent-state brute-force method.
+        """Fit wm_2 using the grid-refined latent-state brute-force method.
 
-        Keyword arguments are forwarded to :class:\`src.params.wm_2.BruteParams\`,
+        Keyword arguments are forwarded to :class:\`src.params.wm_2.brute_params\`,
         including grid_points, refinements, baseline_iterations, c_v_range,
         d_v_range and ratio_eps.
         """
-        return BruteParams(self).fit(input_data, initial_conditions, baseline_feature_vec, **kwargs)
+        return brute_params(self).fit(input_data, initial_conditions, baseline_feature_vec, **kwargs)
 
     def fokker_planc_solver(self, init_cond, parameters, initial_density, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
         # Solve Fokker-Planck model
-        _, parameters = WM2Validation.deterministic_inputs(init_cond, parameters)
+        _, parameters = wm_2_validation.deterministic_inputs(init_cond, parameters)
         _, d = self.reduced_coefficients(parameters["alpha"], parameters["beta"])
         beta, kappa_R = parameters["beta"], parameters["kappa_R"]
         sigma_0, sigma_O = parameters["sigma_0"], parameters["sigma_O"]
@@ -193,6 +193,6 @@ class WM2(WM):
 
         def diffusion_r(time, V, R):
             _, O = fields(time, V)
-            return WM2Validation.diffusion_scale(sigma_0 + sigma_O * O)
+            return wm_2_validation.diffusion_scale(sigma_0 + sigma_O * O)
 
         return self.fp.solve(self.t, initial_density, drift_v, drift_r, diffusion_r, v_bounds=v_bounds, r_bounds=r_bounds, v_steps=v_steps, r_steps=r_steps, cfl=cfl)

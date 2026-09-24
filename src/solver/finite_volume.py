@@ -1,8 +1,8 @@
 import numpy as np
 
-from src.validation.solver.finite_volume import FiniteVolume2DValidation
+from src.validation.solver.finite_volume import finite_volume_2d_validation
 
-class FiniteVolume2D:
+class finite_volume_2d:
     """Generic two-dimensional finite-volume PDE solver.
 
     Solves p_t = -d_v(a_v p) - d_r(a_r p) + 1/2 d_rr(g^2 p)
@@ -83,12 +83,12 @@ class FiniteVolume2D:
 
     def solve(self, t, initial_density, drift_v, drift_r, diffusion_r, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
         # Solve finite-volume system
-        t = FiniteVolume2DValidation.time_grid(t)
-        v_min, v_max = FiniteVolume2DValidation.bounds(v_bounds, "v_bounds")
-        r_min, r_max = FiniteVolume2DValidation.bounds(r_bounds, "r_bounds")
-        v_steps = FiniteVolume2DValidation.integer(v_steps, "v_steps")
-        r_steps = FiniteVolume2DValidation.integer(r_steps, "r_steps")
-        cfl = FiniteVolume2DValidation.cfl(cfl)
+        t = finite_volume_2d_validation.time_grid(t)
+        v_min, v_max = finite_volume_2d_validation.bounds(v_bounds, "v_bounds")
+        r_min, r_max = finite_volume_2d_validation.bounds(r_bounds, "r_bounds")
+        v_steps = finite_volume_2d_validation.integer(v_steps, "v_steps")
+        r_steps = finite_volume_2d_validation.integer(r_steps, "r_steps")
+        cfl = finite_volume_2d_validation.cfl(cfl)
 
         dv = (v_max - v_min) / v_steps
         dr = (r_max - r_min) / r_steps
@@ -97,7 +97,7 @@ class FiniteVolume2D:
         V, R = np.meshgrid(v, r, indexing="ij")
 
         density0 = initial_density(V, R) if callable(initial_density) else initial_density
-        density = FiniteVolume2DValidation.density(density0, (v_steps, r_steps), dv, dr)
+        density = finite_volume_2d_validation.density(density0, (v_steps, r_steps), dv, dr)
 
         history = np.empty((len(t), v_steps, r_steps), dtype=float)
         mass_history = np.empty(len(t), dtype=float)
@@ -108,9 +108,9 @@ class FiniteVolume2D:
             current = float(t[n])
             target = float(t[n + 1])
             while current < target - 1e-15:
-                av = FiniteVolume2DValidation.field(drift_v(current, V, R), density.shape, "drift_v")
-                ar = FiniteVolume2DValidation.field(drift_r(current, V, R), density.shape, "drift_r")
-                g = FiniteVolume2DValidation.field(diffusion_r(current, V, R), density.shape, "diffusion_r", nonnegative=True,)
+                av = finite_volume_2d_validation.field(drift_v(current, V, R), density.shape, "drift_v")
+                ar = finite_volume_2d_validation.field(drift_r(current, V, R), density.shape, "drift_r")
+                g = finite_volume_2d_validation.field(diffusion_r(current, V, R), density.shape, "diffusion_r", nonnegative=True,)
                 stable_h = self._stable_step(dv, dr, av, ar, cfl)
                 remaining = target - current
                 h = remaining if not np.isfinite(stable_h) else min(remaining, stable_h)

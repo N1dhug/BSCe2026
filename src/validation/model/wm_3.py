@@ -1,9 +1,9 @@
 import numpy as np
 
-from src.validation.model.wm_1 import WM1Validation
+from src.validation.model.wm_1 import wm_1_validation
 
 
-class WM3Validation(WM1Validation):
+class wm_3_validation(wm_1_validation):
     """Validation rules for Water Model 3."""
 
     @classmethod
@@ -25,7 +25,7 @@ class WM3Validation(WM1Validation):
 
     @classmethod
     def coefficients(cls, alpha, beta, gamma):
-        # Verify WM3 coefficient simplices
+        # Verify wm_3 coefficient simplices
         return cls.simplex(alpha, 3, "alpha"), cls.beta_coefficients(beta), cls.simplex(gamma, 4, "gamma")
 
     @classmethod
@@ -73,7 +73,7 @@ class WM3Validation(WM1Validation):
     def initial_condition(cls, init_cond, allow_rate=True):
         # Verify inputs
         values = np.asarray(init_cond, dtype=float).reshape(-1)
-        if values.size != 2: raise ValueError("WM3 init_cond must contain exactly [V0, R0].")
+        if values.size != 2: raise ValueError("wm_3 init_cond must contain exactly [V0, R0].")
         if not np.all(np.isfinite(values)): raise ValueError("init_cond must contain finite values.")
         if not 0.0 <= values[0] <= 1.0: raise ValueError("Initial expected volume V0 must lie in [0, 1].")
         return values
@@ -102,7 +102,7 @@ class WM3Validation(WM1Validation):
     def stable_drift_coefficient(cls, dV, tol=1e-10):
         # Verify stability
         dV = cls._finite_scalar(dV, "d_V")
-        if dV >= -tol: raise ValueError("WM3 requires d_V < 0 so the expected equilibrium is stable.")
+        if dV >= -tol: raise ValueError("wm_3 requires d_V < 0 so the expected equilibrium is stable.")
         return dV
 
     @classmethod

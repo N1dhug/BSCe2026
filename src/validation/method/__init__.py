@@ -1,6 +1,6 @@
 """Method-validation public API."""
 
-from .euler_maruyama import EulerMaruyamaValidation
-from .fokker_planc import BM1FokkerPlancValidation, WMFokkerPlancValidation
+from .euler_maruyama import euler_maruyama_validation
+from .fokker_planc import bm_1_fokker_planc_validation, wm_fokker_planc_validation
 
-__all__ = ["EulerMaruyamaValidation", "BM1FokkerPlancValidation", "WMFokkerPlancValidation",]
+__all__ = ["euler_maruyama_validation", "bm_1_fokker_planc_validation", "wm_fokker_planc_validation",]

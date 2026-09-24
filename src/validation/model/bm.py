@@ -1,6 +1,6 @@
 import numpy as np
 
-class BMValidation:
+class bm_validation:
     """Validation rules shared by Battery Model implementations."""
 
     @staticmethod
@@ -35,7 +35,7 @@ class BMValidation:
     @staticmethod
     def positive_scalar(value, name):
         # Verify inputs
-        scalar = BMValidation.finite_scalar(value, name)
+        scalar = bm_validation.finite_scalar(value, name)
         if scalar <= 0.0:
             raise ValueError(f"{name} must be strictly positive.")
         return scalar
@@ -43,7 +43,7 @@ class BMValidation:
     @staticmethod
     def unit_scalar(value, name):
         # Verify inputs
-        scalar = BMValidation.finite_scalar(value, name)
+        scalar = bm_validation.finite_scalar(value, name)
         if not 0.0 <= scalar <= 1.0:
             raise ValueError(f"{name} must lie in [0, 1].")
         return scalar
@@ -107,7 +107,7 @@ class BMValidation:
         # Verify inputs
         values = np.asarray(init_cond, dtype=float).reshape(-1)
         if values.size != 1:
-            raise ValueError("BM1 init_cond must contain exactly one state value.")
+            raise ValueError("bm_1 init_cond must contain exactly one state value.")
         if not np.all(np.isfinite(values)):
             raise ValueError("init_cond must be finite.")
         if not 0.0 <= values[0] <= 1.0:

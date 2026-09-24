@@ -1,6 +1,6 @@
 """Base model interfaces."""
 
-from .bm import BM
-from .wm import WM
+from .bm import bm
+from .wm import wm
 
-__all__ = ["BM", "WM"]
+__all__ = ["bm", "wm"]

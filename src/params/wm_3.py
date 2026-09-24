@@ -3,11 +3,11 @@ from time import perf_counter
 
 import numpy as np
 
-from src.validation.model.wm_3 import WM3Validation
+from src.validation.model.wm_3 import wm_3_validation
 
 
-class BruteParams:
-    """Reduced-coordinate brute-force estimator for the complete WM3 model."""
+class brute_params:
+    """Reduced-coordinate brute-force estimator for the complete wm_3 model."""
 
     def __init__(self, model): self.model = model
 
@@ -29,30 +29,30 @@ class BruteParams:
         return result
 
     def _prepare_data(self, input_data):
-        data = WM3Validation.fit_data(input_data, self.model.t_steps)
+        data = wm_3_validation.fit_data(input_data, self.model.t_steps)
         return {
             **data,
-            "L": np.array([WM3Validation.feature_value(self.model.L(x), "L(Time)") for x in data["Time"]], dtype=float),
-            "H": np.array([WM3Validation.feature_value(self.model.H(x), "H(Temp)") for x in data["Temp"]], dtype=float),
+            "L": np.array([wm_3_validation.feature_value(self.model.L(x), "L(Time)") for x in data["Time"]], dtype=float),
+            "H": np.array([wm_3_validation.feature_value(self.model.H(x), "H(Temp)") for x in data["Temp"]], dtype=float),
         }
 
     def _recover_alpha_beta(self, input_coeff, drift_coeff):
         c, d, tol = np.asarray(input_coeff, dtype=float), np.asarray(drift_coeff, dtype=float), 1e-7
         beta = np.array([c[2] - d[2], c[0] - d[0], c[1] - d[1], c[4] - d[4]], dtype=float)
 
-        if not np.isclose(d[3] - c[3], beta[1], atol=tol, rtol=0.0): raise ValueError("Reduced WM3 fit violates beta_U consistency.")
-        if np.any(beta < -tol) or np.any(beta > 1.0 + tol): raise ValueError("Reduced WM3 fit implies beta outside [0, 1].")
-        if not np.isclose(np.sum(beta), 1.0, atol=tol, rtol=0.0): raise ValueError("Reduced WM3 fit implies beta that does not sum to one.")
+        if not np.isclose(d[3] - c[3], beta[1], atol=tol, rtol=0.0): raise ValueError("Reduced wm_3 fit violates beta_U consistency.")
+        if np.any(beta < -tol) or np.any(beta > 1.0 + tol): raise ValueError("Reduced wm_3 fit implies beta outside [0, 1].")
+        if not np.isclose(np.sum(beta), 1.0, atol=tol, rtol=0.0): raise ValueError("Reduced wm_3 fit implies beta that does not sum to one.")
 
         beta = np.clip(beta, 0.0, 1.0)
         beta /= np.sum(beta)
         M = np.array([[1.0, 1.0, beta[1]], [0.0, 0.0, beta[2]], [-1.0, 0.0, beta[0]], [0.0, -1.0, -beta[1]], [0.0, 0.0, beta[3]]], dtype=float)
         alpha = self.model._least_squares_qp(M, c, A_eq=np.vstack((np.ones(3), M[2])), b_eq=np.array([1.0, c[2]]), lb=np.zeros(3), ub=np.ones(3), ridge=self.model._FIT_RIDGE)
-        alpha, beta = WM3Validation.recovered_structural_coefficients(alpha, beta)
+        alpha, beta = wm_3_validation.recovered_structural_coefficients(alpha, beta)
         recovered_input, recovered_drift = self.model.reduced_coefficients(alpha, beta)
 
-        if not np.isclose(recovered_input[2], c[2], atol=tol, rtol=0.0): raise ValueError("Recovered WM3 c_V does not match the brute-force candidate.")
-        if not np.isclose(recovered_drift[2], d[2], atol=tol, rtol=0.0): raise ValueError("Recovered WM3 d_V does not match the brute-force candidate.")
+        if not np.isclose(recovered_input[2], c[2], atol=tol, rtol=0.0): raise ValueError("Recovered wm_3 c_V does not match the brute-force candidate.")
+        if not np.isclose(recovered_drift[2], d[2], atol=tol, rtol=0.0): raise ValueError("Recovered wm_3 d_V does not match the brute-force candidate.")
 
         projection_error = float(np.mean((recovered_input - c) ** 2) + np.mean((recovered_drift - d) ** 2))
         return alpha, beta, recovered_input, recovered_drift, projection_error
@@ -203,12 +203,12 @@ class BruteParams:
     def _search_all(self, data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every):
         branch_results = {branch: self._search_branch(branch, data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every) for branch in ("under", "critical")}
         valid = [item for item in branch_results.values() if item is not None]
-        if not valid: raise RuntimeError("WM3 brute-force parameter search found no structurally admissible underdamped or critically damped grid candidate.")
+        if not valid: raise RuntimeError("wm_3 brute-force parameter search found no structurally admissible underdamped or critically damped grid candidate.")
         return min(valid, key=lambda item: item["score"]), branch_results
 
     def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, c_v_range=(-1.0, 1.0), d_v_range=(-1.0, -1e-4), ratio_eps=1e-3, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25, alpha_points=None, alpha_o_range=None):
         data = self._prepare_data(input_data)
-        initial_conditions = WM3Validation.initial_condition(initial_conditions)
+        initial_conditions = wm_3_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every = int(grid_points), int(refinements), int(progress_every)
         r0_range = tuple(map(float, r0_range))
 

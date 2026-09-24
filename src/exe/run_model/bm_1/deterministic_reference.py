@@ -1,11 +1,11 @@
-"""Verify the deterministic BM1 implementation against an exact benchmark.
+"""Verify the deterministic bm_1 implementation against an exact benchmark.
 
 This is the F1 reference experiment.  The benchmark uses
 
     f(x) = 1 - 2x,        g(u) = 1 - 2u,
 
 a constant baseline, and a price step aligned with every Euler grid.  Under
-these assumptions BM1 has an exact, intervalwise solution.  The script
+these assumptions bm_1 has an exact, intervalwise solution.  The script
 compares that solution with both the legacy and breakpoint-aware
 ``solve_ivp`` interfaces and with Euler-Maruyama at ``sigma_x=0`` and
 ``boundary="none"``.
@@ -14,7 +14,7 @@ Run this module from the repository root:
 
     python -m src.exe.bm_1.deterministic_reference
 
-The script is diagnostic: it reports both solver paths without modifying BM1
+The script is diagnostic: it reports both solver paths without modifying bm_1
 state or hiding errors with boundary handling.
 """
 
@@ -23,8 +23,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.exe.tool.InputBuilder import InputBuilder
-from src.model.bm_1 import BM1
+from src.exe.tool.input_builder import input_builder
+from src.model.bm_1 import bm_1
 
 
 # Benchmark parameters.  Time is measured in days.
@@ -67,7 +67,7 @@ def linear_price_response(u):
 
 def build_inputs():
     """Build the constant baseline and right-continuous price step."""
-    inputs = InputBuilder()
+    inputs = input_builder()
     B = inputs.energy(
         (np.array(T, dtype=float), np.array([BASELINE, BASELINE], dtype=float))
     )
@@ -78,7 +78,7 @@ def build_inputs():
 
 
 def exact_constant_price_state(t, initial_state, initial_time, price):
-    """Return the exact BM1 state while price and baseline are constant."""
+    """Return the exact bm_1 state while price and baseline are constant."""
     times = np.asarray(t, dtype=float)
     equilibrium = 1.0 - price
 
@@ -126,7 +126,7 @@ def energy_residual(t, state, baseline, demand):
 
 def run_euler(steps_per_day, B, U):
     """Run the existing Euler-Maruyama interface as uncorrected Euler."""
-    model = BM1(B, B, T, steps_per_day + 1)
+    model = bm_1(B, B, T, steps_per_day + 1)
     parameters = [U, linear_state_response, linear_price_response, C, K, XI]
     result = model.euler_maruyama_solver(
         [X0],
@@ -163,14 +163,14 @@ def observed_orders(euler_results):
 
 def constant_price_run(price, initial_state=X0, xi=XI, steps_per_day=192):
     """Run a small deterministic Euler case used by the sanity checks."""
-    inputs = InputBuilder()
+    inputs = input_builder()
     B = inputs.energy(
         (np.array(T, dtype=float), np.array([BASELINE, BASELINE], dtype=float))
     )
     U = inputs.price_intervals(
         (np.array(T, dtype=float), np.array([price], dtype=float))
     )
-    model = BM1(B, B, T, steps_per_day + 1)
+    model = bm_1(B, B, T, steps_per_day + 1)
     parameters = [U, linear_state_response, linear_price_response, C, K, xi]
     return model.euler_maruyama_solver(
         [initial_state],
@@ -188,7 +188,7 @@ def boundary_drift_checks():
     lower_drift = []
     upper_drift = []
 
-    inputs = InputBuilder()
+    inputs = input_builder()
     B = inputs.energy(
         (np.array(T, dtype=float), np.array([BASELINE, BASELINE], dtype=float))
     )
@@ -197,7 +197,7 @@ def boundary_drift_checks():
         U = inputs.price_intervals(
             (np.array(T, dtype=float), np.array([price], dtype=float))
         )
-        model = BM1(B, B, T, 2)
+        model = bm_1(B, B, T, 2)
         parameters = [U, linear_state_response, linear_price_response, C, K, XI]
         lower_drift.append(float(model._drift(T[0], np.array([0.0]), parameters)[0]))
         upper_drift.append(float(model._drift(T[0], np.array([1.0]), parameters)[0]))
@@ -252,7 +252,7 @@ def sanity_checks(euler_results):
 
 def price_parameterization_checks(U, output_t):
     """Check the F1-C one-price-per-interval representation."""
-    legacy_U = InputBuilder.price(
+    legacy_U = input_builder.price(
         (
             PRICE_INTERVAL_EDGES,
             np.array([PRICE_BEFORE, PRICE_AFTER, PRICE_AFTER], dtype=float),
@@ -327,7 +327,7 @@ def save_figure(legacy_ivp_result, ivp_result, finest_euler, B, U):
     plot_equilibrium = 1.0 - plot_price
     plot_exact_state = exact_state(plot_t)
 
-    model = BM1(B, B, T, len(plot_t))
+    model = bm_1(B, B, T, len(plot_t))
     _, plot_baseline, _, _, _, plot_demand = model.eval(
         plot_t,
         plot_exact_state,
@@ -363,7 +363,7 @@ def save_figure(legacy_ivp_result, ivp_result, finest_euler, B, U):
         label=f"Euler, dt = {24.0 * finest_euler['dt'] * 60.0:.1f} min",
     )
     axes[0].set_ylabel("State X")
-    axes[0].set_title("BM1 deterministic F1 reference")
+    axes[0].set_title("bm_1 deterministic F1 reference")
     axes[0].grid(True)
     axes[0].legend(loc="best")
 
@@ -405,7 +405,7 @@ def main():
 
     # Keep one legacy call to verify backward compatibility and expose the
     # original discontinuity error.
-    model = BM1(B, B, T, STEPS_PER_DAY[-1] + 1)
+    model = bm_1(B, B, T, STEPS_PER_DAY[-1] + 1)
     legacy_ivp_result = model.deterministic_solver([X0], parameters)
     legacy_t, legacy_state = legacy_ivp_result[0], legacy_ivp_result[1]
     legacy_difference = np.abs(legacy_state - exact_state(legacy_t))
@@ -502,7 +502,7 @@ def main():
         graph_path.is_file() and graph_path.stat().st_size > 0
     )
 
-    print("BM1 deterministic F1 verification")
+    print("bm_1 deterministic F1 verification")
     print("==================================")
     print()
     print("Exact vs solve_ivp")

@@ -1,6 +1,6 @@
 import numpy as np
 
-class WM1Validation:
+class wm_1_validation:
     """Validation rules for the updated Water Model 1."""
 
     @staticmethod
@@ -131,7 +131,7 @@ class WM1Validation:
         parameters = cls.parameters(parameters)
 
         if not np.isclose(parameters["theta"], 0.0, atol=1e-12, rtol=0.0):
-            raise ValueError("WM1 Fokker-Planck approximation requires theta = 0.")
+            raise ValueError("wm_1 Fokker-Planck approximation requires theta = 0.")
 
         sigma = cls._finite_scalar(sigma, "sigma")
         if sigma < 0.0:

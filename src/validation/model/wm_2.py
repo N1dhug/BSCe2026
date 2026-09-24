@@ -1,9 +1,9 @@
 import itertools
 import numpy as np
 
-from src.validation.model.wm_1 import WM1Validation
+from src.validation.model.wm_1 import wm_1_validation
 
-class WM2Validation(WM1Validation):
+class wm_2_validation(wm_1_validation):
     """Validation and admissibility rules for Water Model 2."""
 
     @classmethod
@@ -28,7 +28,7 @@ class WM2Validation(WM1Validation):
         # Verify inputs
         values = np.asarray(init_cond, dtype=float).reshape(-1)
         if values.size != 2:
-            raise ValueError("WM2 init_cond must contain exactly [V0, R0].")
+            raise ValueError("wm_2 init_cond must contain exactly [V0, R0].")
         if not np.all(np.isfinite(values)):
             raise ValueError("init_cond must contain finite values.")
         if not 0.0 <= values[0] <= 1.0:
@@ -66,7 +66,7 @@ class WM2Validation(WM1Validation):
             V_star = -(d0 + dU * U) / dV
             equilibria.append((B_O, B_I, U, V_star))
             if V_star < -tol or V_star > 1.0 + tol:
-                raise ValueError("WM2 parameterization is inadmissible: expected equilibrium " f"V*(B_O={B_O}, B_I={B_I}, U={U})={V_star:.6g} " "lies outside [0, 1].")
+                raise ValueError("wm_2 parameterization is inadmissible: expected equilibrium " f"V*(B_O={B_O}, B_I={B_I}, U={U})={V_star:.6g} " "lies outside [0, 1].")
         return dV, equilibria
 
     @classmethod
@@ -74,7 +74,7 @@ class WM2Validation(WM1Validation):
         # Verify stability
         dV = cls._finite_scalar(dV, "d_V")
         if dV >= -tol:
-            raise ValueError("WM2 requires d_V < 0 so the expected equilibrium is stable.")
+            raise ValueError("wm_2 requires d_V < 0 so the expected equilibrium is stable.")
         return dV
 
     @classmethod
@@ -257,18 +257,18 @@ class WM2Validation(WM1Validation):
 
         beta = np.array([input_coeff[2] - drift_coeff[2], input_coeff[3] - drift_coeff[3], input_coeff[0] - drift_coeff[0]], dtype=float)
         if not np.isclose(drift_coeff[1], input_coeff[1], atol=tol, rtol=0.0):
-            raise ValueError("Reduced WM2 fit is not exactly representable: d_BI must equal c_BI.")
+            raise ValueError("Reduced wm_2 fit is not exactly representable: d_BI must equal c_BI.")
         if not np.isclose(drift_coeff[4] - input_coeff[4], beta[2], atol=tol, rtol=0.0):
-            raise ValueError("Reduced WM2 fit is not exactly representable: d_U - c_U must equal beta_U = c_0 - d_0.")
+            raise ValueError("Reduced wm_2 fit is not exactly representable: d_U - c_U must equal beta_U = c_0 - d_0.")
         if np.any(beta < -tol) or np.any(beta > 1.0 + tol):
-            raise ValueError("Reduced WM2 fit is not exactly representable by simplex beta: the implied beta coefficients lie outside [0, 1].")
+            raise ValueError("Reduced wm_2 fit is not exactly representable by simplex beta: the implied beta coefficients lie outside [0, 1].")
         if not np.isclose(np.sum(beta), 1.0, atol=tol, rtol=0.0):
-            raise ValueError("Reduced WM2 fit is not exactly representable by simplex beta: the implied beta coefficients do not sum to one.")
+            raise ValueError("Reduced wm_2 fit is not exactly representable by simplex beta: the implied beta coefficients do not sum to one.")
 
         beta = np.clip(beta, 0.0, 1.0)
         beta /= np.sum(beta)
         if beta[0] <= tol and beta[1] <= tol:
-            raise ValueError("WM2 structural recovery is non-identifiable for beta = [0, 0, 1]: alpha_O and alpha_U cannot be recovered separately.")
+            raise ValueError("wm_2 structural recovery is non-identifiable for beta = [0, 0, 1]: alpha_O and alpha_U cannot be recovered separately.")
         return input_coeff, drift_coeff, beta, tol
 
     @classmethod
@@ -313,9 +313,9 @@ class WM2Validation(WM1Validation):
         # Verify diffusion scale
         values = np.asarray(values, dtype=float)
         if not np.all(np.isfinite(values)):
-            raise ValueError("WM2 diffusion scale must be finite.")
+            raise ValueError("wm_2 diffusion scale must be finite.")
         if np.any(values < 0.0):
-            raise ValueError("WM2 produced negative g(O) on the selected numerical domain; " "choose an admissible domain/parameterization with O >= 0.")
+            raise ValueError("wm_2 produced negative g(O) on the selected numerical domain; " "choose an admissible domain/parameterization with O >= 0.")
         return values
 
     @classmethod
@@ -324,6 +324,6 @@ class WM2Validation(WM1Validation):
         init_cond = cls.initial_condition(init_cond)
         parameters = cls.parameters(parameters)
         if "d_coeff" not in parameters:
-            raise ValueError("WM2 Fokker-Planck parameters must include reduced d_coeff.")
+            raise ValueError("wm_2 Fokker-Planck parameters must include reduced d_coeff.")
         parameters["d_coeff"] = cls.vector(parameters["d_coeff"], 5, "d_coeff")
         return init_cond, parameters

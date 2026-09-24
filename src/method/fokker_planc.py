@@ -1,22 +1,22 @@
 import numpy as np
 from scipy.special import gammaln
 
-from src.solver.active_set import ActiveSet
-from src.solver.finite_volume import FiniteVolume2D
-from src.validation.method.fokker_planc import BM1FokkerPlancValidation, WMFokkerPlancValidation
+from src.solver.active_set import active_set
+from src.solver.finite_volume import finite_volume_2d
+from src.validation.method.fokker_planc import bm_1_fokker_planc_validation, wm_fokker_planc_validation
 
-class BM1FokkerPlanc:
-    """One-dimensional Beta-mixture Fokker-Planck method used by BM1/wm_1.
+class bm_1_fokker_planc:
+    """One-dimensional Beta-mixture Fokker-Planck method used by bm_1/wm_1.
 
     PDE time integration belongs to the method layer. Constrained least-squares
-    recovery of Beta-mixture weights is delegated to the generic ActiveSet
+    recovery of Beta-mixture weights is delegated to the generic active_set
     solver.
     """
 
     @staticmethod
     def beta_basis(x, degree):
         # Build beta basis
-        x, degree = BM1FokkerPlancValidation.beta_basis_inputs(x, degree)
+        x, degree = bm_1_fokker_planc_validation.beta_basis_inputs(x, degree)
         m = np.arange(degree + 1, dtype=float)[:, None]
         x_row = x[None, :]
         log_coefficient = (np.log(degree + 1.0) + gammaln(degree + 1.0) - gammaln(m + 1.0) - gammaln(degree - m + 1.0))
@@ -26,13 +26,13 @@ class BM1FokkerPlanc:
     @staticmethod
     def _normalise_basis_discretely(basis, dx):
         # Normalize basis
-        basis, dx, masses = BM1FokkerPlancValidation.basis_normalisation_inputs(basis, dx)
+        basis, dx, masses = bm_1_fokker_planc_validation.basis_normalisation_inputs(basis, dx)
         return basis / masses[:, None]
 
     @staticmethod
     def initial_coefficients(init_cond, degree):
         # Initialize mixture coefficients
-        x0, degree = BM1FokkerPlancValidation.initial_coefficients_inputs(init_cond, degree)
+        x0, degree = bm_1_fokker_planc_validation.initial_coefficients_inputs(init_cond, degree)
         component_means = (np.arange(degree + 1, dtype=float) + 1.0) / (degree + 2.0)
         coefficients = np.zeros(degree + 1, dtype=float)
 
@@ -55,14 +55,14 @@ class BM1FokkerPlanc:
     @staticmethod
     def mixture_density(coefficients, basis):
         # Evaluate mixture density
-        coefficients, basis = BM1FokkerPlancValidation.mixture_inputs(coefficients, basis)
+        coefficients, basis = bm_1_fokker_planc_validation.mixture_inputs(coefficients, basis)
         return coefficients @ basis
 
     @staticmethod
     def project_density(density, basis, dx):
         """Project p onto a nonnegative, unit-mass Beta mixture."""
         # Project density
-        density, basis, dx = BM1FokkerPlancValidation.projection_inputs(density, basis, dx)
+        density, basis, dx = bm_1_fokker_planc_validation.projection_inputs(density, basis, dx)
         scale = np.sqrt(dx)
         matrix = basis.T * scale
         target = density * scale
@@ -71,22 +71,22 @@ class BM1FokkerPlanc:
         n_coefficients = basis.shape[0]
         hessian = matrix.T @ matrix
         linear = -(matrix.T @ target)
-        coefficients = ActiveSet.solve(hessian, linear, A_eq=np.ones((1, n_coefficients), dtype=float), b_eq=np.array([1.0], dtype=float), lb=np.zeros(n_coefficients, dtype=float),)
+        coefficients = active_set.solve(hessian, linear, A_eq=np.ones((1, n_coefficients), dtype=float), b_eq=np.array([1.0], dtype=float), lb=np.zeros(n_coefficients, dtype=float),)
         projected = coefficients @ basis
         return coefficients, projected
 
     @staticmethod
     def _normalise_density(density, dx):
         # Normalize density
-        density, dx = BM1FokkerPlancValidation.density_inputs(density, dx)
+        density, dx = bm_1_fokker_planc_validation.density_inputs(density, dx)
         density = np.maximum(density, 0.0)
-        mass = BM1FokkerPlancValidation.positive_mass(np.sum(density) * dx)
+        mass = bm_1_fokker_planc_validation.positive_mass(np.sum(density) * dx)
         return density / mass
 
     @staticmethod
     def _flux_rhs(x, density, drift_values, diffusion_values):
         # Compute flux update
-        x, density, drift_values, diffusion_values = BM1FokkerPlancValidation.flux_inputs(x, density, drift_values, diffusion_values)
+        x, density, drift_values, diffusion_values = bm_1_fokker_planc_validation.flux_inputs(x, density, drift_values, diffusion_values)
         dx = float(x[1] - x[0])
         diffusion_squared = np.square(diffusion_values)
 
@@ -103,10 +103,10 @@ class BM1FokkerPlanc:
     @staticmethod
     def _stable_step(dx, drift_values, diffusion_values, cfl):
         # Compute stable time step
-        dx = BM1FokkerPlancValidation.positive_scalar(dx, "dx")
-        cfl = BM1FokkerPlancValidation.cfl(cfl)
-        drift_values = BM1FokkerPlancValidation.field_values(drift_values, np.asarray(drift_values).shape, "drift")
-        diffusion_values = BM1FokkerPlancValidation.field_values(diffusion_values, np.asarray(diffusion_values).shape, "diffusion")
+        dx = bm_1_fokker_planc_validation.positive_scalar(dx, "dx")
+        cfl = bm_1_fokker_planc_validation.cfl(cfl)
+        drift_values = bm_1_fokker_planc_validation.field_values(drift_values, np.asarray(drift_values).shape, "drift")
+        diffusion_values = bm_1_fokker_planc_validation.field_values(diffusion_values, np.asarray(diffusion_values).shape, "diffusion")
         max_drift = float(np.max(np.abs(drift_values)))
         max_diffusion_squared = float(np.max(np.square(diffusion_values)))
         advective_limit = np.inf if max_drift == 0.0 else dx / max_drift
@@ -116,7 +116,7 @@ class BM1FokkerPlanc:
     def solve(self, t, init_cond, drift, diffusion, degree=12, x_steps=201, cfl=0.45):
         """Solve the one-dimensional Fokker-Planck equation."""
         # Solve Fokker-Planck system
-        t, x0, drift, diffusion, degree, x_steps, cfl = BM1FokkerPlancValidation.solve_inputs(t, init_cond, drift, diffusion, degree, x_steps, cfl)
+        t, x0, drift, diffusion, degree, x_steps, cfl = bm_1_fokker_planc_validation.solve_inputs(t, init_cond, drift, diffusion, degree, x_steps, cfl)
 
         dx = 1.0 / x_steps
         x = (np.arange(x_steps, dtype=float) + 0.5) * dx
@@ -135,12 +135,12 @@ class BM1FokkerPlanc:
             target_time = float(t[n + 1])
 
             while current_time < target_time:
-                drift_values = BM1FokkerPlancValidation.field_values(drift(current_time, x), x.shape, "drift")
-                diffusion_values = BM1FokkerPlancValidation.field_values(diffusion(current_time, x), x.shape, "diffusion")
+                drift_values = bm_1_fokker_planc_validation.field_values(drift(current_time, x), x.shape, "drift")
+                diffusion_values = bm_1_fokker_planc_validation.field_values(diffusion(current_time, x), x.shape, "diffusion")
                 stable_h = self._stable_step(dx, drift_values, diffusion_values, cfl)
                 remaining = target_time - current_time
                 h = remaining if not np.isfinite(stable_h) else min(remaining, stable_h)
-                h = BM1FokkerPlancValidation.positive_substep(h)
+                h = bm_1_fokker_planc_validation.positive_substep(h)
 
                 density = density + h * self._flux_rhs(x, density, drift_values, diffusion_values)
                 density = self._normalise_density(density, dx)
@@ -152,16 +152,16 @@ class BM1FokkerPlanc:
 
         return x, density_history, coefficient_history
 
-class WMFokkerPlanc:
+class wm_fokker_planc:
     """General two-dimensional Fokker-Planck method for inertial Water Models."""
 
     def __init__(self, solver=None):
         # Initialize solver
-        self.solver = FiniteVolume2D() if solver is None else solver
+        self.solver = finite_volume_2d() if solver is None else solver
 
     def solve(self, t, initial_density, drift_v, drift_r, diffusion_r, v_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), v_steps=161, r_steps=161, cfl=0.8):
         # Solve Fokker-Planck system
-        t, initial_density, drift_v, drift_r, diffusion_r, v_bounds, r_bounds, v_steps, r_steps, cfl = WMFokkerPlancValidation.solve_inputs(t, initial_density, drift_v, drift_r, diffusion_r, v_bounds, r_bounds, v_steps, r_steps, cfl)
+        t, initial_density, drift_v, drift_r, diffusion_r, v_bounds, r_bounds, v_steps, r_steps, cfl = wm_fokker_planc_validation.solve_inputs(t, initial_density, drift_v, drift_r, diffusion_r, v_bounds, r_bounds, v_steps, r_steps, cfl)
         result = self.solver.solve(t, initial_density, drift_v, drift_r, diffusion_r, v_bounds=v_bounds, r_bounds=r_bounds, v_steps=v_steps, r_steps=r_steps, cfl=cfl)
 
         p, v, r = result["density"], result["v_grid"], result["r_grid"]

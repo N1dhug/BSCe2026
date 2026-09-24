@@ -1,5 +1,5 @@
 """Executable tool-validation public API."""
 
-from .input_builder import InputBuilderValidation
+from .input_builder import input_builder_validation
 
-__all__ = ["InputBuilderValidation"]
+__all__ = ["input_builder_validation"]

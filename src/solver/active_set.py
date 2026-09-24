@@ -1,9 +1,9 @@
 import numpy as np
 from scipy.optimize import linprog
 
-from src.validation.solver.active_set import ActiveSetValidation
+from src.validation.solver.active_set import active_set_validation
 
-class ActiveSet:
+class active_set:
     """Active-set solver for convex quadratic programs with linear constraints.
 
     The generic problem is
@@ -67,7 +67,7 @@ class ActiveSet:
 
         x = np.asarray(result.x, dtype=float)
 
-        if not ActiveSet._is_feasible(x, G, h, A_eq, b_eq, 10.0 * tol):
+        if not active_set._is_feasible(x, G, h, A_eq, b_eq, 10.0 * tol):
             raise RuntimeError("Phase-I feasibility solve returned an infeasible point.")
         return x
 
@@ -106,24 +106,24 @@ class ActiveSet:
         """Solve a convex QP with affine equality/inequality and box constraints."""
         # Solve quadratic program
         # Validate and normalize the QP inputs.
-        hessian, linear, A_ub, b_ub, A_eq, b_eq, lb, ub, x0, tol, max_iter = (ActiveSetValidation.quadratic_program(hessian,linear,A_ub,b_ub,A_eq, b_eq,lb,ub,x0,tol, max_iter))
+        hessian, linear, A_ub, b_ub, A_eq, b_eq, lb, ub, x0, tol, max_iter = (active_set_validation.quadratic_program(hessian,linear,A_ub,b_ub,A_eq, b_eq,lb,ub,x0,tol, max_iter))
 
         n_variables = hessian.shape[0]
-        G, h = ActiveSet._canonical_inequalities(A_ub, b_ub, lb, ub)
+        G, h = active_set._canonical_inequalities(A_ub, b_ub, lb, ub)
 
         if x0 is None:
             if G.shape[0] or A_eq.shape[0]:
-                x = ActiveSet._find_feasible_point(n_variables, G, h, A_eq, b_eq, tol)
+                x = active_set._find_feasible_point(n_variables, G, h, A_eq, b_eq, tol)
             else:
                 x = np.zeros(n_variables, dtype=float)
         else:
             x = x0.copy()
-            if not ActiveSet._is_feasible(x, G, h, A_eq, b_eq, tol):
+            if not active_set._is_feasible(x, G, h, A_eq, b_eq, tol):
                 raise ValueError("x0 must satisfy all supplied constraints.")
 
         if G.shape[0]:
             slack = h - G @ x
-            working = ActiveSet._independent_working_set(G, np.flatnonzero(slack <= tol), A_eq)
+            working = active_set._independent_working_set(G, np.flatnonzero(slack <= tol), A_eq)
         else:
             working = set()
 
@@ -136,7 +136,7 @@ class ActiveSet:
                 constraints = A_eq.copy()
 
             gradient = hessian @ x + linear
-            direction, multipliers = ActiveSet._solve_equality_qp(hessian, gradient, constraints)
+            direction, multipliers = active_set._solve_equality_qp(hessian, gradient, constraints)
 
             direction_scale = max(1.0, float(np.linalg.norm(x, ord=np.inf)))
             if float(np.linalg.norm(direction, ord=np.inf)) <= tol * direction_scale:
@@ -177,9 +177,9 @@ class ActiveSet:
             x = x + alpha * direction
 
             if blocking is not None and alpha < 1.0 - tol:
-                working = ActiveSet._independent_working_set(G, sorted(working | {int(blocking)}), A_eq)
+                working = active_set._independent_working_set(G, sorted(working | {int(blocking)}), A_eq)
 
-            if not ActiveSet._is_feasible(x, G, h, A_eq, b_eq, 100.0 * tol):
+            if not active_set._is_feasible(x, G, h, A_eq, b_eq, 100.0 * tol):
                 raise RuntimeError("Active-set iteration lost feasibility beyond numerical tolerance.")
 
         raise RuntimeError("Active-set convex-QP solver did not converge.")

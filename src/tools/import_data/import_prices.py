@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 
-class SpotPriceData:
+class spot_price_data:
     """Import/query hourly spot-price data."""
 
     LOCAL_TIMEZONE = "Europe/Copenhagen"

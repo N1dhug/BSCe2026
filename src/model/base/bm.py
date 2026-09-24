@@ -1,10 +1,10 @@
-from src.validation.model.bm import BMValidation
+from src.validation.model.bm import bm_validation
 import numpy as np
 
-class BM:
+class bm:
     def __init__(self, B, A, T, t_steps):
         # Initialize variables
-        B, A, T, t_steps = BMValidation.constructor(B, A, T, t_steps)
+        B, A, T, t_steps = bm_validation.constructor(B, A, T, t_steps)
         self.B = B
         self.A = A
         self.T = T
@@ -14,34 +14,34 @@ class BM:
 
     def eval(self, t, Xt, U, f, g, k, Xi):
         # Compute model dynamics
-        U, f, g, _, k, Xi = BMValidation.dynamics(U, f, g, 1.0, k, Xi)
+        U, f, g, _, k, Xi = bm_validation.dynamics(U, f, g, 1.0, k, Xi)
         Ut = U(t)
         Bt = self.B(t)
         fXt = f(Xt)
         gUt = g(Ut)
-        Ut, Bt, fXt, gUt = BMValidation.response_values(Ut, Bt, fXt, gUt)
+        Ut, Bt, fXt, gUt = bm_validation.response_values(Ut, Bt, fXt, gUt)
         dt = self.l(fXt, gUt, k)
         Dt = self.D(Bt, Xi, dt)
         return Ut, Bt, fXt, gUt, dt, Dt
 
     def l(self, fXt, gUt, k):
         # Compute model dynamics
-        fXt = BMValidation.bounded_array(fXt, -1.0, 1.0, "f(X)")
-        gUt = BMValidation.bounded_array(gUt, -1.0, 1.0, "g(U)")
-        k = BMValidation.positive_scalar(k, "k")
+        fXt = bm_validation.bounded_array(fXt, -1.0, 1.0, "f(X)")
+        gUt = bm_validation.bounded_array(gUt, -1.0, 1.0, "g(U)")
+        k = bm_validation.positive_scalar(k, "k")
         return 2 / (1 + np.exp(-k * (fXt + gUt))) - 1
 
     def D(self, Bt, Xi, dt):
         # Compute model dynamics
-        Bt = BMValidation.bounded_array(Bt, 0.0, 1.0, "B(t)")
-        dt = BMValidation.bounded_array(dt, -1.0, 1.0, "delta(t)")
-        Xi = BMValidation.unit_scalar(Xi, "Xi")
+        Bt = bm_validation.bounded_array(Bt, 0.0, 1.0, "B(t)")
+        dt = bm_validation.bounded_array(dt, -1.0, 1.0, "delta(t)")
+        Xi = bm_validation.unit_scalar(Xi, "Xi")
         return Bt + dt * Xi * ((dt >= 0) * (1 - Bt) + (dt < 0) * Bt)
 
     def dXdt(self, t, state, U, f, g, C, k, Xi, stochastic=False):
         # Compute model dynamics
-        U, f, g, C, k, Xi = BMValidation.dynamics(U, f, g, C, k, Xi)
-        state = BMValidation.state(state)
+        U, f, g, C, k, Xi = bm_validation.dynamics(U, f, g, C, k, Xi)
+        state = bm_validation.state(state)
         Xt = state.reshape(-1)[0]
         if stochastic and hasattr(Xt, "item"):
             try:
@@ -53,7 +53,7 @@ class BM:
 
     def diffusion_coefficient(self, X, sigma_x):
         # Compute diffusion
-        X, sigma_x = BMValidation.diffusion(X, sigma_x)
+        X, sigma_x = bm_validation.diffusion(X, sigma_x)
         return sigma_x * X * (1 - X)
 
     def XtOx_dWt(self, t, X, sigma_x):

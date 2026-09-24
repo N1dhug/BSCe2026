@@ -11,7 +11,7 @@ HOW TO RUN PYTHON FILES IN THE TERMINAL
    │   └── BatteryModel/
    │       ├── __init__.py
    │       ├── BatteryModel.py
-   │       ├── BM1.py
+   │       ├── bm_1.py
    │       └── BM2.py
    └── main.py
 
@@ -89,7 +89,7 @@ Correct:
 
 Incorrect:
 
-   python -m BM1.py
+   python -m bm_1.py
 
 Incorrect:
 
@@ -99,7 +99,7 @@ Incorrect:
 WHY THE PROJECT ROOT MATTERS
 ----------------------------
 
-Suppose BM1.py contains:
+Suppose bm_1.py contains:
 
    from models.BatteryModel.BatteryModel import BatteryModel
 
@@ -176,7 +176,7 @@ Example:
    └── BatteryModel/
        ├── __init__.py
        ├── BatteryModel.py
-       └── BM1.py
+       └── bm_1.py
 
 
 USEFUL COMMANDS
@@ -261,14 +261,14 @@ COMMON ERRORS
 
    Usually means a package file was run directly:
 
-   python BM1.py
+   python bm_1.py
 
    Instead, run it from the project root as a module:
 
    python -m models.BatteryModel.bm_1
 
 
-3. No module named 'BM1.py'
+3. No module named 'bm_1.py'
 
    Do not include ".py" when using "-m".
 

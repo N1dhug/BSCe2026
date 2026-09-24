@@ -1,6 +1,6 @@
 import numpy as np
 
-class FiniteVolume2DValidation:
+class finite_volume_2d_validation:
     @staticmethod
     def bounds(values, name):
         # Verify inputs

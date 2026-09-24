@@ -1,6 +1,6 @@
 import numpy as np
 
-class ActiveSetValidation:
+class active_set_validation:
     """Input validation for generic convex quadratic programs."""
 
     @staticmethod

@@ -1,6 +1,6 @@
 import numpy as np
 
-class EulerMaruyamaValidation:
+class euler_maruyama_validation:
     """Input validation for the generic Euler-Maruyama method."""
 
     BOUNDARIES = {"reflect", "clip", "none"}

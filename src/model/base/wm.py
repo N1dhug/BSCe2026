@@ -1,4 +1,4 @@
-class WM:
+class wm:
     def __init__(self):
         # Initialize variables
         raise NotImplementedError("Unimplemented constructor")

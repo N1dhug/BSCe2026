@@ -1,14 +1,14 @@
 import numpy as np
 
-from src.validation.model.bm import BMValidation
+from src.validation.model.bm import bm_validation
 
-class BM1Validation:
-    """Validation for BM1 solver and optimizer entry points."""
+class bm_1_validation:
+    """Validation for bm_1 solver and optimizer entry points."""
 
     @staticmethod
     def model_inputs(init_cond, parameters):
         # Verify inputs
-        return BMValidation.initial_condition(init_cond), BMValidation.parameters(parameters)
+        return bm_validation.initial_condition(init_cond), bm_validation.parameters(parameters)
 
     @staticmethod
     def deterministic_inputs(
@@ -22,7 +22,7 @@ class BM1Validation:
         max_step,
     ):
         """Validate deterministic solver inputs and numerical controls."""
-        init_cond, parameters = BM1Validation.model_inputs(init_cond, parameters)
+        init_cond, parameters = bm_1_validation.model_inputs(init_cond, parameters)
 
         t_eval = np.asarray(t_eval, dtype=float)
         if t_eval.ndim != 1 or t_eval.size == 0:
@@ -51,8 +51,8 @@ class BM1Validation:
                     "breakpoints must lie strictly inside the model time interval."
                 )
 
-        rtol = BMValidation.positive_scalar(rtol, "rtol")
-        atol = BMValidation.positive_scalar(atol, "atol")
+        rtol = bm_validation.positive_scalar(rtol, "rtol")
+        atol = bm_validation.positive_scalar(atol, "atol")
 
         max_step_array = np.asarray(max_step, dtype=float)
         if max_step_array.size != 1:
@@ -74,8 +74,8 @@ class BM1Validation:
     @staticmethod
     def stochastic_inputs(init_cond, parameters, sigma_x):
         # Verify inputs
-        init_cond, parameters = BM1Validation.model_inputs(init_cond, parameters)
-        _, sigma_x = BMValidation.diffusion(init_cond, sigma_x)
+        init_cond, parameters = bm_1_validation.model_inputs(init_cond, parameters)
+        _, sigma_x = bm_validation.diffusion(init_cond, sigma_x)
         return init_cond, parameters, sigma_x
 
     @staticmethod
@@ -125,7 +125,7 @@ class BM1Validation:
             rtol,
             atol,
             max_step,
-        ) = BM1Validation.deterministic_inputs(
+        ) = bm_1_validation.deterministic_inputs(
             init_cond,
             parameters,
             t_eval,

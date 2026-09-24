@@ -1,9 +1,9 @@
-"""Simulate a BM1 dynamic-price step with the Fokker-Planck Beta-mixture method."""
+"""Simulate a bm_1 dynamic-price step with the Fokker-Planck Beta-mixture method."""
 
 from pathlib import Path
 
-from src.model.bm_1 import BM1
-from src.exe.tool.InputBuilder import InputBuilder
+from src.model.bm_1 import bm_1
+from src.exe.tool.input_builder import input_builder
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -16,7 +16,7 @@ t = np.linspace(T[0], T[1], t_steps)
 hours = 24.0 * t
 
 # Build the constant baseline.
-inputs = InputBuilder()
+inputs = input_builder()
 
 B_data = (np.array([0.0, 1.0]), np.array([0.3, 0.3]))
 B = inputs.energy(B_data)
@@ -41,7 +41,7 @@ poi_u, pr_u = inputs.md_vals(kappa, n)
 f = inputs.md(poi_x, pr_x)
 g = inputs.md(poi_u, pr_u)
 
-# Configure the BM1 parameters and initial state.
+# Configure the bm_1 parameters and initial state.
 C = 1.0
 k = 2.0
 Xi = 1.0
@@ -58,7 +58,7 @@ x_steps = 201
 cfl = 0.45
 
 # Solve the Fokker-Planck system.
-model = BM1(B, A, T, t_steps)
+model = bm_1(B, A, T, t_steps)
 
 fp_t, x_grid, density, coefficients, mean, Ut, Bt, expected_Dt = model.fokker_planc_solver(init_cond=init_cond, parameters=parameters, sigma_x=sigma_x, degree=degree, x_steps=x_steps, cfl=cfl,)
 
@@ -110,7 +110,7 @@ ax_pdf.plot(fp_hours, mean, linewidth=2.0, label="Fokker-Planck E[X(t)]")
 ax_pdf.axvline(price_drop_hour, linestyle="--", label="Price drop")
 
 ax_pdf.set_ylabel("State of charge x")
-ax_pdf.set_title("BM1 Fokker-Planck probability density p(x,t)")
+ax_pdf.set_title("bm_1 Fokker-Planck probability density p(x,t)")
 ax_pdf.set_ylim(0.0, 1.0)
 ax_pdf.legend(loc="best")
 

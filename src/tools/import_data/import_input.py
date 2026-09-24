@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 
-class InputData:
+class input_data:
     """Import/query consumption data from the internal 2022 sheet."""
 
     SHEET_NAME, DATE_COLUMN, TIME_COLUMN = "2022 med dato (3)", "Dato", "Time"
