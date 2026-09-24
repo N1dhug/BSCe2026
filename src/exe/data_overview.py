@@ -17,7 +17,8 @@ PERIODS = {"day": "D", "week": "W-MON", "month": "MS"}
 def consumption_series(data):
     cols = data.measurement_columns
     if not cols: raise ValueError("No consumption measurement columns found in input data.")
-    return data.data.loc[(data.data.index >= START) & (data.data.index < END), cols].sum(axis=1).rename("EnergyConsumption")
+    period = data.data.loc[(data.data.index >= START) & (data.data.index < END), cols]
+    return period.mean(axis=1).rename("AverageConsumerConsumption")
 
 
 def price_series(data):
@@ -41,7 +42,7 @@ def plot_period(consumption, prices, chill, label, freq):
     fig.suptitle(f"DK1 data overview — {label} aggregation, Jan–Nov 2022")
     axes[0].plot(c.index, c.values)
     axes[0].set_ylabel("Energy consumption")
-    axes[0].set_title("Aggregate energy consumption (input)")
+    axes[0].set_title("Average consumer energy consumption (input)")
     axes[0].grid(True, alpha=0.3)
     axes[1].plot(p.index, p.values)
     axes[1].set_ylabel("DKK/MWh")
