@@ -10,6 +10,7 @@ from src.tools.import_data.import_weather import weather_data
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "files" / "input" / "data"
+GRAPHS = ROOT / "files" / "output" / "graphs"
 START, END = pd.Timestamp("2022-01-01"), pd.Timestamp("2022-12-01")
 PERIODS = {"day": "D", "week": "W-MON", "month": "MS"}
 
@@ -53,6 +54,8 @@ def plot_period(consumption, prices, temperature, label, freq):
     axes[2].set_title("Average temperature — Denmark")
     axes[2].grid(True, alpha=0.3)
     fig.tight_layout()
+    GRAPHS.mkdir(parents=True, exist_ok=True)
+    fig.savefig(GRAPHS / f"data_overview_{label}.png", dpi=300, bbox_inches="tight")
     return fig
 
 
