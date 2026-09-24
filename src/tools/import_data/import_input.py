@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import time as dt_time
 from pathlib import Path
 
 import pandas as pd
@@ -26,40 +27,65 @@ class input_data:
         return pd.Index([str(bottom).strip() if str(top).startswith("Unnamed") else f"{str(top).strip()}_{str(bottom).strip()}" for top, bottom in columns])
 
     @staticmethod
-    def _time_delta(time):
-        numeric = pd.to_numeric(time, errors="coerce")
-        delta = pd.Series(pd.NaT, index=time.index, dtype="timedelta64[ns]")
-        fractional = numeric.notna() & (numeric.abs() < 1)
-        hours = numeric.notna() & ~fractional & (numeric >= 0) & (numeric <= 24)
-        delta.loc[fractional] = pd.to_timedelta(numeric.loc[fractional], unit="D")
-        delta.loc[hours] = pd.to_timedelta(numeric.loc[hours], unit="h")
+    def _date_series(values):
+        numeric = pd.to_numeric(values, errors="coerce")
+        result = pd.to_datetime(values, dayfirst=True, errors="coerce")
+        excel = numeric.between(20_000, 80_000)
+        yyyymmdd = numeric.between(19_000_101, 21_001_231)
+        if excel.any(): result.loc[excel] = pd.Timestamp("1899-12-30") + pd.to_timedelta(numeric.loc[excel], unit="D")
+        if yyyymmdd.any(): result.loc[yyyymmdd] = pd.to_datetime(numeric.loc[yyyymmdd].astype("Int64").astype(str), format="%Y%m%d", errors="coerce")
+        return result.ffill()
 
-        remaining = delta.isna() & time.notna()
+    @staticmethod
+    def _time_delta(values):
+        delta = pd.Series(pd.NaT, index=values.index, dtype="timedelta64[ns]")
+        numeric = pd.to_numeric(values, errors="coerce")
+        fraction = numeric.notna() & numeric.ge(0) & numeric.lt(1)
+        hour = numeric.notna() & numeric.ge(0) & numeric.le(24) & ~fraction
+        hhmm = numeric.notna() & numeric.gt(24) & numeric.le(2359) & numeric.mod(1).eq(0)
+
+        delta.loc[fraction] = pd.to_timedelta(numeric.loc[fraction], unit="D")
+        delta.loc[hour] = pd.to_timedelta(numeric.loc[hour], unit="h")
+        if hhmm.any():
+            n = numeric.loc[hhmm].astype(int)
+            valid = n.mod(100).lt(60) & n.floordiv(100).lt(24)
+            idx = n.index[valid]
+            delta.loc[idx] = pd.to_timedelta(n.loc[idx].floordiv(100), unit="h") + pd.to_timedelta(n.loc[idx].mod(100), unit="m")
+
+        obj_time = values.map(lambda x: isinstance(x, dt_time))
+        if obj_time.any():
+            t = values.loc[obj_time]
+            seconds = t.map(lambda x: x.hour * 3600 + x.minute * 60 + x.second + x.microsecond / 1e6)
+            delta.loc[obj_time] = pd.to_timedelta(seconds, unit="s")
+
+        remaining = delta.isna() & values.notna()
         if remaining.any():
-            text = time.loc[remaining].astype(str).str.strip()
-            parsed = pd.to_timedelta(text, errors="coerce")
-            range_start = text.str.extract(r"^\s*(\d{1,2})(?::(\d{2}))?\s*(?:-|–|to)")[0]
-            range_minute = text.str.extract(r"^\s*(\d{1,2})(?::(\d{2}))?\s*(?:-|–|to)")[1]
-            range_hour = pd.to_numeric(range_start, errors="coerce")
-            range_minute = pd.to_numeric(range_minute, errors="coerce").fillna(0)
-            range_delta = pd.to_timedelta(range_hour, unit="h") + pd.to_timedelta(range_minute, unit="m")
-            parsed = parsed.where(parsed.notna(), range_delta)
-            delta.loc[remaining] = parsed
+            text = values.loc[remaining].astype(str).str.strip()
+            direct = pd.to_timedelta(text.str.replace(",", ".", regex=False), errors="coerce")
+            match = text.str.extract(r"(?<!\d)(\d{1,2})(?:[:.](\d{2}))?(?=\s*(?:-|–|—|to|$))")
+            hours = pd.to_numeric(match[0], errors="coerce")
+            minutes = pd.to_numeric(match[1], errors="coerce").fillna(0)
+            parsed = pd.to_timedelta(hours.where(hours.between(0, 23)), unit="h") + pd.to_timedelta(minutes.where(minutes.between(0, 59)), unit="m")
+            delta.loc[remaining] = direct.where(direct.notna(), parsed)
         return delta
 
     def _build_datetime_index(self, data):
         if self.DATE_COLUMN not in data.columns: raise ValueError(f"Worksheet '{self.SHEET_NAME}' does not contain '{self.DATE_COLUMN}'.")
-        date = pd.to_datetime(data[self.DATE_COLUMN], dayfirst=True, errors="coerce").ffill()
-        if self.TIME_COLUMN in data.columns: timestamp = date.dt.normalize() + self._time_delta(data[self.TIME_COLUMN])
-        else: timestamp = date
+        date = self._date_series(data[self.DATE_COLUMN])
+        time = self._time_delta(data[self.TIME_COLUMN]) if self.TIME_COLUMN in data.columns else pd.Series(pd.Timedelta(0), index=data.index)
+        timestamp = date.dt.normalize() + time
 
         valid = timestamp.notna()
         if not valid.all():
-            measurement_cols = [c for c in data.columns if c not in self.META]
-            has_measurement = data.loc[~valid, measurement_cols].apply(pd.to_numeric, errors="coerce").notna().any(axis=1)
+            cols = [c for c in data.columns if c not in self.META]
+            has_measurement = data.loc[~valid, cols].apply(pd.to_numeric, errors="coerce").notna().any(axis=1)
             if has_measurement.any():
-                rows = list(data.index[~valid][has_measurement][:10])
-                raise ValueError(f"Could not parse date/time for {int(has_measurement.sum())} data row(s); first affected Excel data rows: {rows}.")
+                bad = data.index[~valid][has_measurement]
+                rows = list(bad[:10])
+                sample = data.loc[rows, [c for c in (self.DATE_COLUMN, self.TIME_COLUMN) if c in data.columns]].to_dict("records")
+                date_ok = int(date.loc[bad].notna().sum())
+                time_ok = int(time.loc[bad].notna().sum())
+                raise ValueError(f"Could not parse date/time for {len(bad)} data row(s); date parsed={date_ok}/{len(bad)}, time parsed={time_ok}/{len(bad)}, first rows={rows}, raw values={sample}.")
             data, timestamp = data.loc[valid].copy(), timestamp.loc[valid]
 
         data = data.copy()
