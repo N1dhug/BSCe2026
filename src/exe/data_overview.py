@@ -27,19 +27,18 @@ def price_series(data):
     return prices.loc[(prices.index >= start) & (prices.index < end)].rename("SpotPriceDKK")
 
 
-def chill_series(data):
-    weather = data.fetch(START, END)
-    return data.chill_factor(weather).rename("ChillFactor")
+def temperature_series(data):
+    return data.fetch(START, END)["Temperature"].rename("Temperature")
 
 
 def aggregate(series, freq, total=False):
     return series.resample(freq).sum() if total else series.resample(freq).mean()
 
 
-def plot_period(consumption, prices, chill, label, freq):
-    c, p, h = aggregate(consumption, freq, True), aggregate(prices, freq), aggregate(chill, freq)
+def plot_period(consumption, prices, temperature, label, freq):
+    c, p, t = aggregate(consumption, freq, True), aggregate(prices, freq), aggregate(temperature, freq)
     fig, axes = plt.subplots(3, 1, figsize=(14, 9), sharex=True)
-    fig.suptitle(f"DK1 data overview — {label} aggregation, Jan–Nov 2022")
+    fig.suptitle(f"Data overview — {label} aggregation, Jan–Nov 2022")
     axes[0].plot(c.index, c.values)
     axes[0].set_ylabel("Energy consumption")
     axes[0].set_title("Average consumer energy consumption (input)")
@@ -48,10 +47,10 @@ def plot_period(consumption, prices, chill, label, freq):
     axes[1].set_ylabel("DKK/MWh")
     axes[1].set_title("DK1 spot price")
     axes[1].grid(True, alpha=0.3)
-    axes[2].plot(h.index, h.values)
-    axes[2].set_ylabel("Chill factor [°C]")
+    axes[2].plot(t.index, t.values)
+    axes[2].set_ylabel("Temperature [°C]")
     axes[2].set_xlabel("Date")
-    axes[2].set_title("Average DK1 chill factor")
+    axes[2].set_title("Average temperature — Denmark")
     axes[2].grid(True, alpha=0.3)
     fig.tight_layout()
     return fig
@@ -60,8 +59,8 @@ def plot_period(consumption, prices, chill, label, freq):
 def main():
     consumption = consumption_series(input_data(DATA / "input.xlsx"))
     prices = price_series(spot_price_data(DATA / "prices.xlsx", price_area="DK1"))
-    chill = chill_series(weather_data())
-    for label, freq in PERIODS.items(): plot_period(consumption, prices, chill, label, freq)
+    temperature = temperature_series(weather_data())
+    for label, freq in PERIODS.items(): plot_period(consumption, prices, temperature, label, freq)
     plt.show()
 
 
