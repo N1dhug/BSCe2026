@@ -1,10 +1,10 @@
 """Model-validation public API."""
 
-from .BM import BMValidation
-from .BM1 import BM1Validation
-from .WM1 import WM1Validation
-from .WM2 import WM2Validation
-from .WM3 import WM3Validation
+from .bm import BMValidation
+from .bm_1 import BM1Validation
+from .wm_1 import WM1Validation
+from .wm_2 import WM2Validation
+from .wm_3 import WM3Validation
 
 __all__ = [
     "BMValidation",

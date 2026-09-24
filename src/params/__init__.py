@@ -1,7 +1,7 @@
 """Parameter-estimation strategies."""
 
-from src.params.WM2 import BaseParams, BruteParams as WM2BruteParams, ProxyParams
-from src.params.WM3 import BruteParams as WM3BruteParams
+from src.params.wm_2 import BaseParams, BruteParams as WM2BruteParams, ProxyParams
+from src.params.wm_3 import BruteParams as WM3BruteParams
 
 BruteParams = WM2BruteParams
 
