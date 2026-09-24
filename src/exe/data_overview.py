@@ -10,8 +10,8 @@ from src.tools.import_data.import_weather import weather_data
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "files" / "input" / "data"
-GRAPHS = ROOT / "files" / "output" / "graphs"
-START, END = pd.Timestamp("2022-01-01"), pd.Timestamp("2022-12-01")
+GRAPHS = ROOT / "files" / "output" / "graphs" / "data"
+START, END = pd.Timestamp("2022-01-01"), pd.Timestamp("2022-11-01")
 PERIODS = {"day": "D", "week": "W-MON", "month": "MS"}
 
 
@@ -39,7 +39,7 @@ def aggregate(series, freq, total=False):
 def plot_period(consumption, prices, temperature, label, freq):
     c, p, t = aggregate(consumption, freq, True), aggregate(prices, freq), aggregate(temperature, freq)
     fig, axes = plt.subplots(3, 1, figsize=(14, 9), sharex=True)
-    fig.suptitle(f"Data overview — {label} aggregation, Jan–Nov 2022")
+    fig.suptitle(f"Data overview — {label} aggregation, Jan–Oct 2022")
     axes[0].plot(c.index, c.values)
     axes[0].set_ylabel("Energy consumption")
     axes[0].set_title("Average consumer energy consumption (input)")
