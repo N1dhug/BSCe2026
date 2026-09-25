@@ -17,6 +17,7 @@ OUTPUT = ROOT / "files" / "output" / "wm_3"
 START, END = pd.Timestamp("2022-01-01"), pd.Timestamp("2022-11-01")
 INIT = np.array([0.5, 0.5], dtype=float)
 MIN_L_SLOPE = 1e-12
+WEEK_HOURS = 168
 
 
 def normalize(values, lo=None, hi=None):
@@ -147,27 +148,18 @@ def fit_daily_time_functions(measurements, start):
             samples += day_samples
 
         score = sse / max(samples, 1)
-        if best is None or score < best["score"]:
-            best = {"shift": shift, "raw_models": models, "sse": sse, "score": score, "samples": samples}
+        if best is None or score < best["score"]: best = {"shift": shift, "raw_models": models, "sse": sse, "score": score, "samples": samples}
 
     raw_models = best["raw_models"]
-    predictions = np.concatenate([
-        raw_models[day][0] + raw_models[day][1] * np.arange(24, dtype=float)
-        for day in range(7)
-    ])
+    predictions = np.concatenate([raw_models[day][0] + raw_models[day][1] * np.arange(24, dtype=float) for day in range(7)])
     lo, hi = float(np.min(predictions)), float(np.max(predictions))
     if hi <= lo: raise ValueError("The raw L_d(t) line fits are constant and cannot be normalized for wm_3.")
 
-    models = {
-        day: ((raw_models[day][0] - lo) / (hi - lo), raw_models[day][1] / (hi - lo))
-        for day in range(7)
-    }
+    models = {day: ((raw_models[day][0] - lo) / (hi - lo), raw_models[day][1] / (hi - lo)) for day in range(7)}
 
-    def L(time):
-        time = float(time)
-        if time < 0.0: time = 0.0
-        if time > 167.0: time = 167.0
-        day, x = min(int(time // 24.0), 6), time % 24.0
+    def L(time_hours):
+        time_hours = float(np.clip(time_hours, 0.0, np.nextafter(float(WEEK_HOURS), 0.0)))
+        day, x = min(int(time_hours // 24.0), 6), time_hours % 24.0
         intercept, slope = models[day]
         return float(np.clip(intercept + slope * x, 0.0, 1.0))
 
@@ -184,41 +176,66 @@ def shifted_week(frame, start, shift):
     shifted_end = shifted_start + pd.Timedelta(days=7)
     index = pd.date_range(shifted_start, shifted_end, freq="h", inclusive="left")
     week = frame.reindex(index)
-    if len(week) != 168 or week[["I", "U", "Temp"]].isna().any().any():
+    if len(week) != WEEK_HOURS or week[["I", "U", "Temp"]].isna().any().any():
         raise ValueError(f"Shifted week {shifted_start} to {shifted_end} is not a complete 168-hour observed interval.")
     return shifted_start, shifted_end, week
 
 
-def model_input(week):
-    time = np.arange(len(week), dtype=float)
-    return {"I": week["I"].to_numpy(dtype=float), "U": week["U"].to_numpy(dtype=float), "PE": week["U"].to_numpy(dtype=float), "Time": time, "Temp": week["Temp"].to_numpy(dtype=float)}
+def model_input(frame, week, start, steps_per_hour):
+    steps_per_hour = int(steps_per_hour)
+    if steps_per_hour < 2: raise ValueError("steps_per_hour must be at least 2 for a finer-than-hourly response grid.")
+
+    n_steps = WEEK_HOURS * steps_per_hour + 1
+    tau = np.linspace(0.0, 1.0, n_steps)
+    time_hours = tau * WEEK_HOURS
+    fine_index = start + pd.to_timedelta(time_hours, unit="h")
+
+    source_index = pd.date_range(start, start + pd.Timedelta(hours=WEEK_HOURS), freq="h")
+    source = frame.reindex(source_index)
+    if source[["U", "Temp"]].iloc[:-1].isna().any().any(): raise ValueError("Hourly U/Temp signals are incomplete inside the selected week.")
+    source["U"] = source["U"].ffill().bfill()
+    source["Temp"] = source["Temp"].interpolate(method="time", limit_direction="both").ffill().bfill()
+
+    source_hours = np.arange(WEEK_HOURS + 1, dtype=float)
+    hour_bin = np.minimum(np.floor(time_hours + 1e-12).astype(int), WEEK_HOURS)
+    U = source["U"].to_numpy(dtype=float)[hour_bin]
+    Temp = np.interp(time_hours, source_hours, source["Temp"].to_numpy(dtype=float))
+
+    observed_hours = np.arange(WEEK_HOURS, dtype=float)
+    observed_I = week["I"].to_numpy(dtype=float)
+    I = np.interp(time_hours, observed_hours, observed_I, left=observed_I[0], right=observed_I[-1])
+    observation_mask = np.zeros(n_steps, dtype=bool)
+    observation_mask[np.arange(WEEK_HOURS) * steps_per_hour] = True
+
+    data = {"I": I, "U": U, "PE": U.copy(), "Time": time_hours, "Temp": Temp, "observation_mask": observation_mask}
+    return data, fine_index, tau
 
 
-def save_plot(start, end, week, fit, daily_fit):
-    state = fit["deterministic_state"]
-    index = week.index
+def save_plot(start, end, week, fine_index, fit, daily_fit):
+    state, obs = fit["deterministic_state"], fit["observation_mask"]
     fig, axes = plt.subplots(3, 1, figsize=(15, 10), sharex=True)
-    axes[0].plot(index, week["I"], label="Observed aggregate input I")
-    axes[0].plot(index, state["I"], label="Fitted wm_3 input I")
+    axes[0].plot(week.index, week["I"], label="Observed hourly aggregate input I")
+    axes[0].plot(fine_index, state["I"], label="Fitted wm_3 input I")
     axes[0].set_ylabel("Normalized input")
     axes[0].legend()
     axes[0].grid(True, alpha=0.25)
 
-    axes[1].plot(index, state["L"], label="L_d(t), raw non-aggregate fit")
-    axes[1].plot(index, state["H"], label="H(T)")
+    axes[1].plot(fine_index, state["L"], label="L_d(t), hourly fit evaluated on fine grid")
+    axes[1].plot(fine_index, state["H"], label="H(T)")
     axes[1].set_ylabel("Fitted features")
     axes[1].legend()
     axes[1].grid(True, alpha=0.25)
 
-    axes[2].plot(index, week["U"], label="Normalized DK1 price U")
-    axes[2].plot(index, state["V"], label="V")
-    axes[2].plot(index, state["R"], label="R")
+    axes[2].plot(fine_index, state["U"], label="Normalized DK1 price U")
+    axes[2].plot(fine_index, state["V"], label="V")
+    axes[2].plot(fine_index, state["R"], label="R")
+    axes[2].scatter(fine_index[obs], state["I"][obs], s=8, label="WM3 observation points")
     axes[2].set_ylabel("State / price")
-    axes[2].set_xlabel("Time")
+    axes[2].set_xlabel("Physical time")
     axes[2].legend()
     axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle(f"wm_3 weekly fit {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} | natural L shift={daily_fit['shift']:02d}:00")
+    fig.suptitle(f"wm_3 weekly fit {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} | dimensionless model time, L shift={daily_fit['shift']:02d}:00")
     fig.tight_layout()
     OUTPUT.mkdir(parents=True, exist_ok=True)
     path = OUTPUT / f"weekly_fit_{start:%Y-%m-%d_%H%M}.png"
@@ -227,11 +244,13 @@ def save_plot(start, end, week, fit, daily_fit):
     return path
 
 
-def print_result(base_start, seasonal, daily_fit, fit, plot_path):
+def print_result(base_start, seasonal, daily_fit, fit, plot_path, model, steps_per_hour):
     names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     print(f"base week={base_start:%Y-%m-%d}")
+    print(f"model time: tau in [0, 1], dt={model.dt:.10f}, response grid={60.0 / steps_per_hour:.2f} physical minutes")
+    print(f"observations: {np.count_nonzero(fit['observation_mask'])} hourly I samples; state dynamics use {model.t_steps} grid points")
     print(f"H(T): daily seasonal regression intercept={seasonal['intercept']:.8f}, slope={seasonal['slope']:.8f}")
-    print("L_d(t): fitted directly to raw, non-aggregated input data; no seasonal subtraction or input normalization is used for the line fit.")
+    print("L_d(t): fitted directly to raw, non-aggregated hourly input data, then evaluated continuously from physical-hour coordinates on the fine model grid.")
     print(f"L_d(t): natural shifted week {daily_fit['slice_start']} -> {daily_fit['slice_end']}, MSE={daily_fit['score']:.8f}")
     print(f"L_d(t): {daily_fit['samples']} raw observations from {daily_fit['measurement_columns']} measurement columns")
     for day, name in enumerate(names):
@@ -239,19 +258,20 @@ def print_result(base_start, seasonal, daily_fit, fit, plot_path):
         intercept, slope = daily_fit["models"][day]
         slice_start = daily_fit["slice_start"] + pd.Timedelta(days=day)
         slice_end = slice_start + pd.Timedelta(days=1)
-        print(f"  {name} slice {slice_start:%Y-%m-%d %H:%M} -> {slice_end:%Y-%m-%d %H:%M}: raw={raw_intercept:.8f}+{raw_slope:.8f}*t, normalized L={intercept:.8f}+{slope:.8f}*t")
+        print(f"  {name} slice {slice_start:%Y-%m-%d %H:%M} -> {slice_end:%Y-%m-%d %H:%M}: raw={raw_intercept:.8f}+{raw_slope:.8f}*hour, normalized L={intercept:.8f}+{slope:.8f}*hour")
     print(f"alpha={np.array2string(fit['alpha'], precision=8)}")
     print(f"beta={np.array2string(fit['beta'], precision=8)}")
     print(f"kappa_R={fit['kappa_R']:.8f}")
     print(f"sigma_0={fit['sigma_0']:.8f}, sigma_O={fit['sigma_O']:.8f}")
     print(f"initial condition={np.array2string(fit['init_cond'], precision=8)}")
-    print(f"deterministic loss={fit['deterministic_loss']:.10f}")
+    print(f"deterministic loss at hourly observations={fit['deterministic_loss']:.10f}")
     print(f"plot={plot_path}")
 
 
 def main():
-    parser = ArgumentParser(description="Fit wm_3 to a naturally shifted weekly response. H(T) is seasonal; L_d(t) is fit directly to raw non-aggregated input observations in seven contiguous 24-hour slices.")
+    parser = ArgumentParser(description="Fit wm_3 on a dimensionless fine response grid while retaining hourly observations and hour-based L_d(t) fits.")
     parser.add_argument("--week", default="2022-01-03", help="Any date in the requested Monday-Sunday base week.")
+    parser.add_argument("--steps-per-hour", type=int, default=4, help="Internal wm_3 response substeps per physical hour; default 4 gives a 15-minute grid.")
     parser.add_argument("--grid-points", type=int, default=4)
     parser.add_argument("--refinements", type=int, default=2)
     parser.add_argument("--progress-every", type=int, default=25)
@@ -262,9 +282,9 @@ def main():
     base_start = week_start(args.week)
     L, daily_fit = fit_daily_time_functions(measurements, base_start)
     start, end, week = shifted_week(frame, base_start, daily_fit["shift"])
-    data = model_input(week)
+    data, fine_index, _ = model_input(frame, week, start, args.steps_per_hour)
 
-    model = wm_3((0.0, 167.0), 168, L, H)
+    model = wm_3((0.0, 1.0), len(fine_index), L, H)
     fit = model.fit_params(
         data, INIT,
         grid_points=args.grid_points,
@@ -274,8 +294,8 @@ def main():
         verbose=True,
         progress_every=args.progress_every,
     )
-    plot_path = save_plot(start, end, week, fit, daily_fit)
-    print_result(base_start, seasonal, daily_fit, fit, plot_path)
+    plot_path = save_plot(start, end, week, fine_index, fit, daily_fit)
+    print_result(base_start, seasonal, daily_fit, fit, plot_path, model, args.steps_per_hour)
 
 
 if __name__ == "__main__": main()
