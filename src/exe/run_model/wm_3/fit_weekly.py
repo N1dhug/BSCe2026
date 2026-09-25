@@ -16,7 +16,7 @@ DATA = ROOT / "files" / "input" / "data"
 OUTPUT = ROOT / "files" / "output" / "wm_3"
 START, END = pd.Timestamp("2022-01-01"), pd.Timestamp("2022-11-01")
 INIT = np.array([0.5, 0.5], dtype=float)
-MIN_L_SLOPE = 1e-6
+MIN_L_SLOPE = 1e-12
 
 
 def normalize(values, lo=None, hi=None):
@@ -29,36 +29,27 @@ def normalize(values, lo=None, hi=None):
 def consumption_series(data):
     cols = data.measurement_columns
     if not cols: raise ValueError("No consumption measurement columns found.")
-    values = data.observed_data.loc[(data.observed_data.index >= START) & (data.observed_data.index < END), cols]
+    values = data.observed_data.loc[:, cols].apply(pd.to_numeric, errors="coerce")
     return values.mean(axis=1).dropna().sort_index().rename("I")
 
 
-def normalized_measurements(data):
+def raw_measurements(data):
     cols = data.measurement_columns
     if not cols: raise ValueError("No consumption measurement columns found.")
-    values = data.observed_data.loc[(data.observed_data.index >= START) & (data.observed_data.index < END), cols].apply(pd.to_numeric, errors="coerce")
-    keep = []
-    for column in cols:
-        finite = values[column].dropna()
-        if finite.empty: continue
-        lo, hi = float(finite.min()), float(finite.max())
-        if hi <= lo: continue
-        values[column] = (values[column] - lo) / (hi - lo)
-        keep.append(column)
-    if not keep: raise ValueError("No non-constant non-aggregated consumption measurements are available.")
-    return values[keep].sort_index()
+    values = data.observed_data.loc[:, cols].apply(pd.to_numeric, errors="coerce").sort_index()
+    keep = [column for column in cols if values[column].notna().any()]
+    if not keep: raise ValueError("No non-aggregated consumption measurements are available.")
+    return values[keep]
 
 
 def price_series(data):
     values = data.prices("DKK")
-    start, end = START.tz_localize(data.LOCAL_TIMEZONE), END.tz_localize(data.LOCAL_TIMEZONE)
-    values = values.loc[(values.index >= start) & (values.index < end)]
     values.index = values.index.tz_localize(None)
     return values.groupby(level=0).mean().sort_index().rename("U")
 
 
-def temperature_series(data):
-    values = data.fetch_hourly(START, END)["Temperature"]
+def temperature_series(data, start, end):
+    values = data.fetch_hourly(start, end)["Temperature"]
     values.index = values.index.tz_localize(None)
     return values.groupby(level=0).mean().sort_index().rename("Temp")
 
@@ -66,62 +57,62 @@ def temperature_series(data):
 def aligned_data():
     consumption_data = input_data(DATA / "input.xlsx")
     consumption = consumption_series(consumption_data)
-    measurements = normalized_measurements(consumption_data)
+    measurements = raw_measurements(consumption_data)
     prices = price_series(spot_price_data(DATA / "prices.xlsx", price_area="DK1"))
-    temperature = temperature_series(weather_data())
+
+    signal_start = max(consumption.index.min(), prices.index.min(), START)
+    signal_end = min(consumption.index.max(), prices.index.max(), END + pd.Timedelta(days=1)) + pd.Timedelta(hours=1)
+    temperature = temperature_series(weather_data(), signal_start, signal_end)
+
     index = consumption.index.intersection(prices.index).intersection(temperature.index)
     frame = pd.concat((consumption.reindex(index), prices.reindex(index), temperature.reindex(index)), axis=1).dropna()
-    frame["I"] = normalize(frame["I"])
-    frame["U"] = normalize(frame["U"])
-    frame["weekday"] = frame.index.weekday
-    frame["hour"] = frame.index.hour + frame.index.minute / 60.0
-    return frame, measurements.reindex(frame.index)
+    season = frame.loc[(frame.index >= START) & (frame.index < END)].copy()
+    if season.empty: raise ValueError("No aligned Jan-Oct data is available for seasonal fitting.")
+
+    i_lo, i_hi = float(season["I"].min()), float(season["I"].max())
+    u_lo, u_hi = float(season["U"].min()), float(season["U"].max())
+    frame["I"] = normalize(frame["I"], i_lo, i_hi)
+    frame["U"] = normalize(frame["U"], u_lo, u_hi)
+    return frame, measurements
 
 
 def fit_seasonal(frame):
-    daily = frame[["I", "Temp"]].resample("D").mean().dropna()
+    period = frame.loc[(frame.index >= START) & (frame.index < END), ["I", "Temp"]]
+    daily = period.resample("D").mean().dropna()
     X = np.column_stack((np.ones(len(daily)), daily["Temp"].to_numpy(dtype=float)))
     coef = np.linalg.lstsq(X, daily["I"].to_numpy(dtype=float), rcond=None)[0]
-    fitted_daily = X @ coef
-    lo, hi = float(np.min(fitted_daily)), float(np.max(fitted_daily))
-
-    def seasonal_prediction(temperature): return float(coef[0] + coef[1] * float(temperature))
+    fitted = X @ coef
+    lo, hi = float(np.min(fitted)), float(np.max(fitted))
 
     if hi - lo <= 1e-12:
         def H(_temperature): return 0.5
     else:
-        def H(temperature): return float(np.clip((seasonal_prediction(temperature) - lo) / (hi - lo), 0.0, 1.0))
+        def H(temperature): return float(np.clip((coef[0] + coef[1] * float(temperature) - lo) / (hi - lo), 0.0, 1.0))
 
-    return H, seasonal_prediction, {"intercept": float(coef[0]), "slope": float(coef[1]), "prediction_min": lo, "prediction_max": hi}
+    return H, {"intercept": float(coef[0]), "slope": float(coef[1]), "prediction_min": lo, "prediction_max": hi}
 
 
-def positive_bounded_line(x, y, min_slope=MIN_L_SLOPE):
+def positive_line(x, y, min_slope=MIN_L_SLOPE):
     x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
     valid = np.isfinite(x) & np.isfinite(y)
     x, y = x[valid], y[valid]
     if x.size < 2: raise ValueError("At least two finite observations are required for an L_d(t) fit.")
 
-    x_max = 23.0
-    b_lo, b_hi = float(min_slope), 1.0 / x_max
-    if b_lo <= 0.0 or b_lo > b_hi: raise ValueError("min_slope must lie in (0, 1/23].")
+    b_min = float(min_slope)
+    if b_min <= 0.0: raise ValueError("min_slope must be positive.")
 
     candidates = []
     X = np.column_stack((np.ones(x.size), x))
     a_ols, b_ols = np.linalg.lstsq(X, y, rcond=None)[0]
-    if a_ols >= 0.0 and b_lo <= b_ols <= b_hi and a_ols + x_max * b_ols <= 1.0: candidates.append((float(a_ols), float(b_ols)))
+    if a_ols >= 0.0 and b_ols >= b_min: candidates.append((float(a_ols), float(b_ols)))
 
-    b = b_lo
-    a = float(np.clip(np.mean(y - b * x), 0.0, 1.0 - x_max * b))
+    b = b_min
+    a = max(0.0, float(np.mean(y - b * x)))
     candidates.append((a, b))
 
     xx = float(x @ x)
-    b = b_lo if xx <= 0.0 else float(np.clip((x @ y) / xx, b_lo, b_hi))
+    b = b_min if xx <= 0.0 else max(b_min, float((x @ y) / xx))
     candidates.append((0.0, b))
-
-    z = x - x_max
-    zz = float(z @ z)
-    b = b_lo if zz <= 0.0 else float(np.clip((z @ (y - 1.0)) / zz, b_lo, b_hi))
-    candidates.append((1.0 - x_max * b, b))
 
     def loss(pair):
         a, b = pair
@@ -132,65 +123,78 @@ def positive_bounded_line(x, y, min_slope=MIN_L_SLOPE):
     return a, b, loss((a, b)), int(x.size)
 
 
-def fit_daily_time_functions(raw_week, week, seasonal_prediction):
-    values = raw_week.to_numpy(dtype=float)
-    seasonal = np.array([seasonal_prediction(value) for value in week["Temp"].to_numpy(dtype=float)], dtype=float)
-    residual = values - seasonal[:, None]
-    finite = residual[np.isfinite(residual)]
-    if finite.size < 2: raise ValueError("No finite non-aggregated weekly measurements are available for L_d(t).")
-    lo, hi = float(np.min(finite)), float(np.max(finite))
-    if hi <= lo: raise ValueError("Season-adjusted non-aggregated weekly input is constant; cannot fit L_d(t).")
-    target = (residual - lo) / (hi - lo)
+def week_start(value):
+    start = pd.Timestamp(value).normalize()
+    return start - pd.Timedelta(days=start.weekday())
 
-    weekday = week.index.weekday.to_numpy(dtype=int)
-    hour = week.index.hour.to_numpy(dtype=float) + week.index.minute.to_numpy(dtype=float) / 60.0
-    n_measurements, best = raw_week.shape[1], None
+
+def fit_daily_time_functions(measurements, start):
+    n_measurements, best = measurements.shape[1], None
 
     for shift in range(24):
         models, sse, samples = {}, 0.0, 0
-        shifted_hour = np.mod(hour - shift, 24.0)
+        shifted_start = start + pd.Timedelta(hours=shift)
+
         for day in range(7):
-            rows = weekday == day
-            x = np.repeat(shifted_hour[rows], n_measurements)
-            y = target[rows].reshape(-1)
-            intercept, slope, day_sse, day_samples = positive_bounded_line(x, y)
+            slice_start = shifted_start + pd.Timedelta(days=day)
+            index = pd.date_range(slice_start, slice_start + pd.Timedelta(days=1), freq="h", inclusive="left")
+            values = measurements.reindex(index).to_numpy(dtype=float)
+            x = np.repeat(np.arange(24, dtype=float), n_measurements)
+            y = values.reshape(-1)
+            intercept, slope, day_sse, day_samples = positive_line(x, y)
             models[day] = (intercept, slope)
             sse += day_sse
             samples += day_samples
-        score = sse / max(samples, 1)
-        if best is None or score < best["score"]: best = {"shift": shift, "models": models, "sse": sse, "score": score, "samples": samples}
 
-    shift, models = best["shift"], best["models"]
+        score = sse / max(samples, 1)
+        if best is None or score < best["score"]:
+            best = {"shift": shift, "raw_models": models, "sse": sse, "score": score, "samples": samples}
+
+    raw_models = best["raw_models"]
+    predictions = np.concatenate([
+        raw_models[day][0] + raw_models[day][1] * np.arange(24, dtype=float)
+        for day in range(7)
+    ])
+    lo, hi = float(np.min(predictions)), float(np.max(predictions))
+    if hi <= lo: raise ValueError("The raw L_d(t) line fits are constant and cannot be normalized for wm_3.")
+
+    models = {
+        day: ((raw_models[day][0] - lo) / (hi - lo), raw_models[day][1] / (hi - lo))
+        for day in range(7)
+    }
 
     def L(time):
-        time = float(time) % 168.0
-        day, hour_value = int(time // 24.0) % 7, time % 24.0
-        x = (hour_value - shift) % 24.0
+        time = float(time)
+        if time < 0.0: time = 0.0
+        if time > 167.0: time = 167.0
+        day, x = min(int(time // 24.0), 6), time % 24.0
         intercept, slope = models[day]
-        return float(intercept + slope * x)
+        return float(np.clip(intercept + slope * x, 0.0, 1.0))
 
-    best["residual_min"], best["residual_max"] = lo, hi
+    best["models"] = models
+    best["raw_prediction_min"], best["raw_prediction_max"] = lo, hi
     best["measurement_columns"] = n_measurements
+    best["slice_start"] = start + pd.Timedelta(hours=best["shift"])
+    best["slice_end"] = best["slice_start"] + pd.Timedelta(days=7)
     return L, best
 
 
-def complete_week(frame, measurements, week_start):
-    start = pd.Timestamp(week_start).normalize()
-    start -= pd.Timedelta(days=start.weekday())
-    end = start + pd.Timedelta(days=7)
-    index = pd.date_range(start, end, freq="h", inclusive="left")
-    week, raw_week = frame.reindex(index), measurements.reindex(index)
-    if len(week) != 168 or week[["I", "U", "Temp"]].isna().any().any(): raise ValueError(f"{start:%Y-%m-%d} is not a complete observed 168-hour week.")
-    if raw_week.notna().sum().sum() == 0: raise ValueError(f"{start:%Y-%m-%d} contains no non-aggregated input observations.")
-    return start, week, raw_week
+def shifted_week(frame, start, shift):
+    shifted_start = start + pd.Timedelta(hours=int(shift))
+    shifted_end = shifted_start + pd.Timedelta(days=7)
+    index = pd.date_range(shifted_start, shifted_end, freq="h", inclusive="left")
+    week = frame.reindex(index)
+    if len(week) != 168 or week[["I", "U", "Temp"]].isna().any().any():
+        raise ValueError(f"Shifted week {shifted_start} to {shifted_end} is not a complete 168-hour observed interval.")
+    return shifted_start, shifted_end, week
 
 
 def model_input(week):
-    time = week.index.weekday.to_numpy(dtype=float) * 24.0 + week.index.hour.to_numpy(dtype=float)
+    time = np.arange(len(week), dtype=float)
     return {"I": week["I"].to_numpy(dtype=float), "U": week["U"].to_numpy(dtype=float), "PE": week["U"].to_numpy(dtype=float), "Time": time, "Temp": week["Temp"].to_numpy(dtype=float)}
 
 
-def save_plot(start, week, fit, daily_fit):
+def save_plot(start, end, week, fit, daily_fit):
     state = fit["deterministic_state"]
     index = week.index
     fig, axes = plt.subplots(3, 1, figsize=(15, 10), sharex=True)
@@ -200,7 +204,7 @@ def save_plot(start, week, fit, daily_fit):
     axes[0].legend()
     axes[0].grid(True, alpha=0.25)
 
-    axes[1].plot(index, state["L"], label="L_d(t), non-aggregated fit")
+    axes[1].plot(index, state["L"], label="L_d(t), raw non-aggregate fit")
     axes[1].plot(index, state["H"], label="H(T)")
     axes[1].set_ylabel("Fitted features")
     axes[1].legend()
@@ -214,24 +218,28 @@ def save_plot(start, week, fit, daily_fit):
     axes[2].legend()
     axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle(f"wm_3 weekly fit {start:%Y-%m-%d} | positive L_d slopes | optimized shift={daily_fit['shift']:02d}:00")
+    fig.suptitle(f"wm_3 weekly fit {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} | natural L shift={daily_fit['shift']:02d}:00")
     fig.tight_layout()
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    path = OUTPUT / f"weekly_fit_{start:%Y-%m-%d}.png"
+    path = OUTPUT / f"weekly_fit_{start:%Y-%m-%d_%H%M}.png"
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return path
 
 
-def print_result(start, seasonal, daily_fit, fit, plot_path):
+def print_result(base_start, seasonal, daily_fit, fit, plot_path):
     names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-    print(f"week={start:%Y-%m-%d}")
+    print(f"base week={base_start:%Y-%m-%d}")
     print(f"H(T): daily seasonal regression intercept={seasonal['intercept']:.8f}, slope={seasonal['slope']:.8f}")
-    print(f"L_d(t): fit to {daily_fit['samples']} non-aggregated observations from {daily_fit['measurement_columns']} measurement columns")
-    print(f"L_d(t): common shifted 24 h slice starts at {daily_fit['shift']:02d}:00, MSE={daily_fit['score']:.8f}")
+    print("L_d(t): fitted directly to raw, non-aggregated input data; no seasonal subtraction or input normalization is used for the line fit.")
+    print(f"L_d(t): natural shifted week {daily_fit['slice_start']} -> {daily_fit['slice_end']}, MSE={daily_fit['score']:.8f}")
+    print(f"L_d(t): {daily_fit['samples']} raw observations from {daily_fit['measurement_columns']} measurement columns")
     for day, name in enumerate(names):
+        raw_intercept, raw_slope = daily_fit["raw_models"][day]
         intercept, slope = daily_fit["models"][day]
-        print(f"  {name}: L={intercept:.8f} + {slope:.8f}*((hour-{daily_fit['shift']}) mod 24)")
+        slice_start = daily_fit["slice_start"] + pd.Timedelta(days=day)
+        slice_end = slice_start + pd.Timedelta(days=1)
+        print(f"  {name} slice {slice_start:%Y-%m-%d %H:%M} -> {slice_end:%Y-%m-%d %H:%M}: raw={raw_intercept:.8f}+{raw_slope:.8f}*t, normalized L={intercept:.8f}+{slope:.8f}*t")
     print(f"alpha={np.array2string(fit['alpha'], precision=8)}")
     print(f"beta={np.array2string(fit['beta'], precision=8)}")
     print(f"kappa_R={fit['kappa_R']:.8f}")
@@ -242,17 +250,18 @@ def print_result(start, seasonal, daily_fit, fit, plot_path):
 
 
 def main():
-    parser = ArgumentParser(description="Fit wm_3 to one weekly response using seasonal H(T) and positive weekday-specific shifted linear L_d(t) fitted from non-aggregated input data.")
-    parser.add_argument("--week", default="2022-01-03", help="Any date in the requested Monday-Sunday week.")
+    parser = ArgumentParser(description="Fit wm_3 to a naturally shifted weekly response. H(T) is seasonal; L_d(t) is fit directly to raw non-aggregated input observations in seven contiguous 24-hour slices.")
+    parser.add_argument("--week", default="2022-01-03", help="Any date in the requested Monday-Sunday base week.")
     parser.add_argument("--grid-points", type=int, default=4)
     parser.add_argument("--refinements", type=int, default=2)
     parser.add_argument("--progress-every", type=int, default=25)
     args = parser.parse_args()
 
     frame, measurements = aligned_data()
-    H, seasonal_prediction, seasonal = fit_seasonal(frame)
-    start, week, raw_week = complete_week(frame, measurements, args.week)
-    L, daily_fit = fit_daily_time_functions(raw_week, week, seasonal_prediction)
+    H, seasonal = fit_seasonal(frame)
+    base_start = week_start(args.week)
+    L, daily_fit = fit_daily_time_functions(measurements, base_start)
+    start, end, week = shifted_week(frame, base_start, daily_fit["shift"])
     data = model_input(week)
 
     model = wm_3((0.0, 167.0), 168, L, H)
@@ -265,8 +274,8 @@ def main():
         verbose=True,
         progress_every=args.progress_every,
     )
-    plot_path = save_plot(start, week, fit, daily_fit)
-    print_result(start, seasonal, daily_fit, fit, plot_path)
+    plot_path = save_plot(start, end, week, fit, daily_fit)
+    print_result(base_start, seasonal, daily_fit, fit, plot_path)
 
 
 if __name__ == "__main__": main()
