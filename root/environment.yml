@@ -9,6 +9,8 @@ dependencies:
   - numpy
   - scipy
   - matplotlib
+  - pandas
+  - openpyxl
   - pip:
       - torch
       - torchsde
