@@ -185,6 +185,10 @@ class brute_params:
         row = np.zeros(n_var); row[0], row[1], row[3], row[4], row[5], row[7] = 1.0, 1.0, 1.0, -1.0, -1.0, -1.0
         eq_rows.append(row); eq_rhs.append(1.0 - (c_v - d_v))
 
+        if np.allclose(data["L"], 0.0, atol=1e-12, rtol=0.0):
+            row = np.zeros(n_var); row[1] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
+            row = np.zeros(n_var); row[5] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
+
         if np.allclose(data["H"], 0.0, atol=1e-12, rtol=0.0):
             row = np.zeros(n_var); row[3] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
             row = np.zeros(n_var); row[7] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
