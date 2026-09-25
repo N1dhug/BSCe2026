@@ -82,6 +82,37 @@ class brute_params:
         v = lfilter(np.array([gain], dtype=float), np.array([1.0, -a1, -a2], dtype=float), forcing, axis=0)
         return v[:n], np.diff(v, axis=0) / dt
 
+    def _state_from_reduced(self, data, init_cond, input_coeff, drift_coeff, kappa_r, full=False):
+        n, dt = self.model.t_steps, self.model.dt
+        input_coeff, drift_coeff = np.asarray(input_coeff, dtype=float), np.asarray(drift_coeff, dtype=float)
+        features = np.column_stack((np.ones(n), data["L"], data["U"], data["H"]))
+        c_bar, d_bar = input_coeff[[0, 1, 3, 4]], drift_coeff[[0, 1, 3, 4]]
+        c_v, d_v = float(input_coeff[2]), float(drift_coeff[2])
+
+        V_b, R_b = self._homogeneous_state(n, dt, d_v, kappa_r, init_cond[0], init_cond[1])
+        forced_V, forced_R = self._forced_state_map(features, dt, d_v, kappa_r)
+        V, R = V_b + forced_V @ d_bar, R_b + forced_R @ d_bar
+        I = features @ c_bar + c_v * V
+        D = features @ d_bar + d_v * V
+        O = I - D
+        R_dot = kappa_r * (D - R)
+
+        state = {
+            "t": self.model.t.copy(), "V": V, "R": R, "R_dot": R_dot,
+            "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(), "Temp": data["Temp"].copy(),
+            "L": data["L"].copy(), "H": data["H"].copy(), "O": O, "I": I, "D": D,
+            "input_coeff": input_coeff.copy(), "drift_coeff": drift_coeff.copy(),
+        }
+        if not full: return state
+
+        P_I = np.column_stack((1.0 - V, 1.0 - data["U"], O))
+        P_O = np.column_stack((V, 1.0 - data["U"], data["L"], data["H"]))
+        state.update({
+            "P_I": P_I, "P_O": P_O, "P_A": np.full((n, 4), np.nan),
+            "A": np.full(n, np.nan),
+        })
+        return state
+
     def _solve_constraint_generated_qp(self, X, y, I_X, I_b, structural_A, structural_b, A_eq, b_eq, lb, ub, obs, max_rounds=20, batch=32, tol=1e-9):
         n = I_X.shape[0]
         seed = np.unique(np.concatenate((
@@ -191,10 +222,7 @@ class brute_params:
         reduced_I = I_b + I_X @ solution
 
         alpha, beta, recovered_input, recovered_drift, projection_error = self._recover_alpha_beta(input_coeff, drift_coeff)
-        state = self.model._solve_deterministic(
-            estimated_init, data["U"], data["PE"], data["Time"], data["L"],
-            recovered_input, recovered_drift, kappa_r, H=data["H"], Temp=data["Temp"]
-        )
+        state = self._state_from_reduced(data, estimated_init, recovered_input, recovered_drift, kappa_r, full=False)
         reduced_loss = float(np.mean((data["I"][obs] - reduced_I[obs]) ** 2))
         recovered_loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
 
@@ -301,6 +329,9 @@ class brute_params:
         fit_start = perf_counter()
         best, branches = self._search_all(data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, bool(fit_initial_state), r0_range, verbose, progress_every)
         result = {**best["result"], "alpha": best["alpha"].copy(), "beta": best["beta"].copy()}
+        result["deterministic_state"] = self._state_from_reduced(
+            data, result["init_cond"], result["I_coeff"], result["d_coeff"], result["kappa_R"], full=True
+        )
         result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_O": 0.0}
         result.update({"fit_method": "brute", "brute_branch": best["branch"], "brute_score": float(best["score"]), "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": branches, "brute_fit_time": perf_counter() - fit_start, "fit_initial_state": bool(fit_initial_state), "deterministic_loss": float(result["recovered_model_loss"])})
         return result
