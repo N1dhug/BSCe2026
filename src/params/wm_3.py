@@ -59,12 +59,14 @@ class brute_params:
 
     def _solve_inner(self, data, initial_conditions, c_v, d_v, kappa_r, fit_initial_state, r0_range):
         n, dt = self.model.t_steps, self.model.dt
+        obs = np.asarray(data["observation_mask"], dtype=bool)
         i_c, i_d, i_v, i_r = slice(0, 4), slice(4, 8), slice(8, 8 + n), slice(8 + n, 8 + 2 * n)
         n_var = 8 + 2 * n
 
-        X = np.zeros((n, n_var), dtype=float)
-        X[:, i_c] = np.column_stack((np.ones(n), data["L"], data["U"], data["H"]))
-        X[np.arange(n), 8 + np.arange(n)] = c_v
+        X_full = np.zeros((n, n_var), dtype=float)
+        X_full[:, i_c] = np.column_stack((np.ones(n), data["L"], data["U"], data["H"]))
+        X_full[np.arange(n), 8 + np.arange(n)] = c_v
+        X, y = X_full[obs], data["I"][obs]
 
         eq_rows, eq_rhs = [], []
         if not fit_initial_state:
@@ -89,7 +91,7 @@ class brute_params:
             row = np.zeros(n_var); row[3] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
             row = np.zeros(n_var); row[7] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
 
-        ub_rows, ub_rhs = [X, -X], [np.ones(n), np.zeros(n)]
+        ub_rows, ub_rhs = [X_full, -X_full], [np.ones(n), np.zeros(n)]
         for U_value, L_value, H_value in itertools.product((0.0, 1.0), repeat=3):
             features = np.array([1.0, L_value, U_value, H_value], dtype=float)
             row = np.zeros(n_var); row[i_d] = -features; ub_rows.append(row[None, :]); ub_rhs.append(np.array([0.0]))
@@ -107,7 +109,7 @@ class brute_params:
             lb[8 + n], ub[8 + n] = map(float, r0_range)
 
         qp_start = perf_counter()
-        solution = self.model._least_squares_qp(X, data["I"], A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
+        solution = self.model._least_squares_qp(X, y, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
         qp_solve_time = perf_counter() - qp_start
 
         c_bar, d_bar = solution[i_c], solution[i_d]
@@ -117,13 +119,13 @@ class brute_params:
 
         alpha, beta, recovered_input, recovered_drift, projection_error = self._recover_alpha_beta(input_coeff, drift_coeff)
         state = self.model._solve_deterministic(estimated_init, data["U"], data["PE"], data["Time"], data["L"], recovered_input, recovered_drift, kappa_r, H=data["H"], Temp=data["Temp"])
-        reduced_loss = float(np.mean((data["I"] - X @ solution) ** 2))
-        recovered_loss = float(np.mean((data["I"] - state["I"]) ** 2))
+        reduced_loss = float(np.mean((y - X @ solution) ** 2))
+        recovered_loss = float(np.mean((y - state["I"][obs]) ** 2))
 
         return {
             "init_cond": estimated_init, "initial_condition_seed": np.asarray(initial_conditions, dtype=float).copy(),
             "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(), "Temp": data["Temp"].copy(),
-            "L": data["L"].copy(), "H": data["H"].copy(), "alpha": alpha, "beta": beta,
+            "L": data["L"].copy(), "H": data["H"].copy(), "observation_mask": obs.copy(), "alpha": alpha, "beta": beta,
             "I_coeff": recovered_input, "d_coeff": recovered_drift, "reduced_fit_input_coeff": input_coeff, "reduced_fit_d_coeff": drift_coeff,
             "kappa_R": float(kappa_r), "latent_V": solution[i_v].copy(), "latent_R": solution[i_r].copy(),
             "deterministic_state": state, "reduced_fit_loss": reduced_loss, "recovered_model_loss": recovered_loss,
@@ -133,11 +135,11 @@ class brute_params:
         }
 
     def _fit_uncertainty_params(self, result, data):
-        state = result["deterministic_state"]
-        residual = data["I"] - state["I"]
+        state, obs = result["deterministic_state"], np.asarray(data["observation_mask"], dtype=bool)
+        residual = data["I"][obs] - state["I"][obs]
         local_std = self._local_std(residual)
-        X = np.column_stack((np.ones(self.model.t_steps), state["O"]))
-        sigma = self.model._least_squares_qp(X, local_std, A_ub=-X, b_ub=-np.full(self.model.t_steps, self.model._FIT_EPS), lb=np.array([self.model._FIT_EPS, 0.0]), ub=np.array([np.inf, np.inf]), ridge=self.model._FIT_RIDGE)
+        X = np.column_stack((np.ones(np.count_nonzero(obs)), state["O"][obs]))
+        sigma = self.model._least_squares_qp(X, local_std, A_ub=-X, b_ub=-np.full(X.shape[0], self.model._FIT_EPS), lb=np.array([self.model._FIT_EPS, 0.0]), ub=np.array([np.inf, np.inf]), ridge=self.model._FIT_RIDGE)
         return {**result, "sigma_0": float(sigma[0]), "sigma_O": float(sigma[1]), "residual": residual, "local_std": local_std}
 
     @staticmethod
