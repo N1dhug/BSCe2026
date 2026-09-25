@@ -243,7 +243,7 @@ class brute_params:
         if not valid: raise RuntimeError("wm_4 brute-force parameter search found no structurally admissible underdamped or critically damped grid candidate.")
         return min(valid, key=lambda item: item["score"]), branches
 
-    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-2.0, -1e-4), omega_f_range=(0.0, 1.0), ratio_eps=1e-3, fit_initial_state=True, r0_range=(-1.0, 1.0), q_l_zero=False, omega_l_zero=False, fit_diffusion=True, verbose=True, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-10.0, -1e-4), omega_f_range=(0.0, 1.0), ratio_eps=1e-3, fit_initial_state=True, r0_range=(-1.0, 1.0), q_l_zero=False, omega_l_zero=False, fit_diffusion=True, verbose=True, progress_every=25):
         data = self._prepare_data(input_data)
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every = int(grid_points), int(refinements), int(progress_every)
