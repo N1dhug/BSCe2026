@@ -13,7 +13,7 @@ class input_data:
     META = ("År", "Måned", DATE_COLUMN, TIME_COLUMN)
 
     def __init__(self, path: str | Path):
-        self.path, self.data = Path(path), None
+        self.path, self.data, self.observed_data = Path(path), None, None
         self.data = self._load()
 
     def _load(self):
@@ -21,6 +21,7 @@ class input_data:
         data = pd.read_excel(self.path, sheet_name=self.SHEET_NAME, header=[0, 1], engine="openpyxl")
         data.columns = self._clean_columns(data.columns)
         data = self._coerce_measurements(self._build_datetime_index(data)).sort_index()
+        self.observed_data = data.copy()
         return self._impute_missing(self._complete_hourly_index(data))
 
     @staticmethod
