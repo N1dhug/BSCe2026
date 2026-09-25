@@ -50,9 +50,41 @@ class bm_1(bm):
         _, Bt, _, _, _, Dt = self.eval(t, X, U, f, g, k, Xi)
         return np.asarray((Dt - Bt) / C, dtype=float)
 
-    def euler_maruyama_solver(self, init_cond, parameters, sigma_x, n_paths=1, seed=None, boundary="reflect"):
+    def euler_maruyama_solver(
+        self,
+        init_cond,
+        parameters,
+        sigma_x,
+        n_paths=1,
+        seed=None,
+        boundary="reflect",
+        *,
+        t_eval=None,
+        breakpoints=None,
+        max_step=np.inf,
+        brownian_increments=None,
+        return_diagnostics=False,
+    ):
+        """Solve stochastic bm_1 with controlled Euler-Maruyama integration.
+
+        ``t_eval`` is the returned output grid. ``breakpoints`` and
+        ``max_step`` define additional internal integration points, so an EM
+        step never crosses a known input discontinuity. ``brownian_increments``
+        may be supplied explicitly for coupled convergence experiments.
+        """
         # Solve stochastic model
-        init_cond, parameters, sigma_x = bm_1_validation.stochastic_inputs(init_cond, parameters, sigma_x)
+        if t_eval is None:
+            t_eval = self.t.copy()
+
+        init_cond, parameters, sigma_x = bm_1_validation.stochastic_path_inputs(
+            init_cond, parameters, sigma_x
+        )
+        t_eval, breakpoints, max_step = bm_1_validation.stochastic_time_inputs(
+            t_eval, breakpoints, self.T, max_step
+        )
+        integration_t, output_indices = self.euler_maruyama.build_time_grid(
+            t_eval, breakpoints=breakpoints, max_step=max_step
+        )
 
         def drift(t, X):
             # Evaluate drift
@@ -62,16 +94,45 @@ class bm_1(bm):
             # Evaluate diffusion
             return self.diffusion_coefficient(X, sigma_x)
 
-        paths = self.euler_maruyama.solve_paths(t=self.t,init_cond=init_cond,drift=drift,diffusion=diffusion,n_paths=n_paths,seed=seed,boundary=boundary)
+        result = self.euler_maruyama.solve_paths(
+            t=integration_t,
+            init_cond=init_cond,
+            drift=drift,
+            diffusion=diffusion,
+            n_paths=n_paths,
+            seed=seed,
+            boundary=boundary,
+            brownian_increments=brownian_increments,
+            return_diagnostics=return_diagnostics,
+        )
+        if return_diagnostics:
+            integration_paths, diagnostics = result
+        else:
+            integration_paths = result
 
+        paths = integration_paths[:, output_indices]
         Xt = paths[0] if paths.shape[0] == 1 else paths
-        Ut = parameters[0](self.t)
-        Bt = self.B(self.t)
+        Ut = parameters[0](t_eval)
+        Bt = self.B(t_eval)
         fXt = parameters[1](Xt)
         gUt = parameters[2](Ut)
         dt = self.l(fXt, gUt, parameters[4])
         Dt = self.D(Bt, parameters[5], dt)
-        return self.t.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt
+
+        output = (t_eval.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt)
+        if not return_diagnostics:
+            return output
+
+        diagnostics = diagnostics.copy()
+        diagnostics.update(
+            {
+                "output_t": t_eval.copy(),
+                "output_indices": output_indices.copy(),
+                "breakpoints": breakpoints.copy(),
+                "requested_max_step": max_step,
+            }
+        )
+        return (*output, diagnostics)
 
     def fokker_planc_solver(self, init_cond, parameters, sigma_x, degree=12, x_steps=201, cfl=0.45):
         # Solve Fokker-Planck model
