@@ -60,28 +60,40 @@ class brute_params:
     def _solve_inner(self, data, initial_conditions, c_v, d_v, kappa_r, fit_initial_state, r0_range):
         n, dt = self.model.t_steps, self.model.dt
         obs = np.asarray(data["observation_mask"], dtype=bool)
-        i_c, i_d, i_v, i_r = slice(0, 4), slice(4, 8), slice(8, 8 + n), slice(8 + n, 8 + 2 * n)
-        n_var = 8 + 2 * n
+        n_var = 10 if fit_initial_state else 8
+        i_c, i_d = slice(0, 4), slice(4, 8)
+        i_v0, i_r0 = (8, 9) if fit_initial_state else (None, None)
 
-        X_full = np.zeros((n, n_var), dtype=float)
-        X_full[:, i_c] = np.column_stack((np.ones(n), data["L"], data["U"], data["H"]))
-        X_full[np.arange(n), 8 + np.arange(n)] = c_v
-        X, y = X_full[obs], data["I"][obs]
+        V_X, R_X = np.zeros((n, n_var), dtype=float), np.zeros((n, n_var), dtype=float)
+        V_b, R_b = np.zeros(n, dtype=float), np.zeros(n, dtype=float)
+        I_X, I_b = np.zeros((n, n_var), dtype=float), np.zeros(n, dtype=float)
+
+        if fit_initial_state:
+            V_X[0, i_v0], R_X[0, i_r0] = 1.0, 1.0
+        else:
+            V_b[0], R_b[0] = map(float, initial_conditions)
+
+        for k in range(n):
+            features = np.array([1.0, data["L"][k], data["U"][k], data["H"][k]], dtype=float)
+            I_X[k, i_c] += features
+            I_X[k] += c_v * V_X[k]
+            I_b[k] = c_v * V_b[k]
+
+            if k == n - 1: continue
+
+            D_X = np.zeros(n_var, dtype=float)
+            D_X[i_d] = features
+            D_X += d_v * V_X[k]
+            D_b = d_v * V_b[k]
+
+            V_X[k + 1] = V_X[k] + dt * R_X[k]
+            V_b[k + 1] = V_b[k] + dt * R_b[k]
+            R_X[k + 1] = (1.0 - kappa_r * dt) * R_X[k] + kappa_r * dt * D_X
+            R_b[k + 1] = (1.0 - kappa_r * dt) * R_b[k] + kappa_r * dt * D_b
+
+        X, y = I_X[obs], data["I"][obs] - I_b[obs]
 
         eq_rows, eq_rhs = [], []
-        if not fit_initial_state:
-            row = np.zeros(n_var); row[8] = 1.0; eq_rows.append(row); eq_rhs.append(float(initial_conditions[0]))
-            row = np.zeros(n_var); row[8 + n] = 1.0; eq_rows.append(row); eq_rhs.append(float(initial_conditions[1]))
-
-        for k in range(n - 1):
-            row = np.zeros(n_var); row[8 + k + 1], row[8 + k], row[8 + n + k] = 1.0, -1.0, -dt
-            eq_rows.append(row); eq_rhs.append(0.0)
-
-            row = np.zeros(n_var)
-            row[8 + n + k + 1], row[8 + n + k], row[8 + k] = 1.0, -(1.0 - kappa_r * dt), -kappa_r * dt * d_v
-            row[i_d] = -kappa_r * dt * np.array([1.0, data["L"][k], data["U"][k], data["H"][k]])
-            eq_rows.append(row); eq_rhs.append(0.0)
-
         row = np.zeros(n_var); row[0], row[2], row[4], row[6] = 1.0, 1.0, -1.0, -1.0
         eq_rows.append(row); eq_rhs.append(0.0)
         row = np.zeros(n_var); row[0], row[1], row[3], row[4], row[5], row[7] = 1.0, 1.0, 1.0, -1.0, -1.0, -1.0
@@ -91,11 +103,15 @@ class brute_params:
             row = np.zeros(n_var); row[3] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
             row = np.zeros(n_var); row[7] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
 
-        ub_rows, ub_rhs = [X_full, -X_full], [np.ones(n), np.zeros(n)]
+        ub_rows = [I_X, -I_X]
+        ub_rhs = [np.ones(n, dtype=float) - I_b, I_b.copy()]
+
         for U_value, L_value, H_value in itertools.product((0.0, 1.0), repeat=3):
             features = np.array([1.0, L_value, U_value, H_value], dtype=float)
-            row = np.zeros(n_var); row[i_d] = -features; ub_rows.append(row[None, :]); ub_rhs.append(np.array([0.0]))
-            row = np.zeros(n_var); row[i_d] = features; ub_rows.append(row[None, :]); ub_rhs.append(np.array([-d_v]))
+            row = np.zeros(n_var); row[i_d] = -features
+            ub_rows.append(row[None, :]); ub_rhs.append(np.array([0.0]))
+            row = np.zeros(n_var); row[i_d] = features
+            ub_rows.append(row[None, :]); ub_rhs.append(np.array([-d_v]))
 
         for c_idx, d_idx in ((0, 4), (1, 5), (3, 7)):
             row = np.zeros(n_var); row[d_idx], row[c_idx] = 1.0, -1.0
@@ -105,29 +121,39 @@ class brute_params:
         A_ub, b_ub = np.vstack(ub_rows), np.concatenate(ub_rhs)
         lb, ub = np.full(n_var, -np.inf), np.full(n_var, np.inf)
         if fit_initial_state:
-            lb[8], ub[8] = 0.0, 1.0
-            lb[8 + n], ub[8 + n] = map(float, r0_range)
+            lb[i_v0], ub[i_v0] = 0.0, 1.0
+            lb[i_r0], ub[i_r0] = map(float, r0_range)
 
         qp_start = perf_counter()
-        solution = self.model._least_squares_qp(X, y, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
+        solution = self.model._least_squares_qp(
+            X, y, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq,
+            lb=lb, ub=ub, ridge=self.model._FIT_RIDGE
+        )
         qp_solve_time = perf_counter() - qp_start
 
         c_bar, d_bar = solution[i_c], solution[i_d]
         input_coeff = np.array([c_bar[0], c_bar[1], c_v, c_bar[2], c_bar[3]], dtype=float)
         drift_coeff = np.array([d_bar[0], d_bar[1], d_v, d_bar[2], d_bar[3]], dtype=float)
-        estimated_init = np.array([solution[8], solution[8 + n]], dtype=float)
+        estimated_init = np.array([solution[i_v0], solution[i_r0]], dtype=float) if fit_initial_state else np.asarray(initial_conditions, dtype=float).copy()
+
+        latent_V = V_b + V_X @ solution
+        latent_R = R_b + R_X @ solution
+        reduced_I = I_b + I_X @ solution
 
         alpha, beta, recovered_input, recovered_drift, projection_error = self._recover_alpha_beta(input_coeff, drift_coeff)
-        state = self.model._solve_deterministic(estimated_init, data["U"], data["PE"], data["Time"], data["L"], recovered_input, recovered_drift, kappa_r, H=data["H"], Temp=data["Temp"])
-        reduced_loss = float(np.mean((y - X @ solution) ** 2))
-        recovered_loss = float(np.mean((y - state["I"][obs]) ** 2))
+        state = self.model._solve_deterministic(
+            estimated_init, data["U"], data["PE"], data["Time"], data["L"],
+            recovered_input, recovered_drift, kappa_r, H=data["H"], Temp=data["Temp"]
+        )
+        reduced_loss = float(np.mean((data["I"][obs] - reduced_I[obs]) ** 2))
+        recovered_loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
 
         return {
             "init_cond": estimated_init, "initial_condition_seed": np.asarray(initial_conditions, dtype=float).copy(),
             "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(), "Temp": data["Temp"].copy(),
             "L": data["L"].copy(), "H": data["H"].copy(), "observation_mask": obs.copy(), "alpha": alpha, "beta": beta,
             "I_coeff": recovered_input, "d_coeff": recovered_drift, "reduced_fit_input_coeff": input_coeff, "reduced_fit_d_coeff": drift_coeff,
-            "kappa_R": float(kappa_r), "latent_V": solution[i_v].copy(), "latent_R": solution[i_r].copy(),
+            "kappa_R": float(kappa_r), "latent_V": latent_V, "latent_R": latent_R,
             "deterministic_state": state, "reduced_fit_loss": reduced_loss, "recovered_model_loss": recovered_loss,
             "structural_projection_error": projection_error, "structural_viable": True,
             "brute_c_V": float(c_v), "brute_d_V": float(d_v), "brute_kappa_R": float(kappa_r), "brute_alpha_O": float(alpha[2]),
