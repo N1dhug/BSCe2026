@@ -57,11 +57,11 @@ class weather_data:
         if data.empty: raise ValueError(f"DMI returned no Danish country-level {resolution} temperature data for the requested period.")
 
         local = data["DatetimeUTC"].dt.tz_convert(self.LOCAL_TIMEZONE)
-        data["Datetime"] = local.dt.normalize() if resolution == "day" else local.dt.floor("h")
+        data["Datetime"] = local.dt.normalize() if resolution == "day" else data["DatetimeUTC"].dt.floor("h").dt.tz_convert(self.LOCAL_TIMEZONE)
         data = data.groupby("Datetime", as_index=True)["Temperature"].mean().to_frame().sort_index()
         freq = "D" if resolution == "day" else "h"
-        first = start.tz_convert(self.LOCAL_TIMEZONE).normalize() if resolution == "day" else start.tz_convert(self.LOCAL_TIMEZONE).floor("h")
-        last = end.tz_convert(self.LOCAL_TIMEZONE).normalize() if resolution == "day" else end.tz_convert(self.LOCAL_TIMEZONE).floor("h")
+        first = start.tz_convert(self.LOCAL_TIMEZONE).normalize() if resolution == "day" else start.floor("h").tz_convert(self.LOCAL_TIMEZONE)
+        last = end.tz_convert(self.LOCAL_TIMEZONE).normalize() if resolution == "day" else end.floor("h").tz_convert(self.LOCAL_TIMEZONE)
         data = data.reindex(pd.date_range(first, last, freq=freq, inclusive="left"))
         data.index.name = "Datetime"
         data["Temperature"] = data["Temperature"].interpolate(method="time", limit_direction="both").ffill().bfill()
