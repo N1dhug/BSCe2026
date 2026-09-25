@@ -73,9 +73,15 @@ class bm_1_validation:
 
     @staticmethod
     def stochastic_inputs(init_cond, parameters, sigma_x):
+        """Validate the common F2 contract for the EM and FP entry points.
+
+        sigma_x=0 is allowed for deterministic-limit tests.  Endpoint checks
+        are kept out of model_inputs so the deterministic F1 API is unchanged.
+        """
         # Verify inputs
         init_cond, parameters = bm_1_validation.model_inputs(init_cond, parameters)
         _, sigma_x = bm_validation.diffusion(init_cond, sigma_x)
+        bm_validation.response_endpoints(parameters[1], parameters[2])
         return init_cond, parameters, sigma_x
 
     @staticmethod

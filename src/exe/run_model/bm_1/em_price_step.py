@@ -3,11 +3,12 @@
 from pathlib import Path
 
 from src.model.bm_1 import bm_1
-from src.exe.tool.input_builder import input_builder
+from src.tools.input_generator.input_builder import input_builder
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Configure the time grid.
+# Configure the time grid in days; convert to hours only for plotting.
+# The price jump at 12 h is on this hourly grid. General splitting is F2-B.
 days = 4
 T = (0.0, float(days))
 
@@ -18,7 +19,7 @@ hours = 24.0 * t
 # Build the constant baseline.
 inputs = input_builder()
 
-B_data = (np.array([0.0, 1.0]), np.array([0.3, 0.3]))
+B_data = (np.array(T, dtype=float), np.array([0.3, 0.3]))
 B = inputs.energy(B_data)
 A = B
 
@@ -26,8 +27,10 @@ A = B
 price_drop_hour = 12.0
 price_drop_time = price_drop_hour / 24.0
 
-U_data = (np.array([0.0, price_drop_time, 1.0]), np.array([0.75, 0.25, 0.25]))
-U = inputs.price(U_data)
+# Reuse F1's right-continuous builder: N+1 edges for N prices.
+price_edges = np.array([T[0], price_drop_time, T[1]])
+price_values = np.array([0.75, 0.25])
+U = inputs.price_intervals((price_edges, price_values))
 
 # Build the monotone response functions.
 n = 10
@@ -40,10 +43,10 @@ f = inputs.md(poi_x, pr_x)
 g = inputs.md(poi_u, pr_u)
 
 # Configure the bm_1 parameters and initial state.
-C = 1.0
+C = 1.0  # Normalized capacity in days.
 k = 2.0
 Xi = 1.0
-sigma_x = 0.5
+sigma_x = 0.5  # Process-noise amplitude in day**(-1/2).
 
 init_cond = [0.5]
 parameters = [U, f, g, C, k, Xi]
@@ -53,6 +56,11 @@ model = bm_1(B, A, T, t_steps)
 
 n_paths = 100_000
 seed = 1
+
+# Preserve the existing demonstration; this is NOT an uncorrected reference.
+print('EM demonstration: boundary="reflect" is a numerical correction.')
+print("All paths start at x0; the FP demo uses a spread-out beta initial law.")
+print("Uncorrected proposals and matched initial distributions are F2-B/F2-D.")
 
 em_t, Xt, Ut, Bt, fXt, gUt, delta_t, Dt = model.euler_maruyama_solver(init_cond, parameters, sigma_x, n_paths=n_paths, seed=seed, boundary="reflect")
 
@@ -126,8 +134,9 @@ ax_paths.grid(True)
 ax_paths.legend(loc="best")
 
 # Plot the terminal density.
-ax_terminal.plot(x_grid, density[-1], label="p(x, 24 h)")
-ax_terminal.axvline(mean[-1], linestyle="--", label="E[X(24 h)]")
+terminal_hour = em_hours[-1]
+ax_terminal.plot(x_grid, density[-1], label=f"p(x, {terminal_hour:.0f} h)")
+ax_terminal.axvline(mean[-1], linestyle="--", label=f"E[X({terminal_hour:.0f} h)]")
 
 ax_terminal.set_xlabel("State of charge x")
 ax_terminal.set_ylabel("Probability density")
@@ -139,9 +148,9 @@ ax_terminal.legend(loc="best")
 fig.tight_layout()
 
 # Resolve the output directory from the repository root.
-graph_dir = Path(__file__).resolve().parents[3] / "data" / "graphs"
+graph_dir = Path(__file__).resolve().parents[4] / "files" / "output" / "graphs" / "bm_1"
 graph_dir.mkdir(parents=True, exist_ok=True)
-graph_path = graph_dir / "BM1_EM_price_step.png"
+graph_path = graph_dir / "bm_1_em_price_step.png"
 
 fig.savefig(graph_path, dpi=300, bbox_inches="tight")
 plt.close(fig)

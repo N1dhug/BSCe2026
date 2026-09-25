@@ -103,6 +103,28 @@ class bm_validation:
         return values
 
     @classmethod
+    def response_endpoints(cls, f, g):
+        """Check the canonical F2 endpoint normalization once at entry.
+
+        This is not a proof of monotonicity, interior range or Lipschitz
+        regularity for arbitrary callables.  Those remain model assumptions;
+        response_values checks the range at evaluated points during a solve.
+        The original callables are returned without rescaling or clipping.
+        """
+        for response, name in ((f, "f"), (g, "g")):
+            cls.callable_input(response, name)
+            values = np.array([
+                cls.finite_scalar(response(0.0), f"{name}(0)"),
+                cls.finite_scalar(response(1.0), f"{name}(1)"),
+            ])
+            if not np.allclose(values, [1.0, -1.0], atol=1.0e-10, rtol=0.0):
+                raise ValueError(
+                    f"F2 requires {name}(0) = 1 and {name}(1) = -1 "
+                    "under the canonical BM1 normalization."
+                )
+        return f, g
+
+    @classmethod
     def initial_condition(cls, init_cond):
         # Verify inputs
         values = np.asarray(init_cond, dtype=float).reshape(-1)

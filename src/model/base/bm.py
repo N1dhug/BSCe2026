@@ -2,6 +2,19 @@ from src.validation.model.bm import bm_validation
 import numpy as np
 
 class bm:
+    """Shared deterministic BM primitives and the F2 diffusion amplitude.
+
+    F2 uses the Ito equation dX = (D - B) / C dt + b(X) dW, with
+    b(X) = sigma_x * X * (1 - X) and Var(dW) = dt.  D and B are
+    normalized powers; C = C_phys / P_scale has the same time unit as T,
+    and sigma_x has units time**(-1/2).  Xi does not scale process noise.
+
+    The canonical response functions decrease from 1 to -1 on [0, 1].
+    Together with suitable Lipschitz regularity, inward boundary drift
+    and vanishing boundary diffusion keep the continuous state in [0, 1].
+    This is not a guarantee for a finite Euler-Maruyama step.
+    See root/F2_A.md for the model contract and numerical limitations.
+    """
     def __init__(self, B, A, T, t_steps):
         # Initialize variables
         B, A, T, t_steps = bm_validation.constructor(B, A, T, t_steps)
@@ -52,6 +65,11 @@ class bm:
         return [(Dt - Bt) / C]
 
     def diffusion_coefficient(self, X, sigma_x):
+        """Return b(X), not b(X)**2 or a time-scaled Brownian increment.
+
+        The numerical method supplies sqrt(dt).  No clipping, reflection,
+        capacity factor or Xi factor is introduced here.
+        """
         # Compute diffusion
         X, sigma_x = bm_validation.diffusion(X, sigma_x)
         return sigma_x * X * (1 - X)

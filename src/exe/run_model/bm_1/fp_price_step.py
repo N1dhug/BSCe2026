@@ -3,11 +3,12 @@
 from pathlib import Path
 
 from src.model.bm_1 import bm_1
-from src.exe.tool.input_builder import input_builder
+from src.tools.input_generator.input_builder import input_builder
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Configure the time grid.
+# Configure the time grid in days; convert to hours only for plotting.
+# The price jump at 12 h is on this hourly grid. General splitting is F2-B.
 days = 4
 T = (0.0, float(days))
 
@@ -18,7 +19,7 @@ hours = 24.0 * t
 # Build the constant baseline.
 inputs = input_builder()
 
-B_data = (np.array([0.0, 1.0]), np.array([0.3, 0.3]))
+B_data = (np.array(T, dtype=float), np.array([0.3, 0.3]))
 B = inputs.energy(B_data)
 
 # Reuse the baseline as available energy; the Fokker-Planck solver does not use A directly.
@@ -28,8 +29,10 @@ A = B
 price_drop_hour = 12.0
 price_drop_time = price_drop_hour / 24.0
 
-U_data = (np.array([0.0, price_drop_time, 1.0]), np.array([0.75, 0.25, 0.25]))
-U = inputs.price(U_data)
+# Reuse F1's right-continuous builder: N+1 edges for N prices.
+price_edges = np.array([T[0], price_drop_time, T[1]])
+price_values = np.array([0.75, 0.25])
+U = inputs.price_intervals((price_edges, price_values))
 
 # Build the monotone response functions.
 n = 10
@@ -42,10 +45,10 @@ f = inputs.md(poi_x, pr_x)
 g = inputs.md(poi_u, pr_u)
 
 # Configure the bm_1 parameters and initial state.
-C = 1.0
+C = 1.0  # Normalized capacity in days.
 k = 2.0
 Xi = 1.0
-sigma_x = 0.5
+sigma_x = 0.5  # Process-noise amplitude in day**(-1/2).
 
 init_cond = [0.5]
 parameters = [U, f, g, C, k, Xi]
@@ -56,6 +59,12 @@ degree = 20
 x_steps = 201
 
 cfl = 0.45
+
+# This existing method combines finite volume with beta projection.
+# It also clips/renormalizes internally; mass=1 below is not a conservation proof.
+print("FP demonstration: finite volume + beta projection, not a pure FV reference.")
+print("The beta initial law has positive variance even though init_cond is a point.")
+print("Reported mass is after internal clipping/normalization; see root/F2_A.md.")
 
 # Solve the Fokker-Planck system.
 model = bm_1(B, A, T, t_steps)
@@ -81,7 +90,7 @@ mass = np.sum(density, axis=1) * dx
 
 coefficient_mass = np.sum(coefficients, axis=1)
 
-print("Fokker-Planck probability checks")
+print("Fokker-Planck probability checks (post-correction)")
 print("--------------------------------")
 print(f"Minimum density mass:       {np.min(mass):.12f}")
 print(f"Maximum density mass:       {np.max(mass):.12f}")
@@ -158,7 +167,7 @@ ax_terminal.legend(loc="best")
 fig.tight_layout()
 
 # Resolve the output directory from the repository root.
-graph_dir = Path(__file__).resolve().parents[3] / "files" / "output" / "graphs"
+graph_dir = Path(__file__).resolve().parents[4] / "files" / "output" / "graphs" / "bm_1"
 graph_dir.mkdir(parents=True, exist_ok=True)
 graph_path = graph_dir / "bm_1_fp_price_step.png"
 
