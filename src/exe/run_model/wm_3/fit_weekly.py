@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.model.wm_3 import wm_3
+from src.params.wm_3 import brute_params
 from src.tools.import_data.import_input import input_data
 from src.tools.import_data.import_prices import spot_price_data
 from src.tools.import_data.import_weather import weather_data
@@ -248,6 +249,7 @@ def print_result(base_start, seasonal, daily_fit, fit, plot_path, model, steps_p
     names = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     print(f"base week={base_start:%Y-%m-%d}")
     print(f"model time: tau in [0, 1], dt={model.dt:.10f}, response grid={60.0 / steps_per_hour:.2f} physical minutes")
+    print("parameter solver: src.params.wm_3.brute_params with reduced 8-variable inner QP and recursively eliminated V/R states")
     print(f"observations: {np.count_nonzero(fit['observation_mask'])} hourly I samples; state dynamics use {model.t_steps} grid points")
     print(f"H(T): daily seasonal regression intercept={seasonal['intercept']:.8f}, slope={seasonal['slope']:.8f}")
     print("L_d(t): fitted directly to raw, non-aggregated hourly input data, then evaluated continuously from physical-hour coordinates on the fine model grid.")
@@ -285,7 +287,7 @@ def main():
     data, fine_index, _ = model_input(frame, week, start, args.steps_per_hour)
 
     model = wm_3((0.0, 1.0), len(fine_index), L, H)
-    fit = model.fit_params(
+    fit = brute_params(model).fit(
         data, INIT,
         grid_points=args.grid_points,
         refinements=args.refinements,
