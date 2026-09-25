@@ -40,7 +40,7 @@ def long_run_response(frame, base_start, radius_days=14):
 
     hours = period.index.hour.to_numpy()
     weekdays = period.index.weekday.to_numpy()
-    day_offset = ((period.index - base_start) / pd.Timedelta(days=1)).to_numpy(dtype=float)
+    day_offset = ((period.index - base_start) / pd.Timedelta(days=1)).to_numpy(dtype=float).copy()
     day_offset -= float(np.mean(day_offset))
 
     hour_dummies = np.column_stack([(hours == hour).astype(float) for hour in range(1, 24)])
