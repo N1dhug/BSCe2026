@@ -101,7 +101,7 @@ def candidate_fit(frame, base_start, shift, direction, steps_per_hour, grid_poin
         data, INIT,
         grid_points=grid_points,
         refinements=refinements,
-        fit_initial_state=False,
+        fit_initial_state=True,
         fit_diffusion=False,
         verbose=False,
     )
@@ -146,7 +146,7 @@ def final_fit(frame, best, steps_per_hour, grid_points, refinements, progress_ev
         data, INIT,
         grid_points=grid_points,
         refinements=refinements,
-        fit_initial_state=False,
+        fit_initial_state=True,
         fit_diffusion=True,
         verbose=True,
         progress_every=progress_every,
