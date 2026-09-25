@@ -37,9 +37,9 @@ def price_series(data):
 
 
 def temperature_series(data):
-    temperature = data.fetch(START, END)["Temperature"]
+    temperature = data.fetch_hourly(START, END)["Temperature"]
     temperature.index = temperature.index.tz_localize(None)
-    return temperature.sort_index().rename("Temperature")
+    return temperature.groupby(level=0).mean().sort_index().rename("Temperature")
 
 
 def complete_weeks(consumption):
@@ -53,21 +53,16 @@ def complete_weeks(consumption):
     return weeks
 
 
-def hourly_temperature(temperature, index):
-    values = temperature.reindex(index.normalize()).to_numpy()
-    return pd.Series(values, index=index, name="Temperature")
-
-
 def plot_week(consumption, prices, temperature, start, end):
     index = pd.date_range(start, end, freq="h", inclusive="left")
     c = consumption.reindex(index)
     p = prices.reindex(index).interpolate(method="time", limit_direction="both").ffill().bfill()
-    t = hourly_temperature(temperature, index)
+    t = temperature.reindex(index).interpolate(method="time", limit_direction="both").ffill().bfill()
 
     fig, ax = plt.subplots(figsize=(15, 6))
     ax.plot(index, c, label="Aggregate consumption")
     ax.plot(index, p, label="DK1 spot price")
-    ax.plot(index, t, label="Denmark mean temperature")
+    ax.plot(index, t, label="Denmark hourly mean temperature")
     for day in pd.date_range(start, end, freq="D", inclusive="left"): ax.axvline(day, linewidth=0.6, alpha=0.2)
     ax.set_ylim(-0.02, 1.02)
     ax.set_xlim(index[0], index[-1])
