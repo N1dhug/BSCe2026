@@ -10,7 +10,7 @@ from src.tools.import_data.import_weather import weather_data
 
 ROOT = Path(__file__).resolve().parents[3]
 DATA = ROOT / "files" / "input" / "data"
-GRAPHS = ROOT / "files" / "output" / "graphs" / "data"
+GRAPHS = ROOT / "files" / "output" / "graphs" / "data" / "season"
 START, END = pd.Timestamp("2022-01-01"), pd.Timestamp("2022-11-01")
 PERIODS = {"day": "D", "week": "W-MON", "month": "MS"}
 
