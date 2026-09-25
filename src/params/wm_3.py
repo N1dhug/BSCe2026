@@ -2,6 +2,7 @@ import itertools
 from time import perf_counter
 
 import numpy as np
+from scipy.signal import lfiltic, lfilter
 
 from src.validation.model.wm_3 import wm_3_validation
 
@@ -57,40 +58,94 @@ class brute_params:
         projection_error = float(np.mean((recovered_input - c) ** 2) + np.mean((recovered_drift - d) ** 2))
         return alpha, beta, recovered_input, recovered_drift, projection_error
 
+    @staticmethod
+    def _homogeneous_state(n, dt, d_v, kappa_r, v0, r0):
+        a1 = 2.0 - kappa_r * dt
+        a2 = -(1.0 - kappa_r * dt) + kappa_r * dt * dt * d_v
+        den = np.array([1.0, -a1, -a2], dtype=float)
+        num = np.array([1.0], dtype=float)
+        v = np.empty(n + 1, dtype=float)
+        v[0], v[1] = float(v0), float(v0) + dt * float(r0)
+        if n > 1:
+            zi = lfiltic(num, den, y=[v[1], v[0]], x=[0.0, 0.0])
+            v[2:], _ = lfilter(num, den, np.zeros(n - 1, dtype=float), zi=zi)
+        return v[:n], np.diff(v) / dt
+
+    @staticmethod
+    def _forced_state_map(features, dt, d_v, kappa_r):
+        n = features.shape[0]
+        a1 = 2.0 - kappa_r * dt
+        a2 = -(1.0 - kappa_r * dt) + kappa_r * dt * dt * d_v
+        gain = kappa_r * dt * dt
+        forcing = np.zeros((n + 1, features.shape[1]), dtype=float)
+        if n > 1: forcing[2:] = features[:-1]
+        v = lfilter(np.array([gain], dtype=float), np.array([1.0, -a1, -a2], dtype=float), forcing, axis=0)
+        return v[:n], np.diff(v, axis=0) / dt
+
+    def _solve_constraint_generated_qp(self, X, y, I_X, I_b, structural_A, structural_b, A_eq, b_eq, lb, ub, obs, max_rounds=20, batch=32, tol=1e-9):
+        n = I_X.shape[0]
+        seed = np.unique(np.concatenate((
+            np.flatnonzero(obs),
+            np.linspace(0, n - 1, min(257, n), dtype=int),
+            np.array([0, n - 1], dtype=int),
+        )))
+        active = set(map(int, seed))
+        solution, qp_time, rounds = None, 0.0, 0
+
+        for rounds in range(1, max_rounds + 1):
+            idx = np.array(sorted(active), dtype=int)
+            A_ub = np.vstack((structural_A, I_X[idx], -I_X[idx]))
+            b_ub = np.concatenate((structural_b, np.ones(idx.size) - I_b[idx], I_b[idx]))
+            t0 = perf_counter()
+            solution = self.model._least_squares_qp(
+                X, y, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq,
+                lb=lb, ub=ub, ridge=self.model._FIT_RIDGE
+            )
+            qp_time += perf_counter() - t0
+
+            values = I_b + I_X @ solution
+            upper = values - 1.0
+            lower = -values
+            max_violation = max(float(np.max(upper)), float(np.max(lower)), 0.0)
+            if max_violation <= tol: return solution, qp_time, rounds, len(active), max_violation
+
+            candidates = []
+            upper_idx = np.flatnonzero(upper > tol)
+            lower_idx = np.flatnonzero(lower > tol)
+            if upper_idx.size:
+                order = upper_idx[np.argsort(upper[upper_idx])[-batch:]]
+                candidates.extend(map(int, order))
+            if lower_idx.size:
+                order = lower_idx[np.argsort(lower[lower_idx])[-batch:]]
+                candidates.extend(map(int, order))
+            before = len(active)
+            active.update(candidates)
+            if len(active) == before: break
+
+        raise RuntimeError("wm_3 constraint-generation QP did not satisfy all fine-grid input bounds.")
+
     def _solve_inner(self, data, initial_conditions, c_v, d_v, kappa_r, fit_initial_state, r0_range):
         n, dt = self.model.t_steps, self.model.dt
         obs = np.asarray(data["observation_mask"], dtype=bool)
         n_var = 10 if fit_initial_state else 8
         i_c, i_d = slice(0, 4), slice(4, 8)
         i_v0, i_r0 = (8, 9) if fit_initial_state else (None, None)
+        features = np.column_stack((np.ones(n), data["L"], data["U"], data["H"]))
 
         V_X, R_X = np.zeros((n, n_var), dtype=float), np.zeros((n, n_var), dtype=float)
+        forced_V, forced_R = self._forced_state_map(features, dt, d_v, kappa_r)
+        V_X[:, i_d], R_X[:, i_d] = forced_V, forced_R
         V_b, R_b = np.zeros(n, dtype=float), np.zeros(n, dtype=float)
-        I_X, I_b = np.zeros((n, n_var), dtype=float), np.zeros(n, dtype=float)
 
         if fit_initial_state:
-            V_X[0, i_v0], R_X[0, i_r0] = 1.0, 1.0
+            V_X[:, i_v0], R_X[:, i_v0] = self._homogeneous_state(n, dt, d_v, kappa_r, 1.0, 0.0)
+            V_X[:, i_r0], R_X[:, i_r0] = self._homogeneous_state(n, dt, d_v, kappa_r, 0.0, 1.0)
         else:
-            V_b[0], R_b[0] = map(float, initial_conditions)
+            V_b, R_b = self._homogeneous_state(n, dt, d_v, kappa_r, initial_conditions[0], initial_conditions[1])
 
-        for k in range(n):
-            features = np.array([1.0, data["L"][k], data["U"][k], data["H"][k]], dtype=float)
-            I_X[k, i_c] += features
-            I_X[k] += c_v * V_X[k]
-            I_b[k] = c_v * V_b[k]
-
-            if k == n - 1: continue
-
-            D_X = np.zeros(n_var, dtype=float)
-            D_X[i_d] = features
-            D_X += d_v * V_X[k]
-            D_b = d_v * V_b[k]
-
-            V_X[k + 1] = V_X[k] + dt * R_X[k]
-            V_b[k + 1] = V_b[k] + dt * R_b[k]
-            R_X[k + 1] = (1.0 - kappa_r * dt) * R_X[k] + kappa_r * dt * D_X
-            R_b[k + 1] = (1.0 - kappa_r * dt) * R_b[k] + kappa_r * dt * D_b
-
+        I_X = c_v * V_X
+        I_X[:, i_c] += features
+        I_b = c_v * V_b
         X, y = I_X[obs], data["I"][obs] - I_b[obs]
 
         eq_rows, eq_rhs = [], []
@@ -103,33 +158,28 @@ class brute_params:
             row = np.zeros(n_var); row[3] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
             row = np.zeros(n_var); row[7] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
 
-        ub_rows = [I_X, -I_X]
-        ub_rhs = [np.ones(n, dtype=float) - I_b, I_b.copy()]
-
+        structural_rows, structural_rhs = [], []
         for U_value, L_value, H_value in itertools.product((0.0, 1.0), repeat=3):
-            features = np.array([1.0, L_value, U_value, H_value], dtype=float)
-            row = np.zeros(n_var); row[i_d] = -features
-            ub_rows.append(row[None, :]); ub_rhs.append(np.array([0.0]))
-            row = np.zeros(n_var); row[i_d] = features
-            ub_rows.append(row[None, :]); ub_rhs.append(np.array([-d_v]))
+            f = np.array([1.0, L_value, U_value, H_value], dtype=float)
+            row = np.zeros(n_var); row[i_d] = -f
+            structural_rows.append(row); structural_rhs.append(0.0)
+            row = np.zeros(n_var); row[i_d] = f
+            structural_rows.append(row); structural_rhs.append(-d_v)
 
         for c_idx, d_idx in ((0, 4), (1, 5), (3, 7)):
             row = np.zeros(n_var); row[d_idx], row[c_idx] = 1.0, -1.0
-            ub_rows.append(row[None, :]); ub_rhs.append(np.array([0.0]))
+            structural_rows.append(row); structural_rhs.append(0.0)
 
         A_eq, b_eq = np.vstack(eq_rows), np.asarray(eq_rhs, dtype=float)
-        A_ub, b_ub = np.vstack(ub_rows), np.concatenate(ub_rhs)
+        structural_A, structural_b = np.vstack(structural_rows), np.asarray(structural_rhs, dtype=float)
         lb, ub = np.full(n_var, -np.inf), np.full(n_var, np.inf)
         if fit_initial_state:
             lb[i_v0], ub[i_v0] = 0.0, 1.0
             lb[i_r0], ub[i_r0] = map(float, r0_range)
 
-        qp_start = perf_counter()
-        solution = self.model._least_squares_qp(
-            X, y, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq,
-            lb=lb, ub=ub, ridge=self.model._FIT_RIDGE
+        solution, qp_solve_time, constraint_rounds, active_constraints, max_input_violation = self._solve_constraint_generated_qp(
+            X, y, I_X, I_b, structural_A, structural_b, A_eq, b_eq, lb, ub, obs
         )
-        qp_solve_time = perf_counter() - qp_start
 
         c_bar, d_bar = solution[i_c], solution[i_d]
         input_coeff = np.array([c_bar[0], c_bar[1], c_v, c_bar[2], c_bar[3]], dtype=float)
@@ -157,7 +207,8 @@ class brute_params:
             "deterministic_state": state, "reduced_fit_loss": reduced_loss, "recovered_model_loss": recovered_loss,
             "structural_projection_error": projection_error, "structural_viable": True,
             "brute_c_V": float(c_v), "brute_d_V": float(d_v), "brute_kappa_R": float(kappa_r), "brute_alpha_O": float(alpha[2]),
-            "qp_solve_time": qp_solve_time,
+            "qp_solve_time": qp_solve_time, "constraint_rounds": constraint_rounds,
+            "active_input_constraints": active_constraints, "max_input_violation": max_input_violation,
         }
 
     def _fit_uncertainty_params(self, result, data):
