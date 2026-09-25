@@ -26,10 +26,10 @@ class weather_data:
     @staticmethod
     def _iso(timestamp): return timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    def _request(self, start, end, offset=0):
+    def _request(self, start, end, resolution, offset=0):
         params = {
             "parameterId": self.PARAMETER,
-            "timeResolution": "day",
+            "timeResolution": resolution,
             "datetime": f"{self._iso(start)}/{self._iso(end - pd.Timedelta(microseconds=1))}",
             "limit": self.PAGE_LIMIT,
             "offset": offset,
@@ -37,14 +37,13 @@ class weather_data:
         request = Request(f"{self.BASE_URL}?{urlencode(params)}", headers={"Accept": "application/geo+json"})
         with urlopen(request, timeout=120) as response: return json.load(response)
 
-    def fetch(self, start, end):
-        """Fetch daily country-level mean temperature for Denmark."""
+    def _fetch(self, start, end, resolution):
         start, end = self._utc(start), self._utc(end)
         if end <= start: raise ValueError("end must be later than start.")
 
         rows, offset = [], 0
         while True:
-            features = self._request(start, end, offset).get("features", [])
+            features = self._request(start, end, resolution, offset).get("features", [])
             for feature in features:
                 props = feature.get("properties", {})
                 rows.append({
@@ -55,15 +54,27 @@ class weather_data:
             offset += len(features)
 
         data = pd.DataFrame(rows).dropna(subset=["DatetimeUTC", "Temperature"])
-        if data.empty: raise ValueError("DMI returned no Danish country-level temperature data for the requested period.")
+        if data.empty: raise ValueError(f"DMI returned no Danish country-level {resolution} temperature data for the requested period.")
 
-        data["Datetime"] = data["DatetimeUTC"].dt.tz_convert(self.LOCAL_TIMEZONE).dt.normalize()
+        local = data["DatetimeUTC"].dt.tz_convert(self.LOCAL_TIMEZONE)
+        data["Datetime"] = local.dt.normalize() if resolution == "day" else local.dt.floor("h")
         data = data.groupby("Datetime", as_index=True)["Temperature"].mean().to_frame().sort_index()
-        data = data.reindex(pd.date_range(start.tz_convert(self.LOCAL_TIMEZONE).normalize(), end.tz_convert(self.LOCAL_TIMEZONE).normalize(), freq="D", inclusive="left"))
+        freq = "D" if resolution == "day" else "h"
+        first = start.tz_convert(self.LOCAL_TIMEZONE).normalize() if resolution == "day" else start.tz_convert(self.LOCAL_TIMEZONE).floor("h")
+        last = end.tz_convert(self.LOCAL_TIMEZONE).normalize() if resolution == "day" else end.tz_convert(self.LOCAL_TIMEZONE).floor("h")
+        data = data.reindex(pd.date_range(first, last, freq=freq, inclusive="left"))
         data.index.name = "Datetime"
         data["Temperature"] = data["Temperature"].interpolate(method="time", limit_direction="both").ffill().bfill()
         self.data = data
         return data.copy()
+
+    def fetch(self, start, end):
+        """Fetch daily country-level mean temperature for Denmark."""
+        return self._fetch(start, end, "day")
+
+    def fetch_hourly(self, start, end):
+        """Fetch hourly country-level mean temperature for Denmark."""
+        return self._fetch(start, end, "hour")
 
     def year(self, year):
         start = pd.Timestamp(year=int(year), month=1, day=1, tz=self.LOCAL_TIMEZONE)
