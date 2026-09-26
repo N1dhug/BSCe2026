@@ -11,19 +11,8 @@ class bm_1_validation:
         return bm_validation.initial_condition(init_cond), bm_validation.parameters(parameters)
 
     @staticmethod
-    def deterministic_inputs(
-        init_cond,
-        parameters,
-        t_eval,
-        breakpoints,
-        interval,
-        rtol,
-        atol,
-        max_step,
-    ):
-        """Validate deterministic solver inputs and numerical controls."""
-        init_cond, parameters = bm_1_validation.model_inputs(init_cond, parameters)
-
+    def time_controls(t_eval, breakpoints, interval, max_step):
+        """Validate time/output controls shared by deterministic and EM solvers."""
         t_eval = np.asarray(t_eval, dtype=float)
         if t_eval.ndim != 1 or t_eval.size == 0:
             raise ValueError("t_eval must be a non-empty one-dimensional grid.")
@@ -51,15 +40,34 @@ class bm_1_validation:
                     "breakpoints must lie strictly inside the model time interval."
                 )
 
-        rtol = bm_validation.positive_scalar(rtol, "rtol")
-        atol = bm_validation.positive_scalar(atol, "atol")
-
         max_step_array = np.asarray(max_step, dtype=float)
         if max_step_array.size != 1:
             raise ValueError("max_step must be a scalar.")
         max_step = float(max_step_array.reshape(-1)[0])
         if np.isnan(max_step) or max_step <= 0.0:
             raise ValueError("max_step must be positive or np.inf.")
+
+        return t_eval, breakpoints, max_step
+
+    @staticmethod
+    def deterministic_inputs(
+        init_cond,
+        parameters,
+        t_eval,
+        breakpoints,
+        interval,
+        rtol,
+        atol,
+        max_step,
+    ):
+        """Validate deterministic solver inputs and numerical controls."""
+        init_cond, parameters = bm_1_validation.model_inputs(init_cond, parameters)
+        t_eval, breakpoints, max_step = bm_1_validation.time_controls(
+            t_eval, breakpoints, interval, max_step
+        )
+
+        rtol = bm_validation.positive_scalar(rtol, "rtol")
+        atol = bm_validation.positive_scalar(atol, "atol")
 
         return (
             init_cond,
@@ -73,9 +81,9 @@ class bm_1_validation:
 
     @staticmethod
     def stochastic_inputs(init_cond, parameters, sigma_x):
-        """Validate the common F2 contract for the EM and FP entry points.
+        """Validate the common F2 contract for scalar-initial-state entry points.
 
-        sigma_x=0 is allowed for deterministic-limit tests.  Endpoint checks
+        sigma_x=0 is allowed for deterministic-limit tests. Endpoint checks
         are kept out of model_inputs so the deterministic F1 API is unchanged.
         """
         # Verify inputs
@@ -83,6 +91,34 @@ class bm_1_validation:
         _, sigma_x = bm_validation.diffusion(init_cond, sigma_x)
         bm_validation.response_endpoints(parameters[1], parameters[2])
         return init_cond, parameters, sigma_x
+
+    @staticmethod
+    def stochastic_path_inputs(init_cond, parameters, sigma_x):
+        """Validate F2 EM inputs with one shared or one initial state per path."""
+        # Verify stochastic path inputs
+        parameters = bm_validation.parameters(parameters)
+        initial_states = np.asarray(init_cond, dtype=float).reshape(-1)
+        if initial_states.size == 0 or not np.all(np.isfinite(initial_states)):
+            raise ValueError("init_cond must contain at least one finite state value.")
+        if np.any(initial_states < 0.0) or np.any(initial_states > 1.0):
+            raise ValueError("Initial state of charge values must lie in [0, 1].")
+        _, sigma_x = bm_validation.diffusion(initial_states, sigma_x)
+        bm_validation.response_endpoints(parameters[1], parameters[2])
+        return initial_states, parameters, sigma_x
+
+    @staticmethod
+    def stochastic_time_inputs(t_eval, breakpoints, interval, max_step):
+        """Validate the EM output grid, discontinuities and maximum internal step."""
+        t_eval, breakpoints, max_step = bm_1_validation.time_controls(
+            t_eval, breakpoints, interval, max_step
+        )
+        if t_eval.size < 2:
+            raise ValueError("Euler-Maruyama t_eval must contain at least two points.")
+        if t_eval[0] != interval[0] or t_eval[-1] != interval[1]:
+            raise ValueError(
+                "Euler-Maruyama t_eval must span the full model time interval."
+            )
+        return t_eval, breakpoints, max_step
 
     @staticmethod
     def optimize_inputs(
