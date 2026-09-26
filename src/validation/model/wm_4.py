@@ -1,5 +1,3 @@
-import itertools
-
 import numpy as np
 
 from src.validation.model.wm_1 import wm_1_validation
@@ -17,15 +15,16 @@ class wm_4_validation(wm_1_validation):
 
     @classmethod
     def q_coefficients(cls, q, tol=1e-10):
-        q = cls.vector(q, 5, "q")
+        q = cls.vector(q, 3, "q")
         if q[1] >= -tol: raise ValueError("wm_4 requires q_F < 0 so the flexibility equilibrium is stable.")
-        for U, L, H in itertools.product((0.0, 1.0), repeat=3):
-            base = q[0] + q[2] * U + q[3] * L + q[4] * H
-            if base < -tol or base > -q[1] + tol: raise ValueError("q must satisfy 0 <= q_0 + q_U U + q_L L + q_H H <= -q_F on [0, 1]^3.")
+        if q[2] > tol: raise ValueError("wm_4 requires q_U <= 0 so higher prices cannot increase the desired flexibility state.")
+        for U in (0.0, 1.0):
+            base = q[0] + q[2] * U
+            if base < -tol or base > -q[1] + tol: raise ValueError("q must satisfy 0 <= q_0 + q_U U <= -q_F on U in [0, 1].")
         return q
 
     @classmethod
-    def omega_coefficients(cls, omega): return cls.simplex(omega, 4, "omega")
+    def omega_coefficients(cls, omega): return cls.simplex(omega, 3, "omega")
 
     @classmethod
     def coefficients(cls, q, omega, gamma=None):
@@ -89,10 +88,11 @@ class wm_4_validation(wm_1_validation):
     def recovered_structural_coefficients(cls, q, omega, tol=1e-8):
         tol = cls._finite_scalar(tol, "tol")
         if tol <= 0.0: raise ValueError("tol must be positive.")
-        q, omega = cls.vector(q, 5, "recovered q"), cls.vector(omega, 4, "recovered omega")
+        q, omega = cls.vector(q, 3, "recovered q"), cls.vector(omega, 3, "recovered omega")
         if q[1] >= -tol: raise ValueError("recovered q_F must be negative.")
-        for U, L, H in itertools.product((0.0, 1.0), repeat=3):
-            base = q[0] + q[2] * U + q[3] * L + q[4] * H
+        if q[2] > tol: raise ValueError("recovered q_U must be nonpositive.")
+        for U in (0.0, 1.0):
+            base = q[0] + q[2] * U
             if base < -tol or base > -q[1] + tol: raise ValueError("recovered q violates the nominal flexibility-equilibrium bounds.")
         if np.any(omega < -tol) or np.any(omega > 1.0 + tol): raise ValueError("recovered omega coefficients must lie in [0, 1].")
         if not np.isclose(np.sum(omega), 1.0, atol=tol, rtol=0.0): raise ValueError("recovered omega coefficients must sum to 1.")
