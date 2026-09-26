@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import CubicSpline
 
-from src.exe.run_model.wm_3.fit_weekly import END, START, aligned_data, fit_seasonal
+from src.exe.run_model.wm_3.fit_weekly import END, START, aligned_data
 from src.model.wm_4 import wm_4
 from src.params.wm_4 import brute_params
 
@@ -122,7 +122,7 @@ def save_plot(start, end, day, fine_index, fit, warmup_hours):
     axes[0].grid(True, alpha=0.25)
 
     axes[1].plot(fine_index[target], state["L"][target], label="Long-run 168 h periodic L(t)")
-    axes[1].plot(fine_index[target], state["H"][target], label="Seasonal H(T)")
+    axes[1].plot(fine_index[target], state["H"][target], label="H(T)=0")
     axes[1].plot(fine_index[target], state["U"][target], label="Normalized DK1 price U")
     axes[1].set_ylabel("Signals / features")
     axes[1].legend()
@@ -141,23 +141,23 @@ def save_plot(start, end, day, fine_index, fit, warmup_hours):
     axes[3].legend()
     axes[3].grid(True, alpha=0.25)
 
-    fig.suptitle(f"wm_4 daily fit {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} | periodic L, seasonal H, {warmup_hours} h warm-up")
+    fig.suptitle(f"wm_4 daily fit {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} | periodic L, H=0, {warmup_hours} h warm-up")
     fig.tight_layout()
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    path = OUTPUT / f"daily_fit_{start:%Y-%m-%d_%H%M}_periodic_warmup.png"
+    path = OUTPUT / f"daily_fit_{start:%Y-%m-%d_%H%M}_periodic_H0_warmup.png"
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return path
 
 
-def print_result(start, end, total_start, seasonal, time_fit, fit, model, plot_path, steps_per_hour, warmup_hours):
+def print_result(start, end, total_start, time_fit, fit, model, plot_path, steps_per_hour, warmup_hours):
     target_index = warmup_hours * steps_per_hour
     state = fit["deterministic_state"]
     print(f"warm-up={total_start} -> {start} ({warmup_hours} h); target={start} -> {end}")
     print(f"model time measured in days: T={model.T}, dt={model.dt:.12f}, response grid={3600.0 / steps_per_hour:.4f} physical seconds")
     print(f"observations={np.count_nonzero(fit['observation_mask'])} target-day hourly I samples; total state grid points={model.t_steps}")
-    print("parameter solver: src.params.wm_4.brute_params | Q=q0+qF*F+qU*U, O=omegaL*L+omegaH*H")
-    print(f"H(T): Jan-Oct seasonal daily regression intercept={seasonal['intercept']:.8f}, slope={seasonal['slope']:.8f}")
+    print("parameter solver: src.params.wm_4.brute_params | Q=q0+qF*F+qU*U, H(T)=0 so O=L")
+    print("H(T): fixed identically to 0; omega_H is constrained to 0 and omega_L=1.")
     print(f"L(t): Jan-Oct 168 h periodic cubic spline, samples={time_fit['samples']}, profile points={time_fit['profile_points']}, normalized MSE={time_fit['mse']:.8f}")
     print(f"L(t): raw profile range=[{time_fit['raw_min']:.8f}, {time_fit['raw_max']:.8f}]")
     print(f"q={np.array2string(fit['q'], precision=8)}")
@@ -172,7 +172,7 @@ def print_result(start, end, total_start, seasonal, time_fit, fit, model, plot_p
 
 
 def main():
-    parser = ArgumentParser(description="Fit wm_4 to one calendar day using a long-run periodic L(t), seasonal H(T), and a pre-day state warm-up.")
+    parser = ArgumentParser(description="Fit wm_4 to one calendar day using a long-run periodic L(t), H(T)=0, and a pre-day state warm-up.")
     parser.add_argument("--day", default="2022-01-03", help="Calendar day to score.")
     parser.add_argument("--warmup-hours", type=int, default=48, help="Hours simulated before the target day with a fixed initial state; default 48.")
     parser.add_argument("--steps-per-hour", type=int, default=60, help="Internal wm_4 response substeps per physical hour; default 60 gives a one-minute grid.")
@@ -184,7 +184,7 @@ def main():
     frame, _ = aligned_data()
     start = day_start(args.day)
     end, day = selected_day(frame, start)
-    H, seasonal = fit_seasonal(frame)
+    H = lambda _temp: 0.0
     L, time_fit = fit_periodic_time(frame, exclude_start=start, exclude_end=end)
     data, fine_index, total_start, model_T = model_input(frame, start, args.steps_per_hour, args.warmup_hours)
 
@@ -200,7 +200,7 @@ def main():
     )
 
     plot_path = save_plot(start, end, day, fine_index, fit, args.warmup_hours)
-    print_result(start, end, total_start, seasonal, time_fit, fit, model, plot_path, args.steps_per_hour, args.warmup_hours)
+    print_result(start, end, total_start, time_fit, fit, model, plot_path, args.steps_per_hour, args.warmup_hours)
 
 
 if __name__ == "__main__": main()
