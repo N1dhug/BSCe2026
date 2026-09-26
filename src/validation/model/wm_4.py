@@ -24,7 +24,7 @@ class wm_4_validation(wm_1_validation):
         return q
 
     @classmethod
-    def omega_coefficients(cls, omega): return cls.simplex(omega, 3, "omega")
+    def omega_coefficients(cls, omega): return cls.simplex(omega, 2, "omega")
 
     @classmethod
     def coefficients(cls, q, omega, gamma=None):
@@ -88,7 +88,7 @@ class wm_4_validation(wm_1_validation):
     def recovered_structural_coefficients(cls, q, omega, tol=1e-8):
         tol = cls._finite_scalar(tol, "tol")
         if tol <= 0.0: raise ValueError("tol must be positive.")
-        q, omega = cls.vector(q, 3, "recovered q"), cls.vector(omega, 3, "recovered omega")
+        q, omega = cls.vector(q, 3, "recovered q"), cls.vector(omega, 2, "recovered omega")
         if q[1] >= -tol: raise ValueError("recovered q_F must be negative.")
         if q[2] > tol: raise ValueError("recovered q_U must be nonpositive.")
         for U in (0.0, 1.0):
