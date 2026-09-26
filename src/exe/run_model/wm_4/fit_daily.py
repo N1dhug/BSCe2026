@@ -112,13 +112,15 @@ def save_plot(start, end, day, fine_index, fit, warmup_hours, baseline_weeks):
 
     axes[0].plot(day.index, day["I"], label="Observed hourly aggregate input I")
     axes[0].scatter(day.index, day["I"], s=18, label="Observed I samples")
-    axes[0].plot(fine_index[target], state["I"][target], label="Fitted wm_4 input I=O+R")
+    axes[0].plot(fine_index[target], state["I"][target], label="Fitted wm_4 input I=o_scale*O+R")
+    axes[0].plot(fine_index[target], state["O_raw"][target], label="Unscaled expected output O(t)", alpha=0.8)
     axes[0].scatter(fine_index[obs], state["I"][obs], s=18, label="WM4 prediction at observation times")
     axes[0].set_ylabel("Normalized input")
     axes[0].legend()
     axes[0].grid(True, alpha=0.25)
 
-    axes[1].plot(fine_index[target], state["O"][target], label=f"Scaled expected output o_scale*O(t): trimmed previous {baseline_weeks} matching weekdays")
+    axes[1].plot(fine_index[target], state["O_raw"][target], label=f"Unscaled expected output O(t): trimmed previous {baseline_weeks} matching weekdays")
+    axes[1].plot(fine_index[target], state["O"][target], label="Scaled output o_scale*O(t)", alpha=0.8)
     axes[1].plot(fine_index[target], state["U"][target], label="Normalized DK1 price U")
     axes[1].set_ylabel("Signals / output")
     axes[1].legend()
