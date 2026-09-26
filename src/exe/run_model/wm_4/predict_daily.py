@@ -6,9 +6,8 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_3.fit_weekly import aligned_data
-from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, INIT, day_start, fit_expected_output, model_input, selected_day
+from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, day_start, fit_day, fit_expected_output
 from src.model.wm_4 import wm_4
-from src.params.wm_4 import brute_params
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -44,16 +43,16 @@ def deviation_metrics(observed, predicted):
 def save_plot(fit_start, predict_start, predict_end, actual, fine_index, state, path):
     fig, axes = plt.subplots(3, 1, figsize=(15, 10), sharex=True)
 
-    axes[0].plot(actual.index, actual["I"], label="Observed next-day input I")
+    axes[0].plot(actual.index, actual["I"], label="Observed same-weekday input I")
     axes[0].scatter(actual.index, actual["I"], s=18)
-    axes[0].plot(fine_index, state["I"], label="WM4 next-day prediction I=O+R")
+    axes[0].plot(fine_index, state["I"], label="WM4 one-week-ahead prediction I=O+R")
     axes[0].plot(fine_index, state["O"], label="Expected output O(t)", alpha=0.8)
     axes[0].plot(fine_index, state["U"], label="Normalized DK1 spot price U", alpha=0.8)
     axes[0].set_ylabel("Normalized input / price")
     axes[0].legend()
     axes[0].grid(True, alpha=0.25)
 
-    axes[1].plot(fine_index, state["U"], label="Known next-day normalized price U")
+    axes[1].plot(fine_index, state["U"], label="Known prediction-day normalized price U")
     axes[1].plot(fine_index, state["Q"], label="Desired flexibility flow Q")
     axes[1].set_ylabel("Price / desired flow")
     axes[1].legend()
@@ -66,7 +65,7 @@ def save_plot(fit_start, predict_start, predict_end, actual, fine_index, state, 
     axes[2].legend()
     axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle(f"wm_4 next-day prediction | fit {fit_start:%Y-%m-%d} -> predict {predict_start:%Y-%m-%d}")
+    fig.suptitle(f"wm_4 same-weekday prediction | fit {fit_start:%Y-%m-%d} -> predict {predict_start:%Y-%m-%d}")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -74,8 +73,8 @@ def save_plot(fit_start, predict_start, predict_end, actual, fine_index, state, 
 
 
 def main():
-    parser = ArgumentParser(description="Fit wm_4 on one calendar day, predict the following day, and compare the prediction with observed data.")
-    parser.add_argument("--day", default="2022-08-15", help="Calendar day used for fitting; the following calendar day is predicted.")
+    parser = ArgumentParser(description="Fit wm_4 on one calendar day and predict the same weekday one week later.")
+    parser.add_argument("--day", default="2022-08-15", help="Calendar day used for fitting; the same weekday one week later is predicted.")
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS, help="Matching weekdays used for trimmed O(t); default 5.")
     parser.add_argument("--warmup-hours", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=60)
@@ -86,22 +85,12 @@ def main():
 
     frame, _ = aligned_data()
     fit_start = day_start(args.day)
-    fit_end, _ = selected_day(frame, fit_start)
-    O_fit, _ = fit_expected_output(frame, fit_start, args.baseline_weeks)
-    fit_data, fit_index, _, model_T = model_input(frame, fit_start, args.steps_per_hour, args.warmup_hours)
-
-    fit_model = wm_4(model_T, len(fit_index), O_fit)
-    fit = brute_params(fit_model).fit(
-        fit_data, INIT,
-        grid_points=args.grid_points,
-        refinements=args.refinements,
-        fit_initial_state=False,
-        fit_diffusion=True,
-        verbose=True,
-        progress_every=args.progress_every,
+    fit_end, _, _, fit, _, _, _ = fit_day(
+        frame, fit_start, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
+        grid_points=args.grid_points, refinements=args.refinements, progress_every=args.progress_every,
     )
 
-    predict_start = fit_end
+    predict_start = fit_start + pd.Timedelta(weeks=1)
     predict_end, actual, U, Time = forecast_signals(frame, predict_start)
     O_predict, output_fit = fit_expected_output(frame, predict_start, args.baseline_weeks)
     n_steps = DAY_HOURS * args.steps_per_hour + 1
@@ -131,7 +120,8 @@ def main():
     print(f"q={np.array2string(fit['q'], precision=8)}")
     print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
     print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
-    print(f"forecast initial [F,R]={np.array2string(init, precision=8)}")
+    print(f"fitted initial [F0,R0]={np.array2string(fit['init_cond'], precision=8)}")
+    print(f"forecast initial [F,R] reused from fitted terminal state={np.array2string(init, precision=8)}")
     print(f"O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
     print(f"parametrized I=O+R deviation from actual I: MSE={prediction_metrics['mse']:.10f}, RMSE={prediction_metrics['rmse']:.10f}, MAE={prediction_metrics['mae']:.10f}, bias={prediction_metrics['bias']:.10f}")
     print(f"plot={path}")
