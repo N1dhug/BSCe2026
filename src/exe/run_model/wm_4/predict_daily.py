@@ -66,8 +66,8 @@ def save_plot(fit_start, predict_start, predict_end, actual, fine_index, state, 
 
     axes[0].plot(actual.index, actual["I"], label="Observed same-weekday input I")
     axes[0].scatter(actual.index, actual["I"], s=18)
-    axes[0].plot(fine_index, state["I"], label="WM4 one-week-ahead prediction I=O+R")
-    axes[0].plot(fine_index, state["O"], label="Scaled expected output o_scale*O(t)", alpha=0.8)
+    axes[0].plot(fine_index, state["I"], label="WM4 one-week-ahead prediction I=o_scale*O+R")
+    axes[0].plot(fine_index, state["O_raw"], label="Unscaled expected output O(t)", alpha=0.8)
     axes[0].plot(fine_index, state["U"], label="Normalized DK1 spot price U", alpha=0.8)
     axes[0].set_ylabel("Normalized input / price")
     axes[0].legend()
@@ -132,7 +132,7 @@ def main():
 
     hourly = np.arange(DAY_HOURS) * args.steps_per_hour
     observed = actual["I"].to_numpy(dtype=float)
-    baseline = state["O"][hourly]
+    baseline = state["O_raw"][hourly]
     predicted = state["I"][hourly]
     baseline_metrics = deviation_metrics(observed, baseline)
     prediction_metrics = deviation_metrics(observed, predicted)
@@ -155,7 +155,7 @@ def main():
         print(f"prediction-state optimization MSE={init_fit_mse:.10f} (diagnostic; uses observed prediction-day I)")
     else:
         print(f"forecast initial [F,R] reused from fitted terminal state={np.array2string(init, precision=8)}")
-    print(f"scaled o_scale*O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
+    print(f"unscaled O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
     print(f"parametrized I=O+R deviation from actual I: MSE={prediction_metrics['mse']:.10f}, RMSE={prediction_metrics['rmse']:.10f}, MAE={prediction_metrics['mae']:.10f}, bias={prediction_metrics['bias']:.10f}")
     print(f"plot={path}")
 
