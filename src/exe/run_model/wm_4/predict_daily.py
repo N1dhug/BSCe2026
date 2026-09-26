@@ -31,13 +31,13 @@ def forecast_signals(frame, start):
     return end, source.iloc[:DAY_HOURS].copy(), U, Time
 
 
-def optimized_prediction_state(frame, start, model, q, kappa_R, steps_per_hour):
+def optimized_prediction_state(frame, start, model, q, kappa_R, o_scale, steps_per_hour):
     data, fine_index, _, _ = model_input(frame, start, steps_per_hour, 0)
     helper = brute_params(model)
     data = helper._prepare_data(data)
-    base = helper._state_from_parameters(data, np.array([0.0, 0.0]), q, kappa_R)
-    f_unit = helper._state_from_parameters(data, np.array([1.0, 0.0]), q, kappa_R)
-    r_unit = helper._state_from_parameters(data, np.array([0.0, 1.0]), q, kappa_R)
+    base = helper._state_from_parameters(data, np.array([0.0, 0.0]), q, kappa_R, o_scale=o_scale)
+    f_unit = helper._state_from_parameters(data, np.array([1.0, 0.0]), q, kappa_R, o_scale=o_scale)
+    r_unit = helper._state_from_parameters(data, np.array([0.0, 1.0]), q, kappa_R, o_scale=o_scale)
     obs = np.asarray(data["observation_mask"], dtype=bool)
     X = np.column_stack(((f_unit["I"] - base["I"])[obs], (r_unit["I"] - base["I"])[obs]))
     y = data["I"][obs] - base["I"][obs]
@@ -46,7 +46,7 @@ def optimized_prediction_state(frame, start, model, q, kappa_R, steps_per_hour):
         lb=np.array([0.0, -1.0]), ub=np.array([1.0, 1.0]),
         ridge=model._FIT_RIDGE,
     )
-    state = helper._state_from_parameters(data, init, q, kappa_R, full=True)
+    state = helper._state_from_parameters(data, init, q, kappa_R, o_scale=o_scale, full=True)
     loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
     return np.asarray(init, dtype=float), state, fine_index, loss
 
@@ -67,7 +67,7 @@ def save_plot(fit_start, predict_start, predict_end, actual, fine_index, state, 
     axes[0].plot(actual.index, actual["I"], label="Observed same-weekday input I")
     axes[0].scatter(actual.index, actual["I"], s=18)
     axes[0].plot(fine_index, state["I"], label="WM4 one-week-ahead prediction I=O+R")
-    axes[0].plot(fine_index, state["O"], label="Expected output O(t)", alpha=0.8)
+    axes[0].plot(fine_index, state["O"], label="Scaled expected output o_scale*O(t)", alpha=0.8)
     axes[0].plot(fine_index, state["U"], label="Normalized DK1 spot price U", alpha=0.8)
     axes[0].set_ylabel("Normalized input / price")
     axes[0].legend()
@@ -119,13 +119,13 @@ def main():
     predict_model = wm_4((0.0, 1.0), n_steps, O_predict)
     if args.optimize_prediction_state:
         init, state, fine_index, init_fit_mse = optimized_prediction_state(
-            frame, predict_start, predict_model, fit["q"], fit["kappa_R"], args.steps_per_hour,
+            frame, predict_start, predict_model, fit["q"], fit["kappa_R"], fit["o_scale"], args.steps_per_hour,
         )
     else:
         init = np.array([fit["deterministic_state"]["F"][-1], fit["deterministic_state"]["R"][-1]], dtype=float)
         state = predict_model.deterministic_solver(init, {
             "U": U, "PE": U, "Time": Time,
-            "q": fit["q"], "kappa_R": fit["kappa_R"],
+            "q": fit["q"], "kappa_R": fit["kappa_R"], "o_scale": fit["o_scale"],
         })
         fine_index = pd.date_range(predict_start, predict_end, periods=n_steps)
         init_fit_mse = np.nan
@@ -146,6 +146,7 @@ def main():
     print(f"prediction O(t): previous {output_fit['weeks']} matching {output_fit['weekday']}s: {baseline_days}")
     print(f"prediction O(t): remove hourly min/max, average remaining {output_fit['retained_weeks']}")
     print(f"q={np.array2string(fit['q'], precision=8)}")
+    print(f"o_scale={fit['o_scale']:.8f}")
     print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
     print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"fitted initial [F0,R0]={np.array2string(fit['init_cond'], precision=8)}")
@@ -154,7 +155,7 @@ def main():
         print(f"prediction-state optimization MSE={init_fit_mse:.10f} (diagnostic; uses observed prediction-day I)")
     else:
         print(f"forecast initial [F,R] reused from fitted terminal state={np.array2string(init, precision=8)}")
-    print(f"O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
+    print(f"scaled o_scale*O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
     print(f"parametrized I=O+R deviation from actual I: MSE={prediction_metrics['mse']:.10f}, RMSE={prediction_metrics['rmse']:.10f}, MAE={prediction_metrics['mae']:.10f}, bias={prediction_metrics['bias']:.10f}")
     print(f"plot={path}")
 
