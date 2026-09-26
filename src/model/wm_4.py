@@ -11,7 +11,7 @@ class wm_4(wm):
     """Water Model 4.
 
     P_Q = [1, F, U], Q = q @ P_Q
-    P_O = [L(Time), H(Temp)], O = omega @ P_O
+    O = L(Time)
 
     dF = R dt
     dR = kappa_R (Q - R) dt + (sigma_0 + sigma_O O) dW
@@ -21,14 +21,13 @@ class wm_4(wm):
     _FIT_EPS = 1e-8
     _FIT_RIDGE = 1e-10
 
-    def __init__(self, T, t_steps, L, H=None):
-        T, t_steps, L, H = wm_4_validation.constructor(T, t_steps, L, H)
+    def __init__(self, T, t_steps, L):
+        T, t_steps, L = wm_4_validation.constructor(T, t_steps, L)
         self.T = T
         self.t_steps = t_steps
         self.t = np.linspace(T[0], T[1], t_steps)
         self.dt = self.t[1] - self.t[0]
         self.L = L
-        self.H = (lambda _x: 0.0) if H is None else H
         self.fp = wm_fokker_planc()
 
     def Q(self, P_Q, q):
@@ -36,10 +35,9 @@ class wm_4(wm):
         q = wm_4_validation.q_coefficients(q)
         return q @ P_Q
 
-    def O(self, P_O, omega):
-        P_O = wm_4_validation.vector(P_O, 2, "P_O")
-        omega = wm_4_validation.omega_coefficients(omega)
-        return omega @ P_O
+    @staticmethod
+    def O(L):
+        return wm_4_validation.feature_value(L, "L")
 
     @staticmethod
     def I(O, R):
@@ -69,44 +67,37 @@ class wm_4(wm):
         return np.array([R, kappa_R * (Q - R)], dtype=float)
 
     @staticmethod
-    def diffusion(L, H, omega, sigma_0, sigma_O):
-        L = wm_4_validation.feature_value(L, "L")
-        H = wm_4_validation.feature_value(H, "H")
-        omega = wm_4_validation.omega_coefficients(omega)
+    def diffusion(O, sigma_0, sigma_O):
+        O = wm_4_validation.feature_value(O, "O")
         sigma_0 = wm_4_validation._finite_scalar(sigma_0, "sigma_0")
         sigma_O = wm_4_validation._finite_scalar(sigma_O, "sigma_O")
         if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
         if sigma_O < 0.0: raise ValueError("sigma_O must be nonnegative.")
-        O = omega @ np.array([L, H], dtype=float)
         g = sigma_0 + sigma_O * O
         if g < 0.0: raise ValueError("wm_4 diffusion scale g(O) must be nonnegative.")
         return np.array([0.0, g], dtype=float)
 
     def _sample_signals(self, parameters):
         U, PE = np.empty(self.t_steps), np.empty(self.t_steps)
-        Time, Temp = np.empty(self.t_steps), np.empty(self.t_steps)
-        L, H = np.empty(self.t_steps), np.empty(self.t_steps)
+        Time, L = np.empty(self.t_steps), np.empty(self.t_steps)
         for k, tk in enumerate(self.t):
             U[k] = wm_4_validation.signal_value(parameters["U"](tk), "U(t)")
             PE[k] = wm_4_validation.signal_value(parameters["PE"](tk), "PE(t)")
             Time[k] = wm_4_validation.finite_feature_input(parameters["Time"](tk), "Time(t)")
-            Temp[k] = wm_4_validation.finite_feature_input(parameters["Temp"](tk), "Temp(t)")
             L[k] = wm_4_validation.feature_value(self.L(Time[k]), "L(Time(t))")
-            H[k] = wm_4_validation.feature_value(self.H(Temp[k]), "H(Temp(t))")
-        return U, PE, Time, Temp, L, H
+        return U, PE, Time, L
 
-    def _solve_deterministic(self, init_cond, U, PE, Time, Temp, L, H, q, omega, kappa_R, gamma=None):
+    def _solve_deterministic(self, init_cond, U, PE, Time, L, q, kappa_R, gamma=None):
         F, R, R_dot = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
         Q, O, I = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
         A = np.full(self.t_steps, np.nan)
-        P_Q, P_O = np.empty((self.t_steps, 3)), np.empty((self.t_steps, 2))
+        P_Q = np.empty((self.t_steps, 3))
         P_A = np.full((self.t_steps, 4), np.nan)
         F[0], R[0] = init_cond
 
         for k in range(self.t_steps):
             P_Q[k] = np.array([1.0, F[k], U[k]], dtype=float)
-            P_O[k] = np.array([L[k], H[k]], dtype=float)
-            Q[k], O[k] = q @ P_Q[k], omega @ P_O[k]
+            Q[k], O[k] = q @ P_Q[k], L[k]
             I[k] = O[k] + R[k]
             if gamma is not None:
                 P_A[k] = np.array([1.0 - U[k], I[k], F[k], 1.0 - PE[k]], dtype=float)
@@ -119,28 +110,25 @@ class wm_4(wm):
         return {
             "t": self.t.copy(), "F": F, "R": R, "R_dot": R_dot,
             "U": np.asarray(U, dtype=float).copy(), "PE": np.asarray(PE, dtype=float).copy(),
-            "Time": np.asarray(Time, dtype=float).copy(), "Temp": np.asarray(Temp, dtype=float).copy(),
-            "L": np.asarray(L, dtype=float).copy(), "H": np.asarray(H, dtype=float).copy(),
-            "P_Q": P_Q, "P_O": P_O, "P_A": P_A, "Q": Q, "O": O, "I": I, "A": A,
-            "q": np.asarray(q, dtype=float).copy(), "omega": np.asarray(omega, dtype=float).copy(),
+            "Time": np.asarray(Time, dtype=float).copy(), "L": np.asarray(L, dtype=float).copy(),
+            "P_Q": P_Q, "P_A": P_A, "Q": Q, "O": O, "I": I, "A": A,
+            "q": np.asarray(q, dtype=float).copy(),
         }
 
     def deterministic_solver(self, init_cond, parameters):
         init_cond, parameters = wm_4_validation.deterministic_inputs(init_cond, parameters)
-        U, PE, Time, Temp, L, H = self._sample_signals(parameters)
-        return self._solve_deterministic(init_cond, U, PE, Time, Temp, L, H, parameters["q"], parameters["omega"], parameters["kappa_R"], gamma=parameters["gamma"])
+        U, PE, Time, L = self._sample_signals(parameters)
+        return self._solve_deterministic(init_cond, U, PE, Time, L, parameters["q"], parameters["kappa_R"], gamma=parameters["gamma"])
 
     def fokker_planc_solver(self, init_cond, parameters, initial_density, f_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
         _, parameters = wm_4_validation.fokker_planc_inputs(init_cond, parameters)
-        q, omega = parameters["q"], parameters["omega"]
+        q = parameters["q"]
         kappa_R, sigma_0, sigma_O = parameters["kappa_R"], parameters["sigma_0"], parameters["sigma_O"]
 
         def fields(time, F):
             U = float(parameters["U"](time))
-            L = float(self.L(parameters["Time"](time)))
-            H = float(self.H(parameters["Temp"](time)))
+            O = float(self.L(parameters["Time"](time)))
             Q = q[0] + q[1] * F + q[2] * U
-            O = omega[0] * L + omega[1] * H
             return Q, O
 
         def drift_f(time, F, R): return R
