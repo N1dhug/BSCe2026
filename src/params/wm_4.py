@@ -267,7 +267,7 @@ class brute_params:
         best["history"], best["elapsed"] = history, perf_counter() - search_start
         return best
 
-    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, d_f_range=(-100.0, -1e-4), kappa_R_range=(1e-3, 100.0), fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, d_f_range=(-1000.0, -1e-5), kappa_R_range=(1e-4, 1000.0), fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
         data = self._prepare_data(input_data)
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every = int(grid_points), int(refinements), int(progress_every)
