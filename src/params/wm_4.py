@@ -30,7 +30,7 @@ class brute_params:
 
     def _prepare_data(self, input_data):
         data = wm_4_validation.fit_data(input_data, self.model.t_steps)
-        return {**data, "L": np.array([wm_4_validation.feature_value(self.model.L(x), "L(Time)") for x in data["Time"]], dtype=float)}
+        return {**data, "O": np.array([wm_4_validation.feature_value(self.model.O(x), "O(Time)") for x in data["Time"]], dtype=float)}
 
     @staticmethod
     def _homogeneous_state(n, dt, q_f, kappa_r, f0, r0):
@@ -65,14 +65,14 @@ class brute_params:
         forced_F, forced_R = self._forced_state_map(q_features, dt, q_f, kappa_r)
         F, R = F_b + forced_F @ q_bar, R_b + forced_R @ q_bar
         Q = q_features @ q_bar + q_f * F
-        O = data["L"].copy()
+        O = data["O"].copy()
         I = O + R
         R_dot = kappa_r * (Q - R)
 
         state = {
             "t": self.model.t.copy(), "F": F, "R": R, "R_dot": R_dot,
             "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(),
-            "L": data["L"].copy(), "Q": Q, "O": O, "I": I, "q": q.copy(),
+            "O": data["O"].copy(), "Q": Q, "I": I, "q": q.copy(),
         }
         if not full: return state
         state.update({
@@ -101,7 +101,7 @@ class brute_params:
             F_b, R_b = self._homogeneous_state(n, dt, q_f, kappa_r, initial_conditions[0], initial_conditions[1])
 
         X = R_X[obs]
-        y = data["I"][obs] - data["L"][obs] - R_b[obs]
+        y = data["I"][obs] - data["O"][obs] - R_b[obs]
 
         structural_rows, structural_rhs = [], []
         for U in (0.0, 1.0):
@@ -132,7 +132,7 @@ class brute_params:
         return {
             "init_cond": estimated_init, "initial_condition_seed": np.asarray(initial_conditions, dtype=float).copy(),
             "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(),
-            "L": data["L"].copy(), "observation_mask": obs.copy(),
+            "O": data["O"].copy(), "observation_mask": obs.copy(),
             "q": q, "kappa_R": float(kappa_r), "deterministic_state": state,
             "recovered_model_loss": loss, "structural_viable": True,
             "brute_q_F": float(q_f), "brute_kappa_R": float(kappa_r), "qp_solve_time": qp_solve_time,
