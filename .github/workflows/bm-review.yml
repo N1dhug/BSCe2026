@@ -1,0 +1,40 @@
+name: BM F1 F2 review
+on:
+  push:
+    branches: ['refactor/bm-f1-f2-review']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MPLBACKEND: Agg
+      PYTHONDONTWRITEBYTECODE: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependencies
+        run: python -m pip install numpy scipy matplotlib pandas openpyxl
+      - name: Record source and baseline
+        run: |
+          mkdir -p review-results
+          git rev-parse HEAD > review-results/commit.txt
+          git archive HEAD src tests root > review-results/source.tar
+          python -m pip freeze > review-results/environment.txt
+      - name: Run regression suite
+        run: python -B -m unittest discover -s tests -v 2>&1 | tee review-results/tests.txt
+      - name: Save review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bm-review-${{ github.sha }}
+          path: review-results/
+          retention-days: 7
