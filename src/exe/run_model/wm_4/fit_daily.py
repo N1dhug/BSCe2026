@@ -114,10 +114,10 @@ def save_plot(start, end, day, fine_index, fit):
     axes[3].legend()
     axes[3].grid(True, alpha=0.25)
 
-    fig.suptitle(f"wm_4 daily fit {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} | q_L=omega_L=0, seasonal H(T)")
+    fig.suptitle(f"wm_4 daily fit {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} | Q(F,U), O(F,L,H)")
     fig.tight_layout()
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    path = OUTPUT / f"daily_fit_{start:%Y-%m-%d_%H%M}_qL0_omegaL0.png"
+    path = OUTPUT / f"daily_fit_{start:%Y-%m-%d_%H%M}_simplified.png"
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return path
@@ -129,7 +129,7 @@ def print_result(start, end, seasonal, time_fit, fit, model, plot_path, steps_pe
     print(f"selected day={start} -> {end}")
     print(f"model time: tau in [0, 1], dt={model.dt:.12f}, response grid={3600.0 / steps_per_hour:.4f} physical seconds")
     print(f"observations={np.count_nonzero(fit['observation_mask'])} hourly I samples; state grid points={model.t_steps}")
-    print("parameter solver: src.params.wm_4.brute_params with q_L=omega_L=0; L(t) is diagnostic only")
+    print("parameter solver: src.params.wm_4.brute_params | Q=q0+qF*F+qU*U, O=omegaF*F+omegaL*L+omegaH*H")
     print(f"H(T): seasonal daily regression intercept={seasonal['intercept']:.8f}, slope={seasonal['slope']:.8f}")
     print("L(t): fitted directly to raw non-aggregated measurements for the selected calendar day.")
     print(f"L(t): raw={raw_intercept:.8f}+{raw_slope:.8f}*hour, MSE={time_fit['score']:.8f}, samples={time_fit['samples']}")
@@ -166,8 +166,6 @@ def main():
         grid_points=args.grid_points,
         refinements=args.refinements,
         fit_initial_state=True,
-        q_l_zero=True,
-        omega_l_zero=True,
         fit_diffusion=True,
         verbose=True,
         progress_every=args.progress_every,
