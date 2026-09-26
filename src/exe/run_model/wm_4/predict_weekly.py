@@ -100,7 +100,8 @@ def save_plot(fit_start, predict_start, predict_end, actual, fine_index, state, 
     axes[0].scatter(actual.index, actual["I"], s=12)
     axes[0].plot(fine_index, state["I"], label="WM4 next-week prediction I=O+R")
     axes[0].plot(fine_index, state["O"], label="Expected output O(t)", alpha=0.8)
-    axes[0].set_ylabel("Normalized input")
+    axes[0].plot(fine_index, state["U"], label="Normalized DK1 spot price U", alpha=0.8)
+    axes[0].set_ylabel("Normalized input / price")
     axes[0].legend()
     axes[0].grid(True, alpha=0.25)
 
