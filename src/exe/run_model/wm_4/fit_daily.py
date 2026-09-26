@@ -38,7 +38,10 @@ def fit_periodic_output(frame, start, weeks=BASELINE_WEEKS):
     history_start = start - pd.Timedelta(weeks=weeks)
     index = pd.date_range(history_start, start, freq="h", inclusive="left")
     period = frame.reindex(index)[["I"]].copy()
-    if len(period) != weeks * WEEK_HOURS or period["I"].isna().any(): raise ValueError(f"A complete {weeks}-week hourly history is required before {start}.")
+    if len(period) != weeks * WEEK_HOURS: raise ValueError(f"Expected exactly {weeks * WEEK_HOURS} hourly baseline samples before {start}.")
+    if period["I"].isna().all(): raise ValueError(f"No usable input history is available in the {weeks} weeks before {start}.")
+    missing = int(period["I"].isna().sum())
+    period["I"] = period["I"].interpolate(method="time", limit_direction="both").ffill().bfill()
 
     bins = period.index.dayofweek * DAY_HOURS + period.index.hour
     profile = period["I"].groupby(bins).mean().reindex(np.arange(WEEK_HOURS))
@@ -59,7 +62,7 @@ def fit_periodic_output(frame, start, weeks=BASELINE_WEEKS):
         "history_start": history_start, "history_end": start,
         "weeks": weeks, "period_hours": WEEK_HOURS, "profile_points": WEEK_HOURS,
         "raw_min": float(np.min(raw)), "raw_max": float(np.max(raw)),
-        "mse": mse, "samples": int(len(period)),
+        "mse": mse, "samples": int(len(period)), "imputed_samples": missing,
     }
 
 
@@ -152,7 +155,7 @@ def print_result(start, end, total_start, time_fit, fit, model, plot_path, steps
     print(f"observations={np.count_nonzero(fit['observation_mask'])} target-day hourly I samples; total state grid points={model.t_steps}")
     print("parameter solver: src.params.wm_4.brute_params | Q=q0+qF*F+qU*U, O=L(t)")
     print(f"O=L(t): previous {time_fit['weeks']} weeks only, {time_fit['history_start']} -> {time_fit['history_end']}")
-    print(f"L(t): 168 h periodic cubic spline in normalized input units, samples={time_fit['samples']}, MSE={time_fit['mse']:.8f}")
+    print(f"L(t): 168 h periodic cubic spline in normalized input units, samples={time_fit['samples']}, imputed={time_fit['imputed_samples']}, MSE={time_fit['mse']:.8f}")
     print(f"L(t): profile range=[{time_fit['raw_min']:.8f}, {time_fit['raw_max']:.8f}]")
     print(f"q={np.array2string(fit['q'], precision=8)}")
     print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
