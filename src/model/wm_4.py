@@ -11,7 +11,7 @@ class wm_4(wm):
     """Water Model 4.
 
     P_Q = [1, F, U], Q = q @ P_Q
-    O = L(Time)
+    O = O(Time)
 
     dF = R dt
     dR = kappa_R (Q - R) dt + (sigma_0 + sigma_O O) dW
@@ -21,23 +21,19 @@ class wm_4(wm):
     _FIT_EPS = 1e-8
     _FIT_RIDGE = 1e-10
 
-    def __init__(self, T, t_steps, L):
-        T, t_steps, L = wm_4_validation.constructor(T, t_steps, L)
+    def __init__(self, T, t_steps, O):
+        T, t_steps, O = wm_4_validation.constructor(T, t_steps, O)
         self.T = T
         self.t_steps = t_steps
         self.t = np.linspace(T[0], T[1], t_steps)
         self.dt = self.t[1] - self.t[0]
-        self.L = L
+        self.O = O
         self.fp = wm_fokker_planc()
 
     def Q(self, P_Q, q):
         P_Q = wm_4_validation.vector(P_Q, 3, "P_Q")
         q = wm_4_validation.q_coefficients(q)
         return q @ P_Q
-
-    @staticmethod
-    def O(L):
-        return wm_4_validation.feature_value(L, "L")
 
     @staticmethod
     def I(O, R):
@@ -79,17 +75,17 @@ class wm_4(wm):
 
     def _sample_signals(self, parameters):
         U, PE = np.empty(self.t_steps), np.empty(self.t_steps)
-        Time, L = np.empty(self.t_steps), np.empty(self.t_steps)
+        Time, O = np.empty(self.t_steps), np.empty(self.t_steps)
         for k, tk in enumerate(self.t):
             U[k] = wm_4_validation.signal_value(parameters["U"](tk), "U(t)")
             PE[k] = wm_4_validation.signal_value(parameters["PE"](tk), "PE(t)")
             Time[k] = wm_4_validation.finite_feature_input(parameters["Time"](tk), "Time(t)")
-            L[k] = wm_4_validation.feature_value(self.L(Time[k]), "L(Time(t))")
-        return U, PE, Time, L
+            O[k] = wm_4_validation.feature_value(self.O(Time[k]), "O(Time(t))")
+        return U, PE, Time, O
 
-    def _solve_deterministic(self, init_cond, U, PE, Time, L, q, kappa_R, gamma=None):
+    def _solve_deterministic(self, init_cond, U, PE, Time, O, q, kappa_R, gamma=None):
         F, R, R_dot = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
-        Q, O, I = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
+        Q, I = np.empty(self.t_steps), np.empty(self.t_steps)
         A = np.full(self.t_steps, np.nan)
         P_Q = np.empty((self.t_steps, 3))
         P_A = np.full((self.t_steps, 4), np.nan)
@@ -97,7 +93,7 @@ class wm_4(wm):
 
         for k in range(self.t_steps):
             P_Q[k] = np.array([1.0, F[k], U[k]], dtype=float)
-            Q[k], O[k] = q @ P_Q[k], L[k]
+            Q[k] = q @ P_Q[k]
             I[k] = O[k] + R[k]
             if gamma is not None:
                 P_A[k] = np.array([1.0 - U[k], I[k], F[k], 1.0 - PE[k]], dtype=float)
@@ -110,15 +106,15 @@ class wm_4(wm):
         return {
             "t": self.t.copy(), "F": F, "R": R, "R_dot": R_dot,
             "U": np.asarray(U, dtype=float).copy(), "PE": np.asarray(PE, dtype=float).copy(),
-            "Time": np.asarray(Time, dtype=float).copy(), "L": np.asarray(L, dtype=float).copy(),
-            "P_Q": P_Q, "P_A": P_A, "Q": Q, "O": O, "I": I, "A": A,
+            "Time": np.asarray(Time, dtype=float).copy(), "O": np.asarray(O, dtype=float).copy(),
+            "P_Q": P_Q, "P_A": P_A, "Q": Q, "I": I, "A": A,
             "q": np.asarray(q, dtype=float).copy(),
         }
 
     def deterministic_solver(self, init_cond, parameters):
         init_cond, parameters = wm_4_validation.deterministic_inputs(init_cond, parameters)
-        U, PE, Time, L = self._sample_signals(parameters)
-        return self._solve_deterministic(init_cond, U, PE, Time, L, parameters["q"], parameters["kappa_R"], gamma=parameters["gamma"])
+        U, PE, Time, O = self._sample_signals(parameters)
+        return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["q"], parameters["kappa_R"], gamma=parameters["gamma"])
 
     def fokker_planc_solver(self, init_cond, parameters, initial_density, f_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
         _, parameters = wm_4_validation.fokker_planc_inputs(init_cond, parameters)
@@ -127,7 +123,7 @@ class wm_4(wm):
 
         def fields(time, F):
             U = float(parameters["U"](time))
-            O = float(self.L(parameters["Time"](time)))
+            O = float(self.O(parameters["Time"](time)))
             Q = q[0] + q[1] * F + q[2] * U
             return Q, O
 
