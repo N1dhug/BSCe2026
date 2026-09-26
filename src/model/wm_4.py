@@ -11,7 +11,7 @@ class wm_4(wm):
     """Water Model 4.
 
     P_Q = [1, F, U], Q = q @ P_Q
-    P_O = [F, L(Time), H(Temp)], O = omega @ P_O
+    P_O = [L(Time), H(Temp)], O = omega @ P_O
 
     dF = R dt
     dR = kappa_R (Q - R) dt + (sigma_0 + sigma_O O) dW
@@ -37,7 +37,7 @@ class wm_4(wm):
         return q @ P_Q
 
     def O(self, P_O, omega):
-        P_O = wm_4_validation.vector(P_O, 3, "P_O")
+        P_O = wm_4_validation.vector(P_O, 2, "P_O")
         omega = wm_4_validation.omega_coefficients(omega)
         return omega @ P_O
 
@@ -69,8 +69,7 @@ class wm_4(wm):
         return np.array([R, kappa_R * (Q - R)], dtype=float)
 
     @staticmethod
-    def diffusion(F, L, H, omega, sigma_0, sigma_O):
-        F = wm_4_validation._finite_scalar(F, "F")
+    def diffusion(L, H, omega, sigma_0, sigma_O):
         L = wm_4_validation.feature_value(L, "L")
         H = wm_4_validation.feature_value(H, "H")
         omega = wm_4_validation.omega_coefficients(omega)
@@ -78,7 +77,7 @@ class wm_4(wm):
         sigma_O = wm_4_validation._finite_scalar(sigma_O, "sigma_O")
         if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
         if sigma_O < 0.0: raise ValueError("sigma_O must be nonnegative.")
-        O = omega @ np.array([F, L, H], dtype=float)
+        O = omega @ np.array([L, H], dtype=float)
         g = sigma_0 + sigma_O * O
         if g < 0.0: raise ValueError("wm_4 diffusion scale g(O) must be nonnegative.")
         return np.array([0.0, g], dtype=float)
@@ -100,13 +99,13 @@ class wm_4(wm):
         F, R, R_dot = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
         Q, O, I = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
         A = np.full(self.t_steps, np.nan)
-        P_Q, P_O = np.empty((self.t_steps, 3)), np.empty((self.t_steps, 3))
+        P_Q, P_O = np.empty((self.t_steps, 3)), np.empty((self.t_steps, 2))
         P_A = np.full((self.t_steps, 4), np.nan)
         F[0], R[0] = init_cond
 
         for k in range(self.t_steps):
             P_Q[k] = np.array([1.0, F[k], U[k]], dtype=float)
-            P_O[k] = np.array([F[k], L[k], H[k]], dtype=float)
+            P_O[k] = np.array([L[k], H[k]], dtype=float)
             Q[k], O[k] = q @ P_Q[k], omega @ P_O[k]
             I[k] = O[k] + R[k]
             if gamma is not None:
@@ -141,7 +140,7 @@ class wm_4(wm):
             L = float(self.L(parameters["Time"](time)))
             H = float(self.H(parameters["Temp"](time)))
             Q = q[0] + q[1] * F + q[2] * U
-            O = omega[0] * F + omega[1] * L + omega[2] * H
+            O = omega[0] * L + omega[1] * H
             return Q, O
 
         def drift_f(time, F, R): return R
