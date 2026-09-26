@@ -98,8 +98,8 @@ def save_plot(fit_start, predict_start, predict_end, actual, fine_index, state, 
 
     axes[0].plot(actual.index, actual["I"], label="Observed next-week input I")
     axes[0].scatter(actual.index, actual["I"], s=12)
-    axes[0].plot(fine_index, state["I"], label="WM4 next-week prediction I=O+R")
-    axes[0].plot(fine_index, state["O"], label="Scaled expected output o_scale*O(t)", alpha=0.8)
+    axes[0].plot(fine_index, state["I"], label="WM4 next-week prediction I=o_scale*O+R")
+    axes[0].plot(fine_index, state["O_raw"], label="Unscaled expected output O(t)", alpha=0.8)
     axes[0].plot(fine_index, state["U"], label="Normalized DK1 spot price U", alpha=0.8)
     axes[0].set_ylabel("Normalized input / price")
     axes[0].legend()
@@ -166,7 +166,7 @@ def main():
 
     hourly = np.arange(WEEK_HOURS) * args.steps_per_hour
     observed = actual["I"].to_numpy(dtype=float)
-    baseline = state["O"][hourly]
+    baseline = state["O_raw"][hourly]
     predicted = state["I"][hourly]
     baseline_metrics = deviation_metrics(observed, baseline)
     prediction_metrics = deviation_metrics(observed, predicted)
@@ -181,7 +181,7 @@ def main():
     print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
     print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"forecast initial [F,R]={np.array2string(init, precision=8)}")
-    print(f"scaled o_scale*O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
+    print(f"unscaled O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
     print(f"parametrized I=O+R deviation from actual I: MSE={prediction_metrics['mse']:.10f}, RMSE={prediction_metrics['rmse']:.10f}, MAE={prediction_metrics['mae']:.10f}, bias={prediction_metrics['bias']:.10f}")
     print(f"plot={path}")
 
