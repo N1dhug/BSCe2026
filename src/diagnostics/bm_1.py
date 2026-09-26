@@ -251,3 +251,38 @@ def cell_mass_wasserstein_1(left, right, dx):
     if left.shape != right.shape or left.ndim != 1:
         raise ValueError("cell-mass arrays must be one-dimensional with equal shape.")
     return float(dx * np.sum(np.abs(np.cumsum(left) - np.cumsum(right))))
+
+
+
+def density_l2(left, right, dx):
+    """Return the discrete L2 distance between two densities."""
+    left = np.asarray(left, dtype=float)
+    right = np.asarray(right, dtype=float)
+    dx = float(dx)
+    if left.shape != right.shape or left.ndim != 1:
+        raise ValueError("density arrays must be one-dimensional with equal shape.")
+    if not np.all(np.isfinite(left)) or not np.all(np.isfinite(right)):
+        raise ValueError("density arrays must contain finite values.")
+    if not np.isfinite(dx) or dx <= 0.0:
+        raise ValueError("dx must be finite and strictly positive.")
+    return float(np.sqrt(dx * np.sum(np.square(left - right))))
+
+
+def beta_mixture_variance_floor(mean, degree):
+    """Return the theoretical variance floor for a degree-M Beta mixture.
+
+    For basis components Beta(j+1, M-j+1), any convex mixture with mean m
+    satisfies Var(X) >= m(1-m)/(M+3).
+    """
+    mean = np.asarray(mean, dtype=float)
+    if not np.all(np.isfinite(mean)) or np.any(mean < 0.0) or np.any(mean > 1.0):
+        raise ValueError("mean must contain finite values in [0, 1].")
+    if isinstance(degree, (bool, np.bool_)):
+        raise TypeError("degree must be a non-negative integer.")
+    try:
+        degree = int(degree)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise TypeError("degree must be a non-negative integer.") from exc
+    if degree < 0:
+        raise ValueError("degree must be a non-negative integer.")
+    return mean * (1.0 - mean) / (degree + 3.0)
