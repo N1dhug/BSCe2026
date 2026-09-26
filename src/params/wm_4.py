@@ -174,9 +174,9 @@ class brute_params:
         if hi <= lo: hi = min(global_hi, lo + max(width, 1e-8))
         return lo, hi
 
-    def _search_branch(self, branch, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every):
+    def _search_branch(self, branch, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, fit_initial_state, r0_range, verbose, progress_every):
         q_bounds = tuple(map(float, q_f_range))
-        rho_global = {"under": (ratio_eps, 1.0 - ratio_eps), "critical": (1.0, 1.0)}[branch]
+        rho_global = {"under": (ratio_eps, 1.0 - ratio_eps), "critical": (1.0, 1.0), "over": (1.0 + ratio_eps, ratio_max)}[branch]
         q_local, rho_local = q_bounds, rho_global
         best, history, branch_start = None, [], perf_counter()
 
@@ -221,16 +221,16 @@ class brute_params:
         if best is not None: best.update({"history": history, "branch": branch, "elapsed": perf_counter() - branch_start})
         return best
 
-    def _search_all(self, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every):
+    def _search_all(self, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, fit_initial_state, r0_range, verbose, progress_every):
         branches = {
-            branch: self._search_branch(branch, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every)
-            for branch in ("under", "critical")
+            branch: self._search_branch(branch, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, fit_initial_state, r0_range, verbose, progress_every)
+            for branch in ("under", "critical", "over")
         }
         valid = [item for item in branches.values() if item is not None]
-        if not valid: raise RuntimeError("wm_4 brute-force parameter search found no structurally admissible underdamped or critically damped grid candidate.")
+        if not valid: raise RuntimeError("wm_4 brute-force parameter search found no structurally admissible damping branch candidate.")
         return min(valid, key=lambda item: item["score"]), branches
 
-    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-50.0, -1e-4), ratio_eps=1e-4, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-50.0, -1e-4), ratio_eps=1e-4, ratio_max=10.0, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
         data = self._prepare_data(input_data)
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every = int(grid_points), int(refinements), int(progress_every)
@@ -240,10 +240,12 @@ class brute_params:
         if progress_every < 1: raise ValueError("progress_every must be at least 1.")
         if not q_f_range[0] < q_f_range[1] < 0.0: raise ValueError("q_f_range must be increasing and strictly negative.")
         if not 0.0 < ratio_eps < 0.5: raise ValueError("ratio_eps must lie in (0, 0.5).")
+        ratio_max = float(ratio_max)
+        if ratio_max <= 1.0 + ratio_eps: raise ValueError("ratio_max must exceed 1 + ratio_eps for the overdamped branch.")
         if len(r0_range) != 2 or not r0_range[0] < r0_range[1]: raise ValueError("r0_range must contain increasing lower/upper bounds.")
 
         fit_start = perf_counter()
-        best, branches = self._search_all(data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, bool(fit_initial_state), r0_range, verbose, progress_every)
+        best, branches = self._search_all(data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, bool(fit_initial_state), r0_range, verbose, progress_every)
         result = {**best["result"], "q": best["q"].copy(), "omega": best["omega"].copy()}
         result["deterministic_state"] = self._state_from_parameters(data, result["init_cond"], result["q"], result["omega"], result["kappa_R"], full=True)
         result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_O": 0.0}
