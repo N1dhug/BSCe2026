@@ -7,10 +7,10 @@ class wm_4_validation(wm_1_validation):
     """Validation rules for Water Model 4."""
 
     @classmethod
-    def constructor(cls, T, t_steps, L):
+    def constructor(cls, T, t_steps, O):
         T, t_steps = super().constructor(T, t_steps)
-        if not callable(L): raise TypeError("L must be callable.")
-        return T, t_steps, L
+        if not callable(O): raise TypeError("O must be callable.")
+        return T, t_steps, O
 
     @classmethod
     def q_coefficients(cls, q, tol=1e-10):
