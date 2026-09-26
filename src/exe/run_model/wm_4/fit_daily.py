@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "daily"
 INIT = np.array([0.5, 0.0], dtype=float)
 DAY_HOURS = 24
-BASELINE_WEEKS = 4
+BASELINE_WEEKS = 5
 
 
 def day_start(value): return pd.Timestamp(value).normalize()
@@ -32,7 +32,7 @@ def hour_of_day(index):
 
 def fit_expected_output(frame, start, weeks=BASELINE_WEEKS):
     weeks = int(weeks)
-    if weeks < 1: raise ValueError("weeks must be positive.")
+    if weeks < 3: raise ValueError("At least three matching weekdays are required for trimmed O(t).")
 
     days = [start - pd.Timedelta(weeks=k) for k in range(1, weeks + 1)]
     samples, missing = [], 0
@@ -45,7 +45,9 @@ def fit_expected_output(frame, start, weeks=BASELINE_WEEKS):
         samples.append(values.to_numpy(dtype=float))
 
     history = np.vstack(samples)
-    profile = np.mean(history, axis=0)
+    ordered = np.sort(history, axis=0)
+    trimmed = ordered[1:-1]
+    profile = np.mean(trimmed, axis=0)
     x = np.arange(DAY_HOURS + 1, dtype=float)
     y = np.append(profile, profile[0])
     spline = CubicSpline(x, y, bc_type="periodic")
@@ -54,12 +56,12 @@ def fit_expected_output(frame, start, weeks=BASELINE_WEEKS):
         t = float(time_hour_of_day) % DAY_HOURS
         return float(np.clip(spline(t), 0.0, 1.0))
 
-    fitted = np.array([[O(hour) for hour in range(DAY_HOURS)] for _ in range(weeks)], dtype=float)
-    mse = float(np.mean((history - fitted) ** 2))
+    fitted = np.array([[O(hour) for hour in range(DAY_HOURS)] for _ in range(trimmed.shape[0])], dtype=float)
+    mse = float(np.mean((trimmed - fitted) ** 2))
     return O, {
-        "weeks": weeks, "weekday": start.day_name(), "baseline_days": days,
+        "weeks": weeks, "retained_weeks": int(trimmed.shape[0]), "weekday": start.day_name(), "baseline_days": days,
         "profile_points": DAY_HOURS, "raw_min": float(np.min(profile)), "raw_max": float(np.max(profile)),
-        "mse": mse, "samples": int(history.size), "imputed_samples": missing,
+        "mse": mse, "samples": int(history.size), "retained_samples": int(trimmed.size), "imputed_samples": missing,
     }
 
 
@@ -116,7 +118,7 @@ def save_plot(start, end, day, fine_index, fit, warmup_hours, baseline_weeks):
     axes[0].legend()
     axes[0].grid(True, alpha=0.25)
 
-    axes[1].plot(fine_index[target], state["O"][target], label=f"Expected output O(t): previous {baseline_weeks} matching weekdays")
+    axes[1].plot(fine_index[target], state["O"][target], label=f"Expected output O(t): trimmed previous {baseline_weeks} matching weekdays")
     axes[1].plot(fine_index[target], state["U"][target], label="Normalized DK1 price U")
     axes[1].set_ylabel("Signals / output")
     axes[1].legend()
@@ -135,7 +137,7 @@ def save_plot(start, end, day, fine_index, fit, warmup_hours, baseline_weeks):
     axes[3].legend()
     axes[3].grid(True, alpha=0.25)
 
-    fig.suptitle(f"wm_4 daily fit {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} | O=previous {baseline_weeks} {start.day_name()} profiles, {warmup_hours} h warm-up")
+    fig.suptitle(f"wm_4 daily fit {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} | O=trimmed previous {baseline_weeks} {start.day_name()} profiles, {warmup_hours} h warm-up")
     fig.tight_layout()
     OUTPUT.mkdir(parents=True, exist_ok=True)
     path = OUTPUT / f"daily_fit_{start:%Y-%m-%d_%H%M}_weekday_output_warmup.png"
@@ -153,7 +155,8 @@ def print_result(start, end, total_start, output_fit, fit, model, plot_path, ste
     print(f"observations={np.count_nonzero(fit['observation_mask'])} target-day hourly I samples; total state grid points={model.t_steps}")
     print("parameter solver: src.params.wm_4.brute_params | Q=q0+qF*F+qU*U, I=O+R")
     print(f"O(t): periodic cubic spline from previous {output_fit['weeks']} matching {output_fit['weekday']}s: {baseline_days}")
-    print(f"O(t): samples={output_fit['samples']}, imputed={output_fit['imputed_samples']}, MSE={output_fit['mse']:.8f}, profile range=[{output_fit['raw_min']:.8f}, {output_fit['raw_max']:.8f}]")
+    print(f"O(t): per hour remove min/max across weeks, average remaining {output_fit['retained_weeks']} values")
+    print(f"O(t): samples={output_fit['samples']}, retained={output_fit['retained_samples']}, imputed={output_fit['imputed_samples']}, trimmed MSE={output_fit['mse']:.8f}, profile range=[{output_fit['raw_min']:.8f}, {output_fit['raw_max']:.8f}]")
     print(f"q={np.array2string(fit['q'], precision=8)}")
     print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
     print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
@@ -167,7 +170,7 @@ def print_result(start, end, total_start, output_fit, fit, model, plot_path, ste
 def main():
     parser = ArgumentParser(description="Fit wm_4 to one calendar day with O(t) estimated from the same weekday in the preceding weeks.")
     parser.add_argument("--day", default="2022-04-18", help="Calendar day to score.")
-    parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS, help="Number of previous matching weekdays used to construct O(t); default 4.")
+    parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS, help="Number of previous matching weekdays used to construct trimmed O(t); default 5.")
     parser.add_argument("--warmup-hours", type=int, default=24, help="Hours simulated before the target day with a fixed initial state; default 24.")
     parser.add_argument("--steps-per-hour", type=int, default=60, help="Internal wm_4 response substeps per physical hour; default 60 gives a one-minute grid.")
     parser.add_argument("--grid-points", type=int, default=4)
