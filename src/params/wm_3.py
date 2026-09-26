@@ -155,7 +155,7 @@ class brute_params:
 
         raise RuntimeError("wm_3 constraint-generation QP did not satisfy all fine-grid input bounds.")
 
-    def _solve_inner(self, data, initial_conditions, c_v, d_v, kappa_r, fit_initial_state, r0_range):
+    def _solve_inner(self, data, initial_conditions, c_v, d_v, kappa_r, fit_initial_state, r0_range, long_run_price_response, long_run_h_response):
         n, dt = self.model.t_steps, self.model.dt
         obs = np.asarray(data["observation_mask"], dtype=bool)
         n_var = 10 if fit_initial_state else 8
@@ -192,6 +192,14 @@ class brute_params:
         if np.allclose(data["H"], 0.0, atol=1e-12, rtol=0.0):
             row = np.zeros(n_var); row[3] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
             row = np.zeros(n_var); row[7] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
+
+        response_ratio = c_v / d_v
+        if long_run_price_response is not None:
+            row = np.zeros(n_var); row[2], row[6] = 1.0, -response_ratio
+            eq_rows.append(row); eq_rhs.append(float(long_run_price_response))
+        if long_run_h_response is not None:
+            row = np.zeros(n_var); row[3], row[7] = 1.0, -response_ratio
+            eq_rows.append(row); eq_rhs.append(float(long_run_h_response))
 
         structural_rows, structural_rhs = [], []
         for U_value, L_value, H_value in itertools.product((0.0, 1.0), repeat=3):
@@ -259,7 +267,7 @@ class brute_params:
         if hi <= lo: hi = min(global_hi, lo + max(width, 1e-8))
         return lo, hi
 
-    def _search_branch(self, branch, data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every):
+    def _search_branch(self, branch, data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, fit_initial_state, r0_range, long_run_price_response, long_run_h_response, verbose, progress_every):
         c_bounds, d_bounds = tuple(map(float, c_v_range)), tuple(map(float, d_v_range))
         rho_global = {"under": (ratio_eps, 1.0 - ratio_eps), "critical": (1.0, 1.0)}[branch]
         c_local, d_local, rho_local = c_bounds, d_bounds, rho_global
@@ -286,7 +294,7 @@ class brute_params:
                             continue
 
                         tested, candidate_start = tested + 1, perf_counter()
-                        try: candidate = self._solve_inner(data, initial_conditions, c_v, d_v, kappa_r, fit_initial_state, r0_range)
+                        try: candidate = self._solve_inner(data, initial_conditions, c_v, d_v, kappa_r, fit_initial_state, r0_range, long_run_price_response, long_run_h_response)
                         except (ValueError, RuntimeError, np.linalg.LinAlgError):
                             if verbose and tested % progress_every == 0: print(f"[brute] branch={branch} refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_candidate={perf_counter() - candidate_start:.4f}s status=failed")
                             continue
@@ -311,13 +319,13 @@ class brute_params:
         if best is not None: best.update({"history": history, "branch": branch, "elapsed": perf_counter() - branch_start})
         return best
 
-    def _search_all(self, data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every):
-        branch_results = {branch: self._search_branch(branch, data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every) for branch in ("under", "critical")}
+    def _search_all(self, data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, fit_initial_state, r0_range, long_run_price_response, long_run_h_response, verbose, progress_every):
+        branch_results = {branch: self._search_branch(branch, data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, fit_initial_state, r0_range, long_run_price_response, long_run_h_response, verbose, progress_every) for branch in ("under", "critical")}
         valid = [item for item in branch_results.values() if item is not None]
         if not valid: raise RuntimeError("wm_3 brute-force parameter search found no structurally admissible underdamped or critically damped grid candidate.")
         return min(valid, key=lambda item: item["score"]), branch_results
 
-    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, c_v_range=(-1.0, 1.0), d_v_range=(-2.0, -1e-4), ratio_eps=1e-3, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25, alpha_points=None, alpha_o_range=None):
+    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, c_v_range=(-1.0, 1.0), d_v_range=(-2.0, -1e-4), ratio_eps=1e-3, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, long_run_price_response=None, long_run_h_response=None, verbose=True, progress_every=25, alpha_points=None, alpha_o_range=None):
         data = self._prepare_data(input_data)
         initial_conditions = wm_3_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every = int(grid_points), int(refinements), int(progress_every)
@@ -329,13 +337,17 @@ class brute_params:
         if not d_v_range[0] < d_v_range[1] < 0.0: raise ValueError("d_v_range must be increasing and strictly negative.")
         if not 0.0 < ratio_eps < 0.5: raise ValueError("ratio_eps must lie in (0, 0.5).")
         if len(r0_range) != 2 or not r0_range[0] < r0_range[1]: raise ValueError("r0_range must contain increasing lower/upper bounds.")
+        if long_run_price_response is not None and not np.isfinite(float(long_run_price_response)): raise ValueError("long_run_price_response must be finite.")
+        if long_run_h_response is not None and not np.isfinite(float(long_run_h_response)): raise ValueError("long_run_h_response must be finite.")
+        long_run_price_response = None if long_run_price_response is None else float(long_run_price_response)
+        long_run_h_response = None if long_run_h_response is None else float(long_run_h_response)
 
         fit_start = perf_counter()
-        best, branches = self._search_all(data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, bool(fit_initial_state), r0_range, verbose, progress_every)
+        best, branches = self._search_all(data, initial_conditions, grid_points, refinements, c_v_range, d_v_range, ratio_eps, bool(fit_initial_state), r0_range, long_run_price_response, long_run_h_response, verbose, progress_every)
         result = {**best["result"], "alpha": best["alpha"].copy(), "beta": best["beta"].copy()}
         result["deterministic_state"] = self._state_from_reduced(
             data, result["init_cond"], result["I_coeff"], result["d_coeff"], result["kappa_R"], full=True
         )
         result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_O": 0.0}
-        result.update({"fit_method": "brute", "brute_branch": best["branch"], "brute_score": float(best["score"]), "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": branches, "brute_fit_time": perf_counter() - fit_start, "fit_initial_state": bool(fit_initial_state), "deterministic_loss": float(result["recovered_model_loss"])})
+        result.update({"fit_method": "brute", "brute_branch": best["branch"], "brute_score": float(best["score"]), "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": branches, "brute_fit_time": perf_counter() - fit_start, "fit_initial_state": bool(fit_initial_state), "long_run_price_response": long_run_price_response, "long_run_h_response": long_run_h_response, "deterministic_loss": float(result["recovered_model_loss"])})
         return result
