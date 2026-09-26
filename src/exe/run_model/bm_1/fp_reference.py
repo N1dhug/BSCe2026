@@ -1,63 +1,31 @@
 """Pure finite-volume Fokker-Planck reference for stochastic bm_1.
 
-This F2-C experiment evolves cell probability masses directly with a conservative
-one-dimensional Markov-generator discretization and implicit Euler time stepping.
-It does not use beta projection, clipping, or renormalization.
-
-Run from the repository root:
-
-    python -B -m src.exe.run_model.bm_1.fp_reference
+This F2-C experiment reuses the BM-only shared F2 reference case. It evolves
+cell probability masses directly and does not use beta projection, clipping,
+or renormalization.
 """
 
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.special import betainc
 
-from src.model.bm_1 import bm_1
-from src.tools.input_generator.input_builder import input_builder
-
-
-# Time is measured in days. Return hourly output, integrate at most every 15 min,
-# and include the deliberately non-hourly price change as an internal boundary.
-T = (0.0, 1.0)
-T_EVAL = np.linspace(T[0], T[1], 25)
-MAX_STEP = 1.0 / (24.0 * 4.0)
-PRICE_DROP_HOUR = 12.5
-PRICE_DROP_TIME = PRICE_DROP_HOUR / 24.0
-PRICE_EDGES = np.array([T[0], PRICE_DROP_TIME, T[1]], dtype=float)
-PRICE_VALUES = np.array([0.75, 0.25], dtype=float)
-PRICE_BREAKPOINTS = PRICE_EDGES[1:-1]
-
-# BM1 parameters.
-BASELINE = 0.3
-C = 1.0
-K = 2.0
-XI = 1.0
-SIGMA_X = 0.5
-
-# Spatial reference grid and a smooth initial law. The beta CDF differences are
-# exact cell probabilities, so the FV solver receives mass that already sums to 1.
-X_STEPS = 201
-INITIAL_ALPHA = 20.0
-INITIAL_BETA = 20.0
-
-inputs = input_builder()
-B = inputs.energy((np.array(T), np.array([BASELINE, BASELINE])))
-A = B
-U = inputs.price_intervals((PRICE_EDGES, PRICE_VALUES))
-poi_x, pr_x = inputs.md_vals(5, 10)
-poi_u, pr_u = inputs.md_vals(5, 10)
-f = inputs.md(poi_x, pr_x)
-g = inputs.md(poi_u, pr_u)
-parameters = [U, f, g, C, K, XI]
-
-model = bm_1(B, A, T, len(T_EVAL))
-x_edges, _, _ = model.fokker_planc_reference.grid(X_STEPS)
-initial_mass = np.diff(
-    betainc(INITIAL_ALPHA, INITIAL_BETA, x_edges)
+from src.exe.run_model.bm_1.f2_reference_case import (
+    MAX_STEP,
+    PRICE_BREAKPOINTS,
+    PRICE_DROP_HOUR,
+    PRICE_DROP_TIME,
+    SIGMA_X,
+    T_EVAL,
+    X_STEPS,
+    beta_initial_cell_mass,
+    build_reference_case,
 )
+
+
+model, parameters = build_reference_case()
+x_edges, _, _ = model.fokker_planc_reference.grid(X_STEPS)
+initial_mass = beta_initial_cell_mass(x_edges)
 
 (
     t,
@@ -88,25 +56,13 @@ print("-----------------------------------------------")
 print(f"Spatial cells:                  {X_STEPS}")
 print(f"Output points:                  {len(t)}")
 print(f"Internal implicit-Euler steps:  {diagnostics['n_steps']}")
-print(
-    f"Maximum internal step [h]:      "
-    f"{24.0 * np.max(np.diff(diagnostics['integration_t'])):.6f}"
-)
-print(
-    f"Price breakpoint included:      "
-    f"{bool(np.any(diagnostics['integration_t'] == PRICE_DROP_TIME))}"
-)
+print(f"Maximum internal step [h]:      {24.0 * np.max(np.diff(diagnostics['integration_t'])):.6f}")
+print(f"Price breakpoint included:      {bool(np.any(diagnostics['integration_t'] == PRICE_DROP_TIME))}")
 print(f"Maximum |mass - 1|:             {np.max(np.abs(mass - 1.0)):.3e}")
 print(f"Minimum cell probability:       {np.min(cell_mass):.3e}")
 print(f"Minimum density value:          {np.min(density):.3e}")
-print(
-    f"Max generator column-sum error: "
-    f"{diagnostics['maximum_abs_generator_column_sum']:.3e}"
-)
-print(
-    f"Minimum off-diagonal rate:      "
-    f"{diagnostics['minimum_off_diagonal_rate']:.3e}"
-)
+print(f"Max generator column-sum error: {diagnostics['maximum_abs_generator_column_sum']:.3e}")
+print(f"Minimum off-diagonal rate:      {diagnostics['minimum_off_diagonal_rate']:.3e}")
 print(f"Clipping used:                  {diagnostics['used_clipping']}")
 print(f"Renormalization used:           {diagnostics['used_renormalization']}")
 print()
@@ -122,7 +78,6 @@ if diagnostics["minimum_cell_mass"] < -1.0e-12:
 if diagnostics["maximum_abs_mass_error"] > 1.0e-10:
     raise RuntimeError("The F2-C reference failed to conserve total probability.")
 
-# Diagnostic figure.
 fig, (ax_pdf, ax_state, ax_terminal) = plt.subplots(
     nrows=3,
     figsize=(11, 11),
@@ -173,13 +128,7 @@ ax_terminal.grid(True)
 ax_terminal.legend(loc="best")
 
 fig.tight_layout()
-graph_dir = (
-    Path(__file__).resolve().parents[4]
-    / "files"
-    / "output"
-    / "graphs"
-    / "bm_1"
-)
+graph_dir = Path(__file__).resolve().parents[4] / "files" / "output" / "graphs" / "bm_1"
 graph_dir.mkdir(parents=True, exist_ok=True)
 graph_path = graph_dir / "bm_1_fp_reference.png"
 fig.savefig(graph_path, dpi=300, bbox_inches="tight")

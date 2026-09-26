@@ -206,3 +206,48 @@ def constant_demand_capacity_certificate(
         ),
         violated_boundary=violated_boundary,
     )
+
+
+
+def empirical_cell_mass(samples, edges):
+    """Bin one-dimensional Monte Carlo samples on supplied FV cell edges."""
+    samples = np.asarray(samples, dtype=float).reshape(-1)
+    edges = np.asarray(edges, dtype=float)
+    if samples.size == 0 or not np.all(np.isfinite(samples)):
+        raise ValueError("samples must contain finite values.")
+    if edges.ndim != 1 or edges.size < 2 or np.any(np.diff(edges) <= 0.0):
+        raise ValueError("edges must be a strictly increasing one-dimensional array.")
+    if np.any(samples < edges[0]) or np.any(samples > edges[-1]):
+        raise ValueError("samples must lie inside the supplied histogram edges.")
+    counts, _ = np.histogram(samples, bins=edges)
+    return counts.astype(float) / samples.size
+
+
+def cell_mass_l1(left, right):
+    """Return L1 distance between two discrete cell-mass distributions."""
+    left = np.asarray(left, dtype=float)
+    right = np.asarray(right, dtype=float)
+    if left.shape != right.shape or left.ndim != 1:
+        raise ValueError("cell-mass arrays must be one-dimensional with equal shape.")
+    return float(np.sum(np.abs(left - right)))
+
+
+def cell_mass_cdf_sup(left, right):
+    """Return maximum absolute difference between discrete cumulative masses."""
+    left = np.asarray(left, dtype=float)
+    right = np.asarray(right, dtype=float)
+    if left.shape != right.shape or left.ndim != 1:
+        raise ValueError("cell-mass arrays must be one-dimensional with equal shape.")
+    return float(np.max(np.abs(np.cumsum(left) - np.cumsum(right))))
+
+
+def cell_mass_wasserstein_1(left, right, dx):
+    """Approximate 1D Wasserstein-1 distance on an equal-width cell grid."""
+    dx = float(dx)
+    if not np.isfinite(dx) or dx <= 0.0:
+        raise ValueError("dx must be finite and strictly positive.")
+    left = np.asarray(left, dtype=float)
+    right = np.asarray(right, dtype=float)
+    if left.shape != right.shape or left.ndim != 1:
+        raise ValueError("cell-mass arrays must be one-dimensional with equal shape.")
+    return float(dx * np.sum(np.abs(np.cumsum(left) - np.cumsum(right))))

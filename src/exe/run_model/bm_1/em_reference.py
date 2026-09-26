@@ -1,9 +1,7 @@
 """Controlled Euler-Maruyama / Monte Carlo reference for stochastic bm_1.
 
-This F2-B experiment separates output times from internal EM steps, inserts
-known price discontinuities as integration boundaries, supplies Wiener
-increments explicitly, and reports raw boundary proposals before any numerical
-correction.  It intentionally uses boundary="none".
+This F2-B experiment keeps its original point initial state, but now reuses the
+shared BM-only F2 reference inputs from f2_reference_case.
 
 Run from the repository root:
 
@@ -15,45 +13,23 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.model.bm_1 import bm_1
-from src.tools.input_generator.input_builder import input_builder
+from src.exe.run_model.bm_1.f2_reference_case import (
+    MAX_STEP,
+    PRICE_BREAKPOINTS,
+    PRICE_DROP_HOUR,
+    PRICE_DROP_TIME,
+    SIGMA_X,
+    T_EVAL,
+    X0,
+    build_reference_case,
+)
 
 
-# Time is measured in days. Return hourly output, but integrate at most every
-# 15 minutes. The 12.5 h price change is deliberately not an output time.
-T = (0.0, 1.0)
-T_EVAL = np.linspace(T[0], T[1], 25)
-MAX_STEP = 1.0 / (24.0 * 4.0)
-PRICE_DROP_HOUR = 12.5
-PRICE_DROP_TIME = PRICE_DROP_HOUR / 24.0
-PRICE_EDGES = np.array([T[0], PRICE_DROP_TIME, T[1]], dtype=float)
-PRICE_VALUES = np.array([0.75, 0.25], dtype=float)
-PRICE_BREAKPOINTS = PRICE_EDGES[1:-1]
-
-# BM1 parameters.
-BASELINE = 0.3
-X0 = 0.5
-C = 1.0
-K = 2.0
-XI = 1.0
-SIGMA_X = 0.5
 N_PATHS = 20_000
 SEED = 2026
 
-# Build inputs with the same project helpers used by the deterministic model.
-inputs = input_builder()
-B = inputs.energy((np.array(T), np.array([BASELINE, BASELINE])))
-A = B
-U = inputs.price_intervals((PRICE_EDGES, PRICE_VALUES))
-poi_x, pr_x = inputs.md_vals(5, 10)
-poi_u, pr_u = inputs.md_vals(5, 10)
-f = inputs.md(poi_x, pr_x)
-g = inputs.md(poi_u, pr_u)
-parameters = [U, f, g, C, K, XI]
+model, parameters = build_reference_case()
 
-# Build the internal grid explicitly so the same grid can be used to generate
-# and, in later convergence studies, couple Brownian increments.
-model = bm_1(B, A, T, len(T_EVAL))
 integration_t, output_indices = model.euler_maruyama.build_time_grid(
     T_EVAL,
     breakpoints=PRICE_BREAKPOINTS,
@@ -90,8 +66,6 @@ result = model.euler_maruyama_solver(
     diagnostics,
 ) = result
 
-# Monte Carlo summaries. Standard errors quantify sampling uncertainty only;
-# they do not include Euler-Maruyama time-discretization error.
 state_mean = np.mean(state, axis=0)
 state_var = np.var(state, axis=0, ddof=1)
 state_se = np.sqrt(state_var / N_PATHS)
@@ -123,7 +97,6 @@ if diagnostics["total_violations"]:
         "before using this run as a bounded-state reference."
     )
 
-# Build a compact diagnostic figure.
 hours = 24.0 * t
 fig, (ax_state, ax_paths, ax_demand) = plt.subplots(nrows=3, figsize=(11, 11))
 
@@ -175,7 +148,6 @@ graph_path = graph_dir / "bm_1_em_reference.png"
 fig.savefig(graph_path, dpi=300, bbox_inches="tight")
 plt.close(fig)
 
-# The public wrapper must return the requested output grid, not the internal one.
 np.testing.assert_array_equal(t, T_EVAL)
 np.testing.assert_array_equal(diagnostics["integration_t"][output_indices], T_EVAL)
 print(f"Saved graph to {graph_path}")
