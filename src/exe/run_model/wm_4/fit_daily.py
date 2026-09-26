@@ -167,6 +167,20 @@ def print_result(start, end, total_start, output_fit, fit, model, plot_path, ste
     print(f"plot={plot_path}")
 
 
+def fit_day(frame, start, baseline_weeks=BASELINE_WEEKS, warmup_hours=24, steps_per_hour=60, **kwargs):
+    start = day_start(start)
+    end, day = selected_day(frame, start)
+    O, output_fit = fit_expected_output(frame, start, baseline_weeks)
+    data, fine_index, total_start, model_T = model_input(frame, start, steps_per_hour, warmup_hours)
+    model = wm_4(model_T, len(fine_index), O)
+    fit_kwargs = {
+        "fit_initial_state": warmup_hours == 0, "fit_diffusion": True,
+        "verbose": True, **kwargs,
+    }
+    fit = brute_params(model).fit(data, INIT, **fit_kwargs)
+    return end, day, output_fit, fit, model, fine_index, total_start
+
+
 def main():
     parser = ArgumentParser(description="Fit wm_4 to one calendar day with O(t) estimated from the same weekday in the preceding weeks.")
     parser.add_argument("--day", default="2022-04-18", help="Calendar day to score.")
@@ -180,19 +194,9 @@ def main():
 
     frame, _ = aligned_data()
     start = day_start(args.day)
-    end, day = selected_day(frame, start)
-    O, output_fit = fit_expected_output(frame, start, args.baseline_weeks)
-    data, fine_index, total_start, model_T = model_input(frame, start, args.steps_per_hour, args.warmup_hours)
-
-    model = wm_4(model_T, len(fine_index), O)
-    fit = brute_params(model).fit(
-        data, INIT,
-        grid_points=args.grid_points,
-        refinements=args.refinements,
-        fit_initial_state=False,
-        fit_diffusion=True,
-        verbose=True,
-        progress_every=args.progress_every,
+    end, day, output_fit, fit, model, fine_index, total_start = fit_day(
+        frame, start, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
+        grid_points=args.grid_points, refinements=args.refinements, progress_every=args.progress_every,
     )
 
     plot_path = save_plot(start, end, day, fine_index, fit, args.warmup_hours, args.baseline_weeks)
