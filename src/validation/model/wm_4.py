@@ -7,11 +7,10 @@ class wm_4_validation(wm_1_validation):
     """Validation rules for Water Model 4."""
 
     @classmethod
-    def constructor(cls, T, t_steps, L, H=None):
+    def constructor(cls, T, t_steps, L):
         T, t_steps = super().constructor(T, t_steps)
         if not callable(L): raise TypeError("L must be callable.")
-        if H is not None and not callable(H): raise TypeError("H must be callable.")
-        return T, t_steps, L, H
+        return T, t_steps, L
 
     @classmethod
     def q_coefficients(cls, q, tol=1e-10):
@@ -24,31 +23,26 @@ class wm_4_validation(wm_1_validation):
         return q
 
     @classmethod
-    def omega_coefficients(cls, omega): return cls.simplex(omega, 2, "omega")
-
-    @classmethod
-    def coefficients(cls, q, omega, gamma=None):
-        q, omega = cls.q_coefficients(q), cls.omega_coefficients(omega)
+    def coefficients(cls, q, gamma=None):
+        q = cls.q_coefficients(q)
         gamma = None if gamma is None else cls.simplex(gamma, 4, "gamma")
-        return q, omega, gamma
+        return q, gamma
 
     @classmethod
     def parameters(cls, parameters):
         if not isinstance(parameters, dict): raise TypeError("parameters must be a dictionary.")
-        required = ("U", "Time", "q", "omega", "kappa_R")
+        required = ("U", "Time", "q", "kappa_R")
         missing = [name for name in required if name not in parameters]
         if missing: raise ValueError("parameters is missing required entries: " + ", ".join(missing) + ".")
 
         validated = dict(parameters)
         for name in ("U", "Time"):
             if not callable(validated[name]): raise TypeError(f"parameters['{name}'] must be callable.")
-        for name in ("PE", "Temp"):
-            if name in validated and not callable(validated[name]): raise TypeError(f"parameters['{name}'] must be callable.")
+        if "PE" in validated and not callable(validated["PE"]): raise TypeError("parameters['PE'] must be callable.")
         validated.setdefault("PE", lambda _t: 0.0)
-        validated.setdefault("Temp", lambda _t: 0.0)
 
-        q, omega, gamma = cls.coefficients(validated["q"], validated["omega"], validated.get("gamma"))
-        validated["q"], validated["omega"], validated["gamma"] = q, omega, gamma
+        q, gamma = cls.coefficients(validated["q"], validated.get("gamma"))
+        validated["q"], validated["gamma"] = q, gamma
         validated["kappa_R"] = cls._finite_scalar(validated["kappa_R"], "kappa_R")
         if validated["kappa_R"] <= 0.0: raise ValueError("kappa_R must be positive.")
         return validated
@@ -85,19 +79,16 @@ class wm_4_validation(wm_1_validation):
     def feature_value(cls, value, name): return cls.signal_value(value, name)
 
     @classmethod
-    def recovered_structural_coefficients(cls, q, omega, tol=1e-8):
+    def recovered_structural_coefficients(cls, q, tol=1e-8):
         tol = cls._finite_scalar(tol, "tol")
         if tol <= 0.0: raise ValueError("tol must be positive.")
-        q, omega = cls.vector(q, 3, "recovered q"), cls.vector(omega, 2, "recovered omega")
+        q = cls.vector(q, 3, "recovered q")
         if q[1] >= -tol: raise ValueError("recovered q_F must be negative.")
         if q[2] > tol: raise ValueError("recovered q_U must be nonpositive.")
         for U in (0.0, 1.0):
             base = q[0] + q[2] * U
             if base < -tol or base > -q[1] + tol: raise ValueError("recovered q violates the nominal flexibility-equilibrium bounds.")
-        if np.any(omega < -tol) or np.any(omega > 1.0 + tol): raise ValueError("recovered omega coefficients must lie in [0, 1].")
-        if not np.isclose(np.sum(omega), 1.0, atol=tol, rtol=0.0): raise ValueError("recovered omega coefficients must sum to 1.")
-        omega = np.clip(omega, 0.0, 1.0)
-        return q, omega / np.sum(omega)
+        return q
 
     @classmethod
     def fit_data(cls, input_data, t_steps):
@@ -117,11 +108,10 @@ class wm_4_validation(wm_1_validation):
         I = fit_vector(input_data["I"], "input_data['I']")
         U = fit_vector(input_data["U"], "input_data['U']")
         Time = fit_vector(input_data["Time"], "input_data['Time']")
-        Temp = fit_vector(input_data.get("Temp", np.zeros(t_steps, dtype=float)), "input_data['Temp']")
         PE = fit_vector(input_data.get("PE", np.zeros(t_steps, dtype=float)), "input_data['PE']")
         observation_mask = np.asarray(input_data.get("observation_mask", np.ones(t_steps, dtype=bool)), dtype=bool).reshape(-1)
         if observation_mask.size != t_steps: raise ValueError(f"input_data['observation_mask'] must contain exactly {t_steps} samples.")
         if np.count_nonzero(observation_mask) < 2: raise ValueError("input_data['observation_mask'] must select at least two observations.")
         for vector, name in ((U, "U"), (PE, "PE")):
             if np.any(vector < 0.0) or np.any(vector > 1.0): raise ValueError(f"Normalized {name} data must lie in [0, 1].")
-        return {"I": I, "U": U, "PE": PE, "Time": Time, "Temp": Temp, "observation_mask": observation_mask}
+        return {"I": I, "U": U, "PE": PE, "Time": Time, "observation_mask": observation_mask}
