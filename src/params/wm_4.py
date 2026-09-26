@@ -65,13 +65,12 @@ class brute_params:
         q_features = np.column_stack((np.ones(n), data["U"]))
         o_features = np.column_stack((data["L"], data["H"]))
         q_bar, q_f = q[[0, 2]], float(q[1])
-        omega_bar, omega_f = omega[1:], float(omega[0])
 
         F_b, R_b = self._homogeneous_state(n, dt, q_f, kappa_r, init_cond[0], init_cond[1])
         forced_F, forced_R = self._forced_state_map(q_features, dt, q_f, kappa_r)
         F, R = F_b + forced_F @ q_bar, R_b + forced_R @ q_bar
         Q = q_features @ q_bar + q_f * F
-        O = o_features @ omega_bar + omega_f * F
+        O = o_features @ omega
         I = O + R
         R_dot = kappa_r * (Q - R)
 
@@ -84,12 +83,12 @@ class brute_params:
         if not full: return state
         state.update({
             "P_Q": np.column_stack((np.ones(n), F, data["U"])),
-            "P_O": np.column_stack((F, data["L"], data["H"])),
+            "P_O": np.column_stack((data["L"], data["H"])),
             "P_A": np.full((n, 4), np.nan), "A": np.full(n, np.nan),
         })
         return state
 
-    def _solve_inner(self, data, initial_conditions, q_f, omega_f, kappa_r, fit_initial_state, r0_range):
+    def _solve_inner(self, data, initial_conditions, q_f, kappa_r, fit_initial_state, r0_range):
         n, dt = self.model.t_steps, self.model.dt
         obs = np.asarray(data["observation_mask"], dtype=bool)
         n_var = 6 if fit_initial_state else 4
@@ -109,14 +108,14 @@ class brute_params:
         else:
             F_b, R_b = self._homogeneous_state(n, dt, q_f, kappa_r, initial_conditions[0], initial_conditions[1])
 
-        I_X = omega_f * F_X + R_X
+        I_X = R_X.copy()
         I_X[:, i_o] += o_features
-        I_b = omega_f * F_b + R_b
+        I_b = R_b
         X, y = I_X[obs], data["I"][obs] - I_b[obs]
 
         eq_rows, eq_rhs = [], []
         row = np.zeros(n_var); row[i_o] = 1.0
-        eq_rows.append(row); eq_rhs.append(1.0 - omega_f)
+        eq_rows.append(row); eq_rhs.append(1.0)
         if np.allclose(data["L"], 0.0, atol=1e-12, rtol=0.0):
             row = np.zeros(n_var); row[2] = 1.0; eq_rows.append(row); eq_rhs.append(0.0)
         if np.allclose(data["H"], 0.0, atol=1e-12, rtol=0.0):
@@ -143,9 +142,8 @@ class brute_params:
         solution = self.model._least_squares_qp(X, y, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
         qp_solve_time = perf_counter() - solution_start
 
-        q_bar, omega_bar = solution[i_q], solution[i_o]
+        q_bar, omega = solution[i_q], solution[i_o]
         q = np.array([q_bar[0], q_f, q_bar[1]], dtype=float)
-        omega = np.array([omega_f, omega_bar[0], omega_bar[1]], dtype=float)
         q, omega = wm_4_validation.recovered_structural_coefficients(q, omega)
         estimated_init = np.array([solution[i_f0], solution[i_r0]], dtype=float) if fit_initial_state else np.asarray(initial_conditions, dtype=float).copy()
         state = self._state_from_parameters(data, estimated_init, q, omega, kappa_r, full=False)
@@ -157,8 +155,7 @@ class brute_params:
             "L": data["L"].copy(), "H": data["H"].copy(), "observation_mask": obs.copy(),
             "q": q, "omega": omega, "kappa_R": float(kappa_r), "deterministic_state": state,
             "recovered_model_loss": loss, "structural_viable": True,
-            "brute_q_F": float(q_f), "brute_omega_F": float(omega_f), "brute_kappa_R": float(kappa_r),
-            "qp_solve_time": qp_solve_time,
+            "brute_q_F": float(q_f), "brute_kappa_R": float(kappa_r), "qp_solve_time": qp_solve_time,
         }
 
     def _fit_uncertainty_params(self, result, data):
@@ -177,44 +174,39 @@ class brute_params:
         if hi <= lo: hi = min(global_hi, lo + max(width, 1e-8))
         return lo, hi
 
-    def _search_branch(self, branch, data, initial_conditions, grid_points, refinements, q_f_range, omega_f_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every):
-        q_bounds, omega_bounds = tuple(map(float, q_f_range)), tuple(map(float, omega_f_range))
+    def _search_branch(self, branch, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every):
+        q_bounds = tuple(map(float, q_f_range))
         rho_global = {"under": (ratio_eps, 1.0 - ratio_eps), "critical": (1.0, 1.0)}[branch]
-        q_local, omega_local, rho_local = q_bounds, omega_bounds, rho_global
+        q_local, rho_local = q_bounds, rho_global
         best, history, branch_start = None, [], perf_counter()
 
         for level in range(refinements):
             q_grid = np.linspace(*q_local, grid_points)
-            omega_grid = np.linspace(*omega_local, grid_points)
             rho_grid = np.array([1.0]) if branch == "critical" else np.linspace(*rho_local, grid_points)
             level_best, tested, pruned, qp_times, level_start = None, 0, 0, [], perf_counter()
-            if verbose: print(f"[brute] branch={branch} refinement={level + 1}/{refinements} candidates={len(q_grid) * len(omega_grid) * len(rho_grid)}")
+            if verbose: print(f"[brute] branch={branch} refinement={level + 1}/{refinements} candidates={len(q_grid) * len(rho_grid)}")
 
             for q_f in q_grid:
                 if q_f >= -self.model._FIT_EPS:
-                    pruned += len(omega_grid) * len(rho_grid)
+                    pruned += len(rho_grid)
                     continue
-                for omega_f in omega_grid:
-                    if omega_f < -1e-10 or omega_f > 1.0 + 1e-10:
-                        pruned += len(rho_grid)
+                for rho in rho_grid:
+                    kappa_r = 4.0 * float(rho) * abs(float(q_f))
+                    if kappa_r <= 0.0 or not self._transition_stable(self.model.dt, q_f, kappa_r):
+                        pruned += 1
                         continue
-                    for rho in rho_grid:
-                        kappa_r = 4.0 * float(rho) * abs(float(q_f))
-                        if kappa_r <= 0.0 or not self._transition_stable(self.model.dt, q_f, kappa_r):
-                            pruned += 1
-                            continue
 
-                        tested, candidate_start = tested + 1, perf_counter()
-                        try: candidate = self._solve_inner(data, initial_conditions, q_f, omega_f, kappa_r, fit_initial_state, r0_range)
-                        except (ValueError, RuntimeError, np.linalg.LinAlgError):
-                            if verbose and tested % progress_every == 0: print(f"[brute] branch={branch} refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_candidate={perf_counter() - candidate_start:.4f}s status=failed")
-                            continue
+                    tested, candidate_start = tested + 1, perf_counter()
+                    try: candidate = self._solve_inner(data, initial_conditions, q_f, kappa_r, fit_initial_state, r0_range)
+                    except (ValueError, RuntimeError, np.linalg.LinAlgError):
+                        if verbose and tested % progress_every == 0: print(f"[brute] branch={branch} refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_candidate={perf_counter() - candidate_start:.4f}s status=failed")
+                        continue
 
-                        qp_times.append(float(candidate["qp_solve_time"]))
-                        if verbose and (tested == 1 or tested % progress_every == 0): print(f"[brute] branch={branch} refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_qp={qp_times[-1]:.4f}s mean_qp={np.mean(qp_times):.4f}s")
+                    qp_times.append(float(candidate["qp_solve_time"]))
+                    if verbose and (tested == 1 or tested % progress_every == 0): print(f"[brute] branch={branch} refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_qp={qp_times[-1]:.4f}s mean_qp={np.mean(qp_times):.4f}s")
 
-                        score = float(candidate["recovered_model_loss"])
-                        if level_best is None or score < level_best["score"]: level_best = {"score": score, "q_f": float(q_f), "omega_f": float(omega_f), "rho": float(rho), "kappa_R": float(kappa_r), "q": candidate["q"].copy(), "omega": candidate["omega"].copy(), "result": candidate}
+                    score = float(candidate["recovered_model_loss"])
+                    if level_best is None or score < level_best["score"]: level_best = {"score": score, "q_f": float(q_f), "rho": float(rho), "kappa_R": float(kappa_r), "q": candidate["q"].copy(), "omega": candidate["omega"].copy(), "result": candidate}
 
             level_elapsed = perf_counter() - level_start
             mean_qp = float(np.mean(qp_times)) if qp_times else np.nan
@@ -224,36 +216,34 @@ class brute_params:
 
             best = level_best
             q_local = self._refined_interval(q_grid, best["q_f"], *q_bounds)
-            omega_local = self._refined_interval(omega_grid, best["omega_f"], *omega_bounds)
             if branch != "critical": rho_local = self._refined_interval(rho_grid, best["rho"], *rho_global)
 
         if best is not None: best.update({"history": history, "branch": branch, "elapsed": perf_counter() - branch_start})
         return best
 
-    def _search_all(self, data, initial_conditions, grid_points, refinements, q_f_range, omega_f_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every):
+    def _search_all(self, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every):
         branches = {
-            branch: self._search_branch(branch, data, initial_conditions, grid_points, refinements, q_f_range, omega_f_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every)
+            branch: self._search_branch(branch, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, fit_initial_state, r0_range, verbose, progress_every)
             for branch in ("under", "critical")
         }
         valid = [item for item in branches.values() if item is not None]
         if not valid: raise RuntimeError("wm_4 brute-force parameter search found no structurally admissible underdamped or critically damped grid candidate.")
         return min(valid, key=lambda item: item["score"]), branches
 
-    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-10.0, -1e-4), omega_f_range=(0.0, 1.0), ratio_eps=1e-3, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-10.0, -1e-4), ratio_eps=1e-3, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
         data = self._prepare_data(input_data)
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every = int(grid_points), int(refinements), int(progress_every)
-        q_f_range, omega_f_range, r0_range = tuple(map(float, q_f_range)), tuple(map(float, omega_f_range)), tuple(map(float, r0_range))
+        q_f_range, r0_range = tuple(map(float, q_f_range)), tuple(map(float, r0_range))
 
         if grid_points < 2 or refinements < 1: raise ValueError("grid_points >= 2 and refinements >= 1 are required.")
         if progress_every < 1: raise ValueError("progress_every must be at least 1.")
         if not q_f_range[0] < q_f_range[1] < 0.0: raise ValueError("q_f_range must be increasing and strictly negative.")
-        if not 0.0 <= omega_f_range[0] < omega_f_range[1] <= 1.0: raise ValueError("omega_f_range must be increasing inside [0, 1].")
         if not 0.0 < ratio_eps < 0.5: raise ValueError("ratio_eps must lie in (0, 0.5).")
         if len(r0_range) != 2 or not r0_range[0] < r0_range[1]: raise ValueError("r0_range must contain increasing lower/upper bounds.")
 
         fit_start = perf_counter()
-        best, branches = self._search_all(data, initial_conditions, grid_points, refinements, q_f_range, omega_f_range, ratio_eps, bool(fit_initial_state), r0_range, verbose, progress_every)
+        best, branches = self._search_all(data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, bool(fit_initial_state), r0_range, verbose, progress_every)
         result = {**best["result"], "q": best["q"].copy(), "omega": best["omega"].copy()}
         result["deterministic_state"] = self._state_from_parameters(data, result["init_cond"], result["q"], result["omega"], result["kappa_R"], full=True)
         result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_O": 0.0}
