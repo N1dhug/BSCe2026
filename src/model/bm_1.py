@@ -4,6 +4,7 @@ from src.method.fokker_planc import bm_1_fokker_planc
 from src.validation.model.bm_1 import bm_1_validation
 from src.tools.input_generator.input_builder import input_builder
 from src.method.objective import tracking_error
+from src.solver.finite_volume import finite_volume_1d
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.optimize import minimize
@@ -14,6 +15,7 @@ class bm_1(bm):
         super().__init__(B, A, T, t_steps)
         self.euler_maruyama = euler_maruyama()
         self.fokker_planc = bm_1_fokker_planc()
+        self.fokker_planc_reference = finite_volume_1d()
 
     def _evaluate_tracking_objective(
         self,
@@ -165,6 +167,85 @@ class bm_1(bm):
 
         return self.t.copy(), x, p, coefficients, EXt, Ut, Bt, EDt
 
+    def fokker_planc_reference_solver(
+        self,
+        initial_mass,
+        parameters,
+        sigma_x,
+        *,
+        t_eval=None,
+        breakpoints=None,
+        max_step=np.inf,
+    ):
+        """Solve stochastic bm_1 with the pure finite-volume Fokker-Planck reference.
+
+        The state distribution is represented by cell probability masses on
+        [0, 1]. The supplied initial_mass must already be normalized; this
+        reference does not clip or renormalize probability during evolution.
+        """
+        # Solve pure finite-volume Fokker-Planck reference
+        if t_eval is None:
+            t_eval = self.t.copy()
+
+        # Reuse the F2 model contract without reinterpreting initial_mass as a
+        # scalar state. A valid scalar point is supplied only for the common
+        # parameter and process-noise checks.
+        _, parameters, sigma_x = bm_1_validation.stochastic_inputs(
+            [0.5],
+            parameters,
+            sigma_x,
+        )
+
+        def drift(t, X):
+            # Evaluate BM1 drift
+            return self._drift(t, X, parameters)
+
+        def diffusion(t, X):
+            # Evaluate BM1 diffusion amplitude
+            return self.diffusion_coefficient(X, sigma_x)
+
+        result = self.fokker_planc_reference.solve(
+            t_eval,
+            initial_mass,
+            drift,
+            diffusion,
+            bounds=(0.0, 1.0),
+            breakpoints=breakpoints,
+            max_step=max_step,
+        )
+
+        x = result["x_grid"]
+        cell_mass = result["cell_mass"]
+        EXt = np.sum(cell_mass * x[None, :], axis=1)
+        EX2t = np.sum(cell_mass * np.square(x[None, :]), axis=1)
+        VarXt = np.maximum(EX2t - np.square(EXt), 0.0)
+
+        t = result["t"]
+        Ut = np.asarray(parameters[0](t), dtype=float)
+        Bt = np.asarray(self.B(t), dtype=float)
+        EDt = np.empty(t.size, dtype=float)
+
+        for i, t_i in enumerate(t):
+            Ut_i = parameters[0](t_i)
+            Bt_i = self.B(t_i)
+            fXt_i = parameters[1](x)
+            gUt_i = parameters[2](Ut_i)
+            delta_i = self.l(fXt_i, gUt_i, parameters[4])
+            Dt_i = self.D(Bt_i, parameters[5], delta_i)
+            EDt[i] = np.sum(Dt_i * cell_mass[i])
+
+        return (
+            t.copy(),
+            x.copy(),
+            result["density"].copy(),
+            cell_mass.copy(),
+            EXt,
+            VarXt,
+            Ut,
+            Bt,
+            EDt,
+            result["diagnostics"].copy(),
+        )
     def deterministic_solver(
         self,
         init_cond,
