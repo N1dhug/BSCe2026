@@ -150,7 +150,11 @@ class brute_params:
         observed_R = observed_I - observed_O
         dt = np.diff(state["t"][index])
         if np.any(dt <= 0.0): raise ValueError("wm_4 diffusion observations must have strictly increasing model time.")
-        Q = np.asarray(state["Q"][index[:-1]], dtype=float)
+        observed_F = np.empty(index.size, dtype=float)
+        observed_F[0] = state["F"][index[0]]
+        observed_F[1:] = observed_F[0] + np.cumsum(observed_R[:-1] * dt)
+        q = np.asarray(result["q"], dtype=float)
+        Q = q[0] + q[1] * observed_F[:-1] + q[2] * data["U"][index[:-1]]
         innovation = np.diff(observed_R) - result["kappa_R"] * (Q - observed_R[:-1]) * dt
         diffusion_I = observed_I[:-1]
 
@@ -177,7 +181,7 @@ class brute_params:
         return {
             **result, "sigma_0": sigma_0, "sigma_I": sigma_I, "residual": residual,
             "diffusion_innovation": innovation, "diffusion_dt": dt, "diffusion_I": diffusion_I,
-            "diffusion_nll": float(fit.fun),
+            "diffusion_F": observed_F, "diffusion_Q": Q, "diffusion_nll": float(fit.fun),
         }
 
     @staticmethod
