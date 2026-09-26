@@ -1,6 +1,7 @@
 from time import perf_counter
 
 import numpy as np
+from scipy.optimize import minimize
 from scipy.signal import lfiltic, lfilter
 
 from src.validation.model.wm_4 import wm_4_validation
@@ -140,11 +141,48 @@ class brute_params:
 
     def _fit_uncertainty_params(self, result, data):
         state, obs = result["deterministic_state"], np.asarray(data["observation_mask"], dtype=bool)
+        index = np.flatnonzero(obs)
+        if index.size < 3: raise ValueError("At least three observations are required to estimate wm_4 diffusion.")
+        observed_I = np.asarray(data["I"][index], dtype=float)
+        observed_O = np.asarray(data["O"][index], dtype=float)
+        if np.any(observed_I < 0.0) or np.any(state["I"] < 0.0): raise ValueError("wm_4 produced negative I; input-dependent diffusion requires I >= 0.")
+
+        observed_R = observed_I - observed_O
+        dt = np.diff(state["t"][index])
+        if np.any(dt <= 0.0): raise ValueError("wm_4 diffusion observations must have strictly increasing model time.")
+        observed_F = np.empty(index.size, dtype=float)
+        observed_F[0] = state["F"][index[0]]
+        observed_F[1:] = observed_F[0] + np.cumsum(observed_R[:-1] * dt)
+        q = np.asarray(result["q"], dtype=float)
+        Q = q[0] + q[1] * observed_F[:-1] + q[2] * data["U"][index[:-1]]
+        innovation = np.diff(observed_R) - result["kappa_R"] * (Q - observed_R[:-1]) * dt
+        diffusion_I = observed_I[:-1]
+
+        def nll(theta):
+            sigma_0, sigma_I = map(float, theta)
+            g = sigma_0 + sigma_I * diffusion_I
+            if sigma_0 <= 0.0 or sigma_I < 0.0 or np.any(g <= 0.0): return np.inf
+            variance = g * g * dt
+            return 0.5 * float(np.sum(np.log(variance) + innovation * innovation / variance))
+
+        constant = max(self.model._FIT_EPS, float(np.sqrt(np.mean(innovation * innovation / dt))))
+        target = np.abs(innovation) * np.sqrt(np.pi / (2.0 * dt))
+        X = np.column_stack((np.ones(diffusion_I.size), diffusion_I))
+        linear = np.linalg.lstsq(X, target, rcond=None)[0]
+        linear = np.array([max(self.model._FIT_EPS, float(linear[0])), max(0.0, float(linear[1]))])
+        scale = max(float(np.max(diffusion_I)), self.model._FIT_EPS)
+        starts = (np.array([constant, 0.0]), linear, np.array([0.5 * constant, 0.5 * constant / scale]))
+        fits = [minimize(nll, x0, method="L-BFGS-B", bounds=((self.model._FIT_EPS, None), (0.0, None))) for x0 in starts]
+        valid = [fit for fit in fits if fit.success and np.all(np.isfinite(fit.x)) and np.isfinite(fit.fun)]
+        if not valid: raise RuntimeError("wm_4 diffusion maximum-likelihood fit failed.")
+        fit = min(valid, key=lambda item: item.fun)
+        sigma_0, sigma_I = map(float, fit.x)
         residual = data["I"][obs] - state["I"][obs]
-        local_std = self._local_std(residual)
-        X = np.column_stack((np.ones(np.count_nonzero(obs)), state["O"][obs]))
-        sigma = self.model._least_squares_qp(X, local_std, A_ub=-X, b_ub=-np.full(X.shape[0], self.model._FIT_EPS), lb=np.array([self.model._FIT_EPS, 0.0]), ub=np.array([np.inf, np.inf]), ridge=self.model._FIT_RIDGE)
-        return {**result, "sigma_0": float(sigma[0]), "sigma_O": float(sigma[1]), "residual": residual, "local_std": local_std}
+        return {
+            **result, "sigma_0": sigma_0, "sigma_I": sigma_I, "residual": residual,
+            "diffusion_innovation": innovation, "diffusion_dt": dt, "diffusion_I": diffusion_I,
+            "diffusion_F": observed_F, "diffusion_Q": Q, "diffusion_nll": float(fit.fun),
+        }
 
     @staticmethod
     def _refined_interval(values, best, global_lo, global_hi):
@@ -228,7 +266,7 @@ class brute_params:
         best, branches = self._search_all(data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, bool(fit_initial_state), r0_range, verbose, progress_every)
         result = {**best["result"], "q": best["q"].copy()}
         result["deterministic_state"] = self._state_from_parameters(data, result["init_cond"], result["q"], result["kappa_R"], full=True)
-        result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_O": 0.0}
+        result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result.update({
             "fit_method": "brute", "brute_branch": best["branch"], "brute_score": float(best["score"]),
             "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": branches,

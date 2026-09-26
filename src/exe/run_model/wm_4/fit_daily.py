@@ -156,7 +156,7 @@ def print_result(start, end, total_start, output_fit, fit, model, plot_path, ste
     print(f"O(t): samples={output_fit['samples']}, imputed={output_fit['imputed_samples']}, MSE={output_fit['mse']:.8f}, profile range=[{output_fit['raw_min']:.8f}, {output_fit['raw_max']:.8f}]")
     print(f"q={np.array2string(fit['q'], precision=8)}")
     print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
-    print(f"sigma_0={fit['sigma_0']:.8f}, sigma_O={fit['sigma_O']:.8f}")
+    print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"fixed warm-up initial [F0,R0]={np.array2string(fit['init_cond'], precision=8)}")
     print(f"target-day initial state [F,R]=[{state['F'][target_index]:.8f}, {state['R'][target_index]:.8f}]")
     print(f"deterministic loss at target-day observations={fit['deterministic_loss']:.10f}")

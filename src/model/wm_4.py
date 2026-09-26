@@ -14,7 +14,7 @@ class wm_4(wm):
     O = O(Time)
 
     dF = R dt
-    dR = kappa_R (Q - R) dt + (sigma_0 + sigma_O O) dW
+    dR = kappa_R (Q - R) dt + (sigma_0 + sigma_I I) dW
     I = O + R
     """
 
@@ -63,15 +63,14 @@ class wm_4(wm):
         return np.array([R, kappa_R * (Q - R)], dtype=float)
 
     @staticmethod
-    def diffusion(O, sigma_0, sigma_O):
-        O = wm_4_validation.feature_value(O, "O")
+    def diffusion(I, sigma_0, sigma_I):
+        I = wm_4_validation._finite_scalar(I, "I")
         sigma_0 = wm_4_validation._finite_scalar(sigma_0, "sigma_0")
-        sigma_O = wm_4_validation._finite_scalar(sigma_O, "sigma_O")
+        sigma_I = wm_4_validation._finite_scalar(sigma_I, "sigma_I")
+        if I < 0.0: raise ValueError("wm_4 requires I >= 0 when evaluating input-dependent diffusion.")
         if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
-        if sigma_O < 0.0: raise ValueError("sigma_O must be nonnegative.")
-        g = sigma_0 + sigma_O * O
-        if g < 0.0: raise ValueError("wm_4 diffusion scale g(O) must be nonnegative.")
-        return np.array([0.0, g], dtype=float)
+        if sigma_I < 0.0: raise ValueError("sigma_I must be nonnegative.")
+        return np.array([0.0, sigma_0 + sigma_I * I], dtype=float)
 
     def _sample_signals(self, parameters):
         U, PE = np.empty(self.t_steps), np.empty(self.t_steps)
@@ -119,7 +118,7 @@ class wm_4(wm):
     def fokker_planc_solver(self, init_cond, parameters, initial_density, f_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
         _, parameters = wm_4_validation.fokker_planc_inputs(init_cond, parameters)
         q = parameters["q"]
-        kappa_R, sigma_0, sigma_O = parameters["kappa_R"], parameters["sigma_0"], parameters["sigma_O"]
+        kappa_R, sigma_0, sigma_I = parameters["kappa_R"], parameters["sigma_0"], parameters["sigma_I"]
 
         def fields(time, F):
             U = float(parameters["U"](time))
@@ -135,7 +134,9 @@ class wm_4(wm):
 
         def diffusion_r(time, F, R):
             _, O = fields(time, F)
-            return sigma_0 + sigma_O * O
+            I = O + R
+            if np.any(np.asarray(I) < 0.0): raise ValueError("wm_4 produced negative I on the selected numerical domain.")
+            return sigma_0 + sigma_I * I
 
         result = self.fp.solve(self.t, initial_density, drift_f, drift_r, diffusion_r, v_bounds=f_bounds, r_bounds=r_bounds, v_steps=f_steps, r_steps=r_steps, cfl=cfl)
         result.update({
