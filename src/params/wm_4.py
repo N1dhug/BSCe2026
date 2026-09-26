@@ -142,9 +142,10 @@ class brute_params:
         state, obs = result["deterministic_state"], np.asarray(data["observation_mask"], dtype=bool)
         residual = data["I"][obs] - state["I"][obs]
         local_std = self._local_std(residual)
-        X = np.column_stack((np.ones(np.count_nonzero(obs)), state["O"][obs]))
+        if np.any(state["I"] < 0.0): raise ValueError("wm_4 produced negative I; input-dependent diffusion requires I >= 0.")
+        X = np.column_stack((np.ones(np.count_nonzero(obs)), state["I"][obs]))
         sigma = self.model._least_squares_qp(X, local_std, A_ub=-X, b_ub=-np.full(X.shape[0], self.model._FIT_EPS), lb=np.array([self.model._FIT_EPS, 0.0]), ub=np.array([np.inf, np.inf]), ridge=self.model._FIT_RIDGE)
-        return {**result, "sigma_0": float(sigma[0]), "sigma_O": float(sigma[1]), "residual": residual, "local_std": local_std}
+        return {**result, "sigma_0": float(sigma[0]), "sigma_I": float(sigma[1]), "residual": residual, "local_std": local_std}
 
     @staticmethod
     def _refined_interval(values, best, global_lo, global_hi):
@@ -228,7 +229,7 @@ class brute_params:
         best, branches = self._search_all(data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, bool(fit_initial_state), r0_range, verbose, progress_every)
         result = {**best["result"], "q": best["q"].copy()}
         result["deterministic_state"] = self._state_from_parameters(data, result["init_cond"], result["q"], result["kappa_R"], full=True)
-        result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_O": 0.0}
+        result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result.update({
             "fit_method": "brute", "brute_branch": best["branch"], "brute_score": float(best["score"]),
             "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": branches,
