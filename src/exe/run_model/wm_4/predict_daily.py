@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_3.fit_weekly import aligned_data
-from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, day_start, fit_day, fit_expected_output
+from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, day_start, fit_day, fit_expected_output, model_input
 from src.model.wm_4 import wm_4
+from src.params.wm_4 import brute_params
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -28,6 +29,26 @@ def forecast_signals(frame, start):
 
     def Time(t): return float(t) * DAY_HOURS
     return end, source.iloc[:DAY_HOURS].copy(), U, Time
+
+
+def optimized_prediction_state(frame, start, model, q, kappa_R, steps_per_hour):
+    data, fine_index, _, _ = model_input(frame, start, steps_per_hour, 0)
+    helper = brute_params(model)
+    data = helper._prepare_data(data)
+    base = helper._state_from_parameters(data, np.array([0.0, 0.0]), q, kappa_R)
+    f_unit = helper._state_from_parameters(data, np.array([1.0, 0.0]), q, kappa_R)
+    r_unit = helper._state_from_parameters(data, np.array([0.0, 1.0]), q, kappa_R)
+    obs = np.asarray(data["observation_mask"], dtype=bool)
+    X = np.column_stack(((f_unit["I"] - base["I"])[obs], (r_unit["I"] - base["I"])[obs]))
+    y = data["I"][obs] - base["I"][obs]
+    init = model._least_squares_qp(
+        X, y,
+        lb=np.array([0.0, -1.0]), ub=np.array([1.0, 1.0]),
+        ridge=model._FIT_RIDGE,
+    )
+    state = helper._state_from_parameters(data, init, q, kappa_R, full=True)
+    loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
+    return np.asarray(init, dtype=float), state, fine_index, loss
 
 
 def deviation_metrics(observed, predicted):
@@ -81,6 +102,7 @@ def main():
     parser.add_argument("--grid-points", type=int, default=4)
     parser.add_argument("--refinements", type=int, default=2)
     parser.add_argument("--progress-every", type=int, default=25)
+    parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic mode: fit prediction-day [F0,R0] against that day's observed I while keeping q and kappa_R fixed.")
     args = parser.parse_args()
 
     frame, _ = aligned_data()
@@ -95,12 +117,18 @@ def main():
     O_predict, output_fit = fit_expected_output(frame, predict_start, args.baseline_weeks)
     n_steps = DAY_HOURS * args.steps_per_hour + 1
     predict_model = wm_4((0.0, 1.0), n_steps, O_predict)
-    init = np.array([fit["deterministic_state"]["F"][-1], fit["deterministic_state"]["R"][-1]], dtype=float)
-    state = predict_model.deterministic_solver(init, {
-        "U": U, "PE": U, "Time": Time,
-        "q": fit["q"], "kappa_R": fit["kappa_R"],
-    })
-    fine_index = pd.date_range(predict_start, predict_end, periods=n_steps)
+    if args.optimize_prediction_state:
+        init, state, fine_index, init_fit_mse = optimized_prediction_state(
+            frame, predict_start, predict_model, fit["q"], fit["kappa_R"], args.steps_per_hour,
+        )
+    else:
+        init = np.array([fit["deterministic_state"]["F"][-1], fit["deterministic_state"]["R"][-1]], dtype=float)
+        state = predict_model.deterministic_solver(init, {
+            "U": U, "PE": U, "Time": Time,
+            "q": fit["q"], "kappa_R": fit["kappa_R"],
+        })
+        fine_index = pd.date_range(predict_start, predict_end, periods=n_steps)
+        init_fit_mse = np.nan
 
     hourly = np.arange(DAY_HOURS) * args.steps_per_hour
     observed = actual["I"].to_numpy(dtype=float)
@@ -121,7 +149,11 @@ def main():
     print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
     print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"fitted initial [F0,R0]={np.array2string(fit['init_cond'], precision=8)}")
-    print(f"forecast initial [F,R] reused from fitted terminal state={np.array2string(init, precision=8)}")
+    if args.optimize_prediction_state:
+        print(f"prediction initial [F0,R0] optimized from prediction-day I={np.array2string(init, precision=8)}")
+        print(f"prediction-state optimization MSE={init_fit_mse:.10f} (diagnostic; uses observed prediction-day I)")
+    else:
+        print(f"forecast initial [F,R] reused from fitted terminal state={np.array2string(init, precision=8)}")
     print(f"O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
     print(f"parametrized I=O+R deviation from actual I: MSE={prediction_metrics['mse']:.10f}, RMSE={prediction_metrics['rmse']:.10f}, MAE={prediction_metrics['mae']:.10f}, bias={prediction_metrics['bias']:.10f}")
     print(f"plot={path}")
