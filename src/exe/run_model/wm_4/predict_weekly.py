@@ -99,7 +99,7 @@ def save_plot(fit_start, predict_start, predict_end, actual, fine_index, state, 
     axes[0].plot(actual.index, actual["I"], label="Observed next-week input I")
     axes[0].scatter(actual.index, actual["I"], s=12)
     axes[0].plot(fine_index, state["I"], label="WM4 next-week prediction I=O+R")
-    axes[0].plot(fine_index, state["O"], label="Expected output O(t)", alpha=0.8)
+    axes[0].plot(fine_index, state["O"], label="Scaled expected output o_scale*O(t)", alpha=0.8)
     axes[0].plot(fine_index, state["U"], label="Normalized DK1 spot price U", alpha=0.8)
     axes[0].set_ylabel("Normalized input / price")
     axes[0].legend()
@@ -160,7 +160,7 @@ def main():
     init = np.array([fit["deterministic_state"]["F"][-1], fit["deterministic_state"]["R"][-1]], dtype=float)
     state = predict_model.deterministic_solver(init, {
         "U": U, "PE": U, "Time": Time,
-        "q": fit["q"], "kappa_R": fit["kappa_R"],
+        "q": fit["q"], "kappa_R": fit["kappa_R"], "o_scale": fit["o_scale"],
     })
     fine_index = pd.date_range(predict_start, predict_end, periods=n_steps)
 
@@ -177,6 +177,7 @@ def main():
     print(f"fitting week={fit_start} -> {fit_end}")
     print(f"prediction week={predict_start} -> {predict_end}")
     print(f"q={np.array2string(fit['q'], precision=8)}")
+    print(f"o_scale={fit['o_scale']:.8f}")
     print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
     print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"forecast initial [F,R]={np.array2string(init, precision=8)}")
