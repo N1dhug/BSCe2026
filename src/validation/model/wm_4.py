@@ -45,6 +45,8 @@ class wm_4_validation(wm_1_validation):
         validated["q"], validated["gamma"] = q, gamma
         validated["kappa_R"] = cls._finite_scalar(validated["kappa_R"], "kappa_R")
         if validated["kappa_R"] <= 0.0: raise ValueError("kappa_R must be positive.")
+        validated["o_scale"] = cls._finite_scalar(validated.get("o_scale", 1.0), "o_scale")
+        if not 0.0 <= validated["o_scale"] <= 1.0: raise ValueError("o_scale must lie in [0, 1].")
         return validated
 
     @classmethod
