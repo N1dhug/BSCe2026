@@ -180,23 +180,14 @@ def main():
     fit_days = ", ".join(day.strftime("%Y-%m-%d") for day in output_fit["baseline_days"])
     print(f"prediction day={predict_start} -> {predict_end}")
     print(f"O(t): previous {output_fit['weeks']} matching {output_fit['weekday']}s: {fit_days}")
-    print(f"O(t): remove hourly min/max, average remaining {output_fit['retained_weeks']}")
-    print(f"parameter fit: average I(t) and average U(t) across all {output_fit['weeks']} corresponding days")
-    print(f"parameter fit days={fit_days}")
-    print(f"mode={'deterministic' if args.deterministic else 'stochastic'}")
     q = fit["q"]
-    print(f"coefficients: q_0={q[0]:.8f}, q_F={q[1]:.8f}, q_U={q[2]:.8f}, kappa_R={fit['kappa_R']:.8f}")
-    print(f"search: q_F_range={fit['q_f_range']}, expansions={fit['q_f_expansions']}, damping={fit['brute_branch']}, zeta={fit['damping_ratio']:.8f}")
+    print(f"q = [{q[0]:.8f}, {q[1]:.8f}, {q[2]:.8f}], k_R = {fit['kappa_R']:.8f}")
     if not args.deterministic: print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
-    print(f"average-signal deterministic loss={fit['deterministic_loss']:.10f}")
-    if args.optimize_prediction_state:
-        print(f"prediction initial [F0,R0] optimized from prediction-day I={np.array2string(init, precision=8)}")
-        print(f"prediction-state optimization MSE={init_fit_mse:.10f} (diagnostic; uses observed prediction-day I)")
-    else:
-        print(f"forecast initial [F,R] reused from averaged historical fit terminal state={np.array2string(init, precision=8)}")
-    print(f"O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
-    print(f"parametrized I=O+R deviation from actual I: MSE={prediction_metrics['mse']:.10f}, RMSE={prediction_metrics['rmse']:.10f}, MAE={prediction_metrics['mae']:.10f}, bias={prediction_metrics['bias']:.10f}")
-    print(f"plot={path}")
+    print(f"initial_cond = [{init[0]:.8f}, {init[1]:.8f}], optimized = {str(args.optimize_prediction_state).lower()}")
+    print()
+    print(f"{'':<8}{'MSE':>14}{'RMSE':>14}{'MAE':>14}{'bias':>14}")
+    print(f"{'WM4':<8}{prediction_metrics['mse']:>14.10f}{prediction_metrics['rmse']:>14.10f}{prediction_metrics['mae']:>14.10f}{prediction_metrics['bias']:>14.10f}")
+    print(f"{'O(t)':<8}{baseline_metrics['mse']:>14.10f}{baseline_metrics['rmse']:>14.10f}{baseline_metrics['mae']:>14.10f}{baseline_metrics['bias']:>14.10f}")
 
 
 if __name__ == "__main__": main()
