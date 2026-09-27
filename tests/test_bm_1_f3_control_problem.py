@@ -45,7 +45,7 @@ class BM1ControlProblemTests(unittest.TestCase):
     def setUpClass(cls):
         target, _, _ = build_deterministic_target()
         baseline_model = build_stochastic_model(target)
-        cls.target = target
+        cls.target = staticmethod(target)
         cls.baseline = baseline_model.B
         cls.parameters = BM1Parameters(
             state_response=linear_state_response,
