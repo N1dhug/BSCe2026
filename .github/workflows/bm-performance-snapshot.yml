@@ -1,0 +1,29 @@
+name: BM performance source snapshot
+on:
+  push:
+    branches: ['performance/bm-fv-evaluation']
+    paths: ['.github/workflows/bm-performance-snapshot.yml']
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Archive reviewed source snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p performance-sources
+          git archive 542bb6bebd6b26a0f966b1428b9b5fb2d0f1db4d src tests root > performance-sources/main.tar
+          git archive 67766c38082ada631009a972d4301eb168219f0f src tests root > performance-sources/experiment.tar
+          git ls-tree -r 542bb6bebd6b26a0f966b1428b9b5fb2d0f1db4d > performance-sources/main-tree.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bm-performance-sources
+          path: performance-sources/
+          retention-days: 7
