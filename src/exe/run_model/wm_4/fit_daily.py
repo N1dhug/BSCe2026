@@ -8,7 +8,7 @@ from scipy.interpolate import CubicSpline
 
 from src.exe.run_model.wm_3.fit_weekly import aligned_data
 from src.model.wm_4 import wm_4
-from src.params.wm_4 import brute_params
+from src.params.wm_4 import qp_params
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -124,7 +124,7 @@ def save_plot(start, end, day, fine_index, fit, warmup_hours, baseline_weeks):
     axes[1].legend()
     axes[1].grid(True, alpha=0.25)
 
-    axes[2].plot(fine_index[target], state["Q"][target], label="Desired flexibility flow Q")
+    axes[2].plot(fine_index[target], state["R_dot"][target], label="Flexibility acceleration dR/dt")
     axes[2].plot(fine_index[target], state["O"][target], label="Expected output O(t)")
     axes[2].set_ylabel("Flow / output")
     axes[2].legend()
@@ -153,18 +153,18 @@ def print_result(start, end, total_start, output_fit, fit, model, plot_path, ste
     print(f"warm-up={total_start} -> {start} ({warmup_hours} h); target={start} -> {end}")
     print(f"model time measured in days: T={model.T}, dt={model.dt:.12f}, response grid={3600.0 / steps_per_hour:.4f} physical seconds")
     print(f"observations={np.count_nonzero(fit['observation_mask'])} target-day hourly I samples; total state grid points={model.t_steps}")
-    print("parameter solver: src.params.wm_4.brute_params | Q=q0+qF*F+qU*U, I=O+R")
+    print("parameter solver: src.params.wm_4.qp_params | dR/dt=r0+rF*F+rU*U+rR*R, I=O+R")
     print(f"O(t): periodic cubic spline from previous {output_fit['weeks']} matching {output_fit['weekday']}s: {baseline_days}")
     print(f"O(t): per hour remove min/max across weeks, average remaining {output_fit['retained_weeks']} values")
     print(f"O(t): samples={output_fit['samples']}, retained={output_fit['retained_samples']}, imputed={output_fit['imputed_samples']}, trimmed MSE={output_fit['mse']:.8f}, profile range=[{output_fit['raw_min']:.8f}, {output_fit['raw_max']:.8f}]")
-    q = fit["q"]
-    print(f"coefficients: q_0={q[0]:.8f}, q_F={q[1]:.8f}, q_U={q[2]:.8f}, kappa_R={fit['kappa_R']:.8f}")
-    print(f"damping: branch={fit['brute_branch']}, zeta={fit['damping_ratio']:.8f}")
+    r = fit["r"]
+    print(f"coefficients: r_0={r[0]:.8f}, r_F={r[1]:.8f}, r_U={r[2]:.8f}, r_R={r[3]:.8f}")
+    print(f"damping: branch={fit['damping_branch']}, zeta={fit['damping_ratio']:.8f}")
     print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"fixed warm-up initial [F0,R0]={np.array2string(fit['init_cond'], precision=8)}")
     print(f"target-day initial state [F,R]=[{state['F'][target_index]:.8f}, {state['R'][target_index]:.8f}]")
     print(f"deterministic loss at target-day observations={fit['deterministic_loss']:.10f}")
-    print(f"brute fit time={fit['brute_fit_time']:.3f}s")
+    print(f"QP fit time={fit['qp_fit_time']:.3f}s, solve={fit['qp_solve_time']:.4f}s")
     print(f"plot={plot_path}")
 
 
@@ -174,11 +174,8 @@ def fit_day(frame, start, baseline_weeks=BASELINE_WEEKS, warmup_hours=24, steps_
     O, output_fit = fit_expected_output(frame, start, baseline_weeks)
     data, fine_index, total_start, model_T = model_input(frame, start, steps_per_hour, warmup_hours)
     model = wm_4(model_T, len(fine_index), O)
-    fit_kwargs = {
-        "fit_initial_state": warmup_hours == 0, "fit_diffusion": True,
-        "verbose": False, **kwargs,
-    }
-    fit = brute_params(model).fit(data, INIT, **fit_kwargs)
+    fit_kwargs = {"fit_diffusion": True, "verbose": False, **kwargs}
+    fit = qp_params(model).fit(data, INIT, **fit_kwargs)
     return end, day, output_fit, fit, model, fine_index, total_start
 
 
@@ -188,16 +185,12 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS, help="Number of previous matching weekdays used to construct trimmed O(t); default 5.")
     parser.add_argument("--warmup-hours", type=int, default=24, help="Hours simulated before the target day with a fixed initial state; default 24.")
     parser.add_argument("--steps-per-hour", type=int, default=60, help="Internal wm_4 response substeps per physical hour; default 60 gives a one-minute grid.")
-    parser.add_argument("--grid-points", type=int, default=8)
-    parser.add_argument("--refinements", type=int, default=6)
-    parser.add_argument("--progress-every", type=int, default=25)
     args = parser.parse_args()
 
     frame, _ = aligned_data("MED")
     start = day_start(args.day)
     end, day, output_fit, fit, model, fine_index, total_start = fit_day(
         frame, start, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
-        grid_points=args.grid_points, refinements=args.refinements, progress_every=args.progress_every,
     )
 
     plot_path = save_plot(start, end, day, fine_index, fit, args.warmup_hours, args.baseline_weeks)
