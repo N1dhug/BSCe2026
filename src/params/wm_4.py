@@ -423,7 +423,7 @@ class brute_params:
         best["q_f_expansions"] = len(attempts) - 1
         return best, {"attempts": attempts}
 
-    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), q_expand_factor=10.0, max_q_expansions=4, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), q_expand_factor=10.0, max_q_expansions=4, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=False, progress_every=25):
         data = self._prepare_data(input_data)
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every, max_q_expansions = int(grid_points), int(refinements), int(progress_every), int(max_q_expansions)
@@ -455,7 +455,7 @@ class brute_params:
         })
         return result
 
-    def fit_many(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), q_expand_factor=10.0, max_q_expansions=4, fit_initial_state=False, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
+    def fit_many(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), q_expand_factor=10.0, max_q_expansions=4, fit_initial_state=False, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=False, progress_every=25):
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         datasets = [self._prepare_data(data) for data in input_data]
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
