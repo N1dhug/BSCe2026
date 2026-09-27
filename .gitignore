@@ -1,0 +1,13 @@
+
+# Generated local files; do not commit caches or environments.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.DS_Store
+Thumbs.db
+Desktop.ini
+files/output/bm_1/runs/

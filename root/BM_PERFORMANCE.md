@@ -49,7 +49,7 @@ this change does not replace the shared active-set implementation.
 
 ## What the fast evaluator changes
 
-`src/method/bm_1_fast_fv.py` adds `FastFVStochasticPriceEvaluator`, with the same
+`src/method/bm_1_control.py` adds `FastFVStochasticPriceEvaluator`, with the same
 constructor inputs as the reference evaluator plus `batch_size=128` and
 `vectorized=True`.
 
@@ -140,8 +140,8 @@ Existing commands retain the original evaluator. Opt in explicitly:
 
 ```powershell
 python -B -m unittest discover -s tests -v
-python -B -m src.exe.run_model.bm_1.complex_target_multi_price_experiment --fast-fv
-python -B -m src.exe.run_model.bm_1.multi_price_optimization_experiment --fast-fv
+python -B -m src.exe.run_model.bm_1.optimize complex --fast-fv
+python -B -m src.exe.run_model.bm_1.optimize multi --fast-fv
 ```
 
 The existing graph names/locations and Monte Carlo checks are unchanged.
@@ -149,12 +149,12 @@ The existing graph names/locations and Monte Carlo checks are unchanged.
 Run the short repeated local benchmark:
 
 ```powershell
-python -B -m src.exe.run_model.bm_1.benchmark_fast_fv
+python -B -m src.exe.run_model.bm_1.verify benchmark
 ```
 
 Add `--optimize` to repeat the slower complete original-versus-fast
 24-variable Powell experiment. Default benchmark evidence is saved to
-`files/output/bm_1_fast_fv_benchmark.json`.
+`files/output/bm_1/runs/fast_fv_benchmark.json`.
 
 The complex-target script/tests were already written on the experiment branch
 but were not yet in the reviewed main. They are carried into this branch;

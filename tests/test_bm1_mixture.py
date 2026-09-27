@@ -1,0 +1,157 @@
+"""BM1 regression tests grouped by responsibility."""
+
+import numpy as np
+import unittest
+from src.diagnostics.bm_1 import (beta_mixture_variance_floor, cell_mass_l1, density_l2)
+from src.method.bm_1_control import beta_initial_cell_mass
+from src.method.bm_1_mixture import evolve_projected_density as _evolve_projected_density
+from src.validation.bm_1.cases import (INITIAL_ALPHA, INITIAL_BETA, build_reference_case)
+from src.validation.bm_1.mixture import (_positive_mass_preserving_perturbation, _simplex_tangent_condition,
+    run_conditioning_study, run_dynamic_mixture_study, run_projection_study)
+
+class BetaProjectionTheoryTests(unittest.TestCase):
+
+    def test_variance_floor_matches_beta_basis_formula(self):
+        mean = 0.5
+        expected_initial_variance = INITIAL_ALPHA * INITIAL_BETA / ((INITIAL_ALPHA + INITIAL_BETA) ** 2 * (INITIAL_ALPHA + INITIAL_BETA + 1.0))
+        floor_20 = beta_mixture_variance_floor(mean, 20)
+        floor_38 = beta_mixture_variance_floor(mean, 38)
+        self.assertAlmostEqual(floor_20, 0.25 / 23.0)
+        self.assertGreater(floor_20, expected_initial_variance)
+        self.assertAlmostEqual(floor_38, expected_initial_variance)
+
+    def test_density_l2_matches_definition(self):
+        left = np.array([1.0, 2.0, 3.0])
+        right = np.array([1.0, 1.0, 1.0])
+        dx = 0.25
+        expected = np.sqrt(dx * (0.0 + 1.0 + 4.0))
+        self.assertAlmostEqual(density_l2(left, right, dx), expected)
+
+class BetaProjectionRepresentationTests(unittest.TestCase):
+
+    def test_degree_38_represents_beta_20_20_far_better_than_degree_20(self):
+        model, _ = build_reference_case()
+        edges, x, dx = model.fokker_planc_reference.grid(201)
+        target_mass = beta_initial_cell_mass(edges)
+        target_density = target_mass / dx
+        errors = {}
+        for degree in (20, 38):
+            basis = model.fokker_planc._normalise_basis_discretely(model.fokker_planc.beta_basis(x, degree), dx)
+            coefficients, projected_density = model.fokker_planc.project_density(target_density, basis, dx)
+            projected_mass = projected_density * dx
+            errors[degree] = cell_mass_l1(projected_mass, target_mass)
+            self.assertLess(abs(np.sum(coefficients) - 1.0), 1e-09)
+            self.assertGreaterEqual(np.min(coefficients), -1e-09)
+            self.assertLess(abs(np.sum(projected_mass) - 1.0), 1e-09)
+        self.assertGreater(errors[20], 0.05)
+        self.assertLess(errors[38], 0.001)
+        self.assertLess(errors[38], errors[20])
+
+    def test_small_projection_study_preserves_probability(self):
+        result = run_projection_study(degrees=(10, 20), x_steps=101, max_step=1.0 / 96.0, t_eval=np.array([0.0, 1.0]))
+        for degree in result['degrees']:
+            item = result['projection'][degree]
+            self.assertLess(item['maximum_coefficient_sum_error'], 1e-09)
+            self.assertGreaterEqual(item['minimum_coefficient'], -1e-09)
+            self.assertLess(item['maximum_mass_error'], 1e-09)
+            self.assertTrue(np.all(np.isfinite(item['l2'])))
+            self.assertTrue(np.all(np.isfinite(item['l1'])))
+            self.assertTrue(np.all(np.isfinite(item['wasserstein_1'])))
+            self.assertEqual(item['density'].shape, result['fp_density'].shape)
+
+class DynamicMixturePropagationTests(unittest.TestCase):
+
+    def test_zero_operator_preserves_an_existing_mixture(self):
+        model, _ = build_reference_case()
+        edges, x, dx = model.fokker_planc_reference.grid(41)
+        del edges
+        degree = 10
+        basis = model.fokker_planc._normalise_basis_discretely(model.fokker_planc.beta_basis(x, degree), dx)
+        coefficients = np.zeros(degree + 1)
+        coefficients[4] = 0.35
+        coefficients[5] = 0.65
+        result = _evolve_projected_density(method=model.fokker_planc, t_eval=np.array([0.0, 0.5, 1.0]),
+            breakpoints=np.array([0.37]), x=x, dx=dx, basis=basis, initial_coefficients=coefficients,
+            drift=lambda time, state: np.zeros_like(state), diffusion=lambda time, state: np.zeros_like(state),
+            max_step=0.1, cfl=0.4)
+        expected_density = coefficients @ basis
+        np.testing.assert_allclose(result['density'], np.tile(expected_density, (3, 1)), atol=2e-10, rtol=0.0)
+        np.testing.assert_allclose(result['coefficients'], np.tile(coefficients, (3, 1)), atol=2e-10, rtol=0.0)
+        diagnostics = result['diagnostics']
+        self.assertFalse(diagnostics['used_clipping'])
+        self.assertFalse(diagnostics['used_renormalization'])
+        self.assertLess(diagnostics['maximum_abs_raw_prediction_mass_error'], 1e-12)
+
+class DynamicMixtureReferenceTests(unittest.TestCase):
+
+    def test_small_dynamic_study_preserves_probability_and_separates_errors(self):
+        result = run_dynamic_mixture_study(degrees=(20,), x_steps=51, max_step=1.0 / 96.0,
+            t_eval=np.array([0.0, 0.5, 1.0]), cfl=0.35)
+        item = result['dynamic'][20]
+        diagnostics = item['diagnostics']
+        np.testing.assert_allclose(np.sum(item['cell_mass'], axis=1), 1.0, atol=1e-09, rtol=0.0)
+        self.assertGreater(diagnostics['n_steps'], 0)
+        self.assertTrue(np.isfinite(diagnostics['hessian_condition_number']))
+        self.assertGreaterEqual(diagnostics['hessian_condition_number'], 1.0)
+        self.assertGreaterEqual(diagnostics['minimum_raw_prediction'], -1e-10)
+        self.assertLess(diagnostics['maximum_abs_raw_prediction_mass_error'], 1e-09)
+        self.assertLess(diagnostics['maximum_abs_projected_mass_error'], 1e-09)
+        self.assertLess(diagnostics['maximum_abs_coefficient_sum_error'], 1e-09)
+        self.assertGreaterEqual(diagnostics['minimum_coefficient'], -1e-09)
+        self.assertFalse(diagnostics['used_clipping'])
+        self.assertFalse(diagnostics['used_renormalization'])
+        self.assertAlmostEqual(item['dynamic_gap']['l2'][0], 0.0, places=12)
+        self.assertAlmostEqual(item['total_error']['l2'][0], result['projection'][20]['l2'][0], places=12)
+        self.assertTrue(np.all(np.isfinite(item['total_error']['l2'])))
+        self.assertTrue(np.all(np.isfinite(item['dynamic_gap']['l2'])))
+        self.assertTrue(np.all(np.isfinite(item['mean'])))
+        self.assertTrue(np.all(np.isfinite(item['variance'])))
+        self.assertTrue(np.all(np.isfinite(item['expected_demand'])))
+
+class ConditioningTheoryTests(unittest.TestCase):
+
+    def test_simplex_tangent_condition_matches_one_dimensional_free_direction(self):
+        hessian = np.diag([1.0, 4.0])
+        coefficients = np.array([0.5, 0.5])
+        condition, free_size, tangent_dimension = _simplex_tangent_condition(hessian, coefficients, active_tol=1e-12)
+        self.assertAlmostEqual(condition, 1.0)
+        self.assertEqual(free_size, 2)
+        self.assertEqual(tangent_dimension, 1)
+
+    def test_positive_perturbation_preserves_mass_and_nonnegativity(self):
+        density = np.array([0.5, 1.0, 1.5, 1.0])
+        dx = 0.25
+        density /= np.sum(density) * dx
+        direction = np.array([-2.0, -0.5, 0.7, 1.8])
+        perturbed = _positive_mass_preserving_perturbation(density, dx, 1e-06, direction)
+        self.assertGreaterEqual(np.min(perturbed), 0.0)
+        self.assertAlmostEqual(np.sum(perturbed) * dx, 1.0, places=14)
+        self.assertGreater(np.linalg.norm(perturbed - density), 0.0)
+
+class ConditioningIntegrationTests(unittest.TestCase):
+
+    def test_small_study_returns_finite_sensitivity_diagnostics(self):
+        result = run_conditioning_study(degrees=(10,), epsilons=(1e-08,), n_directions=1, seed=44, x_steps=41,
+            max_step=1.0 / 48.0, t_eval=np.array([0.0, 1.0]), cfl=0.35)
+        item = result['conditioning'][10]
+        self.assertTrue(np.isfinite(item['matrix_condition_number']))
+        self.assertTrue(np.isfinite(item['hessian_condition_number']))
+        self.assertGreaterEqual(item['matrix_condition_number'], 1.0)
+        self.assertGreaterEqual(item['hessian_condition_number'], 1.0)
+        self.assertTrue(np.all(np.isfinite(item['static_local_condition_numbers'])))
+        self.assertTrue(np.all(np.isfinite(item['dynamic_local_condition_numbers'])))
+        alt = item['alternative_start']
+        self.assertEqual(alt['failures'], 0)
+        self.assertTrue(np.isfinite(alt['maximum_coefficient_l1']))
+        self.assertTrue(np.isfinite(alt['maximum_density_l2']))
+        pert = item['perturbations'][1e-08]
+        self.assertEqual(pert['failures'], 0)
+        self.assertGreater(pert['maximum_input_l2'], 0.0)
+        self.assertTrue(np.isfinite(pert['maximum_coefficient_l1']))
+        self.assertTrue(np.isfinite(pert['maximum_projected_density_l2']))
+        self.assertTrue(np.isfinite(pert['maximum_density_amplification']))
+        self.assertTrue(np.isfinite(pert['maximum_coefficient_amplification']))
+
+
+if __name__ == '__main__':
+    unittest.main()
