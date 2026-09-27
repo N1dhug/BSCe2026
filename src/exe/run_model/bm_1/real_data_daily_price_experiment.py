@@ -385,6 +385,14 @@ def _objective_dict(evaluation):
     }
 
 
+def _mc_summary(item):
+    """Serialize the public MonteCarloTrackingResult fields."""
+    return {
+        "total": float(item.objective.total),
+        "standard_error": float(item.standard_error),
+    }
+
+
 def _price_correlation(observed, optimized):
     observed = np.asarray(observed, dtype=float)
     optimized = np.asarray(optimized, dtype=float)
@@ -599,10 +607,7 @@ def _result_record(result):
     }
     if result.mc is not None:
         record["mc"] = {
-            name: {
-                "total": float(item.objective.total),
-                "standard_error": float(item.standard_error),
-            }
+            name: _mc_summary(item)
             for name, item in result.mc.items()
         }
         record["paired_mc"] = result.paired_mc
