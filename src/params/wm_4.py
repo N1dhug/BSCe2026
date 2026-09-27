@@ -192,9 +192,6 @@ class qp_params:
             "qp_loss": float(qp_loss), "qp_solve_time": float(qp_solve_time),
             "qp_fit_time": elapsed, "stabilize_euler": bool(stabilize),
             "fit_initial_state": False,
-            "brute_branch": branch, "brute_score": float(result["deterministic_loss"]),
-            "brute_grid_points": 0, "brute_refinements": 0, "brute_search_history": [],
-            "brute_fit_time": elapsed, "q_f_range": (float(q[1]), float(q[1])), "q_f_expansions": 0,
         })
         return result
 
@@ -252,5 +249,3 @@ class qp_params:
         if verbose: print(f"[qp] trajectories={len(datasets)} transitions={sum(np.count_nonzero(data['transition_mask']) for data in datasets)} loss={qp_loss:.8g} free_run_mse={deterministic_loss:.8g} solve={qp_solve_time:.4f}s")
         return result
 
-
-brute_params = qp_params
