@@ -833,7 +833,10 @@ def run_f3_b_reference(
 def _json_safe(value):
     if isinstance(value, np.ndarray):
         return value.tolist()
-    if isinstance(value, (np.floating, np.integer)):
+    if isinstance(value, (np.floating, float)):
+        value = float(value)
+        return value if np.isfinite(value) else None
+    if isinstance(value, np.integer):
         return value.item()
     if isinstance(value, dict):
         return {str(key): _json_safe(item) for key, item in value.items()}
@@ -969,6 +972,11 @@ def main():
         default=0,
         help="run coupled EM time refinement with this many paths (0 skips)",
     )
+    parser.add_argument(
+        "--save",
+        action="store_true",
+        help="save JSON and convergence plot under files/output",
+    )
     args = parser.parse_args()
 
     result = run_f3_b_reference(
@@ -1045,10 +1053,13 @@ def main():
             )
         print()
 
-    json_path = save_json(result)
-    graph_path = save_plot(result)
-    print(f"Saved JSON to {json_path}")
-    print(f"Saved graph to {graph_path}")
+    if args.save:
+        json_path = save_json(result)
+        graph_path = save_plot(result)
+        print(f"Saved JSON to {json_path}")
+        print(f"Saved graph to {graph_path}")
+    else:
+        print("Results were not written to files; add --save for JSON/plot output.")
 
 
 if __name__ == "__main__":
