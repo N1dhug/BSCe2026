@@ -2,7 +2,8 @@
 
 The completed F2-I reference uses two half-day price intervals.  This experiment
 keeps the same stochastic model and deterministic target but increases the
-number of equally sized price intervals to 2, 4 and 6.
+number of equally sized price intervals to 2, 4, 6 and 24.  The 24-interval
+case corresponds to one price decision per hour.
 
 All cases use the union of every candidate interval boundary as additional
 internal breakpoints.  This keeps the numerical time partition comparable
@@ -49,7 +50,7 @@ from src.method.bm_1_stochastic_optimization import (
 from src.tools.input_generator.input_builder import input_builder
 
 
-INTERVAL_COUNTS = (2, 4, 6)
+INTERVAL_COUNTS = (2, 4, 6, 24)
 FV_X_STEPS = 201
 OBJECTIVE_MAX_STEP = 1.0 / 96.0
 SOLVER_MAX_STEP = 1.0 / 96.0
@@ -184,6 +185,13 @@ def _starts_for_case(n_intervals, previous_case=None):
     phase = np.linspace(0.0, np.pi, n_intervals)
     up_down = np.clip(warm + 0.04 * np.cos(phase), 0.0, 1.0)
     down_up = np.clip(warm - 0.04 * np.cos(phase), 0.0, 1.0)
+
+    # At 24 hourly decisions, full multistart Powell becomes very expensive.
+    # The previous lower-dimensional optimum is already a strong warm start,
+    # and the lifted deterministic reference supplies an independent second
+    # start.  Keep the richer set for the smaller 2/4/6 experiments.
+    if n_intervals >= 24:
+        return _unique_rows(warm, deterministic)
 
     return _unique_rows(warm, deterministic, neutral, up_down, down_up)
 
