@@ -20,7 +20,12 @@ class qp_params:
 
     def _prepare_data(self, input_data):
         data = wm_4_validation.fit_data(input_data, self.model.t_steps)
-        return {**data, "O": np.array([wm_4_validation.feature_value(self.model.O(x), "O(Time)") for x in data["Time"]], dtype=float)}
+        if "O" in input_data:
+            O = np.asarray(input_data["O"], dtype=float).reshape(-1)
+            if O.size != self.model.t_steps or not np.all(np.isfinite(O)): raise ValueError(f"input_data['O'] must contain exactly {self.model.t_steps} finite samples.")
+        else:
+            O = np.array([wm_4_validation.feature_value(self.model.O(x), "O(Time)") for x in data["Time"]], dtype=float)
+        return {**data, "O": O}
 
     @staticmethod
     def _equivalent_q(r):
