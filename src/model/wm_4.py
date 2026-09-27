@@ -11,11 +11,11 @@ class wm_4(wm):
     """Water Model 4.
 
     P_Q = [1, F, U], Q = q @ P_Q
-    O_s = o_scale * O(Time)
+    O = O(Time)
 
     dF = R dt
     dR = kappa_R (Q - R) dt + (sigma_0 + sigma_I I) dW
-    I = O_s + R
+    I = O + R
     """
 
     _FIT_EPS = 1e-8
@@ -82,11 +82,9 @@ class wm_4(wm):
             O[k] = wm_4_validation.feature_value(self.O(Time[k]), "O(Time(t))")
         return U, PE, Time, O
 
-    def _solve_deterministic(self, init_cond, U, PE, Time, O, q, kappa_R, o_scale=1.0, gamma=None):
+    def _solve_deterministic(self, init_cond, U, PE, Time, O, q, kappa_R, gamma=None):
         F, R, R_dot = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
         Q, I = np.empty(self.t_steps), np.empty(self.t_steps)
-        O_raw = np.asarray(O, dtype=float).copy()
-        O = float(o_scale) * O_raw
         A = np.full(self.t_steps, np.nan)
         P_Q = np.empty((self.t_steps, 3))
         P_A = np.full((self.t_steps, 4), np.nan)
@@ -108,7 +106,6 @@ class wm_4(wm):
             "t": self.t.copy(), "F": F, "R": R, "R_dot": R_dot,
             "U": np.asarray(U, dtype=float).copy(), "PE": np.asarray(PE, dtype=float).copy(),
             "Time": np.asarray(Time, dtype=float).copy(), "O": np.asarray(O, dtype=float).copy(),
-            "O_raw": O_raw, "o_scale": float(o_scale),
             "P_Q": P_Q, "P_A": P_A, "Q": Q, "I": I, "A": A,
             "q": np.asarray(q, dtype=float).copy(),
         }
@@ -116,17 +113,16 @@ class wm_4(wm):
     def deterministic_solver(self, init_cond, parameters):
         init_cond, parameters = wm_4_validation.deterministic_inputs(init_cond, parameters)
         U, PE, Time, O = self._sample_signals(parameters)
-        return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["q"], parameters["kappa_R"], o_scale=parameters["o_scale"], gamma=parameters["gamma"])
+        return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["q"], parameters["kappa_R"], gamma=parameters["gamma"])
 
     def fokker_planc_solver(self, init_cond, parameters, initial_density, f_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
         _, parameters = wm_4_validation.fokker_planc_inputs(init_cond, parameters)
         q = parameters["q"]
         kappa_R, sigma_0, sigma_I = parameters["kappa_R"], parameters["sigma_0"], parameters["sigma_I"]
-        o_scale = parameters["o_scale"]
 
         def fields(time, F):
             U = float(parameters["U"](time))
-            O = o_scale * float(self.O(parameters["Time"](time)))
+            O = float(self.O(parameters["Time"](time)))
             Q = q[0] + q[1] * F + q[2] * U
             return Q, O
 
