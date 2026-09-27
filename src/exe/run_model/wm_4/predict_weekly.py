@@ -136,7 +136,7 @@ def main():
     parser.add_argument("--progress-every", type=int, default=25)
     args = parser.parse_args()
 
-    frame, _ = aligned_data()
+    frame, _ = aligned_data("MED")
     fit_start = week_start(args.week)
     fit_end = fit_start + pd.Timedelta(hours=WEEK_HOURS)
     fit_data, fit_index, fit_origin, _ = fit_input(frame, fit_start, args.steps_per_hour, args.warmup_hours)
