@@ -157,9 +157,10 @@ def print_result(start, end, total_start, output_fit, fit, model, plot_path, ste
     print(f"O(t): periodic cubic spline from previous {output_fit['weeks']} matching {output_fit['weekday']}s: {baseline_days}")
     print(f"O(t): per hour remove min/max across weeks, average remaining {output_fit['retained_weeks']} values")
     print(f"O(t): samples={output_fit['samples']}, retained={output_fit['retained_samples']}, imputed={output_fit['imputed_samples']}, trimmed MSE={output_fit['mse']:.8f}, profile range=[{output_fit['raw_min']:.8f}, {output_fit['raw_max']:.8f}]")
-    print(f"q={np.array2string(fit['q'], precision=8)}")
-    print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
-    print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
+    q = fit["q"]
+    print(f"coefficients: q_0={q[0]:.8f}, q_F={q[1]:.8f}, q_U={q[2]:.8f}, kappa_R={fit['kappa_R']:.8f}")
+    print(f"damping: branch={fit['brute_branch']}, zeta={fit['damping_ratio']:.8f}")
+    print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"fixed warm-up initial [F0,R0]={np.array2string(fit['init_cond'], precision=8)}")
     print(f"target-day initial state [F,R]=[{state['F'][target_index]:.8f}, {state['R'][target_index]:.8f}]")
     print(f"deterministic loss at target-day observations={fit['deterministic_loss']:.10f}")
@@ -175,7 +176,7 @@ def fit_day(frame, start, baseline_weeks=BASELINE_WEEKS, warmup_hours=24, steps_
     model = wm_4(model_T, len(fine_index), O)
     fit_kwargs = {
         "fit_initial_state": warmup_hours == 0, "fit_diffusion": True,
-        "verbose": True, **kwargs,
+        "verbose": False, **kwargs,
     }
     fit = brute_params(model).fit(data, INIT, **fit_kwargs)
     return end, day, output_fit, fit, model, fine_index, total_start
