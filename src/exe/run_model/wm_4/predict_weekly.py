@@ -148,7 +148,7 @@ def main():
         refinements=args.refinements,
         fit_initial_state=False,
         fit_diffusion=True,
-        verbose=True,
+        verbose=False,
         progress_every=args.progress_every,
     )
 
@@ -176,9 +176,10 @@ def main():
 
     print(f"fitting week={fit_start} -> {fit_end}")
     print(f"prediction week={predict_start} -> {predict_end}")
-    print(f"q={np.array2string(fit['q'], precision=8)}")
-    print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
-    print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
+    q = fit["q"]
+    print(f"coefficients: q_0={q[0]:.8f}, q_F={q[1]:.8f}, q_U={q[2]:.8f}, kappa_R={fit['kappa_R']:.8f}")
+    print(f"damping: branch={fit['brute_branch']}, zeta={fit['damping_ratio']:.8f}")
+    print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"forecast initial [F,R]={np.array2string(init, precision=8)}")
     print(f"O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
     print(f"parametrized I=O+R deviation from actual I: MSE={prediction_metrics['mse']:.10f}, RMSE={prediction_metrics['rmse']:.10f}, MAE={prediction_metrics['mae']:.10f}, bias={prediction_metrics['bias']:.10f}")
