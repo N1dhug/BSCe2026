@@ -15,6 +15,9 @@ from src.exe.run_model.bm_1.real_data_daily_price_experiment import (
 from src.method.bm_1_stochastic_objective import (
     monte_carlo_tracking_objective,
 )
+from src.exe.run_model.bm_1.stochastic_optimization_reference import (
+    MonteCarloCandidateResult,
+)
 
 
 def _constant_day(series, day, value):
@@ -57,8 +60,8 @@ class RealDataDailyExperimentTests(unittest.TestCase):
         np.testing.assert_allclose(signals.observed_price, 0.6)
 
 
-    def test_mc_summary_uses_top_level_standard_error(self):
-        result = monte_carlo_tracking_objective(
+    def test_mc_summary_handles_candidate_wrapper(self):
+        tracking = monte_carlo_tracking_objective(
             np.array([0.5, 0.5], dtype=float),
             np.array(
                 [
@@ -70,9 +73,14 @@ class RealDataDailyExperimentTests(unittest.TestCase):
             ),
             np.array([0.15, 0.35], dtype=float),
         )
-        summary = _mc_summary(result)
-        self.assertAlmostEqual(summary["total"], result.objective.total)
-        self.assertAlmostEqual(summary["standard_error"], result.standard_error)
+        candidate = MonteCarloCandidateResult(
+            prices=np.array([0.4, 0.6], dtype=float),
+            objective=tracking,
+            diagnostics={},
+        )
+        summary = _mc_summary(candidate)
+        self.assertAlmostEqual(summary["total"], tracking.objective.total)
+        self.assertAlmostEqual(summary["standard_error"], tracking.standard_error)
 
     def test_incomplete_day_is_rejected(self):
         index = pd.date_range("2022-04-01", periods=24, freq="h")
