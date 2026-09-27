@@ -95,7 +95,7 @@ performance remains documented in `root/BM_PERFORMANCE.md` and Git history.
 ## Evidence and local files
 
 The committed F3-B JSON/figure live together under `files/output/bm_1/f3_b/`,
-while the retained historical real-data evidence stays under `files/output/bm_1/real_data/`.
+while the retained historical real-data evidence (including the 20k-path paired-MC validation) stays under `files/output/bm_1/real_data/`.
 All other BM1 verification plots are reproducible local run output under the ignored
 `files/output/bm_1/runs/` tree and are not versioned. No source, solver, model or test
 reads the old timing JSON to run a calculation. The unused old EM/FP demo entrypoints
