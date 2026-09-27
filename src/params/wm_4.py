@@ -13,8 +13,8 @@ class brute_params:
     def __init__(self, model): self.model = model
 
     @staticmethod
-    def _transition_stable(dt, q_f, kappa_r, tol=1e-10):
-        A = np.array([[1.0, dt], [kappa_r * dt * q_f, 1.0 - kappa_r * dt]], dtype=float)
+    def _transition_stable(dt, d_f, kappa_r, tol=1e-10):
+        A = np.array([[1.0, dt], [dt * d_f, 1.0 - kappa_r * dt]], dtype=float)
         return float(np.max(np.abs(np.linalg.eigvals(A)))) < 1.0 + tol
 
     @staticmethod
@@ -307,24 +307,13 @@ class brute_params:
         }
 
     @staticmethod
-    def _refined_interval(values, best, global_lo, global_hi):
-        values = np.unique(np.asarray(values, dtype=float))
-        width = 0.1 * max(1.0, global_hi - global_lo) if values.size <= 1 else float(np.max(np.diff(values)))
-        lo, hi = max(global_lo, best - width), min(global_hi, best + width)
-        if hi <= lo: hi = min(global_hi, lo + max(width, 1e-8))
-        return lo, hi
-
-    @staticmethod
-    def _log_grid(bounds, n, negative=False):
+    def _log_grid(bounds, n):
         lo, hi = map(float, bounds)
-        if negative:
-            if not lo < hi < 0.0: raise ValueError("negative log-grid bounds must be increasing and strictly negative.")
-            return -np.geomspace(abs(lo), abs(hi), int(n))
-        if not 0.0 < lo < hi: raise ValueError("positive log-grid bounds must be positive and increasing.")
+        if not 0.0 < lo < hi: raise ValueError("log-grid bounds must be positive and increasing.")
         return np.geomspace(lo, hi, int(n))
 
     @staticmethod
-    def _refined_log_interval(values, best, global_lo, global_hi, negative=False):
+    def _refined_log_interval(values, best, global_lo, global_hi):
         values = np.asarray(values, dtype=float)
         mags = np.sort(np.abs(values))
         best_mag = abs(float(best))
@@ -332,85 +321,134 @@ class brute_params:
         global_min, global_max = sorted((abs(float(global_lo)), abs(float(global_hi))))
         lo_mag = global_min if idx == 0 else np.sqrt(mags[idx - 1] * best_mag)
         hi_mag = global_max if idx == mags.size - 1 else np.sqrt(best_mag * mags[idx + 1])
-        lo_mag, hi_mag = max(global_min, lo_mag), min(global_max, hi_mag)
-        return (-hi_mag, -lo_mag) if negative else (lo_mag, hi_mag)
+        return max(global_min, lo_mag), min(global_max, hi_mag)
 
     @staticmethod
-    def _damping_branch(q_f, kappa_r, tol=1e-6):
-        zeta = float(kappa_r) / (2.0 * np.sqrt(-float(kappa_r) * float(q_f)))
+    def _damping_branch(d_f, kappa_r, tol=1e-6):
+        zeta = float(kappa_r) / (2.0 * np.sqrt(-float(d_f)))
         if abs(zeta - 1.0) <= tol: return "critical", zeta
         return ("under" if zeta < 1.0 else "over"), zeta
 
-    def _search_all(self, data, initial_conditions, grid_points, refinements, q_f_range, kappa_r_range, fit_initial_state, r0_range, verbose, progress_every):
-        q_bounds, k_bounds = tuple(map(float, q_f_range)), tuple(map(float, kappa_r_range))
-        q_local, k_local = q_bounds, k_bounds
+    def _proxy_state(self, data, initial_conditions):
+        R = np.asarray(data["I"], dtype=float) - np.asarray(data["O"], dtype=float)
+        F = np.empty(self.model.t_steps, dtype=float)
+        F[0] = float(initial_conditions[0])
+        if F.size > 1: F[1:] = F[0] + np.cumsum(R[:-1] * self.model.dt)
+        return F, R
+
+    def _fit_reduced(self, data, initial_conditions, kappa_r, q_f_range):
+        datasets = list(data) if isinstance(data, (list, tuple)) else [data]
+        X_parts, y_parts = [], []
+        for item in datasets:
+            F, R = self._proxy_state(item, initial_conditions)
+            index = np.flatnonzero(np.asarray(item["observation_mask"], dtype=bool))
+            if index.size < 3: raise ValueError("At least three observations are required for reduced wm_4 fitting.")
+            dt = np.diff(self.model.t[index])
+            if np.any(dt <= 0.0): raise ValueError("wm_4 reduced-fit observations must have strictly increasing model time.")
+            R_obs, F_obs = R[index], F[index]
+            X_parts.append(np.column_stack((np.ones(index.size - 1), F_obs[:-1], item["U"][index[:-1]])))
+            y_parts.append(np.diff(R_obs) / dt + float(kappa_r) * R_obs[:-1])
+
+        X, y = np.vstack(X_parts), np.concatenate(y_parts)
+        A_ub, b_ub = [], []
+        for U in (0.0, 1.0):
+            A_ub.append(np.array([-1.0, 0.0, -U], dtype=float)); b_ub.append(0.0)
+            A_ub.append(np.array([1.0, 1.0, U], dtype=float)); b_ub.append(0.0)
+
+        q_lo, q_hi = map(float, q_f_range)
+        lb = np.array([-np.inf, float(kappa_r) * q_lo, -np.inf], dtype=float)
+        ub = np.array([np.inf, float(kappa_r) * q_hi, 0.0], dtype=float)
+        solution_start = perf_counter()
+        d = self.model._least_squares_qp(
+            X, y, A_ub=np.vstack(A_ub), b_ub=np.asarray(b_ub, dtype=float),
+            lb=lb, ub=ub, ridge=self.model._FIT_RIDGE,
+        )
+        qp_solve_time = perf_counter() - solution_start
+        q = wm_4_validation.recovered_structural_coefficients(d / float(kappa_r))
+
+        states, losses = [], []
+        for item in datasets:
+            obs = np.asarray(item["observation_mask"], dtype=bool)
+            state = self._state_from_parameters(item, initial_conditions, q, kappa_r, full=False)
+            states.append(state)
+            losses.append(float(np.mean((item["I"][obs] - state["I"][obs]) ** 2)))
+        loss = float(np.mean(np.concatenate([
+            (item["I"][np.asarray(item["observation_mask"], dtype=bool)] - state["I"][np.asarray(item["observation_mask"], dtype=bool)]) ** 2
+            for item, state in zip(datasets, states)
+        ])))
+        return {
+            "init_cond": np.asarray(initial_conditions, dtype=float).copy(),
+            "q": q, "d": np.asarray(d, dtype=float), "kappa_R": float(kappa_r),
+            "deterministic_state": states[0], "deterministic_states": states,
+            "recovered_model_loss": loss, "per_trajectory_loss": np.asarray(losses, dtype=float),
+            "structural_viable": True, "qp_solve_time": qp_solve_time,
+        }
+
+    def _search_kappa(self, data, initial_conditions, grid_points, refinements, q_f_range, kappa_r_range, verbose, progress_every):
+        k_global = tuple(map(float, kappa_r_range))
+        k_local = k_global
         best, history, search_start = None, [], perf_counter()
 
         for level in range(refinements):
-            q_grid = self._log_grid(q_local, grid_points, negative=True)
             k_grid = self._log_grid(k_local, grid_points)
             level_best, tested, pruned, qp_times, level_start = None, 0, 0, [], perf_counter()
-            if verbose: print(f"[brute] refinement={level + 1}/{refinements} candidates={len(q_grid) * len(k_grid)}")
+            if verbose: print(f"[brute] reduced kappa refinement={level + 1}/{refinements} candidates={len(k_grid)}")
 
-            for q_f in q_grid:
-                if q_f >= -self.model._FIT_EPS:
-                    pruned += len(k_grid)
-                    continue
-                for kappa_r in k_grid:
-                    if not self._transition_stable(self.model.dt, q_f, kappa_r):
+            for kappa_r in k_grid:
+                tested, candidate_start = tested + 1, perf_counter()
+                try:
+                    candidate = self._fit_reduced(data, initial_conditions, kappa_r, q_f_range)
+                    d_f = float(candidate["d"][1])
+                    if not self._transition_stable(self.model.dt, d_f, kappa_r):
                         pruned += 1
                         continue
+                except (ValueError, RuntimeError, np.linalg.LinAlgError):
+                    if verbose and tested % progress_every == 0: print(f"[brute] reduced kappa refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_candidate={perf_counter() - candidate_start:.4f}s status=failed")
+                    continue
 
-                    tested, candidate_start = tested + 1, perf_counter()
-                    try: candidate = self._solve_inner(data, initial_conditions, q_f, kappa_r, fit_initial_state, r0_range)
-                    except (ValueError, RuntimeError, np.linalg.LinAlgError):
-                        if verbose and tested % progress_every == 0: print(f"[brute] refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_candidate={perf_counter() - candidate_start:.4f}s status=failed")
-                        continue
-
-                    qp_times.append(float(candidate["qp_solve_time"]))
-                    if verbose and (tested == 1 or tested % progress_every == 0): print(f"[brute] refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_qp={qp_times[-1]:.4f}s mean_qp={np.mean(qp_times):.4f}s")
-
-                    score = float(candidate["recovered_model_loss"])
-                    if level_best is None or score < level_best["score"]:
-                        level_best = {"score": score, "q_f": float(q_f), "kappa_R": float(kappa_r), "q": candidate["q"].copy(), "result": candidate}
+                qp_times.append(float(candidate["qp_solve_time"]))
+                score = float(candidate["recovered_model_loss"])
+                if verbose and (tested == 1 or tested % progress_every == 0): print(f"[brute] reduced kappa refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_qp={qp_times[-1]:.4f}s mean_qp={np.mean(qp_times):.4f}s")
+                if level_best is None or score < level_best["score"]:
+                    level_best = {"score": score, "kappa_R": float(kappa_r), "d": candidate["d"].copy(), "q": candidate["q"].copy(), "result": candidate}
 
             level_elapsed = perf_counter() - level_start
             mean_qp = float(np.mean(qp_times)) if qp_times else np.nan
             history.append({"level": level, "tested": tested, "pruned": pruned, "best_loss": np.inf if level_best is None else level_best["score"], "elapsed": level_elapsed, "mean_qp_solve_time": mean_qp, "qp_solves": len(qp_times)})
-            if verbose: print(f"[brute] refinement={level + 1} complete tested={tested} pruned={pruned} qp_solves={len(qp_times)} elapsed={level_elapsed:.2f}s mean_qp={mean_qp:.4f}s")
+            if verbose: print(f"[brute] reduced kappa refinement={level + 1} complete tested={tested} pruned={pruned} qp_solves={len(qp_times)} elapsed={level_elapsed:.2f}s mean_qp={mean_qp:.4f}s")
             if level_best is None: break
 
             best = level_best
-            q_local = self._refined_log_interval(q_grid, best["q_f"], *q_bounds, negative=True)
-            k_local = self._refined_log_interval(k_grid, best["kappa_R"], *k_bounds)
+            k_local = self._refined_log_interval(k_grid, best["kappa_R"], *k_global)
 
-        if best is None: raise RuntimeError("wm_4 brute-force parameter search found no structurally admissible q_F/kappa_R grid candidate.")
-        branch, zeta = self._damping_branch(best["q_f"], best["kappa_R"])
+        if best is None: raise RuntimeError("wm_4 reduced-coefficient fit found no admissible kappa_R candidate.")
+        branch, zeta = self._damping_branch(best["d"][1], best["kappa_R"])
         best.update({"history": history, "branch": branch, "damping_ratio": zeta, "elapsed": perf_counter() - search_start})
-        return best, {"direct": best}
+        return best
 
-    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), fit_initial_state=False, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
         data = self._prepare_data(input_data)
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every = int(grid_points), int(refinements), int(progress_every)
-        q_f_range, kappa_r_range, r0_range = tuple(map(float, q_f_range)), tuple(map(float, kappa_r_range)), tuple(map(float, r0_range))
+        q_f_range, kappa_r_range = tuple(map(float, q_f_range)), tuple(map(float, kappa_r_range))
 
         if grid_points < 2 or refinements < 1: raise ValueError("grid_points >= 2 and refinements >= 1 are required.")
         if progress_every < 1: raise ValueError("progress_every must be at least 1.")
         if not q_f_range[0] < q_f_range[1] < 0.0: raise ValueError("q_f_range must be increasing and strictly negative.")
         if not 0.0 < kappa_r_range[0] < kappa_r_range[1]: raise ValueError("kappa_r_range must be positive and increasing.")
-        if len(r0_range) != 2 or not r0_range[0] < r0_range[1]: raise ValueError("r0_range must contain increasing lower/upper bounds.")
+        if fit_initial_state: raise ValueError("Reduced wm_4 fitting uses the supplied initial state; fit_initial_state is not supported.")
 
         fit_start = perf_counter()
-        best, branches = self._search_all(data, initial_conditions, grid_points, refinements, q_f_range, kappa_r_range, bool(fit_initial_state), r0_range, verbose, progress_every)
-        result = {**best["result"], "q": best["q"].copy()}
+        best = self._search_kappa(data, initial_conditions, grid_points, refinements, q_f_range, kappa_r_range, verbose, progress_every)
+        result = {**best["result"], "d": best["d"].copy(), "q": best["q"].copy()}
         result["deterministic_state"] = self._state_from_parameters(data, result["init_cond"], result["q"], result["kappa_R"], full=True)
+        result["deterministic_states"] = [result["deterministic_state"]]
         result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result.update({
-            "fit_method": "brute", "brute_branch": best["branch"], "damping_ratio": float(best["damping_ratio"]), "brute_score": float(best["score"]),
-            "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": branches,
-            "brute_fit_time": perf_counter() - fit_start, "fit_initial_state": bool(fit_initial_state),
-            "deterministic_loss": float(result["recovered_model_loss"]),
+            "fit_method": "brute_reduced_kappa", "brute_branch": best["branch"], "damping_ratio": float(best["damping_ratio"]),
+            "brute_score": float(best["score"]), "brute_grid_points": grid_points, "brute_refinements": refinements,
+            "brute_search_history": {"kappa_R": best["history"]}, "brute_fit_time": perf_counter() - fit_start,
+            "fit_initial_state": False, "deterministic_loss": float(result["recovered_model_loss"]),
         })
         return result
 
@@ -419,25 +457,24 @@ class brute_params:
         datasets = [self._prepare_data(data) for data in input_data]
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every = int(grid_points), int(refinements), int(progress_every)
-        q_f_range, kappa_r_range, r0_range = tuple(map(float, q_f_range)), tuple(map(float, kappa_r_range)), tuple(map(float, r0_range))
+        q_f_range, kappa_r_range = tuple(map(float, q_f_range)), tuple(map(float, kappa_r_range))
 
         if grid_points < 2 or refinements < 1: raise ValueError("grid_points >= 2 and refinements >= 1 are required.")
         if progress_every < 1: raise ValueError("progress_every must be at least 1.")
         if not q_f_range[0] < q_f_range[1] < 0.0: raise ValueError("q_f_range must be increasing and strictly negative.")
         if not 0.0 < kappa_r_range[0] < kappa_r_range[1]: raise ValueError("kappa_r_range must be positive and increasing.")
-        if len(r0_range) != 2 or not r0_range[0] < r0_range[1]: raise ValueError("r0_range must contain increasing lower/upper bounds.")
+        if fit_initial_state: raise ValueError("Reduced wm_4 fitting uses the supplied initial state; fit_initial_state is not supported.")
 
         fit_start = perf_counter()
-        best, branches = self._search_all(datasets, initial_conditions, grid_points, refinements, q_f_range, kappa_r_range, bool(fit_initial_state), r0_range, verbose, progress_every)
-        result = {**best["result"], "q": best["q"].copy()}
-        init_conds = np.asarray(result["init_cond"], dtype=float)
-        states = [self._state_from_parameters(data, init_conds[j], result["q"], result["kappa_R"], full=True) for j, data in enumerate(datasets)]
+        best = self._search_kappa(datasets, initial_conditions, grid_points, refinements, q_f_range, kappa_r_range, verbose, progress_every)
+        result = {**best["result"], "d": best["d"].copy(), "q": best["q"].copy()}
+        states = [self._state_from_parameters(data, initial_conditions, result["q"], result["kappa_R"], full=True) for data in datasets]
         result["deterministic_states"], result["deterministic_state"] = states, states[0]
         result = self._fit_uncertainty_params_many(result, datasets) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result.update({
-            "fit_method": "brute_many", "brute_branch": best["branch"], "damping_ratio": float(best["damping_ratio"]), "brute_score": float(best["score"]),
-            "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": branches,
-            "brute_fit_time": perf_counter() - fit_start, "fit_initial_state": bool(fit_initial_state),
-            "deterministic_loss": float(result["recovered_model_loss"]), "fit_trajectories": len(datasets),
+            "fit_method": "brute_reduced_kappa_many", "brute_branch": best["branch"], "damping_ratio": float(best["damping_ratio"]),
+            "brute_score": float(best["score"]), "brute_grid_points": grid_points, "brute_refinements": refinements,
+            "brute_search_history": {"kappa_R": best["history"]}, "brute_fit_time": perf_counter() - fit_start,
+            "fit_initial_state": False, "deterministic_loss": float(result["recovered_model_loss"]), "fit_trajectories": len(datasets),
         })
         return result
