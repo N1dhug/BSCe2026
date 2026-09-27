@@ -386,10 +386,11 @@ def _objective_dict(evaluation):
 
 
 def _mc_summary(item):
-    """Serialize the public MonteCarloTrackingResult fields."""
+    """Serialize one MonteCarloCandidateResult without guessing nesting."""
+    tracking = item.objective
     return {
-        "total": float(item.objective.total),
-        "standard_error": float(item.standard_error),
+        "total": float(tracking.objective.total),
+        "standard_error": float(tracking.standard_error),
     }
 
 
@@ -786,10 +787,10 @@ def main():
 
         if result.mc is not None:
             print(
-                f"MC J observed={result.mc['observed_spot'].objective.total:.10e} "
-                f"(SE={result.mc['observed_spot'].standard_error:.3e}), "
-                f"optimized={result.mc['optimized'].objective.total:.10e} "
-                f"(SE={result.mc['optimized'].standard_error:.3e})"
+                f"MC J observed={result.mc['observed_spot'].objective.objective.total:.10e} "
+                f"(SE={result.mc['observed_spot'].objective.standard_error:.3e}), "
+                f"optimized={result.mc['optimized'].objective.objective.total:.10e} "
+                f"(SE={result.mc['optimized'].objective.standard_error:.3e})"
             )
             paired = result.paired_mc["observed_spot"]
             print(
