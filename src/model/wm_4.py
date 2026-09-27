@@ -2,7 +2,7 @@ import numpy as np
 
 from src.method.fokker_planc import wm_fokker_planc
 from src.model.base.wm import wm
-from src.params.wm_4 import brute_params
+from src.params.wm_4 import qp_params
 from src.solver.active_set import active_set
 from src.validation.model.wm_4 import wm_4_validation
 
@@ -10,11 +10,11 @@ from src.validation.model.wm_4 import wm_4_validation
 class wm_4(wm):
     """Water Model 4.
 
-    P_Q = [1, F, U], Q = q @ P_Q
+    P_R = [1, F, U, R], dR/dt = r @ P_R
     O = O(Time)
 
     dF = R dt
-    dR = kappa_R (Q - R) dt + (sigma_0 + sigma_I I) dW
+    dR = (r_0 + r_F F + r_U U + r_R R) dt + (sigma_0 + sigma_I I) dW
     I = O + R
     """
 
@@ -30,10 +30,10 @@ class wm_4(wm):
         self.O = O
         self.fp = wm_fokker_planc()
 
-    def Q(self, P_Q, q):
-        P_Q = wm_4_validation.vector(P_Q, 3, "P_Q")
-        q = wm_4_validation.q_coefficients(q)
-        return q @ P_Q
+    def dR(self, P_R, r):
+        P_R = wm_4_validation.vector(P_R, 4, "P_R")
+        r = wm_4_validation.r_coefficients(r)
+        return r @ P_R
 
     @staticmethod
     def I(O, R):
@@ -45,22 +45,25 @@ class wm_4(wm):
         P_A, gamma = wm_4_validation.linear_map(P_A, gamma, 4, "P_A", "gamma")
         return gamma @ P_A
 
+    @staticmethod
+    def equivalent_q(r):
+        r = wm_4_validation.r_coefficients(r)
+        kappa_R = -r[3]
+        return r[:3] / kappa_R, kappa_R
+
     @classmethod
-    def expected_equilibrium(cls, U, q):
+    def expected_equilibrium(cls, U, r):
         U = wm_4_validation.signal_value(U, "U")
-        q = wm_4_validation.q_coefficients(q)
-        return -(q[0] + q[2] * U) / q[1]
+        r = wm_4_validation.r_coefficients(r)
+        return -(r[0] + r[2] * U) / r[1]
 
     @staticmethod
-    def drift(F, R, U, q, kappa_R):
+    def drift(F, R, U, r):
         F = wm_4_validation._finite_scalar(F, "F")
         R = wm_4_validation._finite_scalar(R, "R")
         U = wm_4_validation.signal_value(U, "U")
-        q = wm_4_validation.q_coefficients(q)
-        kappa_R = wm_4_validation._finite_scalar(kappa_R, "kappa_R")
-        if kappa_R <= 0.0: raise ValueError("kappa_R must be positive.")
-        Q = q @ np.array([1.0, F, U], dtype=float)
-        return np.array([R, kappa_R * (Q - R)], dtype=float)
+        r = wm_4_validation.r_coefficients(r)
+        return np.array([R, r @ np.array([1.0, F, U, R], dtype=float)], dtype=float)
 
     @staticmethod
     def diffusion(I, sigma_0, sigma_I):
@@ -82,22 +85,24 @@ class wm_4(wm):
             O[k] = wm_4_validation.feature_value(self.O(Time[k]), "O(Time(t))")
         return U, PE, Time, O
 
-    def _solve_deterministic(self, init_cond, U, PE, Time, O, q, kappa_R, gamma=None):
+    def _solve_deterministic(self, init_cond, U, PE, Time, O, r, gamma=None):
         F, R, R_dot = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
-        Q, I = np.empty(self.t_steps), np.empty(self.t_steps)
+        I, Q = np.empty(self.t_steps), np.empty(self.t_steps)
         A = np.full(self.t_steps, np.nan)
-        P_Q = np.empty((self.t_steps, 3))
+        P_R = np.empty((self.t_steps, 4))
         P_A = np.full((self.t_steps, 4), np.nan)
+        r = wm_4_validation.r_coefficients(r)
+        q, kappa_R = self.equivalent_q(r)
         F[0], R[0] = init_cond
 
         for k in range(self.t_steps):
-            P_Q[k] = np.array([1.0, F[k], U[k]], dtype=float)
-            Q[k] = q @ P_Q[k]
+            P_R[k] = np.array([1.0, F[k], U[k], R[k]], dtype=float)
+            R_dot[k] = r @ P_R[k]
+            Q[k] = q @ np.array([1.0, F[k], U[k]], dtype=float)
             I[k] = O[k] + R[k]
             if gamma is not None:
                 P_A[k] = np.array([1.0 - U[k], I[k], F[k], 1.0 - PE[k]], dtype=float)
                 A[k] = gamma @ P_A[k]
-            R_dot[k] = kappa_R * (Q[k] - R[k])
             if k < self.t_steps - 1:
                 F[k + 1] = F[k] + self.dt * R[k]
                 R[k + 1] = R[k] + self.dt * R_dot[k]
@@ -106,34 +111,33 @@ class wm_4(wm):
             "t": self.t.copy(), "F": F, "R": R, "R_dot": R_dot,
             "U": np.asarray(U, dtype=float).copy(), "PE": np.asarray(PE, dtype=float).copy(),
             "Time": np.asarray(Time, dtype=float).copy(), "O": np.asarray(O, dtype=float).copy(),
-            "P_Q": P_Q, "P_A": P_A, "Q": Q, "I": I, "A": A,
-            "q": np.asarray(q, dtype=float).copy(),
+            "P_R": P_R, "P_A": P_A, "I": I, "A": A, "r": r.copy(),
+            "Q": Q, "q": q.copy(), "kappa_R": float(kappa_R),
         }
 
     def deterministic_solver(self, init_cond, parameters):
         init_cond, parameters = wm_4_validation.deterministic_inputs(init_cond, parameters)
         U, PE, Time, O = self._sample_signals(parameters)
-        return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["q"], parameters["kappa_R"], gamma=parameters["gamma"])
+        return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["r"], gamma=parameters["gamma"])
 
     def fokker_planc_solver(self, init_cond, parameters, initial_density, f_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
         _, parameters = wm_4_validation.fokker_planc_inputs(init_cond, parameters)
-        q = parameters["q"]
-        kappa_R, sigma_0, sigma_I = parameters["kappa_R"], parameters["sigma_0"], parameters["sigma_I"]
+        r = parameters["r"]
+        sigma_0, sigma_I = parameters["sigma_0"], parameters["sigma_I"]
 
-        def fields(time, F):
+        def fields(time):
             U = float(parameters["U"](time))
             O = float(self.O(parameters["Time"](time)))
-            Q = q[0] + q[1] * F + q[2] * U
-            return Q, O
+            return U, O
 
         def drift_f(time, F, R): return R
 
         def drift_r(time, F, R):
-            Q, _ = fields(time, F)
-            return kappa_R * (Q - R)
+            U, _ = fields(time)
+            return r[0] + r[1] * F + r[2] * U + r[3] * R
 
         def diffusion_r(time, F, R):
-            _, O = fields(time, F)
+            _, O = fields(time)
             I = O + R
             if np.any(np.asarray(I) < 0.0): raise ValueError("wm_4 produced negative I on the selected numerical domain.")
             return sigma_0 + sigma_I * I
@@ -154,6 +158,8 @@ class wm_4(wm):
         f = -2.0 * (X.T @ y) / scale
         return active_set.solve(H, f, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, x0=x0, tol=1e-9, max_iter=max_iter)
 
-    def fit_params_brute(self, input_data, initial_conditions, **kwargs): return brute_params(self).fit(input_data, initial_conditions, **kwargs)
+    def fit_params_qp(self, input_data, initial_conditions, **kwargs): return qp_params(self).fit(input_data, initial_conditions, **kwargs)
 
-    def fit_params(self, input_data, initial_conditions, **kwargs): return self.fit_params_brute(input_data, initial_conditions, **kwargs)
+    def fit_params_brute(self, input_data, initial_conditions, **kwargs): return self.fit_params_qp(input_data, initial_conditions, **kwargs)
+
+    def fit_params(self, input_data, initial_conditions, **kwargs): return self.fit_params_qp(input_data, initial_conditions, **kwargs)
