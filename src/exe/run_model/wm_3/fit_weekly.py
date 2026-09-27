@@ -28,16 +28,23 @@ def normalize(values, lo=None, hi=None):
     return (values - lo) / (hi - lo)
 
 
-def consumption_series(data):
+def tagged_measurement_columns(data, tag=None):
     cols = data.measurement_columns
-    if not cols: raise ValueError("No consumption measurement columns found.")
+    if tag is not None:
+        tag = str(tag).strip().upper()
+        cols = [column for column in cols if data.measurement_tag(column).upper() == tag]
+    if not cols: raise ValueError(f"No consumption measurement columns found{'' if tag is None else f' for tag {tag}'}." )
+    return cols
+
+
+def consumption_series(data, tag=None):
+    cols = tagged_measurement_columns(data, tag)
     values = data.observed_data.loc[:, cols].apply(pd.to_numeric, errors="coerce")
     return values.mean(axis=1).dropna().sort_index().rename("I")
 
 
-def raw_measurements(data):
-    cols = data.measurement_columns
-    if not cols: raise ValueError("No consumption measurement columns found.")
+def raw_measurements(data, tag=None):
+    cols = tagged_measurement_columns(data, tag)
     values = data.observed_data.loc[:, cols].apply(pd.to_numeric, errors="coerce").sort_index()
     keep = [column for column in cols if values[column].notna().any()]
     if not keep: raise ValueError("No non-aggregated consumption measurements are available.")
@@ -56,10 +63,10 @@ def temperature_series(data, start, end):
     return values.groupby(level=0).mean().sort_index().rename("Temp")
 
 
-def aligned_data():
+def aligned_data(tag=None):
     consumption_data = input_data(DATA / "input.xlsx")
-    consumption = consumption_series(consumption_data)
-    measurements = raw_measurements(consumption_data)
+    consumption = consumption_series(consumption_data, tag)
+    measurements = raw_measurements(consumption_data, tag)
     prices = price_series(spot_price_data(DATA / "prices.xlsx", price_area="DK1"))
 
     signal_start = max(consumption.index.min(), prices.index.min(), START)
