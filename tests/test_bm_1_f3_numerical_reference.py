@@ -8,6 +8,7 @@ from src.exe.run_model.bm_1.f3_a_control_problem_reference import build_f3_a_pro
 from src.exe.run_model.bm_1.f3_b_numerical_reference import (
     _aggregate_brownian_to_grid,
     _decision_gap_refinement,
+    _nested_em_time_grids,
     _prefix_statistics,
     fixed_candidates,
     run_coupled_mc_time_refinement,
@@ -92,6 +93,28 @@ class F3BNumericalReferenceTests(unittest.TestCase):
         )
         self.assertEqual(rows[-1]["abs_total_difference_to_finest"], 0.0)
         self.assertNotEqual(rows[0]["objective_max_step"], rows[1]["objective_max_step"])
+
+    def test_nested_em_grids_are_exact_subsets_and_respect_steps(self):
+        t_eval = np.array([0.0, 0.13, 0.5, 0.77, 1.0])
+        steps = (0.20, 0.10, 0.05)
+        grids = _nested_em_time_grids(
+            t_eval,
+            np.array([0.33, 0.66]),
+            steps,
+        )
+        fine = grids[steps[-1]]
+        for step in steps:
+            grid = grids[step]
+            self.assertLessEqual(np.max(np.diff(grid)), step + 2.0e-14)
+            indices = np.searchsorted(fine, grid)
+            np.testing.assert_array_equal(fine[indices], grid)
+            output_indices = np.searchsorted(grid, t_eval)
+            np.testing.assert_allclose(
+                grid[output_indices],
+                t_eval,
+                atol=2.0e-14,
+                rtol=0.0,
+            )
 
     def test_brownian_aggregation_sums_nested_fine_increments(self):
         fine_t = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
