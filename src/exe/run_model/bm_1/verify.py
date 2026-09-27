@@ -815,12 +815,12 @@ def run_objective():
     print('------------------------')
     mc_fv_gap = abs(mc.objective.total - fv.total)
     mc_fv_se = mc_fv_gap / mc.standard_error if mc.standard_error > 0.0 else np.inf
-    print(f'|J_MC-J_FV| = {mc_fv_gap:.6e} ({mc_fv_se:.3f} MC standard errors, relative {_relative_difference(mc.objective.total,
-        fv.total):.3%})')
+    relative_mc_fv = _relative_difference(mc.objective.total, fv.total)
+    print(f'|J_MC-J_FV| = {mc_fv_gap:.6e} ({mc_fv_se:.3f} MC standard errors, relative {relative_mc_fv:.3%})')
     for degree in result['degrees']:
         item = result['mixture'][degree]
-        print(f'M={degree:2d}: |J_mix-J_FV|={abs(item.total - fv.total):.6e}, relative={_relative_difference(item.total,
-            fv.total):.3%}')
+        relative_mix_fv = _relative_difference(item.total, fv.total)
+        print(f'M={degree:2d}: |J_mix-J_FV|={abs(item.total - fv.total):.6e}, relative={relative_mix_fv:.3%}')
     print()
     print('Algebra diagnostics')
     print('-------------------')
