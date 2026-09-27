@@ -49,7 +49,10 @@ class statistical_output:
             hour_terms.extend((sin_h, cos_h))
 
         weekday = index.dayofweek.to_numpy()
-        for value in range(1, 7): columns.append((weekday == value).astype(float))
+        weekday_terms = [(weekday == value).astype(float) for value in range(1, 7)]
+        columns.extend(weekday_terms)
+        for indicator in weekday_terms:
+            for term in hour_terms[:4]: columns.append(indicator * term)
 
         for harmonic in range(1, self.season_harmonics + 1):
             columns.extend((np.sin(harmonic * year_phase), np.cos(harmonic * year_phase)))
@@ -130,7 +133,7 @@ def output_callable(index, values):
     index = pd.DatetimeIndex(index)
     values = np.asarray(values, dtype=float).reshape(-1)
     if len(index) != values.size or len(index) < 2: raise ValueError("output_callable requires matching time/value vectors with at least two points.")
-    elapsed = (index - index[0]).total_seconds().to_numpy(dtype=float) / 3600.0
+    elapsed = np.asarray((index - index[0]).total_seconds(), dtype=float) / 3600.0
 
     def O(time_hours):
         return float(np.clip(np.interp(float(time_hours), elapsed, values), 0.0, 1.0))
