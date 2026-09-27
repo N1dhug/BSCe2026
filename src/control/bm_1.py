@@ -351,7 +351,30 @@ class MultistartOptimizationResult:
     elapsed_seconds: float = 0.0
 
 
-# Initial law: the same Beta distribution for FV masses and sampled paths.
+# Initial laws used by finite-volume and Monte Carlo control experiments.
+
+
+def point_initial_cell_mass(edges, state):
+    """Represent a deterministic initial state as one FV cell probability mass."""
+    edges = np.asarray(edges, dtype=float)
+    if edges.ndim != 1 or edges.size < 2:
+        raise ValueError('edges must be a one-dimensional array with at least two values.')
+    if not np.all(np.isfinite(edges)) or np.any(np.diff(edges) <= 0.0):
+        raise ValueError('edges must be finite and strictly increasing.')
+    if edges[0] != 0.0 or edges[-1] != 1.0:
+        raise ValueError('Point initial-law edges must span [0, 1].')
+    state_array = np.asarray(state, dtype=float)
+    if state_array.size != 1:
+        raise ValueError('state must be a scalar.')
+    state = float(state_array.reshape(-1)[0])
+    if not np.isfinite(state) or not 0.0 <= state <= 1.0:
+        raise ValueError('state must be finite and lie in [0, 1].')
+
+    cell = int(np.searchsorted(edges, state, side='right') - 1)
+    cell = min(max(cell, 0), edges.size - 2)
+    mass = np.zeros(edges.size - 1, dtype=float)
+    mass[cell] = 1.0
+    return mass
 
 
 def beta_initial_cell_mass(edges, alpha=20.0, beta=20.0):

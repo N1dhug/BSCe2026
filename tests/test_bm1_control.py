@@ -3,12 +3,58 @@
 import numpy as np
 import unittest
 from src.control.objective import deterministic_midpoint_objective
-from src.control.bm_1 import (BM1ControlNumerics, BM1ControlProblem, BM1Parameters,
-    DynamicMixturePriceEvaluator, best_surface_starts, beta_initial_cell_mass, coarse_price_surface,
-    evaluate_mc_candidates_common_random_numbers, multistart_powell, paired_mc_improvement)
-from src.validation.bm_1.cases import (INITIAL_ALPHA, INITIAL_BETA, SIGMA_X, linear_price_response,
-    linear_state_response)
-from src.validation.bm_1.control import C, DETERMINISTIC_REFERENCE_PRICES, F3_C_SMOOTHING_WEIGHTS, F3_C_TERMINAL_WEIGHTS, HOURLY_EDGES, INITIAL_PRICES, MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS, INTERVAL_EDGES, K, KNOWN_DETERMINISTIC_PRICES, REFERENCE_PRICES_24, T, XI, _build_fv_evaluator, _coarsen_reference_prices, _f3_c_weight_pairs, multi_edges as _edges, _lift_half_day_prices, _parameter_template, _sample_piecewise_prices as _sample_piecewise_prices, _union_breakpoints, build_deterministic_target, build_f3_a_problem, build_stochastic_model, run_f3_d, INTERVAL_COUNTS as control_INTERVAL_COUNTS, _edges as control__edges, _sample_piecewise_prices as control__sample_piecewise_prices
+from src.control.bm_1 import (
+    BM1ControlNumerics,
+    BM1ControlProblem,
+    BM1Parameters,
+    DynamicMixturePriceEvaluator,
+    best_surface_starts,
+    beta_initial_cell_mass,
+    coarse_price_surface,
+    evaluate_mc_candidates_common_random_numbers,
+    multistart_powell,
+    paired_mc_improvement,
+    point_initial_cell_mass,
+)
+from src.validation.bm_1.cases import (
+    INITIAL_ALPHA,
+    INITIAL_BETA,
+    SIGMA_X,
+    linear_price_response,
+    linear_state_response,
+)
+from src.validation.bm_1.control import (
+    C,
+    DETERMINISTIC_REFERENCE_PRICES,
+    F3_C_SMOOTHING_WEIGHTS,
+    F3_C_TERMINAL_WEIGHTS,
+    F3_E_SCENARIO_ORDER,
+    HOURLY_EDGES,
+    INITIAL_PRICES,
+    MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS,
+    INTERVAL_EDGES,
+    K,
+    KNOWN_DETERMINISTIC_PRICES,
+    REFERENCE_PRICES_24,
+    T,
+    XI,
+    _build_fv_evaluator,
+    _coarsen_reference_prices,
+    _f3_c_weight_pairs,
+    multi_edges as _edges,
+    _lift_half_day_prices,
+    _parameter_template,
+    _sample_piecewise_prices as _sample_piecewise_prices,
+    _union_breakpoints,
+    build_deterministic_target,
+    build_f3_a_problem,
+    build_f3_e_scenarios,
+    build_stochastic_model,
+    run_f3_d,
+    INTERVAL_COUNTS as control_INTERVAL_COUNTS,
+    _edges as control__edges,
+    _sample_piecewise_prices as control__sample_piecewise_prices,
+)
 
 class PowellOptimizationTests(unittest.TestCase):
 
@@ -100,6 +146,29 @@ class StochasticPriceEvaluatorTests(unittest.TestCase):
         self.assertTrue(np.isfinite(improvement))
         self.assertTrue(np.isfinite(standard_error))
         self.assertGreater(standard_error, 0.0)
+
+class InitialLawTests(unittest.TestCase):
+
+    def test_point_initial_mass_places_all_probability_in_one_cell(self):
+        edges = np.linspace(0.0, 1.0, 202)
+        mass = point_initial_cell_mass(edges, 0.5)
+        self.assertEqual(np.count_nonzero(mass), 1)
+        self.assertAlmostEqual(float(np.sum(mass)), 1.0, places=15)
+        cell = int(np.argmax(mass))
+        midpoint = 0.5 * (edges[cell] + edges[cell + 1])
+        self.assertAlmostEqual(midpoint, 0.5, places=15)
+
+    def test_point_initial_mass_handles_endpoints_and_rejects_invalid_state(self):
+        edges = np.linspace(0.0, 1.0, 6)
+        self.assertEqual(int(np.argmax(point_initial_cell_mass(edges, 0.0))), 0)
+        self.assertEqual(int(np.argmax(point_initial_cell_mass(edges, 1.0))), 4)
+        with self.assertRaises(ValueError):
+            point_initial_cell_mass(edges, -0.1)
+        with self.assertRaises(ValueError):
+            point_initial_cell_mass(edges, 1.1)
+        with self.assertRaises(ValueError):
+            point_initial_cell_mass(edges, [0.4, 0.6])
+
 
 def _initial_mass_builder(edges):
     return beta_initial_cell_mass(edges, alpha=INITIAL_ALPHA, beta=INITIAL_BETA)
@@ -319,6 +388,30 @@ class BM1ControlProblemTests(unittest.TestCase):
         self.assertIs(template[1], old[1])
         self.assertIs(template[2], old[2])
         self.assertEqual(template[3:], old[3:])
+
+class F3EUncertaintyStructureTests(unittest.TestCase):
+
+    def test_uncertainty_scenarios_isolate_initial_and_process_noise(self):
+        setup = build_f3_e_scenarios()
+        self.assertEqual(tuple(setup['problems']), F3_E_SCENARIO_ORDER)
+        self.assertEqual(tuple(setup['evaluators']), F3_E_SCENARIO_ORDER)
+
+        expected_sigma = {
+            'deterministic': 0.0,
+            'initial_only': 0.0,
+            'process_only': SIGMA_X,
+            'full': SIGMA_X,
+        }
+        for name in F3_E_SCENARIO_ORDER:
+            self.assertEqual(setup['problems'][name].parameters.sigma_x, expected_sigma[name])
+
+        process = setup['evaluators']['process_only']
+        full = setup['evaluators']['full']
+        self.assertEqual(np.count_nonzero(process.initial_mass), 1)
+        self.assertGreater(np.count_nonzero(full.initial_mass), 1)
+        self.assertAlmostEqual(process.x[int(np.argmax(process.initial_mass))], 0.5, places=15)
+        self.assertEqual(setup['evaluators']['deterministic'].initial_state, 0.5)
+
 
 class F3DDecisionStructureTests(unittest.TestCase):
 

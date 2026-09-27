@@ -1,6 +1,6 @@
 # BM1 — code and run guide
 
-F1, F2, F3-A, F3-B, F3-C and the F3-D deterministic/stochastic decision comparison are implemented.
+F1, F2, F3-A, F3-B, F3-C, F3-D and the first F3-E uncertainty-source decomposition are implemented.
 Run all commands from the repository root.
 
 ## Where the code belongs
@@ -63,6 +63,7 @@ python -B -m src.exe.run_model.bm_1.optimize sensitivity
 python -B -m src.exe.run_model.bm_1.optimize sensitivity --grid
 python -B -m src.exe.run_model.bm_1.optimize decision --no-mc
 python -B -m src.exe.run_model.bm_1.optimize decision
+python -B -m src.exe.run_model.bm_1.optimize uncertainty
 python -B -m src.exe.run_model.bm_1.optimize multi --fast-fv
 python -B -m src.exe.run_model.bm_1.optimize complex --fast-fv
 python -B -m src.exe.run_model.bm_1.refine
@@ -74,6 +75,8 @@ python -B -m src.exe.run_model.bm_1.verify benchmark --cells 201 1001 --repeats 
 The F3-C sensitivity command compares raw tracking cost, terminal MSE and price roughness across weights; weighted totals from different rows are not a common metric because the objective itself changes.
 
 F3-D optimizes a deterministic point-state controller and the stochastic FV controller under the same price grid/objective, then cross-evaluates both policies. Paired MC validates the stochastic policy difference.
+
+F3-E separates the two uncertainty sources into deterministic, initial-only, process-only and full cases, optimizes each independently and cross-evaluates the four returned policies. Compare policies within a fixed model row; objective levels across rows use different state laws.
 
 Mixture/conditioning and full multi-price optimization can be expensive. Their
 numerical settings are not reduced just to make an output report shorter.
