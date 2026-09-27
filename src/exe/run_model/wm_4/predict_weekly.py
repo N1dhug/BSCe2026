@@ -8,7 +8,7 @@ import pandas as pd
 from src.exe.run_model.wm_3.fit_weekly import aligned_data
 from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, INIT, fit_expected_output
 from src.model.wm_4 import wm_4
-from src.params.wm_4 import brute_params
+from src.params.wm_4 import qp_params
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -106,7 +106,7 @@ def save_plot(fit_start, predict_start, predict_end, actual, fine_index, state, 
     axes[0].grid(True, alpha=0.25)
 
     axes[1].plot(fine_index, state["U"], label="Known next-week normalized price U")
-    axes[1].plot(fine_index, state["Q"], label="Desired flexibility flow Q")
+    axes[1].plot(fine_index, state["R_dot"], label="Flexibility acceleration dR/dt")
     axes[1].set_ylabel("Price / desired flow")
     axes[1].legend()
     axes[1].grid(True, alpha=0.25)
@@ -131,9 +131,6 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS, help="Matching weekdays used for trimmed O(t); default 5.")
     parser.add_argument("--warmup-hours", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=60)
-    parser.add_argument("--grid-points", type=int, default=8)
-    parser.add_argument("--refinements", type=int, default=6)
-    parser.add_argument("--progress-every", type=int, default=25)
     args = parser.parse_args()
 
     frame, _ = aligned_data("MED")
@@ -142,14 +139,10 @@ def main():
     fit_data, fit_index, fit_origin, _ = fit_input(frame, fit_start, args.steps_per_hour, args.warmup_hours)
     O_fit, _ = expected_output(frame, fit_origin, fit_end, args.baseline_weeks)
     fit_model = wm_4((0.0, (args.warmup_hours + WEEK_HOURS) / 24.0), len(fit_index), O_fit)
-    fit = brute_params(fit_model).fit(
+    fit = qp_params(fit_model).fit(
         fit_data, INIT,
-        grid_points=args.grid_points,
-        refinements=args.refinements,
-        fit_initial_state=False,
         fit_diffusion=True,
         verbose=False,
-        progress_every=args.progress_every,
     )
 
     predict_start = fit_end
@@ -160,7 +153,7 @@ def main():
     init = np.array([fit["deterministic_state"]["F"][-1], fit["deterministic_state"]["R"][-1]], dtype=float)
     state = predict_model.deterministic_solver(init, {
         "U": U, "PE": U, "Time": Time,
-        "q": fit["q"], "kappa_R": fit["kappa_R"],
+        "r": fit["r"],
     })
     fine_index = pd.date_range(predict_start, predict_end, periods=n_steps)
 
@@ -176,9 +169,9 @@ def main():
 
     print(f"fitting week={fit_start} -> {fit_end}")
     print(f"prediction week={predict_start} -> {predict_end}")
-    q = fit["q"]
-    print(f"coefficients: q_0={q[0]:.8f}, q_F={q[1]:.8f}, q_U={q[2]:.8f}, kappa_R={fit['kappa_R']:.8f}")
-    print(f"damping: branch={fit['brute_branch']}, zeta={fit['damping_ratio']:.8f}")
+    r = fit["r"]
+    print(f"coefficients: r_0={r[0]:.8f}, r_F={r[1]:.8f}, r_U={r[2]:.8f}, r_R={r[3]:.8f}")
+    print(f"damping: branch={fit['damping_branch']}, zeta={fit['damping_ratio']:.8f}")
     print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"forecast initial [F,R]={np.array2string(init, precision=8)}")
     print(f"O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
