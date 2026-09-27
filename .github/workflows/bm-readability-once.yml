@@ -5,6 +5,9 @@ on:
     paths: ['.github/workflows/bm-readability-once.yml']
 permissions:
   contents: write
+concurrency:
+  group: bm-readability-delivery
+  cancel-in-progress: true
 jobs:
   verify-and-apply:
     if: startsWith(github.event.head_commit.message, 'Run checked BM readability')
@@ -48,7 +51,7 @@ jobs:
           python -B .bm_readability/apply.py compare "$RUNNER_TEMP/bm-readability" | tee "$RUNNER_TEMP/bm-readability/comparison.txt"
           python -B -m src.exe.run_model.bm_1.optimize contract --optimize | tee "$RUNNER_TEMP/bm-readability/contract.txt"
           python -B -m src.exe.run_model.bm_1.refine | tee "$RUNNER_TEMP/bm-readability/refine.txt"
-          python -B -m src.exe.run_model.bm_1.verify objective --paths 128 --cells 31 --degrees 4 8 | tee "$RUNNER_TEMP/bm-readability/objective.txt"
+          python -B -m src.exe.run_model.bm_1.verify --help | tee "$RUNNER_TEMP/bm-readability/help.txt"
       - name: Commit only checked BM files on this branch
         shell: bash
         run: |
