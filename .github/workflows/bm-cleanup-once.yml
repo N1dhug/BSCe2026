@@ -34,7 +34,9 @@ jobs:
           python - <<'PY'
           import base64, hashlib, io, os, zipfile
           from pathlib import Path
-          raw = base64.b64decode(Path('.bm_cleanup_bundle.b64').read_text(), validate=True)
+          encoded = ''.join(Path(f'.bm_cleanup/part{i}.b64').read_text().strip() for i in range(6))
+          assert len(encoded) == 18576
+          raw = base64.b64decode(encoded, validate=True)
           assert hashlib.sha256(raw).hexdigest() == 'c55604e6319a61e98e2e2f726afe028d6325bc48a88efe4482f15388b894ce71'
           with zipfile.ZipFile(io.BytesIO(raw)) as z:
               assert set(z.namelist()) == {'refactor.py', 'snapshot.py'}
@@ -62,8 +64,6 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF_NAME" = 'refactor/bm-f1-f3-cleanup'
-          # Updating permanent workflow paths and removing transport files is
-          # finalized through the connector, not with the Actions token.
           git restore -- .github/workflows/bm-review.yml
           python - <<'PY'
           import subprocess
