@@ -126,6 +126,7 @@ def main():
     parser.add_argument("--q-f-max", type=float, default=-1e-6, help="Upper q_F search bound; must be negative and greater than --q-f-min.")
     parser.add_argument("--progress-every", type=int, default=25)
     parser.add_argument("--critical-damping", action="store_true", help="Restrict the parameter fit to the critically damped branch, rho=1 and kappa_R=4|q_F|.")
+    parser.add_argument("--q-0-zero", action="store_true", help="Fix q_0=0 during parameter fitting.")
     parser.add_argument("--deterministic", action="store_true", help="Run deterministic fitting/prediction only and skip diffusion parameter estimation.")
     parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic mode: fit prediction-day [F0,R0] against that day's observed I while keeping q and kappa_R fixed.")
     args = parser.parse_args()
@@ -137,6 +138,7 @@ def main():
         grid_points=args.grid_points, refinements=args.refinements, progress_every=args.progress_every,
         q_f_range=(args.q_f_min, args.q_f_max),
         damping_branch="critical" if args.critical_damping else None,
+        q_0_zero=args.q_0_zero,
         fit_diffusion=not args.deterministic,
     )
 
@@ -175,6 +177,7 @@ def main():
     print(f"parameter fit days={fit_days}")
     print(f"q_F search range=[{args.q_f_min:.8g}, {args.q_f_max:.8g}]")
     print(f"damping fit={'fixed critical' if args.critical_damping else 'all branches'}")
+    print(f"q_0={'fixed at 0' if args.q_0_zero else 'fitted'}")
     print(f"mode={'deterministic' if args.deterministic else 'stochastic'}")
     print(f"q={np.array2string(fit['q'], precision=8)}")
     print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
