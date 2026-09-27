@@ -2,229 +2,107 @@ from time import perf_counter
 
 import numpy as np
 from scipy.optimize import minimize
-from scipy.signal import lfiltic, lfilter
 
 from src.validation.model.wm_4 import wm_4_validation
 
 
-class brute_params:
-    """Outer brute search with a convex inner QP for wm_4."""
+class qp_params:
+    """Single constrained least-squares QP fitter for wm_4.
+
+    With O(t) fixed and initial [F0, R0] supplied, measured input gives
+    R = I - O and F is reconstructed from dF = R dt. The deterministic drift
+    fit is therefore linear in r for
+
+        P_R = [1, F, U, R],   dR/dt = r @ P_R.
+    """
 
     def __init__(self, model): self.model = model
-
-    @staticmethod
-    def _transition_stable(dt, q_f, kappa_r, tol=1e-10):
-        A = np.array([[1.0, dt], [kappa_r * dt * q_f, 1.0 - kappa_r * dt]], dtype=float)
-        return float(np.max(np.abs(np.linalg.eigvals(A)))) < 1.0 + tol
-
-    @staticmethod
-    def _local_std(residual):
-        residual = np.asarray(residual, dtype=float).reshape(-1)
-        n, window = residual.size, max(5, residual.size // 20)
-        if window % 2 == 0: window += 1
-        window = min(window, n if n % 2 else max(1, n - 1))
-        half, result = window // 2, np.empty(n)
-        for k in range(n):
-            segment = residual[max(0, k - half):min(n, k + half + 1)]
-            result[k] = np.std(segment, ddof=1) if segment.size > 1 else 0.0
-        return result
 
     def _prepare_data(self, input_data):
         data = wm_4_validation.fit_data(input_data, self.model.t_steps)
         return {**data, "O": np.array([wm_4_validation.feature_value(self.model.O(x), "O(Time)") for x in data["Time"]], dtype=float)}
 
     @staticmethod
-    def _homogeneous_state(n, dt, q_f, kappa_r, f0, r0):
-        a1 = 2.0 - kappa_r * dt
-        a2 = -(1.0 - kappa_r * dt) + kappa_r * dt * dt * q_f
-        den, num = np.array([1.0, -a1, -a2], dtype=float), np.array([1.0], dtype=float)
-        F = np.empty(n + 1, dtype=float)
-        F[0], F[1] = float(f0), float(f0) + dt * float(r0)
-        if n > 1:
-            zi = lfiltic(num, den, y=[F[1], F[0]], x=[0.0, 0.0])
-            F[2:], _ = lfilter(num, den, np.zeros(n - 1, dtype=float), zi=zi)
-        return F[:n], np.diff(F) / dt
+    def _equivalent_q(r):
+        r = wm_4_validation.r_coefficients(r)
+        kappa_R = -r[3]
+        return r[:3] / kappa_R, kappa_R
 
     @staticmethod
-    def _forced_state_map(features, dt, q_f, kappa_r):
-        n = features.shape[0]
-        a1 = 2.0 - kappa_r * dt
-        a2 = -(1.0 - kappa_r * dt) + kappa_r * dt * dt * q_f
-        gain = kappa_r * dt * dt
-        forcing = np.zeros((n + 1, features.shape[1]), dtype=float)
-        if n > 1: forcing[2:] = features[:-1]
-        F = lfilter(np.array([gain], dtype=float), np.array([1.0, -a1, -a2], dtype=float), forcing, axis=0)
-        return F[:n], np.diff(F, axis=0) / dt
+    def _damping_branch(r, tol=1e-6):
+        r = np.asarray(r, dtype=float)
+        zeta = -float(r[3]) / (2.0 * np.sqrt(-float(r[1])))
+        if abs(zeta - 1.0) <= tol: return "critical", zeta
+        return ("under" if zeta < 1.0 else "over"), zeta
 
-    def _state_from_parameters(self, data, init_cond, q, kappa_r, full=False):
+    def _observed_state(self, data, init_cond):
+        init_cond = wm_4_validation.initial_condition(init_cond)
         n, dt = self.model.t_steps, self.model.dt
-        q = np.asarray(q, dtype=float)
-        q_features = np.column_stack((np.ones(n), data["U"]))
-        q_bar, q_f = q[[0, 2]], float(q[1])
-
-        F_b, R_b = self._homogeneous_state(n, dt, q_f, kappa_r, init_cond[0], init_cond[1])
-        forced_F, forced_R = self._forced_state_map(q_features, dt, q_f, kappa_r)
-        F, R = F_b + forced_F @ q_bar, R_b + forced_R @ q_bar
-        Q = q_features @ q_bar + q_f * F
-        O = data["O"].copy()
-        I = O + R
-        R_dot = kappa_r * (Q - R)
-
-        state = {
-            "t": self.model.t.copy(), "F": F, "R": R, "R_dot": R_dot,
-            "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(),
-            "O": data["O"].copy(), "Q": Q, "I": I, "q": q.copy(),
+        R_observed = np.asarray(data["I"] - data["O"], dtype=float)
+        R = R_observed.copy()
+        R[0] = init_cond[1]
+        F = np.empty(n, dtype=float)
+        F[0] = init_cond[0]
+        if n > 1: F[1:] = F[0] + np.cumsum(dt * R[:-1])
+        P_R = np.column_stack((np.ones(n), F, data["U"], R))
+        X = dt * P_R[:-1]
+        y = np.diff(R)
+        mask = np.asarray(data["transition_mask"], dtype=bool)
+        return {
+            "F": F, "R": R, "R_observed": R_observed, "P_R": P_R,
+            "X": X, "y": y, "transition_mask": mask,
+            "initial_rate_mismatch": float(R_observed[0] - init_cond[1]),
         }
-        if not full: return state
-        state.update({
-            "P_Q": np.column_stack((np.ones(n), F, data["U"])),
-            "P_A": np.full((n, 4), np.nan), "A": np.full(n, np.nan),
-        })
-        return state
 
-    def _solve_inner(self, data, initial_conditions, q_f, kappa_r, fit_initial_state, r0_range):
-        if isinstance(data, (list, tuple)): return self._solve_inner_many(data, initial_conditions, q_f, kappa_r, fit_initial_state, r0_range)
-        n, dt = self.model.t_steps, self.model.dt
-        obs = np.asarray(data["observation_mask"], dtype=bool)
-        n_var = 4 if fit_initial_state else 2
-        i_q = slice(0, 2)
-        i_f0, i_r0 = (2, 3) if fit_initial_state else (None, None)
-        q_features = np.column_stack((np.ones(n), data["U"]))
+    def _qp_constraints(self, stabilize=True):
+        eps, dt = self.model._FIT_EPS, self.model.dt
+        rows = [
+            np.array([1.0, 1.0, 0.0, 0.0]),
+            np.array([-1.0, 0.0, -1.0, 0.0]),
+            np.array([1.0, 1.0, 1.0, 0.0]),
+        ]
+        rhs = [0.0, 0.0, 0.0]
+        if stabilize:
+            rows.extend([
+                np.array([0.0, dt * dt, 0.0, -2.0 * dt]),
+                np.array([0.0, -dt, 0.0, 1.0]),
+            ])
+            rhs.extend([4.0 - eps, -eps])
+        lb = np.array([0.0, -np.inf, -np.inf, -np.inf], dtype=float)
+        ub = np.array([np.inf, -eps, 0.0, -eps], dtype=float)
+        return np.vstack(rows), np.asarray(rhs, dtype=float), lb, ub
 
-        F_X, R_X = np.zeros((n, n_var), dtype=float), np.zeros((n, n_var), dtype=float)
-        forced_F, forced_R = self._forced_state_map(q_features, dt, q_f, kappa_r)
-        F_X[:, i_q], R_X[:, i_q] = forced_F, forced_R
-        F_b, R_b = np.zeros(n, dtype=float), np.zeros(n, dtype=float)
+    def _solve_qp(self, datasets, init_conds, stabilize=True):
+        observed = [self._observed_state(data, init) for data, init in zip(datasets, init_conds)]
+        X = np.vstack([state["X"][state["transition_mask"]] for state in observed])
+        y = np.concatenate([state["y"][state["transition_mask"]] for state in observed])
+        if X.shape[0] < 1: raise ValueError("At least one wm_4 state transition is required for fitting.")
+        A_ub, b_ub, lb, ub = self._qp_constraints(stabilize=stabilize)
+        start = perf_counter()
+        r = self.model._least_squares_qp(X, y, A_ub=A_ub, b_ub=b_ub, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
+        solve_time = perf_counter() - start
+        r = wm_4_validation.recovered_structural_coefficients(r)
+        residual = X @ r - y
+        return r, observed, float(np.mean(residual ** 2)), solve_time
 
-        if fit_initial_state:
-            F_X[:, i_f0], R_X[:, i_f0] = self._homogeneous_state(n, dt, q_f, kappa_r, 1.0, 0.0)
-            F_X[:, i_r0], R_X[:, i_r0] = self._homogeneous_state(n, dt, q_f, kappa_r, 0.0, 1.0)
+    def _state_from_parameters(self, data, init_cond, coefficients, kappa_r=None, full=False):
+        if kappa_r is None:
+            r = wm_4_validation.r_coefficients(coefficients)
         else:
-            F_b, R_b = self._homogeneous_state(n, dt, q_f, kappa_r, initial_conditions[0], initial_conditions[1])
-
-        X = R_X[obs]
-        y = data["I"][obs] - data["O"][obs] - R_b[obs]
-
-        structural_rows, structural_rhs = [], []
-        for U in (0.0, 1.0):
-            f = np.array([1.0, U], dtype=float)
-            row = np.zeros(n_var); row[i_q] = -f
-            structural_rows.append(row); structural_rhs.append(0.0)
-            row = np.zeros(n_var); row[i_q] = f
-            structural_rows.append(row); structural_rhs.append(-q_f)
-
-        A_ub, b_ub = np.vstack(structural_rows), np.asarray(structural_rhs, dtype=float)
-        lb, ub = np.full(n_var, -np.inf), np.full(n_var, np.inf)
-        ub[1] = 0.0
-        if fit_initial_state:
-            lb[i_f0], ub[i_f0] = 0.0, 1.0
-            lb[i_r0], ub[i_r0] = map(float, r0_range)
-
-        solution_start = perf_counter()
-        solution = self.model._least_squares_qp(X, y, A_ub=A_ub, b_ub=b_ub, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
-        qp_solve_time = perf_counter() - solution_start
-
-        q_bar = solution[i_q]
-        q = np.array([q_bar[0], q_f, q_bar[1]], dtype=float)
-        q = wm_4_validation.recovered_structural_coefficients(q)
-        estimated_init = np.array([solution[i_f0], solution[i_r0]], dtype=float) if fit_initial_state else np.asarray(initial_conditions, dtype=float).copy()
-        state = self._state_from_parameters(data, estimated_init, q, kappa_r, full=False)
-        loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
-
-        return {
-            "init_cond": estimated_init, "initial_condition_seed": np.asarray(initial_conditions, dtype=float).copy(),
-            "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(),
-            "O": data["O"].copy(), "observation_mask": obs.copy(),
-            "q": q, "kappa_R": float(kappa_r), "deterministic_state": state,
-            "recovered_model_loss": loss, "structural_viable": True,
-            "brute_q_F": float(q_f), "brute_kappa_R": float(kappa_r), "qp_solve_time": qp_solve_time,
-        }
-
-    def _solve_inner_many(self, datasets, initial_conditions, q_f, kappa_r, fit_initial_state, r0_range):
-        n, dt, n_data = self.model.t_steps, self.model.dt, len(datasets)
-        if n_data < 1: raise ValueError("At least one wm_4 fitting trajectory is required.")
-        n_var = 2 + 2 * n_data if fit_initial_state else 2
-        i_q = slice(0, 2)
-        X_parts, y_parts, maps = [], [], []
-
-        for j, data in enumerate(datasets):
-            obs = np.asarray(data["observation_mask"], dtype=bool)
-            q_features = np.column_stack((np.ones(n), data["U"]))
-            F_X, R_X = np.zeros((n, n_var), dtype=float), np.zeros((n, n_var), dtype=float)
-            forced_F, forced_R = self._forced_state_map(q_features, dt, q_f, kappa_r)
-            F_X[:, i_q], R_X[:, i_q] = forced_F, forced_R
-            F_b, R_b = np.zeros(n, dtype=float), np.zeros(n, dtype=float)
-
-            if fit_initial_state:
-                i_f0, i_r0 = 2 + 2 * j, 3 + 2 * j
-                F_X[:, i_f0], R_X[:, i_f0] = self._homogeneous_state(n, dt, q_f, kappa_r, 1.0, 0.0)
-                F_X[:, i_r0], R_X[:, i_r0] = self._homogeneous_state(n, dt, q_f, kappa_r, 0.0, 1.0)
-            else:
-                i_f0 = i_r0 = None
-                F_b, R_b = self._homogeneous_state(n, dt, q_f, kappa_r, initial_conditions[0], initial_conditions[1])
-
-            X_parts.append(R_X[obs])
-            y_parts.append(data["I"][obs] - data["O"][obs] - R_b[obs])
-            maps.append((obs, i_f0, i_r0))
-
-        X, y = np.vstack(X_parts), np.concatenate(y_parts)
-        structural_rows, structural_rhs = [], []
-        for U in (0.0, 1.0):
-            f = np.array([1.0, U], dtype=float)
-            row = np.zeros(n_var); row[i_q] = -f
-            structural_rows.append(row); structural_rhs.append(0.0)
-            row = np.zeros(n_var); row[i_q] = f
-            structural_rows.append(row); structural_rhs.append(-q_f)
-
-        A_ub, b_ub = np.vstack(structural_rows), np.asarray(structural_rhs, dtype=float)
-        lb, ub = np.full(n_var, -np.inf), np.full(n_var, np.inf)
-        ub[1] = 0.0
-        if fit_initial_state:
-            for _, i_f0, i_r0 in maps:
-                lb[i_f0], ub[i_f0] = 0.0, 1.0
-                lb[i_r0], ub[i_r0] = map(float, r0_range)
-
-        solution_start = perf_counter()
-        solution = self.model._least_squares_qp(X, y, A_ub=A_ub, b_ub=b_ub, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
-        qp_solve_time = perf_counter() - solution_start
-
-        q_bar = solution[i_q]
-        q = wm_4_validation.recovered_structural_coefficients(np.array([q_bar[0], q_f, q_bar[1]], dtype=float))
-        init_conds = []
-        states, losses = [], []
-        for data, (obs, i_f0, i_r0) in zip(datasets, maps):
-            init = np.array([solution[i_f0], solution[i_r0]], dtype=float) if fit_initial_state else np.asarray(initial_conditions, dtype=float).copy()
-            state = self._state_from_parameters(data, init, q, kappa_r, full=False)
-            init_conds.append(init)
-            states.append(state)
-            losses.append(float(np.mean((data["I"][obs] - state["I"][obs]) ** 2)))
-
-        residual = np.concatenate([data["I"][obs] - state["I"][obs] for data, state, (obs, _, _) in zip(datasets, states, maps)])
-        return {
-            "init_cond": np.vstack(init_conds), "initial_condition_seed": np.asarray(initial_conditions, dtype=float).copy(),
-            "q": q, "kappa_R": float(kappa_r), "deterministic_state": states[0], "deterministic_states": states,
-            "recovered_model_loss": float(np.mean(residual ** 2)), "per_trajectory_loss": np.asarray(losses, dtype=float),
-            "structural_viable": True, "brute_q_F": float(q_f), "brute_kappa_R": float(kappa_r), "qp_solve_time": qp_solve_time,
-        }
+            r = wm_4_validation.legacy_r(coefficients, kappa_r)
+        state = self.model._solve_deterministic(init_cond, data["U"], data["PE"], data["Time"], data["O"], r)
+        if full: return state
+        return {key: value for key, value in state.items() if key not in ("P_R", "P_A")}
 
     def _fit_uncertainty_params(self, result, data):
-        state, obs = result["deterministic_state"], np.asarray(data["observation_mask"], dtype=bool)
-        index = np.flatnonzero(obs)
-        if index.size < 3: raise ValueError("At least three observations are required to estimate wm_4 diffusion.")
-        observed_I = np.asarray(data["I"][index], dtype=float)
-        observed_O = np.asarray(data["O"][index], dtype=float)
-        if np.any(observed_I < 0.0) or np.any(state["I"] < 0.0): raise ValueError("wm_4 produced negative I; input-dependent diffusion requires I >= 0.")
-
-        observed_R = observed_I - observed_O
-        dt = np.diff(state["t"][index])
-        if np.any(dt <= 0.0): raise ValueError("wm_4 diffusion observations must have strictly increasing model time.")
-        observed_F = np.empty(index.size, dtype=float)
-        observed_F[0] = state["F"][index[0]]
-        observed_F[1:] = observed_F[0] + np.cumsum(observed_R[:-1] * dt)
-        q = np.asarray(result["q"], dtype=float)
-        Q = q[0] + q[1] * observed_F[:-1] + q[2] * data["U"][index[:-1]]
-        innovation = np.diff(observed_R) - result["kappa_R"] * (Q - observed_R[:-1]) * dt
-        diffusion_I = observed_I[:-1]
+        observed = self._observed_state(data, result["init_cond"])
+        mask = observed["transition_mask"]
+        R, F, r = observed["R"], observed["F"], np.asarray(result["r"], dtype=float)
+        dt = np.full(np.count_nonzero(mask), self.model.dt, dtype=float)
+        drift = observed["P_R"][:-1] @ r
+        innovation = (np.diff(R) - self.model.dt * drift)[mask]
+        diffusion_I = np.asarray(data["I"][:-1], dtype=float)[mask]
+        if np.any(diffusion_I < 0.0): raise ValueError("wm_4 diffusion fitting requires observed I >= 0.")
 
         def nll(theta):
             sigma_0, sigma_I = map(float, theta)
@@ -245,41 +123,38 @@ class brute_params:
         if not valid: raise RuntimeError("wm_4 diffusion maximum-likelihood fit failed.")
         fit = min(valid, key=lambda item: item.fun)
         sigma_0, sigma_I = map(float, fit.x)
-        residual = data["I"][obs] - state["I"][obs]
+        obs = np.asarray(data["observation_mask"], dtype=bool)
+        residual = data["I"][obs] - result["deterministic_state"]["I"][obs]
+        q, _ = self._equivalent_q(r)
+        Q = q[0] + q[1] * F[:-1] + q[2] * data["U"][:-1]
         return {
             **result, "sigma_0": sigma_0, "sigma_I": sigma_I, "residual": residual,
             "diffusion_innovation": innovation, "diffusion_dt": dt, "diffusion_I": diffusion_I,
-            "diffusion_F": observed_F, "diffusion_Q": Q, "diffusion_nll": float(fit.fun),
+            "diffusion_F": F[:-1][mask], "diffusion_Q": Q[mask], "diffusion_nll": float(fit.fun),
         }
 
-    def _fit_uncertainty_params_many(self, result, datasets):
+    def _fit_uncertainty_params_many(self, result, datasets, init_conds):
         innovations, dts, diffusion_inputs, observed_fs, qs, residuals = [], [], [], [], [], []
-        states = result["deterministic_states"]
-        q = np.asarray(result["q"], dtype=float)
-
-        for state, data in zip(states, datasets):
+        r = np.asarray(result["r"], dtype=float)
+        q, _ = self._equivalent_q(r)
+        for state, data, init in zip(result["deterministic_states"], datasets, init_conds):
+            observed = self._observed_state(data, init)
+            mask = observed["transition_mask"]
+            R, F = observed["R"], observed["F"]
+            drift = observed["P_R"][:-1] @ r
+            innovation = (np.diff(R) - self.model.dt * drift)[mask]
+            diffusion_I = np.asarray(data["I"][:-1], dtype=float)[mask]
+            if np.any(diffusion_I < 0.0): raise ValueError("wm_4 diffusion fitting requires observed I >= 0.")
+            innovations.append(innovation)
+            dts.append(np.full(np.count_nonzero(mask), self.model.dt, dtype=float))
+            diffusion_inputs.append(diffusion_I)
+            observed_fs.append(F[:-1][mask])
+            Q = q[0] + q[1] * F[:-1] + q[2] * data["U"][:-1]
+            qs.append(Q[mask])
             obs = np.asarray(data["observation_mask"], dtype=bool)
-            index = np.flatnonzero(obs)
-            if index.size < 3: raise ValueError("At least three observations per trajectory are required to estimate wm_4 diffusion.")
-            observed_I = np.asarray(data["I"][index], dtype=float)
-            observed_O = np.asarray(data["O"][index], dtype=float)
-            if np.any(observed_I < 0.0) or np.any(state["I"] < 0.0): raise ValueError("wm_4 produced negative I; input-dependent diffusion requires I >= 0.")
+            residuals.append(data["I"][obs] - state["I"][obs])
 
-            observed_R = observed_I - observed_O
-            dt = np.diff(state["t"][index])
-            if np.any(dt <= 0.0): raise ValueError("wm_4 diffusion observations must have strictly increasing model time.")
-            observed_F = np.empty(index.size, dtype=float)
-            observed_F[0] = state["F"][index[0]]
-            observed_F[1:] = observed_F[0] + np.cumsum(observed_R[:-1] * dt)
-            Q = q[0] + q[1] * observed_F[:-1] + q[2] * data["U"][index[:-1]]
-            innovation = np.diff(observed_R) - result["kappa_R"] * (Q - observed_R[:-1]) * dt
-
-            innovations.append(innovation); dts.append(dt); diffusion_inputs.append(observed_I[:-1])
-            observed_fs.append(observed_F); qs.append(Q); residuals.append(data["I"][obs] - state["I"][obs])
-
-        innovation = np.concatenate(innovations)
-        dt = np.concatenate(dts)
-        diffusion_I = np.concatenate(diffusion_inputs)
+        innovation, dt, diffusion_I = np.concatenate(innovations), np.concatenate(dts), np.concatenate(diffusion_inputs)
 
         def nll(theta):
             sigma_0, sigma_I = map(float, theta)
@@ -306,186 +181,76 @@ class brute_params:
             "diffusion_F": observed_fs, "diffusion_Q": qs, "diffusion_nll": float(fit.fun),
         }
 
-    @staticmethod
-    def _refined_interval(values, best, global_lo, global_hi):
-        values = np.unique(np.asarray(values, dtype=float))
-        width = 0.1 * max(1.0, global_hi - global_lo) if values.size <= 1 else float(np.max(np.diff(values)))
-        lo, hi = max(global_lo, best - width), min(global_hi, best + width)
-        if hi <= lo: hi = min(global_hi, lo + max(width, 1e-8))
-        return lo, hi
+    def _finish_result(self, result, qp_loss, qp_solve_time, fit_start, stabilize):
+        r = np.asarray(result["r"], dtype=float)
+        q, kappa_R = self._equivalent_q(r)
+        branch, zeta = self._damping_branch(r)
+        elapsed = perf_counter() - fit_start
+        result.update({
+            "q": q, "kappa_R": float(kappa_R),
+            "fit_method": "qp", "damping_branch": branch, "damping_ratio": float(zeta),
+            "qp_loss": float(qp_loss), "qp_solve_time": float(qp_solve_time),
+            "qp_fit_time": elapsed, "stabilize_euler": bool(stabilize),
+            "fit_initial_state": False,
+            "brute_branch": branch, "brute_score": float(result["deterministic_loss"]),
+            "brute_grid_points": 0, "brute_refinements": 0, "brute_search_history": [],
+            "brute_fit_time": elapsed, "q_f_range": (float(q[1]), float(q[1])), "q_f_expansions": 0,
+        })
+        return result
 
-    @staticmethod
-    def _log_grid(bounds, n, negative=False):
-        lo, hi = map(float, bounds)
-        if negative:
-            if not lo < hi < 0.0: raise ValueError("negative log-grid bounds must be increasing and strictly negative.")
-            return -np.geomspace(abs(lo), abs(hi), int(n))
-        if not 0.0 < lo < hi: raise ValueError("positive log-grid bounds must be positive and increasing.")
-        return np.geomspace(lo, hi, int(n))
-
-    @staticmethod
-    def _refined_log_interval(values, best, global_lo, global_hi, negative=False):
-        values = np.asarray(values, dtype=float)
-        mags = np.sort(np.abs(values))
-        best_mag = abs(float(best))
-        idx = int(np.argmin(np.abs(mags - best_mag)))
-        global_min, global_max = sorted((abs(float(global_lo)), abs(float(global_hi))))
-        lo_mag = global_min if idx == 0 else np.sqrt(mags[idx - 1] * best_mag)
-        hi_mag = global_max if idx == mags.size - 1 else np.sqrt(best_mag * mags[idx + 1])
-        lo_mag, hi_mag = max(global_min, lo_mag), min(global_max, hi_mag)
-        return (-hi_mag, -lo_mag) if negative else (lo_mag, hi_mag)
-
-    @staticmethod
-    def _damping_branch(q_f, kappa_r, tol=1e-6):
-        zeta = float(kappa_r) / (2.0 * np.sqrt(-float(kappa_r) * float(q_f)))
-        if abs(zeta - 1.0) <= tol: return "critical", zeta
-        return ("under" if zeta < 1.0 else "over"), zeta
-
-    def _search_all(self, data, initial_conditions, grid_points, refinements, q_f_range, kappa_r_range, fit_initial_state, r0_range, verbose, progress_every):
-        q_bounds, k_bounds = tuple(map(float, q_f_range)), tuple(map(float, kappa_r_range))
-        q_local, k_local = q_bounds, k_bounds
-        best, history, search_start = None, [], perf_counter()
-
-        for level in range(refinements):
-            q_grid = self._log_grid(q_local, grid_points, negative=True)
-            k_grid = self._log_grid(k_local, grid_points)
-            level_best, tested, pruned, qp_times, level_start = None, 0, 0, [], perf_counter()
-            if verbose: print(f"[brute] refinement={level + 1}/{refinements} candidates={len(q_grid) * len(k_grid)}")
-
-            for q_f in q_grid:
-                if q_f >= -self.model._FIT_EPS:
-                    pruned += len(k_grid)
-                    continue
-                for kappa_r in k_grid:
-                    if not self._transition_stable(self.model.dt, q_f, kappa_r):
-                        pruned += 1
-                        continue
-
-                    tested, candidate_start = tested + 1, perf_counter()
-                    try: candidate = self._solve_inner(data, initial_conditions, q_f, kappa_r, fit_initial_state, r0_range)
-                    except (ValueError, RuntimeError, np.linalg.LinAlgError):
-                        if verbose and tested % progress_every == 0: print(f"[brute] refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_candidate={perf_counter() - candidate_start:.4f}s status=failed")
-                        continue
-
-                    qp_times.append(float(candidate["qp_solve_time"]))
-                    if verbose and (tested == 1 or tested % progress_every == 0): print(f"[brute] refinement={level + 1} tested={tested} pruned={pruned} elapsed={perf_counter() - level_start:.2f}s last_qp={qp_times[-1]:.4f}s mean_qp={np.mean(qp_times):.4f}s")
-
-                    score = float(candidate["recovered_model_loss"])
-                    if level_best is None or score < level_best["score"]:
-                        level_best = {"score": score, "q_f": float(q_f), "kappa_R": float(kappa_r), "q": candidate["q"].copy(), "result": candidate}
-
-            level_elapsed = perf_counter() - level_start
-            mean_qp = float(np.mean(qp_times)) if qp_times else np.nan
-            history.append({"level": level, "tested": tested, "pruned": pruned, "best_loss": np.inf if level_best is None else level_best["score"], "elapsed": level_elapsed, "mean_qp_solve_time": mean_qp, "qp_solves": len(qp_times)})
-            if verbose: print(f"[brute] refinement={level + 1} complete tested={tested} pruned={pruned} qp_solves={len(qp_times)} elapsed={level_elapsed:.2f}s mean_qp={mean_qp:.4f}s")
-            if level_best is None: break
-
-            best = level_best
-            q_local = self._refined_log_interval(q_grid, best["q_f"], *q_bounds, negative=True)
-            k_local = self._refined_log_interval(k_grid, best["kappa_R"], *k_bounds)
-
-        if best is None: raise RuntimeError("wm_4 brute-force parameter search found no structurally admissible q_F/kappa_R grid candidate.")
-        branch, zeta = self._damping_branch(best["q_f"], best["kappa_R"])
-        best.update({"history": history, "branch": branch, "damping_ratio": zeta, "elapsed": perf_counter() - search_start})
-        return best, {"direct": best}
-
-    def _search_with_q_expansion(self, data, initial_conditions, grid_points, refinements, q_f_range, kappa_r_range, fit_initial_state, r0_range, verbose, progress_every, q_expand_factor, max_q_expansions):
-        q_bounds = tuple(map(float, q_f_range))
-        attempts = []
-
-        for expansion in range(max_q_expansions + 1):
-            best, history = self._search_all(
-                data, initial_conditions, grid_points, refinements, q_bounds, kappa_r_range,
-                fit_initial_state, r0_range, verbose, progress_every,
-            )
-            lower_hit = np.isclose(best["q_f"], q_bounds[0], rtol=1e-9, atol=0.0)
-            upper_hit = np.isclose(best["q_f"], q_bounds[1], rtol=1e-9, atol=0.0)
-            attempts.append({
-                "attempt": expansion, "q_f_range": q_bounds, "best_q_F": float(best["q_f"]),
-                "lower_boundary_hit": bool(lower_hit), "upper_boundary_hit": bool(upper_hit),
-                "score": float(best["score"]), "search_history": history,
-            })
-            if not lower_hit and not upper_hit: break
-            if expansion >= max_q_expansions: break
-
-            lo, hi = q_bounds
-            if lower_hit: lo *= q_expand_factor
-            if upper_hit:
-                min_abs = 10.0 * self.model._FIT_EPS
-                new_abs = max(min_abs, abs(hi) / q_expand_factor)
-                new_hi = -new_abs
-                if np.isclose(new_hi, hi, rtol=1e-12, atol=0.0): break
-                hi = new_hi
-            q_bounds = (float(lo), float(hi))
-            if verbose: print(f"[brute] q_F boundary hit; expanding search range to [{q_bounds[0]:.8g}, {q_bounds[1]:.8g}] and retrying")
-
-        best["q_f_range"] = q_bounds
-        best["q_f_expansions"] = len(attempts) - 1
-        return best, {"attempts": attempts}
-
-    def fit(self, input_data, initial_conditions, *, grid_points=8, refinements=6, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), q_expand_factor=10.0, max_q_expansions=4, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=False, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, fit_initial_state=False, fit_diffusion=True, stabilize=True, verbose=False, **_legacy_kwargs):
+        if fit_initial_state: raise ValueError("wm_4 QP fitting requires fixed initial [F0, R0]; fit_initial_state is no longer supported.")
+        fit_start = perf_counter()
         data = self._prepare_data(input_data)
-        initial_conditions = wm_4_validation.initial_condition(initial_conditions)
-        grid_points, refinements, progress_every, max_q_expansions = int(grid_points), int(refinements), int(progress_every), int(max_q_expansions)
-        q_f_range, kappa_r_range, r0_range = tuple(map(float, q_f_range)), tuple(map(float, kappa_r_range)), tuple(map(float, r0_range))
-
-        if grid_points < 2 or refinements < 1: raise ValueError("grid_points >= 2 and refinements >= 1 are required.")
-        if progress_every < 1: raise ValueError("progress_every must be at least 1.")
-        q_expand_factor = float(q_expand_factor)
-        if q_expand_factor <= 1.0: raise ValueError("q_expand_factor must exceed 1.")
-        if max_q_expansions < 0: raise ValueError("max_q_expansions must be nonnegative.")
-        if not q_f_range[0] < q_f_range[1] < 0.0: raise ValueError("q_f_range must be increasing and strictly negative.")
-        if not 0.0 < kappa_r_range[0] < kappa_r_range[1]: raise ValueError("kappa_r_range must be positive and increasing.")
-        if len(r0_range) != 2 or not r0_range[0] < r0_range[1]: raise ValueError("r0_range must contain increasing lower/upper bounds.")
-
-        fit_start = perf_counter()
-        best, branches = self._search_with_q_expansion(
-            data, initial_conditions, grid_points, refinements, q_f_range, kappa_r_range,
-            bool(fit_initial_state), r0_range, verbose, progress_every, q_expand_factor, max_q_expansions,
-        )
-        result = {**best["result"], "q": best["q"].copy()}
-        result["deterministic_state"] = self._state_from_parameters(data, result["init_cond"], result["q"], result["kappa_R"], full=True)
+        init_cond = wm_4_validation.initial_condition(initial_conditions)
+        r, observed, qp_loss, qp_solve_time = self._solve_qp([data], [init_cond], stabilize=stabilize)
+        state = self._state_from_parameters(data, init_cond, r, full=True)
+        obs = np.asarray(data["observation_mask"], dtype=bool)
+        deterministic_loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
+        result = {
+            "init_cond": init_cond.copy(), "initial_condition_seed": init_cond.copy(),
+            "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(),
+            "O": data["O"].copy(), "observation_mask": obs.copy(), "transition_mask": data["transition_mask"].copy(),
+            "r": r.copy(), "deterministic_state": state, "observed_state": observed[0],
+            "recovered_model_loss": deterministic_loss, "deterministic_loss": deterministic_loss,
+            "structural_viable": True, "initial_rate_mismatch": observed[0]["initial_rate_mismatch"],
+        }
         result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
-        result.update({
-            "fit_method": "brute", "brute_branch": best["branch"], "damping_ratio": float(best["damping_ratio"]), "brute_score": float(best["score"]),
-            "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": branches,
-            "brute_fit_time": perf_counter() - fit_start, "fit_initial_state": bool(fit_initial_state),
-            "q_f_range": tuple(best["q_f_range"]), "q_f_expansions": int(best["q_f_expansions"]),
-            "deterministic_loss": float(result["recovered_model_loss"]),
-        })
+        result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
+        if verbose: print(f"[qp] transitions={np.count_nonzero(data['transition_mask'])} loss={qp_loss:.8g} free_run_mse={deterministic_loss:.8g} solve={qp_solve_time:.4f}s")
         return result
 
-    def fit_many(self, input_data, initial_conditions, *, grid_points=8, refinements=6, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), q_expand_factor=10.0, max_q_expansions=4, fit_initial_state=False, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=False, progress_every=25):
+    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=False, fit_diffusion=True, stabilize=True, verbose=False, **_legacy_kwargs):
+        if fit_initial_state: raise ValueError("wm_4 QP fitting requires fixed initial [F0, R0]; fit_initial_state is no longer supported.")
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
-        datasets = [self._prepare_data(data) for data in input_data]
-        initial_conditions = wm_4_validation.initial_condition(initial_conditions)
-        grid_points, refinements, progress_every, max_q_expansions = int(grid_points), int(refinements), int(progress_every), int(max_q_expansions)
-        q_f_range, kappa_r_range, r0_range = tuple(map(float, q_f_range)), tuple(map(float, kappa_r_range)), tuple(map(float, r0_range))
-
-        if grid_points < 2 or refinements < 1: raise ValueError("grid_points >= 2 and refinements >= 1 are required.")
-        if progress_every < 1: raise ValueError("progress_every must be at least 1.")
-        q_expand_factor = float(q_expand_factor)
-        if q_expand_factor <= 1.0: raise ValueError("q_expand_factor must exceed 1.")
-        if max_q_expansions < 0: raise ValueError("max_q_expansions must be nonnegative.")
-        if not q_f_range[0] < q_f_range[1] < 0.0: raise ValueError("q_f_range must be increasing and strictly negative.")
-        if not 0.0 < kappa_r_range[0] < kappa_r_range[1]: raise ValueError("kappa_r_range must be positive and increasing.")
-        if len(r0_range) != 2 or not r0_range[0] < r0_range[1]: raise ValueError("r0_range must contain increasing lower/upper bounds.")
-
         fit_start = perf_counter()
-        best, branches = self._search_with_q_expansion(
-            datasets, initial_conditions, grid_points, refinements, q_f_range, kappa_r_range,
-            bool(fit_initial_state), r0_range, verbose, progress_every, q_expand_factor, max_q_expansions,
-        )
-        result = {**best["result"], "q": best["q"].copy()}
-        init_conds = np.asarray(result["init_cond"], dtype=float)
-        states = [self._state_from_parameters(data, init_conds[j], result["q"], result["kappa_R"], full=True) for j, data in enumerate(datasets)]
-        result["deterministic_states"], result["deterministic_state"] = states, states[0]
-        result = self._fit_uncertainty_params_many(result, datasets) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
-        result.update({
-            "fit_method": "brute_many", "brute_branch": best["branch"], "damping_ratio": float(best["damping_ratio"]), "brute_score": float(best["score"]),
-            "brute_grid_points": grid_points, "brute_refinements": refinements, "brute_search_history": branches,
-            "brute_fit_time": perf_counter() - fit_start, "fit_initial_state": bool(fit_initial_state),
-            "q_f_range": tuple(best["q_f_range"]), "q_f_expansions": int(best["q_f_expansions"]),
-            "deterministic_loss": float(result["recovered_model_loss"]), "fit_trajectories": len(datasets),
-        })
+        datasets = [self._prepare_data(data) for data in input_data]
+        raw_init = np.asarray(initial_conditions, dtype=float)
+        if raw_init.shape == (2,): init_conds = [wm_4_validation.initial_condition(raw_init) for _ in datasets]
+        elif raw_init.shape == (len(datasets), 2): init_conds = [wm_4_validation.initial_condition(row) for row in raw_init]
+        else: raise ValueError("initial_conditions must be [F0,R0] or one [F0,R0] row per fitting trajectory.")
+
+        r, observed, qp_loss, qp_solve_time = self._solve_qp(datasets, init_conds, stabilize=stabilize)
+        states = [self._state_from_parameters(data, init, r, full=True) for data, init in zip(datasets, init_conds)]
+        losses = []
+        for data, state in zip(datasets, states):
+            obs = np.asarray(data["observation_mask"], dtype=bool)
+            losses.append(float(np.mean((data["I"][obs] - state["I"][obs]) ** 2)))
+        residual = np.concatenate([data["I"][np.asarray(data["observation_mask"], dtype=bool)] - state["I"][np.asarray(data["observation_mask"], dtype=bool)] for data, state in zip(datasets, states)])
+        deterministic_loss = float(np.mean(residual ** 2))
+        result = {
+            "init_cond": np.vstack(init_conds), "initial_condition_seed": raw_init.copy(),
+            "r": r.copy(), "deterministic_state": states[0], "deterministic_states": states,
+            "observed_states": observed, "per_trajectory_loss": np.asarray(losses, dtype=float),
+            "recovered_model_loss": deterministic_loss, "deterministic_loss": deterministic_loss,
+            "structural_viable": True, "fit_trajectories": len(datasets),
+            "initial_rate_mismatch": np.asarray([state["initial_rate_mismatch"] for state in observed], dtype=float),
+        }
+        result = self._fit_uncertainty_params_many(result, datasets, init_conds) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
+        result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
+        result["fit_method"] = "qp_many"
+        if verbose: print(f"[qp] trajectories={len(datasets)} transitions={sum(np.count_nonzero(data['transition_mask']) for data in datasets)} loss={qp_loss:.8g} free_run_mse={deterministic_loss:.8g} solve={qp_solve_time:.4f}s")
         return result
+
+
+brute_params = qp_params
