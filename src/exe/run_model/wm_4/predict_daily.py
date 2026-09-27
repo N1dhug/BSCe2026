@@ -122,6 +122,8 @@ def main():
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--grid-points", type=int, default=4)
     parser.add_argument("--refinements", type=int, default=2)
+    parser.add_argument("--q-f-min", type=float, default=-1000.0, help="Lower q_F search bound; must be negative.")
+    parser.add_argument("--q-f-max", type=float, default=-1e-6, help="Upper q_F search bound; must be negative and greater than --q-f-min.")
     parser.add_argument("--progress-every", type=int, default=25)
     parser.add_argument("--critical-damping", action="store_true", help="Restrict the parameter fit to the critically damped branch, rho=1 and kappa_R=4|q_F|.")
     parser.add_argument("--deterministic", action="store_true", help="Run deterministic fitting/prediction only and skip diffusion parameter estimation.")
@@ -133,6 +135,7 @@ def main():
     O_predict, output_fit, fit, _, _, _ = fit_history(
         frame, predict_start, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
         grid_points=args.grid_points, refinements=args.refinements, progress_every=args.progress_every,
+        q_f_range=(args.q_f_min, args.q_f_max),
         damping_branch="critical" if args.critical_damping else None,
         fit_diffusion=not args.deterministic,
     )
@@ -170,6 +173,7 @@ def main():
     print(f"O(t): remove hourly min/max, average remaining {output_fit['retained_weeks']}")
     print(f"parameter fit: all {output_fit['weeks']} corresponding days without min/max removal")
     print(f"parameter fit days={fit_days}")
+    print(f"q_F search range=[{args.q_f_min:.8g}, {args.q_f_max:.8g}]")
     print(f"damping fit={'fixed critical' if args.critical_damping else 'all branches'}")
     print(f"mode={'deterministic' if args.deterministic else 'stochastic'}")
     print(f"q={np.array2string(fit['q'], precision=8)}")
