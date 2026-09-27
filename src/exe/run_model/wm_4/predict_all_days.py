@@ -25,23 +25,21 @@ def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deter
     end, actual, _, _ = forecast_signals(frame, start)
     n_steps = DAY_HOURS * steps_per_hour + 1
     model = wm_4((0.0, 1.0), n_steps, O)
-    init, state, fine_index, _ = optimized_prediction_state(frame, start, model, fit["q"], fit["kappa_R"], steps_per_hour)
+    init, state, fine_index, _ = optimized_prediction_state(frame, start, model, fit["r"], steps_per_hour)
 
     hourly_index = np.arange(DAY_HOURS) * steps_per_hour
     observed = actual["I"].to_numpy(dtype=float)
     predicted = state["I"][hourly_index]
     baseline = state["O"][hourly_index]
     wm4_metrics, output_metrics = deviation_metrics(observed, predicted), deviation_metrics(observed, baseline)
-    q = np.asarray(fit["q"], dtype=float)
+    r = np.asarray(fit["r"], dtype=float)
 
     daily = {
         "day": start, "weekday": start.day_name(), "optimized": True,
-        "q_0": q[0], "q_F": q[1], "q_U": q[2], "kappa_R": fit["kappa_R"],
+        "r_0": r[0], "r_F": r[1], "r_U": r[2], "r_R": r[3],
         "F_0": init[0], "R_0": init[1],
         "sigma_0": np.nan if deterministic else fit["sigma_0"],
         "sigma_I": np.nan if deterministic else fit["sigma_I"],
-        "q_F_expansions": fit["q_f_expansions"],
-        "q_F_min": fit["q_f_range"][0], "q_F_max": fit["q_f_range"][1],
         "wm4_mse": wm4_metrics["mse"], "wm4_rmse": wm4_metrics["rmse"],
         "wm4_mae": wm4_metrics["mae"], "wm4_bias": wm4_metrics["bias"],
         "O_mse": output_metrics["mse"], "O_rmse": output_metrics["rmse"],
@@ -109,7 +107,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
                 deterministic=deterministic, save_daily_plots=save_daily_plots, **fit_kwargs,
             )
             daily_rows.append(daily); hourly_frames.append(hourly)
-            print(f"{day:%Y-%m-%d} | q=[{daily['q_0']:.6f}, {daily['q_F']:.6f}, {daily['q_U']:.6f}] | k_R={daily['kappa_R']:.6f} | initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | WM4 MSE={daily['wm4_mse']:.8f} | O(t) MSE={daily['O_mse']:.8f}")
+            print(f"{day:%Y-%m-%d} | r=[{daily[\'r_0\']:.6f}, {daily[\'r_F\']:.6f}, {daily[\'r_U\']:.6f}, {daily[\'r_R\']:.6f}] | initial_cond=[{daily[\'F_0\']:.6f}, {daily[\'R_0\']:.6f}] | WM4 MSE={daily[\'wm4_mse\']:.8f} | O(t) MSE={daily[\'O_mse\']:.8f}")
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
             if fail_fast: raise
             skipped.append((day, str(exc)))
@@ -126,9 +124,6 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
     parser.add_argument("--warmup-hours", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=60)
-    parser.add_argument("--grid-points", type=int, default=8)
-    parser.add_argument("--refinements", type=int, default=6)
-    parser.add_argument("--progress-every", type=int, default=25)
     parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting. Deterministic prediction metrics are otherwise unchanged.")
     parser.add_argument("--save-daily-plots", action="store_true", help="Also save one prediction plot per fitted day.")
     parser.add_argument("--fail-fast", action="store_true", help="Stop immediately instead of skipping a day that cannot be fitted.")
@@ -138,7 +133,6 @@ def main():
     daily, hourly, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
         deterministic=args.deterministic, save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast,
-        grid_points=args.grid_points, refinements=args.refinements, progress_every=args.progress_every,
     )
     OUTPUT.mkdir(parents=True, exist_ok=True)
     daily.to_csv(OUTPUT / "daily_metrics.csv", index=False)
