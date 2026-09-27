@@ -135,7 +135,7 @@ def main():
     parser.add_argument("--warmup-hours", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--deterministic", action="store_true", help="Run deterministic fitting/prediction only and skip diffusion parameter estimation.")
-    parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic mode: fit prediction-day [F0,R0] against that day's observed I while keeping q and kappa_R fixed.")
+    parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic mode: fit prediction-day [F0,R0] against that day's observed I while keeping r fixed.")
     args = parser.parse_args()
 
     frame, _ = aligned_data("MED")
