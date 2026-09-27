@@ -56,7 +56,7 @@ class brute_params:
         F = lfilter(np.array([gain], dtype=float), np.array([1.0, -a1, -a2], dtype=float), forcing, axis=0)
         return F[:n], np.diff(F, axis=0) / dt
 
-    def _state_from_parameters(self, data, init_cond, q, kappa_r, o_scale=1.0, full=False):
+    def _state_from_parameters(self, data, init_cond, q, kappa_r, full=False):
         n, dt = self.model.t_steps, self.model.dt
         q = np.asarray(q, dtype=float)
         q_features = np.column_stack((np.ones(n), data["U"]))
@@ -66,15 +66,14 @@ class brute_params:
         forced_F, forced_R = self._forced_state_map(q_features, dt, q_f, kappa_r)
         F, R = F_b + forced_F @ q_bar, R_b + forced_R @ q_bar
         Q = q_features @ q_bar + q_f * F
-        O_raw = data["O"].copy()
-        O = float(o_scale) * O_raw
+        O = data["O"].copy()
         I = O + R
         R_dot = kappa_r * (Q - R)
 
         state = {
             "t": self.model.t.copy(), "F": F, "R": R, "R_dot": R_dot,
             "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(),
-            "O": O, "O_raw": O_raw, "o_scale": float(o_scale), "Q": Q, "I": I, "q": q.copy(),
+            "O": data["O"].copy(), "Q": Q, "I": I, "q": q.copy(),
         }
         if not full: return state
         state.update({
@@ -86,9 +85,9 @@ class brute_params:
     def _solve_inner(self, data, initial_conditions, q_f, kappa_r, fit_initial_state, r0_range):
         n, dt = self.model.t_steps, self.model.dt
         obs = np.asarray(data["observation_mask"], dtype=bool)
-        n_var = 5 if fit_initial_state else 3
-        i_q, i_o = slice(0, 2), 2
-        i_f0, i_r0 = (3, 4) if fit_initial_state else (None, None)
+        n_var = 4 if fit_initial_state else 2
+        i_q = slice(0, 2)
+        i_f0, i_r0 = (2, 3) if fit_initial_state else (None, None)
         q_features = np.column_stack((np.ones(n), data["U"]))
 
         F_X, R_X = np.zeros((n, n_var), dtype=float), np.zeros((n, n_var), dtype=float)
@@ -102,10 +101,8 @@ class brute_params:
         else:
             F_b, R_b = self._homogeneous_state(n, dt, q_f, kappa_r, initial_conditions[0], initial_conditions[1])
 
-        I_X = R_X.copy()
-        I_X[:, i_o] = data["O"]
-        X = I_X[obs]
-        y = data["I"][obs] - R_b[obs]
+        X = R_X[obs]
+        y = data["I"][obs] - data["O"][obs] - R_b[obs]
 
         structural_rows, structural_rhs = [], []
         for U in (0.0, 1.0):
@@ -118,7 +115,6 @@ class brute_params:
         A_ub, b_ub = np.vstack(structural_rows), np.asarray(structural_rhs, dtype=float)
         lb, ub = np.full(n_var, -np.inf), np.full(n_var, np.inf)
         ub[1] = 0.0
-        lb[i_o], ub[i_o] = 0.0, 1.0
         if fit_initial_state:
             lb[i_f0], ub[i_f0] = 0.0, 1.0
             lb[i_r0], ub[i_r0] = map(float, r0_range)
@@ -130,16 +126,15 @@ class brute_params:
         q_bar = solution[i_q]
         q = np.array([q_bar[0], q_f, q_bar[1]], dtype=float)
         q = wm_4_validation.recovered_structural_coefficients(q)
-        o_scale = float(solution[i_o])
         estimated_init = np.array([solution[i_f0], solution[i_r0]], dtype=float) if fit_initial_state else np.asarray(initial_conditions, dtype=float).copy()
-        state = self._state_from_parameters(data, estimated_init, q, kappa_r, o_scale=o_scale, full=False)
+        state = self._state_from_parameters(data, estimated_init, q, kappa_r, full=False)
         loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
 
         return {
             "init_cond": estimated_init, "initial_condition_seed": np.asarray(initial_conditions, dtype=float).copy(),
             "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(),
             "O": data["O"].copy(), "observation_mask": obs.copy(),
-            "q": q, "o_scale": o_scale, "kappa_R": float(kappa_r), "deterministic_state": state,
+            "q": q, "kappa_R": float(kappa_r), "deterministic_state": state,
             "recovered_model_loss": loss, "structural_viable": True,
             "brute_q_F": float(q_f), "brute_kappa_R": float(kappa_r), "qp_solve_time": qp_solve_time,
         }
@@ -149,7 +144,7 @@ class brute_params:
         index = np.flatnonzero(obs)
         if index.size < 3: raise ValueError("At least three observations are required to estimate wm_4 diffusion.")
         observed_I = np.asarray(data["I"][index], dtype=float)
-        observed_O = float(result["o_scale"]) * np.asarray(data["O"][index], dtype=float)
+        observed_O = np.asarray(data["O"][index], dtype=float)
         if np.any(observed_I < 0.0) or np.any(state["I"] < 0.0): raise ValueError("wm_4 produced negative I; input-dependent diffusion requires I >= 0.")
 
         observed_R = observed_I - observed_O
@@ -270,7 +265,7 @@ class brute_params:
         fit_start = perf_counter()
         best, branches = self._search_all(data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, bool(fit_initial_state), r0_range, verbose, progress_every)
         result = {**best["result"], "q": best["q"].copy()}
-        result["deterministic_state"] = self._state_from_parameters(data, result["init_cond"], result["q"], result["kappa_R"], o_scale=result["o_scale"], full=True)
+        result["deterministic_state"] = self._state_from_parameters(data, result["init_cond"], result["q"], result["kappa_R"], full=True)
         result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result.update({
             "fit_method": "brute", "brute_branch": best["branch"], "brute_score": float(best["score"]),
