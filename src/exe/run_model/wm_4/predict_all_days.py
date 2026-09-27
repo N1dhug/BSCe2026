@@ -107,7 +107,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
                 deterministic=deterministic, save_daily_plots=save_daily_plots, **fit_kwargs,
             )
             daily_rows.append(daily); hourly_frames.append(hourly)
-            print(f"{day:%Y-%m-%d} | r=[{daily[\'r_0\']:.6f}, {daily[\'r_F\']:.6f}, {daily[\'r_U\']:.6f}, {daily[\'r_R\']:.6f}] | initial_cond=[{daily[\'F_0\']:.6f}, {daily[\'R_0\']:.6f}] | WM4 MSE={daily[\'wm4_mse\']:.8f} | O(t) MSE={daily[\'O_mse\']:.8f}")
+            print(f"{day:%Y-%m-%d} | r=[{daily['r_0']:.6f}, {daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}] | initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | WM4 MSE={daily['wm4_mse']:.8f} | O(t) MSE={daily['O_mse']:.8f}")
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
             if fail_fast: raise
             skipped.append((day, str(exc)))
