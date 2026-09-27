@@ -18,6 +18,7 @@ Run from the repository root:
     python -B -m src.exe.run_model.bm_1.multi_price_optimization_experiment
 """
 
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,6 +43,7 @@ from src.exe.run_model.bm_1.stochastic_optimization_reference import (
     linear_price_response,
     linear_state_response,
 )
+from src.method.bm_1_fast_fv import FastFVStochasticPriceEvaluator
 from src.method.bm_1_stochastic_objective import monte_carlo_tracking_objective
 from src.method.bm_1_stochastic_optimization import (
     FVStochasticPriceEvaluator,
@@ -132,7 +134,7 @@ def _parameter_template(edges):
     ]
 
 
-def _build_evaluator(model, n_intervals, common_breakpoints):
+def _build_evaluator(model, n_intervals, common_breakpoints, *, fast_fv=False):
     edges = _edges(n_intervals)
     spatial_edges, _, _ = model.fokker_planc_reference.grid(FV_X_STEPS)
     initial_mass = beta_initial_cell_mass(
@@ -140,7 +142,8 @@ def _build_evaluator(model, n_intervals, common_breakpoints):
         alpha=INITIAL_ALPHA,
         beta=INITIAL_BETA,
     )
-    return FVStochasticPriceEvaluator(
+    evaluator_class = FastFVStochasticPriceEvaluator if fast_fv else FVStochasticPriceEvaluator
+    return evaluator_class(
         model,
         _parameter_template(edges),
         edges,
@@ -288,13 +291,13 @@ def _paired_improvement(reference, candidate):
     return mean, se
 
 
-def run_multi_price_experiment(progress=print, validate_mc=True):
+def run_multi_price_experiment(progress=print, validate_mc=True, *, fast_fv=False):
     target, _, _ = build_deterministic_target()
     model = build_stochastic_model(target)
 
     common_breakpoints = _union_breakpoints()
     evaluators = {
-        count: _build_evaluator(model, count, common_breakpoints)
+        count: _build_evaluator(model, count, common_breakpoints, fast_fv=fast_fv)
         for count in INTERVAL_COUNTS
     }
 
@@ -354,7 +357,13 @@ def run_multi_price_experiment(progress=print, validate_mc=True):
 
 
 def main():
-    result = run_multi_price_experiment(progress=lambda message: print(message, flush=True))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fast-fv", action="store_true", help="Use the numerically equivalent LAPACK/blocked FV evaluator.")
+    args = parser.parse_args()
+    print("FV backend: " + ("fast" if args.fast_fv else "reference"), flush=True)
+    result = run_multi_price_experiment(
+        progress=lambda message: print(message, flush=True), fast_fv=args.fast_fv
+    )
     cases = result["cases"]
 
     print()
