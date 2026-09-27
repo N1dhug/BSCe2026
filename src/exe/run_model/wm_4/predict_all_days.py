@@ -17,11 +17,10 @@ START_DAY = "2022-02-28"
 END_DAY = "2022-08-22"
 
 
-def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, grid_points, refinements, progress_every, deterministic, save_daily_plots):
+def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deterministic=False, save_daily_plots=False, **fit_kwargs):
     O, output_fit, fit, _, _, _ = fit_history(
         frame, start, baseline_weeks, warmup_hours, steps_per_hour,
-        grid_points=grid_points, refinements=refinements, progress_every=progress_every,
-        fit_diffusion=not deterministic,
+        fit_diffusion=not deterministic, **fit_kwargs,
     )
     end, actual, _, _ = forecast_signals(frame, start)
     n_steps = DAY_HOURS * steps_per_hour + 1
@@ -98,6 +97,28 @@ def print_summary(hourly, fitted_days, skipped):
         for day, reason in skipped: print(f"{day:%Y-%m-%d}: {reason}")
 
 
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, warmup_hours=24, steps_per_hour=60, deterministic=False, save_daily_plots=False, fail_fast=False, **fit_kwargs):
+    start, end = day_start(start), day_start(end)
+    if end < start: raise ValueError("end must be on or after start.")
+
+    daily_rows, hourly_frames, skipped = [], [], []
+    for day in pd.date_range(start, end, freq="D"):
+        try:
+            daily, hourly = day_result(
+                frame, day, baseline_weeks, warmup_hours, steps_per_hour,
+                deterministic=deterministic, save_daily_plots=save_daily_plots, **fit_kwargs,
+            )
+            daily_rows.append(daily); hourly_frames.append(hourly)
+            print(f"{day:%Y-%m-%d} | q=[{daily['q_0']:.6f}, {daily['q_F']:.6f}, {daily['q_U']:.6f}] | k_R={daily['kappa_R']:.6f} | initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | WM4 MSE={daily['wm4_mse']:.8f} | O(t) MSE={daily['O_mse']:.8f}")
+        except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
+            if fail_fast: raise
+            skipped.append((day, str(exc)))
+            print(f"{day:%Y-%m-%d} | skipped | {exc}")
+
+    if not daily_rows: raise RuntimeError("No days in the requested range could be fitted.")
+    return pd.DataFrame(daily_rows).sort_values("day").reset_index(drop=True), pd.concat(hourly_frames).sort_index(), skipped
+
+
 def main():
     parser = ArgumentParser(description="Fit and evaluate optimized-state wm_4 daily predictions across every usable day in a date range.")
     parser.add_argument("--start-day", default=START_DAY)
@@ -113,28 +134,12 @@ def main():
     parser.add_argument("--fail-fast", action="store_true", help="Stop immediately instead of skipping a day that cannot be fitted.")
     args = parser.parse_args()
 
-    start, end = day_start(args.start_day), day_start(args.end_day)
-    if end < start: raise ValueError("--end-day must be on or after --start-day.")
-
     frame, _ = aligned_data()
-    daily_rows, hourly_frames, skipped = [], [], []
-    for day in pd.date_range(start, end, freq="D"):
-        try:
-            daily, hourly = day_result(
-                frame, day, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
-                args.grid_points, args.refinements, args.progress_every, args.deterministic, args.save_daily_plots,
-            )
-            daily_rows.append(daily); hourly_frames.append(hourly)
-            print(f"{day:%Y-%m-%d} | q=[{daily['q_0']:.6f}, {daily['q_F']:.6f}, {daily['q_U']:.6f}] | k_R={daily['kappa_R']:.6f} | initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | WM4 MSE={daily['wm4_mse']:.8f} | O(t) MSE={daily['O_mse']:.8f}")
-        except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
-            if args.fail_fast: raise
-            skipped.append((day, str(exc)))
-            print(f"{day:%Y-%m-%d} | skipped | {exc}")
-
-    if not daily_rows: raise RuntimeError("No days in the requested range could be fitted.")
-
-    daily = pd.DataFrame(daily_rows).sort_values("day").reset_index(drop=True)
-    hourly = pd.concat(hourly_frames).sort_index()
+    daily, hourly, skipped = run_all_days(
+        frame, args.start_day, args.end_day, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
+        deterministic=args.deterministic, save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast,
+        grid_points=args.grid_points, refinements=args.refinements, progress_every=args.progress_every,
+    )
     OUTPUT.mkdir(parents=True, exist_ok=True)
     daily.to_csv(OUTPUT / "daily_metrics.csv", index=False)
     hourly.to_csv(OUTPUT / "hourly_predictions.csv")
