@@ -217,9 +217,16 @@ class BM1ControlProblem:
                 "observed_prices",
             )
 
+        price_edges = price_edges.copy()
+        breakpoints = breakpoints.copy()
+        price_edges.setflags(write=False)
+        breakpoints.setflags(write=False)
+        if observed_prices is not None:
+            observed_prices.setflags(write=False)
+
         object.__setattr__(self, "horizon", tuple(float(v) for v in horizon))
-        object.__setattr__(self, "price_edges", price_edges.copy())
-        object.__setattr__(self, "breakpoints", breakpoints.copy())
+        object.__setattr__(self, "price_edges", price_edges)
+        object.__setattr__(self, "breakpoints", breakpoints)
         object.__setattr__(self, "observed_prices", observed_prices)
 
     @property
