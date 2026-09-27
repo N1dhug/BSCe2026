@@ -131,8 +131,8 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS, help="Matching weekdays used for trimmed O(t); default 5.")
     parser.add_argument("--warmup-hours", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=60)
-    parser.add_argument("--grid-points", type=int, default=4)
-    parser.add_argument("--refinements", type=int, default=2)
+    parser.add_argument("--grid-points", type=int, default=8)
+    parser.add_argument("--refinements", type=int, default=6)
     parser.add_argument("--progress-every", type=int, default=25)
     args = parser.parse_args()
 

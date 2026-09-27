@@ -315,27 +315,6 @@ class brute_params:
         return lo, hi
 
     @staticmethod
-    def _log_grid(bounds, n, negative=False):
-        lo, hi = map(float, bounds)
-        if negative:
-            if not lo < hi < 0.0: raise ValueError("negative log-grid bounds must be increasing and strictly negative.")
-            return -np.geomspace(abs(lo), abs(hi), int(n))
-        if not 0.0 < lo < hi: raise ValueError("positive log-grid bounds must be positive and increasing.")
-        return np.geomspace(lo, hi, int(n))
-
-    @staticmethod
-    def _refined_log_interval(values, best, global_lo, global_hi, negative=False):
-        values = np.asarray(values, dtype=float)
-        mags = np.sort(np.abs(values))
-        best_mag = abs(float(best))
-        idx = int(np.argmin(np.abs(mags - best_mag)))
-        global_min, global_max = sorted((abs(float(global_lo)), abs(float(global_hi))))
-        lo_mag = global_min if idx == 0 else np.sqrt(mags[idx - 1] * best_mag)
-        hi_mag = global_max if idx == mags.size - 1 else np.sqrt(best_mag * mags[idx + 1])
-        lo_mag, hi_mag = max(global_min, lo_mag), min(global_max, hi_mag)
-        return (-hi_mag, -lo_mag) if negative else (lo_mag, hi_mag)
-
-    @staticmethod
     def _damping_branch(q_f, kappa_r, tol=1e-6):
         zeta = float(kappa_r) / (2.0 * np.sqrt(-float(kappa_r) * float(q_f)))
         if abs(zeta - 1.0) <= tol: return "critical", zeta
@@ -347,8 +326,8 @@ class brute_params:
         best, history, search_start = None, [], perf_counter()
 
         for level in range(refinements):
-            q_grid = self._log_grid(q_local, grid_points, negative=True)
-            k_grid = self._log_grid(k_local, grid_points)
+            q_grid = np.linspace(*q_local, grid_points)
+            k_grid = np.linspace(*k_local, grid_points)
             level_best, tested, pruned, qp_times, level_start = None, 0, 0, [], perf_counter()
             if verbose: print(f"[brute] refinement={level + 1}/{refinements} candidates={len(q_grid) * len(k_grid)}")
 
@@ -381,8 +360,8 @@ class brute_params:
             if level_best is None: break
 
             best = level_best
-            q_local = self._refined_log_interval(q_grid, best["q_f"], *q_bounds, negative=True)
-            k_local = self._refined_log_interval(k_grid, best["kappa_R"], *k_bounds)
+            q_local = self._refined_interval(q_grid, best["q_f"], *q_bounds)
+            k_local = self._refined_interval(k_grid, best["kappa_R"], *k_bounds)
 
         if best is None: raise RuntimeError("wm_4 brute-force parameter search found no structurally admissible q_F/kappa_R grid candidate.")
         branch, zeta = self._damping_branch(best["q_f"], best["kappa_R"])
@@ -423,7 +402,7 @@ class brute_params:
         best["q_f_expansions"] = len(attempts) - 1
         return best, {"attempts": attempts}
 
-    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), q_expand_factor=10.0, max_q_expansions=4, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=False, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, grid_points=8, refinements=6, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), q_expand_factor=10.0, max_q_expansions=4, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=False, progress_every=25):
         data = self._prepare_data(input_data)
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every, max_q_expansions = int(grid_points), int(refinements), int(progress_every), int(max_q_expansions)
@@ -455,7 +434,7 @@ class brute_params:
         })
         return result
 
-    def fit_many(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), q_expand_factor=10.0, max_q_expansions=4, fit_initial_state=False, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=False, progress_every=25):
+    def fit_many(self, input_data, initial_conditions, *, grid_points=8, refinements=6, q_f_range=(-1000.0, -1e-4), kappa_r_range=(1e-4, 4e4), q_expand_factor=10.0, max_q_expansions=4, fit_initial_state=False, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=False, progress_every=25):
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         datasets = [self._prepare_data(data) for data in input_data]
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
