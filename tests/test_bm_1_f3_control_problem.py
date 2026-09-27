@@ -133,6 +133,10 @@ class BM1ControlProblemTests(unittest.TestCase):
             KNOWN_DETERMINISTIC_PRICES,
         )
         np.testing.assert_array_equal(problem.price_edges, INTERVAL_EDGES)
+        with self.assertRaises(ValueError):
+            problem.observed_prices[0] = 0.1
+        with self.assertRaises(ValueError):
+            problem.price_edges[1] = 0.7
 
         template = problem.parameters.parameter_template(problem.price_edges)
         np.testing.assert_array_equal(
