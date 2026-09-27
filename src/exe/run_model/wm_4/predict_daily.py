@@ -43,7 +43,7 @@ def fit_history(frame, predict_start, baseline_weeks, warmup_hours, steps_per_ho
     model = wm_4(model_T, len(indices[0]), O)
     fit = brute_params(model).fit(
         average_data, INIT,
-        fit_initial_state=warmup_hours == 0, fit_diffusion=fit_diffusion, verbose=True,
+        fit_initial_state=warmup_hours == 0, fit_diffusion=fit_diffusion, verbose=False,
         **kwargs,
     )
     fit["average_training_data"] = average_data
@@ -184,10 +184,10 @@ def main():
     print(f"parameter fit: average I(t) and average U(t) across all {output_fit['weeks']} corresponding days")
     print(f"parameter fit days={fit_days}")
     print(f"mode={'deterministic' if args.deterministic else 'stochastic'}")
-    print(f"q={np.array2string(fit['q'], precision=8)}")
-    print(f"q_F search range={fit['q_f_range']}, expansions={fit['q_f_expansions']}")
-    print(f"kappa_R={fit['kappa_R']:.8f}, damping={fit['brute_branch']}, zeta={fit['damping_ratio']:.8f}")
-    if not args.deterministic: print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
+    q = fit["q"]
+    print(f"coefficients: q_0={q[0]:.8f}, q_F={q[1]:.8f}, q_U={q[2]:.8f}, kappa_R={fit['kappa_R']:.8f}")
+    print(f"search: q_F_range={fit['q_f_range']}, expansions={fit['q_f_expansions']}, damping={fit['brute_branch']}, zeta={fit['damping_ratio']:.8f}")
+    if not args.deterministic: print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"average-signal deterministic loss={fit['deterministic_loss']:.10f}")
     if args.optimize_prediction_state:
         print(f"prediction initial [F0,R0] optimized from prediction-day I={np.array2string(init, precision=8)}")
