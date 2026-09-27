@@ -192,7 +192,7 @@ def main():
         print(f"prediction initial [F0,R0] optimized from prediction-day I={np.array2string(init, precision=8)}")
         print(f"prediction-state optimization MSE={init_fit_mse:.10f} (diagnostic; uses observed prediction-day I)")
     else:
-        print(f"forecast initial [F,R] reused from most recent matching day terminal state={np.array2string(init, precision=8)}")
+        print(f"forecast initial [F,R] reused from averaged historical fit terminal state={np.array2string(init, precision=8)}")
     print(f"O(t) deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
     print(f"parametrized I=O+R deviation from actual I: MSE={prediction_metrics['mse']:.10f}, RMSE={prediction_metrics['rmse']:.10f}, MAE={prediction_metrics['mae']:.10f}, bias={prediction_metrics['bias']:.10f}")
     print(f"plot={path}")
