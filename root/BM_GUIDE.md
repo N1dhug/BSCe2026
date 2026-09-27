@@ -94,10 +94,13 @@ performance remains documented in `root/BM_PERFORMANCE.md` and Git history.
 
 ## Evidence and local files
 
-The committed F3-B JSON/figure and real-data evidence are kept byte-for-byte.
-No source, solver, model or test reads the old timing JSON to run a calculation.
-The unused old EM/FP demo entrypoints and their superseded step figures are
-removed. Their controlled replacements are `verify em` and `verify fv`.
+The committed F3-B JSON/figure live together under `files/output/bm_1/f3_b/`,
+while the retained historical real-data evidence stays under `files/output/bm_1/real_data/`.
+All other BM1 verification plots are reproducible local run output under the ignored
+`files/output/bm_1/runs/` tree and are not versioned. No source, solver, model or test
+reads the old timing JSON to run a calculation. The unused old EM/FP demo entrypoints
+and superseded historical BM1 verification figures are removed; their controlled
+replacements are the `verify`/`optimize` entrypoints.
 Tracked Python bytecode caches are removed and ignored. The empty
 `src/validation/exe` placeholder is removed; functional package initializers
 are retained. Git does not track empty folders.
