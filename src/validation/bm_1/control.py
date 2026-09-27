@@ -34,6 +34,8 @@ INITIAL_PRICES = np.array([0.55, 0.45], dtype=float)
 BASELINE = 0.3
 X0_DETERMINISTIC = 0.5
 F3_C_TERMINAL_REFERENCE = 0.5
+F3_C_TERMINAL_WEIGHTS = (0.0, 1e-3, 1e-2, 1e-1, 0.5)
+F3_C_SMOOTHING_WEIGHTS = (0.0, 1e-4, 1e-3, 1e-2, 1e-1)
 C = 1.0
 K = 2.0
 XI = 1.0
@@ -514,22 +516,35 @@ def build_f3_a_problem():
     return (problem, numerics)
 
 
+def _reference_starts(problem):
+    """Common starts for the two-price F3 reference and sensitivity problems."""
+    return np.vstack(
+        (problem.observed_prices, INITIAL_PRICES, np.full(problem.n_intervals, 0.5, dtype=float)),
+    )
+
+
 def run_reference(*, optimize=False, progress=print):
     problem, numerics = build_f3_a_problem()
     fixed = problem.evaluate_observed(numerics, fast=True)
     result = {'problem': problem, 'numerics': numerics, 'fixed': fixed, 'optimization': None}
     if optimize:
         evaluator = problem.build_evaluator(numerics, fast=True)
-        starts = np.vstack(
-            (problem.observed_prices, INITIAL_PRICES, np.full(problem.n_intervals, 0.5, dtype=float)),
-        )
         result['optimization'] = control.multistart_powell(
             evaluator,
-            starts,
+            _reference_starts(problem),
             progress=progress,
             options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
         )
     return result
+
+
+@dataclass(frozen=True)
+class F3CSensitivityCase:
+    """One independently optimized F3-C weight pair and its common-FV reevaluation."""
+    terminal_weight: float
+    smoothing_weight: float
+    optimization: object
+    evaluation: object
 
 
 def build_f3_c_problem(
@@ -549,6 +564,46 @@ def build_f3_c_problem(
     return problem, numerics
 
 
+def _f3_c_weights(values, name):
+    values = np.asarray(values, dtype=float).reshape(-1)
+    if (
+        values.size < 1
+        or not np.all(np.isfinite(values))
+        or np.any(values < 0.0)
+        or np.any(np.diff(values) <= 0.0)
+    ):
+        raise ValueError(f'{name} must be a finite, non-negative, strictly increasing sequence.')
+    return tuple(float(value) for value in values)
+
+
+def _f3_c_weight_pairs(terminal_weights, smoothing_weights, *, include_grid=False):
+    """Return unique axis sweeps, and optionally the full Cartesian weight grid."""
+    terminal_weights = _f3_c_weights(terminal_weights, 'terminal_weights')
+    smoothing_weights = _f3_c_weights(smoothing_weights, 'smoothing_weights')
+    pairs = [(0.0, 0.0)]
+    pairs.extend((weight, 0.0) for weight in terminal_weights if weight > 0.0)
+    pairs.extend((0.0, weight) for weight in smoothing_weights if weight > 0.0)
+    if include_grid:
+        pairs.extend(
+            (terminal, smoothing)
+            for terminal in terminal_weights
+            for smoothing in smoothing_weights
+            if terminal > 0.0 and smoothing > 0.0
+        )
+    return tuple(pairs)
+
+
+def _optimize_f3_c_problem(problem, numerics, progress):
+    evaluator = problem.build_evaluator(numerics, fast=True)
+    optimization = control.multistart_powell(
+        evaluator,
+        _reference_starts(problem),
+        progress=progress,
+        options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+    )
+    return evaluator, optimization, evaluator.evaluate(optimization.best.x)
+
+
 def run_f3_c(
     *,
     terminal_reference=F3_C_TERMINAL_REFERENCE,
@@ -562,18 +617,8 @@ def run_f3_c(
         terminal_weight=terminal_weight,
         smoothing_weight=smoothing_weight,
     )
-    evaluator = problem.build_evaluator(numerics, fast=True)
+    evaluator, optimization, optimized = _optimize_f3_c_problem(problem, numerics, progress)
     fixed = evaluator.evaluate(problem.observed_prices)
-    starts = np.vstack(
-        (problem.observed_prices, INITIAL_PRICES, np.full(problem.n_intervals, 0.5, dtype=float)),
-    )
-    optimization = control.multistart_powell(
-        evaluator,
-        starts,
-        progress=progress,
-        options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
-    )
-    optimized = evaluator.evaluate(optimization.best.x)
     return {
         'problem': problem,
         'numerics': numerics,
@@ -581,6 +626,57 @@ def run_f3_c(
         'fixed': fixed,
         'optimization': optimization,
         'optimized': optimized,
+    }
+
+
+def run_f3_c_sensitivity(
+    *,
+    terminal_reference=F3_C_TERMINAL_REFERENCE,
+    terminal_weights=F3_C_TERMINAL_WEIGHTS,
+    smoothing_weights=F3_C_SMOOTHING_WEIGHTS,
+    include_grid=False,
+    progress=print,
+):
+    """Optimize common F3-C problems while changing only the objective weights.
+
+    Cross-weight comparisons should use the raw tracking cost, terminal MSE,
+    price roughness and returned prices. The weighted total changes definition
+    with the weights and is therefore not a common performance metric.
+    """
+    pairs = _f3_c_weight_pairs(
+        terminal_weights,
+        smoothing_weights,
+        include_grid=include_grid,
+    )
+    base_problem, numerics = build_f3_a_problem()
+    cases = []
+    for index, (terminal_weight, smoothing_weight) in enumerate(pairs, start=1):
+        if progress is not None:
+            progress(
+                f'[{index}/{len(pairs)}] lambda_T={terminal_weight:.6g}, '
+                f'lambda_U={smoothing_weight:.6g}',
+            )
+        problem = replace(
+            base_problem,
+            terminal_reference=terminal_reference,
+            terminal_weight=terminal_weight,
+            price_smoothing_weight=smoothing_weight,
+        )
+        _, optimization, evaluation = _optimize_f3_c_problem(problem, numerics, progress)
+        cases.append(
+            F3CSensitivityCase(
+                terminal_weight=terminal_weight,
+                smoothing_weight=smoothing_weight,
+                optimization=optimization,
+                evaluation=evaluation,
+            ),
+        )
+    return {
+        'terminal_reference': float(terminal_reference),
+        'terminal_weights': _f3_c_weights(terminal_weights, 'terminal_weights'),
+        'smoothing_weights': _f3_c_weights(smoothing_weights, 'smoothing_weights'),
+        'include_grid': bool(include_grid),
+        'cases': tuple(cases),
     }
 
 

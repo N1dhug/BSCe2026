@@ -1,6 +1,6 @@
 # BM1 — code and run guide
 
-F1, F2, F3-A, F3-B and the F3-C augmented objective are implemented.
+F1, F2, F3-A, F3-B and the F3-C augmented objective plus weight sensitivity are implemented.
 Run all commands from the repository root.
 
 ## Where the code belongs
@@ -24,7 +24,7 @@ Run all commands from the repository root.
 Read the battery model for the equations, then `control/bm_1.py` from top to
 bottom: problem inputs, results, initial law, forward evaluators, price search
 and MC assessment. Scenario constants/builders live in `validation/bm_1`.
-`control/objective.py` is the extension point for the later F3-C cost terms.
+`control/objective.py` owns the F3-C terminal-state and price-jump cost terms.
 
 WM uses `method/fokker_planc.py` too. The generic numerical methods and shared
 package initializers are unchanged. Reference FV and fast FV are independent
@@ -59,6 +59,8 @@ python -B -m src.exe.run_model.bm_1.optimize stochastic
 python -B -m src.exe.run_model.bm_1.optimize contract
 python -B -m src.exe.run_model.bm_1.optimize contract --optimize
 python -B -m src.exe.run_model.bm_1.optimize augmented --terminal-weight 0.01 --smoothing-weight 0.001
+python -B -m src.exe.run_model.bm_1.optimize sensitivity
+python -B -m src.exe.run_model.bm_1.optimize sensitivity --grid
 python -B -m src.exe.run_model.bm_1.optimize multi --fast-fv
 python -B -m src.exe.run_model.bm_1.optimize complex --fast-fv
 python -B -m src.exe.run_model.bm_1.refine
@@ -66,6 +68,8 @@ python -B -m src.exe.run_model.bm_1.refine --mc-paths 20000 --mc-time-paths 5000
 python -B -m src.exe.run_model.bm_1.real_data --help
 python -B -m src.exe.run_model.bm_1.verify benchmark --cells 201 1001 --repeats 7
 ```
+
+The F3-C sensitivity command compares raw tracking cost, terminal MSE and price roughness across weights; weighted totals from different rows are not a common metric because the objective itself changes.
 
 Mixture/conditioning and full multi-price optimization can be expensive. Their
 numerical settings are not reduced just to make an output report shorter.

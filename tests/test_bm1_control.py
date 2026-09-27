@@ -7,7 +7,7 @@ from src.control.bm_1 import (BM1ControlNumerics, BM1ControlProblem, BM1Paramete
     evaluate_mc_candidates_common_random_numbers, multistart_powell, paired_mc_improvement)
 from src.validation.bm_1.cases import (INITIAL_ALPHA, INITIAL_BETA, SIGMA_X, linear_price_response,
     linear_state_response)
-from src.validation.bm_1.control import C, DETERMINISTIC_REFERENCE_PRICES, HOURLY_EDGES, INITIAL_PRICES, MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS, INTERVAL_EDGES, K, KNOWN_DETERMINISTIC_PRICES, REFERENCE_PRICES_24, T, XI, _build_fv_evaluator, _coarsen_reference_prices, multi_edges as _edges, _lift_half_day_prices, _parameter_template, _sample_piecewise_prices as _sample_piecewise_prices, _union_breakpoints, build_deterministic_target, build_stochastic_model, INTERVAL_COUNTS as control_INTERVAL_COUNTS, _edges as control__edges, _sample_piecewise_prices as control__sample_piecewise_prices
+from src.validation.bm_1.control import C, DETERMINISTIC_REFERENCE_PRICES, F3_C_SMOOTHING_WEIGHTS, F3_C_TERMINAL_WEIGHTS, HOURLY_EDGES, INITIAL_PRICES, MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS, INTERVAL_EDGES, K, KNOWN_DETERMINISTIC_PRICES, REFERENCE_PRICES_24, T, XI, _build_fv_evaluator, _coarsen_reference_prices, _f3_c_weight_pairs, multi_edges as _edges, _lift_half_day_prices, _parameter_template, _sample_piecewise_prices as _sample_piecewise_prices, _union_breakpoints, build_deterministic_target, build_stochastic_model, INTERVAL_COUNTS as control_INTERVAL_COUNTS, _edges as control__edges, _sample_piecewise_prices as control__sample_piecewise_prices
 
 class PowellOptimizationTests(unittest.TestCase):
 
@@ -262,6 +262,38 @@ class BM1ControlProblemTests(unittest.TestCase):
         self.assertIs(template[1], old[1])
         self.assertIs(template[2], old[2])
         self.assertEqual(template[3:], old[3:])
+
+class F3CSensitivityStructureTests(unittest.TestCase):
+
+    def test_default_weight_sweeps_are_unique_and_grid_is_complete(self):
+        axes = _f3_c_weight_pairs(F3_C_TERMINAL_WEIGHTS, F3_C_SMOOTHING_WEIGHTS)
+        grid = _f3_c_weight_pairs(
+            F3_C_TERMINAL_WEIGHTS,
+            F3_C_SMOOTHING_WEIGHTS,
+            include_grid=True,
+        )
+        self.assertEqual(axes[0], (0.0, 0.0))
+        self.assertEqual(len(axes), len(F3_C_TERMINAL_WEIGHTS) + len(F3_C_SMOOTHING_WEIGHTS) - 1)
+        self.assertEqual(len(set(axes)), len(axes))
+        self.assertEqual(len(grid), len(F3_C_TERMINAL_WEIGHTS) * len(F3_C_SMOOTHING_WEIGHTS))
+        self.assertEqual(len(set(grid)), len(grid))
+        self.assertTrue(all((terminal == 0.0 or smoothing == 0.0) for terminal, smoothing in axes))
+        self.assertTrue(
+            all(
+                (terminal, smoothing) in grid
+                for terminal in F3_C_TERMINAL_WEIGHTS
+                for smoothing in F3_C_SMOOTHING_WEIGHTS
+            ),
+        )
+
+    def test_weight_sweeps_reject_negative_duplicate_or_unsorted_values(self):
+        with self.assertRaises(ValueError):
+            _f3_c_weight_pairs([0.0, -0.1], [0.0, 0.1])
+        with self.assertRaises(ValueError):
+            _f3_c_weight_pairs([0.0, 0.1, 0.1], [0.0, 0.1])
+        with self.assertRaises(ValueError):
+            _f3_c_weight_pairs([0.1, 0.0], [0.0, 0.1])
+
 
 class MultiPriceExperimentStructureTests(unittest.TestCase):
 

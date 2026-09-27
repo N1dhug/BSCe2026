@@ -206,6 +206,43 @@ def run_augmented(args):
     return result
 
 
+def _sensitivity_table(title, selected):
+    print(title)
+    print('lambda_T   lambda_U   tracking       terminal_MSE   roughness      J_total         prices')
+    for case in selected:
+        evaluation = case.evaluation
+        print(
+            f'{case.terminal_weight:<10.6g} {case.smoothing_weight:<10.6g} '
+            f'{evaluation.objective.total:.8e} {evaluation.penalties.terminal_mse:.8e} '
+            f'{evaluation.penalties.price_roughness:.8e} {evaluation.total:.8e} '
+            f'{_prices(evaluation.prices)}',
+        )
+
+
+def run_sensitivity(args):
+    """F3-C sensitivity of tracking, terminal state and price roughness to objective weights."""
+    result = cases.run_f3_c_sensitivity(
+        terminal_reference=args.terminal_reference,
+        terminal_weights=args.terminal_weights,
+        smoothing_weights=args.smoothing_weights,
+        include_grid=args.grid,
+        progress=print if args.verbose else None,
+    )
+    resolved = result['cases']
+    terminal_axis = [case for case in resolved if case.smoothing_weight == 0.0]
+    smoothing_axis = [case for case in resolved if case.terminal_weight == 0.0]
+    interior = [case for case in resolved if case.terminal_weight > 0.0 and case.smoothing_weight > 0.0]
+    print(f"F3-C weight sensitivity; x_ref={result['terminal_reference']:.6f}")
+    print('Compare raw tracking, terminal_MSE and roughness across rows; J_total uses a different objective when weights change.')
+    _sensitivity_table('Terminal-weight sweep (lambda_U=0)', terminal_axis)
+    print()
+    _sensitivity_table('Smoothing-weight sweep (lambda_T=0)', smoothing_axis)
+    if interior:
+        print()
+        _sensitivity_table('Two-dimensional weight grid', interior)
+    return result
+
+
 def run_stochastic(args):
     """Design FV/mixture controls, then assess both on the same reference methods."""
     result = cases.run_optimization_reference(progress=print if args.verbose else None)
@@ -287,6 +324,7 @@ def main(argv=None):
         ('complex', run_resolution),
         ('contract', run_contract),
         ('augmented', run_augmented),
+        ('sensitivity', run_sensitivity),
     ]:
         command = commands.add_parser(name, help=run.__doc__)
         command.set_defaults(run=run)
@@ -295,7 +333,8 @@ def main(argv=None):
             action='store_true',
             help='Show prices, details and solver progress.',
         )
-        command.add_argument('--save', action='store_true', help='Save a comparison figure under runs/.')
+        if name != 'sensitivity':
+            command.add_argument('--save', action='store_true', help='Save a comparison figure under runs/.')
         if name == 'contract':
             command.add_argument('--optimize', action='store_true', help='Also optimize new prices.')
         if name == 'augmented':
@@ -316,6 +355,32 @@ def main(argv=None):
                 type=float,
                 default=0.0,
                 help='Non-negative lambda_U multiplying squared adjacent price jumps.',
+            )
+        if name == 'sensitivity':
+            command.add_argument(
+                '--terminal-reference',
+                type=float,
+                default=cases.F3_C_TERMINAL_REFERENCE,
+                help='Reference terminal state x_ref; default 0.5.',
+            )
+            command.add_argument(
+                '--terminal-weights',
+                type=float,
+                nargs='+',
+                default=list(cases.F3_C_TERMINAL_WEIGHTS),
+                help='Strictly increasing non-negative lambda_T values.',
+            )
+            command.add_argument(
+                '--smoothing-weights',
+                type=float,
+                nargs='+',
+                default=list(cases.F3_C_SMOOTHING_WEIGHTS),
+                help='Strictly increasing non-negative lambda_U values.',
+            )
+            command.add_argument(
+                '--grid',
+                action='store_true',
+                help='Also optimize every positive lambda_T/lambda_U combination.',
             )
         if name in ('multi', 'complex'):
             command.add_argument(
