@@ -1,6 +1,6 @@
 # BM1 — code and run guide
 
-F1, F2, F3-A, F3-B and the F3-C augmented objective plus weight sensitivity are implemented.
+F1, F2, F3-A, F3-B, F3-C and the F3-D deterministic/stochastic decision comparison are implemented.
 Run all commands from the repository root.
 
 ## Where the code belongs
@@ -8,7 +8,7 @@ Run all commands from the repository root.
 | Location | Role |
 |---|---|
 | `src/model/base/bm.py`, `src/model/bm_1.py` | Battery equations and forward-solver interfaces. |
-| `src/control/bm_1.py` | Supplied parameters, control problem, FV/mixture price evaluators, bounded price search and paired MC. |
+| `src/control/bm_1.py` | Supplied parameters/initial conditions, deterministic/FV/mixture price evaluators, bounded price search and paired MC. |
 | `src/control/objective.py` | Demand moments and jump-safe deterministic/stochastic tracking costs. |
 | `src/method/` | Numerical methods: EM, FP, sampled quadrature and `beta_mixture.py` for projected density evolution. |
 | `src/solver/` | Low-level finite-volume and active-set solvers shared with WM. |
@@ -61,6 +61,8 @@ python -B -m src.exe.run_model.bm_1.optimize contract --optimize
 python -B -m src.exe.run_model.bm_1.optimize augmented --terminal-weight 0.01 --smoothing-weight 0.001
 python -B -m src.exe.run_model.bm_1.optimize sensitivity
 python -B -m src.exe.run_model.bm_1.optimize sensitivity --grid
+python -B -m src.exe.run_model.bm_1.optimize decision --no-mc
+python -B -m src.exe.run_model.bm_1.optimize decision
 python -B -m src.exe.run_model.bm_1.optimize multi --fast-fv
 python -B -m src.exe.run_model.bm_1.optimize complex --fast-fv
 python -B -m src.exe.run_model.bm_1.refine
@@ -70,6 +72,8 @@ python -B -m src.exe.run_model.bm_1.verify benchmark --cells 201 1001 --repeats 
 ```
 
 The F3-C sensitivity command compares raw tracking cost, terminal MSE and price roughness across weights; weighted totals from different rows are not a common metric because the objective itself changes.
+
+F3-D optimizes a deterministic point-state controller and the stochastic FV controller under the same price grid/objective, then cross-evaluates both policies. Paired MC validates the stochastic policy difference.
 
 Mixture/conditioning and full multi-price optimization can be expensive. Their
 numerical settings are not reduced just to make an output report shorter.

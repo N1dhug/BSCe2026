@@ -2,12 +2,13 @@
 
 import numpy as np
 import unittest
+from src.control.objective import deterministic_midpoint_objective
 from src.control.bm_1 import (BM1ControlNumerics, BM1ControlProblem, BM1Parameters,
     DynamicMixturePriceEvaluator, best_surface_starts, beta_initial_cell_mass, coarse_price_surface,
     evaluate_mc_candidates_common_random_numbers, multistart_powell, paired_mc_improvement)
 from src.validation.bm_1.cases import (INITIAL_ALPHA, INITIAL_BETA, SIGMA_X, linear_price_response,
     linear_state_response)
-from src.validation.bm_1.control import C, DETERMINISTIC_REFERENCE_PRICES, F3_C_SMOOTHING_WEIGHTS, F3_C_TERMINAL_WEIGHTS, HOURLY_EDGES, INITIAL_PRICES, MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS, INTERVAL_EDGES, K, KNOWN_DETERMINISTIC_PRICES, REFERENCE_PRICES_24, T, XI, _build_fv_evaluator, _coarsen_reference_prices, _f3_c_weight_pairs, multi_edges as _edges, _lift_half_day_prices, _parameter_template, _sample_piecewise_prices as _sample_piecewise_prices, _union_breakpoints, build_deterministic_target, build_stochastic_model, INTERVAL_COUNTS as control_INTERVAL_COUNTS, _edges as control__edges, _sample_piecewise_prices as control__sample_piecewise_prices
+from src.validation.bm_1.control import C, DETERMINISTIC_REFERENCE_PRICES, F3_C_SMOOTHING_WEIGHTS, F3_C_TERMINAL_WEIGHTS, HOURLY_EDGES, INITIAL_PRICES, MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS, INTERVAL_EDGES, K, KNOWN_DETERMINISTIC_PRICES, REFERENCE_PRICES_24, T, XI, _build_fv_evaluator, _coarsen_reference_prices, _f3_c_weight_pairs, multi_edges as _edges, _lift_half_day_prices, _parameter_template, _sample_piecewise_prices as _sample_piecewise_prices, _union_breakpoints, build_deterministic_target, build_f3_a_problem, build_stochastic_model, run_f3_d, INTERVAL_COUNTS as control_INTERVAL_COUNTS, _edges as control__edges, _sample_piecewise_prices as control__sample_piecewise_prices
 
 class PowellOptimizationTests(unittest.TestCase):
 
@@ -117,7 +118,7 @@ class BM1ControlProblemTests(unittest.TestCase):
     def problem(self, **kwargs):
         settings = dict(baseline=self.baseline, target=self.target, horizon=T, price_edges=INTERVAL_EDGES,
             parameters=self.parameters, initial_mass_builder=_initial_mass_builder,
-            observed_prices=KNOWN_DETERMINISTIC_PRICES)
+            deterministic_initial_state=0.5, observed_prices=KNOWN_DETERMINISTIC_PRICES)
         settings.update(kwargs)
         return BM1ControlProblem(**settings)
 
@@ -196,6 +197,50 @@ class BM1ControlProblemTests(unittest.TestCase):
         self.assertGreater(result.penalties.terminal, 0.0)
         self.assertGreater(result.penalties.smoothing, 0.0)
 
+    def test_deterministic_evaluator_uses_the_common_f3_objective(self):
+        numerics = BM1ControlNumerics(
+            x_steps=31,
+            objective_max_step=1.0 / 12.0,
+            solver_max_step=1.0 / 48.0,
+            deterministic_rtol=1e-09,
+            deterministic_atol=1e-11,
+        )
+        problem = self.problem(
+            terminal_reference=0.5,
+            terminal_weight=0.2,
+            price_smoothing_weight=0.1,
+        )
+        evaluator = problem.build_deterministic_evaluator(numerics)
+        result = evaluator.evaluate(INITIAL_PRICES)
+        reference = deterministic_midpoint_objective(
+            evaluator.model,
+            [problem.deterministic_initial_state],
+            evaluator.parameters_for_prices(INITIAL_PRICES),
+            objective_max_step=numerics.objective_max_step,
+            breakpoints=evaluator.breakpoints,
+            solver_max_step=numerics.solver_max_step,
+            rtol=numerics.deterministic_rtol,
+            atol=numerics.deterministic_atol,
+        )
+        self.assertAlmostEqual(result.objective.total, reference.total, places=14)
+        self.assertAlmostEqual(result.objective.variance, 0.0, places=14)
+        self.assertAlmostEqual(
+            result.penalties.terminal_mse,
+            (result.state[-1] - problem.terminal_reference) ** 2,
+            places=15,
+        )
+        self.assertAlmostEqual(
+            result.total,
+            result.objective.total + result.penalties.terminal + result.penalties.smoothing,
+            places=15,
+        )
+
+    def test_f3_a_problem_defines_explicit_deterministic_counterpart(self):
+        problem, numerics = build_f3_a_problem()
+        self.assertEqual(problem.deterministic_initial_state, 0.5)
+        evaluator = problem.build_deterministic_evaluator(numerics)
+        self.assertEqual(evaluator.initial_state, 0.5)
+
     def test_observed_prices_are_owned_and_never_used_as_template(self):
         observed = KNOWN_DETERMINISTIC_PRICES.copy()
         edges = INTERVAL_EDGES.copy()
@@ -250,10 +295,22 @@ class BM1ControlProblemTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.problem(terminal_reference=1.1)
         with self.assertRaises(ValueError):
+            self.problem(deterministic_initial_state=1.1)
+        with self.assertRaises(ValueError):
+            self.problem(deterministic_initial_state=[0.4, 0.6])
+        with self.assertRaises(ValueError):
+            self.problem(deterministic_initial_state=None).build_deterministic_evaluator(
+                BM1ControlNumerics(x_steps=21),
+            )
+        with self.assertRaises(ValueError):
             BM1Parameters(state_response=linear_state_response, price_response=linear_price_response, C=0.0, k=K,
                 Xi=XI, sigma_x=SIGMA_X)
         with self.assertRaises(ValueError):
             BM1ControlNumerics(x_steps=2)
+        with self.assertRaises(ValueError):
+            BM1ControlNumerics(deterministic_rtol=0.0)
+        with self.assertRaises(ValueError):
+            BM1ControlNumerics(deterministic_atol=np.inf)
 
     def test_existing_parameter_template_has_same_physical_parameters(self):
         problem = self.problem()
@@ -262,6 +319,15 @@ class BM1ControlProblemTests(unittest.TestCase):
         self.assertIs(template[1], old[1])
         self.assertIs(template[2], old[2])
         self.assertEqual(template[3:], old[3:])
+
+class F3DDecisionStructureTests(unittest.TestCase):
+
+    def test_mc_path_count_is_validated_before_running_decision_study(self):
+        with self.assertRaises(ValueError):
+            run_f3_d(validate_mc=True, mc_paths=1, progress=None)
+        with self.assertRaises(TypeError):
+            run_f3_d(validate_mc=True, mc_paths=True, progress=None)
+
 
 class F3CSensitivityStructureTests(unittest.TestCase):
 

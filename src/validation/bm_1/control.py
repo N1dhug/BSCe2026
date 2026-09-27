@@ -36,6 +36,11 @@ X0_DETERMINISTIC = 0.5
 F3_C_TERMINAL_REFERENCE = 0.5
 F3_C_TERMINAL_WEIGHTS = (0.0, 1e-3, 1e-2, 1e-1, 0.5)
 F3_C_SMOOTHING_WEIGHTS = (0.0, 1e-4, 1e-3, 1e-2, 1e-1)
+F3_D_LIGHT_TERMINAL_WEIGHT = 0.03
+F3_D_LIGHT_SMOOTHING_WEIGHT = 0.003
+F3_D_MC_PATHS = 20000
+F3_D_MC_INITIAL_SEED = 2071
+F3_D_MC_BROWNIAN_SEED = 2072
 C = 1.0
 K = 2.0
 XI = 1.0
@@ -506,6 +511,7 @@ def build_f3_a_problem():
         price_edges=INTERVAL_EDGES,
         parameters=parameters,
         initial_mass_builder=_initial_mass_builder,
+        deterministic_initial_state=X0_DETERMINISTIC,
         observed_prices=KNOWN_DETERMINISTIC_PRICES,
     )
     numerics = control.BM1ControlNumerics(
@@ -678,6 +684,142 @@ def run_f3_c_sensitivity(
         'include_grid': bool(include_grid),
         'cases': tuple(cases),
     }
+
+
+def _run_f3_d_case(
+    *,
+    terminal_weight,
+    smoothing_weight,
+    validate_mc,
+    mc_paths,
+    progress,
+):
+    """Optimize deterministic/stochastic policies, then cross-evaluate both."""
+    problem, numerics = build_f3_c_problem(
+        terminal_weight=terminal_weight,
+        smoothing_weight=smoothing_weight,
+    )
+    deterministic = problem.build_deterministic_evaluator(numerics)
+    stochastic = problem.build_evaluator(numerics, fast=True)
+    starts = _reference_starts(problem)
+
+    if progress is not None:
+        progress(
+            f'deterministic optimization: lambda_T={terminal_weight:.6g}, '
+            f'lambda_U={smoothing_weight:.6g}',
+        )
+    deterministic_optimization = control.multistart_powell(
+        deterministic,
+        starts,
+        progress=progress,
+        options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+    )
+    if progress is not None:
+        progress('stochastic optimization')
+    stochastic_optimization = control.multistart_powell(
+        stochastic,
+        starts,
+        progress=progress,
+        options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+    )
+
+    policies = {
+        'deterministic_policy': np.asarray(deterministic_optimization.best.x, dtype=float).copy(),
+        'stochastic_policy': np.asarray(stochastic_optimization.best.x, dtype=float).copy(),
+    }
+    deterministic_evaluations = {
+        name: deterministic.evaluate(prices)
+        for name, prices in policies.items()
+    }
+    stochastic_evaluations = {
+        name: stochastic.evaluate(prices)
+        for name, prices in policies.items()
+    }
+
+    deterministic_regret = (
+        deterministic_evaluations['stochastic_policy'].total
+        - deterministic_evaluations['deterministic_policy'].total
+    )
+    stochastic_value = (
+        stochastic_evaluations['deterministic_policy'].total
+        - stochastic_evaluations['stochastic_policy'].total
+    )
+    policy_difference = policies['stochastic_policy'] - policies['deterministic_policy']
+
+    mc = None
+    paired_mc = None
+    if validate_mc:
+        mc = control.evaluate_mc_candidates_common_random_numbers(
+            stochastic,
+            policies,
+            n_paths=int(mc_paths),
+            initial_seed=F3_D_MC_INITIAL_SEED,
+            brownian_seed=F3_D_MC_BROWNIAN_SEED,
+        )
+        improvement, standard_error = control.paired_mc_improvement(
+            mc['deterministic_policy'],
+            mc['stochastic_policy'],
+        )
+        paired_mc = {
+            'improvement': float(improvement),
+            'standard_error': float(standard_error),
+            'ratio': float(improvement / standard_error) if standard_error > 0.0 else float('inf'),
+        }
+
+    return {
+        'problem': problem,
+        'numerics': numerics,
+        'deterministic_evaluator': deterministic,
+        'stochastic_evaluator': stochastic,
+        'deterministic_optimization': deterministic_optimization,
+        'stochastic_optimization': stochastic_optimization,
+        'policies': policies,
+        'deterministic_evaluations': deterministic_evaluations,
+        'stochastic_evaluations': stochastic_evaluations,
+        'deterministic_regret': float(deterministic_regret),
+        'stochastic_value': float(stochastic_value),
+        'policy_linf': float(np.max(np.abs(policy_difference))),
+        'policy_l2': float(np.linalg.norm(policy_difference)),
+        'mc': mc,
+        'paired_mc': paired_mc,
+    }
+
+
+def run_f3_d(
+    *,
+    validate_mc=True,
+    mc_paths=F3_D_MC_PATHS,
+    progress=print,
+):
+    """Compare deterministic and stochastic F3 decisions under common objectives."""
+    if validate_mc:
+        if isinstance(mc_paths, (bool, np.bool_)):
+            raise TypeError('mc_paths must be an integer.')
+        try:
+            validated_mc_paths = int(mc_paths)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise TypeError('mc_paths must be an integer.') from exc
+        if float(validated_mc_paths) != float(mc_paths) or validated_mc_paths < 2:
+            raise ValueError('mc_paths must be an integer >= 2.')
+    else:
+        validated_mc_paths = 0
+    cases = {
+        'unregularized': _run_f3_d_case(
+            terminal_weight=0.0,
+            smoothing_weight=0.0,
+            validate_mc=validate_mc,
+            mc_paths=validated_mc_paths,
+            progress=progress,
+        ),
+        'light_regularization': _run_f3_d_case(
+            terminal_weight=F3_D_LIGHT_TERMINAL_WEIGHT,
+            smoothing_weight=F3_D_LIGHT_SMOOTHING_WEIGHT,
+            validate_mc=validate_mc,
+            mc_paths=validated_mc_paths,
+            progress=progress,
+        ),
+    }
+    return {'cases': cases, 'mc_paths': validated_mc_paths}
 
 
 def build_pair(model, n_cells):

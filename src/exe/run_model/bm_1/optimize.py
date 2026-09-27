@@ -243,6 +243,56 @@ def run_sensitivity(args):
     return result
 
 
+def _decision_case(name, case):
+    problem = case['problem']
+    deterministic = case['deterministic_evaluations']
+    stochastic = case['stochastic_evaluations']
+    print(
+        f"{name}: lambda_T={problem.terminal_weight:.6g}, "
+        f"lambda_U={problem.price_smoothing_weight:.6g}",
+    )
+    print(f"  deterministic policy: {_prices(case['policies']['deterministic_policy'])}")
+    print(f"  stochastic policy:    {_prices(case['policies']['stochastic_policy'])}")
+    print(
+        f"  policy distance: Linf={case['policy_linf']:.6e}; "
+        f"L2={case['policy_l2']:.6e}",
+    )
+    print('  cross-evaluation totals')
+    print('  policy                     deterministic       stochastic')
+    for policy in ('deterministic_policy', 'stochastic_policy'):
+        print(
+            f"  {policy:26s} {deterministic[policy].total:.8e} "
+            f"{stochastic[policy].total:.8e}",
+        )
+    print(
+        f"  deterministic regret={case['deterministic_regret']:.6e}; "
+        f"stochastic value={case['stochastic_value']:.6e}",
+    )
+    print('  deterministic optimizer: ', end='')
+    _solver_summary(case['deterministic_optimization'])
+    print('  stochastic optimizer:    ', end='')
+    _solver_summary(case['stochastic_optimization'])
+    if case['paired_mc'] is not None:
+        paired = case['paired_mc']
+        print(
+            f"  paired MC stochastic value={paired['improvement']:.6e}; "
+            f"SE={paired['standard_error']:.3e}; ratio={paired['ratio']:.3f}",
+        )
+
+
+def run_decision(args):
+    """F3-D compare policies optimized with deterministic and stochastic BM1."""
+    result = cases.run_f3_d(
+        validate_mc=not args.no_mc,
+        mc_paths=args.mc_paths,
+        progress=print if args.verbose else None,
+    )
+    print('F3-D deterministic versus stochastic control decision')
+    for name, case in result['cases'].items():
+        _decision_case(name, case)
+    return result
+
+
 def run_stochastic(args):
     """Design FV/mixture controls, then assess both on the same reference methods."""
     result = cases.run_optimization_reference(progress=print if args.verbose else None)
@@ -325,6 +375,7 @@ def main(argv=None):
         ('contract', run_contract),
         ('augmented', run_augmented),
         ('sensitivity', run_sensitivity),
+        ('decision', run_decision),
     ]:
         command = commands.add_parser(name, help=run.__doc__)
         command.set_defaults(run=run)
@@ -333,7 +384,7 @@ def main(argv=None):
             action='store_true',
             help='Show prices, details and solver progress.',
         )
-        if name != 'sensitivity':
+        if name not in ('sensitivity', 'decision'):
             command.add_argument('--save', action='store_true', help='Save a comparison figure under runs/.')
         if name == 'contract':
             command.add_argument('--optimize', action='store_true', help='Also optimize new prices.')
@@ -381,6 +432,18 @@ def main(argv=None):
                 '--grid',
                 action='store_true',
                 help='Also optimize every positive lambda_T/lambda_U combination.',
+            )
+        if name == 'decision':
+            command.add_argument(
+                '--mc-paths',
+                type=int,
+                default=cases.F3_D_MC_PATHS,
+                help='Paired Monte Carlo paths for stochastic policy validation.',
+            )
+            command.add_argument(
+                '--no-mc',
+                action='store_true',
+                help='Skip paired Monte Carlo and run only deterministic/FV cross-evaluation.',
             )
         if name in ('multi', 'complex'):
             command.add_argument(

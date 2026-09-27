@@ -1,7 +1,8 @@
 """BM1 price control: problem definition -> forward evaluator -> optimization.
 
-Model parameters and initial law are supplied, not fitted here. Evaluators
-share one tracking objective; numerical time-steppers remain in method/solver.
+Model parameters and initial conditions/laws are supplied, not fitted here.
+Deterministic, FV and mixture-backed evaluators share one control objective;
+numerical time-steppers remain in method/solver.
 """
 
 from dataclasses import dataclass
@@ -81,20 +82,30 @@ class BM1ControlNumerics:
     objective_max_step: float = 1.0 / 96.0
     solver_max_step: float = 1.0 / 96.0
     model_t_steps: int = 2
+    deterministic_rtol: float = 1e-09
+    deterministic_atol: float = 1e-11
 
     def __post_init__(self):
         x_steps = checks.positive_integer(self.x_steps, 'x_steps', 3)
         model_t_steps = checks.positive_integer(self.model_t_steps, 'model_t_steps', 2)
         objective_max_step = float(self.objective_max_step)
         solver_max_step = float(self.solver_max_step)
+        deterministic_rtol = float(self.deterministic_rtol)
+        deterministic_atol = float(self.deterministic_atol)
         if not np.isfinite(objective_max_step) or objective_max_step <= 0.0:
             raise ValueError('objective_max_step must be finite and strictly positive.')
         if np.isnan(solver_max_step) or solver_max_step <= 0.0:
             raise ValueError('solver_max_step must be strictly positive.')
+        if not np.isfinite(deterministic_rtol) or deterministic_rtol <= 0.0:
+            raise ValueError('deterministic_rtol must be finite and strictly positive.')
+        if not np.isfinite(deterministic_atol) or deterministic_atol <= 0.0:
+            raise ValueError('deterministic_atol must be finite and strictly positive.')
         object.__setattr__(self, 'x_steps', x_steps)
         object.__setattr__(self, 'model_t_steps', model_t_steps)
         object.__setattr__(self, 'objective_max_step', objective_max_step)
         object.__setattr__(self, 'solver_max_step', solver_max_step)
+        object.__setattr__(self, 'deterministic_rtol', deterministic_rtol)
+        object.__setattr__(self, 'deterministic_atol', deterministic_atol)
 
 
 @dataclass(frozen=True)
@@ -107,8 +118,10 @@ class BM1ControlProblem:
     vectors through the evaluator returned by build_evaluator.
 
     initial_mass_builder receives FV cell edges and must return one
-    normalized probability mass per cell.  This keeps the physical initial
-    law independent of the chosen spatial resolution.
+    normalized probability mass per cell. This keeps the stochastic initial
+    law independent of the chosen spatial resolution. deterministic_initial_state
+    is an explicit point-state counterpart used only for deterministic control
+    comparisons.
     """
     baseline: object
     target: object
@@ -116,6 +129,7 @@ class BM1ControlProblem:
     price_edges: object
     parameters: BM1Parameters
     initial_mass_builder: object
+    deterministic_initial_state: object = None
     breakpoints: object = None
     observed_prices: object = None
     terminal_reference: object = None
@@ -145,6 +159,14 @@ class BM1ControlProblem:
         ):
             raise ValueError('breakpoints must be finite points strictly inside horizon.')
         breakpoints = np.unique(breakpoints)
+        deterministic_initial_state = None
+        if self.deterministic_initial_state is not None:
+            state = np.asarray(self.deterministic_initial_state, dtype=float)
+            if state.size != 1:
+                raise ValueError('deterministic_initial_state must be a scalar.')
+            deterministic_initial_state = float(state.reshape(-1)[0])
+            if not np.isfinite(deterministic_initial_state) or not 0.0 <= deterministic_initial_state <= 1.0:
+                raise ValueError('deterministic_initial_state must be finite and lie in [0, 1].')
         observed_prices = None
         if self.observed_prices is not None:
             observed_prices = checks.validate_prices(
@@ -164,6 +186,7 @@ class BM1ControlProblem:
         object.__setattr__(self, 'price_edges', price_edges)
         object.__setattr__(self, 'breakpoints', breakpoints)
         object.__setattr__(self, 'observed_prices', observed_prices)
+        object.__setattr__(self, 'deterministic_initial_state', deterministic_initial_state)
         object.__setattr__(self, 'terminal_reference', terminal_reference)
         object.__setattr__(self, 'terminal_weight', terminal_weight)
         object.__setattr__(self, 'price_smoothing_weight', smoothing_weight)
@@ -195,6 +218,27 @@ class BM1ControlProblem:
                 'initial_mass_builder must return one finite non-negative probability mass per FV cell, summing to one.',
             )
         return mass.copy()
+
+    def build_deterministic_evaluator(self, numerics):
+        """Build the deterministic counterpart of the same F3 control problem."""
+        if not isinstance(numerics, BM1ControlNumerics):
+            raise TypeError('numerics must be a BM1ControlNumerics instance.')
+        if self.deterministic_initial_state is None:
+            raise ValueError('deterministic_initial_state is required for deterministic control evaluation.')
+        return DeterministicPriceEvaluator(
+            model=self.build_model(numerics),
+            parameter_template=self.parameters.parameter_template(self.price_edges),
+            interval_edges=self.price_edges,
+            initial_state=self.deterministic_initial_state,
+            objective_max_step=numerics.objective_max_step,
+            solver_max_step=numerics.solver_max_step,
+            breakpoints=self.breakpoints,
+            terminal_reference=self.terminal_reference,
+            terminal_weight=self.terminal_weight,
+            price_smoothing_weight=self.price_smoothing_weight,
+            rtol=numerics.deterministic_rtol,
+            atol=numerics.deterministic_atol,
+        )
 
     def build_evaluator(self, numerics, *, fast=True, batch_size=128, vectorized=True):
         """Build an FV price evaluator without changing the problem inputs."""
@@ -239,6 +283,20 @@ class BM1ControlProblem:
 
 
 # Results returned by forward evaluations and price searches.
+
+
+@dataclass(frozen=True)
+class DeterministicPriceEvaluation:
+    """Deterministic F3 cost and state trajectory for one held price plan."""
+    prices: np.ndarray
+    objective: tracking.StochasticTrackingResult
+    state: np.ndarray
+    demand: np.ndarray
+    penalties: tracking.ControlPenaltyResult
+
+    @property
+    def total(self):
+        return self.objective.total + self.penalties.total
 
 
 @dataclass(frozen=True)
@@ -327,19 +385,17 @@ def sample_beta_initial_states(n_paths, seed, alpha=20.0, beta=20.0):
     return np.random.default_rng(seed).beta(alpha, beta, size=n_paths)
 
 
-# Forward evaluators: independent FV reference, accelerated FV and projected mixture.
+# Forward evaluators: deterministic ODE, independent/fast FV and projected mixture.
 
 
-class FVStochasticPriceEvaluator:
-    """Evaluate stochastic BM1 tracking cost with pure finite volume."""
+class _PriceEvaluatorBase:
+    """Common fixed inputs for deterministic, FV and mixture-backed price evaluation."""
 
     def __init__(
         self,
         model,
         parameter_template,
         interval_edges,
-        sigma_x,
-        initial_mass,
         *,
         objective_max_step,
         solver_max_step,
@@ -348,37 +404,20 @@ class FVStochasticPriceEvaluator:
         terminal_weight=0.0,
         price_smoothing_weight=0.0,
     ):
-        """Validate fixed inputs once; prepare the common state grid and time quadrature."""
         self.model = model
         self.parameter_template = list(parameter_template)
         if len(self.parameter_template) != 6:
             raise ValueError('parameter_template must contain [U, f, g, C, k, Xi].')
         self.interval_edges = checks.validate_interval_edges(interval_edges, model.T)
-        extra_breakpoints = np.asarray([] if breakpoints is None else breakpoints, dtype=float)
+        extra_breakpoints = np.asarray([] if breakpoints is None else breakpoints, dtype=float).reshape(-1)
         if (
-            extra_breakpoints.ndim != 1
-            or not np.all(np.isfinite(extra_breakpoints))
+            not np.all(np.isfinite(extra_breakpoints))
             or np.any(extra_breakpoints <= model.T[0])
             or np.any(extra_breakpoints >= model.T[1])
         ):
             raise ValueError('breakpoints must be finite points inside the model interval.')
         self.breakpoints = np.unique(np.concatenate((self.interval_edges[1:-1], extra_breakpoints)))
         self.n_intervals = self.interval_edges.size - 1
-        self.sigma_x = float(sigma_x)
-        if not np.isfinite(self.sigma_x) or self.sigma_x < 0.0:
-            raise ValueError('sigma_x must be finite and non-negative.')
-        self.initial_mass = np.asarray(initial_mass, dtype=float).reshape(-1).copy()
-        if (
-            self.initial_mass.size < 3
-            or not np.all(np.isfinite(self.initial_mass))
-            or np.min(self.initial_mass) < 0.0
-            or not np.isclose(np.sum(self.initial_mass), 1.0, atol=1e-10, rtol=0.0)
-        ):
-            raise ValueError('initial_mass must be a finite non-negative probability vector.')
-        self.edges, self.x, self.dx = model.fokker_planc_reference.grid(
-            self.initial_mass.size,
-            bounds=(0.0, 1.0),
-        )
         self.objective_edges, self.midpoints, self.widths, self.solver_t_eval = tracking.midpoint_quadrature(
             model.T,
             breakpoints=self.breakpoints,
@@ -401,6 +440,146 @@ class FVStochasticPriceEvaluator:
     def validate_prices(self, prices):
         return checks.validate_prices(prices, self.n_intervals)
 
+    def parameters_for_prices(self, prices):
+        """Validate a public candidate and construct its held-price input."""
+        return self._parameters_for_validated_prices(self.validate_prices(prices))
+
+    def _parameters_for_validated_prices(self, prices):
+        price = input_builder.price_intervals((self.interval_edges, prices))
+        parameters = list(self.parameter_template)
+        parameters[0] = price
+        return parameters
+
+
+class DeterministicPriceEvaluator(_PriceEvaluatorBase):
+    """Evaluate the deterministic counterpart of an F3 BM1 price-control problem."""
+
+    def __init__(
+        self,
+        model,
+        parameter_template,
+        interval_edges,
+        initial_state,
+        *,
+        objective_max_step,
+        solver_max_step,
+        breakpoints=None,
+        terminal_reference=None,
+        terminal_weight=0.0,
+        price_smoothing_weight=0.0,
+        rtol=1e-09,
+        atol=1e-11,
+    ):
+        super().__init__(
+            model,
+            parameter_template,
+            interval_edges,
+            objective_max_step=objective_max_step,
+            solver_max_step=solver_max_step,
+            breakpoints=breakpoints,
+            terminal_reference=terminal_reference,
+            terminal_weight=terminal_weight,
+            price_smoothing_weight=price_smoothing_weight,
+        )
+        state = np.asarray(initial_state, dtype=float)
+        if state.size != 1:
+            raise ValueError('initial_state must be a scalar.')
+        self.initial_state = float(state.reshape(-1)[0])
+        if not np.isfinite(self.initial_state) or not 0.0 <= self.initial_state <= 1.0:
+            raise ValueError('initial_state must be finite and lie in [0, 1].')
+        self.rtol = float(rtol)
+        self.atol = float(atol)
+        if not np.isfinite(self.rtol) or self.rtol <= 0.0 or not np.isfinite(self.atol) or self.atol <= 0.0:
+            raise ValueError('rtol and atol must be finite and strictly positive.')
+
+    def evaluate(self, prices):
+        """Solve the ODE once and evaluate the same F3 tracking/penalty definition."""
+        prices = self.validate_prices(prices)
+        parameters = self._parameters_for_validated_prices(prices)
+        result = self.model.deterministic_solver(
+            [self.initial_state],
+            parameters,
+            t_eval=self.solver_t_eval,
+            breakpoints=self.breakpoints,
+            rtol=self.rtol,
+            atol=self.atol,
+            max_step=self.solver_max_step,
+        )
+        state = np.asarray(result[1], dtype=float)
+        demand = np.asarray(result[7], dtype=float)
+        midpoint_demand = demand[1:-1]
+        objective = tracking.stochastic_tracking_objective(
+            self.widths,
+            midpoint_demand,
+            np.square(midpoint_demand),
+            self.target,
+        )
+        penalties = tracking.control_penalties(
+            np.array([state[-1]], dtype=float),
+            np.array([1.0], dtype=float),
+            prices,
+            terminal_reference=self.terminal_reference,
+            terminal_weight=self.terminal_weight,
+            smoothing_weight=self.price_smoothing_weight,
+        )
+        return DeterministicPriceEvaluation(
+            prices=prices.copy(),
+            objective=objective,
+            state=state.copy(),
+            demand=demand.copy(),
+            penalties=penalties,
+        )
+
+    def __call__(self, prices):
+        return self.evaluate(prices).total
+
+
+class FVStochasticPriceEvaluator(_PriceEvaluatorBase):
+    """Evaluate stochastic BM1 tracking cost with pure finite volume."""
+
+    def __init__(
+        self,
+        model,
+        parameter_template,
+        interval_edges,
+        sigma_x,
+        initial_mass,
+        *,
+        objective_max_step,
+        solver_max_step,
+        breakpoints=None,
+        terminal_reference=None,
+        terminal_weight=0.0,
+        price_smoothing_weight=0.0,
+    ):
+        """Validate stochastic inputs after the common price-control setup."""
+        super().__init__(
+            model,
+            parameter_template,
+            interval_edges,
+            objective_max_step=objective_max_step,
+            solver_max_step=solver_max_step,
+            breakpoints=breakpoints,
+            terminal_reference=terminal_reference,
+            terminal_weight=terminal_weight,
+            price_smoothing_weight=price_smoothing_weight,
+        )
+        self.sigma_x = float(sigma_x)
+        if not np.isfinite(self.sigma_x) or self.sigma_x < 0.0:
+            raise ValueError('sigma_x must be finite and non-negative.')
+        self.initial_mass = np.asarray(initial_mass, dtype=float).reshape(-1).copy()
+        if (
+            self.initial_mass.size < 3
+            or not np.all(np.isfinite(self.initial_mass))
+            or np.min(self.initial_mass) < 0.0
+            or not np.isclose(np.sum(self.initial_mass), 1.0, atol=1e-10, rtol=0.0)
+        ):
+            raise ValueError('initial_mass must be a finite non-negative probability vector.')
+        self.edges, self.x, self.dx = model.fokker_planc_reference.grid(
+            self.initial_mass.size,
+            bounds=(0.0, 1.0),
+        )
+
     def _penalties(self, prices, terminal_mass):
         return tracking.control_penalties(
             self.x,
@@ -411,15 +590,6 @@ class FVStochasticPriceEvaluator:
             smoothing_weight=self.price_smoothing_weight,
         )
 
-    def parameters_for_prices(self, prices):
-        """Validate a public candidate and construct its held-price input."""
-        return self._parameters_for_validated_prices(self.validate_prices(prices))
-
-    def _parameters_for_validated_prices(self, prices):
-        price = input_builder.price_intervals((self.interval_edges, prices))
-        parameters = list(self.parameter_template)
-        parameters[0] = price
-        return parameters
 
     def evaluate(self, prices):
         """Propagate a fixed candidate and compute its bias/variance tracking contributions."""
