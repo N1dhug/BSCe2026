@@ -13,27 +13,46 @@ class wm_4_validation(wm_1_validation):
         return T, t_steps, O
 
     @classmethod
+    def r_coefficients(cls, r, tol=1e-10):
+        r = cls.vector(r, 4, "r")
+        if r[1] >= -tol: raise ValueError("wm_4 requires r_F < 0 so the flexibility equilibrium is stable.")
+        if r[2] > tol: raise ValueError("wm_4 requires r_U <= 0 so higher prices cannot increase the equilibrium flexibility state.")
+        if r[3] >= -tol: raise ValueError("wm_4 requires r_R < 0 so the rate state is damped.")
+        for U in (0.0, 1.0):
+            base = r[0] + r[2] * U
+            if base < -tol or base > -r[1] + tol: raise ValueError("r must satisfy 0 <= r_0 + r_U U <= -r_F on U in [0, 1].")
+        return r
+
+    @classmethod
     def q_coefficients(cls, q, tol=1e-10):
         q = cls.vector(q, 3, "q")
-        if q[1] >= -tol: raise ValueError("wm_4 requires q_F < 0 so the flexibility equilibrium is stable.")
-        if q[2] > tol: raise ValueError("wm_4 requires q_U <= 0 so higher prices cannot increase the desired flexibility state.")
+        if q[1] >= -tol: raise ValueError("wm_4 requires q_F < 0.")
+        if q[2] > tol: raise ValueError("wm_4 requires q_U <= 0.")
         for U in (0.0, 1.0):
             base = q[0] + q[2] * U
             if base < -tol or base > -q[1] + tol: raise ValueError("q must satisfy 0 <= q_0 + q_U U <= -q_F on U in [0, 1].")
         return q
 
     @classmethod
-    def coefficients(cls, q, gamma=None):
+    def legacy_r(cls, q, kappa_R):
         q = cls.q_coefficients(q)
+        kappa_R = cls._finite_scalar(kappa_R, "kappa_R")
+        if kappa_R <= 0.0: raise ValueError("kappa_R must be positive.")
+        return cls.r_coefficients(np.array([kappa_R * q[0], kappa_R * q[1], kappa_R * q[2], -kappa_R], dtype=float))
+
+    @classmethod
+    def coefficients(cls, r, gamma=None):
+        r = cls.r_coefficients(r)
         gamma = None if gamma is None else cls.simplex(gamma, 4, "gamma")
-        return q, gamma
+        return r, gamma
 
     @classmethod
     def parameters(cls, parameters):
         if not isinstance(parameters, dict): raise TypeError("parameters must be a dictionary.")
-        required = ("U", "Time", "q", "kappa_R")
+        required = ("U", "Time")
         missing = [name for name in required if name not in parameters]
         if missing: raise ValueError("parameters is missing required entries: " + ", ".join(missing) + ".")
+        if "r" not in parameters and not all(name in parameters for name in ("q", "kappa_R")): raise ValueError("parameters must contain 'r' or the legacy pair 'q' and 'kappa_R'.")
 
         validated = dict(parameters)
         for name in ("U", "Time"):
@@ -41,10 +60,12 @@ class wm_4_validation(wm_1_validation):
         if "PE" in validated and not callable(validated["PE"]): raise TypeError("parameters['PE'] must be callable.")
         validated.setdefault("PE", lambda _t: 0.0)
 
-        q, gamma = cls.coefficients(validated["q"], validated.get("gamma"))
-        validated["q"], validated["gamma"] = q, gamma
-        validated["kappa_R"] = cls._finite_scalar(validated["kappa_R"], "kappa_R")
-        if validated["kappa_R"] <= 0.0: raise ValueError("kappa_R must be positive.")
+        r = cls.r_coefficients(validated["r"]) if "r" in validated else cls.legacy_r(validated["q"], validated["kappa_R"])
+        r, gamma = cls.coefficients(r, validated.get("gamma"))
+        validated["r"], validated["gamma"] = r, gamma
+        kappa_R = -r[3]
+        validated["kappa_R"] = float(kappa_R)
+        validated["q"] = r[:3] / kappa_R
         return validated
 
     @classmethod
@@ -79,16 +100,10 @@ class wm_4_validation(wm_1_validation):
     def feature_value(cls, value, name): return cls.signal_value(value, name)
 
     @classmethod
-    def recovered_structural_coefficients(cls, q, tol=1e-8):
+    def recovered_structural_coefficients(cls, r, tol=1e-8):
         tol = cls._finite_scalar(tol, "tol")
         if tol <= 0.0: raise ValueError("tol must be positive.")
-        q = cls.vector(q, 3, "recovered q")
-        if q[1] >= -tol: raise ValueError("recovered q_F must be negative.")
-        if q[2] > tol: raise ValueError("recovered q_U must be nonpositive.")
-        for U in (0.0, 1.0):
-            base = q[0] + q[2] * U
-            if base < -tol or base > -q[1] + tol: raise ValueError("recovered q violates the nominal flexibility-equilibrium bounds.")
-        return q
+        return cls.r_coefficients(r, tol=tol)
 
     @classmethod
     def fit_data(cls, input_data, t_steps):
@@ -110,8 +125,11 @@ class wm_4_validation(wm_1_validation):
         Time = fit_vector(input_data["Time"], "input_data['Time']")
         PE = fit_vector(input_data.get("PE", np.zeros(t_steps, dtype=float)), "input_data['PE']")
         observation_mask = np.asarray(input_data.get("observation_mask", np.ones(t_steps, dtype=bool)), dtype=bool).reshape(-1)
+        transition_mask = np.asarray(input_data.get("transition_mask", np.ones(t_steps - 1, dtype=bool)), dtype=bool).reshape(-1)
         if observation_mask.size != t_steps: raise ValueError(f"input_data['observation_mask'] must contain exactly {t_steps} samples.")
+        if transition_mask.size != t_steps - 1: raise ValueError(f"input_data['transition_mask'] must contain exactly {t_steps - 1} samples.")
         if np.count_nonzero(observation_mask) < 2: raise ValueError("input_data['observation_mask'] must select at least two observations.")
+        if np.count_nonzero(transition_mask) < 1: raise ValueError("input_data['transition_mask'] must select at least one state transition.")
         for vector, name in ((U, "U"), (PE, "PE")):
             if np.any(vector < 0.0) or np.any(vector > 1.0): raise ValueError(f"Normalized {name} data must lie in [0, 1].")
-        return {"I": I, "U": U, "PE": PE, "Time": Time, "observation_mask": observation_mask}
+        return {"I": I, "U": U, "PE": PE, "Time": Time, "observation_mask": observation_mask, "transition_mask": transition_mask}
