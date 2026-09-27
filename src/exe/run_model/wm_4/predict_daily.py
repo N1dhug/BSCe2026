@@ -8,7 +8,7 @@ import pandas as pd
 from src.exe.run_model.wm_3.fit_weekly import aligned_data
 from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, INIT, day_start, fit_expected_output, model_input
 from src.model.wm_4 import wm_4
-from src.params.wm_4 import brute_params
+from src.params.wm_4 import qp_params
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -41,10 +41,9 @@ def fit_history(frame, predict_start, baseline_weeks, warmup_hours, steps_per_ho
     }
 
     model = wm_4(model_T, len(indices[0]), O)
-    fit = brute_params(model).fit(
+    fit = qp_params(model).fit(
         average_data, INIT,
-        fit_initial_state=warmup_hours == 0, fit_diffusion=fit_diffusion, verbose=False,
-        **kwargs,
+        fit_diffusion=fit_diffusion, verbose=False, **kwargs,
     )
     fit["average_training_data"] = average_data
     fit["fit_trajectories"] = len(datasets)
@@ -67,13 +66,13 @@ def forecast_signals(frame, start):
     return end, source.iloc[:DAY_HOURS].copy(), U, Time
 
 
-def optimized_prediction_state(frame, start, model, q, kappa_R, steps_per_hour):
+def optimized_prediction_state(frame, start, model, r, steps_per_hour):
     data, fine_index, _, _ = model_input(frame, start, steps_per_hour, 0)
-    helper = brute_params(model)
+    helper = qp_params(model)
     data = helper._prepare_data(data)
-    base = helper._state_from_parameters(data, np.array([0.0, 0.0]), q, kappa_R)
-    f_unit = helper._state_from_parameters(data, np.array([1.0, 0.0]), q, kappa_R)
-    r_unit = helper._state_from_parameters(data, np.array([0.0, 1.0]), q, kappa_R)
+    base = helper._state_from_parameters(data, np.array([0.0, 0.0]), r)
+    f_unit = helper._state_from_parameters(data, np.array([1.0, 0.0]), r)
+    r_unit = helper._state_from_parameters(data, np.array([0.0, 1.0]), r)
     obs = np.asarray(data["observation_mask"], dtype=bool)
     X = np.column_stack(((f_unit["I"] - base["I"])[obs], (r_unit["I"] - base["I"])[obs]))
     y = data["I"][obs] - base["I"][obs]
@@ -82,7 +81,7 @@ def optimized_prediction_state(frame, start, model, q, kappa_R, steps_per_hour):
         lb=np.array([0.0, -1.0]), ub=np.array([1.0, 1.0]),
         ridge=model._FIT_RIDGE,
     )
-    state = helper._state_from_parameters(data, init, q, kappa_R, full=True)
+    state = helper._state_from_parameters(data, init, r, full=True)
     loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
     return np.asarray(init, dtype=float), state, fine_index, loss
 
@@ -110,7 +109,7 @@ def save_plot(predict_start, predict_end, actual, fine_index, state, path, train
     axes[0].grid(True, alpha=0.25)
 
     axes[1].plot(fine_index, state["U"], label="Known prediction-day normalized price U")
-    axes[1].plot(fine_index, state["Q"], label="Desired flexibility flow Q")
+    axes[1].plot(fine_index, state["R_dot"], label="Flexibility acceleration dR/dt")
     axes[1].set_ylabel("Price / desired flow")
     axes[1].legend()
     axes[1].grid(True, alpha=0.25)
@@ -135,9 +134,6 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS, help="Previous matching weekdays used for O(t) and joint parameter fitting; default 5.")
     parser.add_argument("--warmup-hours", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=60)
-    parser.add_argument("--grid-points", type=int, default=8)
-    parser.add_argument("--refinements", type=int, default=6)
-    parser.add_argument("--progress-every", type=int, default=25)
     parser.add_argument("--deterministic", action="store_true", help="Run deterministic fitting/prediction only and skip diffusion parameter estimation.")
     parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic mode: fit prediction-day [F0,R0] against that day's observed I while keeping q and kappa_R fixed.")
     args = parser.parse_args()
@@ -146,7 +142,6 @@ def main():
     predict_start = day_start(args.day)
     O_predict, output_fit, fit, _, _, _ = fit_history(
         frame, predict_start, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
-        grid_points=args.grid_points, refinements=args.refinements, progress_every=args.progress_every,
         fit_diffusion=not args.deterministic,
     )
 
@@ -155,14 +150,14 @@ def main():
     predict_model = wm_4((0.0, 1.0), n_steps, O_predict)
     if args.optimize_prediction_state:
         init, state, fine_index, init_fit_mse = optimized_prediction_state(
-            frame, predict_start, predict_model, fit["q"], fit["kappa_R"], args.steps_per_hour,
+            frame, predict_start, predict_model, fit["r"], args.steps_per_hour,
         )
     else:
         recent_state = fit["deterministic_state"]
         init = np.array([recent_state["F"][-1], recent_state["R"][-1]], dtype=float)
         state = predict_model.deterministic_solver(init, {
             "U": U, "PE": U, "Time": Time,
-            "q": fit["q"], "kappa_R": fit["kappa_R"],
+            "r": fit["r"],
         })
         fine_index = pd.date_range(predict_start, predict_end, periods=n_steps)
         init_fit_mse = np.nan
@@ -180,8 +175,8 @@ def main():
     fit_days = ", ".join(day.strftime("%Y-%m-%d") for day in output_fit["baseline_days"])
     print(f"prediction day={predict_start} -> {predict_end}")
     print(f"O(t): previous {output_fit['weeks']} matching {output_fit['weekday']}s: {fit_days}")
-    q = fit["q"]
-    print(f"q = [{q[0]:.8f}, {q[1]:.8f}, {q[2]:.8f}], k_R = {fit['kappa_R']:.8f}")
+    r = fit["r"]
+    print(f"r = [{r[0]:.8f}, {r[1]:.8f}, {r[2]:.8f}, {r[3]:.8f}]")
     if not args.deterministic: print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"initial_cond = [{init[0]:.8f}, {init[1]:.8f}], optimized = {str(args.optimize_prediction_state).lower()}")
     print()
