@@ -54,11 +54,13 @@ def model_input(frame, start, steps_per_hour, warmup_hours, output_model=None):
     Temp = np.interp(elapsed, source_hours, source["Temp"].to_numpy(dtype=float))
 
     observation_mask = np.zeros(n_steps, dtype=bool)
+    transition_mask = np.zeros(n_steps - 1, dtype=bool)
     offset = warmup_hours * steps_per_hour
     observation_mask[offset + np.arange(DAY_HOURS) * steps_per_hour] = True
+    transition_mask[offset:offset + DAY_HOURS * steps_per_hour] = True
     data = {
         "I": I, "U": U, "PE": U.copy(), "Temp": Temp, "Time": elapsed,
-        "observation_mask": observation_mask,
+        "observation_mask": observation_mask, "transition_mask": transition_mask,
     }
     if output_model is not None: data["O"] = output_model.predict(fine_index, Temp)
     return data, fine_index, total_start, (0.0, total_hours / DAY_HOURS)
