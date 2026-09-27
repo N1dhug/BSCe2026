@@ -1,0 +1,70 @@
+name: One-time BM readability verification
+on:
+  push:
+    branches: ['refactor/bm-readability']
+    paths: ['.github/workflows/bm-readability-once.yml']
+permissions:
+  contents: write
+jobs:
+  verify-and-apply:
+    if: startsWith(github.event.head_commit.message, 'Run checked BM readability')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MPLBACKEND: Agg
+      PYTHONDONTWRITEBYTECODE: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare controlled environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = 'refactor/bm-readability'
+          git merge-base --is-ancestor b95fd6550f43948f9fae079132245679ec2c15e4 HEAD
+          python -m pip install numpy scipy matplotlib pandas openpyxl
+          mkdir -p "$RUNNER_TEMP/bm-readability"
+          git rev-parse HEAD > "$RUNNER_TEMP/bm-readability/input_commit.txt"
+          python -m pip freeze > "$RUNNER_TEMP/bm-readability/environment.txt"
+      - name: Before tests and numerical snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -B -m unittest discover -s tests -q 2>&1 | tee "$RUNNER_TEMP/bm-readability/before_tests.txt"
+          python -B .bm_readability/snapshot.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bm-readability/before.npz" 2>&1 | tee "$RUNNER_TEMP/bm-readability/before_snapshot.txt"
+      - name: Apply checked delta and test all changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -B .bm_readability/apply.py apply | tee "$RUNNER_TEMP/bm-readability/application.txt"
+          python -B -m unittest discover -s tests -q 2>&1 | tee "$RUNNER_TEMP/bm-readability/after_tests.txt"
+          python -B .bm_readability/snapshot.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/bm-readability/after.npz" 2>&1 | tee "$RUNNER_TEMP/bm-readability/after_snapshot.txt"
+          python -B .bm_readability/apply.py compare "$RUNNER_TEMP/bm-readability" | tee "$RUNNER_TEMP/bm-readability/comparison.txt"
+          python -B -m src.exe.run_model.bm_1.optimize contract --optimize | tee "$RUNNER_TEMP/bm-readability/contract.txt"
+          python -B -m src.exe.run_model.bm_1.refine | tee "$RUNNER_TEMP/bm-readability/refine.txt"
+          python -B -m src.exe.run_model.bm_1.verify objective --paths 128 --cells 31 --degrees 4 8 | tee "$RUNNER_TEMP/bm-readability/objective.txt"
+      - name: Commit only checked BM files on this branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = 'refactor/bm-readability'
+          python -B .bm_readability/apply.py stage
+          git diff --cached --stat > "$RUNNER_TEMP/bm-readability/diff_stat.txt"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Improve BM readability, remove duplicated checks and simplify reports'
+          git push origin HEAD:refs/heads/refactor/bm-readability
+          git rev-parse HEAD > "$RUNNER_TEMP/bm-readability/output_commit.txt"
+      - name: Save raw verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bm-readability-verification
+          path: ${{ runner.temp }}/bm-readability/
+          retention-days: 14
