@@ -314,6 +314,24 @@ class brute_params:
         if hi <= lo: hi = min(global_hi, lo + max(width, 1e-8))
         return lo, hi
 
+    @staticmethod
+    def _negative_log_grid(bounds, n):
+        lo, hi = map(float, bounds)
+        if not lo < hi < 0.0: raise ValueError("negative logarithmic bounds must be increasing and strictly negative.")
+        return -np.geomspace(abs(lo), abs(hi), int(n))
+
+    @staticmethod
+    def _refined_negative_log_interval(values, best, global_lo, global_hi):
+        values = np.asarray(values, dtype=float)
+        mags = np.sort(np.abs(values))
+        best_mag = abs(float(best))
+        idx = int(np.argmin(np.abs(mags - best_mag)))
+        global_min, global_max = sorted((abs(float(global_lo)), abs(float(global_hi))))
+        lo_mag = global_min if idx == 0 else np.sqrt(mags[idx - 1] * best_mag)
+        hi_mag = global_max if idx == mags.size - 1 else np.sqrt(best_mag * mags[idx + 1])
+        lo_mag, hi_mag = max(global_min, lo_mag), min(global_max, hi_mag)
+        return -hi_mag, -lo_mag
+
     def _search_branch(self, branch, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, fit_initial_state, r0_range, verbose, progress_every):
         q_bounds = tuple(map(float, q_f_range))
         rho_global = {"under": (ratio_eps, 1.0 - ratio_eps), "critical": (1.0, 1.0), "over": (1.0 + ratio_eps, ratio_max)}[branch]
@@ -321,7 +339,7 @@ class brute_params:
         best, history, branch_start = None, [], perf_counter()
 
         for level in range(refinements):
-            q_grid = np.linspace(*q_local, grid_points)
+            q_grid = self._negative_log_grid(q_local, grid_points)
             rho_grid = np.array([1.0]) if branch == "critical" else np.linspace(*rho_local, grid_points)
             level_best, tested, pruned, qp_times, level_start = None, 0, 0, [], perf_counter()
             if verbose: print(f"[brute] branch={branch} refinement={level + 1}/{refinements} candidates={len(q_grid) * len(rho_grid)}")
@@ -355,7 +373,7 @@ class brute_params:
             if level_best is None: break
 
             best = level_best
-            q_local = self._refined_interval(q_grid, best["q_f"], *q_bounds)
+            q_local = self._refined_negative_log_interval(q_grid, best["q_f"], *q_bounds)
             if branch != "critical": rho_local = self._refined_interval(rho_grid, best["rho"], *rho_global)
 
         if best is not None: best.update({"history": history, "branch": branch, "elapsed": perf_counter() - branch_start})
@@ -372,7 +390,7 @@ class brute_params:
         if not valid: raise RuntimeError("wm_4 brute-force parameter search found no structurally admissible damping branch candidate.")
         return min(valid, key=lambda item: item["score"]), branches
 
-    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-50.0, -1e-4), ratio_eps=1e-4, ratio_max=10.0, damping_branch=None, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-1000.0, -1e-6), ratio_eps=1e-4, ratio_max=10.0, damping_branch=None, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
         data = self._prepare_data(input_data)
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every = int(grid_points), int(refinements), int(progress_every)
