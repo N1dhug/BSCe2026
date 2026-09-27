@@ -1,5 +1,7 @@
 import numpy as np
+
 from src.validation.model.bm import bm_validation
+
 
 class bm_1_validation:
     """Validation for bm_1 solver and optimizer entry points."""
@@ -45,7 +47,12 @@ class bm_1_validation:
     def deterministic_inputs(init_cond, parameters, t_eval, breakpoints, interval, rtol, atol, max_step):
         """Validate deterministic solver inputs and numerical controls."""
         init_cond, parameters = bm_1_validation.model_inputs(init_cond, parameters)
-        t_eval, breakpoints, max_step = bm_1_validation.time_controls(t_eval, breakpoints, interval, max_step)
+        t_eval, breakpoints, max_step = bm_1_validation.time_controls(
+            t_eval,
+            breakpoints,
+            interval,
+            max_step,
+        )
         rtol = bm_validation.positive_scalar(rtol, 'rtol')
         atol = bm_validation.positive_scalar(atol, 'atol')
         return (init_cond, parameters, t_eval, breakpoints, rtol, atol, max_step)
@@ -78,7 +85,12 @@ class bm_1_validation:
     @staticmethod
     def stochastic_time_inputs(t_eval, breakpoints, interval, max_step):
         """Validate the EM output grid, discontinuities and maximum internal step."""
-        t_eval, breakpoints, max_step = bm_1_validation.time_controls(t_eval, breakpoints, interval, max_step)
+        t_eval, breakpoints, max_step = bm_1_validation.time_controls(
+            t_eval,
+            breakpoints,
+            interval,
+            max_step,
+        )
         if t_eval.size < 2:
             raise ValueError('Euler-Maruyama t_eval must contain at least two points.')
         if t_eval[0] != interval[0] or t_eval[-1] != interval[1]:
@@ -86,7 +98,17 @@ class bm_1_validation:
         return (t_eval, breakpoints, max_step)
 
     @staticmethod
-    def optimize_inputs(initial_u, interval_edges, init_cond, parameters, t_eval, interval, rtol, atol, max_step):
+    def optimize_inputs(
+        initial_u,
+        interval_edges,
+        init_cond,
+        parameters,
+        t_eval,
+        interval,
+        rtol,
+        atol,
+        max_step,
+    ):
         """Validate the interval controls and deterministic objective grid."""
         initial_u = np.asarray(initial_u, dtype=float)
         if initial_u.ndim != 1 or initial_u.size == 0:
@@ -107,8 +129,25 @@ class bm_1_validation:
         t_start, t_end = interval
         if interval_edges[0] != t_start or interval_edges[-1] != t_end:
             raise ValueError('interval_edges must start and end at the model time interval.')
-        init_cond, parameters, t_eval, _, rtol, atol, max_step = bm_1_validation.deterministic_inputs(init_cond,
-            parameters, t_eval, interval_edges[1:-1], interval, rtol, atol, max_step)
+        init_cond, parameters, t_eval, _, rtol, atol, max_step = bm_1_validation.deterministic_inputs(
+            init_cond,
+            parameters,
+            t_eval,
+            interval_edges[1:-1],
+            interval,
+            rtol,
+            atol,
+            max_step,
+        )
         if t_eval.size < 2 or t_eval[0] != t_start or t_eval[-1] != t_end:
             raise ValueError('The optimization t_eval grid must span the full model interval.')
-        return (initial_u.copy(), interval_edges.copy(), init_cond, parameters, t_eval, rtol, atol, max_step)
+        return (
+            initial_u.copy(),
+            interval_edges.copy(),
+            init_cond,
+            parameters,
+            t_eval,
+            rtol,
+            atol,
+            max_step,
+        )

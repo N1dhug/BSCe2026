@@ -7,12 +7,7 @@ from src.method.bm_1_control import (BM1ControlNumerics, BM1ControlProblem, BM1P
     evaluate_mc_candidates_common_random_numbers, multistart_powell, paired_mc_improvement)
 from src.validation.bm_1.cases import (INITIAL_ALPHA, INITIAL_BETA, SIGMA_X, linear_price_response,
     linear_state_response)
-from src.validation.bm_1.control import (C, DETERMINISTIC_REFERENCE_PRICES, HOURLY_EDGES, INITIAL_PRICES,
-    MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS, INTERVAL_EDGES, K, KNOWN_DETERMINISTIC_PRICES, REFERENCE_PRICES_24, T,
-    XI, _build_fv_evaluator, _coarsen_reference_prices, multi_edges as _edges, _lift_half_day_prices,
-    _parameter_template, multi_sample_piecewise_prices as _sample_piecewise_prices, _union_breakpoints,
-    build_deterministic_target, build_stochastic_model, INTERVAL_COUNTS as control_INTERVAL_COUNTS,
-    _edges as control__edges, _sample_piecewise_prices as control__sample_piecewise_prices)
+from src.validation.bm_1.control import C, DETERMINISTIC_REFERENCE_PRICES, HOURLY_EDGES, INITIAL_PRICES, MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS, INTERVAL_EDGES, K, KNOWN_DETERMINISTIC_PRICES, REFERENCE_PRICES_24, T, XI, _build_fv_evaluator, _coarsen_reference_prices, multi_edges as _edges, _lift_half_day_prices, _parameter_template, _sample_piecewise_prices as _sample_piecewise_prices, _union_breakpoints, build_deterministic_target, build_stochastic_model, INTERVAL_COUNTS as control_INTERVAL_COUNTS, _edges as control__edges, _sample_piecewise_prices as control__sample_piecewise_prices
 
 class PowellOptimizationTests(unittest.TestCase):
 

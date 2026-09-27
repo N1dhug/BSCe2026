@@ -191,5 +191,75 @@ class ConsolidatedLayoutTests(unittest.TestCase):
         for module in ('wm_1', 'wm_2', 'wm_3', 'wm_4'):
             self.assertIsNotNone(__import__('importlib').import_module('src.model.' + module))
 
+
+class ReportingTests(unittest.TestCase):
+    """Reporting flags must not change the model or create unexpected output files."""
+
+    def test_objective_report_is_short_by_default_and_plotting_is_opt_in(self):
+        import contextlib
+        import io
+        from src.exe.run_model.bm_1 import verify
+        from src.validation.bm_1.mixture import run_objective_reference
+
+        result = run_objective_reference(n_paths=32, degrees=(4,), x_steps=21,
+                                         objective_max_step=0.25, solver_max_step=0.125)
+        outputs = []
+        with patch.object(verify.mixture, 'run_objective_reference', return_value=result), \
+             patch.object(verify, '_save_lines', side_effect=AssertionError('implicit plot')):
+            for options in ([], ['--verbose']):
+                stream = io.StringIO()
+                with contextlib.redirect_stdout(stream):
+                    verify.main(['objective', *options])
+                outputs.append(stream.getvalue())
+        self.assertIn('MC SE=', outputs[0])
+        self.assertNotIn('pointwise_decomposition', outputs[0])
+        self.assertIn('pointwise_decomposition', outputs[1])
+        self.assertLess(len(outputs[0].splitlines()), 12)
+
+    def test_default_output_paths_cannot_overwrite_retained_evidence(self):
+        from src.exe.run_model.bm_1 import verify, optimize, refine, real_data
+        root = Path(__file__).resolve().parents[1]
+        runs = root / 'files/output/bm_1/runs'
+        for module in (verify, optimize, refine, real_data):
+            with self.subTest(module=module.__name__):
+                self.assertTrue(module.OUTPUT_DIR.is_relative_to(runs))
+        self.assertIsNone(real_data._plot_location(None))
+        path = root / 'files/output/bm_1/real_data/example.png'
+        self.assertEqual(real_data._plot_location(path), 'files/output/bm_1/real_data/example.png')
+
+    def test_refinement_save_is_explicit_and_uses_selected_directory(self):
+        import json
+        import tempfile
+        from types import SimpleNamespace
+        from src.exe.run_model.bm_1 import refine
+
+        evaluation = SimpleNamespace(prices=np.array([0.7, 0.3]),
+            objective=SimpleNamespace(total=0.2, bias=0.1, variance=0.1),
+            diagnostics={'n_steps': 1, 'maximum_abs_mass_error': 0.0, 'minimum_cell_mass': 0.1})
+        row = {'candidate': 'reference', 'level': 2.0, 'total': 0.2}
+        result = {'candidates': {'reference': np.array([0.7, 0.3])},
+                  'reference_fv': {'reference': evaluation}, 'summary': {}, 'mc': None, 'mc_time': None,
+                  'spatial': [row], 'fv_time': [row], 'quadrature': [row]}
+        with tempfile.TemporaryDirectory() as folder:
+            path = refine.save_json(result, folder)
+            self.assertEqual(path.parent, Path(folder))
+            self.assertEqual(json.loads(path.read_text())['reference_fv']['reference']['total'], 0.2)
+            figure = refine.save_plot(result, folder)
+            self.assertGreater(figure.stat().st_size, 0)
+
+    def test_reference_evaluator_validates_each_candidate_once(self):
+        from src.method import bm_1_control as control
+        from src.validation.method import bm_1 as checks
+        model, parameters = build_reference_case()
+        edges, _, _ = model.fokker_planc_reference.grid(21)
+        mass = beta_initial_cell_mass(edges)
+        for cls in (control.FVStochasticPriceEvaluator, control.FastFVStochasticPriceEvaluator):
+            evaluator = cls(model, parameters, [0, 0.5, 1], 0.5, mass,
+                            objective_max_step=0.25, solver_max_step=0.125)
+            with self.subTest(backend=cls.__name__), patch.object(checks, '_validate_prices',
+                                                                 wraps=checks._validate_prices) as validate:
+                evaluator.evaluate([0.7, 0.3])
+                self.assertEqual(validate.call_count, 1)
+
 if __name__ == '__main__':
     unittest.main()

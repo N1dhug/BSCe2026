@@ -1,5 +1,7 @@
 """Validation for reusable deterministic bm_1 diagnostics."""
+
 import numpy as np
+
 
 class bm_1_diagnostics_validation:
     """Validate normalized bm_1 diagnostic inputs."""
@@ -90,6 +92,11 @@ class bm_1_diagnostics_validation:
         if not np.all(np.isfinite(time)):
             raise ValueError('time must contain finite values.')
         initial_time = bm_1_diagnostics_validation._finite_scalar(initial_time, 'initial_time')
-        target_demand, baseline, capacity, initial_state, _ = bm_1_diagnostics_validation.capacity_inputs(target_demand,
-            baseline, capacity, initial_state, (initial_time, initial_time + 1.0))
+        target_demand, baseline, capacity, initial_state, _ = bm_1_diagnostics_validation.capacity_inputs(
+            target_demand,
+            baseline,
+            capacity,
+            initial_state,
+            (initial_time, initial_time + 1.0),
+        )
         return (time, target_demand, baseline, capacity, initial_state, initial_time)

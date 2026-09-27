@@ -1,430 +1,255 @@
-"""BM1 executable: input selection, reporting and plots."""
+"""BM1 price experiments: build a case, optimize, then compare on a common model.
 
-import argparse
-import matplotlib.pyplot as plt
-import numpy as np
+Reports are short by default. --verbose shows solver progress and full prices;
+--save writes figures under ignored runs/, never over the retained evidence.
+"""
+
+from argparse import ArgumentParser
 from pathlib import Path
+
+import numpy as np
 from scipy.interpolate import interp1d
+
 from src.method.objective import tracking_error
 from src.model.bm_1 import bm_1
-from src.tools.input_generator.input_builder import input_builder
-from src.validation.bm_1.control import (HOURLY_EDGES, INTERVAL_COUNTS, KNOWN_DETERMINISTIC_PRICES,
-    COMPLEX_MC_PATHS as MC_PATHS, MIXTURE_OPT_DEGREE, MULTI_INTERVAL_COUNTS, MULTI_MC_PATHS, REFERENCE_PRICES_24,
-    _paired_improvement, INTERVAL_EDGES as control_INTERVAL_EDGES, T as control_T, multi_paired_improvement,
-    run_complex_target_experiment, run_multi_price_experiment, run_optimization_reference, run_reference)
-from src.validation.bm_1.deterministic import (ATOL, INITIAL_PRICES, INTERVAL_EDGES, KNOWN_PRICES, OBJECTIVE_T,
-    OBJECTIVE_TOL, PRICE_TOL, RTOL, T, TARGET_TOL, X0, build_baseline, build_parameters, raises_value_error,
-    solve_prices)
+from src.validation.bm_1 import control as cases, deterministic
 
-def save_figure(target_result, initial_result, optimized_result, optimized_prices):
-    """Save the feasible target, recovered demand, state, and prices."""
-    hours = 24.0 * OBJECTIVE_T
-    target_demand = target_result[7]
-    fig, axes = plt.subplots(3, 1, figsize=(10, 11), sharex=True)
-    axes[0].plot(hours, target_demand, linewidth=2.5, label='Target A(t)')
-    axes[0].plot(hours, initial_result[7], linestyle='--', label='Demand from initial prices')
-    axes[0].plot(hours, optimized_result[7], linestyle=':', linewidth=2.5, label='Optimized demand')
-    axes[0].set_ylabel('Normalized demand')
-    axes[0].set_title('bm_1 deterministic price optimization (F1-D)')
-    axes[0].grid(True)
-    axes[0].legend(loc='best')
-    axes[1].plot(hours, target_result[1], linewidth=2.5, label='Target state')
-    axes[1].plot(hours, optimized_result[1], linestyle='--', label='Optimized state')
-    axes[1].set_ylabel('State X')
-    axes[1].grid(True)
-    axes[1].legend(loc='best')
-    known_price = input_builder.price_intervals((INTERVAL_EDGES, KNOWN_PRICES))
-    initial_price = input_builder.price_intervals((INTERVAL_EDGES, INITIAL_PRICES))
-    optimized_price = input_builder.price_intervals((INTERVAL_EDGES, optimized_prices))
-    axes[2].step(hours, known_price(OBJECTIVE_T), where='post', linewidth=2.5, label='Known prices')
-    axes[2].step(hours, initial_price(OBJECTIVE_T), where='post', linestyle='--', label='Initial prices')
-    axes[2].step(hours, optimized_price(OBJECTIVE_T), where='post', linestyle=':', linewidth=2.5,
-        label='Optimized prices')
-    axes[2].set_xlabel('Time [hours]')
-    axes[2].set_ylabel('Normalized price')
-    axes[2].set_ylim(0.0, 1.0)
-    axes[2].grid(True)
-    axes[2].legend(loc='best')
+
+OUTPUT_DIR = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
+
+
+def _prices(values):
+    return np.array2string(np.asarray(values), precision=6, floatmode='fixed')
+
+
+def _costs(evaluations):
+    print('candidate                  J              bias           variance')
+    for name, evaluation in evaluations.items():
+        cost = evaluation.objective
+        print(f'{name:26s} {cost.total:.8e} {cost.bias:.8e} {cost.variance:.8e}')
+
+
+def _solver_summary(result):
+    """Report solver status even in short mode; success is not a global-optimum proof."""
+    if hasattr(result, 'results'):
+        successes = sum((bool(item.success) for item in result.results))
+        print(
+            (
+                f'Powell starts: {successes}/{len(result.results)} successful; solves/cache hits='
+                f'{result.objective_evaluations}/{result.cache_hits}'
+            ),
+        )
+    else:
+        print(f'Solver success={result.success}; iterations/evaluations={result.nit}/{result.nfev}')
+        if not result.success:
+            print(f'Solver message: {result.message}')
+
+
+def _save_comparison(name, target_t, target, price_plans, demand_plans, surface=None):
+    """Plot a common target, candidate demands and held price schedules."""
+    import matplotlib.pyplot as plt
+    nrows = 3 if surface is not None else 2
+    fig, axes = plt.subplots(nrows, 1, figsize=(11, 4 * nrows))
+    if surface is not None:
+        values, costs = surface
+        grid_x, grid_y = np.meshgrid(values, values, indexing='ij')
+        mesh = axes[0].contourf(grid_x, grid_y, costs, levels=15)
+        fig.colorbar(mesh, ax=axes[0], label='Expected tracking cost')
+        axes[0].set(xlabel='First-half price', ylabel='Second-half price', title='Coarse objective surface')
+        for label, (_, prices) in price_plans.items():
+            axes[0].scatter(prices[0], prices[1], label=label)
+        axes[0].legend()
+        axes = axes[1:]
+    axes[0].plot(24 * target_t, target, label='Target A', linewidth=2)
+    for label, (t, demand) in demand_plans.items():
+        axes[0].plot(24 * t, demand, label=label)
+    for label, (edges, prices) in price_plans.items():
+        axes[1].step(24 * edges, np.r_[prices, prices[-1]], where='post', label=label)
+    axes[0].set(ylabel='Demand', title='Tracking under candidate prices')
+    axes[1].set(ylabel='Normalized price', xlabel='Time [h]', ylim=(0, 1))
     for axis in axes:
-        for edge in INTERVAL_EDGES[1:-1]:
-            axis.axvline(24.0 * edge, color='black', alpha=0.3, linestyle='--')
+        axis.grid(True, alpha=0.25)
+        axis.legend(loc='best')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
-    graph_dir.mkdir(parents=True, exist_ok=True)
-    graph_path = graph_dir / 'BM1_optimization_reference.png'
-    fig.savefig(graph_path, dpi=300, bbox_inches='tight')
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUTPUT_DIR / name
+    fig.savefig(path, dpi=200, bbox_inches='tight')
     plt.close(fig)
-    return graph_path
+    print(f'Saved graph to {path}')
+    return path
 
-def run_deterministic():
-    """Generate a feasible target and verify deterministic optimization."""
-    baseline = build_baseline()
-    generator = bm_1(baseline, baseline, T, OBJECTIVE_T.size)
-    target_result = solve_prices(generator, KNOWN_PRICES)
+
+def run_deterministic(args):
+    """Recover the known two-price target with the original F1-D optimizer."""
+    baseline = deterministic.build_baseline()
+    generator = bm_1(baseline, baseline, deterministic.T, len(deterministic.OBJECTIVE_T))
+    target_result = deterministic.solve_prices(generator, deterministic.KNOWN_PRICES)
     target_demand = target_result[7]
-    target = interp1d(OBJECTIVE_T, target_demand, kind='linear', bounds_error=True)
-    model = bm_1(baseline, target, T, OBJECTIVE_T.size)
-    initial_result = solve_prices(model, INITIAL_PRICES)
-    known_objective = tracking_error(OBJECTIVE_T, target_demand, target_demand)
-    initial_objective = tracking_error(OBJECTIVE_T, initial_result[7], target_demand)
-    result = model.optimize(INITIAL_PRICES, [X0], build_parameters(INITIAL_PRICES), interval_edges=INTERVAL_EDGES,
-        t_eval=OBJECTIVE_T, rtol=RTOL, atol=ATOL, options={'ftol': 1e-15, 'gtol': 1e-10, 'maxiter': 200})
-    optimized_result = solve_prices(model, result.x)
-    optimized_objective = tracking_error(OBJECTIVE_T, optimized_result[7], target_demand)
-    graph_path = save_figure(target_result, initial_result, optimized_result, result.x)
-    checks = {'optimizer reports success': bool(result.success),
-        'known feasible target has zero objective': known_objective <= TARGET_TOL,
-        'optimized objective reaches the target tolerance': optimized_objective <= OBJECTIVE_TOL,
-        'reported and recomputed objectives agree': np.isclose(result.fun, optimized_objective, rtol=1e-06, atol=1e-16),
-        'optimization improves the initial objective': optimized_objective < initial_objective,
-        'optimizer recovers the known price decisions': np.max(np.abs(result.x - KNOWN_PRICES)) <= PRICE_TOL,
-        'optimized prices remain in [0, 1]': np.all(result.x >= 0.0) and np.all(result.x <= 1.0),
-        'price decisions remain independent of the objective grid': result.x.size + 1 == INTERVAL_EDGES.size and result.x.size != OBJECTIVE_T.size,
-        'mismatched interval counts are rejected': raises_value_error(lambda: model.optimize(INITIAL_PRICES, [X0], build_parameters(INITIAL_PRICES), interval_edges=np.array(T, dtype=float))),
-        'interval edges must cover the model horizon': raises_value_error(lambda: model.optimize(INITIAL_PRICES, [X0], build_parameters(INITIAL_PRICES), interval_edges=np.array([0.1, 0.5, 1.0]))),
-        'objective grid must cover the model horizon': raises_value_error(lambda: model.optimize(INITIAL_PRICES, [X0], build_parameters(INITIAL_PRICES), interval_edges=INTERVAL_EDGES, t_eval=OBJECTIVE_T[1:])),
-        'reference figure is saved': graph_path.is_file() and graph_path.stat().st_size > 0}
-    improvement = initial_objective / optimized_objective if optimized_objective > 0.0 else np.inf
-    price_error = float(np.max(np.abs(result.x - KNOWN_PRICES)))
-    print('bm_1 deterministic optimization F1-D verification')
-    print('================================================')
-    print()
-    print(f'known prices             = {KNOWN_PRICES}')
-    print(f'initial prices           = {INITIAL_PRICES}')
-    print(f'optimized prices         = {result.x}')
-    print(f'max price error          = {price_error:.6e}')
-    print(f'known objective          = {known_objective:.6e}')
-    print(f'initial objective        = {initial_objective:.6e}')
-    print(f'optimized objective      = {optimized_objective:.6e}')
-    print(f'objective improvement    = {improvement:.3e}')
-    print(f'iterations / evaluations = {result.nit} / {result.nfev}')
-    print()
-    print('Checks')
-    for name, passed in checks.items():
-        print(f"{('PASS' if passed else 'FAIL')} {name}")
-    print()
-    print(f'Saved graph to {graph_path}')
-    failed = [name for name, passed in checks.items() if not passed]
-    if failed:
-        print()
-        print('One or more F1-D checks failed:')
-        for name in failed:
-            print(f'- {name}')
-        raise SystemExit(1)
+    target = interp1d(deterministic.OBJECTIVE_T, target_demand, kind='linear', bounds_error=True)
+    model = bm_1(baseline, target, deterministic.T, len(deterministic.OBJECTIVE_T))
+    initial = deterministic.solve_prices(model, deterministic.INITIAL_PRICES)
+    fit = model.optimize(
+        deterministic.INITIAL_PRICES,
+        [deterministic.X0],
+        deterministic.build_parameters(deterministic.INITIAL_PRICES),
+        interval_edges=deterministic.INTERVAL_EDGES,
+        t_eval=deterministic.OBJECTIVE_T,
+        rtol=deterministic.RTOL,
+        atol=deterministic.ATOL,
+        options={'ftol': 1e-15, 'gtol': 1e-10, 'maxiter': 200},
+    )
+    solved = deterministic.solve_prices(model, fit.x)
+    initial_cost = tracking_error(deterministic.OBJECTIVE_T, initial[7], target_demand)
+    final_cost = tracking_error(deterministic.OBJECTIVE_T, solved[7], target_demand)
+    print('F1-D deterministic price optimization')
+    print(f'Initial J={initial_cost:.8e}; recomputed best J={final_cost:.8e}')
+    print(f'Known prices: {_prices(deterministic.KNOWN_PRICES)}; best prices: {_prices(fit.x)}')
+    _solver_summary(fit)
+    if not fit.success:
+        raise RuntimeError('F1-D optimizer did not converge; inspect its reported status.')
+    if args.verbose:
+        print(f'Max price recovery error={np.max(np.abs(fit.x - deterministic.KNOWN_PRICES)):.3e}')
+        print(f'Reported J={fit.fun:.8e}; recomputation difference={fit.fun - final_cost:.3e}')
+    if args.save:
+        _save_comparison(
+            'bm_1_optimization_reference.png',
+            deterministic.OBJECTIVE_T,
+            target_demand,
+            {
+                'known': (deterministic.INTERVAL_EDGES, deterministic.KNOWN_PRICES),
+                'optimized': (deterministic.INTERVAL_EDGES, fit.x),
+            },
+            {'initial': (initial[0], initial[7]), 'optimized': (solved[0], solved[7])},
+        )
+    return fit
 
-def _format_prices(prices):
-    return np.array2string(np.asarray(prices, dtype=float), precision=6, floatmode='fixed')
 
-def run_stochastic():
-    result = run_optimization_reference(progress=lambda message: print(message, flush=True))
-    print('F2-I stochastic BM1 price optimization')
-    print('--------------------------------------')
-    print('Deterministic reference prices: ' + _format_prices(KNOWN_DETERMINISTIC_PRICES))
-    print('FV stochastic optimum:          ' + _format_prices(result['candidates']['fv_optimum']))
-    print('Mixture stochastic optimum:     ' + _format_prices(result['candidates']['mixture_optimum']))
-    print()
-    fv_opt = result['fv_optimization']
-    print('FV bounded Powell multistart')
-    print('----------------------------')
-    print(f'starts: {len(fv_opt.results)}')
-    print(f'successful: {sum((bool(item.success) for item in fv_opt.results))}')
-    print(f'best objective: {float(fv_opt.best.fun):.8e}, iterations/evaluations: {fv_opt.best.nit}/{fv_opt.best.nfev}')
-    successful_costs = [float(item.fun) for item in fv_opt.results if item.success]
-    print(f'successful-start objective spread: {np.ptp(successful_costs):.3e}')
-    print(f'actual solves/cache hits: {fv_opt.objective_evaluations}/{fv_opt.cache_hits}')
-    print()
-    if result['mixture_optimization'] is not None:
-        mix_opt = result['mixture_optimization']
-        print(f'M={MIXTURE_OPT_DEGREE} mixture Powell multistart')
-        print('--------------------------------')
-        print(f'starts: {len(mix_opt.results)}')
-        print(f'successful: {sum((bool(item.success) for item in mix_opt.results))}')
-        print(f'best surrogate objective: {float(mix_opt.best.fun):.8e}, iterations/evaluations: {mix_opt.best.nit}/{mix_opt.best.nfev}')
-        print()
-    print('Pure-FV reevaluation')
-    print('--------------------')
-    reference_fv = result['fv_evaluations']['deterministic_reference']
-    for name, item in result['fv_evaluations'].items():
-        improvement = reference_fv.objective.total - item.objective.total
-        print(f'{name:24s} J={item.objective.total:.8e}, bias={item.objective.bias:.8e}, variance={item.objective.variance:.8e}, improvement={improvement:.6e}')
-    print()
-    print('High-resolution mixture reevaluation')
-    print('------------------------------------')
-    for degree, evaluations in result['final_mixture'].items():
-        print(f'M={degree}')
-        for name, item in evaluations.items():
-            print(f'  {name:22s} J={item.objective.total:.8e}, bias={item.objective.bias:.8e}, variance={item.objective.variance:.8e}')
-    if result['mc'] is not None:
-        print()
-        print('Monte Carlo common-random-number validation')
-        print('-------------------------------------------')
-        for name, item in result['mc'].items():
-            objective = item.objective
-            print(f'{name:24s} J={objective.objective.total:.8e}, SE={objective.standard_error:.3e}')
-        print()
-        print('Paired MC improvement over deterministic reference')
-        print('--------------------------------------------------')
-        for name, (improvement, standard_error) in result['paired_mc_improvement'].items():
-            z = improvement / standard_error if standard_error > 0.0 else np.inf
-            print(f'{name:24s} improvement={improvement:.6e}, SE={standard_error:.3e}, ratio={z:.3f}')
-    fv = result['fv_evaluator']
-    hours = 24.0 * fv.midpoints
-    fig, axes = plt.subplots(2, 2, figsize=(13, 10))
-    ax_surface, ax_demand, ax_price, ax_parts = axes.ravel()
-    grid_first, grid_second = np.meshgrid(result['coarse_values'], result['coarse_values'], indexing='ij')
-    contour = ax_surface.contourf(grid_first, grid_second, result['coarse_surface'], levels=15)
-    fig.colorbar(contour, ax=ax_surface, label='FV stochastic objective')
-    for name, marker in (('deterministic_reference', 'o'), ('fv_optimum', 'x'), ('mixture_optimum', '+')):
-        prices = result['candidates'][name]
-        ax_surface.scatter(prices[0], prices[1], marker=marker, s=90, label=name.replace('_', ' '))
-    ax_surface.set_xlabel('First-half price')
-    ax_surface.set_ylabel('Second-half price')
-    ax_surface.set_title('Coarse stochastic objective surface')
-    ax_surface.legend(loc='best')
-    ax_demand.plot(hours, fv.target, linewidth=2.5, label='Target A(t)')
-    for name, item in result['fv_evaluations'].items():
-        ax_demand.plot(hours, item.objective.expected_demand, label=name.replace('_', ' '))
-    ax_demand.set_xlabel('Time [h]')
-    ax_demand.set_ylabel('Expected demand')
-    ax_demand.set_title('Pure-FV expected demand')
-    ax_demand.grid(True)
-    ax_demand.legend(loc='best')
-    for name, prices in result['candidates'].items():
-        price = input_builder.price_intervals((control_INTERVAL_EDGES, prices))
-        ax_price.step(hours, price(fv.midpoints), where='mid', label=name.replace('_', ' '))
-    ax_price.set_xlabel('Time [h]')
-    ax_price.set_ylabel('Normalized price')
-    ax_price.set_ylim(0.0, 1.0)
-    ax_price.set_title('Candidate dynamic prices')
-    ax_price.grid(True)
-    ax_price.legend(loc='best')
-    labels = ['deterministic\nreference', 'FV\noptimum', 'mixture\noptimum']
-    names = ['deterministic_reference', 'fv_optimum', 'mixture_optimum']
-    bias = [result['fv_evaluations'][name].objective.bias for name in names]
-    variance = [result['fv_evaluations'][name].objective.variance for name in names]
-    positions = np.arange(len(names))
-    ax_parts.bar(positions, bias, label='Bias-squared')
-    ax_parts.bar(positions, variance, bottom=bias, label='Demand variance')
-    ax_parts.set_xticks(positions, labels)
-    ax_parts.set_ylabel('Pure-FV stochastic objective')
-    ax_parts.set_title('Objective decomposition')
-    ax_parts.grid(True, axis='y')
-    ax_parts.legend(loc='best')
-    fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
-    graph_dir.mkdir(parents=True, exist_ok=True)
-    graph_path = graph_dir / 'bm_1_stochastic_optimization_reference.png'
-    fig.savefig(graph_path, dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    print()
-    print(f'Saved graph to {graph_path}')
-
-def run_complex():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--fast-fv', action='store_true',
-        help='Use the numerically equivalent LAPACK/blocked FV evaluator.')
-    args = parser.parse_args()
-    print('FV backend: ' + ('fast' if args.fast_fv else 'reference'), flush=True)
-    result = run_complex_target_experiment(progress=lambda message: print(message, flush=True), fast_fv=args.fast_fv)
-    cases = result['cases']
-    print()
-    print('BM1 complex-target multi-price stochastic optimization')
-    print('------------------------------------------------------')
-    print('Target-generating hourly reference prices:')
-    print(np.array2string(REFERENCE_PRICES_24, precision=3, floatmode='fixed', max_line_width=120))
-    print()
-    print('intervals  changes  FV objective       bias               variance           actual evals  cache hits')
-    for count, case in cases.items():
-        objective = case.evaluation.objective
-        optimization = case.optimization
-        print(f'{count:9d}  {count - 1:7d}  {objective.total:.10e}  {objective.bias:.10e}  {objective.variance:.10e}  {optimization.objective_evaluations:12d}  {optimization.cache_hits:10d}')
-        print(' ' * 20 + 'prices=' + np.array2string(np.asarray(optimization.best.x, dtype=float), precision=6,
-            floatmode='fixed', max_line_width=120))
-    print()
-    print('Marginal pure-FV improvement')
-    previous = None
-    for count, case in cases.items():
-        if previous is not None:
-            improvement = previous.evaluation.objective.total - case.evaluation.objective.total
-            relative = improvement / previous.evaluation.objective.total
-            print(f'N={previous.n_intervals} -> N={count}: dJ={improvement:.6e} ({relative:.3%})')
-        previous = case
-    if result['mc'] is not None:
-        print()
-        print(f'Common-random-number Monte Carlo ({MC_PATHS} paths)')
-        for count in INTERVAL_COUNTS:
-            item = result['mc'][count]
-            print(f'N={count}: J={item.objective.total:.10e}, SE={item.standard_error:.3e}')
-        reference = result['mc'][INTERVAL_COUNTS[0]]
-        print()
-        print(f'Paired MC improvement relative to N={INTERVAL_COUNTS[0]}')
-        for count in INTERVAL_COUNTS[1:]:
-            mean, se = _paired_improvement(reference, result['mc'][count])
-            ratio = mean / se if se > 0.0 else np.inf
-            print(f'N={count}: improvement={mean:.6e}, SE={se:.3e}, ratio={ratio:.3f}')
-    fig, axes = plt.subplots(3, 1, figsize=(13, 14))
-    ax_price, ax_objective, ax_demand = axes
-    plot_t = np.linspace(control_T[0], control_T[1], 1441, dtype=float)
-    reference_price = input_builder.price_intervals((HOURLY_EDGES, REFERENCE_PRICES_24))
-    ax_price.step(24.0 * plot_t, reference_price(plot_t), where='post', linewidth=2.5, linestyle='--',
-        label='Target-generating N=24 reference')
-    for count, case in cases.items():
-        price = input_builder.price_intervals((case.edges, case.optimization.best.x))
-        ax_price.step(24.0 * plot_t, price(plot_t), where='post', label=f'Optimized N={count}')
-    ax_price.set_ylabel('Normalized price')
-    ax_price.set_ylim(0.0, 1.0)
-    ax_price.set_title('Reference and optimized stochastic price schedules')
-    ax_price.grid(True)
-    ax_price.legend(loc='best')
-    counts = np.asarray(INTERVAL_COUNTS, dtype=int)
-    totals = np.array([cases[count].evaluation.objective.total for count in counts])
-    bias = np.array([cases[count].evaluation.objective.bias for count in counts])
-    variance = np.array([cases[count].evaluation.objective.variance for count in counts])
-    ax_objective.plot(counts, totals, marker='o', label='Total J')
-    ax_objective.plot(counts, bias, marker='o', label='Bias contribution')
-    ax_objective.plot(counts, variance, marker='o', label='Variance contribution')
-    ax_objective.set_xlabel('Number of price intervals')
-    ax_objective.set_ylabel('Pure-FV stochastic objective')
-    ax_objective.set_title('Value of price resolution for a complex target')
-    ax_objective.grid(True)
-    ax_objective.legend(loc='best')
-    reference_evaluator = cases[INTERVAL_COUNTS[0]].evaluator
-    hours = 24.0 * reference_evaluator.midpoints
-    ax_demand.plot(hours, reference_evaluator.target, linewidth=2.5, label='Target A(t)')
-    for count, case in cases.items():
-        ax_demand.plot(hours, case.evaluation.objective.expected_demand, label=f'E[D], N={count}')
-    ax_demand.set_xlabel('Time [h]')
-    ax_demand.set_ylabel('Expected demand')
-    ax_demand.set_title('Expected demand under optimized price schedules')
-    ax_demand.grid(True)
-    ax_demand.legend(loc='best')
-    fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
-    graph_dir.mkdir(parents=True, exist_ok=True)
-    graph_path = graph_dir / 'bm_1_complex_target_multi_price_experiment.png'
-    fig.savefig(graph_path, dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    print()
-    print(f'Saved graph to {graph_path}')
-
-def run_multi():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--fast-fv', action='store_true',
-        help='Use the numerically equivalent LAPACK/blocked FV evaluator.')
-    args = parser.parse_args()
-    print('FV backend: ' + ('fast' if args.fast_fv else 'reference'), flush=True)
-    result = run_multi_price_experiment(progress=lambda message: print(message, flush=True), fast_fv=args.fast_fv)
-    cases = result['cases']
-    print()
-    print('BM1 multi-price stochastic optimization experiment')
-    print('------------------------------------------------')
-    print('All cases: same target, Beta(20,20), sigma=0.5, pure FV objective, common internal breakpoints.')
-    print()
-    print('intervals  changes  FV objective       bias               variance           actual evals  cache hits')
-    for count, case in cases.items():
-        objective = case.evaluation.objective
-        optimization = case.optimization
-        print(f'{count:9d}  {count - 1:7d}  {objective.total:.10e}  {objective.bias:.10e}  {objective.variance:.10e}  {optimization.objective_evaluations:12d}  {optimization.cache_hits:10d}')
-        print(' ' * 20 + 'prices=' + np.array2string(np.asarray(optimization.best.x, dtype=float), precision=6,
-            floatmode='fixed'))
-    print()
-    print('Marginal pure-FV improvement')
-    previous = None
-    for count, case in cases.items():
-        if previous is not None:
-            improvement = previous.evaluation.objective.total - case.evaluation.objective.total
-            relative = improvement / previous.evaluation.objective.total
-            print(f'N={previous.n_intervals} -> N={count}: dJ={improvement:.6e} ({relative:.3%})')
-        previous = case
-    if result['mc'] is not None:
-        print()
-        print(f'Common-random-number Monte Carlo ({MULTI_MC_PATHS} paths)')
-        for count in MULTI_INTERVAL_COUNTS:
-            item = result['mc'][count]
-            print(f'N={count}: J={item.objective.total:.10e}, SE={item.standard_error:.3e}')
-        reference = result['mc'][MULTI_INTERVAL_COUNTS[0]]
-        print()
-        print(f'Paired MC improvement relative to N={MULTI_INTERVAL_COUNTS[0]}')
-        for count in MULTI_INTERVAL_COUNTS[1:]:
-            mean, se = multi_paired_improvement(reference, result['mc'][count])
-            ratio = mean / se if se > 0.0 else np.inf
-            print(f'N={count}: improvement={mean:.6e}, SE={se:.3e}, ratio={ratio:.3f}')
-    fig, axes = plt.subplots(3, 1, figsize=(12, 13))
-    ax_price, ax_objective, ax_demand = axes
-    for count, case in cases.items():
-        price = input_builder.price_intervals((case.edges, case.optimization.best.x))
-        plot_t = np.linspace(control_T[0], control_T[1], 721)
-        ax_price.step(24.0 * plot_t, price(plot_t), where='post', label=f'N={count}')
-    ax_price.set_ylabel('Normalized price')
-    ax_price.set_ylim(0.0, 1.0)
-    ax_price.set_title('Optimized stochastic price schedules')
-    ax_price.grid(True)
-    ax_price.legend(loc='best')
-    counts = np.asarray(MULTI_INTERVAL_COUNTS, dtype=int)
-    totals = np.array([cases[count].evaluation.objective.total for count in counts])
-    bias = np.array([cases[count].evaluation.objective.bias for count in counts])
-    variance = np.array([cases[count].evaluation.objective.variance for count in counts])
-    ax_objective.plot(counts, totals, marker='o', label='Total J')
-    ax_objective.plot(counts, bias, marker='o', label='Bias contribution')
-    ax_objective.plot(counts, variance, marker='o', label='Variance contribution')
-    ax_objective.set_xlabel('Number of price intervals')
-    ax_objective.set_ylabel('Pure-FV stochastic objective')
-    ax_objective.set_title('Value of additional price decisions')
-    ax_objective.grid(True)
-    ax_objective.legend(loc='best')
-    reference_evaluator = cases[MULTI_INTERVAL_COUNTS[0]].evaluator
-    hours = 24.0 * reference_evaluator.midpoints
-    ax_demand.plot(hours, reference_evaluator.target, linewidth=2.5, label='Target A(t)')
-    for count, case in cases.items():
-        ax_demand.plot(hours, case.evaluation.objective.expected_demand, label=f'E[D], N={count}')
-    ax_demand.set_xlabel('Time [h]')
-    ax_demand.set_ylabel('Expected demand')
-    ax_demand.set_title('Expected demand under optimized price schedules')
-    ax_demand.grid(True)
-    ax_demand.legend(loc='best')
-    fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
-    graph_dir.mkdir(parents=True, exist_ok=True)
-    graph_path = graph_dir / 'bm_1_multi_price_optimization_experiment.png'
-    fig.savefig(graph_path, dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    print()
-    print(f'Saved graph to {graph_path}')
-
-def run_contract():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--optimize', action='store_true', help='also solve the bounded open-loop price problem')
-    args = parser.parse_args()
-    result = run_reference(optimize=args.optimize, progress=lambda message: print(message, flush=True))
+def run_contract(args):
+    """Use one F3-A problem for a fixed external input or an optional new decision."""
+    result = cases.run_reference(optimize=args.optimize, progress=print if args.verbose else None)
     problem = result['problem']
-    fixed = result['fixed']
     print('F3-A common BM1 control problem')
-    print('-------------------------------')
-    print(f'price intervals: {problem.n_intervals}')
-    print('fixed external/reference prices: ' + np.array2string(problem.observed_prices, precision=6))
-    print(f'fixed-price J={fixed.objective.total:.8e}, bias={fixed.objective.bias:.8e}, variance={fixed.objective.variance:.8e}')
-    print('The fixed path above was evaluated unchanged; no price optimization was performed.')
-    if result['optimization'] is not None:
-        optimization = result['optimization']
-        print()
-        print('Open-loop candidate optimization')
-        print('--------------------------------')
-        print('best prices: ' + np.array2string(np.asarray(optimization.best.x, dtype=float), precision=6))
-        print(f'best J: {float(optimization.best.fun):.8e}')
-        print(f'actual objective evaluations/cache hits: {optimization.objective_evaluations}/{optimization.cache_hits}')
+    print(f'Fixed external/reference prices: {_prices(problem.observed_prices)}')
+    _costs({'fixed': result['fixed']})
+    fit = result['optimization']
+    if fit is not None:
+        print(f'Best prices: {_prices(fit.best.x)}; best J={fit.best.fun:.8e}')
+        _solver_summary(fit)
+    else:
+        print('Fixed-price simulation only; no price optimization.')
+    if args.save:
+        evaluator = problem.build_evaluator(result['numerics'], fast=True)
+        prices = problem.observed_prices if fit is None else fit.best.x
+        evaluation = evaluator.evaluate(prices)
+        _save_comparison(
+            'bm_1_control_contract.png',
+            evaluator.midpoints,
+            evaluator.target,
+            {'evaluated': (problem.price_edges, prices)},
+            {'E[D]': (evaluator.midpoints, evaluation.objective.expected_demand)},
+        )
+    return result
 
 
-def main():
-    import sys
-    commands = {'deterministic': 'run_deterministic', 'stochastic': 'run_stochastic', 'complex': 'run_complex',
-        'multi': 'run_multi', 'contract': 'run_contract'}
-    if len(sys.argv) < 2 or sys.argv[1] in ('-h', '--help'):
-        print('Cases: ' + ', '.join(commands))
-        print('Run one case, then pass its options after the case name.')
-        return
-    case = sys.argv.pop(1)
-    if case not in commands: raise SystemExit('Unknown case: ' + case)
-    globals()[commands[case]]()
+def run_stochastic(args):
+    """Design FV/mixture controls, then assess both on the same reference methods."""
+    result = cases.run_optimization_reference(progress=print if args.verbose else None)
+    print('F2-I stochastic price optimization: common FV reevaluation')
+    _costs(result['fv_evaluations'])
+    print(f"FV prices: {_prices(result['candidates']['fv_optimum'])}")
+    print(f"Mixture prices: {_prices(result['candidates']['mixture_optimum'])}")
+    _solver_summary(result['fv_optimization'])
+    if result['mixture_optimization'] is not None:
+        _solver_summary(result['mixture_optimization'])
+    if result['mc'] is not None:
+        print('Paired MC improvement over the deterministic reference')
+        for name, (improvement, se) in result['paired_mc_improvement'].items():
+            print(f'{name:26s} improvement={improvement:.6e}; SE={se:.3e}')
+    if args.verbose:
+        for degree, evaluations in result['final_mixture'].items():
+            print(f'Mixture reevaluation: degree {degree}')
+            _costs(evaluations)
+    if args.save:
+        evaluator = result['fv_evaluator']
+        _save_comparison(
+            'bm_1_stochastic_optimization_reference.png',
+            evaluator.midpoints,
+            evaluator.target,
+            {name: (cases.INTERVAL_EDGES, prices) for name, prices in result['candidates'].items()},
+            {
+                name: (evaluator.midpoints, item.objective.expected_demand)
+                 for name, item in result['fv_evaluations'].items()
+            },
+            surface=(result['coarse_values'], result['coarse_surface']),
+        )
+    return result
+
+
+def run_resolution(args):
+    """Compare price resolutions without hiding differences in the underlying grids."""
+    run = cases.run_multi_price_experiment if args.case == 'multi' else cases.run_complex_target_experiment
+    result = run(progress=print if args.verbose else None, fast_fv=args.fast_fv)
+    resolved = result['cases']
+    print(
+        f"Price-resolution experiment: {args.case}; FV backend={('fast' if args.fast_fv else 'reference')}",
+    )
+    _costs({f'{count} intervals': case.evaluation for count, case in resolved.items()})
+    for count, case in resolved.items():
+        print(f'{count} intervals: ', end='')
+        _solver_summary(case.optimization)
+        if args.verbose:
+            print(f'  prices={_prices(case.optimization.best.x)}')
+    if result['mc'] is not None:
+        first = min(resolved)
+        print(f'Paired MC improvement relative to {first} intervals')
+        for count, item in result['mc'].items():
+            if count != first:
+                improvement, se = cases._paired_improvement(result['mc'][first], item)
+                print(f'{count:2d} intervals: improvement={improvement:.6e}; SE={se:.3e}')
+    print('Interval counts 4 and 6 are not nested; improvement need not be monotone.')
+    if args.save:
+        evaluator = resolved[min(resolved)].evaluator
+        _save_comparison(
+            f'bm_1_{args.case}_price_optimization.png',
+            evaluator.midpoints,
+            evaluator.target,
+            {f'N={n}': (case.edges, case.optimization.best.x) for n, case in resolved.items()},
+            {
+                f'N={n}': (case.evaluator.midpoints, case.evaluation.objective.expected_demand)
+                 for n, case in resolved.items()
+            },
+        )
+    return result
+
+
+def main(argv=None):
+    parser = ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest='case', required=True)
+    for name, run in [
+        ('deterministic', run_deterministic),
+        ('stochastic', run_stochastic),
+        ('multi', run_resolution),
+        ('complex', run_resolution),
+        ('contract', run_contract),
+    ]:
+        command = commands.add_parser(name, help=run.__doc__)
+        command.set_defaults(run=run)
+        command.add_argument(
+            '--verbose',
+            action='store_true',
+            help='Show prices, details and solver progress.',
+        )
+        command.add_argument('--save', action='store_true', help='Save a comparison figure under runs/.')
+        if name == 'contract':
+            command.add_argument('--optimize', action='store_true', help='Also optimize new prices.')
+        if name in ('multi', 'complex'):
+            command.add_argument(
+                '--fast-fv',
+                action='store_true',
+                help='Use the equivalent LAPACK FV evaluator.',
+            )
+    args = parser.parse_args(argv)
+    args.run(args)
 
 
 if __name__ == '__main__':

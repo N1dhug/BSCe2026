@@ -1,11 +1,18 @@
-"""BM-only conservative Beta-mixture evolution and constrained projection."""
+"""Conservative density prediction followed by simplex-constrained Beta projection.
+
+    The projection changes representation, not the target SDE. Raw invalid
+    probabilities are rejected; they are never hidden by clipping/normalization.
+    """
 
 import numpy as np
+
 from src.solver.active_set import active_set
 from src.validation.method.bm_1 import _validate_dynamic_controls
 
+
 _NEGATIVE_PREDICTION_TOL = 1e-10
 _MASS_TOL = 1e-09
+
 
 def _projection_matrices(basis, dx):
     """Return weighted least-squares matrix, Hessian and its condition number."""
@@ -17,16 +24,24 @@ def _projection_matrices(basis, dx):
     condition = float(np.linalg.cond(hessian))
     return (matrix, hessian, condition)
 
+
 def _project_with_warm_start(density, basis, matrix, hessian, dx, x0):
     """Project one density onto the simplex-constrained basis using a warm start."""
     density = np.asarray(density, dtype=float)
     target = density * np.sqrt(dx)
     linear = -(matrix.T @ target)
     n_coefficients = basis.shape[0]
-    coefficients = active_set.solve(hessian, linear, A_eq=np.ones((1, n_coefficients), dtype=float),
-        b_eq=np.array([1.0], dtype=float), lb=np.zeros(n_coefficients, dtype=float), x0=np.asarray(x0, dtype=float))
+    coefficients = active_set.solve(
+        hessian,
+        linear,
+        A_eq=np.ones((1, n_coefficients), dtype=float),
+        b_eq=np.array([1.0], dtype=float),
+        lb=np.zeros(n_coefficients, dtype=float),
+        x0=np.asarray(x0, dtype=float),
+    )
     projected = coefficients @ basis
     return (coefficients, projected)
+
 
 def _positive_explicit_step_limit(dx, drift_values, diffusion_values, cfl):
     """Return a positivity-oriented CFL limit for the conservative grid update.
@@ -48,8 +63,22 @@ def _positive_explicit_step_limit(dx, drift_values, diffusion_values, cfl):
     maximum = float(np.max(outgoing))
     return np.inf if maximum == 0.0 else float(cfl / maximum)
 
-def evolve_projected_density(*, method, t_eval, breakpoints, x, dx, basis, initial_coefficients, drift, diffusion,
-    max_step, cfl, projection_data=None):
+
+def evolve_projected_density(
+    *,
+    method,
+    t_eval,
+    breakpoints,
+    x,
+    dx,
+    basis,
+    initial_coefficients,
+    drift,
+    diffusion,
+    max_step,
+    cfl,
+    projection_data=None,
+):
     """Propagate one fixed Beta basis through explicit Euler + QP projection."""
     t_eval, breakpoints, max_step, cfl = _validate_dynamic_controls(t_eval, breakpoints, max_step, cfl)
     x = np.asarray(x, dtype=float)
@@ -62,9 +91,19 @@ def evolve_projected_density(*, method, t_eval, breakpoints, x, dx, basis, initi
         raise ValueError('dx must be finite and positive.')
     if not np.allclose(np.diff(x), dx, rtol=1e-10, atol=1e-14):
         raise ValueError('x must be uniformly spaced with spacing dx.')
-    if basis.ndim != 2 or basis.shape[1] != x.size or basis.shape[0] != coefficients.size or (not np.all(np.isfinite(basis))):
+    if (
+        basis.ndim != 2
+        or basis.shape[1] != x.size
+        or basis.shape[0] != coefficients.size
+        or not np.all(np.isfinite(basis))
+    ):
         raise ValueError('basis and coefficients must match the state grid.')
-    if coefficients.ndim != 1 or not np.all(np.isfinite(coefficients)) or np.min(coefficients) < -_MASS_TOL or (abs(float(np.sum(coefficients)) - 1.0) > _MASS_TOL):
+    if (
+        coefficients.ndim != 1
+        or not np.all(np.isfinite(coefficients))
+        or np.min(coefficients) < -_MASS_TOL
+        or abs(float(np.sum(coefficients)) - 1.0) > _MASS_TOL
+    ):
         raise ValueError('initial_coefficients must satisfy the probability simplex.')
     if np.min(basis) < 0.0 or not np.allclose(np.sum(basis, axis=1) * dx, 1.0, rtol=0.0, atol=_MASS_TOL):
         raise ValueError('each basis component must have non-negative unit mass.')
@@ -111,18 +150,34 @@ def evolve_projected_density(*, method, t_eval, breakpoints, x, dx, basis, initi
             minimum_raw_prediction = min(minimum_raw_prediction, raw_minimum)
             maximum_raw_prediction_mass_error = max(maximum_raw_prediction_mass_error, raw_mass_error)
             if raw_minimum < -_NEGATIVE_PREDICTION_TOL:
-                raise RuntimeError('Raw explicit-Euler mixture prediction became materially negative; reduce cfl/max_step rather than clipping it.')
+                raise RuntimeError(
+                    'Raw explicit-Euler mixture prediction became materially negative; reduce cfl/max_step rather than clipping it.',
+                )
             if raw_mass_error > _MASS_TOL:
                 raise RuntimeError('Raw mixture prediction failed probability conservation.')
-            coefficients, density = _project_with_warm_start(prediction, basis, matrix, hessian, dx, coefficients)
+            coefficients, density = _project_with_warm_start(
+                prediction,
+                basis,
+                matrix,
+                hessian,
+                dx,
+                coefficients,
+            )
             projected_mass_error = abs(float(np.sum(density) * dx) - 1.0)
             coefficient_sum_error = abs(float(np.sum(coefficients)) - 1.0)
             maximum_projection_mass_error = max(maximum_projection_mass_error, projected_mass_error)
             maximum_coefficient_sum_error = max(maximum_coefficient_sum_error, coefficient_sum_error)
             minimum_coefficient = min(minimum_coefficient, float(np.min(coefficients)))
-            maximum_boundary_coefficient = max(maximum_boundary_coefficient, float(coefficients[0]),
-                float(coefficients[-1]))
-            if projected_mass_error > _MASS_TOL or coefficient_sum_error > _MASS_TOL or minimum_coefficient < -_MASS_TOL:
+            maximum_boundary_coefficient = max(
+                maximum_boundary_coefficient,
+                float(coefficients[0]),
+                float(coefficients[-1]),
+            )
+            if (
+                projected_mass_error > _MASS_TOL
+                or coefficient_sum_error > _MASS_TOL
+                or minimum_coefficient < -_MASS_TOL
+            ):
                 raise RuntimeError('Projected mixture failed probability constraints.')
             n_steps += 1
             maximum_internal_step = max(maximum_internal_step, h)
@@ -136,5 +191,21 @@ def evolve_projected_density(*, method, t_eval, breakpoints, x, dx, basis, initi
             output_coefficients[index] = coefficients
     if not np.all(np.isfinite(output_density)) or not np.all(np.isfinite(output_coefficients)):
         raise RuntimeError('Dynamic mixture failed to populate finite output histories.')
-    return {'density': output_density, 'coefficients': output_coefficients,
-        'diagnostics': {'n_steps': n_steps, 'hessian_condition_number': condition, 'minimum_raw_prediction': minimum_raw_prediction, 'maximum_abs_raw_prediction_mass_error': maximum_raw_prediction_mass_error, 'maximum_abs_projected_mass_error': maximum_projection_mass_error, 'maximum_abs_coefficient_sum_error': maximum_coefficient_sum_error, 'minimum_coefficient': minimum_coefficient, 'maximum_boundary_coefficient': maximum_boundary_coefficient, 'maximum_internal_step': maximum_internal_step, 'minimum_internal_step': minimum_internal_step, 'used_clipping': False, 'used_renormalization': False}}
+    return {
+        'density': output_density,
+        'coefficients': output_coefficients,
+        'diagnostics': {
+            'n_steps': n_steps,
+            'hessian_condition_number': condition,
+            'minimum_raw_prediction': minimum_raw_prediction,
+            'maximum_abs_raw_prediction_mass_error': maximum_raw_prediction_mass_error,
+            'maximum_abs_projected_mass_error': maximum_projection_mass_error,
+            'maximum_abs_coefficient_sum_error': maximum_coefficient_sum_error,
+            'minimum_coefficient': minimum_coefficient,
+            'maximum_boundary_coefficient': maximum_boundary_coefficient,
+            'maximum_internal_step': maximum_internal_step,
+            'minimum_internal_step': minimum_internal_step,
+            'used_clipping': False,
+            'used_renormalization': False,
+        },
+    }

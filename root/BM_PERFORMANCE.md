@@ -144,7 +144,8 @@ python -B -m src.exe.run_model.bm_1.optimize complex --fast-fv
 python -B -m src.exe.run_model.bm_1.optimize multi --fast-fv
 ```
 
-The existing graph names/locations and Monte Carlo checks are unchanged.
+Monte Carlo settings are unchanged. The readability revision makes plots opt-in
+with `--save` and writes them under ignored `files/output/bm_1/runs/graphs/`.
 
 Run the short repeated local benchmark:
 
@@ -153,7 +154,7 @@ python -B -m src.exe.run_model.bm_1.verify benchmark
 ```
 
 Add `--optimize` to repeat the slower complete original-versus-fast
-24-variable Powell experiment. Default benchmark evidence is saved to
+24-variable Powell experiment. Add `--save` to write the timing report to
 `files/output/bm_1/runs/fast_fv_benchmark.json`.
 
 The complex-target script/tests were already written on the experiment branch
