@@ -27,12 +27,27 @@ def fit_history(frame, predict_start, baseline_weeks, warmup_hours, steps_per_ho
         elif tuple(day_T) != tuple(model_T): raise ValueError("Historical wm_4 fitting days must use the same model horizon.")
         datasets.append(data); indices.append(fine_index); origins.append(origin)
 
+    observation_mask = np.asarray(datasets[0]["observation_mask"], dtype=bool)
+    time = np.asarray(datasets[0]["Time"], dtype=float)
+    if any(not np.array_equal(np.asarray(data["observation_mask"], dtype=bool), observation_mask) for data in datasets[1:]): raise ValueError("Historical wm_4 fitting days must share the same observation mask.")
+    if any(not np.allclose(np.asarray(data["Time"], dtype=float), time) for data in datasets[1:]): raise ValueError("Historical wm_4 fitting days must share the same time grid.")
+
+    average_data = {
+        "I": np.mean(np.vstack([data["I"] for data in datasets]), axis=0),
+        "U": np.mean(np.vstack([data["U"] for data in datasets]), axis=0),
+        "PE": np.mean(np.vstack([data["PE"] for data in datasets]), axis=0),
+        "Time": time.copy(),
+        "observation_mask": observation_mask.copy(),
+    }
+
     model = wm_4(model_T, len(indices[0]), O)
-    fit = brute_params(model).fit_many(
-        datasets, INIT,
+    fit = brute_params(model).fit(
+        average_data, INIT,
         fit_initial_state=warmup_hours == 0, fit_diffusion=fit_diffusion, verbose=True,
         **kwargs,
     )
+    fit["average_training_data"] = average_data
+    fit["fit_trajectories"] = len(datasets)
     return O, output_fit, fit, model, indices, origins
 
 
@@ -143,7 +158,7 @@ def main():
             frame, predict_start, predict_model, fit["q"], fit["kappa_R"], args.steps_per_hour,
         )
     else:
-        recent_state = fit["deterministic_states"][0]
+        recent_state = fit["deterministic_state"]
         init = np.array([recent_state["F"][-1], recent_state["R"][-1]], dtype=float)
         state = predict_model.deterministic_solver(init, {
             "U": U, "PE": U, "Time": Time,
@@ -166,14 +181,13 @@ def main():
     print(f"prediction day={predict_start} -> {predict_end}")
     print(f"O(t): previous {output_fit['weeks']} matching {output_fit['weekday']}s: {fit_days}")
     print(f"O(t): remove hourly min/max, average remaining {output_fit['retained_weeks']}")
-    print(f"parameter fit: all {output_fit['weeks']} corresponding days without min/max removal")
+    print(f"parameter fit: average I(t) and average U(t) across all {output_fit['weeks']} corresponding days")
     print(f"parameter fit days={fit_days}")
     print(f"mode={'deterministic' if args.deterministic else 'stochastic'}")
     print(f"q={np.array2string(fit['q'], precision=8)}")
-    print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
+    print(f"kappa_R={fit['kappa_R']:.8f}, damping={fit['brute_branch']}, zeta={fit['damping_ratio']:.8f}")
     if not args.deterministic: print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
-    print(f"joint deterministic loss={fit['deterministic_loss']:.10f}")
-    print(f"per-day deterministic MSE={np.array2string(fit['per_trajectory_loss'], precision=8)}")
+    print(f"average-signal deterministic loss={fit['deterministic_loss']:.10f}")
     if args.optimize_prediction_state:
         print(f"prediction initial [F0,R0] optimized from prediction-day I={np.array2string(init, precision=8)}")
         print(f"prediction-state optimization MSE={init_fit_mse:.10f} (diagnostic; uses observed prediction-day I)")
