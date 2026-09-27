@@ -97,8 +97,8 @@ def _result_record(result):
         'normalized_baseline': signals.baseline, 'normalized_observed_price': signals.observed_price,
         'optimized_price': optimized, 'price_correlation': _price_correlation(signals.observed_price, optimized),
         'objective': {name: _objective_dict(evaluation) for name, evaluation in result.evaluations.items()},
-        'optimization': {'objective_evaluations': int(result.optimization.objective_evaluations), 'cache_hits': int(result.optimization.cache_hits), 'elapsed_seconds': float(result.optimization.elapsed_seconds)},
-        'plot': result.plot_path}
+        'optimization': {'objective_evaluations': int(result.optimization.objective_evaluations), 'cache_hits': int(result.optimization.cache_hits)},
+        'plot': result.plot_path.relative_to(ROOT).as_posix()}
     if result.mc is not None:
         record['mc'] = {name: _mc_summary(item) for name, item in result.mc.items()}
         record['paired_mc'] = result.paired_mc
