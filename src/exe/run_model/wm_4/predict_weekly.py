@@ -49,11 +49,13 @@ def fit_input(frame, start, steps_per_hour, warmup_hours, output_model):
     O = output_model.predict(fine_index, Temp)
 
     observation_mask = np.zeros(n_steps, dtype=bool)
+    transition_mask = np.zeros(n_steps - 1, dtype=bool)
     offset = warmup_hours * steps_per_hour
     observation_mask[offset + np.arange(WEEK_HOURS) * steps_per_hour] = True
+    transition_mask[offset:offset + WEEK_HOURS * steps_per_hour] = True
     return {
         "I": I, "U": U, "PE": U.copy(), "Temp": Temp, "O": O,
-        "Time": elapsed, "observation_mask": observation_mask,
+        "Time": elapsed, "observation_mask": observation_mask, "transition_mask": transition_mask,
     }, fine_index, origin, end
 
 
