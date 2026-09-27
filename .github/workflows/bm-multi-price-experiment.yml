@@ -1,0 +1,49 @@
+name: BM multi-price experiment
+on:
+  push:
+    branches: ['experiment/bm1-multi-price']
+permissions:
+  contents: read
+concurrency:
+  group: bm-multi-price-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      MPLBACKEND: Agg
+      PYTHONDONTWRITEBYTECODE: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install numerical dependencies
+        run: python -m pip install numpy scipy matplotlib pandas openpyxl
+      - name: Run focused experiment tests
+        run: |
+          set -o pipefail
+          python -B -m unittest discover -s tests -p "test_bm_1_multi_price_experiment.py" -v 2>&1 | tee multi_price_tests.txt
+      - name: Run multi-price experiment
+        run: |
+          set -o pipefail
+          python -B -m src.exe.run_model.bm_1.multi_price_optimization_experiment 2>&1 | tee multi_price_output.txt
+      - name: Save experiment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bm-multi-price-${{ github.sha }}
+          path: |
+            multi_price_tests.txt
+            multi_price_output.txt
+            files/output/graphs/bm_1/bm_1_multi_price_optimization_experiment.png
+          retention-days: 7
