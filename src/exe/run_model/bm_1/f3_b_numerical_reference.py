@@ -741,6 +741,41 @@ def _decision_scale(reference_fv):
     )
 
 
+def _decision_gap_refinement(rows, finest_level, previous_level):
+    """Return the change in J_det-J_stoch between the two finest levels."""
+    def value(candidate, level):
+        matches = [
+            row["total"]
+            for row in rows
+            if row["candidate"] == candidate
+            and np.isclose(row["level"], level, atol=0.0, rtol=0.0)
+        ]
+        if len(matches) != 1:
+            raise RuntimeError(
+                "expected exactly one refinement row for each candidate/level."
+            )
+        return float(matches[0])
+
+    finest_gap = (
+        value("deterministic_reference", finest_level)
+        - value("f3_a_stochastic", finest_level)
+    )
+    previous_gap = (
+        value("deterministic_reference", previous_level)
+        - value("f3_a_stochastic", previous_level)
+    )
+    change = abs(finest_gap - previous_gap)
+    return {
+        "finest_gap": float(finest_gap),
+        "previous_gap": float(previous_gap),
+        "last_gap_change": float(change),
+        "last_gap_change_over_finest_gap": (
+            float(change / abs(finest_gap))
+            if finest_gap != 0.0 else float("inf")
+        ),
+    }
+
+
 def run_f3_b_reference(
     *,
     mc_paths=0,
@@ -788,6 +823,23 @@ def run_f3_b_reference(
             QUADRATURE_MAX_STEPS[-1],
             QUADRATURE_MAX_STEPS[-2],
         ),
+        "decision_gap_refinement": {
+            "space": _decision_gap_refinement(
+                spatial,
+                float(SPATIAL_X_STEPS[-1]),
+                float(SPATIAL_X_STEPS[-2]),
+            ),
+            "fv_time": _decision_gap_refinement(
+                fv_time,
+                TIME_SOLVER_MAX_STEPS[-1],
+                TIME_SOLVER_MAX_STEPS[-2],
+            ),
+            "quadrature": _decision_gap_refinement(
+                quadrature,
+                QUADRATURE_MAX_STEPS[-1],
+                QUADRATURE_MAX_STEPS[-2],
+            ),
+        },
     }
     if decision_scale > 0.0:
         for key in (
@@ -1009,10 +1061,27 @@ def main():
         )
     print()
 
-    print("Last refinement changes relative to the F3-A decision scale")
-    print("------------------------------------------------------------")
-    for key, value in result["summary"].items():
-        print(f"{key:48s} {value:.6e}")
+    print("Last absolute-objective refinement changes")
+    print("------------------------------------------")
+    for key in (
+        "decision_scale_reference_vs_f3_a",
+        "spatial_last_change",
+        "fv_time_last_change",
+        "quadrature_last_change",
+        "spatial_last_change_over_decision_scale",
+        "fv_time_last_change_over_decision_scale",
+        "quadrature_last_change_over_decision_scale",
+    ):
+        print(f"{key:48s} {result['summary'][key]:.6e}")
+    print()
+    print("Decision-gap refinement: J_det - J_F3A")
+    print("--------------------------------------")
+    for name, row in result["summary"]["decision_gap_refinement"].items():
+        print(
+            f"{name:12s} gap={row['finest_gap']:.6e} "
+            f"last change={row['last_gap_change']:.3e} "
+            f"relative={row['last_gap_change_over_finest_gap']:.3%}"
+        )
     print()
 
     if result["mc"] is not None:
