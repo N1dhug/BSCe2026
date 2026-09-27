@@ -123,6 +123,7 @@ def main():
     parser.add_argument("--grid-points", type=int, default=4)
     parser.add_argument("--refinements", type=int, default=2)
     parser.add_argument("--progress-every", type=int, default=25)
+    parser.add_argument("--critical-damping", action="store_true", help="Restrict the parameter fit to the critically damped branch, rho=1 and kappa_R=4|q_F|.")
     parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic mode: fit prediction-day [F0,R0] against that day's observed I while keeping q and kappa_R fixed.")
     args = parser.parse_args()
 
@@ -131,6 +132,7 @@ def main():
     O_predict, output_fit, fit, _, _, _ = fit_history(
         frame, predict_start, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
         grid_points=args.grid_points, refinements=args.refinements, progress_every=args.progress_every,
+        damping_branch="critical" if args.critical_damping else None,
     )
 
     predict_end, actual, U, Time = forecast_signals(frame, predict_start)
@@ -166,6 +168,7 @@ def main():
     print(f"O(t): remove hourly min/max, average remaining {output_fit['retained_weeks']}")
     print(f"parameter fit: all {output_fit['weeks']} corresponding days without min/max removal")
     print(f"parameter fit days={fit_days}")
+    print(f"damping fit={'fixed critical' if args.critical_damping else 'all branches'}")
     print(f"q={np.array2string(fit['q'], precision=8)}")
     print(f"kappa_R={fit['kappa_R']:.8f}, branch={fit['brute_branch']}")
     print(f"sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
