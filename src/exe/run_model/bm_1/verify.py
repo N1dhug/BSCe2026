@@ -64,7 +64,7 @@ def save_figure(legacy_ivp_result, ivp_result, finest_euler, B, U):
     for axis in axes:
         axis.axvline(24.0 * PRICE_STEP_TIME, color='black', alpha=0.4, linestyle='--')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
+    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / 'bm_1_deterministic_reference.png'
     fig.savefig(graph_path, dpi=300, bbox_inches='tight')
@@ -200,7 +200,7 @@ def feasibility_save_figure(price_result, price_state, price_demand, required_pr
     axes[1, 1].grid(True)
     axes[1, 1].legend(loc='best')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
+    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / 'bm_1_optimization_feasibility_reference.png'
     fig.savefig(graph_path, dpi=300, bbox_inches='tight')
@@ -345,7 +345,7 @@ def _plot_results(exact_step_sizes, exact_errors, bm_step_sizes, bm_errors):
     ax_bm1.grid(True)
     ax_bm1.legend(loc='best')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
+    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / 'bm_1_em_convergence.png'
     fig.savefig(graph_path, dpi=300, bbox_inches='tight')
@@ -434,7 +434,7 @@ def run_em():
     ax_demand.grid(True)
     ax_demand.legend(loc='best')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
+    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / 'bm_1_em_reference.png'
     fig.savefig(graph_path, dpi=300, bbox_inches='tight')
@@ -509,7 +509,7 @@ def run_fv():
     ax_terminal.grid(True)
     ax_terminal.legend(loc='best')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
+    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / 'bm_1_fp_reference.png'
     fig.savefig(graph_path, dpi=300, bbox_inches='tight')
@@ -566,7 +566,7 @@ def run_mc_fv():
     ax_terminal.grid(True)
     ax_terminal.legend(loc='best')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
+    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / 'bm_1_mc_vs_fp_reference.png'
     fig.savefig(graph_path, dpi=300, bbox_inches='tight')
@@ -638,7 +638,7 @@ def run_projection():
     ax_terminal.grid(True)
     ax_terminal.legend(loc='best')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
+    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / 'bm_1_beta_projection_reference.png'
     fig.savefig(graph_path, dpi=300, bbox_inches='tight')
@@ -712,7 +712,7 @@ def run_mixture():
     ax_terminal.grid(True)
     ax_terminal.legend(loc='best')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
+    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / 'bm_1_beta_dynamic_reference.png'
     fig.savefig(graph_path, dpi=300, bbox_inches='tight')
@@ -779,7 +779,7 @@ def run_conditioning():
     ax_density.grid(True)
     ax_density.legend(loc='best')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
+    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / 'bm_1_beta_conditioning_reference.png'
     fig.savefig(graph_path, dpi=300, bbox_inches='tight')
@@ -865,7 +865,7 @@ def run_objective():
     ax_cumulative.grid(True)
     ax_cumulative.legend(loc='best')
     fig.tight_layout()
-    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'graphs' / 'bm_1'
+    graph_dir = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
     graph_dir.mkdir(parents=True, exist_ok=True)
     graph_path = graph_dir / 'bm_1_stochastic_objective_reference.png'
     fig.savefig(graph_path, dpi=300, bbox_inches='tight')
