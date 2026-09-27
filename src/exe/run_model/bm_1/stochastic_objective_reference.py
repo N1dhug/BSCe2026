@@ -38,6 +38,7 @@ from src.exe.run_model.bm_1.f2_reference_case import (
 )
 from src.method.bm_1_stochastic_objective import (
     discrete_demand_moments,
+    demand_grid as _demand_grid,
     midpoint_quadrature,
     monte_carlo_tracking_objective,
     stochastic_tracking_objective,
@@ -51,24 +52,6 @@ INITIAL_SEED = 2031
 BROWNIAN_SEED = 2032
 
 
-def _demand_grid(model, parameters, times, x):
-    """Return D(x_i,t_k) on one common state grid."""
-    times = np.asarray(times, dtype=float)
-    x = np.asarray(x, dtype=float)
-    values = np.empty((times.size, x.size), dtype=float)
-
-    for index, time in enumerate(times):
-        _, _, _, _, _, demand = model.eval(
-            float(time),
-            x,
-            parameters[0],
-            parameters[1],
-            parameters[2],
-            parameters[4],
-            parameters[5],
-        )
-        values[index] = np.asarray(demand, dtype=float)
-    return values
 
 
 def _distribution_objective(widths, target, demand_values, cell_mass):
@@ -346,18 +329,18 @@ def main():
     ax_parts.legend(loc="best")
 
     ax_cumulative.plot(
-        hours,
+        24.0 * result["edges"][1:],
         np.cumsum(result["widths"] * mc.objective.total_integrand),
         label="MC cumulative J",
     )
     ax_cumulative.plot(
-        hours,
+        24.0 * result["edges"][1:],
         np.cumsum(result["widths"] * fv.total_integrand),
         linestyle="--",
         label="FV cumulative J",
     )
     ax_cumulative.plot(
-        hours,
+        24.0 * result["edges"][1:],
         np.cumsum(
             result["widths"]
             * result["mixture"][best_degree].total_integrand

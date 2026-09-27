@@ -9,13 +9,20 @@ final validation with common random numbers.
 """
 
 from dataclasses import dataclass
+from time import perf_counter
 
 import numpy as np
 from scipy.optimize import minimize
 
+from src.method.bm_1_beta_mixture import (
+    _projection_matrices,
+    evolve_projected_density as _evolve_projected_density,
+)
+
 from src.method.bm_1_stochastic_objective import (
     StochasticTrackingResult,
     discrete_demand_moments,
+    demand_grid,
     midpoint_quadrature,
     stochastic_tracking_objective,
 )
@@ -39,6 +46,9 @@ class MultistartOptimizationResult:
     best: object
     results: tuple
     starts: np.ndarray
+    objective_evaluations: int = 0
+    cache_hits: int = 0
+    elapsed_seconds: float = 0.0
 
 
 def _validate_interval_edges(interval_edges, interval):
@@ -56,7 +66,7 @@ def _validate_interval_edges(interval_edges, interval):
             "interval_edges must be finite, strictly increasing and span "
             "the complete model interval."
         )
-    return edges
+    return edges.copy()
 
 
 def _validate_prices(prices, n_intervals):
@@ -73,28 +83,6 @@ def _validate_prices(prices, n_intervals):
     return prices
 
 
-def demand_grid(model, parameters, times, x):
-    """Return D(x_i,t_k) on a common state grid."""
-    times = np.asarray(times, dtype=float).reshape(-1)
-    x = np.asarray(x, dtype=float).reshape(-1)
-    if times.size == 0 or x.size == 0:
-        raise ValueError("times and x must be non-empty.")
-
-    values = np.empty((times.size, x.size), dtype=float)
-    for index, time in enumerate(times):
-        _, _, _, _, _, demand = model.eval(
-            float(time),
-            x,
-            parameters[0],
-            parameters[1],
-            parameters[2],
-            parameters[4],
-            parameters[5],
-        )
-        values[index] = np.asarray(demand, dtype=float)
-    return values
-
-
 class FVStochasticPriceEvaluator:
     """Evaluate stochastic BM1 tracking cost with pure finite volume."""
 
@@ -108,6 +96,7 @@ class FVStochasticPriceEvaluator:
         *,
         objective_max_step,
         solver_max_step,
+        breakpoints=None,
     ):
         self.model = model
         self.parameter_template = list(parameter_template)
@@ -118,14 +107,24 @@ class FVStochasticPriceEvaluator:
             interval_edges,
             model.T,
         )
-        self.breakpoints = self.interval_edges[1:-1].copy()
+        extra_breakpoints = np.asarray(
+            [] if breakpoints is None else breakpoints, dtype=float
+        )
+        if (extra_breakpoints.ndim != 1
+                or not np.all(np.isfinite(extra_breakpoints))
+                or np.any(extra_breakpoints <= model.T[0])
+                or np.any(extra_breakpoints >= model.T[1])):
+            raise ValueError("breakpoints must be finite points inside the model interval.")
+        self.breakpoints = np.unique(np.concatenate(
+            (self.interval_edges[1:-1], extra_breakpoints)
+        ))
         self.n_intervals = self.interval_edges.size - 1
 
         self.sigma_x = float(sigma_x)
         if not np.isfinite(self.sigma_x) or self.sigma_x < 0.0:
             raise ValueError("sigma_x must be finite and non-negative.")
 
-        self.initial_mass = np.asarray(initial_mass, dtype=float).reshape(-1)
+        self.initial_mass = np.asarray(initial_mass, dtype=float).reshape(-1).copy()
         if (
             self.initial_mass.size < 3
             or not np.all(np.isfinite(self.initial_mass))
@@ -241,8 +240,16 @@ def multistart_powell(
     lower=0.0,
     upper=1.0,
     options=None,
+    progress=None,
+    cache=True,
 ):
-    """Minimize a deterministic price objective from several feasible starts."""
+    """Minimize a deterministic price objective from several feasible starts.
+
+    Exact duplicate price vectors may reuse scalar values within this call.
+    No prices are rounded. Set cache=False for a stateful/non-deterministic
+    objective (such objectives are not the intended reference use). Progress
+    is an optional callback and never changes stopping tolerances.
+    """
     starts = np.asarray(starts, dtype=float)
     if starts.ndim == 1:
         starts = starts[None, :]
@@ -278,15 +285,41 @@ def multistart_powell(
 
     bounds = [(lower, upper)] * starts.shape[1]
     results = []
-    for start in starts:
+    memo = {}
+    objective_evaluations = 0
+    cache_hits = 0
+    started = perf_counter()
+
+    def evaluate(candidate):
+        nonlocal objective_evaluations, cache_hits
+        key = tuple(float(value) for value in candidate)
+        if cache and key in memo:
+            cache_hits += 1
+            return memo[key]
+        value = float(objective(candidate))
+        if not np.isfinite(value):
+            raise RuntimeError("The deterministic price objective returned a non-finite value.")
+        objective_evaluations += 1
+        if cache:
+            memo[key] = value
+        if progress is not None and objective_evaluations % 50 == 0:
+            progress(f"  {objective_evaluations} objective evaluations; "
+                     f"{perf_counter() - started:.1f} s elapsed")
+        return value
+
+    for index, start in enumerate(starts, start=1):
+        if progress is not None:
+            progress(f"Powell start {index}/{len(starts)}: {start}")
         result = minimize(
-            lambda candidate: float(objective(candidate)),
+            evaluate,
             start,
             method="Powell",
             bounds=bounds,
             options=settings,
         )
         results.append(result)
+        if progress is not None:
+            progress(f"  finished: success={result.success}, J={result.fun:.8e}")
 
     successful = [
         result
@@ -304,6 +337,9 @@ def multistart_powell(
         best=best,
         results=tuple(results),
         starts=starts.copy(),
+        objective_evaluations=objective_evaluations,
+        cache_hits=cache_hits,
+        elapsed_seconds=perf_counter() - started,
     )
 
 
@@ -346,3 +382,100 @@ def best_surface_starts(values, objective, n_best):
         i, j = np.unravel_index(flat_index, objective.shape)
         starts.append([values[i], values[j]])
     return np.asarray(starts, dtype=float)
+
+
+class DynamicMixturePriceEvaluator:
+    """Evaluate arbitrary price vectors with the F2-F dynamic mixture."""
+
+    def __init__(
+        self,
+        support,
+        degree,
+        *,
+        cfl=0.40,
+    ):
+        self.support = support
+        self.degree = degree
+        self.cfl = float(cfl)
+
+        raw_basis = support.model.fokker_planc.beta_basis(
+            support.x,
+            self.degree,
+        )
+        self.degree = int(degree)  # beta_basis has validated the integer degree.
+        self.basis = support.model.fokker_planc._normalise_basis_discretely(
+            raw_basis,
+            support.dx,
+        )
+        # Basis and weighted Hessian do not depend on candidate prices.
+        self.projection_data = _projection_matrices(self.basis, support.dx)
+        initial_density = support.initial_mass / support.dx
+        (
+            self.initial_coefficients,
+            _,
+        ) = support.model.fokker_planc.project_density(
+            initial_density,
+            self.basis,
+            support.dx,
+        )
+
+    @property
+    def n_intervals(self):
+        return self.support.n_intervals
+
+    def evaluate(self, prices):
+        prices = self.support.validate_prices(prices)
+        parameters = self.support.parameters_for_prices(prices)
+
+        def drift(time, state):
+            return self.support.model._drift(time, state, parameters)
+
+        def diffusion(time, state):
+            del time
+            return self.support.model.diffusion_coefficient(
+                state,
+                self.support.sigma_x,
+            )
+
+        evolved = _evolve_projected_density(
+            method=self.support.model.fokker_planc,
+            t_eval=self.support.solver_t_eval,
+            breakpoints=self.support.breakpoints,
+            x=self.support.x,
+            dx=self.support.dx,
+            basis=self.basis,
+            initial_coefficients=self.initial_coefficients,
+            drift=drift,
+            diffusion=diffusion,
+            max_step=self.support.solver_max_step,
+            cfl=self.cfl,
+            projection_data=self.projection_data,
+        )
+
+        cell_mass = evolved["density"] * self.support.dx
+        midpoint_mass = cell_mass[1:-1]
+        demand_values = demand_grid(
+            self.support.model,
+            parameters,
+            self.support.midpoints,
+            self.support.x,
+        )
+        expected, second, _ = discrete_demand_moments(
+            demand_values,
+            midpoint_mass,
+        )
+        objective = stochastic_tracking_objective(
+            self.support.widths,
+            expected,
+            second,
+            self.support.target,
+        )
+        return PriceObjectiveEvaluation(
+            prices=prices.copy(),
+            objective=objective,
+            cell_mass=cell_mass.copy(),
+            diagnostics=dict(evolved["diagnostics"]),
+        )
+
+    def __call__(self, prices):
+        return self.evaluate(prices).objective.total

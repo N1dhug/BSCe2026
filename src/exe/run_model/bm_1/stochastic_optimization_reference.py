@@ -29,7 +29,6 @@ from scipy.interpolate import PchipInterpolator
 
 from src.exe.run_model.bm_1.beta_dynamic_reference import (
     DEFAULT_CFL,
-    _evolve_projected_density,
 )
 from src.exe.run_model.bm_1.f2_reference_case import (
     INITIAL_ALPHA,
@@ -45,6 +44,7 @@ from src.method.bm_1_stochastic_objective import (
 )
 from src.method.bm_1_stochastic_optimization import (
     FVStochasticPriceEvaluator,
+    DynamicMixturePriceEvaluator,
     PriceObjectiveEvaluation,
     best_surface_starts,
     coarse_price_surface,
@@ -185,99 +185,6 @@ def _initial_mass(model, x_steps):
     )
 
 
-class DynamicMixturePriceEvaluator:
-    """Evaluate arbitrary price vectors with the F2-F dynamic mixture."""
-
-    def __init__(
-        self,
-        support,
-        degree,
-        *,
-        cfl=DEFAULT_CFL,
-    ):
-        self.support = support
-        self.degree = int(degree)
-        self.cfl = float(cfl)
-
-        raw_basis = support.model.fokker_planc.beta_basis(
-            support.x,
-            self.degree,
-        )
-        self.basis = support.model.fokker_planc._normalise_basis_discretely(
-            raw_basis,
-            support.dx,
-        )
-        initial_density = support.initial_mass / support.dx
-        (
-            self.initial_coefficients,
-            _,
-        ) = support.model.fokker_planc.project_density(
-            initial_density,
-            self.basis,
-            support.dx,
-        )
-
-    @property
-    def n_intervals(self):
-        return self.support.n_intervals
-
-    def evaluate(self, prices):
-        prices = self.support.validate_prices(prices)
-        parameters = self.support.parameters_for_prices(prices)
-
-        def drift(time, state):
-            return self.support.model._drift(time, state, parameters)
-
-        def diffusion(time, state):
-            del time
-            return self.support.model.diffusion_coefficient(
-                state,
-                self.support.sigma_x,
-            )
-
-        evolved = _evolve_projected_density(
-            method=self.support.model.fokker_planc,
-            t_eval=self.support.solver_t_eval,
-            breakpoints=self.support.breakpoints,
-            x=self.support.x,
-            dx=self.support.dx,
-            basis=self.basis,
-            initial_coefficients=self.initial_coefficients,
-            drift=drift,
-            diffusion=diffusion,
-            max_step=self.support.solver_max_step,
-            cfl=self.cfl,
-        )
-
-        cell_mass = evolved["density"] * self.support.dx
-        midpoint_mass = cell_mass[1:-1]
-        demand_values = demand_grid(
-            self.support.model,
-            parameters,
-            self.support.midpoints,
-            self.support.x,
-        )
-        expected, second, _ = discrete_demand_moments(
-            demand_values,
-            midpoint_mass,
-        )
-        objective = stochastic_tracking_objective(
-            self.support.widths,
-            expected,
-            second,
-            self.support.target,
-        )
-        return PriceObjectiveEvaluation(
-            prices=prices.copy(),
-            objective=objective,
-            cell_mass=cell_mass.copy(),
-            diagnostics=dict(evolved["diagnostics"]),
-        )
-
-    def __call__(self, prices):
-        return self.evaluate(prices).objective.total
-
-
 def _build_fv_evaluator(
     model,
     *,
@@ -396,8 +303,14 @@ def run_optimization_reference(
     optimize_mixture=True,
     validate_mc=True,
     mc_paths=MC_PATHS,
+    progress=None,
 ):
     """Run the complete F2-I reference workflow."""
+    def report(message):
+        if progress is not None:
+            progress(message)
+
+    report("[1/6] Building deterministic target and FV objective surface")
     target, target_t, target_demand = build_deterministic_target()
     model = build_stochastic_model(target)
 
@@ -420,9 +333,11 @@ def run_optimization_reference(
         KNOWN_DETERMINISTIC_PRICES,
         INITIAL_PRICES,
     )
+    report("[2/6] Pure-FV multistart Powell optimization")
     fv_optimization = multistart_powell(
         fv,
         fv_starts,
+        progress=progress,
         options={
             "xtol": 2.0e-5,
             "ftol": 1.0e-9,
@@ -431,6 +346,7 @@ def run_optimization_reference(
     )
     fv_prices = np.asarray(fv_optimization.best.x, dtype=float)
 
+    report("[3/6] Dynamic-mixture optimizer-model comparison")
     if optimize_mixture:
         mixture_support = _build_fv_evaluator(
             model,
@@ -450,6 +366,7 @@ def run_optimization_reference(
         mixture_optimization = multistart_powell(
             mixture_optimizer,
             mixture_starts,
+            progress=progress,
             options={
                 "xtol": 1.0e-3,
                 "ftol": 1.0e-5,
@@ -471,11 +388,13 @@ def run_optimization_reference(
         "mixture_optimum": mixture_prices.copy(),
     }
 
+    report("[4/6] Reevaluating candidates with pure FV")
     fv_evaluations = {
         name: fv.evaluate(prices)
         for name, prices in candidates.items()
     }
 
+    report("[5/6] High-resolution mixture reevaluations")
     final_mixture = {}
     for degree in FINAL_MIXTURE_DEGREES:
         support = _build_fv_evaluator(
@@ -494,6 +413,7 @@ def run_optimization_reference(
             for name, prices in candidates.items()
         }
 
+    report("[6/6] Paired Monte Carlo validation")
     mc = None
     paired = None
     if validate_mc:
@@ -539,7 +459,9 @@ def _format_prices(prices):
 
 
 def main():
-    result = run_optimization_reference()
+    result = run_optimization_reference(
+        progress=lambda message: print(message, flush=True)
+    )
 
     print("F2-I stochastic BM1 price optimization")
     print("--------------------------------------")
@@ -570,6 +492,9 @@ def main():
         f"iterations/evaluations: "
         f"{fv_opt.best.nit}/{fv_opt.best.nfev}"
     )
+    successful_costs = [float(item.fun) for item in fv_opt.results if item.success]
+    print(f"successful-start objective spread: {np.ptp(successful_costs):.3e}")
+    print(f"actual solves/cache hits: {fv_opt.objective_evaluations}/{fv_opt.cache_hits}")
     print()
 
     if result["mixture_optimization"] is not None:

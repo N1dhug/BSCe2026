@@ -271,3 +271,47 @@ def monte_carlo_tracking_objective(widths, demand_paths, target):
         direct_total=direct_total,
         maximum_decomposition_error=maximum_decomposition_error,
     )
+
+
+def demand_grid(model, parameters, times, x):
+    """Return D(x_i,t_k) on a common state grid."""
+    times = np.asarray(times, dtype=float).reshape(-1)
+    x = np.asarray(x, dtype=float).reshape(-1)
+    if times.size == 0 or x.size == 0:
+        raise ValueError("times and x must be non-empty.")
+
+    values = np.empty((times.size, x.size), dtype=float)
+    for index, time in enumerate(times):
+        _, _, _, _, _, demand = model.eval(
+            float(time),
+            x,
+            parameters[0],
+            parameters[1],
+            parameters[2],
+            parameters[4],
+            parameters[5],
+        )
+        values[index] = np.asarray(demand, dtype=float)
+    return values
+
+
+def deterministic_midpoint_objective(
+    model, init_cond, parameters, *, objective_max_step,
+    breakpoints=None, solver_max_step=np.inf, rtol=1.0e-6, atol=1.0e-8,
+):
+    """Evaluate deterministic tracking with the same jump-safe quadrature as H.
+
+    This is an opt-in BM-only alternative to the historical F1 sampled-Simpson
+    objective. Supply every known jump in U, B or A through breakpoints. The
+    legacy shared tracking_error function and model.optimize are unchanged.
+    """
+    _, midpoints, widths, output_t = midpoint_quadrature(
+        model.T, breakpoints=breakpoints, max_step=objective_max_step,
+    )
+    result = model.deterministic_solver(
+        init_cond, parameters, t_eval=output_t, breakpoints=breakpoints,
+        rtol=rtol, atol=atol, max_step=solver_max_step,
+    )
+    demand = np.asarray(result[7], dtype=float)[1:-1]
+    target = np.asarray(model.A(midpoints), dtype=float)
+    return stochastic_tracking_objective(widths, demand, demand**2, target)

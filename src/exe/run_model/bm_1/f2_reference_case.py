@@ -67,7 +67,7 @@ def beta_initial_cell_mass(
         raise ValueError("edges must be a one-dimensional array with at least two values.")
     if not np.all(np.isfinite(edges)) or np.any(np.diff(edges) <= 0.0):
         raise ValueError("edges must be finite and strictly increasing.")
-    if not np.isclose(edges[0], 0.0) or not np.isclose(edges[-1], 1.0):
+    if edges[0] != 0.0 or edges[-1] != 1.0:
         raise ValueError("Beta initial-law edges must span [0, 1].")
 
     alpha = float(alpha)
@@ -93,10 +93,13 @@ def sample_beta_initial_states(
     """Sample Monte Carlo initial states from the shared F2-D initial law."""
     if isinstance(n_paths, (bool, np.bool_)):
         raise TypeError("n_paths must be a positive integer.")
+    original_n_paths = n_paths
     try:
         n_paths = int(n_paths)
     except (TypeError, ValueError, OverflowError) as exc:
         raise TypeError("n_paths must be a positive integer.") from exc
+    if float(n_paths) != float(original_n_paths):
+        raise ValueError("n_paths must be an integer, not a fractional value.")
     if n_paths < 1:
         raise ValueError("n_paths must be a positive integer.")
 

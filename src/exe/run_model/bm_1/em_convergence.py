@@ -243,52 +243,58 @@ def _plot_results(exact_step_sizes, exact_errors, bm_step_sizes, bm_errors):
     return graph_path
 
 
-method = euler_maruyama()
+def main():
+    """Run the reference experiment and save its diagnostic figure."""
+    method = euler_maruyama()
 
-(
-    exact_step_sizes,
-    exact_errors,
-    exact_local_orders,
-    exact_fitted_order,
-    exact_diagnostics,
-) = exact_logistic_benchmark(method)
+    (
+        exact_step_sizes,
+        exact_errors,
+        exact_local_orders,
+        exact_fitted_order,
+        exact_diagnostics,
+    ) = exact_logistic_benchmark(method)
 
-(
-    bm_step_sizes,
-    bm_errors,
-    bm_local_orders,
-    bm_fitted_order,
-    bm_diagnostics,
-) = bm1_self_convergence(method)
+    (
+        bm_step_sizes,
+        bm_errors,
+        bm_local_orders,
+        bm_fitted_order,
+        bm_diagnostics,
+    ) = bm1_self_convergence(method)
 
-_require_no_boundary_violations("Exact benchmark", exact_diagnostics)
-_require_no_boundary_violations("BM1 self-convergence", bm_diagnostics)
+    _require_no_boundary_violations("Exact benchmark", exact_diagnostics)
+    _require_no_boundary_violations("BM1 self-convergence", bm_diagnostics)
 
-if not 0.35 <= exact_fitted_order <= 0.70:
-    raise RuntimeError(
-        "The exact benchmark did not exhibit the expected EM strong-order regime."
+    if not 0.35 <= exact_fitted_order <= 0.70:
+        raise RuntimeError(
+            "The exact benchmark did not exhibit the expected EM strong-order regime."
+        )
+
+    if not np.all(np.diff(bm_errors) < 0.0):
+        raise RuntimeError("BM1 successive coupled errors did not decrease under refinement.")
+
+    _print_exact_results(
+        exact_step_sizes,
+        exact_errors,
+        exact_local_orders,
+        exact_fitted_order,
+    )
+    _print_bm1_results(
+        bm_step_sizes,
+        bm_errors,
+        bm_local_orders,
+        bm_fitted_order,
     )
 
-if not np.all(np.diff(bm_errors) < 0.0):
-    raise RuntimeError("BM1 successive coupled errors did not decrease under refinement.")
+    graph_path = _plot_results(
+        exact_step_sizes,
+        exact_errors,
+        bm_step_sizes,
+        bm_errors,
+    )
+    print(f"Saved graph to {graph_path}")
 
-_print_exact_results(
-    exact_step_sizes,
-    exact_errors,
-    exact_local_orders,
-    exact_fitted_order,
-)
-_print_bm1_results(
-    bm_step_sizes,
-    bm_errors,
-    bm_local_orders,
-    bm_fitted_order,
-)
 
-graph_path = _plot_results(
-    exact_step_sizes,
-    exact_errors,
-    bm_step_sizes,
-    bm_errors,
-)
-print(f"Saved graph to {graph_path}")
+if __name__ == "__main__":
+    main()
