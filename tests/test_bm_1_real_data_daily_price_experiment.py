@@ -8,8 +8,12 @@ import pandas as pd
 from src.exe.run_model.bm_1.real_data_daily_price_experiment import (
     _complete_day_values,
     _hourly_hold,
+    _mc_summary,
     build_day_signals,
     select_representative_days,
+)
+from src.method.bm_1_stochastic_objective import (
+    monte_carlo_tracking_objective,
 )
 
 
@@ -51,6 +55,24 @@ class RealDataDailyExperimentTests(unittest.TestCase):
         np.testing.assert_allclose(signals.baseline, 0.3)
         np.testing.assert_allclose(signals.target, 0.55)
         np.testing.assert_allclose(signals.observed_price, 0.6)
+
+
+    def test_mc_summary_uses_top_level_standard_error(self):
+        result = monte_carlo_tracking_objective(
+            np.array([0.5, 0.5], dtype=float),
+            np.array(
+                [
+                    [0.1, 0.2],
+                    [0.2, 0.4],
+                    [0.3, 0.6],
+                ],
+                dtype=float,
+            ),
+            np.array([0.15, 0.35], dtype=float),
+        )
+        summary = _mc_summary(result)
+        self.assertAlmostEqual(summary["total"], result.objective.total)
+        self.assertAlmostEqual(summary["standard_error"], result.standard_error)
 
     def test_incomplete_day_is_rejected(self):
         index = pd.date_range("2022-04-01", periods=24, freq="h")
