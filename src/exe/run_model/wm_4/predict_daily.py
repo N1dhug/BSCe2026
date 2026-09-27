@@ -142,7 +142,7 @@ def main():
     parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic mode: fit prediction-day [F0,R0] against that day's observed I while keeping q and kappa_R fixed.")
     args = parser.parse_args()
 
-    frame, _ = aligned_data()
+    frame, _ = aligned_data("MED")
     predict_start = day_start(args.day)
     O_predict, output_fit, fit, _, _, _ = fit_history(
         frame, predict_start, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,

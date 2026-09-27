@@ -193,7 +193,7 @@ def main():
     parser.add_argument("--progress-every", type=int, default=25)
     args = parser.parse_args()
 
-    frame, _ = aligned_data()
+    frame, _ = aligned_data("MED")
     start = day_start(args.day)
     end, day, output_fit, fit, model, fine_index, total_start = fit_day(
         frame, start, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
