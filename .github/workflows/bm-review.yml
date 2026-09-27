@@ -1,14 +1,14 @@
-name: BM F1 F2 review
+name: BM F1 F3 regression
 on:
-  push:
-    branches: ['refactor/bm-f1-f2-review']
   pull_request:
     paths:
       - 'src/**'
       - 'tests/**'
       - 'root/F1.md'
       - 'root/F2*.md'
-      - 'root/BM_REVIEW.md'
+      - 'root/F3.md'
+      - 'root/BM_GUIDE.md'
+      - 'root/BM_PERFORMANCE.md'
       - '.github/workflows/bm-review.yml'
   workflow_dispatch:
 permissions:
