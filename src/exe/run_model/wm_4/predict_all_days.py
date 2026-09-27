@@ -134,7 +134,7 @@ def main():
     parser.add_argument("--fail-fast", action="store_true", help="Stop immediately instead of skipping a day that cannot be fitted.")
     args = parser.parse_args()
 
-    frame, _ = aligned_data()
+    frame, _ = aligned_data("MED")
     daily, hourly, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
         deterministic=args.deterministic, save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast,
