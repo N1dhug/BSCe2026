@@ -540,6 +540,168 @@ def run_final_mc_comparison(
     }
 
 
+def _nested_em_time_grids(t_eval, breakpoints, solver_max_steps):
+    """Build exactly nested EM grids that respect each requested max step.
+
+    The generic EM grid builder only promises that every step is no larger
+    than max_step.  Because it chooses a fresh ceil(width/max_step) count on
+    each knot interval, grids from different max_step values need not be
+    nested.  Coupled strong/time-refinement needs the stronger property.
+
+    F3-B therefore constructs one finest segment grid and obtains every
+    coarser level as an exact subset.  Successive requested max-step ratios
+    must be integer refinements (the reference uses factors of two).
+    """
+    t_eval = np.asarray(t_eval, dtype=float).reshape(-1)
+    breakpoints = np.asarray(
+        [] if breakpoints is None else breakpoints,
+        dtype=float,
+    ).reshape(-1)
+    steps = tuple(float(value) for value in solver_max_steps)
+    if (
+        t_eval.size < 2
+        or not np.all(np.isfinite(t_eval))
+        or np.any(np.diff(t_eval) <= 0.0)
+        or not np.all(np.isfinite(breakpoints))
+        or len(steps) < 2
+        or not np.all(np.isfinite(steps))
+        or any(value <= 0.0 for value in steps)
+        or any(right >= left for left, right in zip(steps[:-1], steps[1:]))
+    ):
+        raise ValueError("invalid inputs for nested EM time grids.")
+
+    factors = [1]
+    for coarse, fine in zip(steps[:-1], steps[1:]):
+        ratio = coarse / fine
+        integer_ratio = int(round(ratio))
+        if (
+            integer_ratio < 2
+            or not np.isclose(
+                ratio,
+                integer_ratio,
+                atol=1.0e-12,
+                rtol=1.0e-12,
+            )
+        ):
+            raise ValueError(
+                "successive EM max-step levels must have integer refinement ratios."
+            )
+        factors.append(factors[-1] * integer_ratio)
+
+    knots = np.unique(np.concatenate((t_eval, breakpoints)))
+    if knots[0] != t_eval[0] or knots[-1] != t_eval[-1]:
+        raise ValueError("breakpoints must lie inside the output interval.")
+
+    pieces = [[] for _ in steps]
+    finest_factor = factors[-1]
+    for segment_index, (left, right) in enumerate(zip(knots[:-1], knots[1:])):
+        width = right - left
+        ratio = width / steps[0]
+        n_coarse = max(
+            1,
+            int(np.ceil(np.nextafter(ratio, -np.inf))),
+        )
+        n_finest = n_coarse * finest_factor
+        finest_segment = np.linspace(
+            left,
+            right,
+            n_finest + 1,
+            dtype=float,
+        )
+        finest_segment[0], finest_segment[-1] = left, right
+
+        for level, factor in enumerate(factors):
+            stride = finest_factor // factor
+            segment = finest_segment[::stride]
+            expected = n_coarse * factor + 1
+            if segment.size != expected:
+                raise RuntimeError("failed to construct an exactly nested EM segment.")
+            if segment_index:
+                segment = segment[1:]
+            pieces[level].append(segment)
+
+    grids = {}
+    for step, level_pieces in zip(steps, pieces):
+        grid = np.concatenate(level_pieces)
+        if np.max(np.diff(grid)) > step + 2.0e-14:
+            raise RuntimeError("nested EM grid violates its requested max step.")
+        output_indices = np.searchsorted(grid, t_eval)
+        if (
+            np.any(output_indices >= grid.size)
+            or not np.allclose(
+                grid[output_indices],
+                t_eval,
+                atol=2.0e-14,
+                rtol=0.0,
+            )
+        ):
+            raise RuntimeError("nested EM grid failed to contain every output time.")
+        grids[step] = grid
+
+    finest_grid = grids[steps[-1]]
+    for step in steps[:-1]:
+        indices = np.searchsorted(finest_grid, grids[step])
+        if (
+            np.any(indices >= finest_grid.size)
+            or not np.allclose(
+                finest_grid[indices],
+                grids[step],
+                atol=0.0,
+                rtol=0.0,
+            )
+        ):
+            raise RuntimeError("constructed EM grids are not exactly nested.")
+    return grids
+
+
+def _em_outputs_on_integration_grid(
+    model,
+    evaluator,
+    parameters,
+    initial_states,
+    integration_t,
+    brownian_increments,
+):
+    """Run BM1 EM paths on an explicit F3-B integration grid."""
+    initial_states = np.asarray(initial_states, dtype=float).reshape(-1)
+
+    def drift(time, state):
+        return model._drift(time, state, parameters)
+
+    def diffusion(time, state):
+        del time
+        return model.diffusion_coefficient(state, evaluator.sigma_x)
+
+    paths, diagnostics = model.euler_maruyama.solve_paths(
+        t=integration_t,
+        init_cond=initial_states,
+        drift=drift,
+        diffusion=diffusion,
+        n_paths=initial_states.size,
+        boundary="none",
+        brownian_increments=brownian_increments,
+        return_diagnostics=True,
+    )
+    output_indices = _locate_times(
+        integration_t,
+        evaluator.solver_t_eval,
+    )
+    state = np.asarray(paths, dtype=float)[:, output_indices]
+
+    times = evaluator.solver_t_eval
+    price = np.asarray(parameters[0](times), dtype=float)
+    baseline = np.asarray(model.B(times), dtype=float)
+    state_response = np.asarray(parameters[1](state), dtype=float)
+    price_response = np.asarray(parameters[2](price), dtype=float)
+    delta = model.l(state_response, price_response, parameters[4])
+    demand = model.D(baseline, parameters[5], delta)
+
+    diagnostics = dict(diagnostics)
+    diagnostics["output_indices"] = output_indices.copy()
+    diagnostics["requested_output_t"] = times.copy()
+    return state, np.asarray(demand, dtype=float), diagnostics
+
+
 def _aggregate_brownian_to_grid(fine_t, fine_increments, coarse_t):
     """Sum fine Wiener increments over arbitrary nested coarse intervals."""
     fine_t = np.asarray(fine_t, dtype=float).reshape(-1)
@@ -623,11 +785,12 @@ def run_coupled_mc_time_refinement(
         n_paths,
         initial_seed,
     )
-    fine_t, _ = model.euler_maruyama.build_time_grid(
+    integration_grids = _nested_em_time_grids(
         finest.solver_t_eval,
-        breakpoints=finest.breakpoints,
-        max_step=finest_step,
+        finest.breakpoints,
+        steps,
     )
+    fine_t = integration_grids[finest_step]
     fine_dW = model.euler_maruyama.brownian_increments(
         fine_t,
         n_paths=n_paths,
@@ -641,11 +804,7 @@ def run_coupled_mc_time_refinement(
 
     for step in steps:
         evaluator = evaluators[step]
-        integration_t, _ = model.euler_maruyama.build_time_grid(
-            evaluator.solver_t_eval,
-            breakpoints=evaluator.breakpoints,
-            max_step=step,
-        )
+        integration_t = integration_grids[step]
         dW = _aggregate_brownian_to_grid(
             fine_t,
             fine_dW,
@@ -655,19 +814,14 @@ def run_coupled_mc_time_refinement(
 
         for name, prices in candidates.items():
             parameters = evaluator.parameters_for_prices(prices)
-            output = model.euler_maruyama_solver(
-                initial_states,
+            state, demand, diagnostics = _em_outputs_on_integration_grid(
+                model,
+                evaluator,
                 parameters,
-                evaluator.sigma_x,
-                n_paths=n_paths,
-                boundary="none",
-                t_eval=evaluator.solver_t_eval,
-                breakpoints=evaluator.breakpoints,
-                max_step=step,
-                brownian_increments=dW,
-                return_diagnostics=True,
+                initial_states,
+                integration_t,
+                dW,
             )
-            _, state, _, _, _, _, _, demand, diagnostics = output
             midpoint_demand = np.asarray(demand, dtype=float)[:, 1:-1]
             objective = monte_carlo_tracking_objective(
                 evaluator.widths,
