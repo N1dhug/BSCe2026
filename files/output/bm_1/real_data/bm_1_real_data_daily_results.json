@@ -8,7 +8,7 @@
   },
   "baseline_weeks": 5,
   "cells": 201,
-  "mc_paths": 0,
+  "mc_paths": 20000,
   "days": [
     {
       "day": "2022-05-17T00:00:00",
@@ -147,10 +147,35 @@
       },
       "optimization": {
         "objective_evaluations": 6024,
-        "cache_hits": 1,
-        "elapsed_seconds": 25.127169899991713
+        "cache_hits": 1
       },
-      "plot": "C:\\Users\\jvils\\OneDrive\\Skrivebord\\Til VS\\fag\\7 semester\\BSCe2026\\files\\output\\bm_1\\real_data\\bm_1_real_data_2022-05-17.png"
+      "plot": "files/output/bm_1/real_data/bm_1_real_data_2022-05-17.png",
+      "mc": {
+        "observed_spot": {
+          "total": 0.049873045746798114,
+          "standard_error": 0.00021490819229727615
+        },
+        "neutral": {
+          "total": 0.009248775020927313,
+          "standard_error": 0.00006640160602665043
+        },
+        "optimized": {
+          "total": 0.005566769141196062,
+          "standard_error": 0.00003579479605445153
+        }
+      },
+      "paired_mc": {
+        "observed_spot": {
+          "improvement": 0.04430627660560205,
+          "standard_error": 0.00021094593667351542,
+          "ratio": 210.03616995086102
+        },
+        "neutral": {
+          "improvement": 0.0036820058797312556,
+          "standard_error": 0.000049695342540338566,
+          "ratio": 74.09156857591852
+        }
+      }
     },
     {
       "day": "2022-05-31T00:00:00",
@@ -289,10 +314,35 @@
       },
       "optimization": {
         "objective_evaluations": 5461,
-        "cache_hits": 0,
-        "elapsed_seconds": 25.397913200082257
+        "cache_hits": 0
       },
-      "plot": "C:\\Users\\jvils\\OneDrive\\Skrivebord\\Til VS\\fag\\7 semester\\BSCe2026\\files\\output\\bm_1\\real_data\\bm_1_real_data_2022-05-31.png"
+      "plot": "files/output/bm_1/real_data/bm_1_real_data_2022-05-31.png",
+      "mc": {
+        "observed_spot": {
+          "total": 0.036738877718830304,
+          "standard_error": 0.00017051614692692297
+        },
+        "neutral": {
+          "total": 0.007891565634570543,
+          "standard_error": 0.0000440128835946783
+        },
+        "optimized": {
+          "total": 0.0068012316096066555,
+          "standard_error": 0.00004118407250573117
+        }
+      },
+      "paired_mc": {
+        "observed_spot": {
+          "improvement": 0.02993764610922366,
+          "standard_error": 0.00016527326671249306,
+          "ratio": 181.14028181764417
+        },
+        "neutral": {
+          "improvement": 0.0010903340249638898,
+          "standard_error": 0.000008679548973676404,
+          "ratio": 125.62104647035088
+        }
+      }
     },
     {
       "day": "2022-02-15T00:00:00",
@@ -431,10 +481,35 @@
       },
       "optimization": {
         "objective_evaluations": 6279,
-        "cache_hits": 0,
-        "elapsed_seconds": 28.86964499996975
+        "cache_hits": 0
       },
-      "plot": "C:\\Users\\jvils\\OneDrive\\Skrivebord\\Til VS\\fag\\7 semester\\BSCe2026\\files\\output\\bm_1\\real_data\\bm_1_real_data_2022-02-15.png"
+      "plot": "files/output/bm_1/real_data/bm_1_real_data_2022-02-15.png",
+      "mc": {
+        "observed_spot": {
+          "total": 0.08548901195188645,
+          "standard_error": 0.00022004063940767686
+        },
+        "neutral": {
+          "total": 0.012744843666529244,
+          "standard_error": 0.00007627229844649518
+        },
+        "optimized": {
+          "total": 0.006872541811104358,
+          "standard_error": 0.00004358458558871176
+        }
+      },
+      "paired_mc": {
+        "observed_spot": {
+          "improvement": 0.07861647014078206,
+          "standard_error": 0.0002211106720889103,
+          "ratio": 355.552580968004
+        },
+        "neutral": {
+          "improvement": 0.00587230185542489,
+          "standard_error": 0.00006480032093719085,
+          "ratio": 90.62149338915695
+        }
+      }
     }
   ]
 }
