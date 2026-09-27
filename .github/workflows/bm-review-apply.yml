@@ -1,0 +1,67 @@
+name: Apply reviewed BM consolidation
+on:
+  push:
+    branches: ['refactor/bm-f1-f2-review']
+    paths: ['root/bm_review_apply.py']
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/refactor/bm-f1-f2-review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MPLBACKEND: Agg
+      PYTHONDONTWRITEBYTECODE: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/bm-f1-f2-review
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install numpy scipy matplotlib pandas openpyxl
+      - name: Apply exact reviewed transformation
+        run: |
+          mkdir -p review-results
+          python -B root/bm_review_apply.py 2>&1 | tee review-results/apply.txt
+      - name: Run all regression tests before commit
+        run: python -B -m unittest discover -s tests -v 2>&1 | tee review-results/tests.txt
+      - name: Commit only the reviewed BM files
+        run: |
+          python - <<'PY'
+          import subprocess
+          allowed = {
+              'src/exe/run_model/bm_1/beta_dynamic_reference.py',
+              'src/exe/run_model/bm_1/em_convergence.py',
+              'src/exe/run_model/bm_1/em_price_step.py',
+              'src/exe/run_model/bm_1/em_reference.py',
+              'src/exe/run_model/bm_1/f2_reference_case.py',
+              'src/exe/run_model/bm_1/fp_price_step.py',
+              'src/exe/run_model/bm_1/fp_reference.py',
+              'src/exe/run_model/bm_1/stochastic_objective_reference.py',
+              'src/exe/run_model/bm_1/stochastic_optimization_reference.py',
+              'src/method/bm_1_stochastic_objective.py',
+              'src/method/bm_1_stochastic_optimization.py',
+              'src/method/bm_1_beta_mixture.py',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          if not changed <= allowed:
+              raise RuntimeError('Unexpected changes: ' + repr(changed - allowed))
+          subprocess.run(['git', 'add', '--', *sorted(allowed)], check=True)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Consolidate BM-only numerical helpers after 104 passing regressions'
+          git push origin HEAD:refactor/bm-f1-f2-review
+          git rev-parse HEAD > review-results/commit.txt
+          git archive HEAD src tests root > review-results/source.tar
+      - name: Preserve verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bm-reviewed-application
+          path: review-results/
+          retention-days: 7
