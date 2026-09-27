@@ -1,9 +1,8 @@
-"""Tracking cost shared by deterministic, distribution and Monte Carlo evaluations.
+"""Tracking costs for fixed-price evaluation and price optimization.
 
-    E[(D-A)^2] = (E[D]-A)^2 + Var(D).
-    State weights are cell probabilities; time weights are interval widths.
-    Standard errors use independent path costs, not the number of time samples.
-    """
+E[(D-A)^2] = (E[D]-A)^2 + Var(D). State weights are cell probabilities;
+time weights are interval widths. Standard errors use independent path costs.
+"""
 
 from dataclasses import dataclass
 
@@ -25,6 +24,16 @@ class StochasticTrackingResult:
     total_integrand: np.ndarray
     bias_integrand: np.ndarray
     variance_integrand: np.ndarray
+
+
+@dataclass(frozen=True)
+class MonteCarloTrackingResult:
+    """Monte Carlo objective estimate with pathwise sampling uncertainty."""
+    objective: StochasticTrackingResult
+    path_objectives: np.ndarray
+    standard_error: float
+    direct_total: float
+    maximum_decomposition_error: float
 
 
 def midpoint_quadrature(interval, *, breakpoints=None, max_step):
@@ -233,7 +242,7 @@ def deterministic_midpoint_objective(
 
     This is an opt-in BM-only alternative to the historical F1 sampled-Simpson
     objective. Supply every known jump in U, B or A through breakpoints. The
-    legacy shared tracking_error function and model.optimize are unchanged.
+    shared sampled-Simpson tracking_error function and model.optimize are unchanged.
     """
     _, midpoints, widths, output_t = midpoint_quadrature(
         model.T,
@@ -252,13 +261,3 @@ def deterministic_midpoint_objective(
     demand = np.asarray(result[7], dtype=float)[1:-1]
     target = np.asarray(model.A(midpoints), dtype=float)
     return stochastic_tracking_objective(widths, demand, demand ** 2, target)
-
-
-@dataclass(frozen=True)
-class MonteCarloTrackingResult:
-    """Monte Carlo objective estimate with pathwise sampling uncertainty."""
-    objective: StochasticTrackingResult
-    path_objectives: np.ndarray
-    standard_error: float
-    direct_total: float
-    maximum_decomposition_error: float

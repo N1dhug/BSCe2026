@@ -13,8 +13,8 @@ import numpy as np
 import scipy
 from scipy.interpolate import PchipInterpolator
 
-from src.method import bm_1_control as control
-from src.method.bm_1_objective import monte_carlo_tracking_objective
+from src.control import bm_1 as control
+from src.control.objective import monte_carlo_tracking_objective
 from src.model.bm_1 import bm_1
 from src.tools.input_generator.input_builder import input_builder
 from src.validation.bm_1.cases import (

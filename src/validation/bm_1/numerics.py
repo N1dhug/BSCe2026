@@ -2,13 +2,13 @@
 
 import numpy as np
 
-from src.method.bm_1_control import (
+from src.control.bm_1 import (
     BM1ControlNumerics,
     evaluate_mc_candidates_common_random_numbers,
     paired_mc_improvement,
     sample_beta_initial_states,
 )
-from src.method import bm_1_objective as tracking
+from src.control import objective as tracking
 from src.validation.bm_1 import control as cases
 
 
@@ -371,46 +371,23 @@ def run_f3_b_reference(*, mc_paths=0, mc_time_paths=0, progress=print):
     report('[4/4] Provisional high-resolution FV reevaluation')
     reference_fv = evaluate_reference_fv(problem, candidates)
     decision_scale = _decision_scale(reference_fv)
-    summary = {
-        'decision_scale_reference_vs_f3_a': decision_scale,
-        'spatial_last_change': _last_refinement_change(
-            spatial,
-            'f3_a_stochastic',
-            float(SPATIAL_X_STEPS[-1]),
-            float(SPATIAL_X_STEPS[-2]),
-        ),
-        'fv_time_last_change': _last_refinement_change(
-            fv_time,
-            'f3_a_stochastic',
-            TIME_SOLVER_MAX_STEPS[-1],
-            TIME_SOLVER_MAX_STEPS[-2],
-        ),
-        'quadrature_last_change': _last_refinement_change(
-            quadrature,
-            'f3_a_stochastic',
-            QUADRATURE_MAX_STEPS[-1],
-            QUADRATURE_MAX_STEPS[-2],
-        ),
-        'decision_gap_refinement': {
-            'space': _decision_gap_refinement(
-                spatial,
-                float(SPATIAL_X_STEPS[-1]),
-                float(SPATIAL_X_STEPS[-2]),
-            ),
-            'fv_time': _decision_gap_refinement(
-                fv_time,
-                TIME_SOLVER_MAX_STEPS[-1],
-                TIME_SOLVER_MAX_STEPS[-2],
-            ),
-            'quadrature': _decision_gap_refinement(
-                quadrature,
-                QUADRATURE_MAX_STEPS[-1],
-                QUADRATURE_MAX_STEPS[-2],
-            ),
-        },
-    }
+    studies = (
+        ('space', 'spatial', spatial, SPATIAL_X_STEPS),
+        ('fv_time', 'fv_time', fv_time, TIME_SOLVER_MAX_STEPS),
+        ('quadrature', 'quadrature', quadrature, QUADRATURE_MAX_STEPS),
+    )
+    summary = {'decision_scale_reference_vs_f3_a': decision_scale}
+    gaps = {}
+    for axis, prefix, rows, levels in studies:
+        finest, previous = float(levels[-1]), float(levels[-2])
+        summary[prefix + '_last_change'] = _last_refinement_change(
+            rows, 'f3_a_stochastic', finest, previous,
+        )
+        gaps[axis] = _decision_gap_refinement(rows, finest, previous)
+    summary['decision_gap_refinement'] = gaps
     if decision_scale > 0.0:
-        for key in ('spatial_last_change', 'fv_time_last_change', 'quadrature_last_change'):
+        for _, prefix, _, _ in studies:
+            key = prefix + '_last_change'
             summary[key + '_over_decision_scale'] = summary[key] / decision_scale
     mc = None
     if int(mc_paths) > 0:

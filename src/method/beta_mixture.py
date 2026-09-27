@@ -1,17 +1,42 @@
-"""Conservative density prediction followed by simplex-constrained Beta projection.
+"""Conservative FP prediction followed by simplex-constrained Beta projection.
 
-    The projection changes representation, not the target SDE. Raw invalid
-    probabilities are rejected; they are never hidden by clipping/normalization.
-    """
+This is a numerical method, not a price optimizer. Drift and diffusion are
+supplied as callbacks. Invalid probabilities are rejected, never repaired.
+"""
 
 import numpy as np
 
 from src.solver.active_set import active_set
-from src.validation.method.bm_1 import _validate_dynamic_controls
 
 
 _NEGATIVE_PREDICTION_TOL = 1e-10
 _MASS_TOL = 1e-09
+
+
+def _validate_dynamic_controls(t_eval, breakpoints, max_step, cfl):
+    t_eval = np.asarray(t_eval, dtype=float)
+    if (
+        t_eval.ndim != 1
+        or t_eval.size < 2
+        or not np.all(np.isfinite(t_eval))
+        or np.any(np.diff(t_eval) <= 0.0)
+    ):
+        raise ValueError('t_eval must be a finite strictly increasing one-dimensional grid.')
+    breakpoints = np.asarray([] if breakpoints is None else breakpoints, dtype=float).reshape(-1)
+    if (
+        not np.all(np.isfinite(breakpoints))
+        or np.any(np.diff(breakpoints) <= 0.0)
+        or np.any(breakpoints <= t_eval[0])
+        or np.any(breakpoints >= t_eval[-1])
+    ):
+        raise ValueError('breakpoints must be strictly increasing and inside the time interval.')
+    max_step = float(max_step)
+    if np.isnan(max_step) or max_step <= 0.0:
+        raise ValueError('max_step must be strictly positive.')
+    cfl = float(cfl)
+    if not np.isfinite(cfl) or not 0.0 < cfl < 1.0:
+        raise ValueError('cfl must lie strictly between zero and one.')
+    return (t_eval, breakpoints, max_step, cfl)
 
 
 def _projection_matrices(basis, dx):

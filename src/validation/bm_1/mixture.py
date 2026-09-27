@@ -10,13 +10,13 @@ from src.diagnostics.bm_1 import (
     cell_mass_wasserstein_1,
     density_l2,
 )
-from src.method.bm_1_control import beta_initial_cell_mass, sample_beta_initial_states
-from src.method.bm_1_mixture import (
+from src.control.bm_1 import beta_initial_cell_mass, sample_beta_initial_states
+from src.method.beta_mixture import (
     evolve_projected_density as _evolve_projected_density,
     _project_with_warm_start,
     _projection_matrices,
 )
-from src.method import bm_1_objective as tracking
+from src.control import objective as tracking
 from src.validation.bm_1.cases import (
     MAX_STEP,
     PRICE_BREAKPOINTS,

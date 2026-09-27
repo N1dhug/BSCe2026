@@ -3,8 +3,8 @@
 import numpy as np
 import pandas as pd
 import unittest
-from src.method.bm_1_control import MonteCarloCandidateResult
-from src.method.bm_1_objective import monte_carlo_tracking_objective
+from src.control.bm_1 import MonteCarloCandidateResult
+from src.control.objective import monte_carlo_tracking_objective
 from src.tools.bm_1_data import (_complete_day_values, _hourly_hold, _mc_summary, build_day_signals,
     select_representative_days)
 

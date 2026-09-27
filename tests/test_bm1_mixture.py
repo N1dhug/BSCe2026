@@ -3,8 +3,8 @@
 import numpy as np
 import unittest
 from src.diagnostics.bm_1 import (beta_mixture_variance_floor, cell_mass_l1, density_l2)
-from src.method.bm_1_control import beta_initial_cell_mass
-from src.method.bm_1_mixture import evolve_projected_density as _evolve_projected_density
+from src.control.bm_1 import beta_initial_cell_mass
+from src.method.beta_mixture import evolve_projected_density as _evolve_projected_density
 from src.validation.bm_1.cases import (INITIAL_ALPHA, INITIAL_BETA, build_reference_case)
 from src.validation.bm_1.mixture import (_positive_mass_preserving_perturbation, _simplex_tangent_condition,
     run_conditioning_study, run_dynamic_mixture_study, run_projection_study)

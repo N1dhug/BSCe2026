@@ -6,9 +6,9 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
-from src.method.bm_1_control import (DynamicMixturePriceEvaluator, FVStochasticPriceEvaluator, beta_initial_cell_mass,
+from src.control.bm_1 import (DynamicMixturePriceEvaluator, FVStochasticPriceEvaluator, beta_initial_cell_mass,
     multistart_powell, sample_beta_initial_states)
-from src.method.bm_1_mixture import evolve_projected_density
+from src.method.beta_mixture import evolve_projected_density
 from src.validation.bm_1.cases import build_reference_case
 from unittest.mock import patch
 
@@ -21,14 +21,6 @@ class BMReviewCompatibilityTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, '')
 
-    def test_reusable_methods_do_not_import_executables(self):
-        root = Path(__file__).resolve().parents[1]
-        for path in (root / 'src/method').glob('bm_1_*.py'):
-            for node in ast.walk(ast.parse(path.read_text())):
-                if isinstance(node, ast.ImportFrom):
-                    self.assertFalse((node.module or '').startswith('src.exe'), str(path))
-                elif isinstance(node, ast.Import):
-                    self.assertTrue(all((not item.name.startswith('src.exe') for item in node.names)))
 
     def test_sampling_rejects_fractional_path_count(self):
         with self.assertRaises(ValueError):
@@ -62,7 +54,7 @@ class BMReviewEvaluatorTests(unittest.TestCase):
 
     def test_deterministic_midpoint_cost_handles_a_known_jump(self):
         from src.model.bm_1 import bm_1
-        from src.method.bm_1_objective import deterministic_midpoint_objective
+        from src.control.objective import deterministic_midpoint_objective
         jump = 0.37
         baseline = lambda t: np.where(np.asarray(t) < jump, 0.3, 0.8)
         target = lambda t: np.full_like(np.asarray(t, dtype=float), 0.1)
@@ -85,7 +77,7 @@ class BMReviewEvaluatorTests(unittest.TestCase):
 
     def test_projection_setup_is_reused_between_price_evaluations(self):
         evaluator = DynamicMixturePriceEvaluator(self.evaluator(), degree=10)
-        with patch('src.method.bm_1_mixture._projection_matrices',
+        with patch('src.method.beta_mixture._projection_matrices',
             side_effect=AssertionError('repeated fixed Hessian setup')):
             left = evaluator.evaluate([0.7, 0.3])
             right = evaluator.evaluate([0.7, 0.3])
@@ -137,6 +129,11 @@ class ConsolidatedLayoutTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         actual = {p.name for p in (root / 'src/exe/run_model/bm_1').glob('*.py')}
         self.assertEqual(actual, {'verify.py', 'optimize.py', 'refine.py', 'real_data.py'})
+        for retired in (
+            'src/method/bm_1_control.py', 'src/method/bm_1_objective.py',
+            'src/method/bm_1_mixture.py', 'src/validation/method/bm_1.py',
+        ):
+            self.assertFalse((root / retired).exists(), retired)
 
     def test_reference_studies_have_no_executable_or_plot_dependencies(self):
         root = Path(__file__).resolve().parents[1]
@@ -149,10 +146,22 @@ class ConsolidatedLayoutTests(unittest.TestCase):
 
     def test_core_control_has_no_reference_scenario_dependency(self):
         root = Path(__file__).resolve().parents[1]
-        for path in (root / 'src/method').glob('bm_1_*.py'):
-            for n in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
-                if isinstance(n, ast.ImportFrom):
-                    self.assertFalse((n.module or '').startswith(('src.exe', 'src.validation.bm_1')), str(path))
+        paths = [root / name for name in (
+            'src/control/bm_1.py', 'src/control/objective.py', 'src/method/beta_mixture.py',
+        )]
+        self.assertTrue(all(path.is_file() for path in paths))
+        for path in paths:
+            forbidden = ('src.exe', 'src.validation.bm_1', 'matplotlib')
+            if path.name == 'beta_mixture.py':
+                forbidden += ('src.control',)
+            for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
+                if isinstance(node, ast.ImportFrom):
+                    modules = [node.module or '']
+                elif isinstance(node, ast.Import):
+                    modules = [item.name for item in node.names]
+                else:
+                    continue
+                self.assertFalse(any(name.startswith(forbidden) for name in modules), str(path))
 
     def test_reference_cli_help(self):
         root = Path(__file__).resolve().parents[1]
@@ -167,7 +176,7 @@ class ConsolidatedLayoutTests(unittest.TestCase):
         self.assertEqual(DATA_DIR, Path(__file__).resolve().parents[1] / 'files/input/data')
 
     def test_custom_initial_sampler_is_forwarded_explicitly(self):
-        from src.method.bm_1_control import evaluate_mc_candidates_common_random_numbers
+        from src.control.bm_1 import evaluate_mc_candidates_common_random_numbers
         from src.validation.bm_1.control import build_f3_a_problem
         from dataclasses import replace
         problem, numerics = build_f3_a_problem()
@@ -248,16 +257,16 @@ class ReportingTests(unittest.TestCase):
             self.assertGreater(figure.stat().st_size, 0)
 
     def test_reference_evaluator_validates_each_candidate_once(self):
-        from src.method import bm_1_control as control
-        from src.validation.method import bm_1 as checks
+        from src.control import bm_1 as control
+        from src.validation import control as checks
         model, parameters = build_reference_case()
         edges, _, _ = model.fokker_planc_reference.grid(21)
         mass = beta_initial_cell_mass(edges)
         for cls in (control.FVStochasticPriceEvaluator, control.FastFVStochasticPriceEvaluator):
             evaluator = cls(model, parameters, [0, 0.5, 1], 0.5, mass,
                             objective_max_step=0.25, solver_max_step=0.125)
-            with self.subTest(backend=cls.__name__), patch.object(checks, '_validate_prices',
-                                                                 wraps=checks._validate_prices) as validate:
+            with self.subTest(backend=cls.__name__), patch.object(checks, 'validate_prices',
+                                                                 wraps=checks.validate_prices) as validate:
                 evaluator.evaluate([0.7, 0.3])
                 self.assertEqual(validate.call_count, 1)
 

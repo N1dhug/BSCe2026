@@ -4,7 +4,7 @@ import numpy as np
 import unittest
 from scipy.special import betainc
 from src.diagnostics.bm_1 import (cell_mass_cdf_sup, cell_mass_l1, cell_mass_wasserstein_1, empirical_cell_mass)
-from src.method.bm_1_control import (FVStochasticPriceEvaluator, FastFVStochasticPriceEvaluator,
+from src.control.bm_1 import (FVStochasticPriceEvaluator, FastFVStochasticPriceEvaluator,
     beta_initial_cell_mass, multistart_powell, sample_beta_initial_states)
 from src.model.bm_1 import bm_1
 from src.solver.finite_volume import finite_volume_1d
@@ -267,19 +267,19 @@ class FastFiniteVolumeTests(unittest.TestCase):
 
     def test_lapack_failure_is_reported(self):
         _, fast = self.pair()
-        with patch('src.method.bm_1_control.dgtsv', return_value=(None, None, None, None, 2)):
+        with patch('src.control.bm_1.dgtsv', return_value=(None, None, None, None, 2)):
             with self.assertRaisesRegex(RuntimeError, 'LAPACK'):
                 fast([0.5, 0.5])
 
     def test_raw_mass_loss_is_not_normalized_away(self):
-        from src.method.bm_1_control import dgtsv
+        from src.control.bm_1 import dgtsv
         _, fast = self.pair()
 
         def lose_mass(*args, **kwargs):
             out = list(dgtsv(*args, **kwargs))
             out[3] = 0.99 * out[3]
             return tuple(out)
-        with patch('src.method.bm_1_control.dgtsv', side_effect=lose_mass):
+        with patch('src.control.bm_1.dgtsv', side_effect=lose_mass):
             with self.assertRaisesRegex(RuntimeError, 'probability'):
                 fast([0.5, 0.5])
 

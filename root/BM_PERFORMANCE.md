@@ -49,7 +49,7 @@ this change does not replace the shared active-set implementation.
 
 ## What the fast evaluator changes
 
-`src/method/bm_1_control.py` adds `FastFVStochasticPriceEvaluator`, with the same
+`src/control/bm_1.py` adds `FastFVStochasticPriceEvaluator`, with the same
 constructor inputs as the reference evaluator plus `batch_size=128` and
 `vectorized=True`.
 

@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.method import bm_1_control as control
+from src.control import bm_1 as control
 from src.model.bm_1 import bm_1
 from src.tools import bm_1_data as data
 from src.tools.input_generator.input_builder import input_builder

@@ -2,7 +2,7 @@
 
 import numpy as np
 import unittest
-from src.method.bm_1_control import (BM1ControlNumerics, BM1ControlProblem, BM1Parameters,
+from src.control.bm_1 import (BM1ControlNumerics, BM1ControlProblem, BM1Parameters,
     DynamicMixturePriceEvaluator, best_surface_starts, beta_initial_cell_mass, coarse_price_surface,
     evaluate_mc_candidates_common_random_numbers, multistart_powell, paired_mc_improvement)
 from src.validation.bm_1.cases import (INITIAL_ALPHA, INITIAL_BETA, SIGMA_X, linear_price_response,

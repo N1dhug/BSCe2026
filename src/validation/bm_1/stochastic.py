@@ -13,7 +13,7 @@ from src.diagnostics.stochastic import (
     rms_strong_error,
     successive_convergence_orders,
 )
-from src.method.bm_1_control import beta_initial_cell_mass, sample_beta_initial_states
+from src.control.bm_1 import beta_initial_cell_mass, sample_beta_initial_states
 from src.model.bm_1 import bm_1
 from src.tools.input_generator.input_builder import input_builder
 from src.validation.bm_1.cases import (

@@ -10,7 +10,7 @@ import json
 
 import numpy as np
 
-from src.method import bm_1_control as control
+from src.control import bm_1 as control
 from src.method.euler_maruyama import euler_maruyama
 from src.validation.bm_1 import cases, control as control_cases, deterministic, mixture, stochastic
 

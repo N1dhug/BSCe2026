@@ -13,10 +13,9 @@ class bm:
     Together with suitable Lipschitz regularity, inward boundary drift
     and vanishing boundary diffusion keep the continuous state in [0, 1].
     This is not a guarantee for a finite Euler-Maruyama step.
-    See root/F2_A.md for the model contract and numerical limitations.
+    See root/F2.md for the model contract and numerical limitations.
     """
     def __init__(self, B, A, T, t_steps):
-        # Initialize variables
         B, A, T, t_steps = bm_validation.constructor(B, A, T, t_steps)
         self.B = B
         self.A = A
@@ -26,33 +25,31 @@ class bm:
         self.dt = float(self.t[1] - self.t[0])
 
     def eval(self, t, Xt, U, f, g, k, Xi):
-        # Compute model dynamics
         U, f, g, _, k, Xi = bm_validation.dynamics(U, f, g, 1.0, k, Xi)
         Ut = U(t)
         Bt = self.B(t)
         fXt = f(Xt)
         gUt = g(Ut)
         Ut, Bt, fXt, gUt = bm_validation.response_values(Ut, Bt, fXt, gUt)
-        dt = self.l(fXt, gUt, k)
-        Dt = self.D(Bt, Xi, dt)
-        return Ut, Bt, fXt, gUt, dt, Dt
+        delta = self.l(fXt, gUt, k)
+        Dt = self.D(Bt, Xi, delta)
+        return Ut, Bt, fXt, gUt, delta, Dt
 
     def l(self, fXt, gUt, k):
-        # Compute model dynamics
+        """Map state and price responses to signed flexibility in [-1, 1]."""
         fXt = bm_validation.bounded_array(fXt, -1.0, 1.0, "f(X)")
         gUt = bm_validation.bounded_array(gUt, -1.0, 1.0, "g(U)")
         k = bm_validation.positive_scalar(k, "k")
         return 2 / (1 + np.exp(-k * (fXt + gUt))) - 1
 
-    def D(self, Bt, Xi, dt):
-        # Compute model dynamics
+    def D(self, Bt, Xi, delta):
+        """Apply the signed flexibility response delta, not a time increment."""
         Bt = bm_validation.bounded_array(Bt, 0.0, 1.0, "B(t)")
-        dt = bm_validation.bounded_array(dt, -1.0, 1.0, "delta(t)")
+        delta = bm_validation.bounded_array(delta, -1.0, 1.0, "delta(t)")
         Xi = bm_validation.unit_scalar(Xi, "Xi")
-        return Bt + dt * Xi * ((dt >= 0) * (1 - Bt) + (dt < 0) * Bt)
+        return Bt + delta * Xi * ((delta >= 0) * (1 - Bt) + (delta < 0) * Bt)
 
     def dXdt(self, t, state, U, f, g, C, k, Xi, stochastic=False):
-        # Compute model dynamics
         U, f, g, C, k, Xi = bm_validation.dynamics(U, f, g, C, k, Xi)
         state = bm_validation.state(state)
         Xt = state.reshape(-1)[0]
@@ -70,33 +67,5 @@ class bm:
         The numerical method supplies sqrt(dt).  No clipping, reflection,
         capacity factor or Xi factor is introduced here.
         """
-        # Compute diffusion
         X, sigma_x = bm_validation.diffusion(X, sigma_x)
         return sigma_x * X * (1 - X)
-
-    def XtOx_dWt(self, t, X, sigma_x):
-        # Compute diffusion
-        diff = self.diffusion_coefficient(X, sigma_x)
-        if hasattr(diff, "unsqueeze"):
-            return diff.unsqueeze(-1)
-        return np.expand_dims(np.asarray(diff), axis=-1)
-
-    def ode(self):
-        # Define interface
-        raise NotImplementedError("Implement the ode in specific subclass")
-
-    def phi(self):
-        # Define interface
-        raise NotImplementedError("Implement the minimization function in specific subclass")
-
-    def deterministic_solver(self):
-        # Define interface
-        raise NotImplementedError("Implement the deterministic solver for the specific subclass")
-
-    def stochastic_solver(self):
-        # Define interface
-        raise NotImplementedError("Implement the stochastic solver for the specific subclass")
-
-    def optimize(self):
-        # Define interface
-        raise NotImplementedError("Implement the optimizer for the specific subclass")

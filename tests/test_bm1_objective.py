@@ -2,7 +2,7 @@
 
 import numpy as np
 import unittest
-from src.method.bm_1_objective import (discrete_demand_moments, midpoint_quadrature, monte_carlo_tracking_objective,
+from src.control.objective import (discrete_demand_moments, midpoint_quadrature, monte_carlo_tracking_objective,
     stochastic_tracking_objective)
 from src.validation.bm_1.mixture import run_objective_reference
 

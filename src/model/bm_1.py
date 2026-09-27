@@ -90,7 +90,7 @@ class bm_1(bm):
             if np.any(output_mask):
                 Xt[output_mask] = solution.sol(t_eval[output_mask])[0]
             current_state = solution.y[:, -1]
-        Ut, Bt, fXt, gUt, dt, Dt = self.eval(
+        Ut, Bt, fXt, gUt, delta, Dt = self.eval(
             t_eval,
             Xt,
             parameters[0],
@@ -99,7 +99,7 @@ class bm_1(bm):
             parameters[4],
             parameters[5],
         )
-        return (t_eval.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt)
+        return (t_eval.copy(), Xt, Ut, Bt, fXt, gUt, delta, Dt)
 
     def euler_maruyama_solver(
         self,
@@ -168,9 +168,9 @@ class bm_1(bm):
         Bt = self.B(t_eval)
         fXt = parameters[1](Xt)
         gUt = parameters[2](Ut)
-        dt = self.l(fXt, gUt, parameters[4])
-        Dt = self.D(Bt, parameters[5], dt)
-        output = (t_eval.copy(), Xt, Ut, Bt, fXt, gUt, dt, Dt)
+        delta = self.l(fXt, gUt, parameters[4])
+        Dt = self.D(Bt, parameters[5], delta)
+        output = (t_eval.copy(), Xt, Ut, Bt, fXt, gUt, delta, Dt)
         if not return_diagnostics:
             return output
         diagnostics = diagnostics.copy()
