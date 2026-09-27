@@ -332,6 +332,34 @@ def _paired_improvement(reference, candidate):
     return (mean, se)
 
 
+def _optimize_price_cases(evaluators, interval_counts, starts_for_case, progress):
+    """Optimize price grids in order, warm-starting each from the previous case."""
+    cases = {}
+    previous = None
+    total = len(interval_counts)
+    for index, count in enumerate(interval_counts, start=1):
+        evaluator = evaluators[count]
+        if progress is not None:
+            progress('')
+            progress(f'[{index}/{total}] Optimizing {count} price intervals ({count - 1} price changes)')
+        optimization = control.multistart_powell(
+            evaluator,
+            starts_for_case(count, previous),
+            progress=progress,
+            options={'xtol': 5e-05, 'ftol': 1e-09, 'maxiter': 100},
+        )
+        case = PriceCase(
+            n_intervals=count,
+            edges=evaluator.interval_edges.copy(),
+            evaluator=evaluator,
+            optimization=optimization,
+            evaluation=evaluator.evaluate(optimization.best.x),
+        )
+        cases[count] = case
+        previous = case
+    return cases
+
+
 def run_complex_target_experiment(progress=print, validate_mc=True, *, fast_fv=False):
     target, target_t, target_demand = build_complex_deterministic_target()
     model = build_stochastic_model(target)
@@ -341,35 +369,7 @@ def run_complex_target_experiment(progress=print, validate_mc=True, *, fast_fv=F
         progress('Common numerical-partition check:')
         for count in INTERVAL_COUNTS:
             progress(f'  N={count}: J={common_policy_values[count]:.10e}')
-    cases = {}
-    previous = None
-    for index, count in enumerate(INTERVAL_COUNTS, start=1):
-        evaluator = evaluators[count]
-        starts = _starts_for_case(count, previous)
-        if progress is not None:
-            progress('')
-            progress(
-                (
-                    f'[{index}/{len(INTERVAL_COUNTS)}] Optimizing {count} price intervals ('
-                    f'{count - 1} possible changes)'
-                ),
-            )
-        optimization = control.multistart_powell(
-            evaluator,
-            starts,
-            progress=progress,
-            options={'xtol': 5e-05, 'ftol': 1e-09, 'maxiter': 100},
-        )
-        evaluation = evaluator.evaluate(optimization.best.x)
-        case = PriceCase(
-            n_intervals=count,
-            edges=evaluator.interval_edges.copy(),
-            evaluator=evaluator,
-            optimization=optimization,
-            evaluation=evaluation,
-        )
-        cases[count] = case
-        previous = case
+    cases = _optimize_price_cases(evaluators, INTERVAL_COUNTS, _starts_for_case, progress)
     mc = _evaluate_cases_mc(
         model,
         cases,
@@ -461,35 +461,7 @@ def run_multi_price_experiment(progress=print, validate_mc=True, *, fast_fv=Fals
         progress('Nested two-price policy check:')
         for count in MULTI_INTERVAL_COUNTS:
             progress(f'  N={count}: J={nested_values[count]:.10e}')
-    cases = {}
-    previous = None
-    for index, count in enumerate(MULTI_INTERVAL_COUNTS, start=1):
-        evaluator = evaluators[count]
-        starts = multi_starts_for_case(count, previous)
-        if progress is not None:
-            progress('')
-            progress(
-                (
-                    f'[{index}/{len(MULTI_INTERVAL_COUNTS)}] Optimizing {count} price intervals ('
-                    f'{count - 1} changes)'
-                ),
-            )
-        optimization = control.multistart_powell(
-            evaluator,
-            starts,
-            progress=progress,
-            options={'xtol': 5e-05, 'ftol': 1e-09, 'maxiter': 100},
-        )
-        evaluation = evaluator.evaluate(optimization.best.x)
-        case = PriceCase(
-            n_intervals=count,
-            edges=evaluator.interval_edges.copy(),
-            evaluator=evaluator,
-            optimization=optimization,
-            evaluation=evaluation,
-        )
-        cases[count] = case
-        previous = case
+    cases = _optimize_price_cases(evaluators, MULTI_INTERVAL_COUNTS, multi_starts_for_case, progress)
     mc = _evaluate_cases_mc(
         model,
         cases,
@@ -739,13 +711,13 @@ def run_optimization_reference(
     fv_evaluations = {name: fv.evaluate(prices) for name, prices in candidates.items()}
     report('[5/6] High-resolution mixture reevaluations')
     final_mixture = {}
+    support = _build_fv_evaluator(
+        model,
+        x_steps=final_mixture_x_steps,
+        objective_max_step=objective_max_step,
+        solver_max_step=solver_max_step,
+    )
     for degree in FINAL_MIXTURE_DEGREES:
-        support = _build_fv_evaluator(
-            model,
-            x_steps=final_mixture_x_steps,
-            objective_max_step=objective_max_step,
-            solver_max_step=solver_max_step,
-        )
         evaluator = control.DynamicMixturePriceEvaluator(support, degree, cfl=DEFAULT_CFL)
         final_mixture[degree] = {name: evaluator.evaluate(prices) for name, prices in candidates.items()}
     report('[6/6] Paired Monte Carlo validation')
