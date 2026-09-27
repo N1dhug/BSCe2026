@@ -137,9 +137,8 @@ def _objective_dict(evaluation):
 
 
 def _mc_summary(item):
-    """Serialize one MonteCarloCandidateResult without guessing nesting."""
-    tracking = item.objective
-    return {'total': float(tracking.objective.total), 'standard_error': float(tracking.standard_error)}
+    """Serialize one MonteCarloCandidateResult using its complete control cost."""
+    return {'total': float(item.total), 'standard_error': float(item.standard_error)}
 
 
 def _price_correlation(observed, optimized):

@@ -29,6 +29,15 @@ def _costs(evaluations):
         print(f'{name:26s} {cost.total:.8e} {cost.bias:.8e} {cost.variance:.8e}')
 
 
+def _augmented_costs(evaluations):
+    print('candidate                  J_total        tracking       terminal       smoothing')
+    for name, evaluation in evaluations.items():
+        print(
+            f'{name:26s} {evaluation.total:.8e} {evaluation.objective.total:.8e} '
+            f'{evaluation.penalties.terminal:.8e} {evaluation.penalties.smoothing:.8e}',
+        )
+
+
 def _solver_summary(result):
     """Report solver status even in short mode; success is not a global-optimum proof."""
     if hasattr(result, 'results'):
@@ -151,6 +160,52 @@ def run_contract(args):
     return result
 
 
+def run_augmented(args):
+    """F3-C terminal-state and price-jump regularized stochastic control."""
+    result = cases.run_f3_c(
+        terminal_reference=args.terminal_reference,
+        terminal_weight=args.terminal_weight,
+        smoothing_weight=args.smoothing_weight,
+        progress=print if args.verbose else None,
+    )
+    problem = result['problem']
+    fit = result['optimization']
+    print('F3-C augmented stochastic control objective')
+    print(
+        f'x_ref={problem.terminal_reference:.6f}; '
+        f'lambda_T={problem.terminal_weight:.6g}; '
+        f'lambda_U={problem.price_smoothing_weight:.6g}',
+    )
+    _augmented_costs({'fixed': result['fixed'], 'optimized': result['optimized']})
+    print(f'Best prices: {_prices(fit.best.x)}; best total J={fit.best.fun:.8e}')
+    _solver_summary(fit)
+    if args.verbose:
+        for name, evaluation in (('fixed', result['fixed']), ('optimized', result['optimized'])):
+            terminal_mse = evaluation.penalties.terminal_mse
+            print(
+                f'{name}: terminal MSE={terminal_mse:.8e}; '
+                f'price roughness={evaluation.penalties.price_roughness:.8e}; '
+                f'tracking bias/variance={evaluation.objective.bias:.8e}/{evaluation.objective.variance:.8e}',
+            )
+    if args.save:
+        evaluator = result['evaluator']
+        prices = fit.best.x
+        _save_comparison(
+            'bm_1_f3_c_augmented_control.png',
+            evaluator.midpoints,
+            evaluator.target,
+            {
+                'fixed': (problem.price_edges, problem.observed_prices),
+                'optimized': (problem.price_edges, prices),
+            },
+            {
+                'fixed E[D]': (evaluator.midpoints, result['fixed'].objective.expected_demand),
+                'optimized E[D]': (evaluator.midpoints, result['optimized'].objective.expected_demand),
+            },
+        )
+    return result
+
+
 def run_stochastic(args):
     """Design FV/mixture controls, then assess both on the same reference methods."""
     result = cases.run_optimization_reference(progress=print if args.verbose else None)
@@ -231,6 +286,7 @@ def main(argv=None):
         ('multi', run_resolution),
         ('complex', run_resolution),
         ('contract', run_contract),
+        ('augmented', run_augmented),
     ]:
         command = commands.add_parser(name, help=run.__doc__)
         command.set_defaults(run=run)
@@ -242,6 +298,25 @@ def main(argv=None):
         command.add_argument('--save', action='store_true', help='Save a comparison figure under runs/.')
         if name == 'contract':
             command.add_argument('--optimize', action='store_true', help='Also optimize new prices.')
+        if name == 'augmented':
+            command.add_argument(
+                '--terminal-reference',
+                type=float,
+                default=cases.F3_C_TERMINAL_REFERENCE,
+                help='Reference terminal state x_ref; default 0.5.',
+            )
+            command.add_argument(
+                '--terminal-weight',
+                type=float,
+                default=0.0,
+                help='Non-negative lambda_T multiplying E[(X_T-x_ref)^2].',
+            )
+            command.add_argument(
+                '--smoothing-weight',
+                type=float,
+                default=0.0,
+                help='Non-negative lambda_U multiplying squared adjacent price jumps.',
+            )
         if name in ('multi', 'complex'):
             command.add_argument(
                 '--fast-fv',

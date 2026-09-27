@@ -1,7 +1,8 @@
 """Tracking costs for fixed-price evaluation and price optimization.
 
-E[(D-A)^2] = (E[D]-A)^2 + Var(D). State weights are cell probabilities;
-time weights are interval widths. Standard errors use independent path costs.
+E[(D-A)^2] = (E[D]-A)^2 + Var(D). F3-C may additionally penalize
+terminal-state deviation and squared jumps between adjacent held prices.
+State weights are cell probabilities; time weights are interval widths.
 """
 
 from dataclasses import dataclass
@@ -34,6 +35,93 @@ class MonteCarloTrackingResult:
     standard_error: float
     direct_total: float
     maximum_decomposition_error: float
+
+
+@dataclass(frozen=True)
+class ControlPenaltyResult:
+    """Terminal-state and price-jump terms added to the tracking objective."""
+    terminal_mse: float | None
+    terminal: float
+    price_roughness: float
+    smoothing: float
+
+    @property
+    def total(self):
+        return self.terminal + self.smoothing
+
+
+def validate_control_penalty_settings(terminal_reference, terminal_weight, smoothing_weight):
+    """Validate F3-C objective settings without choosing their numerical weights."""
+    terminal_weight = float(terminal_weight)
+    smoothing_weight = float(smoothing_weight)
+    if not np.isfinite(terminal_weight) or terminal_weight < 0.0:
+        raise ValueError('terminal_weight must be finite and non-negative.')
+    if not np.isfinite(smoothing_weight) or smoothing_weight < 0.0:
+        raise ValueError('smoothing_weight must be finite and non-negative.')
+    if terminal_reference is None:
+        if terminal_weight > 0.0:
+            raise ValueError('terminal_reference is required when terminal_weight is positive.')
+        return None, terminal_weight, smoothing_weight
+    terminal_reference = float(terminal_reference)
+    if not np.isfinite(terminal_reference) or not 0.0 <= terminal_reference <= 1.0:
+        raise ValueError('terminal_reference must be finite and lie in [0, 1].')
+    return terminal_reference, terminal_weight, smoothing_weight
+
+
+def terminal_state_mse(state_values, probability_mass, reference):
+    """Return E[(X_T-reference)^2] for one discrete terminal state distribution."""
+    state_values = np.asarray(state_values, dtype=float).reshape(-1)
+    probability_mass = np.asarray(probability_mass, dtype=float).reshape(-1)
+    reference = float(reference)
+    if (
+        state_values.size == 0
+        or probability_mass.size != state_values.size
+        or not np.all(np.isfinite(state_values))
+        or not np.all(np.isfinite(probability_mass))
+        or np.min(probability_mass) < -1e-12
+        or not np.isclose(np.sum(probability_mass), 1.0, atol=1e-09, rtol=0.0)
+        or not np.isfinite(reference)
+    ):
+        raise ValueError('terminal states/masses must define one finite normalized discrete distribution.')
+    return float(np.dot(np.square(state_values - reference), probability_mass))
+
+
+def price_jump_roughness(prices):
+    """Return sum_j (u_j-u_{j-1})^2 for a held-price vector."""
+    prices = np.asarray(prices, dtype=float).reshape(-1)
+    if prices.size == 0 or not np.all(np.isfinite(prices)):
+        raise ValueError('prices must be a finite non-empty vector.')
+    jumps = np.diff(prices)
+    return float(np.dot(jumps, jumps))
+
+
+def control_penalties(
+    state_values,
+    terminal_mass,
+    prices,
+    *,
+    terminal_reference=None,
+    terminal_weight=0.0,
+    smoothing_weight=0.0,
+):
+    """Evaluate the two F3-C additions to the stochastic tracking objective."""
+    terminal_reference, terminal_weight, smoothing_weight = validate_control_penalty_settings(
+        terminal_reference,
+        terminal_weight,
+        smoothing_weight,
+    )
+    roughness = price_jump_roughness(prices)
+    terminal_mse = None
+    terminal = 0.0
+    if terminal_reference is not None:
+        terminal_mse = terminal_state_mse(state_values, terminal_mass, terminal_reference)
+        terminal = terminal_weight * terminal_mse
+    return ControlPenaltyResult(
+        terminal_mse=terminal_mse,
+        terminal=float(terminal),
+        price_roughness=roughness,
+        smoothing=float(smoothing_weight * roughness),
+    )
 
 
 def midpoint_quadrature(interval, *, breakpoints=None, max_step):

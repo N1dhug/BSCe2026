@@ -2,8 +2,8 @@
 
 import numpy as np
 import unittest
-from src.control.objective import (discrete_demand_moments, midpoint_quadrature, monte_carlo_tracking_objective,
-    stochastic_tracking_objective)
+from src.control.objective import (control_penalties, discrete_demand_moments, midpoint_quadrature,
+    monte_carlo_tracking_objective, price_jump_roughness, stochastic_tracking_objective, terminal_state_mse)
 from src.validation.bm_1.mixture import run_objective_reference
 
 class StochasticObjectiveTheoryTests(unittest.TestCase):
@@ -61,6 +61,39 @@ class StochasticObjectiveTheoryTests(unittest.TestCase):
         np.testing.assert_allclose(result.path_objectives, direct_paths, atol=1e-15)
         self.assertLess(result.maximum_decomposition_error, 1e-15)
         self.assertGreater(result.standard_error, 0.0)
+
+    def test_f3_c_penalty_terms_match_direct_definitions(self):
+        states = np.array([0.0, 0.5, 1.0])
+        mass = np.array([0.25, 0.5, 0.25])
+        prices = np.array([0.2, 0.5, 0.1])
+        self.assertAlmostEqual(terminal_state_mse(states, mass, 0.5), 0.125, places=15)
+        self.assertAlmostEqual(price_jump_roughness(prices), 0.25, places=15)
+        penalties = control_penalties(
+            states,
+            mass,
+            prices,
+            terminal_reference=0.5,
+            terminal_weight=0.4,
+            smoothing_weight=0.2,
+        )
+        self.assertAlmostEqual(penalties.terminal_mse, 0.125, places=15)
+        self.assertAlmostEqual(penalties.terminal, 0.05, places=15)
+        self.assertAlmostEqual(penalties.price_roughness, 0.25, places=15)
+        self.assertAlmostEqual(penalties.smoothing, 0.05, places=15)
+        self.assertAlmostEqual(penalties.total, 0.1, places=15)
+
+    def test_f3_c_penalty_settings_reject_invalid_weights(self):
+        states = np.array([0.25, 0.75])
+        mass = np.array([0.5, 0.5])
+        prices = np.array([0.4, 0.6])
+        with self.assertRaises(ValueError):
+            control_penalties(states, mass, prices, terminal_weight=0.1)
+        with self.assertRaises(ValueError):
+            control_penalties(states, mass, prices, terminal_reference=1.2)
+        with self.assertRaises(ValueError):
+            control_penalties(states, mass, prices, terminal_reference=0.5, terminal_weight=-0.1)
+        with self.assertRaises(ValueError):
+            control_penalties(states, mass, prices, terminal_reference=0.5, smoothing_weight=-0.1)
 
 class StochasticObjectiveIntegrationTests(unittest.TestCase):
 

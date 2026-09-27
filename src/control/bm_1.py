@@ -118,6 +118,9 @@ class BM1ControlProblem:
     initial_mass_builder: object
     breakpoints: object = None
     observed_prices: object = None
+    terminal_reference: object = None
+    terminal_weight: float = 0.0
+    price_smoothing_weight: float = 0.0
 
     def __post_init__(self):
         if not callable(self.baseline):
@@ -147,6 +150,11 @@ class BM1ControlProblem:
             observed_prices = checks.validate_prices(
                 self.observed_prices, price_edges.size - 1, name='observed_prices',
             ).copy()
+        terminal_reference, terminal_weight, smoothing_weight = tracking.validate_control_penalty_settings(
+            self.terminal_reference,
+            self.terminal_weight,
+            self.price_smoothing_weight,
+        )
         breakpoints = breakpoints.copy()
         price_edges.setflags(write=False)
         breakpoints.setflags(write=False)
@@ -156,6 +164,9 @@ class BM1ControlProblem:
         object.__setattr__(self, 'price_edges', price_edges)
         object.__setattr__(self, 'breakpoints', breakpoints)
         object.__setattr__(self, 'observed_prices', observed_prices)
+        object.__setattr__(self, 'terminal_reference', terminal_reference)
+        object.__setattr__(self, 'terminal_weight', terminal_weight)
+        object.__setattr__(self, 'price_smoothing_weight', smoothing_weight)
 
     @property
     def n_intervals(self):
@@ -200,6 +211,9 @@ class BM1ControlProblem:
             objective_max_step=numerics.objective_max_step,
             solver_max_step=numerics.solver_max_step,
             breakpoints=self.breakpoints,
+            terminal_reference=self.terminal_reference,
+            terminal_weight=self.terminal_weight,
+            price_smoothing_weight=self.price_smoothing_weight,
         )
         if fast:
             return FastFVStochasticPriceEvaluator(**common, batch_size=batch_size, vectorized=vectorized)
@@ -229,11 +243,16 @@ class BM1ControlProblem:
 
 @dataclass(frozen=True)
 class PriceObjectiveEvaluation:
-    """Computed expected cost, cell-mass history and diagnostics for one price plan."""
+    """Tracking cost, F3-C penalties, density history and diagnostics for one price plan."""
     prices: np.ndarray
     objective: tracking.StochasticTrackingResult
     cell_mass: np.ndarray
     diagnostics: dict
+    penalties: tracking.ControlPenaltyResult
+
+    @property
+    def total(self):
+        return self.objective.total + self.penalties.total
 
 
 @dataclass(frozen=True)
@@ -241,14 +260,26 @@ class FVCostEvaluation:
     """Cost-only evaluation: no full density history is retained."""
     objective: tracking.StochasticTrackingResult
     diagnostics: dict
+    penalties: tracking.ControlPenaltyResult
+
+    @property
+    def total(self):
+        return self.objective.total + self.penalties.total
 
 
 @dataclass(frozen=True)
 class MonteCarloCandidateResult:
-    """MC objective for one candidate plus shared pathwise costs."""
+    """MC tracking result plus pathwise F3-C penalties for one price candidate."""
     prices: np.ndarray
     objective: object
     diagnostics: dict
+    penalties: tracking.ControlPenaltyResult
+    path_objectives: np.ndarray
+    standard_error: float
+
+    @property
+    def total(self):
+        return self.objective.objective.total + self.penalties.total
 
 
 @dataclass(frozen=True)
@@ -313,6 +344,9 @@ class FVStochasticPriceEvaluator:
         objective_max_step,
         solver_max_step,
         breakpoints=None,
+        terminal_reference=None,
+        terminal_weight=0.0,
+        price_smoothing_weight=0.0,
     ):
         """Validate fixed inputs once; prepare the common state grid and time quadrature."""
         self.model = model
@@ -353,12 +387,29 @@ class FVStochasticPriceEvaluator:
         self.solver_max_step = float(solver_max_step)
         if np.isnan(self.solver_max_step) or self.solver_max_step <= 0.0:
             raise ValueError('solver_max_step must be strictly positive.')
+        self.terminal_reference, self.terminal_weight, self.price_smoothing_weight = (
+            tracking.validate_control_penalty_settings(
+                terminal_reference,
+                terminal_weight,
+                price_smoothing_weight,
+            )
+        )
         self.target = np.asarray(model.A(self.midpoints), dtype=float).reshape(-1)
         if self.target.size != self.midpoints.size or not np.all(np.isfinite(self.target)):
             raise ValueError('model target A(t) must return finite midpoint values.')
 
     def validate_prices(self, prices):
         return checks.validate_prices(prices, self.n_intervals)
+
+    def _penalties(self, prices, terminal_mass):
+        return tracking.control_penalties(
+            self.x,
+            terminal_mass,
+            prices,
+            terminal_reference=self.terminal_reference,
+            terminal_weight=self.terminal_weight,
+            smoothing_weight=self.price_smoothing_weight,
+        )
 
     def parameters_for_prices(self, prices):
         """Validate a public candidate and construct its held-price input."""
@@ -388,16 +439,18 @@ class FVStochasticPriceEvaluator:
         expected, second, _ = tracking.discrete_demand_moments(demand_values, midpoint_mass)
         # Integrate expected tracking cost from the two demand moments.
         objective = tracking.stochastic_tracking_objective(self.widths, expected, second, self.target)
+        penalties = self._penalties(prices, cell_mass[-1])
         return PriceObjectiveEvaluation(
             prices=prices.copy(),
             objective=objective,
             cell_mass=cell_mass.copy(),
             diagnostics=dict(diagnostics),
+            penalties=penalties,
         )
 
     def __call__(self, prices):
         """Scalar objective interface for a numerical optimizer."""
-        return self.evaluate(prices).objective.total
+        return self.evaluate(prices).total
 
 
 class FastFVStochasticPriceEvaluator(FVStochasticPriceEvaluator):
@@ -545,8 +598,9 @@ class FastFVStochasticPriceEvaluator(FVStochasticPriceEvaluator):
                         expected[index - 1] = np.sum(values * mass)
                         second[index - 1] = np.sum(np.square(values) * mass)
                         demand_row += 1
-        # Integrate expected tracking cost from the two demand moments.
+        # Integrate expected tracking cost, then add the F3-C terminal/price terms.
         objective = tracking.stochastic_tracking_objective(self.widths, expected, second, self.target)
+        penalties = self._penalties(prices, mass)
         diagnostics = {
             'integration_t': self.integration_t.copy(),
             'output_indices': self.output_indices.copy(),
@@ -562,8 +616,8 @@ class FastFVStochasticPriceEvaluator(FVStochasticPriceEvaluator):
             'saved_density_history': bool(keep_history),
         }
         if keep_history:
-            return PriceObjectiveEvaluation(prices.copy(), objective, history, diagnostics)
-        return FVCostEvaluation(objective, diagnostics)
+            return PriceObjectiveEvaluation(prices.copy(), objective, history, diagnostics, penalties)
+        return FVCostEvaluation(objective, diagnostics, penalties)
 
     def evaluate(self, prices):
         """Return full state history for plots/reference comparisons."""
@@ -574,8 +628,8 @@ class FastFVStochasticPriceEvaluator(FVStochasticPriceEvaluator):
         return self._run(prices, keep_history=False)
 
     def __call__(self, prices):
-        """Return cost only during optimization, without storing a full trajectory."""
-        return self.evaluate_cost(prices).objective.total
+        """Return full F3 control cost without storing a full trajectory."""
+        return self.evaluate_cost(prices).total
 
 
 class DynamicMixturePriceEvaluator:
@@ -640,15 +694,17 @@ class DynamicMixturePriceEvaluator:
             second,
             self.support.target,
         )
+        penalties = self.support._penalties(prices, cell_mass[-1])
         return PriceObjectiveEvaluation(
             prices=prices.copy(),
             objective=objective,
             cell_mass=cell_mass.copy(),
             diagnostics=dict(evolved['diagnostics']),
+            penalties=penalties,
         )
 
     def __call__(self, prices):
-        return self.evaluate(prices).objective.total
+        return self.evaluate(prices).total
 
 
 # Bounded price search and common-random-number assessment.
@@ -799,27 +855,49 @@ def evaluate_mc_candidates_common_random_numbers(
             brownian_increments=dW,
             return_diagnostics=True,
         )
-        _, _, _, _, _, _, _, demand, diagnostics = output
+        _, states, _, _, _, _, _, demand, diagnostics = output
         if diagnostics['total_violations']:
             raise RuntimeError(f'MC validation for {name} produced raw boundary violations.')
+        states = np.asarray(states, dtype=float)
         midpoint_demand = np.asarray(demand, dtype=float)[:, 1:-1]
         objective = tracking.monte_carlo_tracking_objective(
             evaluator.widths,
             midpoint_demand,
             evaluator.target,
         )
+        prices = np.asarray(prices, dtype=float)
+        terminal_states = states[:, -1]
+        path_mass = np.full(terminal_states.size, 1.0 / terminal_states.size, dtype=float)
+        penalties = tracking.control_penalties(
+            terminal_states,
+            path_mass,
+            prices,
+            terminal_reference=evaluator.terminal_reference,
+            terminal_weight=evaluator.terminal_weight,
+            smoothing_weight=evaluator.price_smoothing_weight,
+        )
+        path_objectives = objective.path_objectives.copy()
+        if evaluator.terminal_reference is not None:
+            path_objectives += evaluator.terminal_weight * np.square(
+                terminal_states - evaluator.terminal_reference,
+            )
+        path_objectives += penalties.smoothing
+        standard_error = float(np.std(path_objectives, ddof=1) / np.sqrt(path_objectives.size))
         results[name] = MonteCarloCandidateResult(
-            prices=np.asarray(prices, dtype=float).copy(),
+            prices=prices.copy(),
             objective=objective,
             diagnostics=dict(diagnostics),
+            penalties=penalties,
+            path_objectives=path_objectives,
+            standard_error=standard_error,
         )
     return results
 
 
 def paired_mc_improvement(reference, candidate):
-    """Return mean and SE of pathwise J_reference - J_candidate."""
-    difference = np.asarray(reference.objective.path_objectives, dtype=float) - np.asarray(
-        candidate.objective.path_objectives,
+    """Return mean and SE of paired pathwise full-control cost differences."""
+    difference = np.asarray(reference.path_objectives, dtype=float) - np.asarray(
+        candidate.path_objectives,
         dtype=float,
     )
     return (float(np.mean(difference)), float(np.std(difference, ddof=1) / np.sqrt(difference.size)))

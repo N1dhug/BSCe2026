@@ -89,8 +89,12 @@ class StochasticPriceEvaluatorTests(unittest.TestCase):
             brownian_seed=112)
         self.assertEqual(result['reference'].diagnostics['total_violations'], 0)
         self.assertEqual(result['initial'].diagnostics['total_violations'], 0)
-        self.assertEqual(result['reference'].objective.path_objectives.shape,
-            result['initial'].objective.path_objectives.shape)
+        self.assertEqual(result['reference'].path_objectives.shape,
+            result['initial'].path_objectives.shape)
+        np.testing.assert_array_equal(
+            result['reference'].path_objectives,
+            result['reference'].objective.path_objectives,
+        )
         improvement, standard_error = paired_mc_improvement(result['reference'], result['initial'])
         self.assertTrue(np.isfinite(improvement))
         self.assertTrue(np.isfinite(standard_error))
@@ -136,6 +140,61 @@ class BM1ControlProblemTests(unittest.TestCase):
         fast = problem.evaluate_fixed(INITIAL_PRICES, numerics, fast=True)
         np.testing.assert_allclose(fast.cell_mass, reference.cell_mass, atol=1e-13, rtol=0.0)
         self.assertAlmostEqual(fast.objective.total, reference.objective.total, places=13)
+        self.assertAlmostEqual(fast.total, reference.total, places=13)
+
+    def test_f3_c_penalties_add_to_cost_without_changing_forward_solution(self):
+        numerics = BM1ControlNumerics(x_steps=31, objective_max_step=1.0 / 12.0, solver_max_step=1.0 / 48.0)
+        legacy = self.problem().evaluate_fixed(INITIAL_PRICES, numerics, fast=False)
+        problem = self.problem(
+            terminal_reference=0.5,
+            terminal_weight=0.4,
+            price_smoothing_weight=0.2,
+        )
+        augmented = problem.evaluate_fixed(INITIAL_PRICES, numerics, fast=False)
+        np.testing.assert_array_equal(augmented.cell_mass, legacy.cell_mass)
+        self.assertAlmostEqual(augmented.objective.total, legacy.objective.total, places=14)
+        self.assertAlmostEqual(
+            augmented.penalties.terminal,
+            0.4 * augmented.penalties.terminal_mse,
+            places=15,
+        )
+        expected_roughness = float(np.sum(np.square(np.diff(INITIAL_PRICES))))
+        self.assertAlmostEqual(augmented.penalties.price_roughness, expected_roughness, places=15)
+        self.assertAlmostEqual(augmented.penalties.smoothing, 0.2 * expected_roughness, places=15)
+        self.assertAlmostEqual(
+            augmented.total,
+            augmented.objective.total + augmented.penalties.terminal + augmented.penalties.smoothing,
+            places=15,
+        )
+        evaluator = problem.build_evaluator(numerics, fast=True)
+        fast = evaluator.evaluate(INITIAL_PRICES)
+        self.assertAlmostEqual(fast.total, augmented.total, places=13)
+        self.assertAlmostEqual(evaluator(INITIAL_PRICES), fast.total, places=13)
+
+    def test_f3_c_mc_uses_the_same_augmented_path_cost(self):
+        numerics = BM1ControlNumerics(x_steps=21, objective_max_step=1.0 / 12.0, solver_max_step=1.0 / 48.0)
+        problem = self.problem(
+            terminal_reference=0.5,
+            terminal_weight=0.3,
+            price_smoothing_weight=0.2,
+        )
+        evaluator = problem.build_evaluator(numerics, fast=True)
+        results = evaluate_mc_candidates_common_random_numbers(
+            evaluator,
+            {'candidate': INITIAL_PRICES},
+            n_paths=200,
+            initial_seed=211,
+            brownian_seed=212,
+        )
+        result = results['candidate']
+        self.assertAlmostEqual(result.total, float(np.mean(result.path_objectives)), places=14)
+        self.assertAlmostEqual(
+            result.standard_error,
+            float(np.std(result.path_objectives, ddof=1) / np.sqrt(result.path_objectives.size)),
+            places=15,
+        )
+        self.assertGreater(result.penalties.terminal, 0.0)
+        self.assertGreater(result.penalties.smoothing, 0.0)
 
     def test_observed_prices_are_owned_and_never_used_as_template(self):
         observed = KNOWN_DETERMINISTIC_PRICES.copy()
@@ -182,6 +241,14 @@ class BM1ControlProblemTests(unittest.TestCase):
             self.problem(observed_prices=[0.5])
         with self.assertRaises(ValueError):
             self.problem(breakpoints=[0.0])
+        with self.assertRaises(ValueError):
+            self.problem(terminal_weight=0.1)
+        with self.assertRaises(ValueError):
+            self.problem(terminal_reference=0.5, terminal_weight=-0.1)
+        with self.assertRaises(ValueError):
+            self.problem(terminal_reference=0.5, price_smoothing_weight=-0.1)
+        with self.assertRaises(ValueError):
+            self.problem(terminal_reference=1.1)
         with self.assertRaises(ValueError):
             BM1Parameters(state_response=linear_state_response, price_response=linear_price_response, C=0.0, k=K,
                 Xi=XI, sigma_x=SIGMA_X)

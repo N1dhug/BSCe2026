@@ -1,6 +1,6 @@
 # BM1 — code and run guide
 
-F1, F2, F3-A and F3-B are implemented. F3-C has not started.
+F1, F2, F3-A, F3-B and the F3-C augmented objective are implemented.
 Run all commands from the repository root.
 
 ## Where the code belongs
@@ -58,6 +58,7 @@ python -B -m src.exe.run_model.bm_1.optimize stochastic
 
 python -B -m src.exe.run_model.bm_1.optimize contract
 python -B -m src.exe.run_model.bm_1.optimize contract --optimize
+python -B -m src.exe.run_model.bm_1.optimize augmented --terminal-weight 0.01 --smoothing-weight 0.001
 python -B -m src.exe.run_model.bm_1.optimize multi --fast-fv
 python -B -m src.exe.run_model.bm_1.optimize complex --fast-fv
 python -B -m src.exe.run_model.bm_1.refine

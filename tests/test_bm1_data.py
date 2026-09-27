@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import unittest
 from src.control.bm_1 import MonteCarloCandidateResult
-from src.control.objective import monte_carlo_tracking_objective
+from src.control.objective import control_penalties, monte_carlo_tracking_objective
 from src.tools.bm_1_data import (_complete_day_values, _hourly_hold, _mc_summary, build_day_signals,
     select_representative_days)
 
@@ -33,8 +33,20 @@ class RealDataDailyExperimentTests(unittest.TestCase):
     def test_mc_summary_handles_candidate_wrapper(self):
         tracking = monte_carlo_tracking_objective(np.array([0.5, 0.5], dtype=float),
             np.array([[0.1, 0.2], [0.2, 0.4], [0.3, 0.6]], dtype=float), np.array([0.15, 0.35], dtype=float))
-        candidate = MonteCarloCandidateResult(prices=np.array([0.4, 0.6], dtype=float), objective=tracking,
-            diagnostics={})
+        prices = np.array([0.4, 0.6], dtype=float)
+        penalties = control_penalties(
+            np.array([0.4, 0.5, 0.6]),
+            np.full(3, 1.0 / 3.0),
+            prices,
+        )
+        candidate = MonteCarloCandidateResult(
+            prices=prices,
+            objective=tracking,
+            diagnostics={},
+            penalties=penalties,
+            path_objectives=tracking.path_objectives.copy(),
+            standard_error=tracking.standard_error,
+        )
         summary = _mc_summary(candidate)
         self.assertAlmostEqual(summary['total'], tracking.objective.total)
         self.assertAlmostEqual(summary['standard_error'], tracking.standard_error)

@@ -5,7 +5,7 @@
     """
 
 import platform
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from statistics import median
 from time import perf_counter
 
@@ -33,6 +33,7 @@ KNOWN_DETERMINISTIC_PRICES = np.array([0.72, 0.28], dtype=float)
 INITIAL_PRICES = np.array([0.55, 0.45], dtype=float)
 BASELINE = 0.3
 X0_DETERMINISTIC = 0.5
+F3_C_TERMINAL_REFERENCE = 0.5
 C = 1.0
 K = 2.0
 XI = 1.0
@@ -529,6 +530,58 @@ def run_reference(*, optimize=False, progress=print):
             options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
         )
     return result
+
+
+def build_f3_c_problem(
+    *,
+    terminal_reference=F3_C_TERMINAL_REFERENCE,
+    terminal_weight=0.0,
+    smoothing_weight=0.0,
+):
+    """Extend the F3-A problem with terminal-state and price-jump penalties."""
+    problem, numerics = build_f3_a_problem()
+    problem = replace(
+        problem,
+        terminal_reference=terminal_reference,
+        terminal_weight=terminal_weight,
+        price_smoothing_weight=smoothing_weight,
+    )
+    return problem, numerics
+
+
+def run_f3_c(
+    *,
+    terminal_reference=F3_C_TERMINAL_REFERENCE,
+    terminal_weight=0.0,
+    smoothing_weight=0.0,
+    progress=print,
+):
+    """Optimize the F3-C augmented objective and reevaluate the returned price vector."""
+    problem, numerics = build_f3_c_problem(
+        terminal_reference=terminal_reference,
+        terminal_weight=terminal_weight,
+        smoothing_weight=smoothing_weight,
+    )
+    evaluator = problem.build_evaluator(numerics, fast=True)
+    fixed = evaluator.evaluate(problem.observed_prices)
+    starts = np.vstack(
+        (problem.observed_prices, INITIAL_PRICES, np.full(problem.n_intervals, 0.5, dtype=float)),
+    )
+    optimization = control.multistart_powell(
+        evaluator,
+        starts,
+        progress=progress,
+        options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+    )
+    optimized = evaluator.evaluate(optimization.best.x)
+    return {
+        'problem': problem,
+        'numerics': numerics,
+        'evaluator': evaluator,
+        'fixed': fixed,
+        'optimization': optimization,
+        'optimized': optimized,
+    }
 
 
 def build_pair(model, n_cells):
