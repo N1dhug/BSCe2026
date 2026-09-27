@@ -133,8 +133,8 @@ def main():
         print(f'Saved graph to {graph_path}')
     else:
         print('Results were not written to files; add --save for JSON/plot output.')
-OUTPUT_DIR = ROOT / 'files' / 'output' / 'bm_1'
-GRAPH_DIR = ROOT / 'files' / 'output' / 'graphs' / 'bm_1'
+OUTPUT_DIR = ROOT / 'files' / 'output' / 'bm_1' / 'f3_b'
+GRAPH_DIR = OUTPUT_DIR
 
 
 if __name__ == '__main__':
