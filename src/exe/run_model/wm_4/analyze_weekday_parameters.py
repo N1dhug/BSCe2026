@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_INPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days" / "daily_metrics.csv"
 DEFAULT_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days" / "weekday_parameter_analysis"
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-CORE_PARAMETERS = ["q_0", "q_F", "q_U", "kappa_R"]
+CORE_PARAMETERS = ["r_0", "r_F", "r_U", "r_R"]
 REQUIRED = {
-    "day", "q_0", "q_F", "q_U", "kappa_R",
+    "day", "r_0", "r_F", "r_U", "r_R",
     "wm4_mse", "wm4_rmse", "wm4_mae", "wm4_bias",
     "O_mse", "O_rmse", "O_mae", "O_bias",
 }
