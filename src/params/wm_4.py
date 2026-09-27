@@ -361,16 +361,18 @@ class brute_params:
         if best is not None: best.update({"history": history, "branch": branch, "elapsed": perf_counter() - branch_start})
         return best
 
-    def _search_all(self, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, fit_initial_state, r0_range, verbose, progress_every):
+    def _search_all(self, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, fit_initial_state, r0_range, verbose, progress_every, damping_branch=None):
+        branch_names = ("under", "critical", "over") if damping_branch is None else (str(damping_branch),)
+        if any(branch not in ("under", "critical", "over") for branch in branch_names): raise ValueError("damping_branch must be one of: under, critical, over.")
         branches = {
             branch: self._search_branch(branch, data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, fit_initial_state, r0_range, verbose, progress_every)
-            for branch in ("under", "critical", "over")
+            for branch in branch_names
         }
         valid = [item for item in branches.values() if item is not None]
         if not valid: raise RuntimeError("wm_4 brute-force parameter search found no structurally admissible damping branch candidate.")
         return min(valid, key=lambda item: item["score"]), branches
 
-    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-50.0, -1e-4), ratio_eps=1e-4, ratio_max=10.0, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
+    def fit(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-50.0, -1e-4), ratio_eps=1e-4, ratio_max=10.0, damping_branch=None, fit_initial_state=True, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
         data = self._prepare_data(input_data)
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
         grid_points, refinements, progress_every = int(grid_points), int(refinements), int(progress_every)
@@ -385,7 +387,7 @@ class brute_params:
         if len(r0_range) != 2 or not r0_range[0] < r0_range[1]: raise ValueError("r0_range must contain increasing lower/upper bounds.")
 
         fit_start = perf_counter()
-        best, branches = self._search_all(data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, bool(fit_initial_state), r0_range, verbose, progress_every)
+        best, branches = self._search_all(data, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, bool(fit_initial_state), r0_range, verbose, progress_every, damping_branch=damping_branch)
         result = {**best["result"], "q": best["q"].copy()}
         result["deterministic_state"] = self._state_from_parameters(data, result["init_cond"], result["q"], result["kappa_R"], full=True)
         result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
@@ -397,7 +399,7 @@ class brute_params:
         })
         return result
 
-    def fit_many(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-50.0, -1e-4), ratio_eps=1e-4, ratio_max=10.0, fit_initial_state=False, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
+    def fit_many(self, input_data, initial_conditions, *, grid_points=4, refinements=2, q_f_range=(-50.0, -1e-4), ratio_eps=1e-4, ratio_max=10.0, damping_branch=None, fit_initial_state=False, r0_range=(-1.0, 1.0), fit_diffusion=True, verbose=True, progress_every=25):
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         datasets = [self._prepare_data(data) for data in input_data]
         initial_conditions = wm_4_validation.initial_condition(initial_conditions)
@@ -413,7 +415,7 @@ class brute_params:
         if len(r0_range) != 2 or not r0_range[0] < r0_range[1]: raise ValueError("r0_range must contain increasing lower/upper bounds.")
 
         fit_start = perf_counter()
-        best, branches = self._search_all(datasets, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, bool(fit_initial_state), r0_range, verbose, progress_every)
+        best, branches = self._search_all(datasets, initial_conditions, grid_points, refinements, q_f_range, ratio_eps, ratio_max, bool(fit_initial_state), r0_range, verbose, progress_every, damping_branch=damping_branch)
         result = {**best["result"], "q": best["q"].copy()}
         init_conds = np.asarray(result["init_cond"], dtype=float)
         states = [self._state_from_parameters(data, init_conds[j], result["q"], result["kappa_R"], full=True) for j, data in enumerate(datasets)]
