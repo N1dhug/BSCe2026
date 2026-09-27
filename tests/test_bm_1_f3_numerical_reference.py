@@ -7,6 +7,7 @@ import numpy as np
 from src.exe.run_model.bm_1.f3_a_control_problem_reference import build_f3_a_problem
 from src.exe.run_model.bm_1.f3_b_numerical_reference import (
     _aggregate_brownian_to_grid,
+    _decision_gap_refinement,
     _prefix_statistics,
     fixed_candidates,
     run_coupled_mc_time_refinement,
@@ -115,6 +116,22 @@ class F3BNumericalReferenceTests(unittest.TestCase):
                 fine,
                 np.array([0.0, 0.6, 1.0]),
             )
+
+    def test_decision_gap_refinement_tracks_gap_not_absolute_cost(self):
+        rows = [
+            {"candidate": "deterministic_reference", "level": 1.0, "total": 1.10},
+            {"candidate": "f3_a_stochastic", "level": 1.0, "total": 1.00},
+            {"candidate": "deterministic_reference", "level": 2.0, "total": 1.205},
+            {"candidate": "f3_a_stochastic", "level": 2.0, "total": 1.100},
+        ]
+        result = _decision_gap_refinement(rows, 2.0, 1.0)
+        self.assertAlmostEqual(result["previous_gap"], 0.10)
+        self.assertAlmostEqual(result["finest_gap"], 0.105)
+        self.assertAlmostEqual(result["last_gap_change"], 0.005)
+        self.assertAlmostEqual(
+            result["last_gap_change_over_finest_gap"],
+            0.005 / 0.105,
+        )
 
     def test_prefix_statistics_match_direct_sample_mean_and_se(self):
         values = np.arange(1.0, 9.0)
