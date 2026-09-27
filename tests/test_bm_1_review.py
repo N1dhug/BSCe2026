@@ -24,6 +24,7 @@ class BMReviewCompatibilityTests(unittest.TestCase):
         code = """
 from unittest.mock import patch
 from importlib import import_module
+import matplotlib.pyplot  # Finish pyplot setup before patching Figure.savefig.
 with patch('src.model.bm_1.bm_1.euler_maruyama_solver', side_effect=AssertionError('EM at import')), \\
      patch('src.model.bm_1.bm_1.fokker_planc_reference_solver', side_effect=AssertionError('FV at import')), \\
      patch('matplotlib.figure.Figure.savefig', side_effect=AssertionError('figure at import')):

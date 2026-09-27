@@ -2,14 +2,27 @@ name: BM F1 F2 review
 on:
   push:
     branches: ['refactor/bm-f1-f2-review']
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'root/F1.md'
+      - 'root/F2*.md'
+      - 'root/BM_REVIEW.md'
+      - '.github/workflows/bm-review.yml'
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: bm-review-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   review:
-    if: "!contains(github.event.head_commit.message, '[prepare-review]')"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
     env:
       MPLBACKEND: Agg
       PYTHONDONTWRITEBYTECODE: '1'
@@ -24,13 +37,13 @@ jobs:
           python-version: '3.12'
       - name: Install numerical dependencies
         run: python -m pip install numpy scipy matplotlib pandas openpyxl
-      - name: Record source and baseline
+      - name: Record reviewed source and environment
         run: |
           mkdir -p review-results
           git rev-parse HEAD > review-results/commit.txt
           git archive HEAD src tests root > review-results/source.tar
           python -m pip freeze > review-results/environment.txt
-      - name: Run regression suite
+      - name: Run complete regression suite
         run: python -B -m unittest discover -s tests -v 2>&1 | tee review-results/tests.txt
       - name: Save review evidence
         if: always()
