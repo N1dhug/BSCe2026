@@ -722,3 +722,108 @@ def run_coupled_mc_time_refinement(
             np.sqrt(np.mean(np.square(state_difference))),
         )
     return rows
+
+
+def run_fixed_policy_validation(
+    problem,
+    candidates,
+    *,
+    reference_name,
+    mc_paths,
+    mc_time_paths=0,
+    numerics=REFERENCE_NUMERICS,
+    solver_max_steps=TIME_SOLVER_MAX_STEPS,
+    objective_max_step=None,
+    initial_seed=MC_INITIAL_SEED,
+    brownian_seed=MC_BROWNIAN_SEED,
+    mc_time_initial_seed=MC_TIME_INITIAL_SEED,
+    mc_time_brownian_seed=MC_TIME_BROWNIAN_SEED,
+):
+    """High-resolution FV/MC validation of already-fixed price policies.
+
+    No optimization is performed.  This is useful when candidate policies are
+    so close that the cheaper F3 working resolution cannot resolve their cost
+    difference reliably.
+    """
+    if not isinstance(numerics, BM1ControlNumerics):
+        raise TypeError('numerics must be a BM1ControlNumerics instance.')
+    if isinstance(mc_paths, (bool, np.bool_)) or int(mc_paths) != mc_paths or int(mc_paths) < 2:
+        raise ValueError('mc_paths must be an integer of at least two.')
+    if isinstance(mc_time_paths, (bool, np.bool_)) or int(mc_time_paths) != mc_time_paths or int(mc_time_paths) < 0:
+        raise ValueError('mc_time_paths must be a non-negative integer.')
+    candidates = _validate_candidates(problem, candidates)
+    reference_name = str(reference_name)
+    if reference_name not in candidates:
+        raise ValueError('reference_name must identify one supplied candidate.')
+
+    evaluator = problem.build_evaluator(numerics, fast=True)
+    fv = {name: evaluator.evaluate(prices) for name, prices in candidates.items()}
+    fv_differences = {
+        name: float(fv[name].total - fv[reference_name].total)
+        for name in candidates
+        if name != reference_name
+    }
+
+    mc = evaluate_mc_candidates_common_random_numbers(
+        evaluator,
+        candidates,
+        n_paths=int(mc_paths),
+        initial_seed=initial_seed,
+        brownian_seed=brownian_seed,
+    )
+    paired_mc = {}
+    for name in candidates:
+        if name == reference_name:
+            continue
+        mean, standard_error = paired_mc_improvement(mc[reference_name], mc[name])
+        paired_mc[name] = {
+            'reference_minus_candidate': float(mean),
+            'standard_error': float(standard_error),
+            'ratio': float(mean / standard_error) if standard_error > 0.0 else float('inf'),
+        }
+
+    mc_time = None
+    paired_mc_time = None
+    if int(mc_time_paths) > 0:
+        if objective_max_step is None:
+            objective_max_step = numerics.objective_max_step
+        mc_time = run_coupled_mc_time_refinement(
+            problem,
+            candidates,
+            n_paths=int(mc_time_paths),
+            solver_max_steps=solver_max_steps,
+            objective_max_step=float(objective_max_step),
+            initial_seed=mc_time_initial_seed,
+            brownian_seed=mc_time_brownian_seed,
+        )
+        paired_mc_time = []
+        for step in solver_max_steps:
+            totals = {
+                row['candidate']: float(row['total'])
+                for row in mc_time
+                if np.isclose(row['solver_max_step'], step, atol=0.0, rtol=0.0)
+            }
+            if set(totals) != set(candidates):
+                raise RuntimeError('MC time-refinement output is missing a candidate.')
+            paired_mc_time.append(
+                {
+                    'solver_max_step': float(step),
+                    'reference_minus_candidate': {
+                        name: float(totals[reference_name] - totals[name])
+                        for name in candidates
+                        if name != reference_name
+                    },
+                },
+            )
+
+    return {
+        'reference_name': reference_name,
+        'numerics': numerics,
+        'candidates': candidates,
+        'fv': fv,
+        'fv_differences': fv_differences,
+        'mc': mc,
+        'paired_mc': paired_mc,
+        'mc_time': mc_time,
+        'paired_mc_time': paired_mc_time,
+    }
