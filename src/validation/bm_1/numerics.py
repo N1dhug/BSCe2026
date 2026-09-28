@@ -7,6 +7,7 @@ from src.control.bm_1 import (
     evaluate_mc_candidates_common_random_numbers,
     paired_mc_improvement,
     sample_beta_initial_states,
+    multistart_powell,
 )
 from src.control import objective as tracking
 from src.validation.bm_1 import control as cases
@@ -827,3 +828,50 @@ def run_fixed_policy_validation(
         'mc_time': mc_time,
         'paired_mc_time': paired_mc_time,
     }
+
+
+
+def run_f3_f_high_resolution_validation(
+    problem,
+    candidates,
+    *,
+    mc_paths,
+    mc_time_paths=0,
+    numerics=REFERENCE_NUMERICS,
+    solver_max_steps=TIME_SOLVER_MAX_STEPS,
+    progress=None,
+):
+    """Re-optimize only the FV reference finely, then validate fixed F3-F policies.
+
+    The expensive mixture policy is not optimized again.  The high-resolution
+    FV search uses the F3-B reference numerics so tiny policy regrets are not
+    interpreted relative to the cheaper 201-cell working optimum.
+    """
+    candidates = _validate_candidates(problem, candidates)
+    evaluator = problem.build_evaluator(numerics, fast=True)
+    starts = np.vstack(
+        (
+            cases._reference_starts(problem),
+            *[prices for prices in candidates.values()],
+        ),
+    )
+    optimization = multistart_powell(
+        evaluator,
+        starts,
+        progress=progress,
+        options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+    )
+    all_candidates = {'highres_fv_policy': np.asarray(optimization.best.x, dtype=float).copy()}
+    all_candidates.update(candidates)
+    result = run_fixed_policy_validation(
+        problem,
+        all_candidates,
+        reference_name='highres_fv_policy',
+        mc_paths=mc_paths,
+        mc_time_paths=mc_time_paths,
+        numerics=numerics,
+        solver_max_steps=solver_max_steps,
+        objective_max_step=numerics.objective_max_step,
+    )
+    result['highres_fv_optimization'] = optimization
+    return result
