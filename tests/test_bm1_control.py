@@ -458,6 +458,15 @@ class F3FMixtureControlStructureTests(unittest.TestCase):
             setup['mixture_reference'][MIXTURE_OPT_DEGREE].support.target,
         )
 
+    def test_extreme_valid_price_plan_remains_evaluable_with_mixture_backend(self):
+        setup = build_f3_f_setup()
+        result = setup['mixture_design'].evaluate(np.array([0.0, 0.0]))
+        self.assertTrue(np.isfinite(result.total))
+        self.assertLess(result.diagnostics['maximum_abs_projected_mass_error'], 1e-9)
+        self.assertGreaterEqual(result.diagnostics['minimum_coefficient'], -1e-9)
+        self.assertIn('projection_fallback_count', result.diagnostics)
+
+
     def test_mc_path_count_is_validated_before_running_mixture_study(self):
         with self.assertRaises(ValueError):
             run_f3_f(validate_mc=True, mc_paths=1, progress=None)
