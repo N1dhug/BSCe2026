@@ -2,7 +2,7 @@
 
 ## Status og grundlag
 
-Denne pakke er en **afprøvet kandidat på en separat lokal audit-branch**, ikke en ændring på GitHub/main. Baseline er den mergede commit `a3c0f883de35ee9284284d97dc95caf3a647bea8`. F3-G og F4 er ikke påbegyndt.
+Denne audit er nu **committed og pushed på `audit/bm-f1-f3-performance`**, men er endnu ikke merged til `main`. Baseline er den mergede commit `a3c0f883de35ee9284284d97dc95caf3a647bea8`. F3-G og F4 er ikke påbegyndt.
 
 Kilden er hentet fra det eksisterende GitHub Actions-artifact for run `36489917469`, artifact `11001357177`. Arkivet indeholder en syntetisk PR-mergecommit, men de tre kilde-træer er verificeret identiske med main:
 
@@ -10,7 +10,7 @@ Kilden er hentet fra det eksisterende GitHub Actions-artifact for run `364899174
 - `tests`: `bfbf3cdbe6d2bca333b3a710a3d732f4798d6a2b`;
 - `root`: `6537209c7a3b4ca386d9f4fd9449235c65b24647`.
 
-Der findes faktisk en CI-workflow, `.github/workflows/bm-review.yml`. Den tidligere chatbesked om, at ingen CI var konfigureret, var for kategorisk: et tomt combined-status-svar udelukker ikke GitHub Actions. Baseline havde en vellykket Actions-kørsel. Den nye patch er **kun kørt i dette lokale testmiljø**, ikke på brugerens Windows-installation eller i ny remote CI.
+Der findes faktisk en CI-workflow, `.github/workflows/bm-review.yml`. Den tidligere chatbesked om, at ingen CI var konfigureret, var for kategorisk: et tomt combined-status-svar udelukker ikke GitHub Actions. Baseline havde en vellykket Actions-kørsel. Audit-kandidaten er efterfølgende også valideret på brugerens Windows/Python 3.11-installation; ny remote CI af audit-committen afventes via pull request.
 
 ## Omfang
 
@@ -44,6 +44,65 @@ Baseline er median af fem gentagelser, release-kandidaten median af syv. Der er 
 
 
 Den store, robuste gevinst ligger i **dynamic mixture**, ikke i en påstand om, at alle dele af projektet bliver lige meget hurtigere. I den gennemførte end-to-end F3-F-kørsel tog selve mixture-optimeringen 117,15 sekunder, og hele F3-F inkl. fælles reevaluering/MC tog 136,83 sekunder. Dette er kandidatens målte wall time, ikke et kontrolleret før/efter-speedup for hele workflowet. Kørselstiden fra brugerens tidligere Windows-log er ikke brugt som nævner.
+
+### Windows-validering efter push
+
+Efter den lokale audit blev præcis samme patch anvendt på en ren `main` ved commit
+`a3c0f883de35ee9284284d97dc95caf3a647bea8`, committed som
+`0e322ec` og pushed til `audit/bm-f1-f3-performance`. På Windows med Python
+3.11 bestod den komplette suite med **200/200 tests** på 36,833 s, og
+`git diff --check` var ren.
+
+Den vigtigste end-to-end F3-F-kørsel blev derefter gentaget med de samme grids,
+CFL- og Powell-indstillinger. FV-201 og FV-81 reproducerede de eksisterende
+policies præcist til de viste cifre. Degree-30 mixture-optimeringen brugte 376
+objective evaluations mod 375 i den tidligere referencekørsel, men faldt fra
+omtrent **651 s til 32,1 s** på samme bruger-maskine, altså cirka **20,3x**
+hurtigere for selve mixture-optimeringen. Hele `mixture-control --no-mc
+--verbose` tog 41,93 s.
+
+Den nye afrundede mixture-policy var
+
+\[
+(0.735935,\;0.263606),
+\]
+
+kun cirka \(3.1\times10^{-5}\) væk i største komponent fra den tidligere
+viste policy. De dynamiske M=30/81-, M=30/201- og M=38/201-resultater bevarede
+masse på omtrent maskinpræcision, og de afsluttende M=30 og M=38
+referenceevalueringer rapporterede **0 projection fallbacks**. De rå Hessian
+condition numbers er fortsat omkring \(3.16\times10^{16}\) og
+\(1.04\times10^{17}\); auditten skjuler dem ikke, men undgår at bruge det
+dårligt konditionerede Gram/KKT-system som den gentagne primære solve.
+
+Den samme nye mixture-policy blev derefter valideret med FV-801 og 20.000-path
+common-random-number MC. High-resolution FV-regret var
+
+\[
+2.36820466\times10^{-6},
+\]
+
+cirka **0,03611%** af referenceobjective. Paired MC gav
+
+\[
+J_{FV,801}-J_{mix}=-2.24879020\times10^{-6},
+\qquad
+SE=6.381\times10^{-7},
+\]
+
+så forskellen mellem FV-regret og MC-estimatets størrelse er kun cirka
+\(1.19\times10^{-7}\), omtrent 0,19 paired SE. Den koblede tidsrefinement
+viste samtidig både requested og faktisk maksimal stepstørrelse; sidste
+mixture-gap ændrede sig fra \(-1.82069913\times10^{-6}\) til
+\(-1.85926175\times10^{-6}\).
+
+En bred Windows-smoke-test bestod desuden F1-D deterministic recovery, F3-C med
+\((\lambda_T,\lambda_U)=(0.03,0.003)\), F3-D med 5.000-path paired MC,
+alle fire F3-E uncertainty-scenarier og det komplekse 2/4/6/12/24-prisforsøg
+med fast FV. Alle rapporterede optimizers lykkedes fra deres respektive starts,
+og F3-E-regretmatricen var ikke-negativ. Dette er den afsluttende
+platformsvalidering før PR/CI; der foretages ikke yderligere numeriske
+mikrooptimeringer uden ny evidens for en reel gevinst.
 
 ### Iterationer og stopkriterium
 
