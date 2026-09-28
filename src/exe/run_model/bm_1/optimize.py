@@ -426,12 +426,12 @@ def run_mixture_validation(args):
         'fv_design_policy': np.asarray(args.fv_design_prices, dtype=float),
         'mixture_policy': np.asarray(args.mixture_prices, dtype=float),
     }
-    result = numerical_reference.run_fixed_policy_validation(
+    result = numerical_reference.run_f3_f_high_resolution_validation(
         problem,
         candidates,
-        reference_name='fv_reference_policy',
         mc_paths=args.mc_paths,
         mc_time_paths=args.mc_time_paths,
+        progress=print if args.verbose else None,
     )
     numerics = result['numerics']
     print('F3-F fixed-policy high-resolution validation')
@@ -442,17 +442,19 @@ def run_mixture_validation(args):
     )
     for name, prices in result['candidates'].items():
         print(f'{name:20s} {_prices(prices)}')
+    print('High-resolution FV optimizer: ', end='')
+    _solver_summary(result['highres_fv_optimization'])
 
-    print('High-resolution FV totals and differences from FV-reference policy')
-    reference_total = result['fv']['fv_reference_policy'].total
-    print(f'  fv_reference_policy total={reference_total:.8e}; difference=0.00000000e+00')
-    for name in ('fv_design_policy', 'mixture_policy'):
+    print('High-resolution FV totals and differences from high-resolution FV optimum')
+    reference_total = result['fv']['highres_fv_policy'].total
+    print(f'  highres_fv_policy    total={reference_total:.8e}; difference=0.00000000e+00')
+    for name in ('fv_reference_policy', 'fv_design_policy', 'mixture_policy'):
         print(
             f'  {name:20s} total={result["fv"][name].total:.8e}; '
             f'difference={result["fv_differences"][name]:.8e}',
         )
 
-    print('High-resolution paired MC: FV-reference minus candidate')
+    print('High-resolution paired MC: high-resolution FV minus candidate')
     for name, paired in result['paired_mc'].items():
         print(
             f'  {name:20s} difference={paired["reference_minus_candidate"]:.8e}; '
@@ -460,12 +462,13 @@ def run_mixture_validation(args):
         )
 
     if result['paired_mc_time'] is not None:
-        print('Coupled MC time refinement: FV-reference minus candidate')
-        print('  max_step        FV_81             mixture')
+        print('Coupled MC time refinement: high-resolution FV minus candidate')
+        print('  max_step        FV_201            FV_81             mixture')
         for row in result['paired_mc_time']:
             values = row['reference_minus_candidate']
             print(
                 f'  {row["solver_max_step"]:<14.8f} '
+                f'{values["fv_reference_policy"]: .8e} '
                 f'{values["fv_design_policy"]: .8e} '
                 f'{values["mixture_policy"]: .8e}',
             )
