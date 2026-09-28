@@ -1,6 +1,6 @@
 # BM1 — code and run guide
 
-F1, F2, F3-A through F3-E, and the F3-F FV/mixture control-comparison workflow are implemented.
+F1, F2 and F3-A through F3-F are implemented and locally validated.
 Run all commands from the repository root.
 
 ## Where the code belongs
@@ -81,7 +81,7 @@ F3-D optimizes a deterministic point-state controller and the stochastic FV cont
 
 F3-E separates the two uncertainty sources into deterministic, initial-only, process-only and full cases, optimizes each independently and cross-evaluates the four returned policies. Compare policies within a fixed model row; objective levels across rows use different state laws.
 
-F3-F optimizes FV at both 201 and 81 cells plus the degree-30 dynamic mixture at the matched 81-cell design grid. This separates the FV grid effect from the additional mixture-method effect before all three fixed policies are reevaluated on common 201-cell FV and degree-30/38 mixture references. Because the resulting policy gaps are only a few 10^-6, the final `mixture-validate` step re-optimizes only the cheap FV reference at the F3-B high-resolution settings and checks the already-fixed policies with fine common-random-number MC and coupled EM time refinement; it does not rerun the expensive mixture optimizer.
+F3-F optimizes FV at both 201 and 81 cells plus the degree-30 dynamic mixture at the matched 81-cell design grid. The final `mixture-validate` step re-optimizes only FV at the F3-B high-resolution settings (801 cells, objective step 1/192, FV step 1/384) and checks the already-fixed policies with common-random-number MC and coupled EM refinement. In the retained validation the mixture policy has high-resolution FV regret 2.33e-6, about 0.0356% of the reference objective, and the 20,000-path paired MC difference is -2.21e-6 with SE 6.34e-7 under the convention FV-reference minus candidate. F3-F is therefore closed for the controlled two-price benchmark; the policies are not numerically identical, but their achieved control quality is very close.
 
 Mixture/conditioning and full multi-price optimization can be expensive. Their
 numerical settings are not reduced just to make an output report shorter.
