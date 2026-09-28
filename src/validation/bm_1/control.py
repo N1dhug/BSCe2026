@@ -11,10 +11,11 @@ from time import perf_counter
 
 import numpy as np
 import scipy
+from src.validation.control import positive_integer
 from scipy.interpolate import PchipInterpolator
 
 from src.control import bm_1 as control
-from src.control.objective import monte_carlo_tracking_objective
+from src.control.objective import monte_carlo_tracking_objective, standard_error_ratio
 from src.model.bm_1 import bm_1
 from src.tools.input_generator.input_builder import input_builder
 from src.validation.bm_1.cases import (
@@ -187,7 +188,7 @@ class PriceCase:
 
 
 def _edges(n_intervals):
-    n_intervals = int(n_intervals)
+    n_intervals = positive_integer(n_intervals, 'n_intervals', 1)
     if n_intervals < 1 or 24 % n_intervals != 0:
         raise ValueError('n_intervals must be a positive divisor of 24.')
     return np.linspace(T[0], T[1], n_intervals + 1, dtype=float)
@@ -206,7 +207,7 @@ def complex_parameters_for_prices(edges, prices):
 
 def _coarsen_reference_prices(n_intervals):
     """Average the 24 hourly reference prices inside each candidate interval."""
-    n_intervals = int(n_intervals)
+    n_intervals = positive_integer(n_intervals, 'n_intervals', 1)
     if n_intervals < 1 or 24 % n_intervals != 0:
         raise ValueError('n_intervals must divide 24.')
     block = 24 // n_intervals
@@ -335,13 +336,7 @@ def _verify_common_numerical_partition(evaluators):
 
 
 def _paired_improvement(reference, candidate):
-    difference = np.asarray(reference.path_objectives, dtype=float) - np.asarray(
-        candidate.path_objectives,
-        dtype=float,
-    )
-    mean = float(np.mean(difference))
-    se = float(np.std(difference, ddof=1) / np.sqrt(difference.size))
-    return (mean, se)
+    return control.paired_mc_improvement(reference, candidate)
 
 
 def _optimize_price_cases(evaluators, interval_counts, starts_for_case, progress):
@@ -402,7 +397,7 @@ def run_complex_target_experiment(progress=print, validate_mc=True, *, fast_fv=F
 
 
 def multi_edges(n_intervals):
-    n_intervals = int(n_intervals)
+    n_intervals = positive_integer(n_intervals, 'n_intervals', 1)
     if n_intervals < 1:
         raise ValueError('n_intervals must be positive.')
     return np.linspace(T[0], T[1], n_intervals + 1, dtype=float)
@@ -411,7 +406,7 @@ def multi_edges(n_intervals):
 def _lift_half_day_prices(two_prices, n_intervals):
     """Represent one first-half and one second-half price on an even grid."""
     two_prices = np.asarray(two_prices, dtype=float).reshape(-1)
-    n_intervals = int(n_intervals)
+    n_intervals = positive_integer(n_intervals, 'n_intervals', 1)
     if two_prices.size != 2:
         raise ValueError('two_prices must contain exactly two values.')
     if n_intervals < 2 or n_intervals % 2:
@@ -1089,7 +1084,7 @@ def run_f3_f(
             paired_mc[name] = {
                 'reference_minus_candidate': float(difference),
                 'standard_error': float(standard_error),
-                'ratio': float(difference / standard_error) if standard_error > 0.0 else float('inf'),
+                'ratio': standard_error_ratio(difference, standard_error),
             }
 
     return {

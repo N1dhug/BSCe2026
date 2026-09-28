@@ -87,5 +87,17 @@ class RealDataDailyExperimentTests(unittest.TestCase):
         self.assertLess(means[1], means[2])
 
 
+class AuditSerializationTests(unittest.TestCase):
+
+    def test_strict_json_replaces_nested_nonfinite_diagnostics_with_null(self):
+        import json
+        from src.tools.bm_1_data import _json_safe
+        payload = {'correlation': float('nan'), 'values': np.array([1., np.inf]),
+                   'nested': [np.float64('-inf'), {'ok': np.int64(3)}]}
+        safe = _json_safe(payload)
+        self.assertEqual(json.loads(json.dumps(safe, allow_nan=False)),
+                         {'correlation': None, 'values': [1., None], 'nested': [None, {'ok': 3}]})
+
+
 if __name__ == '__main__':
     unittest.main()

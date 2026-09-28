@@ -202,3 +202,12 @@ https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.htm
 
 All speed/memory values above are this project's measured experiments, not
 performance claims taken from these external documents.
+
+
+## Post-F3-F audit
+
+The later, separately tested F1-A–F3-F audit is documented in
+`BM_AUDIT_F1_F3.md`. It addresses the dynamic-mixture bottleneck identified
+above, preserves the shared solvers, and includes fixed-input before/after
+benchmarks plus numerical and full-control regressions. The earlier timings
+above are retained as historical evidence, not overwritten with new timings.

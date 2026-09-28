@@ -1,15 +1,17 @@
-"""F3-B fixed-policy numerical refinement; no re-optimization and no file I/O."""
+"""BM fixed-policy refinement and F3-F fine-FV reference search; no file I/O."""
 
 import numpy as np
 
 from src.control.bm_1 import (
     BM1ControlNumerics,
+    beta_initial_cell_mass,
     evaluate_mc_candidates_common_random_numbers,
     paired_mc_improvement,
     sample_beta_initial_states,
     multistart_powell,
 )
 from src.control import objective as tracking
+from src.validation.control import positive_integer
 from src.validation.bm_1 import control as cases
 
 
@@ -40,6 +42,43 @@ MC_TIME_BROWNIAN_SEED = 2064
 MC_PREFIX_COUNTS = (1000, 5000, 10000, 20000)
 
 
+def _validation_counts(mc_paths, mc_time_paths):
+    paths = positive_integer(mc_paths, 'mc_paths', 2)
+    time_paths = positive_integer(mc_time_paths, 'mc_time_paths', 0)
+    if time_paths == 1:
+        raise ValueError('mc_time_paths must be zero or at least two.')
+    return paths, time_paths
+
+
+def _validated_time_steps(solver_max_steps):
+    steps = tuple(float(value) for value in solver_max_steps)
+    if (len(steps) < 2 or not np.all(np.isfinite(steps))
+            or any(value <= 0.0 for value in steps)
+            or any(right >= left for left, right in zip(steps[:-1], steps[1:]))):
+        raise ValueError('solver_max_steps must be finite, positive and strictly decreasing.')
+    for coarse, fine in zip(steps[:-1], steps[1:]):
+        ratio = coarse / fine
+        if not np.isfinite(ratio) or not np.isclose(ratio, round(ratio), atol=1e-12, rtol=1e-12):
+            raise ValueError('successive EM max-step levels must have integer refinement ratios.')
+    return steps
+
+
+def _initial_sampler_for_problem(problem, evaluator, initial_sampler):
+    """Do not silently use Beta(20,20) MC for a different supplied initial law.
+
+    Matching cell masses is a guard, not proof of equality of arbitrary laws.
+    A custom sampler's correspondence with its mass builder remains a caller contract.
+    """
+    if initial_sampler is not None:
+        if not callable(initial_sampler):
+            raise TypeError('initial_sampler must be callable.')
+        return initial_sampler
+    expected = beta_initial_cell_mass(evaluator.edges)
+    if not np.allclose(evaluator.initial_mass, expected, atol=1e-12, rtol=0.0):
+        raise ValueError('Supply initial_sampler matching the non-default initial_mass_builder.')
+    return sample_beta_initial_states
+
+
 def fixed_candidates(problem):
     """Return the three fixed F3-B price vectors."""
     return {
@@ -63,6 +102,8 @@ def _validate_candidates(problem, candidates):
             raise ValueError(
                 'every candidate must have a non-empty name and one finite price in [0,1] per problem interval.',
             )
+        if str(name) in validated:
+            raise ValueError('candidate names must remain unique when converted to strings.')
         validated[str(name)] = values.copy()
     if not validated:
         raise ValueError('at least one fixed candidate is required.')
@@ -357,6 +398,10 @@ def _decision_gap_refinement(rows, finest_level, previous_level):
 
 def run_f3_b_reference(*, mc_paths=0, mc_time_paths=0, progress=print):
     """Run the fixed-candidate F3-B numerical refinement workflow."""
+    mc_paths = positive_integer(mc_paths, 'mc_paths', 0)
+    mc_time_paths = positive_integer(mc_time_paths, 'mc_time_paths', 0)
+    if mc_paths == 1 or mc_time_paths == 1:
+        raise ValueError('MC counts must be zero or at least two.')
     problem, _ = cases.build_f3_a_problem()
     candidates = fixed_candidates(problem)
 
@@ -421,7 +466,7 @@ def run_spatial_refinement(
 ):
     """Refine FV state space with all time/objective settings held fixed."""
     candidates = _validate_candidates(problem, candidates)
-    x_steps = tuple((int(value) for value in x_steps))
+    x_steps = tuple(positive_integer(value, 'x_steps', 3) for value in x_steps)
     if len(x_steps) < 2 or any((value < 3 for value in x_steps)):
         raise ValueError('x_steps must contain at least two cell counts >= 3.')
     if any((right <= left for left, right in zip(x_steps[:-1], x_steps[1:]))):
@@ -577,13 +622,13 @@ def run_final_mc_comparison(
     prefix_counts=MC_PREFIX_COUNTS,
     initial_seed=MC_INITIAL_SEED,
     brownian_seed=MC_BROWNIAN_SEED,
+    initial_sampler=None,
 ):
     """Compare provisional high-resolution FV against common-random-number MC."""
-    n_paths = int(n_paths)
-    if n_paths < 2:
-        raise ValueError('n_paths must be at least two.')
+    n_paths = positive_integer(n_paths, 'n_paths', 2)
     candidates = _validate_candidates(problem, candidates)
     evaluator = problem.build_evaluator(numerics, fast=True)
+    initial_sampler = _initial_sampler_for_problem(problem, evaluator, initial_sampler)
     fv = {name: evaluator.evaluate(prices) for name, prices in candidates.items()}
     mc = evaluate_mc_candidates_common_random_numbers(
         evaluator,
@@ -591,14 +636,15 @@ def run_final_mc_comparison(
         n_paths=n_paths,
         initial_seed=initial_seed,
         brownian_seed=brownian_seed,
+        initial_sampler=initial_sampler,
     )
     rows = []
     prefixes = {}
     for name in candidates:
-        fv_total = float(fv[name].objective.total)
+        fv_total = float(fv[name].total)
         objective = mc[name].objective
-        mc_total = float(objective.objective.total)
-        se = float(objective.standard_error)
+        mc_total = float(mc[name].total)
+        se = float(mc[name].standard_error)
         rows.append(
             {
                 'candidate': name,
@@ -618,7 +664,7 @@ def run_final_mc_comparison(
         counts = sorted(
             set((int(value) for value in prefix_counts if 2 <= int(value) <= n_paths)) | {n_paths},
         )
-        prefixes[name] = _prefix_statistics(objective.path_objectives, counts)
+        prefixes[name] = _prefix_statistics(mc[name].path_objectives, counts)
     paired = {}
     reference_name = 'deterministic_reference'
     if reference_name in mc:
@@ -629,99 +675,92 @@ def run_final_mc_comparison(
             paired[name] = {
                 'mean_reference_minus_candidate': float(mean),
                 'standard_error': float(se),
-                'ratio': float(mean / se) if se > 0.0 else float('inf'),
+                'ratio': tracking.standard_error_ratio(mean, se),
             }
     return {'rows': rows, 'prefixes': prefixes, 'paired_improvement': paired}
 
 
 def run_coupled_mc_time_refinement(
-    problem,
-    candidates,
-    *,
-    n_paths,
-    solver_max_steps=TIME_SOLVER_MAX_STEPS,
+    problem, candidates, *, n_paths, solver_max_steps=TIME_SOLVER_MAX_STEPS,
     objective_max_step=TIME_OBJECTIVE_MAX_STEP,
-    initial_seed=MC_TIME_INITIAL_SEED,
-    brownian_seed=MC_TIME_BROWNIAN_SEED,
+    initial_seed=MC_TIME_INITIAL_SEED, brownian_seed=MC_TIME_BROWNIAN_SEED,
+    initial_sampler=None, reference_name=None,
 ):
-    """Refine EM time using the same paths with summed fine Wiener increments."""
-    n_paths = int(n_paths)
-    if n_paths < 2:
-        raise ValueError('n_paths must be at least two.')
+    """Refine complete F3 path costs on nested, common-random-number EM grids.
+
+    Nominal max_step is a bound, not necessarily the actual maximum step:
+    quadrature outputs/breakpoints and nesting may force smaller intervals.
+    """
+    n_paths = positive_integer(n_paths, 'n_paths', 2)
     candidates = _validate_candidates(problem, candidates)
-    steps = tuple((float(value) for value in solver_max_steps))
-    if (
-        len(steps) < 2
-        or any((value <= 0.0 for value in steps))
-        or any((right >= left for left, right in zip(steps[:-1], steps[1:])))
-    ):
-        raise ValueError('solver_max_steps must be strictly decreasing.')
-    evaluators = {}
-    for step in steps:
-        numerics = BM1ControlNumerics(
-            x_steps=31,
-            objective_max_step=objective_max_step,
-            solver_max_step=step,
-        )
-        evaluators[step] = problem.build_evaluator(numerics, fast=True)
+    steps = _validated_time_steps(solver_max_steps)
+    if reference_name is not None and reference_name not in candidates:
+        raise ValueError('reference_name must identify one supplied candidate.')
+    numerics = BM1ControlNumerics(
+        x_steps=31, objective_max_step=objective_max_step, solver_max_step=steps[-1],
+    )
+    # Grids differ only in integration time; one common support defines outputs/costs.
+    evaluator = problem.build_evaluator(numerics, fast=True)
+    initial_sampler = _initial_sampler_for_problem(problem, evaluator, initial_sampler)
+    model = evaluator.model
+    initial_states = np.asarray(initial_sampler(n_paths, initial_seed), dtype=float)
+    if (initial_states.shape != (n_paths,) or not np.all(np.isfinite(initial_states))
+            or np.any(initial_states < 0.0) or np.any(initial_states > 1.0)):
+        raise ValueError('initial_sampler must return one finite state in [0, 1] per path.')
+    grids = _nested_em_time_grids(evaluator.solver_t_eval, evaluator.breakpoints, steps)
     finest_step = steps[-1]
-    finest = evaluators[finest_step]
-    for evaluator in evaluators.values():
-        np.testing.assert_allclose(evaluator.solver_t_eval, finest.solver_t_eval, atol=0.0, rtol=0.0)
-    model = finest.model
-    initial_states = sample_beta_initial_states(n_paths, initial_seed)
-    integration_grids = _nested_em_time_grids(finest.solver_t_eval, finest.breakpoints, steps)
-    fine_t = integration_grids[finest_step]
+    fine_t = grids[finest_step]
     fine_dW = model.euler_maruyama.brownian_increments(fine_t, n_paths=n_paths, seed=brownian_seed)
-    rows = []
-    path_costs = {}
-    terminal_states = {}
-    integration_steps = {}
+    rows, path_costs, terminal_states = [], {}, {}
     for step in steps:
-        evaluator = evaluators[step]
-        integration_t = integration_grids[step]
+        integration_t = grids[step]
         dW = _aggregate_brownian_to_grid(fine_t, fine_dW, integration_t)
-        integration_steps[step] = int(integration_t.size - 1)
         for name, prices in candidates.items():
             parameters = evaluator.parameters_for_prices(prices)
             state, demand, diagnostics = _em_outputs_on_integration_grid(
-                model,
-                evaluator,
-                parameters,
-                initial_states,
-                integration_t,
-                dW,
+                model, evaluator, parameters, initial_states, integration_t, dW,
             )
-            midpoint_demand = np.asarray(demand, dtype=float)[:, 1:-1]
+            if diagnostics['total_violations']:
+                raise RuntimeError(f'Coupled MC validation for {name} produced raw boundary violations.')
             objective = tracking.monte_carlo_tracking_objective(
-                evaluator.widths,
-                midpoint_demand,
-                evaluator.target,
+                evaluator.widths, np.asarray(demand, dtype=float)[:, 1:-1], evaluator.target,
+            )
+            costs, penalties = tracking.full_control_path_costs(
+                objective.path_objectives, state[:, -1], prices,
+                terminal_reference=problem.terminal_reference,
+                terminal_weight=problem.terminal_weight,
+                smoothing_weight=problem.price_smoothing_weight,
             )
             key = (name, step)
-            path_costs[key] = objective.path_objectives
-            terminal_states[key] = np.asarray(state, dtype=float)[:, -1]
-            rows.append(
-                {
-                    'candidate': name,
-                    'solver_max_step': step,
-                    'n_paths': n_paths,
-                    'integration_steps': integration_steps[step],
-                    'total': float(objective.objective.total),
-                    'standard_error': float(objective.standard_error),
-                    'raw_boundary_violations': int(diagnostics['total_violations']),
-                },
-            )
+            path_costs[key] = costs
+            terminal_states[key] = np.asarray(state, dtype=float)[:, -1].copy()
+            rows.append({
+                'candidate': name, 'solver_max_step': step, 'n_paths': n_paths,
+                'integration_steps': int(integration_t.size - 1),
+                'actual_max_step': float(np.max(np.diff(integration_t))),
+                'total': float(objective.objective.total + penalties.total),
+                'tracking': float(objective.objective.total),
+                'penalty_total': float(penalties.total),
+                'standard_error': float(np.std(costs, ddof=1) / np.sqrt(n_paths)),
+                'raw_boundary_violations': int(diagnostics['total_violations']),
+            })
     for row in rows:
-        name = row['candidate']
-        step = row['solver_max_step']
-        cost_difference = path_costs[name, step] - path_costs[name, finest_step]
-        state_difference = terminal_states[name, step] - terminal_states[name, finest_step]
-        row['mean_path_cost_difference_to_finest'] = float(np.mean(cost_difference))
-        row['se_path_cost_difference_to_finest'] = float(np.std(cost_difference, ddof=1) / np.sqrt(n_paths))
-        row['rms_terminal_state_difference_to_finest'] = float(
-            np.sqrt(np.mean(np.square(state_difference))),
-        )
+        name, step = row['candidate'], row['solver_max_step']
+        mean, se = tracking.paired_path_statistics(path_costs[name, step], path_costs[name, finest_step])
+        row['mean_path_cost_difference_to_finest'] = mean
+        row['se_path_cost_difference_to_finest'] = se
+        row['rms_terminal_state_difference_to_finest'] = float(np.sqrt(np.mean(np.square(
+            terminal_states[name, step] - terminal_states[name, finest_step],
+        ))))
+        if reference_name is not None:
+            mean, se = tracking.paired_path_statistics(path_costs[reference_name, step], path_costs[name, step])
+            row['reference_minus_candidate'] = mean
+            row['paired_standard_error'] = se
+            gap = path_costs[reference_name, step] - path_costs[name, step]
+            finest_gap = path_costs[reference_name, finest_step] - path_costs[name, finest_step]
+            mean, se = tracking.paired_path_statistics(gap, finest_gap)
+            row['paired_gap_change_to_finest'] = mean
+            row['se_paired_gap_change_to_finest'] = se
     return rows
 
 
@@ -739,6 +778,7 @@ def run_fixed_policy_validation(
     brownian_seed=MC_BROWNIAN_SEED,
     mc_time_initial_seed=MC_TIME_INITIAL_SEED,
     mc_time_brownian_seed=MC_TIME_BROWNIAN_SEED,
+    initial_sampler=None,
 ):
     """High-resolution FV/MC validation of already-fixed price policies.
 
@@ -748,16 +788,16 @@ def run_fixed_policy_validation(
     """
     if not isinstance(numerics, BM1ControlNumerics):
         raise TypeError('numerics must be a BM1ControlNumerics instance.')
-    if isinstance(mc_paths, (bool, np.bool_)) or int(mc_paths) != mc_paths or int(mc_paths) < 2:
-        raise ValueError('mc_paths must be an integer of at least two.')
-    if isinstance(mc_time_paths, (bool, np.bool_)) or int(mc_time_paths) != mc_time_paths or int(mc_time_paths) < 0:
-        raise ValueError('mc_time_paths must be a non-negative integer.')
+    mc_paths, mc_time_paths = _validation_counts(mc_paths, mc_time_paths)
+    if mc_time_paths:
+        solver_max_steps = _validated_time_steps(solver_max_steps)
     candidates = _validate_candidates(problem, candidates)
     reference_name = str(reference_name)
     if reference_name not in candidates:
         raise ValueError('reference_name must identify one supplied candidate.')
 
     evaluator = problem.build_evaluator(numerics, fast=True)
+    initial_sampler = _initial_sampler_for_problem(problem, evaluator, initial_sampler)
     fv = {name: evaluator.evaluate(prices) for name, prices in candidates.items()}
     fv_differences = {
         name: float(fv[name].total - fv[reference_name].total)
@@ -771,6 +811,7 @@ def run_fixed_policy_validation(
         n_paths=int(mc_paths),
         initial_seed=initial_seed,
         brownian_seed=brownian_seed,
+        initial_sampler=initial_sampler,
     )
     paired_mc = {}
     for name in candidates:
@@ -780,7 +821,7 @@ def run_fixed_policy_validation(
         paired_mc[name] = {
             'reference_minus_candidate': float(mean),
             'standard_error': float(standard_error),
-            'ratio': float(mean / standard_error) if standard_error > 0.0 else float('inf'),
+            'ratio': tracking.standard_error_ratio(mean, standard_error),
         }
 
     mc_time = None
@@ -796,26 +837,21 @@ def run_fixed_policy_validation(
             objective_max_step=float(objective_max_step),
             initial_seed=mc_time_initial_seed,
             brownian_seed=mc_time_brownian_seed,
+            initial_sampler=initial_sampler,
+            reference_name=reference_name,
         )
         paired_mc_time = []
         for step in solver_max_steps:
-            totals = {
-                row['candidate']: float(row['total'])
-                for row in mc_time
-                if np.isclose(row['solver_max_step'], step, atol=0.0, rtol=0.0)
-            }
-            if set(totals) != set(candidates):
-                raise RuntimeError('MC time-refinement output is missing a candidate.')
-            paired_mc_time.append(
-                {
-                    'solver_max_step': float(step),
-                    'reference_minus_candidate': {
-                        name: float(totals[reference_name] - totals[name])
-                        for name in candidates
-                        if name != reference_name
-                    },
-                },
-            )
+            selected = {row['candidate']: row for row in mc_time if row['solver_max_step'] == step}
+            paired_mc_time.append({
+                'solver_max_step': float(step),
+                'actual_max_step': selected[reference_name]['actual_max_step'],
+                'integration_steps': selected[reference_name]['integration_steps'],
+                'reference_minus_candidate': {name: row['reference_minus_candidate'] for name, row in selected.items() if name != reference_name},
+                'standard_errors': {name: row['paired_standard_error'] for name, row in selected.items() if name != reference_name},
+                'gap_changes_to_finest': {name: row['paired_gap_change_to_finest'] for name, row in selected.items() if name != reference_name},
+                'gap_change_standard_errors': {name: row['se_paired_gap_change_to_finest'] for name, row in selected.items() if name != reference_name},
+            })
 
     return {
         'reference_name': reference_name,
@@ -840,6 +876,7 @@ def run_f3_f_high_resolution_validation(
     numerics=REFERENCE_NUMERICS,
     solver_max_steps=TIME_SOLVER_MAX_STEPS,
     progress=None,
+    initial_sampler=None,
 ):
     """Re-optimize only the FV reference finely, then validate fixed F3-F policies.
 
@@ -847,8 +884,14 @@ def run_f3_f_high_resolution_validation(
     FV search uses the F3-B reference numerics so tiny policy regrets are not
     interpreted relative to the cheaper 201-cell working optimum.
     """
+    mc_paths, mc_time_paths = _validation_counts(mc_paths, mc_time_paths)
+    if mc_time_paths:
+        solver_max_steps = _validated_time_steps(solver_max_steps)
     candidates = _validate_candidates(problem, candidates)
+    if 'highres_fv_policy' in candidates:
+        raise ValueError('highres_fv_policy is a reserved candidate name.')
     evaluator = problem.build_evaluator(numerics, fast=True)
+    initial_sampler = _initial_sampler_for_problem(problem, evaluator, initial_sampler)
     starts = np.vstack(
         (
             cases._reference_starts(problem),
@@ -872,6 +915,7 @@ def run_f3_f_high_resolution_validation(
         numerics=numerics,
         solver_max_steps=solver_max_steps,
         objective_max_step=numerics.objective_max_step,
+        initial_sampler=initial_sampler,
     )
     result['highres_fv_optimization'] = optimization
     return result

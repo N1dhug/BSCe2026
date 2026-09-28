@@ -762,14 +762,19 @@ class FastFVStochasticPriceEvaluator(FVStochasticPriceEvaluator):
             moment_ids = output_ids[(output_ids > 0) & (output_ids < n_output - 1)] - 1
             demand = self._demand_block(self.midpoints[moment_ids], parameters) if moment_ids.size else None
             demand_row = 0
+            # h > 0 and -Q_ii is the sum of nonnegative outgoing rates.
+            # The largest implicit diagonal therefore bounds every matrix
+            # entry in magnitude. Check that bound for every step once per
+            # block, without allocating three extra block-sized matrices.
+            largest_diagonal = 1.0 - self._steps[start:stop] * np.min(diagonal, axis=1)
+            if not np.all(np.isfinite(largest_diagonal)):
+                raise ValueError('Implicit step matrix must be finite.')
             # Backward Euler: (I - h Q) m_new = m_old. Never clip failed masses.
             for local, step in enumerate(range(start, stop)):
                 h = self._steps[step]
                 dl = -h * lower[local]
                 d = 1.0 - h * diagonal[local]
                 du = -h * upper[local]
-                if not (np.all(np.isfinite(dl)) and np.all(np.isfinite(d)) and np.all(np.isfinite(du))):
-                    raise ValueError('Implicit step matrix must be finite.')
                 _, _, _, solved, info = dgtsv(
                     dl,
                     d,
@@ -835,6 +840,8 @@ class DynamicMixturePriceEvaluator:
 
     def __init__(self, support, degree, *, cfl=0.4):
         self.support = support
+        # Match the FV/SDE canonical endpoint contract before any projection.
+        bm_1_validation.stochastic_inputs([0.5], support.parameter_template, support.sigma_x)
         raw_basis = support.model.fokker_planc.beta_basis(support.x, degree)
         self.degree = raw_basis.shape[0] - 1
         cfl_array = np.asarray(cfl, dtype=float)
@@ -845,6 +852,7 @@ class DynamicMixturePriceEvaluator:
             raise ValueError('cfl must lie strictly between zero and one.')
         self.basis = support.model.fokker_planc._normalise_basis_discretely(raw_basis, support.dx)
         self.projection_data = mixture._projection_matrices(self.basis, support.dx)
+        self.projection_solver = mixture._SimplexProjector(self.projection_data[0])
         initial_density = support.initial_mass / support.dx
         self.initial_coefficients, _ = support.model.fokker_planc.project_density(
             initial_density,
@@ -880,6 +888,7 @@ class DynamicMixturePriceEvaluator:
             max_step=self.support.solver_max_step,
             cfl=self.cfl,
             projection_data=self.projection_data,
+            projection_solver=self.projection_solver,
         )
         cell_mass = evolved['density'] * self.support.dx
         midpoint_mass = cell_mass[1:-1]
@@ -1009,7 +1018,7 @@ def best_surface_starts(values, objective, n_best):
     """Return the n_best unique price vectors from a coarse 2D surface."""
     values = np.asarray(values, dtype=float).reshape(-1)
     objective = np.asarray(objective, dtype=float)
-    n_best = int(n_best)
+    n_best = checks.positive_integer(n_best, 'n_best', 1)
     if objective.shape != (values.size, values.size) or not np.all(np.isfinite(objective)) or n_best < 1:
         raise ValueError('invalid coarse surface or n_best.')
     order = np.argsort(objective, axis=None)
@@ -1034,8 +1043,14 @@ def evaluate_mc_candidates_common_random_numbers(
     The default initial law is Beta(20,20). Supply initial_sampler for a different
     physical initial law; it must match the law used by the FV evaluator.
     """
+    n_paths = checks.positive_integer(n_paths, 'n_paths', 2)
+    if not callable(initial_sampler):
+        raise TypeError('initial_sampler must be callable.')
     model = evaluator.model
-    initial_states = initial_sampler(n_paths, initial_seed)
+    initial_states = np.asarray(initial_sampler(n_paths, initial_seed), dtype=float)
+    if (initial_states.shape != (n_paths,) or not np.all(np.isfinite(initial_states))
+            or np.any(initial_states < 0.0) or np.any(initial_states > 1.0)):
+        raise ValueError('initial_sampler must return one finite state in [0, 1] per path.')
     integration_t, _ = model.euler_maruyama.build_time_grid(
         evaluator.solver_t_eval,
         breakpoints=evaluator.breakpoints,
@@ -1069,21 +1084,12 @@ def evaluate_mc_candidates_common_random_numbers(
         )
         prices = np.asarray(prices, dtype=float)
         terminal_states = states[:, -1]
-        path_mass = np.full(terminal_states.size, 1.0 / terminal_states.size, dtype=float)
-        penalties = tracking.control_penalties(
-            terminal_states,
-            path_mass,
-            prices,
+        path_objectives, penalties = tracking.full_control_path_costs(
+            objective.path_objectives, terminal_states, prices,
             terminal_reference=evaluator.terminal_reference,
             terminal_weight=evaluator.terminal_weight,
             smoothing_weight=evaluator.price_smoothing_weight,
         )
-        path_objectives = objective.path_objectives.copy()
-        if evaluator.terminal_reference is not None:
-            path_objectives += evaluator.terminal_weight * np.square(
-                terminal_states - evaluator.terminal_reference,
-            )
-        path_objectives += penalties.smoothing
         standard_error = float(np.std(path_objectives, ddof=1) / np.sqrt(path_objectives.size))
         results[name] = MonteCarloCandidateResult(
             prices=prices.copy(),
@@ -1098,8 +1104,4 @@ def evaluate_mc_candidates_common_random_numbers(
 
 def paired_mc_improvement(reference, candidate):
     """Return mean and SE of paired pathwise full-control cost differences."""
-    difference = np.asarray(reference.path_objectives, dtype=float) - np.asarray(
-        candidate.path_objectives,
-        dtype=float,
-    )
-    return (float(np.mean(difference)), float(np.std(difference, ddof=1) / np.sqrt(difference.size)))
+    return tracking.paired_path_statistics(reference.path_objectives, candidate.path_objectives)

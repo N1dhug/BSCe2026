@@ -3,6 +3,8 @@
 import numpy as np
 from scipy.linalg import null_space
 
+from src.validation.control import positive_integer
+
 from src.diagnostics.bm_1 import (
     beta_mixture_variance_floor,
     cell_mass_cdf_sup,
@@ -124,7 +126,7 @@ def _distribution_objective(widths, target, demand_values, cell_mass):
 
 def run_projection_study(degrees=DEFAULT_DEGREES, *, x_steps=X_STEPS, max_step=MAX_STEP, t_eval=T_EVAL):
     """Project pure-FV snapshots onto independent degree-M Beta mixtures."""
-    degrees = tuple((int(value) for value in degrees))
+    degrees = tuple(positive_integer(value, 'degree', 0) for value in degrees)
     if not degrees or any((value < 0 for value in degrees)):
         raise ValueError('degrees must contain non-negative integers.')
     t_eval = np.asarray(t_eval, dtype=float)
@@ -225,7 +227,7 @@ def run_dynamic_mixture_study(
     cfl=DEFAULT_CFL,
 ):
     """Compare dynamic Beta mixtures with pure FV and static best projections."""
-    degrees = tuple((int(value) for value in degrees))
+    degrees = tuple(positive_integer(value, 'degree', 0) for value in degrees)
     if not degrees or any((value < 0 for value in degrees)):
         raise ValueError('degrees must contain non-negative integers.')
     t_eval = np.asarray(t_eval, dtype=float)
@@ -330,9 +332,9 @@ def run_conditioning_study(
     cfl=DEFAULT_CFL,
 ):
     """Return conditioning and projection-sensitivity diagnostics."""
-    degrees = tuple((int(value) for value in degrees))
+    degrees = tuple(positive_integer(value, 'degree', 0) for value in degrees)
     epsilons = tuple((float(value) for value in epsilons))
-    n_directions = int(n_directions)
+    n_directions = positive_integer(n_directions, 'n_directions', 1)
     if not degrees or any((value < 0 for value in degrees)):
         raise ValueError('degrees must contain non-negative integers.')
     if not epsilons or any((not np.isfinite(value) or value < 0.0 for value in epsilons)):
@@ -508,7 +510,7 @@ def run_objective_reference(
     brownian_seed=BROWNIAN_SEED,
 ):
     """Evaluate the same stochastic BM1 objective with MC, FV and mixtures."""
-    degrees = tuple((int(value) for value in degrees))
+    degrees = tuple(positive_integer(value, 'degree', 0) for value in degrees)
     if not degrees or any((value < 0 for value in degrees)):
         raise ValueError('degrees must contain non-negative integers.')
     edges, midpoints, widths, solver_t_eval = tracking.midpoint_quadrature(

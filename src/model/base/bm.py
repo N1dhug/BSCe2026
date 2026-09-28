@@ -30,9 +30,20 @@ class bm:
         Bt = self.B(t)
         fXt = f(Xt)
         gUt = g(Ut)
-        Ut, Bt, fXt, gUt = bm_validation.response_values(Ut, Bt, fXt, gUt)
-        delta = self.l(fXt, gUt, k)
-        Dt = self.D(Bt, Xi, delta)
+        # Default l/D already check f, g and B. Avoid checking those arrays
+        # twice, but preserve the original entry checks for arbitrary overrides.
+        Ut = bm_validation.bounded_array(Ut, 0.0, 1.0, "U(t)")
+        Bt = np.asarray(Bt, dtype=float)
+        fXt = np.asarray(fXt, dtype=float)
+        gUt = np.asarray(gUt, dtype=float)
+        response_map, demand_map = self.l, self.D
+        if getattr(response_map, '__func__', None) is not bm.l:
+            fXt = bm_validation.bounded_array(fXt, -1.0, 1.0, "f(X)")
+            gUt = bm_validation.bounded_array(gUt, -1.0, 1.0, "g(U)")
+        if getattr(demand_map, '__func__', None) is not bm.D:
+            Bt = bm_validation.bounded_array(Bt, 0.0, 1.0, "B(t)")
+        delta = response_map(fXt, gUt, k)
+        Dt = demand_map(Bt, Xi, delta)
         return Ut, Bt, fXt, gUt, delta, Dt
 
     def l(self, fXt, gUt, k):

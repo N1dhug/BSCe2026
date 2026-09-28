@@ -104,7 +104,7 @@ class DynamicMixturePropagationTests(unittest.TestCase):
         x0 = np.full(degree + 1, 1.0 / (degree + 1.0))
 
         with patch(
-            'src.method.beta_mixture.active_set.solve',
+            'src.method.beta_mixture._SimplexProjector.solve',
             side_effect=RuntimeError('forced active-set stall'),
         ):
             coefficients, projected, used_fallback = _project_with_warm_start(
@@ -193,6 +193,74 @@ class ConditioningIntegrationTests(unittest.TestCase):
         self.assertTrue(np.isfinite(pert['maximum_projected_density_l2']))
         self.assertTrue(np.isfinite(pert['maximum_density_amplification']))
         self.assertTrue(np.isfinite(pert['maximum_coefficient_amplification']))
+
+
+class PreparedSimplexAuditTests(unittest.TestCase):
+
+    def test_identity_problem_matches_exact_simplex_projection(self):
+        from src.method.beta_mixture import _SimplexProjector
+        rng = np.random.default_rng(431)
+        solver = _SimplexProjector(np.eye(8), cache_size=2)
+        for target in rng.normal(size=(30, 8)):
+            ordered = np.sort(target)[::-1]
+            cumulative = np.cumsum(ordered) - 1.0
+            rho = np.flatnonzero(ordered - cumulative / np.arange(1, 9) > 0.0)[-1]
+            # Independent closed-form Euclidean simplex projection, test only.
+            exact = np.maximum(target - cumulative[rho] / (rho + 1), 0.0)
+            start = np.full(8, 1.0 / 8)
+            actual = solver.solve(target, start)
+            np.testing.assert_allclose(actual, exact, atol=2e-11, rtol=0.0)
+            np.testing.assert_array_equal(start, np.full(8, 1.0 / 8))
+            self.assertLessEqual(len(solver._faces), 2)
+            self.assertLess(solver.optimality_gap(target, actual)[0], 1e-10)
+
+    def test_rank_deficient_basis_preserves_density_not_unique_weights(self):
+        from src.method.beta_mixture import _SimplexProjector
+        matrix = np.array([[1.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        target = np.array([0.3, 0.7])
+        for initial in (np.array([1., 0., 0.]), np.full(3, 1/3)):
+            result = _SimplexProjector(matrix).solve(target, initial)
+            np.testing.assert_allclose(matrix @ result, target, atol=1e-10, rtol=0.0)
+            self.assertAlmostEqual(float(np.sum(result)), 1.0, places=12)
+
+    def test_cache_changes_neither_solution_nor_input_matrix(self):
+        from src.method.beta_mixture import _SimplexProjector
+        matrix = np.random.default_rng(432).normal(size=(25, 9))
+        original = matrix.copy()
+        warm = _SimplexProjector(matrix)
+        cold = _SimplexProjector(matrix, cache_size=0)
+        start = np.full(9, 1/9)
+        for target in np.random.default_rng(433).normal(size=(5, 25)):
+            np.testing.assert_array_equal(warm.solve(target, start), cold.solve(target, start))
+        np.testing.assert_array_equal(matrix, original)
+        matrix[:] = 0.0
+        np.testing.assert_array_equal(warm.matrix, original)
+        self.assertFalse(warm.matrix.flags.writeable)
+
+    def test_projection_does_not_accept_success_flag_without_optimality(self):
+        from types import SimpleNamespace
+        from src.method.beta_mixture import _SimplexProjector
+        matrix = np.eye(2)
+        with patch.object(_SimplexProjector, 'solve', side_effect=RuntimeError('forced')), \
+             patch('src.method.beta_mixture.minimize', return_value=SimpleNamespace(
+                 x=np.array([.5, .5]), success=True, message='false success')):
+            with self.assertRaisesRegex(RuntimeError, 'optimality'):
+                _project_with_warm_start(np.array([1., 0.]), matrix, matrix, matrix, 1., np.array([.5, .5]))
+
+    def test_invalid_start_is_not_hidden_by_fallback(self):
+        from src.method.beta_mixture import _SimplexProjector
+        with patch('src.method.beta_mixture.minimize', side_effect=AssertionError('unexpected fallback')):
+            with self.assertRaises(ValueError):
+                _SimplexProjector(np.eye(2)).solve(np.ones(2), np.array([.9, .9]))
+
+    def test_fractional_degree_is_rejected_by_theory_and_studies(self):
+        for call in (
+            lambda: beta_mixture_variance_floor(.5, 8.5),
+            lambda: run_projection_study(degrees=(8.5,)),
+            lambda: run_dynamic_mixture_study(degrees=(8.5,)),
+        ):
+            with self.assertRaises(ValueError):
+                call()
 
 
 if __name__ == '__main__':

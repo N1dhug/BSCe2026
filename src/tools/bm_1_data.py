@@ -150,16 +150,23 @@ def _price_correlation(observed, optimized):
 
 
 def _json_safe(value):
-    if isinstance(value, (np.floating, np.integer)):
-        return value.item()
+    """Recursively convert diagnostics to strict JSON (undefined values become null)."""
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
     if isinstance(value, np.ndarray):
-        return value.tolist()
+        return _json_safe(value.tolist())
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
     if isinstance(value, Path):
         return str(value)
-    if isinstance(value, float) and (not np.isfinite(value)):
-        return None
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
     raise TypeError(f'Cannot serialize {type(value).__name__}.')
 
 

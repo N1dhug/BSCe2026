@@ -116,5 +116,32 @@ class StochasticObjectiveIntegrationTests(unittest.TestCase):
         self.assertLess(abs(mixture.total - fv.total), 0.05)
 
 
+class AuditControlCostTests(unittest.TestCase):
+
+    def test_complete_path_cost_has_terminal_and_smoothing_terms(self):
+        from src.control.objective import full_control_path_costs
+        original = np.array([.1, .2, .4])
+        states = np.array([.2, .5, .8])
+        result, penalty = full_control_path_costs(original, states, [.7, .2],
+            terminal_reference=.4, terminal_weight=.3, smoothing_weight=.2)
+        exact = original + .3 * (states - .4)**2 + .2 * .5**2
+        np.testing.assert_allclose(result, exact, atol=1e-15, rtol=0.0)
+        self.assertAlmostEqual(float(np.mean(result)), float(np.mean(original)) + penalty.total)
+        np.testing.assert_array_equal(original, [.1, .2, .4])
+
+    def test_paired_statistics_reject_broadcasting_and_single_samples(self):
+        from src.control.objective import paired_path_statistics
+        for left, right in (([1., 2.], [1.]), ([[1., 2.]], [[1., 2.]]),
+                            ([1.], [1.]), ([1., np.nan], [1., 2.])):
+            with self.assertRaises(ValueError):
+                paired_path_statistics(left, right)
+
+    def test_zero_standard_error_is_not_always_positive_infinity(self):
+        from src.control.objective import standard_error_ratio
+        self.assertTrue(np.isnan(standard_error_ratio(0., 0.)))
+        self.assertEqual(standard_error_ratio(-1., 0.), -np.inf)
+        self.assertEqual(standard_error_ratio(1., 0.), np.inf)
+
+
 if __name__ == '__main__':
     unittest.main()

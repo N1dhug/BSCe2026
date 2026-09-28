@@ -155,5 +155,96 @@ class F3BNumericalReferenceTests(unittest.TestCase):
         self.assertTrue(all((np.isfinite(row['total']) for row in rows)))
 
 
+class AuditNumericalContractTests(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.problem, _ = build_f3_a_problem()
+        cls.numerics = BM1ControlNumerics(x_steps=31, objective_max_step=.25, solver_max_step=.0625)
+        cls.candidates = {'reference': np.array([.73, .264]), 'candidate': np.array([.736, .26])}
+
+    def test_invalid_validation_counts_fail_before_price_optimization(self):
+        from unittest.mock import patch
+        for settings in ({'mc_paths': 1}, {'mc_paths': True}, {'mc_paths': 2.5},
+                         {'mc_paths': np.nan}, {'mc_paths': 4, 'mc_time_paths': 1}):
+            with self.subTest(settings=settings), \
+                 patch('src.validation.bm_1.numerics.multistart_powell', side_effect=AssertionError('optimizer called')):
+                with self.assertRaises((TypeError, ValueError)):
+                    run_f3_f_high_resolution_validation(self.problem, self.candidates,
+                        numerics=self.numerics, **settings)
+
+    def test_reserved_reference_name_cannot_overwrite_optimizer_result(self):
+        from unittest.mock import patch
+        with patch('src.validation.bm_1.numerics.multistart_powell', side_effect=AssertionError('optimizer called')):
+            with self.assertRaisesRegex(ValueError, 'reserved'):
+                run_f3_f_high_resolution_validation(self.problem,
+                    {'highres_fv_policy': [.5, .5]}, mc_paths=4, numerics=self.numerics)
+
+    def test_nondefault_initial_law_requires_explicit_matching_sampler(self):
+        from dataclasses import replace
+        from src.control.bm_1 import point_initial_cell_mass
+        problem = replace(self.problem, initial_mass_builder=lambda edges: point_initial_cell_mass(edges, .5))
+        with self.assertRaisesRegex(ValueError, 'initial_sampler'):
+            run_fixed_policy_validation(problem, self.candidates, reference_name='reference',
+                mc_paths=8, numerics=self.numerics)
+        result = run_fixed_policy_validation(problem, self.candidates, reference_name='reference',
+            mc_paths=8, mc_time_paths=8, numerics=self.numerics,
+            solver_max_steps=(.125, .0625), initial_sampler=lambda n, seed: np.full(n, .5))
+        self.assertTrue(np.isfinite(result['paired_mc']['candidate']['reference_minus_candidate']))
+
+    def test_time_refinement_includes_f3_penalties(self):
+        from dataclasses import replace
+        augmented = replace(self.problem, terminal_reference=.4, terminal_weight=.3, price_smoothing_weight=.2)
+        kwargs = dict(n_paths=32, solver_max_steps=(.125, .0625), objective_max_step=.25,
+                      initial_seed=451, brownian_seed=452, reference_name='reference')
+        plain = run_coupled_mc_time_refinement(self.problem, self.candidates, **kwargs)
+        full = run_coupled_mc_time_refinement(augmented, self.candidates, **kwargs)
+        for old, new in zip(plain, full):
+            self.assertEqual(old['tracking'], new['tracking'])
+            self.assertGreater(new['penalty_total'], 0.)
+            self.assertAlmostEqual(new['total'], old['total'] + new['penalty_total'], places=14)
+            self.assertIn('paired_standard_error', new)
+            self.assertLessEqual(new['actual_max_step'], new['solver_max_step'] + 1e-14)
+        self.assertNotEqual(plain[-1]['reference_minus_candidate'], full[-1]['reference_minus_candidate'])
+        self.assertEqual(full[-1]['paired_gap_change_to_finest'], 0.)
+        self.assertEqual(full[-1]['se_paired_gap_change_to_finest'], 0.)
+
+    def test_reported_actual_step_reflects_output_grid_and_nesting(self):
+        rows = run_coupled_mc_time_refinement(self.problem, self.candidates, n_paths=8,
+            solver_max_steps=(.125, .0625), objective_max_step=.025)
+        self.assertLess(rows[0]['actual_max_step'], rows[0]['solver_max_step'])
+
+    def test_time_refinement_rejects_raw_boundary_violations(self):
+        from unittest.mock import patch
+        outputs = (np.full((8, 6), .5), np.ones((8, 6)), {'total_violations': 1})
+        with patch('src.validation.bm_1.numerics._em_outputs_on_integration_grid', return_value=outputs):
+            with self.assertRaisesRegex(RuntimeError, 'boundary violations'):
+                run_coupled_mc_time_refinement(self.problem, self.candidates, n_paths=8,
+                    solver_max_steps=(.125, .0625), objective_max_step=.25)
+
+
+    def test_final_mc_comparison_reports_full_penalized_costs(self):
+        from dataclasses import replace
+        from src.control.bm_1 import evaluate_mc_candidates_common_random_numbers
+        from src.validation.bm_1.numerics import run_final_mc_comparison
+        problem = replace(self.problem, terminal_reference=.4, terminal_weight=.3,
+                          price_smoothing_weight=.2)
+        result = run_final_mc_comparison(problem, self.candidates, n_paths=32,
+            numerics=self.numerics, initial_seed=91, brownian_seed=92)
+        evaluator = problem.build_evaluator(self.numerics)
+        direct = evaluate_mc_candidates_common_random_numbers(evaluator, self.candidates,
+            n_paths=32, initial_seed=91, brownian_seed=92)
+        for row in result['rows']:
+            name = row['candidate']
+            self.assertAlmostEqual(row['mc_total'], direct[name].total, places=14)
+            self.assertAlmostEqual(row['mc_standard_error'], direct[name].standard_error, places=14)
+            self.assertAlmostEqual(row['fv_total'], evaluator.evaluate(self.candidates[name]).total, places=14)
+            self.assertAlmostEqual(result['prefixes'][name][-1]['total'], direct[name].total, places=14)
+
+    def test_spatial_cell_counts_are_not_silently_truncated(self):
+        with self.assertRaises((TypeError, ValueError)):
+            run_spatial_refinement(self.problem, self.candidates, x_steps=(21.5, 31))
+
+
 if __name__ == '__main__':
     unittest.main()

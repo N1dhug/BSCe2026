@@ -379,7 +379,7 @@ def main(argv=None):
         }
         args.output_dir.mkdir(parents=True, exist_ok=True)
         path = args.output_dir / 'bm_1_real_data_daily_results.json'
-        path.write_text(json.dumps(payload, indent=2, default=data._json_safe) + '\n', encoding='utf-8')
+        path.write_text(json.dumps(data._json_safe(payload), indent=2, allow_nan=False) + '\n', encoding='utf-8')
         print(f'Saved summary to {path}')
     return experiments
 if __name__ == '__main__':

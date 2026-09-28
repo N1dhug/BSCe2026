@@ -1,6 +1,7 @@
 """F2 stochastic reference and convergence calculations, without plotting or I/O."""
 
 import numpy as np
+from src.validation.control import positive_integer
 
 from src.diagnostics.bm_1 import (
     cell_mass_cdf_sup,
@@ -164,6 +165,7 @@ def run_comparison(
     brownian_seed=BROWNIAN_SEED,
 ):
     """Run MC and pure FV from the same Beta initial law and BM1 inputs."""
+    n_paths = positive_integer(n_paths, 'n_paths', 2)
     model, parameters = build_reference_case()
     edges, _, dx = model.fokker_planc_reference.grid(x_steps)
     initial_states = sample_beta_initial_states(n_paths, initial_seed)

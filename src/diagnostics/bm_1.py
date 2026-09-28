@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from src.validation.diagnostics.bm_1 import bm_1_diagnostics_validation
+from src.validation.control import positive_integer
 
 
 def _scalar_if_needed(values):
@@ -139,7 +140,7 @@ def empirical_cell_mass(samples, edges):
     edges = np.asarray(edges, dtype=float)
     if samples.size == 0 or not np.all(np.isfinite(samples)):
         raise ValueError('samples must contain finite values.')
-    if edges.ndim != 1 or edges.size < 2 or np.any(np.diff(edges) <= 0.0):
+    if edges.ndim != 1 or edges.size < 2 or not np.all(np.isfinite(edges)) or np.any(np.diff(edges) <= 0.0):
         raise ValueError('edges must be a strictly increasing one-dimensional array.')
     if np.any(samples < edges[0]) or np.any(samples > edges[-1]):
         raise ValueError('samples must lie inside the supplied histogram edges.')
@@ -151,7 +152,8 @@ def cell_mass_l1(left, right):
     """Return L1 distance between two discrete cell-mass distributions."""
     left = np.asarray(left, dtype=float)
     right = np.asarray(right, dtype=float)
-    if left.shape != right.shape or left.ndim != 1:
+    if (left.shape != right.shape or left.ndim != 1 or left.size == 0
+            or not np.all(np.isfinite(left)) or not np.all(np.isfinite(right))):
         raise ValueError('cell-mass arrays must be one-dimensional with equal shape.')
     return float(np.sum(np.abs(left - right)))
 
@@ -160,7 +162,8 @@ def cell_mass_cdf_sup(left, right):
     """Return maximum absolute difference between discrete cumulative masses."""
     left = np.asarray(left, dtype=float)
     right = np.asarray(right, dtype=float)
-    if left.shape != right.shape or left.ndim != 1:
+    if (left.shape != right.shape or left.ndim != 1 or left.size == 0
+            or not np.all(np.isfinite(left)) or not np.all(np.isfinite(right))):
         raise ValueError('cell-mass arrays must be one-dimensional with equal shape.')
     return float(np.max(np.abs(np.cumsum(left) - np.cumsum(right))))
 
@@ -172,7 +175,8 @@ def cell_mass_wasserstein_1(left, right, dx):
         raise ValueError('dx must be finite and strictly positive.')
     left = np.asarray(left, dtype=float)
     right = np.asarray(right, dtype=float)
-    if left.shape != right.shape or left.ndim != 1:
+    if (left.shape != right.shape or left.ndim != 1 or left.size == 0
+            or not np.all(np.isfinite(left)) or not np.all(np.isfinite(right))):
         raise ValueError('cell-mass arrays must be one-dimensional with equal shape.')
     return float(dx * np.sum(np.abs(np.cumsum(left) - np.cumsum(right))))
 
@@ -182,7 +186,8 @@ def density_l2(left, right, dx):
     left = np.asarray(left, dtype=float)
     right = np.asarray(right, dtype=float)
     dx = float(dx)
-    if left.shape != right.shape or left.ndim != 1:
+    if (left.shape != right.shape or left.ndim != 1 or left.size == 0
+            or not np.all(np.isfinite(left)) or not np.all(np.isfinite(right))):
         raise ValueError('density arrays must be one-dimensional with equal shape.')
     if not np.all(np.isfinite(left)) or not np.all(np.isfinite(right)):
         raise ValueError('density arrays must contain finite values.')
@@ -200,12 +205,5 @@ def beta_mixture_variance_floor(mean, degree):
     mean = np.asarray(mean, dtype=float)
     if not np.all(np.isfinite(mean)) or np.any(mean < 0.0) or np.any(mean > 1.0):
         raise ValueError('mean must contain finite values in [0, 1].')
-    if isinstance(degree, (bool, np.bool_)):
-        raise TypeError('degree must be a non-negative integer.')
-    try:
-        degree = int(degree)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise TypeError('degree must be a non-negative integer.') from exc
-    if degree < 0:
-        raise ValueError('degree must be a non-negative integer.')
+    degree = positive_integer(degree, 'degree', 0)
     return mean * (1.0 - mean) / (degree + 3.0)

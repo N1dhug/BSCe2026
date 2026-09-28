@@ -124,6 +124,53 @@ def control_penalties(
     )
 
 
+def full_control_path_costs(
+    tracking_costs, terminal_states, prices, *, terminal_reference=None,
+    terminal_weight=0.0, smoothing_weight=0.0,
+):
+    """Add the common F3 penalties to each MC path; preserve pathwise covariance."""
+    terminal_reference, terminal_weight, smoothing_weight = validate_control_penalty_settings(
+        terminal_reference, terminal_weight, smoothing_weight,
+    )
+    costs = np.asarray(tracking_costs, dtype=float)
+    states = np.asarray(terminal_states, dtype=float)
+    if (costs.ndim != 1 or costs.size < 1 or states.shape != costs.shape
+            or not np.all(np.isfinite(costs)) or not np.all(np.isfinite(states))):
+        raise ValueError('tracking costs and terminal states must be matching finite vectors.')
+    penalties = control_penalties(
+        states, np.full(states.size, 1.0 / states.size), prices,
+        terminal_reference=terminal_reference, terminal_weight=terminal_weight,
+        smoothing_weight=smoothing_weight,
+    )
+    result = costs.copy()
+    if terminal_reference is not None:
+        result += terminal_weight * np.square(states - terminal_reference)
+    result += penalties.smoothing
+    return result, penalties
+
+
+def paired_path_statistics(reference, candidate):
+    """Mean and sample SE of *paired* costs; broadcasting is not pairing."""
+    reference = np.asarray(reference, dtype=float)
+    candidate = np.asarray(candidate, dtype=float)
+    if (reference.ndim != 1 or reference.size < 2 or candidate.shape != reference.shape
+            or not np.all(np.isfinite(reference)) or not np.all(np.isfinite(candidate))):
+        raise ValueError('paired path costs must be equal-length finite 1D vectors with at least two paths.')
+    difference = reference - candidate
+    return float(np.mean(difference)), float(np.std(difference, ddof=1) / np.sqrt(difference.size))
+
+
+def standard_error_ratio(difference, standard_error):
+    """Signed signal/SE; identical deterministic costs have an undefined 0/0 ratio."""
+    if not np.isfinite(difference) or not np.isfinite(standard_error) or standard_error < 0.0:
+        raise ValueError('difference and non-negative standard_error must be finite.')
+    if standard_error > 0.0:
+        return float(difference / standard_error)
+    if standard_error != 0.0:
+        raise ValueError('difference must be finite and standard_error non-negative.')
+    return float(np.copysign(np.inf, difference)) if difference != 0.0 else float('nan')
+
+
 def midpoint_quadrature(interval, *, breakpoints=None, max_step):
     """Build midpoint quadrature intervals that never cross a breakpoint.
 

@@ -600,5 +600,80 @@ class ComplexTargetMultiPriceStructureTests(unittest.TestCase):
             np.testing.assert_array_equal(sampled, np.full(count, 0.4, dtype=float))
 
 
+class AuditEvaluatorContracts(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.problem, _ = build_f3_a_problem()
+        cls.numerics = BM1ControlNumerics(x_steps=21, objective_max_step=.25, solver_max_step=.0625)
+
+    def test_custom_sampler_must_return_exactly_one_valid_state_per_path(self):
+        evaluator = self.problem.build_evaluator(self.numerics)
+        for sampler in (lambda n, seed: np.ones(n - 1)*.5,
+                        lambda n, seed: np.ones((n, 1))*.5,
+                        lambda n, seed: np.ones(n)*1.1):
+            with self.assertRaises(ValueError):
+                evaluate_mc_candidates_common_random_numbers(evaluator, {'p': [.7, .3]},
+                    n_paths=8, initial_seed=1, brownian_seed=2, initial_sampler=sampler)
+
+    def test_mixture_enforces_same_canonical_endpoints_as_fv(self):
+        from dataclasses import replace
+        parameters = replace(self.problem.parameters, state_response=lambda x: .5 - np.asarray(x))
+        problem = replace(self.problem, parameters=parameters)
+        with self.assertRaisesRegex(ValueError, 'canonical'):
+            problem.build_mixture_evaluator(self.numerics, degree=8)
+
+    def test_response_checks_are_kept_without_duplicate_range_checks(self):
+        from src.model.bm_1 import bm_1
+        model = bm_1(lambda t: .3, lambda t: .3, (0., 1.), 2)
+        good = lambda x: 1 - 2*np.asarray(x)
+        for U, f, g, baseline in ((lambda t: 1.1, good, good, lambda t: .3),
+                                 (lambda t: .5, lambda x: 1.1, good, lambda t: .3),
+                                 (lambda t: .5, good, lambda u: np.nan, lambda t: .3),
+                                 (lambda t: .5, good, good, lambda t: -.1)):
+            model.B = baseline
+            with self.assertRaises(ValueError):
+                model.eval(.2, .5, U, f, g, 2., 1.)
+
+    def test_model_eval_still_respects_overridden_physics_methods(self):
+        from src.model.bm_1 import bm_1
+        from unittest.mock import patch
+        model = bm_1(lambda t: .3, lambda t: .3, (0., 1.), 2)
+        good = lambda x: 1 - 2*np.asarray(x)
+        with patch.object(model, 'l', return_value=.2) as flexibility, \
+             patch.object(model, 'D', return_value=.8) as demand:
+            result = model.eval(.2, .5, lambda t: .5, good, good, 2., 1.)
+        flexibility.assert_called_once()
+        demand.assert_called_once()
+        self.assertEqual(result[-1], .8)
+
+
+    def test_fast_fv_rejects_step_overflow_before_lapack(self):
+        from dataclasses import replace
+        from unittest.mock import patch
+        problem = replace(self.problem,
+            horizon=(0., 1e300), price_edges=np.array([0., 5e299, 1e300]),
+            baseline=lambda t: np.full_like(np.asarray(t, dtype=float), .3),
+            target=lambda t: np.full_like(np.asarray(t, dtype=float), .3),
+            parameters=replace(self.problem.parameters, C=1e-20))
+        numerics = BM1ControlNumerics(x_steps=21, objective_max_step=1e300, solver_max_step=1e300)
+        evaluator = problem.build_evaluator(numerics)
+        with np.errstate(over='ignore'), \
+             patch('src.control.bm_1.dgtsv', side_effect=AssertionError('LAPACK called')):
+            with self.assertRaisesRegex(ValueError, 'Implicit step matrix'):
+                evaluator([.7, .3])
+
+    def test_overridden_maps_do_not_bypass_response_validation(self):
+        from src.model.bm_1 import bm_1
+        from unittest.mock import patch
+        model = bm_1(lambda t: .3, lambda t: .3, (0., 1.), 2)
+        with patch.object(model, 'l', return_value=.2), patch.object(model, 'D', return_value=.8):
+            with self.assertRaises(ValueError):
+                model.eval(.2, .5, lambda t: .5, lambda x: 1.1, lambda u: 0., 2., 1.)
+            model.B = lambda t: -.1
+            with self.assertRaises(ValueError):
+                model.eval(.2, .5, lambda t: .5, lambda x: 0., lambda u: 0., 2., 1.)
+
+
 if __name__ == '__main__':
     unittest.main()

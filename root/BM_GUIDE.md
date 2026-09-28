@@ -3,6 +3,12 @@
 F1, F2 and F3-A through F3-F are implemented and locally validated.
 Run all commands from the repository root.
 
+The post-F3-F maintenance candidate and its test/performance evidence are
+documented in `BM_AUDIT_F1_F3.md`. The audit keeps the model, reference grids
+and outer-optimizer settings fixed; its measured gains mainly concern dynamic
+mixture projection. Windows validation is required before merging the patch.
+
+
 ## Where the code belongs
 
 | Location | Role |

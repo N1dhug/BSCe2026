@@ -463,11 +463,12 @@ def run_mixture_validation(args):
 
     if result['paired_mc_time'] is not None:
         print('Coupled MC time refinement: high-resolution FV minus candidate')
-        print('  max_step        FV_201            FV_81             mixture')
+        print('  requested_h     actual_max_h    steps    FV_201            FV_81             mixture')
         for row in result['paired_mc_time']:
             values = row['reference_minus_candidate']
             print(
                 f'  {row["solver_max_step"]:<14.8f} '
+                f'{row["actual_max_step"]:<14.8f} {row["integration_steps"]:<8d} '
                 f'{values["fv_reference_policy"]: .8e} '
                 f'{values["fv_design_policy"]: .8e} '
                 f'{values["mixture_policy"]: .8e}',

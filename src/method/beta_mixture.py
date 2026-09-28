@@ -4,15 +4,16 @@ This is a numerical method, not a price optimizer. Drift and diffusion are
 supplied as callbacks. Invalid probabilities are rejected, never repaired.
 """
 
+from collections import OrderedDict
+
 import numpy as np
 from scipy.optimize import minimize
-
-from src.solver.active_set import active_set
-
 
 _NEGATIVE_PREDICTION_TOL = 1e-10
 _MASS_TOL = 1e-09
 _ACTIVE_SET_PROJECTION_MAX_ITER = 500
+_PROJECTION_GAP_TOL = 1e-11
+_FALLBACK_GAP_TOL = 1e-9
 _FALLBACK_PROJECTION_MAX_ITER = 500
 
 
@@ -53,6 +54,128 @@ def _projection_matrices(basis, dx):
     return (matrix, hessian, condition)
 
 
+class _SimplexProjector:
+    """Prepared active-set least squares on the probability simplex.
+
+    Only the free coefficients are solved for.  On each active face, an
+    orthonormal zero-sum basis Z eliminates the equality constraint, and an
+    SVD of A_free @ Z solves the least-squares problem directly.  A.T @ A is
+    not used for the solve: forming normal equations would square conditioning.
+
+    A bounded LRU cache stores *geometry*, not target-dependent solutions.
+    Every solve starts from the supplied weights, independently of cache state.
+    No ridge term, probability clipping or coefficient normalization is used.
+    """
+
+    def __init__(self, matrix, *, cache_size=512):
+        matrix = np.asarray(matrix, dtype=float)
+        if matrix.ndim != 2 or min(matrix.shape) < 1 or not np.all(np.isfinite(matrix)):
+            raise ValueError('projection matrix must be a finite non-empty 2D array.')
+        if isinstance(cache_size, (bool, np.bool_)) or int(cache_size) != cache_size or cache_size < 0:
+            raise ValueError('cache_size must be a non-negative integer.')
+        self.matrix = matrix.copy()
+        self.matrix.setflags(write=False)
+        self.cache_size = int(cache_size)
+        self._faces = OrderedDict()
+        singular_values = np.linalg.svd(self.matrix, compute_uv=False)
+        self.matrix_condition_number = (
+            float(singular_values[0] / singular_values[-1])
+            if singular_values[-1] > 0.0 else float('inf')
+        )
+        self.factorizations = 0
+        self.cache_hits = 0
+
+    def _face_factorization(self, indices):
+        key = tuple(indices)
+        if key in self._faces:
+            self._faces.move_to_end(key)
+            self.cache_hits += 1
+            return self._faces[key]
+        count = len(indices)
+        tangent = np.zeros((count, count - 1), dtype=float)
+        for j in range(count - 1):
+            scale = 1.0 / np.sqrt((j + 1) * (j + 2))
+            tangent[:j + 1, j] = scale
+            tangent[j + 1, j] = -(j + 1) * scale
+        reduced = self.matrix[:, indices] @ tangent
+        left, singular_values, right = np.linalg.svd(reduced, full_matrices=False)
+        cutoff = max(reduced.shape) * np.finfo(float).eps * singular_values[0]
+        resolved = singular_values > cutoff
+        factors = (tangent, left[:, resolved], singular_values[resolved], right[resolved])
+        self.factorizations += 1
+        if self.cache_size:
+            self._faces[key] = factors
+            if len(self._faces) > self.cache_size:
+                self._faces.popitem(last=False)
+        return factors
+
+    def optimality_gap(self, target, coefficients):
+        """Return c.T g - min(g); for feasible c this bounds objective suboptimality.
+
+        Here g = A.T @ (A c - b). Convexity gives
+        f(c)-f(c*) <= g.T(c-c*) <= g.T c-min(g) on the simplex.
+        This check is independent of the SVD/SLSQP stopping flag.
+        """
+        residual = self.matrix @ coefficients - target
+        gradient = self.matrix.T @ residual
+        return float(gradient @ coefficients - np.min(gradient)), gradient
+
+    def solve(self, target, x0):
+        """Solve the unchanged simplex projection, with a feasible warm start."""
+        target = np.asarray(target, dtype=float)
+        coefficients = np.asarray(x0, dtype=float).copy()
+        if (target.shape != (self.matrix.shape[0],)
+                or coefficients.shape != (self.matrix.shape[1],)
+                or not np.all(np.isfinite(target))
+                or not np.all(np.isfinite(coefficients))):
+            raise ValueError('projection target/start must be finite vectors matching the matrix.')
+        if np.min(coefficients) < -1e-10 or abs(float(np.sum(coefficients)) - 1.0) > _MASS_TOL:
+            raise ValueError('projection warm start must satisfy the probability simplex.')
+        free = coefficients > 1e-10
+        if not np.any(free):
+            free[int(np.argmax(coefficients))] = True
+        for _ in range(_ACTIVE_SET_PROJECTION_MAX_ITER):
+            residual = self.matrix @ coefficients - target
+            gradient = self.matrix.T @ residual
+            scale = max(1.0, float(np.max(np.abs(gradient))))
+            gap = float(gradient @ coefficients - np.min(gradient))
+            if gap <= _PROJECTION_GAP_TOL * scale:
+                return coefficients
+            indices = np.flatnonzero(free)
+            if indices.size > 1:
+                tangent, left, singular_values, right = self._face_factorization(indices)
+                direction = -tangent @ (right.T @ ((left.T @ residual) / singular_values))
+            else:
+                direction = np.zeros(1, dtype=float)
+            if float(np.max(np.abs(direction))) > 1e-12:
+                decreasing = np.flatnonzero(direction < -1e-12)
+                alpha, blocking = 1.0, None
+                if decreasing.size:
+                    ratios = -coefficients[indices[decreasing]] / direction[decreasing]
+                    first = int(np.argmin(ratios))
+                    if ratios[first] < alpha:
+                        alpha = max(0.0, float(ratios[first]))
+                        blocking = int(indices[decreasing[first]])
+                coefficients[indices] += alpha * direction
+                if blocking is not None:
+                    # Impose the blocking bound as part of the active-set step.
+                    # This is not clipping/renormalizing a computed density.
+                    coefficients[blocking] = 0.0
+                    free[blocking] = False
+                    continue
+                gradient = self.matrix.T @ (self.matrix @ coefficients - target)
+            inactive = np.flatnonzero(~free)
+            if inactive.size:
+                worst = int(inactive[np.argmin(gradient[inactive])])
+                if gradient[worst] < np.mean(gradient[indices]) - 1e-12 * scale:
+                    free[worst] = True
+                    continue
+            gap = float(gradient @ coefficients - np.min(gradient))
+            if gap <= _PROJECTION_GAP_TOL * scale:
+                return coefficients
+        raise RuntimeError('Simplex active-set least-squares solver did not converge.')
+
+
 def _slsqp_simplex_projection(matrix, target, x0):
     """Solve the same simplex least-squares projection if active-set stalls.
 
@@ -82,7 +205,7 @@ def _slsqp_simplex_projection(matrix, target, x0):
                 'jac': lambda coefficients: np.ones_like(coefficients),
             },
         ],
-        options={'ftol': 1e-12, 'maxiter': _FALLBACK_PROJECTION_MAX_ITER, 'disp': False},
+        options={'ftol': 1e-16, 'maxiter': _FALLBACK_PROJECTION_MAX_ITER, 'disp': False},
     )
     coefficients = np.asarray(result.x, dtype=float)
     if (
@@ -99,42 +222,33 @@ def _slsqp_simplex_projection(matrix, target, x0):
 
 
 def _project_with_warm_start(
-    density,
-    basis,
-    matrix,
-    hessian,
-    dx,
-    x0,
-    *,
-    return_fallback=False,
+    density, basis, matrix, hessian, dx, x0, *, return_fallback=False, projector=None,
 ):
-    """Project one density onto the simplex-constrained basis using a warm start.
+    """Project with prepared square-root active set; retry the same problem on failure.
 
-    The custom active-set solver remains the primary backend. High-degree Beta
-    bases can be very ill-conditioned, and degenerate boundary working sets may
-    cause the active-set iterations to cycle for otherwise valid projections.
-    In that case the identical convex least-squares problem is retried with
-    SciPy SLSQP. The target density is never clipped or renormalized.
+    The Hessian argument is retained for callers/conditioning diagnostics; the
+    actual least-squares solve uses the unsquared matrix. Probability and
+    first-order optimality are checked after either numerical backend.
     """
+    del hessian
     density = np.asarray(density, dtype=float)
     target = density * np.sqrt(dx)
-    linear = -(matrix.T @ target)
-    n_coefficients = basis.shape[0]
-    x0 = np.asarray(x0, dtype=float)
+    if projector is None:
+        projector = _SimplexProjector(matrix)
     used_fallback = False
     try:
-        coefficients = active_set.solve(
-            hessian,
-            linear,
-            A_eq=np.ones((1, n_coefficients), dtype=float),
-            b_eq=np.array([1.0], dtype=float),
-            lb=np.zeros(n_coefficients, dtype=float),
-            x0=x0,
-            max_iter=_ACTIVE_SET_PROJECTION_MAX_ITER,
-        )
-    except RuntimeError:
+        coefficients = projector.solve(target, np.asarray(x0, dtype=float))
+    except (RuntimeError, np.linalg.LinAlgError):
         coefficients = _slsqp_simplex_projection(matrix, target, x0)
         used_fallback = True
+    if (not np.all(np.isfinite(coefficients))
+            or np.min(coefficients) < -_MASS_TOL
+            or abs(float(np.sum(coefficients)) - 1.0) > _MASS_TOL):
+        raise RuntimeError('Beta projection failed probability constraints.')
+    gap, gradient = projector.optimality_gap(target, coefficients)
+    tolerance = _FALLBACK_GAP_TOL if used_fallback else _PROJECTION_GAP_TOL
+    if not np.isfinite(gap) or gap > tolerance * max(1.0, float(np.max(np.abs(gradient)))):
+        raise RuntimeError('Beta projection failed the independent simplex optimality check.')
     projected = coefficients @ basis
     if return_fallback:
         return (coefficients, projected, used_fallback)
@@ -176,6 +290,7 @@ def evolve_projected_density(
     max_step,
     cfl,
     projection_data=None,
+    projection_solver=None,
 ):
     """Propagate one fixed Beta basis through explicit Euler + QP projection."""
     t_eval, breakpoints, max_step, cfl = _validate_dynamic_controls(t_eval, breakpoints, max_step, cfl)
@@ -211,6 +326,14 @@ def evolve_projected_density(
     matrix, hessian, condition = projection_data
     if matrix.shape != basis.T.shape or hessian.shape != (basis.shape[0],) * 2:
         raise ValueError('projection_data does not match the supplied basis.')
+    if projection_solver is None:
+        projection_solver = _SimplexProjector(matrix)
+    elif not np.array_equal(projection_solver.matrix, matrix):
+        raise ValueError('projection_solver was prepared for a different basis.')
+    if not np.array_equal(matrix, basis.T * np.sqrt(dx)):
+        raise ValueError('projection_data was prepared for a different basis or spacing.')
+    initial_factorizations = projection_solver.factorizations
+    initial_cache_hits = projection_solver.cache_hits
     output_density = np.full((len(t_eval), len(x)), np.nan, dtype=float)
     output_coefficients = np.full((len(t_eval), basis.shape[0]), np.nan, dtype=float)
     output_density[0] = density
@@ -262,6 +385,7 @@ def evolve_projected_density(
                 dx,
                 coefficients,
                 return_fallback=True,
+                projector=projection_solver,
             )
             projection_fallback_count += int(used_projection_fallback)
             projected_mass_error = abs(float(np.sum(density) * dx) - 1.0)
@@ -307,6 +431,10 @@ def evolve_projected_density(
             'maximum_internal_step': maximum_internal_step,
             'minimum_internal_step': minimum_internal_step,
             'projection_fallback_count': projection_fallback_count,
+            'projection_matrix_condition_number': projection_solver.matrix_condition_number,
+            'projection_factorizations': projection_solver.factorizations - initial_factorizations,
+            'projection_factorization_cache_hits': projection_solver.cache_hits - initial_cache_hits,
+            'projection_backend': 'simplex-svd',
             'used_clipping': False,
             'used_renormalization': False,
         },
