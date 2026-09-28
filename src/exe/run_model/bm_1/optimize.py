@@ -12,7 +12,7 @@ from scipy.interpolate import interp1d
 
 from src.method.objective import tracking_error
 from src.model.bm_1 import bm_1
-from src.validation.bm_1 import control as cases, deterministic
+from src.validation.bm_1 import control as cases, deterministic, numerics as numerical_reference
 
 
 OUTPUT_DIR = Path(__file__).resolve().parents[4] / 'files' / 'output' / 'bm_1' / 'runs' / 'graphs'
@@ -418,6 +418,60 @@ def run_mixture_control(args):
             )
     return result
 
+def run_mixture_validation(args):
+    """F3-F high-resolution validation of already-fixed FV/mixture policies."""
+    problem, _ = cases.build_f3_a_problem()
+    candidates = {
+        'fv_reference_policy': np.asarray(args.fv_reference_prices, dtype=float),
+        'fv_design_policy': np.asarray(args.fv_design_prices, dtype=float),
+        'mixture_policy': np.asarray(args.mixture_prices, dtype=float),
+    }
+    result = numerical_reference.run_fixed_policy_validation(
+        problem,
+        candidates,
+        reference_name='fv_reference_policy',
+        mc_paths=args.mc_paths,
+        mc_time_paths=args.mc_time_paths,
+    )
+    numerics = result['numerics']
+    print('F3-F fixed-policy high-resolution validation')
+    print(
+        f'FV reference numerics: cells={numerics.x_steps}; '
+        f'objective max step={numerics.objective_max_step:.8f}; '
+        f'solver max step={numerics.solver_max_step:.8f}',
+    )
+    for name, prices in result['candidates'].items():
+        print(f'{name:20s} {_prices(prices)}')
+
+    print('High-resolution FV totals and differences from FV-reference policy')
+    reference_total = result['fv']['fv_reference_policy'].total
+    print(f'  fv_reference_policy total={reference_total:.8e}; difference=0.00000000e+00')
+    for name in ('fv_design_policy', 'mixture_policy'):
+        print(
+            f'  {name:20s} total={result["fv"][name].total:.8e}; '
+            f'difference={result["fv_differences"][name]:.8e}',
+        )
+
+    print('High-resolution paired MC: FV-reference minus candidate')
+    for name, paired in result['paired_mc'].items():
+        print(
+            f'  {name:20s} difference={paired["reference_minus_candidate"]:.8e}; '
+            f'SE={paired["standard_error"]:.3e}; ratio={paired["ratio"]:.3f}',
+        )
+
+    if result['paired_mc_time'] is not None:
+        print('Coupled MC time refinement: FV-reference minus candidate')
+        print('  max_step        FV_81             mixture')
+        for row in result['paired_mc_time']:
+            values = row['reference_minus_candidate']
+            print(
+                f'  {row["solver_max_step"]:<14.8f} '
+                f'{values["fv_design_policy"]: .8e} '
+                f'{values["mixture_policy"]: .8e}',
+            )
+    return result
+
+
 def run_stochastic(args):
     """Design FV/mixture controls, then assess both on the same reference methods."""
     result = cases.run_optimization_reference(progress=print if args.verbose else None)
@@ -503,6 +557,7 @@ def main(argv=None):
         ('decision', run_decision),
         ('uncertainty', run_uncertainty),
         ('mixture-control', run_mixture_control),
+        ('mixture-validate', run_mixture_validation),
     ]:
         command = commands.add_parser(name, help=run.__doc__)
         command.set_defaults(run=run)
@@ -511,8 +566,14 @@ def main(argv=None):
             action='store_true',
             help='Show prices, details and solver progress.',
         )
-        if name not in ('sensitivity', 'decision', 'uncertainty', 'mixture-control'):
+        if name not in ('sensitivity', 'decision', 'uncertainty', 'mixture-control', 'mixture-validate'):
             command.add_argument('--save', action='store_true', help='Save a comparison figure under runs/.')
+        if name == 'mixture-validate':
+            command.add_argument('--fv-reference-prices', nargs=2, type=float, required=True)
+            command.add_argument('--fv-design-prices', nargs=2, type=float, required=True)
+            command.add_argument('--mixture-prices', nargs=2, type=float, required=True)
+            command.add_argument('--mc-paths', type=int, default=20000)
+            command.add_argument('--mc-time-paths', type=int, default=5000)
         if name == 'contract':
             command.add_argument('--optimize', action='store_true', help='Also optimize new prices.')
         if name == 'augmented':
