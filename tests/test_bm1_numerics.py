@@ -6,7 +6,8 @@ from src.control.bm_1 import BM1ControlNumerics
 from src.validation.bm_1.control import build_f3_a_problem
 from src.validation.bm_1.numerics import (_aggregate_brownian_to_grid, _decision_gap_refinement, _nested_em_time_grids,
     _prefix_statistics, fixed_candidates, run_coupled_mc_time_refinement, run_fv_time_refinement,
-    run_quadrature_refinement, run_spatial_refinement, run_fixed_policy_validation)
+    run_quadrature_refinement, run_spatial_refinement, run_fixed_policy_validation,
+    run_f3_f_high_resolution_validation)
 
 class F3BNumericalReferenceTests(unittest.TestCase):
 
@@ -117,6 +118,31 @@ class F3BNumericalReferenceTests(unittest.TestCase):
         self.assertIn('candidate', result['paired_mc'])
         self.assertEqual(len(result['paired_mc_time']), 2)
         self.assertTrue(np.isfinite(result['paired_mc']['candidate']['reference_minus_candidate']))
+
+    def test_f3_f_high_resolution_validation_adds_new_fv_reference_policy(self):
+        candidates = {
+            'fv_reference_policy': np.array([0.7306, 0.2644]),
+            'mixture_policy': np.array([0.7359, 0.2636]),
+        }
+        numerics = BM1ControlNumerics(
+            x_steps=31,
+            objective_max_step=0.25,
+            solver_max_step=0.0625,
+        )
+        result = run_f3_f_high_resolution_validation(
+            self.problem,
+            candidates,
+            mc_paths=32,
+            mc_time_paths=0,
+            numerics=numerics,
+            solver_max_steps=(0.125, 0.0625),
+            progress=None,
+        )
+        self.assertIn('highres_fv_policy', result['candidates'])
+        self.assertIn('highres_fv_optimization', result)
+        self.assertTrue(result['highres_fv_optimization'].best.success)
+        self.assertIn('mixture_policy', result['fv_differences'])
+        self.assertIn('mixture_policy', result['paired_mc'])
 
     def test_small_coupled_mc_time_study_has_exact_zero_finest_difference(self):
         rows = run_coupled_mc_time_refinement(self.problem, self.one_candidate(), n_paths=64,
