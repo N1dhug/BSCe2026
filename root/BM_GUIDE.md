@@ -6,7 +6,11 @@ Run all commands from the repository root.
 The post-F3-F maintenance candidate and its test/performance evidence are
 documented in `BM_AUDIT_F1_F3.md`. The audit keeps the model, reference grids
 and outer-optimizer settings fixed; its measured gains mainly concern dynamic
-mixture projection. Windows validation is required before merging the patch.
+mixture projection. The candidate has now passed the full 200-test suite and
+representative F1/F3 Windows smoke tests; the degree-30/81 mixture optimization
+fell from about 651 s to 32.1 s on the user's Windows machine with essentially
+the same outer Powell workload. Remote PR/CI review remains the final merge
+gate.
 
 
 ## Where the code belongs
