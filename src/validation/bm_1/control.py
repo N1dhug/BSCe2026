@@ -41,6 +41,7 @@ F3_D_LIGHT_SMOOTHING_WEIGHT = 0.003
 F3_D_MC_PATHS = 20000
 F3_D_MC_INITIAL_SEED = 2071
 F3_D_MC_BROWNIAN_SEED = 2072
+F3_E_SCENARIO_ORDER = ('deterministic', 'initial_only', 'process_only', 'full')
 C = 1.0
 K = 2.0
 XI = 1.0
@@ -492,6 +493,10 @@ def _initial_mass_builder(edges):
     return control.beta_initial_cell_mass(edges, alpha=INITIAL_ALPHA, beta=INITIAL_BETA)
 
 
+def _point_initial_mass_builder(edges):
+    return control.point_initial_cell_mass(edges, X0_DETERMINISTIC)
+
+
 def build_f3_a_problem():
     """Return the F3-A problem using the established two-price reference."""
     target, _, _ = build_deterministic_target()
@@ -820,6 +825,102 @@ def run_f3_d(
         ),
     }
     return {'cases': cases, 'mc_paths': validated_mc_paths}
+
+
+def build_f3_e_scenarios():
+    """Build the four F3-E models that isolate the two uncertainty sources."""
+    base_problem, numerics = build_f3_a_problem()
+    zero_noise = replace(base_problem.parameters, sigma_x=0.0)
+
+    problems = {
+        'deterministic': replace(
+            base_problem,
+            parameters=zero_noise,
+            initial_mass_builder=_point_initial_mass_builder,
+        ),
+        'initial_only': replace(
+            base_problem,
+            parameters=zero_noise,
+            initial_mass_builder=_initial_mass_builder,
+        ),
+        'process_only': replace(
+            base_problem,
+            initial_mass_builder=_point_initial_mass_builder,
+        ),
+        'full': base_problem,
+    }
+    evaluators = {
+        'deterministic': problems['deterministic'].build_deterministic_evaluator(numerics),
+        'initial_only': problems['initial_only'].build_evaluator(numerics, fast=True),
+        'process_only': problems['process_only'].build_evaluator(numerics, fast=True),
+        'full': problems['full'].build_evaluator(numerics, fast=True),
+    }
+    return {
+        'numerics': numerics,
+        'problems': problems,
+        'evaluators': evaluators,
+    }
+
+
+def run_f3_e(progress=print):
+    """Optimize and cross-evaluate the four initial/process uncertainty cases."""
+    setup = build_f3_e_scenarios()
+    problems = setup['problems']
+    evaluators = setup['evaluators']
+    starts = _reference_starts(problems['full'])
+
+    optimizations = {}
+    policies = {}
+    for index, name in enumerate(F3_E_SCENARIO_ORDER, start=1):
+        if progress is not None:
+            progress(f'[{index}/{len(F3_E_SCENARIO_ORDER)}] optimizing {name}')
+        optimization = control.multistart_powell(
+            evaluators[name],
+            starts,
+            progress=progress,
+            options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+        )
+        optimizations[name] = optimization
+        policies[name] = np.asarray(optimization.best.x, dtype=float).copy()
+
+    evaluations = {
+        model_name: {
+            policy_name: evaluators[model_name].evaluate(policies[policy_name])
+            for policy_name in F3_E_SCENARIO_ORDER
+        }
+        for model_name in F3_E_SCENARIO_ORDER
+    }
+    regrets = {
+        model_name: {
+            policy_name: float(
+                evaluations[model_name][policy_name].total
+                - evaluations[model_name][model_name].total
+            )
+            for policy_name in F3_E_SCENARIO_ORDER
+        }
+        for model_name in F3_E_SCENARIO_ORDER
+    }
+
+    deterministic_policy = policies['deterministic']
+    policy_distances = {}
+    for name in F3_E_SCENARIO_ORDER:
+        difference = policies[name] - deterministic_policy
+        policy_distances[name] = {
+            'linf': float(np.max(np.abs(difference))),
+            'l2': float(np.linalg.norm(difference)),
+        }
+
+    return {
+        'numerics': setup['numerics'],
+        'problems': problems,
+        'evaluators': evaluators,
+        'scenario_order': F3_E_SCENARIO_ORDER,
+        'optimizations': optimizations,
+        'policies': policies,
+        'evaluations': evaluations,
+        'regrets': regrets,
+        'policy_distances': policy_distances,
+    }
 
 
 def build_pair(model, n_cells):

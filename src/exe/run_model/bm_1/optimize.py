@@ -293,6 +293,44 @@ def run_decision(args):
     return result
 
 
+def run_uncertainty(args):
+    """F3-E isolate initial-state and process-noise effects on the optimized policy."""
+    result = cases.run_f3_e(progress=print if args.verbose else None)
+    order = result['scenario_order']
+
+    print('F3-E uncertainty-source decomposition')
+    print('scenario        initial law   sigma_X    prices')
+    for name in order:
+        initial_law = 'Beta(20,20)' if name in ('initial_only', 'full') else 'point 0.5'
+        sigma_x = result['problems'][name].parameters.sigma_x
+        print(f'{name:15s} {initial_law:12s} {sigma_x:<10.6g} {_prices(result["policies"][name])}')
+
+    print('Policy distance from deterministic optimum')
+    for name in order:
+        distance = result['policy_distances'][name]
+        print(f'  {name:15s} Linf={distance["linf"]:.6e}; L2={distance["l2"]:.6e}')
+
+    print('Cross-evaluation total cost; compare policies within each model row')
+    print('model \\ policy      deterministic   initial_only    process_only    full')
+    for model_name in order:
+        values = result['evaluations'][model_name]
+        totals = ' '.join(f'{values[policy_name].total:14.8e}' for policy_name in order)
+        print(f'{model_name:18s} {totals}')
+
+    print('Regret relative to each model row optimum')
+    print('model \\ policy      deterministic   initial_only    process_only    full')
+    for model_name in order:
+        values = result['regrets'][model_name]
+        regrets = ' '.join(f'{values[policy_name]:14.6e}' for policy_name in order)
+        print(f'{model_name:18s} {regrets}')
+
+    print('Optimizer status')
+    for name in order:
+        print(f'  {name:15s}', end='')
+        _solver_summary(result['optimizations'][name])
+    return result
+
+
 def run_stochastic(args):
     """Design FV/mixture controls, then assess both on the same reference methods."""
     result = cases.run_optimization_reference(progress=print if args.verbose else None)
@@ -376,6 +414,7 @@ def main(argv=None):
         ('augmented', run_augmented),
         ('sensitivity', run_sensitivity),
         ('decision', run_decision),
+        ('uncertainty', run_uncertainty),
     ]:
         command = commands.add_parser(name, help=run.__doc__)
         command.set_defaults(run=run)
@@ -384,7 +423,7 @@ def main(argv=None):
             action='store_true',
             help='Show prices, details and solver progress.',
         )
-        if name not in ('sensitivity', 'decision'):
+        if name not in ('sensitivity', 'decision', 'uncertainty'):
             command.add_argument('--save', action='store_true', help='Save a comparison figure under runs/.')
         if name == 'contract':
             command.add_argument('--optimize', action='store_true', help='Also optimize new prices.')
