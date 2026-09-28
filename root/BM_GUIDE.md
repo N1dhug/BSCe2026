@@ -66,6 +66,7 @@ python -B -m src.exe.run_model.bm_1.optimize decision
 python -B -m src.exe.run_model.bm_1.optimize uncertainty
 python -B -m src.exe.run_model.bm_1.optimize mixture-control --no-mc
 python -B -m src.exe.run_model.bm_1.optimize mixture-control --mc-paths 20000
+python -B -m src.exe.run_model.bm_1.optimize mixture-validate --fv-reference-prices 0.730609 0.264415 --fv-design-prices 0.729329 0.263873 --mixture-prices 0.735904 0.263610 --mc-paths 20000 --mc-time-paths 5000
 python -B -m src.exe.run_model.bm_1.optimize multi --fast-fv
 python -B -m src.exe.run_model.bm_1.optimize complex --fast-fv
 python -B -m src.exe.run_model.bm_1.refine
@@ -80,7 +81,7 @@ F3-D optimizes a deterministic point-state controller and the stochastic FV cont
 
 F3-E separates the two uncertainty sources into deterministic, initial-only, process-only and full cases, optimizes each independently and cross-evaluates the four returned policies. Compare policies within a fixed model row; objective levels across rows use different state laws.
 
-F3-F optimizes FV at both 201 and 81 cells plus the degree-30 dynamic mixture at the matched 81-cell design grid. This separates the FV grid effect from the additional mixture-method effect before all three fixed policies are reevaluated on common 201-cell FV and degree-30/38 mixture references.
+F3-F optimizes FV at both 201 and 81 cells plus the degree-30 dynamic mixture at the matched 81-cell design grid. This separates the FV grid effect from the additional mixture-method effect before all three fixed policies are reevaluated on common 201-cell FV and degree-30/38 mixture references. Because the resulting policy gaps are only a few 10^-6, the final `mixture-validate` step re-optimizes only the cheap FV reference at the F3-B high-resolution settings and checks the already-fixed policies with fine common-random-number MC and coupled EM time refinement; it does not rerun the expensive mixture optimizer.
 
 Mixture/conditioning and full multi-price optimization can be expensive. Their
 numerical settings are not reduced just to make an output report shorter.
