@@ -161,6 +161,30 @@ The complex-target script/tests were already written on the experiment branch
 but were not yet in the reviewed main. They are carried into this branch;
 only the opt-in evaluator flag changes the experiment itself.
 
+## Post-F3-F Windows validation
+
+The later F1-A–F3-F audit was also validated on the user's Windows/Python 3.11
+environment after the audit patch was applied to a clean merged F3-F baseline.
+The complete suite passed **200/200 tests** in 36.833 s.
+
+For the end-to-end F3-F control run, the degree-30/81 dynamic-mixture
+optimization used essentially the same outer workload as before (376 objective
+evaluations versus 375 in the prior retained run) but completed in about
+**32.1 s instead of 651 s**, approximately **20.3x faster** on that machine.
+The complete no-MC F3-F command took 41.93 s.
+
+The optimized rounded mixture policy changed only from
+`[0.735904, 0.263610]` to `[0.735935, 0.263606]`. Its high-resolution
+FV-801 regret was `2.36820466e-06` (about **0.03611%** of reference cost),
+while 20,000-path paired MC gave `-2.24879020e-06` with
+SE `6.381e-07` under the convention FV-reference minus candidate.
+
+These Windows timings are end-to-end validation evidence, not replacements for
+the controlled fixed-evaluation Linux benchmark above. They do, however,
+confirm that the dynamic-mixture improvement is real on the user's target
+platform and is not explained by fewer Powell evaluations or reduced numerical
+settings.
+
 ## Further opportunities, not implemented here
 
 **Large price vectors:** measured speed now comes from cheaper objective
