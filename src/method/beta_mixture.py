@@ -5,12 +5,15 @@ supplied as callbacks. Invalid probabilities are rejected, never repaired.
 """
 
 import numpy as np
+from scipy.optimize import minimize
 
 from src.solver.active_set import active_set
 
 
 _NEGATIVE_PREDICTION_TOL = 1e-10
 _MASS_TOL = 1e-09
+_ACTIVE_SET_PROJECTION_MAX_ITER = 500
+_FALLBACK_PROJECTION_MAX_ITER = 500
 
 
 def _validate_dynamic_controls(t_eval, breakpoints, max_step, cfl):
@@ -50,21 +53,91 @@ def _projection_matrices(basis, dx):
     return (matrix, hessian, condition)
 
 
-def _project_with_warm_start(density, basis, matrix, hessian, dx, x0):
-    """Project one density onto the simplex-constrained basis using a warm start."""
+def _slsqp_simplex_projection(matrix, target, x0):
+    """Solve the same simplex least-squares projection if active-set stalls.
+
+    This is a numerical fallback only. It does not clip/renormalize the target
+    or change the projection problem.
+    """
+    x0 = np.asarray(x0, dtype=float)
+    n_coefficients = x0.size
+
+    def objective(coefficients):
+        residual = matrix @ coefficients - target
+        return 0.5 * float(residual @ residual)
+
+    def gradient(coefficients):
+        return matrix.T @ (matrix @ coefficients - target)
+
+    result = minimize(
+        objective,
+        x0,
+        jac=gradient,
+        method='SLSQP',
+        bounds=[(0.0, None)] * n_coefficients,
+        constraints=[
+            {
+                'type': 'eq',
+                'fun': lambda coefficients: float(np.sum(coefficients) - 1.0),
+                'jac': lambda coefficients: np.ones_like(coefficients),
+            },
+        ],
+        options={'ftol': 1e-12, 'maxiter': _FALLBACK_PROJECTION_MAX_ITER, 'disp': False},
+    )
+    coefficients = np.asarray(result.x, dtype=float)
+    if (
+        not result.success
+        or not np.all(np.isfinite(coefficients))
+        or np.min(coefficients) < -_MASS_TOL
+        or abs(float(np.sum(coefficients)) - 1.0) > _MASS_TOL
+    ):
+        raise RuntimeError(
+            'SLSQP fallback failed to solve the simplex-constrained Beta projection: '
+            + str(result.message),
+        )
+    return coefficients
+
+
+def _project_with_warm_start(
+    density,
+    basis,
+    matrix,
+    hessian,
+    dx,
+    x0,
+    *,
+    return_fallback=False,
+):
+    """Project one density onto the simplex-constrained basis using a warm start.
+
+    The custom active-set solver remains the primary backend. High-degree Beta
+    bases can be very ill-conditioned, and degenerate boundary working sets may
+    cause the active-set iterations to cycle for otherwise valid projections.
+    In that case the identical convex least-squares problem is retried with
+    SciPy SLSQP. The target density is never clipped or renormalized.
+    """
     density = np.asarray(density, dtype=float)
     target = density * np.sqrt(dx)
     linear = -(matrix.T @ target)
     n_coefficients = basis.shape[0]
-    coefficients = active_set.solve(
-        hessian,
-        linear,
-        A_eq=np.ones((1, n_coefficients), dtype=float),
-        b_eq=np.array([1.0], dtype=float),
-        lb=np.zeros(n_coefficients, dtype=float),
-        x0=np.asarray(x0, dtype=float),
-    )
+    x0 = np.asarray(x0, dtype=float)
+    used_fallback = False
+    try:
+        coefficients = active_set.solve(
+            hessian,
+            linear,
+            A_eq=np.ones((1, n_coefficients), dtype=float),
+            b_eq=np.array([1.0], dtype=float),
+            lb=np.zeros(n_coefficients, dtype=float),
+            x0=x0,
+            max_iter=_ACTIVE_SET_PROJECTION_MAX_ITER,
+        )
+    except RuntimeError:
+        coefficients = _slsqp_simplex_projection(matrix, target, x0)
+        used_fallback = True
     projected = coefficients @ basis
+    if return_fallback:
+        return (coefficients, projected, used_fallback)
     return (coefficients, projected)
 
 
@@ -153,6 +226,7 @@ def evolve_projected_density(
     maximum_boundary_coefficient = float(max(coefficients[0], coefficients[-1]))
     maximum_internal_step = 0.0
     minimum_internal_step = np.inf
+    projection_fallback_count = 0
     for left, right in zip(knots[:-1], knots[1:]):
         current = float(left)
         target = float(right)
@@ -180,14 +254,16 @@ def evolve_projected_density(
                 )
             if raw_mass_error > _MASS_TOL:
                 raise RuntimeError('Raw mixture prediction failed probability conservation.')
-            coefficients, density = _project_with_warm_start(
+            coefficients, density, used_projection_fallback = _project_with_warm_start(
                 prediction,
                 basis,
                 matrix,
                 hessian,
                 dx,
                 coefficients,
+                return_fallback=True,
             )
+            projection_fallback_count += int(used_projection_fallback)
             projected_mass_error = abs(float(np.sum(density) * dx) - 1.0)
             coefficient_sum_error = abs(float(np.sum(coefficients)) - 1.0)
             maximum_projection_mass_error = max(maximum_projection_mass_error, projected_mass_error)
@@ -230,6 +306,7 @@ def evolve_projected_density(
             'maximum_boundary_coefficient': maximum_boundary_coefficient,
             'maximum_internal_step': maximum_internal_step,
             'minimum_internal_step': minimum_internal_step,
+            'projection_fallback_count': projection_fallback_count,
             'used_clipping': False,
             'used_renormalization': False,
         },
