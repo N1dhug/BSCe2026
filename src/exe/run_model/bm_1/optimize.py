@@ -411,6 +411,7 @@ def run_mixture_control(args):
             diagnostics = evaluation.diagnostics
             print(
                 f'Mixture degree {degree}: steps={diagnostics["n_steps"]}; '
+                f'projection fallbacks={diagnostics["projection_fallback_count"]}; '
                 f'Hessian condition={diagnostics["hessian_condition_number"]:.3e}; '
                 f'min raw prediction={diagnostics["minimum_raw_prediction"]:.3e}; '
                 f'max projected mass error={diagnostics["maximum_abs_projected_mass_error"]:.3e}',
