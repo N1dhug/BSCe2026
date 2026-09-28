@@ -2,9 +2,14 @@
 
 import numpy as np
 import unittest
+from unittest.mock import patch
 from src.diagnostics.bm_1 import (beta_mixture_variance_floor, cell_mass_l1, density_l2)
 from src.control.bm_1 import beta_initial_cell_mass
-from src.method.beta_mixture import evolve_projected_density as _evolve_projected_density
+from src.method.beta_mixture import (
+    _project_with_warm_start,
+    _projection_matrices,
+    evolve_projected_density as _evolve_projected_density,
+)
 from src.validation.bm_1.cases import (INITIAL_ALPHA, INITIAL_BETA, build_reference_case)
 from src.validation.bm_1.mixture import (_positive_mass_preserving_perturbation, _simplex_tangent_condition,
     run_conditioning_study, run_dynamic_mixture_study, run_projection_study)
@@ -78,9 +83,46 @@ class DynamicMixturePropagationTests(unittest.TestCase):
         np.testing.assert_allclose(result['density'], np.tile(expected_density, (3, 1)), atol=2e-10, rtol=0.0)
         np.testing.assert_allclose(result['coefficients'], np.tile(coefficients, (3, 1)), atol=2e-10, rtol=0.0)
         diagnostics = result['diagnostics']
+        self.assertEqual(diagnostics['projection_fallback_count'], 0)
         self.assertFalse(diagnostics['used_clipping'])
         self.assertFalse(diagnostics['used_renormalization'])
         self.assertLess(diagnostics['maximum_abs_raw_prediction_mass_error'], 1e-12)
+
+    def test_projection_retries_same_simplex_problem_when_active_set_stalls(self):
+        model, _ = build_reference_case()
+        _, x, dx = model.fokker_planc_reference.grid(31)
+        degree = 8
+        basis = model.fokker_planc._normalise_basis_discretely(
+            model.fokker_planc.beta_basis(x, degree),
+            dx,
+        )
+        matrix, hessian, _ = _projection_matrices(basis, dx)
+        original = np.zeros(degree + 1, dtype=float)
+        original[3] = 0.4
+        original[4] = 0.6
+        density = original @ basis
+        x0 = np.full(degree + 1, 1.0 / (degree + 1.0))
+
+        with patch(
+            'src.method.beta_mixture.active_set.solve',
+            side_effect=RuntimeError('forced active-set stall'),
+        ):
+            coefficients, projected, used_fallback = _project_with_warm_start(
+                density,
+                basis,
+                matrix,
+                hessian,
+                dx,
+                x0,
+                return_fallback=True,
+            )
+
+        self.assertTrue(used_fallback)
+        self.assertGreaterEqual(np.min(coefficients), -1e-9)
+        self.assertAlmostEqual(float(np.sum(coefficients)), 1.0, places=9)
+        self.assertAlmostEqual(float(np.sum(projected) * dx), 1.0, places=9)
+        self.assertLess(density_l2(projected, density, dx), 1e-6)
+
 
 class DynamicMixtureReferenceTests(unittest.TestCase):
 
