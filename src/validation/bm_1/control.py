@@ -42,6 +42,9 @@ F3_D_MC_PATHS = 20000
 F3_D_MC_INITIAL_SEED = 2071
 F3_D_MC_BROWNIAN_SEED = 2072
 F3_E_SCENARIO_ORDER = ('deterministic', 'initial_only', 'process_only', 'full')
+F3_F_MC_PATHS = 20000
+F3_F_MC_INITIAL_SEED = 2091
+F3_F_MC_BROWNIAN_SEED = 2092
 C = 1.0
 K = 2.0
 XI = 1.0
@@ -790,6 +793,21 @@ def _run_f3_d_case(
     }
 
 
+def _validated_mc_paths(mc_paths, validate_mc):
+    """Return a validated path count, or zero when an MC check is disabled."""
+    if not validate_mc:
+        return 0
+    if isinstance(mc_paths, (bool, np.bool_)):
+        raise TypeError('mc_paths must be an integer.')
+    try:
+        validated = int(mc_paths)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise TypeError('mc_paths must be an integer.') from exc
+    if float(validated) != float(mc_paths) or validated < 2:
+        raise ValueError('mc_paths must be an integer >= 2.')
+    return validated
+
+
 def run_f3_d(
     *,
     validate_mc=True,
@@ -797,17 +815,7 @@ def run_f3_d(
     progress=print,
 ):
     """Compare deterministic and stochastic F3 decisions under common objectives."""
-    if validate_mc:
-        if isinstance(mc_paths, (bool, np.bool_)):
-            raise TypeError('mc_paths must be an integer.')
-        try:
-            validated_mc_paths = int(mc_paths)
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise TypeError('mc_paths must be an integer.') from exc
-        if float(validated_mc_paths) != float(mc_paths) or validated_mc_paths < 2:
-            raise ValueError('mc_paths must be an integer >= 2.')
-    else:
-        validated_mc_paths = 0
+    validated_mc_paths = _validated_mc_paths(mc_paths, validate_mc)
     cases = {
         'unregularized': _run_f3_d_case(
             terminal_weight=0.0,
@@ -920,6 +928,194 @@ def run_f3_e(progress=print):
         'evaluations': evaluations,
         'regrets': regrets,
         'policy_distances': policy_distances,
+    }
+
+
+def build_f3_f_setup():
+    """Build matched FV/mixture design evaluators plus common 201-cell references."""
+    problem, reference_numerics = build_f3_a_problem()
+    design_numerics = replace(reference_numerics, x_steps=MIXTURE_OPT_X_STEPS)
+
+    fv_reference = problem.build_evaluator(reference_numerics, fast=True)
+    fv_design = problem.build_evaluator(design_numerics, fast=True)
+    mixture_design = problem.build_mixture_evaluator(
+        design_numerics,
+        MIXTURE_OPT_DEGREE,
+        cfl=DEFAULT_CFL,
+    )
+    mixture_reference = {
+        degree: problem.build_mixture_evaluator(
+            reference_numerics,
+            degree,
+            cfl=DEFAULT_CFL,
+        )
+        for degree in FINAL_MIXTURE_DEGREES
+    }
+    return {
+        'problem': problem,
+        'reference_numerics': reference_numerics,
+        'design_numerics': design_numerics,
+        'fv_reference': fv_reference,
+        'fv_design': fv_design,
+        'mixture_design': mixture_design,
+        'mixture_reference': mixture_reference,
+    }
+
+
+def run_f3_f(
+    *,
+    validate_mc=True,
+    mc_paths=F3_F_MC_PATHS,
+    progress=print,
+):
+    """Compare FV-grid and dynamic-mixture effects on the stochastic control decision."""
+    validated_mc_paths = _validated_mc_paths(mc_paths, validate_mc)
+    setup = build_f3_f_setup()
+    problem = setup['problem']
+    fv_reference = setup['fv_reference']
+    fv_design = setup['fv_design']
+    mixture_design = setup['mixture_design']
+    starts = _reference_starts(problem)
+
+    if progress is not None:
+        progress('[1/3] optimizing the 201-cell FV reference policy')
+    fv_reference_optimization = control.multistart_powell(
+        fv_reference,
+        starts,
+        progress=progress,
+        options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+    )
+
+    if progress is not None:
+        progress('[2/3] optimizing the 81-cell FV design-grid policy')
+    fv_design_optimization = control.multistart_powell(
+        fv_design,
+        starts,
+        progress=progress,
+        options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+    )
+
+    if progress is not None:
+        progress('[3/3] optimizing the 81-cell degree-30 dynamic-mixture policy')
+    mixture_optimization = control.multistart_powell(
+        mixture_design,
+        starts,
+        progress=progress,
+        options={'xtol': 0.001, 'ftol': 1e-05, 'maxiter': 30},
+    )
+
+    policies = {
+        'fv_reference_policy': np.asarray(fv_reference_optimization.best.x, dtype=float).copy(),
+        'fv_design_policy': np.asarray(fv_design_optimization.best.x, dtype=float).copy(),
+        'mixture_policy': np.asarray(mixture_optimization.best.x, dtype=float).copy(),
+    }
+
+    design_evaluations = {
+        'fv_81': {
+            name: fv_design.evaluate(prices)
+            for name, prices in policies.items()
+        },
+        'mixture_30_81': {
+            name: mixture_design.evaluate(prices)
+            for name, prices in policies.items()
+        },
+    }
+    reference_evaluations = {
+        'fv_201': {
+            name: fv_reference.evaluate(prices)
+            for name, prices in policies.items()
+        },
+    }
+    for degree, evaluator in setup['mixture_reference'].items():
+        reference_evaluations[f'mixture_{degree}_201'] = {
+            name: evaluator.evaluate(prices)
+            for name, prices in policies.items()
+        }
+
+    fv_grid_regret = (
+        reference_evaluations['fv_201']['fv_design_policy'].total
+        - reference_evaluations['fv_201']['fv_reference_policy'].total
+    )
+    fv_reference_regret_of_mixture = (
+        reference_evaluations['fv_201']['mixture_policy'].total
+        - reference_evaluations['fv_201']['fv_reference_policy'].total
+    )
+    fv_design_regret_of_mixture = (
+        design_evaluations['fv_81']['mixture_policy'].total
+        - design_evaluations['fv_81']['fv_design_policy'].total
+    )
+    mixture_design_regret_of_fv = (
+        design_evaluations['mixture_30_81']['fv_design_policy'].total
+        - design_evaluations['mixture_30_81']['mixture_policy'].total
+    )
+
+    reference_differences = {
+        method: {
+            policy: float(values[policy].total - values['fv_reference_policy'].total)
+            for policy in ('fv_design_policy', 'mixture_policy')
+        }
+        for method, values in reference_evaluations.items()
+    }
+
+    def policy_distance(left, right):
+        difference = policies[left] - policies[right]
+        return {
+            'linf': float(np.max(np.abs(difference))),
+            'l2': float(np.linalg.norm(difference)),
+        }
+
+    policy_distances = {
+        'fv_design_to_reference': policy_distance('fv_design_policy', 'fv_reference_policy'),
+        'mixture_to_fv_design': policy_distance('mixture_policy', 'fv_design_policy'),
+        'mixture_to_reference': policy_distance('mixture_policy', 'fv_reference_policy'),
+    }
+
+    mc = None
+    paired_mc = None
+    if validate_mc:
+        mc = control.evaluate_mc_candidates_common_random_numbers(
+            fv_reference,
+            policies,
+            n_paths=validated_mc_paths,
+            initial_seed=F3_F_MC_INITIAL_SEED,
+            brownian_seed=F3_F_MC_BROWNIAN_SEED,
+        )
+        paired_mc = {}
+        for name in ('fv_design_policy', 'mixture_policy'):
+            difference, standard_error = control.paired_mc_improvement(
+                mc['fv_reference_policy'],
+                mc[name],
+            )
+            paired_mc[name] = {
+                'reference_minus_candidate': float(difference),
+                'standard_error': float(standard_error),
+                'ratio': float(difference / standard_error) if standard_error > 0.0 else float('inf'),
+            }
+
+    return {
+        'problem': problem,
+        'reference_numerics': setup['reference_numerics'],
+        'design_numerics': setup['design_numerics'],
+        'fv_reference': fv_reference,
+        'fv_design': fv_design,
+        'mixture_design': mixture_design,
+        'mixture_reference': setup['mixture_reference'],
+        'starts': starts.copy(),
+        'policies': policies,
+        'fv_reference_optimization': fv_reference_optimization,
+        'fv_design_optimization': fv_design_optimization,
+        'mixture_optimization': mixture_optimization,
+        'design_evaluations': design_evaluations,
+        'reference_evaluations': reference_evaluations,
+        'fv_grid_regret': float(fv_grid_regret),
+        'fv_reference_regret_of_mixture': float(fv_reference_regret_of_mixture),
+        'fv_design_regret_of_mixture': float(fv_design_regret_of_mixture),
+        'mixture_design_regret_of_fv': float(mixture_design_regret_of_fv),
+        'reference_differences': reference_differences,
+        'policy_distances': policy_distances,
+        'mc': mc,
+        'paired_mc': paired_mc,
+        'mc_paths': validated_mc_paths,
     }
 
 

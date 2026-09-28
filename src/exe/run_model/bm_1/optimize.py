@@ -331,6 +331,92 @@ def run_uncertainty(args):
     return result
 
 
+def run_mixture_control(args):
+    """F3-F compare FV-grid and dynamic-mixture effects on stochastic control."""
+    result = cases.run_f3_f(
+        validate_mc=not args.no_mc,
+        mc_paths=args.mc_paths,
+        progress=print if args.verbose else None,
+    )
+    policies = result['policies']
+
+    print('F3-F FV versus dynamic-mixture control decision')
+    print(
+        f"reference FV cells={result['reference_numerics'].x_steps}; "
+        f"design cells={result['design_numerics'].x_steps}; "
+        f"mixture degree={cases.MIXTURE_OPT_DEGREE}; cfl={cases.DEFAULT_CFL:.3g}",
+    )
+    print(f"FV reference policy: {_prices(policies['fv_reference_policy'])}")
+    print(f"FV 81-cell policy:   {_prices(policies['fv_design_policy'])}")
+    print(f"Mixture policy:      {_prices(policies['mixture_policy'])}")
+
+    print('Policy distances')
+    for name, distance in result['policy_distances'].items():
+        print(f'  {name:24s} Linf={distance["linf"]:.6e}; L2={distance["l2"]:.6e}')
+
+    print('81-cell design-grid cross-evaluation')
+    print('method             FV_ref_policy   FV_81_policy    mixture_policy')
+    for name, evaluations in result['design_evaluations'].items():
+        print(
+            f'{name:18s} '
+            f'{evaluations["fv_reference_policy"].total:.8e} '
+            f'{evaluations["fv_design_policy"].total:.8e} '
+            f'{evaluations["mixture_policy"].total:.8e}',
+        )
+    print(
+        f"  FV-grid regret of mixture policy={result['fv_design_regret_of_mixture']:.6e}; "
+        f"mixture-model regret of FV-81 policy={result['mixture_design_regret_of_fv']:.6e}",
+    )
+
+    print('Common 201-cell reevaluation')
+    print('method             FV_ref_policy   FV_81_policy    mixture_policy')
+    for name, evaluations in result['reference_evaluations'].items():
+        print(
+            f'{name:18s} '
+            f'{evaluations["fv_reference_policy"].total:.8e} '
+            f'{evaluations["fv_design_policy"].total:.8e} '
+            f'{evaluations["mixture_policy"].total:.8e}',
+        )
+    print(
+        f"FV-201 regret of FV-81 policy={result['fv_grid_regret']:.6e}; "
+        f"FV-201 regret of mixture policy={result['fv_reference_regret_of_mixture']:.6e}",
+    )
+
+    print('Signed common-reference differences relative to FV-reference policy')
+    for method, differences in result['reference_differences'].items():
+        print(
+            f'  {method:16s} '
+            f'FV_81={differences["fv_design_policy"]:.6e}; '
+            f'mixture={differences["mixture_policy"]:.6e}',
+        )
+
+    print('FV-201 optimizer:   ', end='')
+    _solver_summary(result['fv_reference_optimization'])
+    print('FV-81 optimizer:    ', end='')
+    _solver_summary(result['fv_design_optimization'])
+    print('Mixture optimizer:  ', end='')
+    _solver_summary(result['mixture_optimization'])
+
+    if result['paired_mc'] is not None:
+        print('Paired MC differences: FV-reference minus candidate')
+        for name, paired in result['paired_mc'].items():
+            print(
+                f'  {name:18s} difference={paired["reference_minus_candidate"]:.6e}; '
+                f'SE={paired["standard_error"]:.3e}; ratio={paired["ratio"]:.3f}',
+            )
+
+    if args.verbose:
+        for degree in result['mixture_reference']:
+            evaluation = result['reference_evaluations'][f'mixture_{degree}_201']['mixture_policy']
+            diagnostics = evaluation.diagnostics
+            print(
+                f'Mixture degree {degree}: steps={diagnostics["n_steps"]}; '
+                f'Hessian condition={diagnostics["hessian_condition_number"]:.3e}; '
+                f'min raw prediction={diagnostics["minimum_raw_prediction"]:.3e}; '
+                f'max projected mass error={diagnostics["maximum_abs_projected_mass_error"]:.3e}',
+            )
+    return result
+
 def run_stochastic(args):
     """Design FV/mixture controls, then assess both on the same reference methods."""
     result = cases.run_optimization_reference(progress=print if args.verbose else None)
@@ -415,6 +501,7 @@ def main(argv=None):
         ('sensitivity', run_sensitivity),
         ('decision', run_decision),
         ('uncertainty', run_uncertainty),
+        ('mixture-control', run_mixture_control),
     ]:
         command = commands.add_parser(name, help=run.__doc__)
         command.set_defaults(run=run)
@@ -423,7 +510,7 @@ def main(argv=None):
             action='store_true',
             help='Show prices, details and solver progress.',
         )
-        if name not in ('sensitivity', 'decision', 'uncertainty'):
+        if name not in ('sensitivity', 'decision', 'uncertainty', 'mixture-control'):
             command.add_argument('--save', action='store_true', help='Save a comparison figure under runs/.')
         if name == 'contract':
             command.add_argument('--optimize', action='store_true', help='Also optimize new prices.')
@@ -483,6 +570,18 @@ def main(argv=None):
                 '--no-mc',
                 action='store_true',
                 help='Skip paired Monte Carlo and run only deterministic/FV cross-evaluation.',
+            )
+        if name == 'mixture-control':
+            command.add_argument(
+                '--mc-paths',
+                type=int,
+                default=cases.F3_F_MC_PATHS,
+                help='Paired Monte Carlo paths for FV-versus-mixture policy validation.',
+            )
+            command.add_argument(
+                '--no-mc',
+                action='store_true',
+                help='Skip paired Monte Carlo and run only density-method cross-evaluation.',
             )
         if name in ('multi', 'complex'):
             command.add_argument(

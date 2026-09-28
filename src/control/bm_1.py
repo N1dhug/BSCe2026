@@ -263,6 +263,11 @@ class BM1ControlProblem:
             return FastFVStochasticPriceEvaluator(**common, batch_size=batch_size, vectorized=vectorized)
         return FVStochasticPriceEvaluator(**common)
 
+    def build_mixture_evaluator(self, numerics, degree, *, cfl=0.4):
+        """Build the dynamic Beta-mixture evaluator for the same F3 problem."""
+        support = self.build_evaluator(numerics, fast=False)
+        return DynamicMixturePriceEvaluator(support, degree, cfl=cfl)
+
     def evaluate_fixed(self, prices, numerics, *, fast=True, batch_size=128, vectorized=True):
         """Evaluate a supplied fixed price path; no optimization is performed."""
         prices = checks.validate_prices(prices, self.n_intervals).copy()
@@ -830,10 +835,14 @@ class DynamicMixturePriceEvaluator:
 
     def __init__(self, support, degree, *, cfl=0.4):
         self.support = support
-        self.degree = degree
-        self.cfl = float(cfl)
-        raw_basis = support.model.fokker_planc.beta_basis(support.x, self.degree)
-        self.degree = int(degree)
+        raw_basis = support.model.fokker_planc.beta_basis(support.x, degree)
+        self.degree = raw_basis.shape[0] - 1
+        cfl_array = np.asarray(cfl, dtype=float)
+        if cfl_array.size != 1:
+            raise ValueError('cfl must be a scalar.')
+        self.cfl = float(cfl_array.reshape(-1)[0])
+        if not np.isfinite(self.cfl) or not 0.0 < self.cfl < 1.0:
+            raise ValueError('cfl must lie strictly between zero and one.')
         self.basis = support.model.fokker_planc._normalise_basis_discretely(raw_basis, support.dx)
         self.projection_data = mixture._projection_matrices(self.basis, support.dx)
         initial_density = support.initial_mass / support.dx

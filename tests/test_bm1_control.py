@@ -29,6 +29,9 @@ from src.validation.bm_1.control import (
     F3_C_SMOOTHING_WEIGHTS,
     F3_C_TERMINAL_WEIGHTS,
     F3_E_SCENARIO_ORDER,
+    FINAL_MIXTURE_DEGREES,
+    MIXTURE_OPT_DEGREE,
+    MIXTURE_OPT_X_STEPS,
     HOURLY_EDGES,
     INITIAL_PRICES,
     MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS,
@@ -49,8 +52,10 @@ from src.validation.bm_1.control import (
     build_deterministic_target,
     build_f3_a_problem,
     build_f3_e_scenarios,
+    build_f3_f_setup,
     build_stochastic_model,
     run_f3_d,
+    run_f3_f,
     INTERVAL_COUNTS as control_INTERVAL_COUNTS,
     _edges as control__edges,
     _sample_piecewise_prices as control__sample_piecewise_prices,
@@ -266,6 +271,40 @@ class BM1ControlProblemTests(unittest.TestCase):
         self.assertGreater(result.penalties.terminal, 0.0)
         self.assertGreater(result.penalties.smoothing, 0.0)
 
+    def test_mixture_evaluator_uses_the_same_problem_contract(self):
+        numerics = BM1ControlNumerics(
+            x_steps=31,
+            objective_max_step=1.0 / 12.0,
+            solver_max_step=1.0 / 48.0,
+        )
+        problem = self.problem(
+            terminal_reference=0.5,
+            terminal_weight=0.2,
+            price_smoothing_weight=0.1,
+        )
+        evaluator = problem.build_mixture_evaluator(numerics, degree=10, cfl=0.35)
+        result = evaluator.evaluate(INITIAL_PRICES)
+
+        self.assertEqual(evaluator.n_intervals, problem.n_intervals)
+        self.assertEqual(evaluator.support.initial_mass.size, numerics.x_steps)
+        self.assertAlmostEqual(evaluator.support.terminal_weight, problem.terminal_weight)
+        self.assertAlmostEqual(
+            evaluator.support.price_smoothing_weight,
+            problem.price_smoothing_weight,
+        )
+        self.assertAlmostEqual(
+            result.total,
+            result.objective.total + result.penalties.total,
+            places=14,
+        )
+        self.assertFalse(result.diagnostics['used_clipping'])
+        self.assertFalse(result.diagnostics['used_renormalization'])
+
+        with self.assertRaises(ValueError):
+            problem.build_mixture_evaluator(numerics, degree=10, cfl=1.0)
+        with self.assertRaises(ValueError):
+            problem.build_mixture_evaluator(numerics, degree=10.5, cfl=0.35)
+
     def test_deterministic_evaluator_uses_the_common_f3_objective(self):
         numerics = BM1ControlNumerics(
             x_steps=31,
@@ -388,6 +427,43 @@ class BM1ControlProblemTests(unittest.TestCase):
         self.assertIs(template[1], old[1])
         self.assertIs(template[2], old[2])
         self.assertEqual(template[3:], old[3:])
+
+class F3FMixtureControlStructureTests(unittest.TestCase):
+
+    def test_setup_matches_fv_and_mixture_on_the_81_cell_design_grid(self):
+        setup = build_f3_f_setup()
+        problem = setup['problem']
+        reference = setup['reference_numerics']
+        design = setup['design_numerics']
+        fv_reference = setup['fv_reference']
+        fv_design = setup['fv_design']
+        mixture_design = setup['mixture_design']
+
+        self.assertEqual(reference.x_steps, 201)
+        self.assertEqual(design.x_steps, MIXTURE_OPT_X_STEPS)
+        self.assertEqual(mixture_design.degree, MIXTURE_OPT_DEGREE)
+        self.assertEqual(tuple(setup['mixture_reference']), FINAL_MIXTURE_DEGREES)
+        self.assertEqual(fv_reference.n_intervals, problem.n_intervals)
+        self.assertEqual(fv_design.n_intervals, problem.n_intervals)
+        self.assertEqual(mixture_design.n_intervals, problem.n_intervals)
+
+        np.testing.assert_array_equal(fv_design.x, mixture_design.support.x)
+        np.testing.assert_array_equal(fv_design.initial_mass, mixture_design.support.initial_mass)
+        np.testing.assert_array_equal(fv_design.target, mixture_design.support.target)
+        np.testing.assert_array_equal(fv_design.widths, mixture_design.support.widths)
+        np.testing.assert_array_equal(fv_design.solver_t_eval, mixture_design.support.solver_t_eval)
+        np.testing.assert_array_equal(fv_design.interval_edges, mixture_design.support.interval_edges)
+        np.testing.assert_array_equal(
+            fv_reference.target,
+            setup['mixture_reference'][MIXTURE_OPT_DEGREE].support.target,
+        )
+
+    def test_mc_path_count_is_validated_before_running_mixture_study(self):
+        with self.assertRaises(ValueError):
+            run_f3_f(validate_mc=True, mc_paths=1, progress=None)
+        with self.assertRaises(TypeError):
+            run_f3_f(validate_mc=True, mc_paths=True, progress=None)
+
 
 class F3EUncertaintyStructureTests(unittest.TestCase):
 

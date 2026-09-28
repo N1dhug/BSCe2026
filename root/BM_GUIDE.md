@@ -1,6 +1,6 @@
 # BM1 — code and run guide
 
-F1, F2, F3-A, F3-B, F3-C, F3-D and the first F3-E uncertainty-source decomposition are implemented.
+F1, F2, F3-A through F3-E, and the F3-F FV/mixture control-comparison workflow are implemented.
 Run all commands from the repository root.
 
 ## Where the code belongs
@@ -8,7 +8,7 @@ Run all commands from the repository root.
 | Location | Role |
 |---|---|
 | `src/model/base/bm.py`, `src/model/bm_1.py` | Battery equations and forward-solver interfaces. |
-| `src/control/bm_1.py` | Supplied parameters/initial conditions, deterministic/FV/mixture price evaluators, bounded price search and paired MC. |
+| `src/control/bm_1.py` | Supplied parameters/initial conditions, common deterministic/FV/mixture evaluator construction, bounded price search and paired MC. |
 | `src/control/objective.py` | Demand moments and jump-safe deterministic/stochastic tracking costs. |
 | `src/method/` | Numerical methods: EM, FP, sampled quadrature and `beta_mixture.py` for projected density evolution. |
 | `src/solver/` | Low-level finite-volume and active-set solvers shared with WM. |
@@ -64,6 +64,8 @@ python -B -m src.exe.run_model.bm_1.optimize sensitivity --grid
 python -B -m src.exe.run_model.bm_1.optimize decision --no-mc
 python -B -m src.exe.run_model.bm_1.optimize decision
 python -B -m src.exe.run_model.bm_1.optimize uncertainty
+python -B -m src.exe.run_model.bm_1.optimize mixture-control --no-mc
+python -B -m src.exe.run_model.bm_1.optimize mixture-control --mc-paths 20000
 python -B -m src.exe.run_model.bm_1.optimize multi --fast-fv
 python -B -m src.exe.run_model.bm_1.optimize complex --fast-fv
 python -B -m src.exe.run_model.bm_1.refine
@@ -77,6 +79,8 @@ The F3-C sensitivity command compares raw tracking cost, terminal MSE and price 
 F3-D optimizes a deterministic point-state controller and the stochastic FV controller under the same price grid/objective, then cross-evaluates both policies. Paired MC validates the stochastic policy difference.
 
 F3-E separates the two uncertainty sources into deterministic, initial-only, process-only and full cases, optimizes each independently and cross-evaluates the four returned policies. Compare policies within a fixed model row; objective levels across rows use different state laws.
+
+F3-F optimizes FV at both 201 and 81 cells plus the degree-30 dynamic mixture at the matched 81-cell design grid. This separates the FV grid effect from the additional mixture-method effect before all three fixed policies are reevaluated on common 201-cell FV and degree-30/38 mixture references.
 
 Mixture/conditioning and full multi-price optimization can be expensive. Their
 numerical settings are not reduced just to make an output report shorter.
