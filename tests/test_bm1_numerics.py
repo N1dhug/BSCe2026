@@ -2,10 +2,11 @@
 
 import numpy as np
 import unittest
+from src.control.bm_1 import BM1ControlNumerics
 from src.validation.bm_1.control import build_f3_a_problem
 from src.validation.bm_1.numerics import (_aggregate_brownian_to_grid, _decision_gap_refinement, _nested_em_time_grids,
     _prefix_statistics, fixed_candidates, run_coupled_mc_time_refinement, run_fv_time_refinement,
-    run_quadrature_refinement, run_spatial_refinement)
+    run_quadrature_refinement, run_spatial_refinement, run_fixed_policy_validation)
 
 class F3BNumericalReferenceTests(unittest.TestCase):
 
@@ -85,6 +86,37 @@ class F3BNumericalReferenceTests(unittest.TestCase):
         self.assertAlmostEqual(rows[0]['total'], np.mean(values[:4]))
         self.assertAlmostEqual(rows[0]['standard_error'], np.std(values[:4], ddof=1) / np.sqrt(4))
         self.assertEqual(rows[-1]['difference_to_largest_prefix'], 0.0)
+
+    def test_fixed_policy_validation_uses_supplied_reference_without_reoptimization(self):
+        candidates = {
+            'reference': np.array([0.73, 0.26]),
+            'candidate': np.array([0.735, 0.264]),
+        }
+        numerics = BM1ControlNumerics(
+            x_steps=31,
+            objective_max_step=0.25,
+            solver_max_step=0.0625,
+        )
+        result = run_fixed_policy_validation(
+            self.problem,
+            candidates,
+            reference_name='reference',
+            mc_paths=64,
+            mc_time_paths=32,
+            numerics=numerics,
+            solver_max_steps=(0.125, 0.0625),
+            objective_max_step=0.25,
+            initial_seed=13,
+            brownian_seed=14,
+            mc_time_initial_seed=15,
+            mc_time_brownian_seed=16,
+        )
+        self.assertEqual(result['reference_name'], 'reference')
+        self.assertEqual(set(result['fv']), set(candidates))
+        self.assertIn('candidate', result['fv_differences'])
+        self.assertIn('candidate', result['paired_mc'])
+        self.assertEqual(len(result['paired_mc_time']), 2)
+        self.assertTrue(np.isfinite(result['paired_mc']['candidate']['reference_minus_candidate']))
 
     def test_small_coupled_mc_time_study_has_exact_zero_finest_difference(self):
         rows = run_coupled_mc_time_refinement(self.problem, self.one_candidate(), n_paths=64,
