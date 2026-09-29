@@ -85,6 +85,7 @@ class F3GHistoricalContractTests(unittest.TestCase):
         )
 
         self.assertIsNone(result.optimization)
+        self.assertIsNone(result.fixed_paired_mc)
         self.assertIsNone(result.paired_mc)
         self.assertEqual(set(result.evaluations), {'observed_spot', 'neutral'})
         np.testing.assert_array_equal(result.problem.observed_prices, signals.observed_price)
@@ -103,7 +104,12 @@ class F3GHistoricalContractTests(unittest.TestCase):
         )
 
         self.assertEqual(set(result.mc), {'observed_spot', 'neutral'})
+        self.assertIsNotNone(result.fixed_paired_mc)
         self.assertIsNone(result.paired_mc)
+        row = result.fixed_paired_mc
+        self.assertTrue(np.isfinite(row['neutral_minus_observed_spot']))
+        self.assertTrue(np.isfinite(row['standard_error']))
+        self.assertTrue(np.isfinite(row['ratio']))
         for item in result.mc.values():
             self.assertEqual(item.path_objectives.shape, (50,))
             self.assertTrue(np.isfinite(item.total))
