@@ -55,6 +55,7 @@ from src.validation.bm_1.control import (
     build_f3_f_setup,
     build_stochastic_model,
     run_f3_d,
+    run_f3_e,
     run_f3_f,
     INTERVAL_COUNTS as control_INTERVAL_COUNTS,
     _edges as control__edges,
@@ -475,6 +476,12 @@ class F3FMixtureControlStructureTests(unittest.TestCase):
 
 
 class F3EUncertaintyStructureTests(unittest.TestCase):
+
+    def test_mc_path_count_is_validated_before_running_uncertainty_study(self):
+        with self.assertRaises(ValueError):
+            run_f3_e(validate_mc=True, mc_paths=1, progress=None)
+        with self.assertRaises(TypeError):
+            run_f3_e(validate_mc=True, mc_paths=True, progress=None)
 
     def test_uncertainty_scenarios_isolate_initial_and_process_noise(self):
         setup = build_f3_e_scenarios()
