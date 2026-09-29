@@ -5,13 +5,92 @@ import pandas as pd
 import unittest
 from src.control.bm_1 import MonteCarloCandidateResult
 from src.control.objective import control_penalties, monte_carlo_tracking_objective
-from src.tools.bm_1_data import (_complete_day_values, _hourly_hold, _mc_summary, build_day_signals,
-    select_representative_days)
+from src.exe.run_model.bm_1.real_data import build_numerics, build_problem, run_day
+from src.tools.bm_1_data import (
+    DaySignals,
+    HOURLY_EDGES,
+    _complete_day_values,
+    _hourly_hold,
+    _mc_summary,
+    build_day_signals,
+    select_representative_days,
+)
 
 def _constant_day(series, day, value):
     index = pd.date_range(pd.Timestamp(day).normalize(), pd.Timestamp(day).normalize() + pd.Timedelta(days=1),
         freq='h', inclusive='left')
     series.loc[index] = float(value)
+
+def _synthetic_day_signals():
+    target = np.linspace(0.25, 0.55, 24, dtype=float)
+    baseline = np.linspace(0.30, 0.50, 24, dtype=float)
+    observed_price = np.linspace(0.20, 0.80, 24, dtype=float)
+    day = pd.Timestamp('2022-05-17')
+    return DaySignals(
+        day=day,
+        target=target,
+        baseline=baseline,
+        observed_price=observed_price,
+        raw_target=100.0 * target,
+        raw_price=1000.0 * observed_price,
+        baseline_days=tuple(day - pd.Timedelta(weeks=i) for i in range(1, 6)),
+    )
+
+
+class F3GHistoricalContractTests(unittest.TestCase):
+
+    def test_historical_problem_owns_observed_prices_and_uses_hourly_contract(self):
+        signals = _synthetic_day_signals()
+        expected = signals.observed_price.copy()
+        problem = build_problem(signals)
+
+        np.testing.assert_array_equal(problem.observed_prices, expected)
+        np.testing.assert_array_equal(problem.price_edges, HOURLY_EDGES)
+        np.testing.assert_array_equal(problem.breakpoints, HOURLY_EDGES[1:-1])
+        self.assertEqual(problem.n_intervals, 24)
+        self.assertEqual(problem.deterministic_initial_state, 0.5)
+
+        signals.observed_price[:] = 0.0
+        np.testing.assert_array_equal(problem.observed_prices, expected)
+        with self.assertRaises(ValueError):
+            problem.observed_prices[0] = 0.5
+
+        template = problem.parameters.parameter_template(problem.price_edges)
+        np.testing.assert_array_equal(
+            template[0](np.array([0.1, 0.9], dtype=float)),
+            np.array([0.5, 0.5], dtype=float),
+        )
+
+    def test_historical_observed_evaluation_matches_direct_common_evaluator(self):
+        signals = _synthetic_day_signals()
+        problem = build_problem(signals)
+        numerics = build_numerics(cells=21)
+
+        attached = problem.evaluate_observed(numerics, fast=True)
+        direct = problem.build_evaluator(numerics, fast=True).evaluate(problem.observed_prices)
+
+        np.testing.assert_allclose(attached.cell_mass, direct.cell_mass, atol=0.0, rtol=0.0)
+        self.assertAlmostEqual(attached.total, direct.total, places=15)
+        self.assertAlmostEqual(attached.objective.bias, direct.objective.bias, places=15)
+        self.assertAlmostEqual(attached.objective.variance, direct.objective.variance, places=15)
+
+    def test_fixed_input_mode_skips_retrospective_optimizer(self):
+        signals = _synthetic_day_signals()
+        result = run_day(
+            signals,
+            cells=21,
+            validate_mc=False,
+            optimize=False,
+            save=False,
+        )
+
+        self.assertIsNone(result.optimization)
+        self.assertIsNone(result.paired_mc)
+        self.assertEqual(set(result.evaluations), {'observed_spot', 'neutral'})
+        np.testing.assert_array_equal(result.problem.observed_prices, signals.observed_price)
+        self.assertTrue(np.isfinite(result.evaluations['observed_spot'].total))
+        self.assertTrue(np.isfinite(result.evaluations['neutral'].total))
+
 
 class RealDataDailyExperimentTests(unittest.TestCase):
 
