@@ -114,6 +114,12 @@ def save_day_plot(signals, evaluator, evaluations, optimized_prices=None, output
         evaluations['observed_spot'].objective.expected_demand,
         label='E[D] with observed DK1 price',
     )
+    ax_demand.plot(
+        hours,
+        evaluations['neutral'].objective.expected_demand,
+        linestyle=':',
+        label='E[D] with neutral 0.5 price',
+    )
     if 'optimized' in evaluations:
         ax_demand.plot(
             hours,
