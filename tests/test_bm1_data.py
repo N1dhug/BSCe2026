@@ -147,6 +147,22 @@ class RealDataDailyExperimentTests(unittest.TestCase):
         self.assertAlmostEqual(result[1], values[6])
         self.assertAlmostEqual(result[2], values[6])
 
+    def test_historical_count_inputs_are_not_silently_truncated(self):
+        index = pd.date_range('2022-01-01', '2022-05-01', freq='h', inclusive='left')
+        consumption = pd.Series(0.4, index=index, dtype=float)
+        price = pd.Series(0.5, index=index, dtype=float)
+        with self.assertRaises(ValueError):
+            build_day_signals(
+                consumption, price, consumption, price, '2022-03-07',
+                baseline_weeks=5.5,
+            )
+        with self.assertRaises(ValueError):
+            select_representative_days(
+                consumption, price, consumption, price,
+                n_days=2.5,
+                baseline_weeks=5,
+            )
+
     def test_auto_selection_returns_distinct_consumption_regimes(self):
         index = pd.date_range('2022-01-01', '2022-05-01', freq='h', inclusive='left')
         consumption = pd.Series(index=index, dtype=float)
