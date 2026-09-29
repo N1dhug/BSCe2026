@@ -1,8 +1,9 @@
-"""Run the historical BM1 tracking diagnostic with fixed model parameters.
+"""Run the F3-G historical-price application with fixed model parameters.
 
-Data preparation -> immutable observed-price control problem -> optional
-retrospective optimization -> shared FV/MC comparison -> reporting.
-This is not parameter estimation. Normal runs do not overwrite saved evidence.
+By default the control target is the history-only baseline, so current-day
+observed consumption is not used as the counterfactual target.  The old
+observed-consumption target remains available explicitly as a retrospective
+diagnostic.  This is not parameter estimation.
 """
 
 import argparse
@@ -27,11 +28,13 @@ OBJECTIVE_MAX_STEP = 1.0 / 96.0
 SOLVER_MAX_STEP = 1.0 / 96.0
 MC_INITIAL_SEED = 2091
 MC_BROWNIAN_SEED = 2092
+TARGET_MODES = ('baseline', 'observed')
 
 
 @dataclass(frozen=True)
 class DayExperiment:
     signals: data.DaySignals
+    target_mode: str
     problem: control.BM1ControlProblem
     numerics: control.BM1ControlNumerics
     evaluator: control.FastFVStochasticPriceEvaluator
@@ -62,13 +65,28 @@ def _parameters():
     )
 
 
-def build_problem(signals):
+def _validated_target_mode(target_mode):
+    target_mode = str(target_mode)
+    if target_mode not in TARGET_MODES:
+        raise ValueError(f'target_mode must be one of {TARGET_MODES}.')
+    return target_mode
+
+
+def _target_values(signals, target_mode):
+    target_mode = _validated_target_mode(target_mode)
+    # "baseline" is the F3-G application target: it uses only preceding
+    # matching weekdays and is independent of current-day observed consumption.
+    return signals.baseline if target_mode == 'baseline' else signals.target
+
+
+def build_problem(signals, *, target_mode='baseline'):
     """Attach one historical spot-price day to the common immutable F3 contract."""
     if not isinstance(signals, data.DaySignals):
         raise TypeError('signals must be a DaySignals instance.')
+    target_mode = _validated_target_mode(target_mode)
     return control.BM1ControlProblem(
         baseline=data._hourly_hold(signals.baseline),
-        target=data._hourly_hold(signals.target),
+        target=data._hourly_hold(_target_values(signals, target_mode)),
         horizon=scenario.T,
         price_edges=data.HOURLY_EDGES,
         parameters=_parameters(),
@@ -89,7 +107,15 @@ def build_numerics(*, cells=DEFAULT_CELLS):
     )
 
 
-def save_day_plot(signals, evaluator, evaluations, optimized_prices=None, output_dir=OUTPUT_DIR):
+def save_day_plot(
+    signals,
+    evaluator,
+    evaluations,
+    optimized_prices=None,
+    *,
+    target_mode='baseline',
+    output_dir=OUTPUT_DIR,
+):
     """Plot one evaluated day only when explicitly requested."""
     import matplotlib.pyplot as plt
     output_dir = Path(output_dir)
@@ -99,16 +125,34 @@ def save_day_plot(signals, evaluator, evaluations, optimized_prices=None, output
     hours = 24.0 * evaluator.midpoints
     plot_t = np.linspace(0.0, 1.0, 1441)
     plot_hours = 24.0 * plot_t
-    target = data._hourly_hold(signals.target)
+    target_mode = _validated_target_mode(target_mode)
+    target = data._hourly_hold(_target_values(signals, target_mode))
     baseline = data._hourly_hold(signals.baseline)
-    ax_demand.step(plot_hours, target(plot_t), where='post', linewidth=2.2, label='Observed target A(t)')
     ax_demand.step(
         plot_hours,
-        baseline(plot_t),
+        target(plot_t),
         where='post',
-        linestyle='--',
-        label='History baseline B(t)',
+        linewidth=2.2,
+        label=('History baseline = chosen target A(t)' if target_mode == 'baseline'
+               else 'Observed consumption = retrospective target A(t)'),
     )
+    if target_mode == 'observed':
+        ax_demand.step(
+            plot_hours,
+            baseline(plot_t),
+            where='post',
+            linestyle='--',
+            label='History baseline B(t)',
+        )
+    else:
+        observed = data._hourly_hold(signals.target)
+        ax_demand.step(
+            plot_hours,
+            observed(plot_t),
+            where='post',
+            linestyle=':',
+            label='Observed consumption (diagnostic only)',
+        )
     ax_demand.plot(
         hours,
         evaluations['observed_spot'].objective.expected_demand,
@@ -181,12 +225,14 @@ def _result_record(result):
     )
     record = {
         'day': signals.day,
+        'target_mode': result.target_mode,
         'baseline_days': list(signals.baseline_days),
         'raw_consumption_mean': float(np.mean(signals.raw_target)),
         'raw_price_mean_dkk_per_mwh': float(np.mean(signals.raw_price)),
         'raw_price_min_dkk_per_mwh': float(np.min(signals.raw_price)),
         'raw_price_max_dkk_per_mwh': float(np.max(signals.raw_price)),
-        'normalized_target': signals.target,
+        'normalized_observed_consumption': signals.target,
+        'normalized_control_target': _target_values(signals, result.target_mode),
         'normalized_baseline': signals.baseline,
         'normalized_observed_price': signals.observed_price,
         'optimized_price': optimized,
@@ -214,9 +260,9 @@ def _result_record(result):
     return record
 
 
-def build_evaluator(signals, *, cells=DEFAULT_CELLS):
+def build_evaluator(signals, *, cells=DEFAULT_CELLS, target_mode='baseline'):
     """Compatibility helper: construct the fast FV evaluator through BM1ControlProblem."""
-    problem = build_problem(signals)
+    problem = build_problem(signals, target_mode=target_mode)
     return problem.build_evaluator(build_numerics(cells=cells), fast=True)
 
 
@@ -227,12 +273,14 @@ def run_day(
     mc_paths=DEFAULT_MC_PATHS,
     validate_mc=True,
     optimize=True,
+    target_mode='baseline',
     progress=None,
     save=False,
     output_dir=OUTPUT_DIR,
 ):
-    """Evaluate historical prices unchanged, then optionally run retrospective optimization."""
-    problem = build_problem(signals)
+    """Evaluate historical prices unchanged, then optionally optimize an alternative plan."""
+    target_mode = _validated_target_mode(target_mode)
+    problem = build_problem(signals, target_mode=target_mode)
     numerics = build_numerics(cells=cells)
     evaluator = problem.build_evaluator(numerics, fast=True)
     neutral = np.full(problem.n_intervals, 0.5, dtype=float)
@@ -250,8 +298,8 @@ def run_day(
         starts = np.vstack((problem.observed_prices, neutral))
         if progress is not None:
             progress(
-                f'{signals.day:%Y-%m-%d}: retrospective 24-price optimization '
-                'from observed DK1 and neutral starts',
+                f'{signals.day:%Y-%m-%d}: 24-price optimization '
+                f'(target_mode={target_mode}) from observed DK1 and neutral starts',
             )
         optimization = control.multistart_powell(
             evaluator,
@@ -298,11 +346,19 @@ def run_day(
                 }
 
     path = (
-        save_day_plot(signals, evaluator, evaluations, optimized, output_dir)
+        save_day_plot(
+            signals,
+            evaluator,
+            evaluations,
+            optimized,
+            target_mode=target_mode,
+            output_dir=output_dir,
+        )
         if save else None
     )
     return DayExperiment(
         signals=signals,
+        target_mode=target_mode,
         problem=problem,
         numerics=numerics,
         evaluator=evaluator,
@@ -325,6 +381,7 @@ def run_real_data_experiment(
     mc_paths=DEFAULT_MC_PATHS,
     validate_mc=True,
     optimize=True,
+    target_mode='baseline',
     progress=None,
     save=False,
     output_dir=OUTPUT_DIR,
@@ -361,6 +418,7 @@ def run_real_data_experiment(
                 mc_paths=mc_paths,
                 validate_mc=validate_mc,
                 optimize=optimize,
+                target_mode=target_mode,
                 progress=progress,
                 save=save,
                 output_dir=output_dir,
@@ -379,13 +437,18 @@ def _plot_location(path):
 
 def report_day(result, *, verbose=False):
     """Distinguish retrospective tracking from an estimated causal demand response."""
-    print(f'\n{result.signals.day:%Y-%m-%d}: fixed model parameters, retrospective target')
+    target_label = (
+        'history-only baseline target'
+        if result.target_mode == 'baseline'
+        else 'observed-consumption retrospective target'
+    )
+    print(f'\n{result.signals.day:%Y-%m-%d}: fixed model parameters, {target_label}')
     for name, evaluation in result.evaluations.items():
         cost = evaluation.objective
         print(f'{name:14s} FV J={cost.total:.8e} bias={cost.bias:.3e} variance={cost.variance:.3e}')
     fit = result.optimization
     if fit is None:
-        print('Retrospective price optimization skipped; observed spot prices were evaluated unchanged.')
+        print('Alternative price optimization skipped; observed spot prices were evaluated unchanged.')
     else:
         successes = sum((bool(item.success) for item in fit.results))
         print(
@@ -424,7 +487,7 @@ def report_day(result, *, verbose=False):
         )
         print('Observed prices:', result.problem.observed_prices)
         if fit is not None:
-            print('Retrospective optimized prices:', np.asarray(fit.best.x))
+            print('Optimized alternative prices:', np.asarray(fit.best.x))
             print('Price correlation:', data._price_correlation(result.problem.observed_prices, fit.best.x))
     if result.plot_path is not None:
         print('Saved graph to', result.plot_path)
@@ -443,6 +506,15 @@ def main(argv=None):
     parser.add_argument('--cells', type=int, default=DEFAULT_CELLS)
     parser.add_argument('--mc-paths', type=int, default=DEFAULT_MC_PATHS)
     parser.add_argument('--no-mc', action='store_true', help='Skip only the Monte Carlo comparison.')
+    parser.add_argument(
+        '--target-mode',
+        choices=TARGET_MODES,
+        default='baseline',
+        help=(
+            "Control target: 'baseline' (default, history-only F3-G application) "
+            "or 'observed' (legacy retrospective diagnostic)."
+        ),
+    )
     parser.add_argument(
         '--no-optimize',
         action='store_true',
@@ -466,8 +538,8 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
     print(
-        'BM1 historical diagnostic: observed prices are fixed external inputs; '
-        'observed consumption is the retrospective target; parameters are NOT fitted.',
+        'BM1 F3-G: observed prices are fixed external inputs; '
+        'the control target is selected explicitly; parameters are NOT fitted.',
     )
     experiments, normalization = run_real_data_experiment(
         days=args.days,
@@ -478,6 +550,7 @@ def main(argv=None):
         mc_paths=args.mc_paths,
         validate_mc=not args.no_mc,
         optimize=not args.no_optimize,
+        target_mode=args.target_mode,
         progress=print if args.verbose else None,
         save=args.save,
         output_dir=args.output_dir,
@@ -487,9 +560,10 @@ def main(argv=None):
     if args.save:
         payload = {
             'note': (
-                'F3-G retrospective tracking diagnostic; observed spot prices enter as fixed external inputs, '
-                'the target day is observed, and reference BM parameters are not fitted to real data.'
+                'F3-G historical-price application; observed spot prices enter as fixed external inputs, '
+                'the target is selected explicitly, and reference BM parameters are not fitted to real data.'
             ),
+            'target_mode': args.target_mode,
             'normalization': normalization.__dict__,
             'baseline_weeks': int(args.baseline_weeks),
             'cells': int(args.cells),
