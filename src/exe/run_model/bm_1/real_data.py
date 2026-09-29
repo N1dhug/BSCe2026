@@ -125,7 +125,15 @@ def save_day_plot(signals, evaluator, evaluations, optimized_prices=None, output
     ax_demand.legend(loc='best')
     edge_hours = np.arange(25, dtype=float)
     observed_plot = np.append(signals.observed_price, signals.observed_price[-1])
+    neutral_plot = np.full(edge_hours.size, 0.5, dtype=float)
     ax_price.step(edge_hours, observed_plot, where='post', label='Observed normalized DK1 spot price')
+    ax_price.step(
+        edge_hours,
+        neutral_plot,
+        where='post',
+        linestyle='--',
+        label='Neutral 0.5 benchmark',
+    )
     if optimized_prices is not None:
         optimized_prices = np.asarray(optimized_prices, dtype=float)
         optimized_plot = np.append(optimized_prices, optimized_prices[-1])
@@ -368,6 +376,11 @@ def report_day(result, *, verbose=False):
                 f'{fit.objective_evaluations}; time={fit.elapsed_seconds:.2f}s'
             ),
         )
+    if result.mc is not None:
+        for name, item in result.mc.items():
+            print(
+                f'MC {name:14s} J={item.total:.8e} SE={item.standard_error:.3e}',
+            )
     if result.paired_mc is not None:
         for name, row in result.paired_mc.items():
             print(
@@ -424,7 +437,10 @@ def main(argv=None):
         help='Destination used only with --save.',
     )
     args = parser.parse_args(argv)
-    print('BM1 historical diagnostic: observed consumption is the target; parameters are NOT fitted.')
+    print(
+        'BM1 historical diagnostic: observed prices are fixed external inputs; '
+        'observed consumption is the retrospective target; parameters are NOT fitted.',
+    )
     experiments, normalization = run_real_data_experiment(
         days=args.days,
         n_days=args.n_days,
@@ -442,7 +458,10 @@ def main(argv=None):
         report_day(result, verbose=args.verbose)
     if args.save:
         payload = {
-            'note': 'Retrospective tracking diagnostic; target day is observed and reference BM parameters are not fitted to real data.',
+            'note': (
+                'F3-G retrospective tracking diagnostic; observed spot prices enter as fixed external inputs, '
+                'the target day is observed, and reference BM parameters are not fitted to real data.'
+            ),
             'normalization': normalization.__dict__,
             'baseline_weeks': int(args.baseline_weeks),
             'cells': int(args.cells),
