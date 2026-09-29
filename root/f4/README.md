@@ -5,8 +5,8 @@
 F4-0 er merged på `main` i commit `4a4702317f23141a24ce788046906c0cbe2445b8` og er lokalt valideret med 253/253 tests på Windows/Python 3.11.
 F4-A er næste dokumenterede checkpoint og låser det første inverse problem; det er stadig ikke en færdig F4-estimator.
 `../F4.md` er den opdaterede arbejdsplan og statuskilde. `main.tex` inkluderer
-`preparation.tex` og er den matematiske læsevej. Den genererede PDF ligger i
-leveringspakken, ikke som en ny binær kildefil i repositorypatch'et.
+`preparation.tex`, som igen inkluderer `f4_a.tex`, og er den matematiske læsevej.
+Den genererede PDF bygges lokalt i `root/f4/build/` og committes ikke.
 
 F4-0 indeholder funktionelle kodeprimitiver og tests, ikke tomme API-stubs:
 
@@ -73,15 +73,18 @@ Genererede LaTeX-filer i `root/f4/build/` skal ikke committes.
 
 ## Miljø og test-evidens
 
-Baseline: 207 tests. Kandidat: 253 tests, heraf 46 nye. Lokalt runtime:
-Python 3.13.5, NumPy 2.3.5, SciPy 1.17.0. Python 3.11-grammatik er checket;
-dette er ikke en 3.11-runtimekørsel eller en ny GitHub Actions-kørsel.
+F4-0-baseline havde 207 tests; efter forberedelsen var der 253 tests, heraf 46 nye.
+Forberedelsespakken blev først kørt med Python 3.13.5 / NumPy 2.3.5 / SciPy 1.17.0.
+Før merge kørte brugeren derefter den fulde suite på Windows/Python 3.11: 253/253 bestod.
+Dette er den relevante lokale merge-gate; en særskilt ny GitHub Actions-kørsel på F4-0-
+commit'et blev ikke dokumenteret.
 Der er ikke ændret på `root/environment.yml`. Det nye komplementære beta-CDF-kald
 kræver SciPy >= 1.11 (den testede version opfylder dette).
 
-Testlogs, quadrature/projektionsresultater, miljøversioner, source-manifest og
-checksums er i leveringspakkens `evidence/`. Den eksisterende WM2-docstring giver
-en SyntaxWarning i Python 3.13; den er ikke skjult eller ændret af F4-0.
+De oprindelige quadrature-/projektionsresultater og miljøoplysninger blev gemt i den
+lokale forberedelsesleverance. Repositoryets varige evidens er kildekode, noter og tests.
+Den eksisterende WM2-docstring gav en SyntaxWarning i Python 3.13; den blev ikke skjult
+eller ændret af F4-0.
 Inputworkbooks og lange historiske scientific runs er ikke genkørt.
 
 ## F4-A-status og næste trin

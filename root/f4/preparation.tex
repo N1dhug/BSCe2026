@@ -523,11 +523,11 @@ Placering & Faktisk leverance i F4-0\\\midrule\endhead
 Der er ikke tilføjet et tomt \texttt{estimate.py} eller en række uimplementerede API-stubs. Et nyt CLI kommer med et reelt F4-B/C-ansvar. Derfor bevares den eksisterende layout-test om fire BM-entrypoints. Ingen shared WM-kernel, package initializer, inputworkbook eller historisk F3-resultatfil er ændret.
 
 \subsection{Faktisk udførte tests}
-Den hentede F3-kilde blev verificeret ved Git-subtræshashes for \texttt{src}, \texttt{tests} og \texttt{root}. Den afsluttede baselinekørsel bestod 207 tests. Efter de nye primitiver består 253 tests i alt, heraf 46 nye. Lokalmiljøet var Python 3.13.5, NumPy 2.3.5 og SciPy 1.17.0. En særskilt parsingkontrol bruger Python 3.11-grammatik, men er ikke en runtime-test på Python 3.11.
+Den hentede F3-kilde blev verificeret ved Git-subtræshashes for \texttt{src}, \texttt{tests} og \texttt{root}. Den afsluttede baselinekørsel bestod 207 tests. Efter de nye primitiver består 253 tests i alt, heraf 46 nye. Forberedelsesmiljøet var Python 3.13.5, NumPy 2.3.5 og SciPy 1.17.0. Før F4-0 blev merged, kørte brugeren desuden den fulde suite på Windows/Python 3.11, hvor 253/253 tests bestod.
 
 Testene omfatter Bayes mod direkte beregning, ægte nulstøtte, meget små likelihoods, genvindelige logvægte, density-værdier over 1, eksplicitte missing masks, ingen fremtidige værdier i en observationsprefix, konservativ remap, integrerede beta-celler, projektor-fallback og genbrug af geometri uden skjulte target-warmstarts. Korte integrationstests forbinder én FV-prediction til én Bayes-update, og den nye basis til den eksisterende zero-operator-propagator.
 
-Disse tests er ikke et parameter-recovery-studie, en fuld streaming-filtertest eller en validering af alle mulige priors og callbacks. Historiske Excel-data var ikke i det hentede kildeartifact, og der er ikke udført real-data-fit. Der er ikke ændret på repositoryets oprindelige miljøfil. Kør den fulde suite i brugerens eget miljø før merge.
+Disse tests er ikke et parameter-recovery-studie, en fuld streaming-filtertest eller en validering af alle mulige priors og callbacks. Der er ikke udført real-data-fit som del af F4-0, og repositoryets oprindelige miljøfil er uændret. Den fulde lokale Windows/Python 3.11-suite blev kørt før merge; senere F4-deltrin skal fortsat have deres egen lokale merge-gate.
 
 \subsection{Et konkret statisk resultat}
 Kontrollen bruger \(X_0\sim\Beta(20,20)\), \(B=U=Y=0.5\), \(k=2\), \(\Xi=1\) og \(\sigma_Y=0.01\), uden prediction. Uafhængig numerisk quadrature af den kontinuerte Bayes-update giver
