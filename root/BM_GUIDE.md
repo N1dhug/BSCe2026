@@ -1,16 +1,16 @@
 # BM1 — code and run guide
 
 F1, F2 and F3-A through F3-F are implemented and locally validated.
-Run all commands from the repository root.
+F3-G is the current historical-price integration step and must be validated
+locally before this feature branch is merged. Run all commands from the
+repository root.
 
-The post-F3-F maintenance candidate and its test/performance evidence are
-documented in `BM_AUDIT_F1_F3.md`. The audit keeps the model, reference grids
-and outer-optimizer settings fixed; its measured gains mainly concern dynamic
-mixture projection. The candidate has now passed the full 200-test suite and
-representative F1/F3 Windows smoke tests; the degree-30/81 mixture optimization
-fell from about 651 s to 32.1 s on the user's Windows machine with essentially
-the same outer Powell workload. Remote PR/CI review remains the final merge
-gate.
+The post-F3-F maintenance audit and its test/performance evidence are
+documented in `BM_AUDIT_F1_F3.md`. That audit is already merged. It keeps the
+model, reference grids and outer-optimizer settings fixed; its measured gains
+mainly concern dynamic mixture projection. The degree-30/81 mixture
+optimization fell from about 651 s to 32.1 s on the user's Windows machine
+with essentially the same outer Powell workload.
 
 
 ## Where the code belongs
@@ -82,6 +82,8 @@ python -B -m src.exe.run_model.bm_1.optimize complex --fast-fv
 python -B -m src.exe.run_model.bm_1.refine
 python -B -m src.exe.run_model.bm_1.refine --mc-paths 20000 --mc-time-paths 5000
 python -B -m src.exe.run_model.bm_1.real_data --help
+python -B -m src.exe.run_model.bm_1.real_data --no-optimize --no-mc
+python -B -m src.exe.run_model.bm_1.real_data --no-optimize
 python -B -m src.exe.run_model.bm_1.verify benchmark --cells 201 1001 --repeats 7
 ```
 
@@ -92,6 +94,16 @@ F3-D optimizes a deterministic point-state controller and the stochastic FV cont
 F3-E separates the two uncertainty sources into deterministic, initial-only, process-only and full cases, optimizes each independently and cross-evaluates the four returned policies. Compare policies within a fixed model row; objective levels across rows use different state laws.
 
 F3-F optimizes FV at both 201 and 81 cells plus the degree-30 dynamic mixture at the matched 81-cell design grid. The final `mixture-validate` step re-optimizes only FV at the F3-B high-resolution settings (801 cells, objective step 1/192, FV step 1/384) and checks the already-fixed policies with common-random-number MC and coupled EM refinement. In the retained validation the mixture policy has high-resolution FV regret 2.33e-6, about 0.0356% of the reference objective, and the 20,000-path paired MC difference is -2.21e-6 with SE 6.34e-7 under the convention FV-reference minus candidate. F3-F is therefore closed for the controlled two-price benchmark; the policies are not numerically identical, but their achieved control quality is very close.
+
+F3-G attaches imported hourly DK1 spot prices to the same
+`BM1ControlProblem.observed_prices` contract and evaluates them unchanged with
+`evaluate_observed`. The historical target is observed consumption and the
+baseline is a trimmed mean of the preceding five matching weekdays. Reference
+BM parameters remain fixed: this is a retrospective integration/diagnostic
+step, not parameter estimation or a causal savings study. Use
+`real_data --no-optimize` for the core fixed-input path. The older 24-price
+Powell calculation remains available as an explicitly retrospective oracle by
+omitting `--no-optimize`.
 
 Mixture/conditioning and full multi-price optimization can be expensive. Their
 numerical settings are not reduced just to make an output report shorter.
