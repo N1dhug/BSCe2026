@@ -1,6 +1,7 @@
 """Run the historical BM1 tracking diagnostic with fixed model parameters.
 
-Data preparation -> price optimization -> shared FV/MC comparison -> reporting.
+Data preparation -> immutable observed-price control problem -> optional
+retrospective optimization -> shared FV/MC comparison -> reporting.
 This is not parameter estimation. Normal runs do not overwrite saved evidence.
 """
 
@@ -13,9 +14,7 @@ import numpy as np
 import pandas as pd
 
 from src.control import bm_1 as control
-from src.model.bm_1 import bm_1
 from src.tools import bm_1_data as data
-from src.tools.input_generator.input_builder import input_builder
 from src.validation.bm_1 import cases
 from src.validation.bm_1 import control as scenario
 
@@ -32,27 +31,63 @@ MC_BROWNIAN_SEED = 2092
 @dataclass(frozen=True)
 class DayExperiment:
     signals: data.DaySignals
+    problem: control.BM1ControlProblem
+    numerics: control.BM1ControlNumerics
     evaluator: control.FastFVStochasticPriceEvaluator
-    optimization: object
+    optimization: object | None
     evaluations: dict
     mc: dict | None
     paired_mc: dict | None
     plot_path: Path | None
 
 
-def _parameter_template():
-    neutral = input_builder.price_intervals((data.HOURLY_EDGES, np.full(24, 0.5, dtype=float)))
-    return [
-        neutral,
-        cases.linear_state_response,
-        cases.linear_price_response,
-        scenario.C,
-        scenario.K,
-        scenario.XI,
-    ]
+def _initial_mass_builder(edges):
+    return control.beta_initial_cell_mass(
+        edges,
+        alpha=cases.INITIAL_ALPHA,
+        beta=cases.INITIAL_BETA,
+    )
 
 
-def save_day_plot(signals, evaluator, evaluations, optimized_prices, output_dir=OUTPUT_DIR):
+def _parameters():
+    return control.BM1Parameters(
+        state_response=cases.linear_state_response,
+        price_response=cases.linear_price_response,
+        C=scenario.C,
+        k=scenario.K,
+        Xi=scenario.XI,
+        sigma_x=cases.SIGMA_X,
+    )
+
+
+def build_problem(signals):
+    """Attach one historical spot-price day to the common immutable F3 contract."""
+    if not isinstance(signals, data.DaySignals):
+        raise TypeError('signals must be a DaySignals instance.')
+    return control.BM1ControlProblem(
+        baseline=data._hourly_hold(signals.baseline),
+        target=data._hourly_hold(signals.target),
+        horizon=scenario.T,
+        price_edges=data.HOURLY_EDGES,
+        parameters=_parameters(),
+        initial_mass_builder=_initial_mass_builder,
+        deterministic_initial_state=scenario.X0_DETERMINISTIC,
+        breakpoints=data.HOURLY_EDGES[1:-1],
+        observed_prices=signals.observed_price,
+    )
+
+
+def build_numerics(*, cells=DEFAULT_CELLS):
+    """Numerics for the historical day, using the established F3 working settings."""
+    return control.BM1ControlNumerics(
+        x_steps=cells,
+        objective_max_step=OBJECTIVE_MAX_STEP,
+        solver_max_step=SOLVER_MAX_STEP,
+        model_t_steps=2,
+    )
+
+
+def save_day_plot(signals, evaluator, evaluations, optimized_prices=None, output_dir=OUTPUT_DIR):
     """Plot one evaluated day only when explicitly requested."""
     import matplotlib.pyplot as plt
     output_dir = Path(output_dir)
@@ -77,28 +112,34 @@ def save_day_plot(signals, evaluator, evaluations, optimized_prices, output_dir=
         evaluations['observed_spot'].objective.expected_demand,
         label='E[D] with observed DK1 price',
     )
-    ax_demand.plot(
-        hours,
-        evaluations['optimized'].objective.expected_demand,
-        label='E[D] with optimized price',
-    )
+    if 'optimized' in evaluations:
+        ax_demand.plot(
+            hours,
+            evaluations['optimized'].objective.expected_demand,
+            label='E[D] with optimized price',
+        )
     ax_demand.set_ylabel('Normalized consumption')
     ax_demand.set_title(f'Real-data BM1 tracking — {signals.day:%Y-%m-%d}')
     ax_demand.grid(True, alpha=0.25)
     ax_demand.legend(loc='best')
     edge_hours = np.arange(25, dtype=float)
     observed_plot = np.append(signals.observed_price, signals.observed_price[-1])
-    optimized_plot = np.append(optimized_prices, optimized_prices[-1])
     ax_price.step(edge_hours, observed_plot, where='post', label='Observed normalized DK1 spot price')
-    ax_price.step(edge_hours, optimized_plot, where='post', label='BM1 optimized hourly price')
+    if optimized_prices is not None:
+        optimized_prices = np.asarray(optimized_prices, dtype=float)
+        optimized_plot = np.append(optimized_prices, optimized_prices[-1])
+        ax_price.step(edge_hours, optimized_plot, where='post', label='BM1 retrospective optimized price')
     ax_price.set_xlim(0.0, 24.0)
     ax_price.set_ylim(0.0, 1.0)
     ax_price.set_ylabel('Normalized price')
     ax_price.set_xlabel('Hour')
     ax_price.grid(True, alpha=0.25)
     ax_price.legend(loc='best')
-    names = ('Observed DK1', 'Neutral 0.5', 'Optimized')
-    keys = ('observed_spot', 'neutral', 'optimized')
+    keys = ['observed_spot', 'neutral']
+    names = ['Observed DK1', 'Neutral 0.5']
+    if 'optimized' in evaluations:
+        keys.append('optimized')
+        names.append('Retrospective optimized')
     bias = np.array([evaluations[key].objective.bias for key in keys])
     variance = np.array([evaluations[key].objective.variance for key in keys])
     positions = np.arange(len(keys))
@@ -118,7 +159,10 @@ def save_day_plot(signals, evaluator, evaluations, optimized_prices, output_dir=
 
 def _result_record(result):
     signals = result.signals
-    optimized = np.asarray(result.optimization.best.x, dtype=float)
+    optimized = (
+        np.asarray(result.optimization.best.x, dtype=float)
+        if result.optimization is not None else None
+    )
     record = {
         'day': signals.day,
         'baseline_days': list(signals.baseline_days),
@@ -130,15 +174,21 @@ def _result_record(result):
         'normalized_baseline': signals.baseline,
         'normalized_observed_price': signals.observed_price,
         'optimized_price': optimized,
-        'price_correlation': data._price_correlation(signals.observed_price, optimized),
+        'price_correlation': (
+            data._price_correlation(signals.observed_price, optimized)
+            if optimized is not None else None
+        ),
         'objective': {
             name: data._objective_dict(evaluation)
              for name, evaluation in result.evaluations.items()
         },
-        'optimization': {
-            'objective_evaluations': int(result.optimization.objective_evaluations),
-            'cache_hits': int(result.optimization.cache_hits),
-        },
+        'optimization': (
+            {
+                'objective_evaluations': int(result.optimization.objective_evaluations),
+                'cache_hits': int(result.optimization.cache_hits),
+            }
+            if result.optimization is not None else None
+        ),
         'plot': _plot_location(result.plot_path),
     }
     if result.mc is not None:
@@ -148,25 +198,9 @@ def _result_record(result):
 
 
 def build_evaluator(signals, *, cells=DEFAULT_CELLS):
-    baseline = data._hourly_hold(signals.baseline)
-    target = data._hourly_hold(signals.target)
-    model = bm_1(baseline, target, scenario.T, 2)
-    spatial_edges, _, _ = model.fokker_planc_reference.grid(int(cells))
-    initial_mass = control.beta_initial_cell_mass(
-        spatial_edges,
-        alpha=cases.INITIAL_ALPHA,
-        beta=cases.INITIAL_BETA,
-    )
-    return control.FastFVStochasticPriceEvaluator(
-        model,
-        _parameter_template(),
-        data.HOURLY_EDGES,
-        cases.SIGMA_X,
-        initial_mass,
-        objective_max_step=OBJECTIVE_MAX_STEP,
-        solver_max_step=SOLVER_MAX_STEP,
-        breakpoints=data.HOURLY_EDGES[1:-1],
-    )
+    """Compatibility helper: construct the fast FV evaluator through BM1ControlProblem."""
+    problem = build_problem(signals)
+    return problem.build_evaluator(build_numerics(cells=cells), fast=True)
 
 
 def run_day(
@@ -175,51 +209,76 @@ def run_day(
     cells=DEFAULT_CELLS,
     mc_paths=DEFAULT_MC_PATHS,
     validate_mc=True,
+    optimize=True,
     progress=None,
     save=False,
     output_dir=OUTPUT_DIR,
 ):
-    """Optimize fixed-parameter BM1, reevaluate candidates, and optionally compare paired MC paths."""
-    evaluator = build_evaluator(signals, cells=cells)
-    neutral = np.full(24, 0.5, dtype=float)
-    starts = np.vstack((signals.observed_price, neutral))
-    if progress is not None:
-        progress(
-            f'{signals.day:%Y-%m-%d}: optimizing 24 hourly prices from observed DK1 and neutral starts',
-        )
-    optimization = control.multistart_powell(
-        evaluator,
-        starts,
-        progress=progress,
-        options={'xtol': 5e-05, 'ftol': 1e-09, 'maxiter': 100},
-    )
-    optimized = np.asarray(optimization.best.x, dtype=float)
+    """Evaluate historical prices unchanged, then optionally run retrospective optimization."""
+    problem = build_problem(signals)
+    numerics = build_numerics(cells=cells)
+    evaluator = problem.build_evaluator(numerics, fast=True)
+    neutral = np.full(problem.n_intervals, 0.5, dtype=float)
+
+    # F3-G core: historical spot prices are attached external inputs and are
+    # evaluated unchanged through BM1ControlProblem, never used as a template.
     evaluations = {
-        'observed_spot': evaluator.evaluate(signals.observed_price),
+        'observed_spot': problem.evaluate_observed(numerics, fast=True),
         'neutral': evaluator.evaluate(neutral),
-        'optimized': evaluator.evaluate(optimized),
     }
+
+    optimization = None
+    optimized = None
+    if optimize:
+        starts = np.vstack((problem.observed_prices, neutral))
+        if progress is not None:
+            progress(
+                f'{signals.day:%Y-%m-%d}: retrospective 24-price optimization '
+                'from observed DK1 and neutral starts',
+            )
+        optimization = control.multistart_powell(
+            evaluator,
+            starts,
+            progress=progress,
+            options={'xtol': 5e-05, 'ftol': 1e-09, 'maxiter': 100},
+        )
+        optimized = np.asarray(optimization.best.x, dtype=float)
+        evaluations['optimized'] = evaluator.evaluate(optimized)
+
     mc = None
     paired = None
     if validate_mc:
+        candidates = {
+            'observed_spot': problem.observed_prices,
+            'neutral': neutral,
+        }
+        if optimized is not None:
+            candidates['optimized'] = optimized
         mc = control.evaluate_mc_candidates_common_random_numbers(
             evaluator,
-            {'observed_spot': signals.observed_price, 'neutral': neutral, 'optimized': optimized},
-            n_paths=int(mc_paths),
+            candidates,
+            n_paths=mc_paths,
             initial_seed=MC_INITIAL_SEED,
             brownian_seed=MC_BROWNIAN_SEED,
         )
-        paired = {}
-        for reference_name in ('observed_spot', 'neutral'):
-            mean, standard_error = control.paired_mc_improvement(mc[reference_name], mc['optimized'])
-            paired[reference_name] = {
-                'improvement': float(mean),
-                'standard_error': float(standard_error),
-                'ratio': float(mean / standard_error) if standard_error > 0.0 else float('inf'),
-            }
-    path = save_day_plot(signals, evaluator, evaluations, optimized, output_dir) if save else None
+        if optimized is not None:
+            paired = {}
+            for reference_name in ('observed_spot', 'neutral'):
+                mean, standard_error = control.paired_mc_improvement(mc[reference_name], mc['optimized'])
+                paired[reference_name] = {
+                    'improvement': float(mean),
+                    'standard_error': float(standard_error),
+                    'ratio': control.tracking.standard_error_ratio(mean, standard_error),
+                }
+
+    path = (
+        save_day_plot(signals, evaluator, evaluations, optimized, output_dir)
+        if save else None
+    )
     return DayExperiment(
         signals=signals,
+        problem=problem,
+        numerics=numerics,
         evaluator=evaluator,
         optimization=optimization,
         evaluations=evaluations,
@@ -238,6 +297,7 @@ def run_real_data_experiment(
     cells=DEFAULT_CELLS,
     mc_paths=DEFAULT_MC_PATHS,
     validate_mc=True,
+    optimize=True,
     progress=None,
     save=False,
     output_dir=OUTPUT_DIR,
@@ -273,6 +333,7 @@ def run_real_data_experiment(
                 cells=cells,
                 mc_paths=mc_paths,
                 validate_mc=validate_mc,
+                optimize=optimize,
                 progress=progress,
                 save=save,
                 output_dir=output_dir,
@@ -296,13 +357,16 @@ def report_day(result, *, verbose=False):
         cost = evaluation.objective
         print(f'{name:14s} FV J={cost.total:.8e} bias={cost.bias:.3e} variance={cost.variance:.3e}')
     fit = result.optimization
-    successes = sum((bool(item.success) for item in fit.results))
-    print(
-        (
-            f'Powell: {successes}/{len(fit.results)} successful starts; evaluations='
-            f'{fit.objective_evaluations}; time={fit.elapsed_seconds:.2f}s'
-        ),
-    )
+    if fit is None:
+        print('Retrospective price optimization skipped; observed spot prices were evaluated unchanged.')
+    else:
+        successes = sum((bool(item.success) for item in fit.results))
+        print(
+            (
+                f'Powell: {successes}/{len(fit.results)} successful starts; evaluations='
+                f'{fit.objective_evaluations}; time={fit.elapsed_seconds:.2f}s'
+            ),
+        )
     if result.paired_mc is not None:
         for name, row in result.paired_mc.items():
             print(
@@ -316,9 +380,10 @@ def report_day(result, *, verbose=False):
             'Baseline history:',
             ', '.join((day.strftime('%Y-%m-%d') for day in result.signals.baseline_days)),
         )
-        print('Observed prices:', result.signals.observed_price)
-        print('Optimized prices:', np.asarray(fit.best.x))
-        print('Price correlation:', data._price_correlation(result.signals.observed_price, fit.best.x))
+        print('Observed prices:', result.problem.observed_prices)
+        if fit is not None:
+            print('Retrospective optimized prices:', np.asarray(fit.best.x))
+            print('Price correlation:', data._price_correlation(result.problem.observed_prices, fit.best.x))
     if result.plot_path is not None:
         print('Saved graph to', result.plot_path)
 
@@ -336,6 +401,11 @@ def main(argv=None):
     parser.add_argument('--cells', type=int, default=DEFAULT_CELLS)
     parser.add_argument('--mc-paths', type=int, default=DEFAULT_MC_PATHS)
     parser.add_argument('--no-mc', action='store_true', help='Skip only the Monte Carlo comparison.')
+    parser.add_argument(
+        '--no-optimize',
+        action='store_true',
+        help='F3-G fixed-input mode: evaluate observed spot and neutral prices without retrospective optimization.',
+    )
     parser.add_argument(
         '--verbose',
         action='store_true',
@@ -362,6 +432,7 @@ def main(argv=None):
         cells=args.cells,
         mc_paths=args.mc_paths,
         validate_mc=not args.no_mc,
+        optimize=not args.no_optimize,
         progress=print if args.verbose else None,
         save=args.save,
         output_dir=args.output_dir,
@@ -375,6 +446,7 @@ def main(argv=None):
             'baseline_weeks': int(args.baseline_weeks),
             'cells': int(args.cells),
             'mc_paths': 0 if args.no_mc else int(args.mc_paths),
+            'retrospective_optimization': not args.no_optimize,
             'days': [_result_record(result) for result in experiments],
         }
         args.output_dir.mkdir(parents=True, exist_ok=True)
