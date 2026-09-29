@@ -92,6 +92,24 @@ class F3GHistoricalContractTests(unittest.TestCase):
         self.assertTrue(np.isfinite(result.evaluations['neutral'].total))
 
 
+    def test_fixed_input_mode_mc_contains_only_supplied_fixed_candidates(self):
+        result = run_day(
+            _synthetic_day_signals(),
+            cells=21,
+            mc_paths=50,
+            validate_mc=True,
+            optimize=False,
+            save=False,
+        )
+
+        self.assertEqual(set(result.mc), {'observed_spot', 'neutral'})
+        self.assertIsNone(result.paired_mc)
+        for item in result.mc.values():
+            self.assertEqual(item.path_objectives.shape, (50,))
+            self.assertTrue(np.isfinite(item.total))
+            self.assertTrue(np.isfinite(item.standard_error))
+
+
 class RealDataDailyExperimentTests(unittest.TestCase):
 
     def test_history_baseline_is_hourwise_trimmed_mean(self):
