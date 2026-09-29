@@ -1,0 +1,65 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=25mm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[danish]{babel}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,mathtools,bm}
+\usepackage{booktabs,array,longtable,tabularx}
+\usepackage{enumitem,microtype}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[nameinlink,noabbrev]{cleveref}
+\usepackage{siunitx}
+\usepackage{fancyhdr}
+\definecolor{ink}{HTML}{18384B}
+\newcommand{\E}{\mathbb E}
+\newcommand{\R}{\mathbb R}
+\newcommand{\dd}{\,\mathrm d}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\Normal}{\mathcal N}
+\newcommand{\Beta}{\operatorname{Beta}}
+\newcommand{\LSE}{\operatorname{LSE}}
+\newcommand{\Yhist}{\mathcal Y}
+\newcommand{\basecommit}{\texttt{5a4793cd57d70a46beae2a6c758b4cd4e0556536}}
+\numberwithin{equation}{section}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt plus 1pt}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,leftmargin=*}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\textcolor{ink}{BSCe Batterimodel 2026}}
+\rhead{\small F4-0: matematisk forberedelse}
+\cfoot{\small\thepage}
+\setlength{\headheight}{14pt}
+\renewcommand{\headrulewidth}{0.3pt}
+\hypersetup{pdftitle={F4-0: Forberedende matematiske noter},pdfauthor={BSCe Batterimodel 2026 -- arbejdsnoter}}
+\begin{document}
+\begin{titlepage}
+\vspace*{16mm}
+{\large\textcolor{ink}{BSCe BATTERIMODEL 2026}\par}
+\vspace{16mm}
+{\Huge\bfseries F4-0\par}
+\vspace{5mm}
+{\LARGE\bfseries Forberedende\par matematiske noter\par}
+\vspace{9mm}
+{\large Observationer, Fokker--Planck/Bayes, mixture-repræsentation, parameterusikkerhed og demand-forecast\par}
+\vspace{14mm}
+\rule{\linewidth}{0.5pt}
+\textbf{Formål.} Et kontrolleret fundament før F4-A--J: fast terminologi, centrale udledninger, testbare regneregler og tydelige beslutningspunkter. Noterne forklarer både den allerede implementerede forberedelse og den planlagte estimator. De to ting er ikke det samme.
+
+\textbf{Status.} F4-0 indeholder en punktobservationskontrakt, algebraiske Bayes-primitiver, konservativ rebinning, et offentligt projektor-interface og statiske basisforsøg. Et fuldt rekursivt state-filter, parameter-recovery, kalibrering på historiske data og et valideret ugeforecast er endnu ikke implementeret.
+
+\textbf{Kodegrundlag.}\par
+\basecommit\par
+Kildetræerne \texttt{src}, \texttt{tests} og \texttt{root} er kontrolleret mod denne F3-version.
+\vfill
+Version 1.1 / forberedelsespakke\par
+30. september 2026
+\end{titlepage}
+\tableofcontents
+\newpage
+\input{preparation.tex}
+\end{document}

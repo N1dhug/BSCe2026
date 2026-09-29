@@ -1,0 +1,573 @@
+\section{Projektmål, scope og læsevejledning}
+Den formelle bachelorprojektbeskrivelse kræver rekursiv tilstands- og parameterestimation baseret på en approksimeret løsning til Fokker--Planck-ligningen. Projektets indledning fremhæver mixture-approksimationer. F4 skal derfor ikke ende som alene et offline-fit eller som en Kalman-filterdemonstration \cite{project}. F3 leverer allerede et kontrolproblem med givne modelparametre og en given initialfordeling; F4 skal udlede disse fra observationer og give dem tilbage til den samme kontrolkæde \cite{repo}.
+
+Arbejdsplanens A--J-opdeling bevares \cite{plan}. Dette dokument er et forberedende grundlag, ikke en afslutning af alle dens deltrin. Teksten bruger tre forskellige former for udsagn: \emph{modelkontrakten} er den valgte BM1-/observationsmodel; \emph{udledningerne} følger af denne kontrakt; \emph{designforslagene} skal endnu undersøges i F4. Et vellykket test af en regneregel er ikke et bevis for, at en hel estimator er præcis.
+
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Del & Bidrag til den samlede kæde\\\midrule
+F1--F2 & Deterministisk model, Itô-SDE, EM, FV og mixture-prediction.\\
+F3 & Prisoptimering med kendte parametre og erklæret state-usikkerhed.\\
+F4-0 & Notation, grundudledninger, lokale kodeprimitiver og tests.\\
+F4-A--F & Observationer, rekursivt state-filter og første parameterbank.\\
+F4-G--J & Fælles identifikation, betinget dataanvendelse, forecast/handoff og afslutning.\\
+\bottomrule
+\end{tabularx}
+
+En analyse af en historisk prishistorik optimerer ikke denne historie. \(U(t)\) er et fast input under estimation. Kontroltarget \(A(t)\) har ingen plads i observationernes likelihood. De to aktiviteter skal kunne udføres og testes uafhængigt.
+
+\section{BM1: model, notation og enheder}
+\subsection{Demand og fleksibilitetsstate}
+Vi bevarer den implementerede BM1-kontrakt og dens sammenhæng med Junkers model \cite{repo,junker}. \(X_t\in[0,1]\) er den normaliserede fleksibilitetsstate, \(U(t)\in[0,1]\) er prissignalet og \(B(t)\in[0,1]\) er baseline. Responsfunktionerne \(f,g\) er ikke-voksende, med
+\begin{equation}
+ f(0)=g(0)=1,\qquad f(1)=g(1)=-1.
+ \label{eq:endpoints}
+\end{equation}
+Den signed fleksibilitetsrespons er
+\begin{equation}
+ \delta_\theta(x,u)=\tanh\!\left(\frac{k}{2}[f(x)+g(u)]\right).
+ \label{eq:delta}
+\end{equation}
+Med \(\gamma(\delta,B)=1-B\) for \(\delta\geq0\) og \(\gamma(\delta,B)=B\) ellers fås
+\begin{equation}
+ D_\theta(x,u,B)=B+\Xi\,\gamma(\delta_\theta(x,u),B)\,\delta_\theta(x,u).
+ \label{eq:demand}
+\end{equation}
+\(D\) er efterspørgslen/purchased demand i BM-modellen. Den er hverken en fejlvariabel eller diffusionskoefficienten. Ved \(\Xi=0\) er \(D=B\). Ved større \(\Xi\) kan demand flyttes mere fra baseline, men stadig kun inden for den erklærede normalisering.
+
+Skriv \(\rho=1/C\). Drift og diffusionsamplitude betegnes nu \(a_\theta,b_\theta\), så de ikke forveksles med \(f,g\):
+\begin{align}
+ \dd X_t &= a_\theta(t,X_t)\dd t+b_\theta(X_t)\dd W_t,
+ \label{eq:sde}\\
+ a_\theta(t,x)&=\rho[D_\theta(x,U(t),B(t))-B(t)],
+ &b_\theta(x)&=\sigma_Xx(1-x).
+ \label{eq:coefficients}
+\end{align}
+Her er \(C,k>0\), \(0\leq\Xi\leq1\), \(\sigma_X\geq0\), og \(W\) er standard Brownsk bevægelse: \(\Var(W_{t+h}-W_t)=h\). Der sættes hverken \(1/C\) eller \(\Xi\) foran \(b_\theta\). Det ville ændre modellen.
+
+Endpointbetingelserne giver indadrettet randdrift og nul diffusion ved 0 og 1. Med passende regularitet er dette den kontinuerte invarianskontrakt. Det garanterer ikke, at et endeligt EM-trin bliver i intervallet. Derfor vælges \texttt{boundary='none'} eksplicit i fremtidige kontrollerede F4-simulationer, og rå randoverskridelser rapporteres; den eksisterende wrappers standard er ellers refleksion \cite{repo}.
+
+\subsection{Normaliseringens betydning}
+Hvis \(D_{\rm phys}=P_{\min}+P_{\rm scale}D\) og \(B_{\rm phys}=P_{\min}+P_{\rm scale}B\), bortfalder det fælles offset i differencen. Med fysisk kapacitet \(C_{\rm phys}\) bliver
+\begin{equation}
+ C=\frac{C_{\rm phys}}{P_{\rm scale}}.
+ \label{eq:capacity_units}
+\end{equation}
+\(C\) har tidsenhed, \(\rho\) har invers tidsenhed, og \(\sigma_X\) har enhed tid\(^{-1/2}\). Skalaen er en del af modellen og skal fastholdes mellem træning og forecast.
+
+Ved skift fra timer til dage, \(t_d=t_h/24\), bliver
+\begin{equation}
+ C_d=C_h/24,\qquad \rho_d=24\rho_h,\qquad
+ \sigma_{X,d}=\sqrt{24}\,\sigma_{X,h}.
+ \label{eq:time_units}
+\end{equation}
+Alle inputtidspunkter, breakpoints og måletider skal ændres tilsvarende. Observationens standardafvigelse \(\sigma_Y\) beskriver fejl i en punktmålt normaliseret effekt og får ikke automatisk en \(\sqrt{\Delta t}\)-faktor.
+
+\subsection{Energibalance under processtøj}
+Integration af \eqref{eq:sde} giver
+\begin{equation}
+ C(X_t-X_0)=\int_0^t(D_s-B_s)\dd s
+        +C\int_0^t b_\theta(X_s)\dd W_s.
+ \label{eq:energy}
+\end{equation}
+Det stokastiske integral har under de sædvanlige integrabilitetsbetingelser middelværdi nul, men er ikke nul for hver realisering. Derfor kan målt intervalenergi ikke uden videre rekonstrueres fra \(C(X_t-X_0)\) som i den deterministiske model. Numerisk diskretisering skal også skelnes fra denne kontinuerte identitet \cite{higham,repo}.
+
+\section{Observationer og den information vi må bruge}
+\subsection{Punktmodellen som første kontrollerede tilfælde}
+Lad \(t_1<\cdots<t_N\) være måletider. Første observationsmodel er
+\begin{equation}
+ Y_k=h_\theta(X_{t_k},t_k)+\varepsilon_k,\qquad
+ h_\theta(x,t_k)=D_\theta(x,U(t_k),B(t_k)),\qquad
+ \varepsilon_k\overset{\rm iid}{\sim}\Normal(0,\sigma_Y^2),\quad\sigma_Y>0.
+ \label{eq:observation}
+\end{equation}
+Uafhængig Gaussian-målestøj er en valgt syntetisk antagelse. Den er ikke konstateret for de historiske data. Vi antager desuden, at målestøjen er uafhængig af initialstate og Wiener-increments.
+
+Selv om \(D\in[0,1]\), kan \(Y_k\) under \eqref{eq:observation} ligge uden for intervallet. Kodekontrakten accepterer derfor eksempelvis \(Y_k=-0.2\) eller \(1.3\). At clippe dem ændrer observationsmodellen. Manglende observationer kræver en eksplicit maske. Interpolerede værdier skal ikke behandles som faktiske målinger.
+
+\subsection{Prior, prediction og posterior}
+Sæt \(\Yhist_k=(Y_1,\ldots,Y_k)\), og lad de kendte inputhistorier være underforståede i betingningen. For kendte parametre defineres
+\begin{equation}
+ p_k^-(x;\theta)=p(x\mid\Yhist_{k-1},\theta),\qquad
+ p_k^+(x;\theta)=p(x\mid\Yhist_k,\theta).
+ \label{eq:priorposterior}
+\end{equation}
+Minus betyder \emph{før} måling \(Y_k\); plus betyder \emph{efter}. Før første måling bruges en erklæret prior. Hvis denne allerede er opdateret med \(Y_1\), må \(Y_1\) ikke multipliceres ind igen.
+
+En forecasting-score for \(Y_k\) skal beregnes fra \(p_k^-\), før assimilation. Posterioren \(p_k^+\) må gerne bruges til at estimere den aktuelle skjulte state, men ikke til at udgive samme måling for en uafhængig forecast-test. Distinktionen mellem filtering og prediction er også den relevante begrebsramme i undervisningsmaterialet \cite{lecture}.
+
+\subsection{Prisspring og observationstidspunkter}
+Prisen er en intervalfunktion. Ved et prisspring er \(X_t\) kontinuert, men demand kan hoppe direkte med \(U\). Kodekontrakten registrerer derfor \texttt{price\_side='left'} eller \texttt{'right'}. Den nuværende beholder anvender endnu ingen inputfunktion; det kommende filter skal håndhæve valget.
+
+Hvis en måling kommer ved tidspunktet, hvor en ny pris vælges, må dens likelihood ikke bruge en pris, som først besluttes bagefter. Predictionintervallet skal afsluttes ved alle kendte spring. At indsætte et plotpunkt ved springet er ikke nok, hvis integratoren stadig springer hen over det.
+
+\subsection{Intervaldata er et andet observationsproblem}
+Gennemsnitseffekt over et interval har formen
+\begin{equation}
+ Y_k=\frac1{\Delta_k}\int_{t_{k-1}}^{t_k}
+ D_\theta(X_s,U_s,B_s)\dd s+\varepsilon_k.
+ \label{eq:average}
+\end{equation}
+For intervalenergi udelades divisionen med \(\Delta_k\). Ingen af disse er automatisk en slutpunktsmåling. En mulig præcis modeludvidelse indfører
+\begin{equation}
+ \dd Z_t=D_\theta(X_t,U_t,B_t)\dd t
+ \label{eq:accumulator}
+\end{equation}
+og propagerer den fælles lov for \((X,Z)\) inden observation af integralet. Dette er en reel ekstra dimension. En midtpunktsapproksimation er enklere, men skal benævnes og undersøges som en approksimation. F4-0 afviser intervaldata i punktkontrakten frem for at vælge en model i stilhed.
+
+\section{Fokker--Planck-prediction på det eksisterende FV-grid}
+\subsection{Den kontinuerte ligning}
+Mellem målinger følger tæthedens prediction
+\begin{equation}
+ \partial_t p=-\partial_x(a_\theta p)+\frac12\partial_{xx}(b_\theta^2p)
+             =-\partial_x\mathcal J,\qquad
+ \mathcal J=a_\theta p-\frac12\partial_x(b_\theta^2p).
+ \label{eq:fp}
+\end{equation}
+Diffusionsderivationen virker på hele produktet \(b^2p\). Standard-Wiener-normaliseringen i \eqref{eq:sde} fastlægger faktoren \(1/2\). Formler fra andre materialer med en anden støjkonvention må ikke kopieres uden at afklare denne faktor.
+
+Løsningen startes fra seneste posterior \(p_{k-1}^+\), ikke fra den oprindelige prior på ny. Vi har endnu ingen fremtidig observation, som kan reducere denne prediction-usikkerhed.
+
+\subsection{Cellemasser og Markov-generator}
+For uniformt grid med celler \(V_i=[e_i,e_{i+1}]\), center \(x_i\) og bredde \(\Delta x\) er den primære variabel
+\begin{equation}
+ m_i\approx\int_{V_i}p(x)\dd x,\qquad p_i=m_i/\Delta x.
+ \label{eq:mass}
+\end{equation}
+Den eksisterende konservative FV-operator bruger \(\dot{\bm m}=Q_\theta\bm m\), hvor off-diagonalrater er ikke-negative, og \(\bm1^TQ_\theta=0\) for søjlevektorer af masser. Implicit Euler giver
+\begin{equation}
+ (I-hQ_\theta)\bm m^{n+1}=\bm m^n.
+ \label{eq:be}
+\end{equation}
+Venstremultiplikation med \(\bm1^T\) viser massebevarelse i eksakt aritmetik. Den eksisterende reference løser et tridiagonalt system og kontrollerer de numeriske masser \cite{repo}.
+
+F4 behøver derfor ikke en ny FV-solver. Den enkleste kommende filterversion kalder \texttt{finite\_volume\_1d.solve} for hvert observationsinterval med seneste posterior som initialmasse. Kun inputfunktionernes breakpoints inden for intervallet gives til kaldet.
+
+\subsection{Hvad numerisk refinement skal holde fast}
+Prisgrid, måletider, outputgrid og interne trin har forskellige roller. Flere outputtider kan ændre den faktiske integrationsgrid i de nuværende interfaces. En sammenligning kræver derfor registrering af faktisk maksimal trinlængde og antal trin, ikke kun \texttt{max\_step}. Et nulobservationsfilter skal sammenlignes med direkte FP-propagation på samme faktiske grid.
+
+\section{Bayes-opdatering og stabil likelihood}
+\subsection{Udledning fra produktreglen}
+For en given observation er likelihoodfunktionen i state
+\begin{equation}
+ L_k(x;\theta)=\frac{1}{\sqrt{2\pi}\sigma_Y}
+ \exp\!\left(-\frac{[Y_k-h_\theta(x,t_k)]^2}{2\sigma_Y^2}\right).
+ \label{eq:likelihood}
+\end{equation}
+Den fælles betingede tæthed faktoriserer som
+\(p(x,Y_k\mid\Yhist_{k-1},\theta)=L_k(x;\theta)p_k^-(x;\theta)\).
+Integration over state giver
+\begin{equation}
+ z_k(\theta)=\int_0^1 L_k(x;\theta)p_k^-(x;\theta)\dd x.
+ \label{eq:evidence}
+\end{equation}
+Divideres den fælles tæthed med observationens marginaltæthed, fås
+\begin{equation}
+ \boxed{p_k^+(x;\theta)=\frac{L_k(x;\theta)p_k^-(x;\theta)}{z_k(\theta)}.}
+ \label{eq:bayes}
+\end{equation}
+\(z_k\) er en tæthedsværdi, ikke en sandsynlighed på et interval. Den kan derfor overstige 1. Et positivt log-likelihoodbidrag er ikke i sig selv en fejl.
+
+\subsection{Diskret version: ingen ekstra cellebredde}
+Med center-evalueret observationsfunktion bliver
+\begin{equation}
+ z_k\approx\sum_i L_k(x_i) m_{k,i}^-,\qquad
+ m_{k,i}^+=\frac{L_k(x_i)m_{k,i}^-}{\sum_jL_k(x_j)m_{k,j}^-}.
+ \label{eq:discretebayes}
+\end{equation}
+Da \(m_i\) allerede er integralet over en celle, indgår der ikke endnu en \(\Delta x\). Bruger man i stedet density-værdier, skal quadraturevægtene med. De to repræsentationer må ikke blandes.
+
+Center-evalueringen er stadig en approksimation af likelihooden inden i cellen. En meget smal likelihood kan kræve finere state-grid eller en særskilt observation-quadrature. At få posteriorens sum til 1 viser ikke, at observationen er opløst korrekt.
+
+\subsection{Log-domænet og nulstøtte}
+Lad \(q_i=\log m_i^-\), \(\ell_i=\log L_k(x_i)\) og \(r_i=q_i+\ell_i\). Med
+\begin{equation}
+ c=\max_i r_i,\quad s=\log\sum_i\exp(r_i-c),\quad
+ \log z_k=c+s,\quad \log m_i^+=r_i-c-s
+ \label{eq:logbayes}
+\end{equation}
+kan vi undgå direkte multiplikation af små sandsynligheder. Implementationen bruger \texttt{logsumexp} til den centrerede sum \cite{scipylog}. Priors skal allerede være normaliserede; det er ikke en generel funktion til at reparere ugyldige masser.
+
+Ægte nulmasse repræsenteres med \(-\infty\). En meget lille, men positiv masse kan underflowe ved konvertering til almindelig floating-point-masse. Derfor skal parameterbankens vægte bevares i log-form mellem opdateringer. I testen kan log-vægten \(-1000\) senere vinde tilbage; dette er umuligt, hvis den først erstattes af et permanent nul.
+
+Hvis der ikke er noget repræsenterbart overlap mellem prior og likelihood, returnerer primitivet en fejl. Det tilføjer ikke epsilon-masse eller et kunstigt stort loss. En sådan situation skal undersøges som et support-, opløsnings- eller numerikproblem.
+
+\subsection{Normalisering er ikke altid samme operation}
+Bayes-normaliseringen i \eqref{eq:bayes} er nødvendig og matematisk defineret. Numerisk renormalisering af en FP-prediction, der har tabt masse, er en anden handling: den kan skjule en fejl. Basisnormalisering er et tredje spørgsmål om, hvilken diskret approximation der vælges. Diagnostikken og teksten skal navngive disse operationer hver for sig.
+
+\subsection{Et lille gennemregnet eksempel}
+Antag to mulige state-noder med prior \((0.6,0.4)\), predicted demand \((0.3,0.7)\), observation \(0.65\) og \(\sigma_Y=0.1\). Likelihoodforholdet er
+\[
+ \frac{L_1}{L_2}=\exp\!\left[-\frac{(0.65-0.3)^2-(0.65-0.7)^2}{2(0.1)^2}\right]=e^{-6}.
+\]
+Posterioren bliver derfor
+\begin{equation}
+ \bm m^+\approx(0.003704355,\;0.996295645),\qquad \log z\approx0.346067061.
+ \label{eq:toybayes}
+\end{equation}
+Den positive \(\log z\) er konsistent med en tæthed. Dette er et algebraisk eksempel, ikke et kørt BM1-state-filter.
+
+\section{Mixture-posterior: udledning og repræsentationsgrænse}
+\subsection{Hvorfor nye vægte ikke er nok}
+Lad predictionen være \(p^-=\sum_jc_j\phi_j\). Bayes giver
+\begin{equation}
+ p^+=\sum_j\frac{c_jz_j}{z}\,\phi_j^+,
+ \qquad z_j=\int L\phi_j\dd x,\qquad
+ \phi_j^+=\frac{L\phi_j}{z_j},\qquad z=\sum_jc_jz_j.
+ \label{eq:mixturebayes}
+\end{equation}
+Målingen ændrer både komponenternes vægte og deres form. Kun at multiplicere de gamle vægte med \(z_j\), mens \(\phi_j\) beholdes uændrede, er generelt ikke den rigtige state-update. Det gælder selv om vægtene bagefter summerer til 1.
+
+For en fast approximationfamilie er den planlagte rækkefølge derfor
+\[
+ \text{egen mixture-posterior}\ \to\ \text{FP-prediction}\ \to\ z_k
+ \ \to\ \text{Bayes-update}\ \to\ \text{projektion}.
+\]
+Likelihooden beregnes før projektionen af den nye posterior. Næste prediction skal begynde i filterets \emph{egen} approksimerede posterior. Hvis FV-posterioren leveres som hjælp ved hvert trin, er forsøget kun en statisk best-fit-reference.
+
+\subsection{Variansgulvet i den eksisterende familie}
+Den nuværende kontinuerte Bernstein/beta-familie er
+\begin{equation}
+ \phi_j(x)=\Beta(x;j+1,M-j+1),\quad j=0,\ldots,M.
+ \label{eq:bernstein}
+\end{equation}
+Komponenternes middelværdier og varianser er
+\[
+ \mu_j=\frac{j+1}{M+2},\qquad v_j=\frac{\mu_j(1-\mu_j)}{M+3}.
+\]
+Træk først komponentindeks \(J\) med vægte \(c\) og derefter \(X\) fra komponenten. Sæt \(\mu=\E_c[\mu_J]\) og \(v_\mu=\Var_c(\mu_J)\). Totalvariansformlen giver
+\[
+ \Var(X)=\E_c[v_J]+v_\mu
+ =\frac{\E_c[\mu_J]-\E_c[\mu_J^2]}{M+3}+v_\mu.
+\]
+Indsæt \(\E_c[\mu_J^2]=\mu^2+v_\mu\):
+\begin{equation}
+ \boxed{\Var(X)=\frac{\mu(1-\mu)}{M+3}
+       +\frac{M+2}{M+3}v_\mu
+       \geq\frac{\mu(1-\mu)}{M+3}.}
+ \label{eq:variancefloor}
+\end{equation}
+Selve gulvfunktionen findes allerede i \texttt{src/diagnostics/bm\_1.py}. F4-0 genbruger den og udfolder begrundelsen; den er ikke genimplementeret som en ny model. Ligelighed kræver \(v_\mu=0\), hvilket kræver, at den ønskede middelværdi er en komponentmiddelværdi. Desuden kan familien kun repræsentere middelværdier mellem \(1/(M+2)\) og \((M+1)/(M+2)\).
+
+Ved \(\mu=0.5\) er gulvene \(0.00757576\) for grad 30 og \(0.00609756\) for grad 38. En velbestemt observation kan skabe en meget smallere posterior. Et lille QP-optimalitetsgap kan ikke ophæve denne begrænsning.
+
+\subsection{Celleintegrerede komponenter som opt-in}
+En alternativ fast ordbog vælger positive former \(a_j,b_j\), eventuelt via
+\begin{equation}
+ a_j=\kappa_j\mu_j,\qquad b_j=\kappa_j(1-\mu_j),\qquad
+ \mu_j\in(0,1),\quad\kappa_j>0.
+ \label{eq:betadictionary}
+\end{equation}
+Middelplacering og koncentration er nu separate designvalg. Komponenternes cellemasser er
+\begin{equation}
+ P_{ji}=I_{e_{i+1}}(a_j,b_j)-I_{e_i}(a_j,b_j),\qquad
+ \Phi_{ji}=P_{ji}/\Delta x.
+ \label{eq:integratedbasis}
+\end{equation}
+\(I\) er beta-CDF'en. I højre hale beregnes samme differens via den komplementære CDF for at mindske subtraktionsfejl \cite{scipybeta}. Ingen efterfølgende renormalisering anvendes i det nye basisinterface: negative masser, ikke-endelige værdier eller væsentligt massetab giver fejl.
+
+Kodefunktionen returnerer cellemiddeldensities i formatet \((\text{komponenter},\text{celler})\), som det eksisterende mixture-kernel forventer. Det er en anden diskret representation end center-samplede og diskret normaliserede PDF'er. F3's basis og defaults ændres ikke.
+
+CDF-integration gør ikke et groft state-grid fint. En komponent, der næsten udelukkende ligger i én celle, kan have korrekte cellemasser, men utilstrækkeligt opløste observationer og momenter. De kontinuerte beta-varianser er heller ikke identiske med varianser beregnet ved at placere al cellemasse i centrene.
+
+\subsection{Projektionen og dens begrænsede garanti}
+For target-density \(r_i\), basis \(\Phi\) og koefficienter \(c\) løses
+\begin{equation}
+ \min_{c\geq0,\,\bm1^Tc=1}\frac12\Vert Ac-b\Vert_2^2,
+ \qquad A=\sqrt{\Delta x}\Phi^T,\qquad b=\sqrt{\Delta x}\,\bm r.
+ \label{eq:projection}
+\end{equation}
+Hessianen \(A^TA\) er positiv semidefinit. Dette indre projektionsproblem er konvekst; den senere parameter-likelihood og BM-prisoptimeringen er ikke dermed konvekse. Den eksisterende projektor løser reducerede least-squares-problemer med SVD frem for at bruge normal-ligninger til løsningen \cite{repo,nielsen}.
+
+For en feasible kandidat og gradient \(g=A^T(Ac-b)\) gælder
+\begin{equation}
+ 0\leq F(c)-F(c^*)\leq g^Tc-\min_jg_j.
+ \label{eq:gap}
+\end{equation}
+Den øvre grænse følger af konveksitet og \(g^Tc^*\geq\min_jg_j\). Den kontrollerer den numeriske løsning inden for den valgte basis, ikke afstanden til den sande posterior. F4-0's offentlige interface rapporterer derfor både optimalitetsgap og repræsentationsfejl. Faktisk masse i endecellerne rapporteres separat; første og sidste \emph{koefficient} er ikke generelle randindikatorer i en arbitrær ordbog.
+
+\section{Parameteridentifikation før store fits}
+\subsection{En lokal algebraisk screening}
+Med faste \(f,g\) kan \(\theta=(\rho,\Xi,k,\sigma_X,\sigma_Y)\) være en mulig parameterliste. Det er ikke en anvisning om at estimere alle fem samtidigt. Ved fast \(x,u,B\) gælder
+\[
+ \partial_\rho D=0,\quad \partial_\rho a=D-B,\quad
+ \partial_k\delta=\tfrac12[f(x)+g(u)](1-\delta^2).
+\]
+På en fast demand-gren er \(\partial_\Xi D=\gamma\delta\) og \(\partial_kD=\Xi\gamma\partial_k\delta\). Ved \(\delta=0\) er demand kontinuerlig, men den afledte med hensyn til sigmoid-argumentet har forskellige ensidige værdier, medmindre \(B=0.5\) eller \(\Xi=0\). En kommende gradientimplementation må ikke antage global glathed uden begrundelse.
+
+Ved \(\Xi=0\) er observationens mean \(B\), uafhængig af state. Med kendt baseline kan demand-data i dette tilfælde ikke identificere \(C,k\) eller \(\sigma_X\), selv om den skjulte state har støj. Det er et eksakt negativt kontroltilfælde.
+
+Driften indeholder produktet \(\rho\Xi\), men \(D\) indeholder også \(\Xi\) direkte. Derfor er en eksakt generel \(\Xi/C\)-degenerering af det samlede observationsproblem ikke bevist af driftens udseende. For små sigmoid-argumenter kan \(\tanh z\approx z\) dog skabe praktisk sammenblanding af \(k\) og \(\Xi\). Mætning, korte forløb og dårlig excitation kan give andre svage retninger.
+
+\subsection{Hvad der ikke overføres ukritisk fra referencearbejdet}
+Alba-thesen analyserer blandt andet frie lineære responsfunktioner og deres sammenblanding med \(k\) \cite{alba}. I vores endpoint-normaliserede lineære familie tvinger \eqref{eq:endpoints} allerede \(f(x)=1-2x\) og \(g(u)=1-2u\). Frie hældninger/intercepts er dermed et andet modelvalg, ikke blot en større vektor i en uændret model.
+
+Diffusion optræder ikke som et additivt led i \(\frac{\dd}{\dd t}\E[X_t]=\E[a_\theta(t,X_t)]\). Men i en ikke-lineær model afhænger højresiden af hele fordelingen, som selv afhænger af \(\sigma_X\). Man må derfor ikke konkludere, at diffusionsparameteren kun kan påvirke varianser og aldrig predictive means i det præcise density-baserede filter.
+
+\subsection{Likelihood-snit, profil og batch-replay}
+For en fast kandidat er den sekventielle log-likelihood
+\begin{equation}
+ \ell_N(\theta)=\sum_{k=1}^N\log z_k(\theta).
+ \label{eq:batch}
+\end{equation}
+Den er approksimeret i praksis, fordi FP/filteret er numerisk. Hver ny kandidat skal genkøre historikken fra den samme erklærede prior. Den må ikke arve state-posterioren fra optimizerens seneste kandidat.
+
+Et snit fastholder andre parametre. En profil reoptimerer dem. En skarp kurve i et snit er ikke bevis for skarp fælles identifikation. Batch-fit er et nyttigt kontrolværktøj, men opfylder ikke alene kravet om rekursiv parameterestimation.
+
+Junkers Appendix B diskuterer en længerehorisont-predictionsobjective \cite{junker}. Den skal ikke forveksles med produktet af betingede one-step densities i \eqref{eq:batch}. Et produkt af flere ubetingede forecast-marginaler fra samme origin er generelt ikke den fælles likelihood, fordi forecastfejlene kan være tidsafhængige.
+
+\section{Rekursiv parameterbank og bevaret afhængighed}
+\subsection{En overskuelig første metode}
+Det anbefalede første design er faste hypoteser \(\theta^{(j)}\), \(j=1,\ldots,H\), med diskrete priorvægte \(w_0^{(j)}\). Hver hypotese har sin egen betingede state-fordeling og sin egen predictive evidence:
+\[
+ p_k^{+,j}(x)=p(x\mid\Yhist_k,\theta^{(j)}),\qquad
+ z_k^{(j)}=p(Y_k\mid\Yhist_{k-1},\theta^{(j)}).
+\]
+Bayes på parameterindekset giver
+\begin{equation}
+ \boxed{w_k^{(j)}=\frac{w_{k-1}^{(j)}z_k^{(j)}}
+ {\sum_\ell w_{k-1}^{(\ell)}z_k^{(\ell)}}.}
+ \label{eq:bank}
+\end{equation}
+Den fælles approximation er
+\begin{equation}
+ p(x,\theta\mid\Yhist_k)\approx
+ \sum_jw_k^{(j)}p_k^{+,j}(x)\,\delta_{\theta^{(j)}}(\theta).
+ \label{eq:jointbank}
+\end{equation}
+Dette er en sekventiel update for en statisk diskret parameterprior. Den er ikke en udviklingsmodel for tidsvarierende parametre. Første bank bør have én ukendt parameter, ikke et femdimensionalt Cartesian-grid.
+
+Den marginale state-density \(\sum_jw_jp_j\) er nyttig til rapportering, men må ikke erstatte alle de betingede fordelinger i næste prediction. State og parameter er efter observationer generelt afhængige. En enkelt middelparameter sammen med en enkelt marginalposterior bevarer ikke denne afhængighed.
+
+\subsection{En stærk algebraisk test og et eksempel}
+Efter \(N\) observationer skal den rekursive update give samme vægte som
+\begin{equation}
+ w_N^{(j)}\propto w_0^{(j)}\exp\!\left(\sum_{k=1}^N\log z_k^{(j)}\right).
+ \label{eq:bankreplay}
+\end{equation}
+F4-0 tester reglen med givne evidence-tal. Det tester ikke endnu, om disse tal bliver beregnet korrekt af en hel FP-parameterbank.
+
+Som regneeksempel giver prior \((0.6,0.4)\) og evidence \((0.2,0.8)\) de unormaliserede vægte \((0.12,0.32)\), normaliseringskonstant \(0.44\) og posterior
+\[
+ (w_1^{(1)},w_1^{(2)})=(3/11,8/11).
+\]
+Begge hypotesers state-filter skal være kørt med deres egne parametre. Det er ikke tilstrækkeligt at evaluere to parameterværdier ved én fælles filtreret state.
+
+\subsection{Prior under reparameterisering}
+Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved
+\begin{equation}
+ \pi_\rho(\rho)=\pi_C(1/\rho)\left|\frac{\dd (1/\rho)}{\dd\rho}\right|
+ =\frac{\pi_C(1/\rho)}{\rho^2}.
+ \label{eq:priortransform}
+\end{equation}
+Ens vægte på et uniformt \(\rho\)-grid er ikke automatisk ensartet prior på \(C\). Ved tilnærmelse af en kontinuert prior på et ikke-uniformt grid skal integrationsvægtene desuden med. En egentlig diskret prior kan vælges direkte, men skal kaldes netop det.
+
+Tilsvarende er
+\begin{equation}
+ \E[C\mid\Yhist_k]\approx\sum_j\frac{w_k^{(j)}}{\rho_j}
+ \quad\text{ikke generelt}\quad
+ \frac1{\sum_jw_k^{(j)}\rho_j}.
+ \label{eq:mean_capacity}
+\end{equation}
+Sammenlign estimater i samme koordinater, og navngiv om tallet er middel, MAP-hypotese eller en plug-in-transformation.
+
+\subsection{Støtte, nulvægte og numerisk fejl}
+Banken kan ikke lære uden for dens støtte. En skarp randposterior kan signalere forkert støtte. Sandhed på et nodepunkt, mellem noder og uden for støtten skal testes særskilt. Ny støtte kræver replay af historikken under den nye erklærede prior eller en særskilt begrundet transportmetode.
+
+Likelihoodfejl akkumuleres i log-form. Hvis to hypotesers numeriske log-evidence-fejl er \(\epsilon_k^{(j)}\), ændres log-odds med
+\begin{equation}
+ \Delta\log\frac{w_N^{(j)}}{w_N^{(\ell)}}
+ =\sum_k\left(\epsilon_k^{(j)}-\epsilon_k^{(\ell)}\right).
+ \label{eq:logoddserror}
+\end{equation}
+Små per-step densityfejl er derfor ikke automatisk harmløse for parameterestimation over lang historik. Fixed-parameter likelihoodrefinement skal undersøges før re-estimering.
+
+\section{Demand-forecast efter en fast origin}
+\subsection{Hvad forecastet er betinget på}
+Lad \(\tau\) være sidste assimilationstid. Vi har en posterior baseret på data til og med \(\tau\). Et forecast uden nye målinger propagerer denne posterior fremad under erklærede fremtidige input \(B(t),U(t)\). For en parameterbank gælder
+\begin{equation}
+ p_t(x\mid\Yhist_\tau,U,B)\approx\sum_jw_\tau^{(j)}p_t^{(j)}(x),\qquad t>\tau.
+ \label{eq:forecaststate}
+\end{equation}
+Vægtene for statiske parametre opdateres ikke med opdigtede fremtidige målinger. Hver betinget state-density propagerer dog forskelligt.
+
+\textbf{Et betinget forecast} bruger en kendt eller hypotetisk inputplan. \textbf{Et operationelt forecast} skal også bygge fremtidig baseline og eventuelt pris fra information, der faktisk er tilgængelig ved \(\tau\). BM1 beregner ikke disse inputforecasts af sig selv. Et syvdages interval kan beregnes, men præcisionen i syv dage er en separat empirisk undersøgelse.
+
+\subsection{Demand som transformation af state}
+Fordelingen af latent demand kan beskrives uden at antage, at den har en glat tæthed:
+\begin{equation}
+ F_{D_t}(d)=\sum_jw_\tau^{(j)}\int_0^1
+ \bm1\{D_{\theta^{(j)}}(x,U_t,B_t)\leq d\}\,p_t^{(j)}(x)\dd x.
+ \label{eq:demandcdf}
+\end{equation}
+Dette er også meningsfuldt ved flade responsområder eller \(\Xi=0\), hvor der kan være punktmasser. Vi behøver ikke en numerisk inversion af \(D\) for at beregne CDF'en.
+
+Definér pr. hypotese
+\[
+ \mu_j(t)=\int D_j(x,t)p_t^{(j)}(x)\dd x,\qquad
+ s_j^2(t)=\int [D_j(x,t)-\mu_j(t)]^2p_t^{(j)}(x)\dd x.
+\]
+Da fås
+\begin{align}
+ \E[D_t\mid\Yhist_\tau]&=\sum_jw_j\mu_j(t)=\mu(t),\label{eq:forecastmean}\\
+ \Var(D_t\mid\Yhist_\tau)&=\sum_jw_j\left[s_j^2(t)+(\mu_j(t)-\mu(t))^2\right].
+ \label{eq:forecastvariance}
+\end{align}
+Udtrykket indeholder variation inden for en parameterhypotese og variation mellem hypoteser. Det er generelt forkert blot at beregne \(D(\E[X],\E[\theta])\).
+
+For fremtidige \emph{observationer} under den samme punkt-Gaussian-model er
+\begin{equation}
+ F_{Y_t}(y)=\sum_jw_j\int_0^1
+ \Phi\!\left(\frac{y-D_j(x,t)}{\sigma_{Y,j}}\right)p_t^{(j)}(x)\dd x,
+ \label{eq:observationcdf}
+\end{equation}
+og
+\begin{equation}
+ \Var(Y_t\mid\Yhist_\tau)=\Var(D_t\mid\Yhist_\tau)+\sum_jw_j\sigma_{Y,j}^2.
+ \label{eq:observedvariance}
+\end{equation}
+Et interval for latent demand er altså ikke automatisk et korrekt interval for en støjfyldt måling. Intervalenergi kræver igen sin egen observationsdefinition.
+
+\subsection{Usikkerheden behøver ikke vokse monotont}
+Itô på \(X_t^2\) og \eqref{eq:sde} giver
+\[
+ \frac{\dd}{\dd t}\E[X_t^2]=2\E[X_ta_\theta(t,X_t)]+\E[b_\theta(X_t)^2],
+ \qquad \frac{\dd}{\dd t}\E[X_t]=\E[a_\theta(t,X_t)].
+\]
+Træk den afledte af \(\E[X_t]^2\) fra:
+\begin{equation}
+ \boxed{\frac{\dd}{\dd t}\Var(X_t)
+ =2\Cov(X_t,a_\theta(t,X_t))+\E[b_\theta(X_t)^2].}
+ \label{eq:variance_derivative}
+\end{equation}
+Støjleddet er ikke-negativt, men driftens kovariansled kan være negativt og større i absolut størrelse. Usikkerhed kan derfor både stige og falde uden nye målinger. Tidligere intuition om stadigt bredere forecastintervaller skal ikke bruges som en matematisk garanti.
+
+Et admissibelt eksempel med \(X_0\sim\Beta(2,2)\), \(B=U=0.5\), \(\rho=1\), \(k=2\), \(\Xi=1\), \(\sigma_X=0.1\) giver ved selvstændig quadrature
+\[
+ 2\Cov(X_0,a(X_0))\approx-0.08824844,\qquad
+ \E[b(X_0)^2]\approx0.00042857,
+\]
+og dermed \(\left.\frac{\dd}{\dd t}\Var(X_t)\right|_{t=0}\approx-0.08781987\).
+Dette er en kontrol af fortegnet i \eqref{eq:variance_derivative}, ikke et valideret ugeforecast. Tilsvarende kan demand-usikkerhed ændres yderligere af en ikke-lineær eller mættet observationsmap.
+
+\subsection{Fremtidige input og manglende usikkerhedskilder}
+Hvis fremtidige input repræsenteres ved scenarier \(S\), skal en samlet forecastmodel vægte de betingede predictions med en erklæret lov for \(S\). Totalvariansformlen er
+\begin{equation}
+ \Var(D_t\mid\Yhist_\tau)
+ =\E_S[\Var(D_t\mid S,\Yhist_\tau)]
+  +\Var_S(\E[D_t\mid S,\Yhist_\tau]).
+ \label{eq:inputuncertainty}
+\end{equation}
+Ved faste input inkluderes det sidste led ikke. Hvis inputscenarier og parameter/state-estimater er afhængige, skal den afhængighed også respekteres; uafhængige vægte kan ikke bare antages.
+
+Et modelbaseret interval inkluderer heller ikke automatisk forkert baseline, en forkert responstype, forbrugerskift eller ukendt måleaggregation. Kalibrering skal derfor testes; et smalt interval er ikke i sig selv et godt resultat.
+
+\subsection{Ugeenergi og samtidige intervaludsagn}
+Marginalerne kan bruges til \(\E[\int D_t\dd t]=\int\E[D_t]\dd t\), under passende integrabilitet. Variansen af integralet kræver derimod tidskovarians:
+\begin{equation}
+ \Var\!\left(\int_\tau^{\tau+T}D_t\dd t\right)
+ =\int_\tau^{\tau+T}\int_\tau^{\tau+T}\Cov(D_s,D_t)\dd s\dd t.
+ \label{eq:energyvariance}
+\end{equation}
+Man må ikke summere timevarianser og kalde resultatet en korrekt varians for ugeenergi. Det kræver eksempelvis en accumulator-model eller passende path-simulation.
+
+Et 90-procents interval for hver time giver heller ikke en 90-procents garanti for, at \emph{hele} ugen ligger i alle intervallerne. Den sidste påstand er simultan og kræver fælles tidsinformation eller en særskilt konservativ konstruktion.
+
+\subsection{Den planlagte forecast-validering}
+Forecastvalideringen indarbejdes i A, E, H, I og J; der opfindes ikke en ekstra hovedfase uden for A--J. De ønskede horisonter er
+\begin{equation}
+ h\in\{1,6,12,24,48,72,168\}\ \text{timer}.
+ \label{eq:horizons}
+\end{equation}
+Vi adskiller kendte syntetiske input, historiske input anvendt som \emph{oracle}-diagnostik og operationelle inputforecasts bygget ved origin. En frozen-origin 168-timers prediction må ikke assimilere mellemliggende testmålinger. Ved en ny rolling origin må tidligere tilgængelige observationer bruges til et nyt forecast; det er et andet forsøg.
+
+Som minimum scores middelværdi, predictive observation-density og intervaldækning pr. horisont. PIT kan beregnes fra \eqref{eq:observationcdf} før assimilation. Baseline-only og en erklæret sæson-/ugegentagelsesreference inkluderes. Træningsskalering, modelvalg og tuning fryses før det endelige testforløb. Overlappende forecastorigins og observationer fra samme path er ikke uafhængige; usikkerhed om scores skal håndteres med uafhængige simulationer eller en passende tidsblok-protokol.
+
+\section{Overførsel af posterior og F3-handoff}
+\subsection{Konservativ overførsel mellem grids}
+Antag source-celler \(V_i\) med masser \(m_i\), og repræsentér density som konstant i hver source-celle. For target-celler \(W_j\) bliver
+\begin{equation}
+ \widetilde m_j=\sum_i m_i\frac{|V_i\cap W_j|}{|V_i|}.
+ \label{eq:remap}
+\end{equation}
+Er support den samme, summerer overlapbrøkerne til 1 for hver source-celle. Derfor er \(\sum_j\widetilde m_j=\sum_i m_i\) i eksakt aritmetik, og alle target-masser er ikke-negative. Den nye helper implementerer netop denne regel med et lineært sweep gennem to sorterede grids. Både uniforme og ikke-uniforme grids er understøttet.
+
+Løsningen er konservativ for den erklærede stykkevist konstante density, ikke nødvendigvis for den ukendte kontinuerte posterior. Et finere target-grid genskaber ikke subcelleinformation, som source-gridet har mistet. Supportændring afvises; der vælges ikke automatisk truncering, ekstrapolation eller halenormalisering.
+
+\subsection{Plug-in og fuld bankversion er forskellige}
+Et enkelt plug-in-estimat kan eksporteres til \texttt{BM1Parameters}. \(\sigma_Y\) hører til observationen og skal ikke indsættes som \(\sigma_X\) i denne kontrakt. Et internt konsistent første valg er en MAP-hypotese sammen med \emph{dens egen} conditional state-posterior. Vælges en parameter-middelværdi, som ikke er en hypotese, skal en conditional initialisering ved denne værdi beregnes ved replay eller beskrives som en yderligere approksimation.
+
+En mere trofast parameterusikker version bruger én fælles prisvektor \(\bm u\) og
+\begin{equation}
+ J(\bm u\mid\Yhist_\tau)\approx\sum_jw_\tau^{(j)}
+ J_j(\bm u\mid p_\tau^{+,j},\theta^{(j)}).
+ \label{eq:handoff}
+\end{equation}
+Hver \(J_j\) kan genbruge F3's evaluator. Gennemsnittet af separat optimerede prisvektorer løser ikke generelt dette problem. Under kandidatprisernes fremadrettede evaluering assimileres ingen ukendte fremtidige målinger.
+
+F4-0 tester kun, at den konservative remap kan levere en gyldig \texttt{initial\_mass\_builder} til det eksisterende F3-interface. Der er endnu ikke kørt et kontrolforsøg med estimerede parametre.
+
+\section{Den implementerede forberedelse og testgrænser}
+\subsection{Kodeansvar}
+\begin{longtable}{@{}p{.40\linewidth}p{.55\linewidth}@{}}
+\toprule
+Placering & Faktisk leverance i F4-0\\\midrule\endhead
+\texttt{src/params/bm\_1.py} & Punktobservationsbeholder, Gaussian log-likelihood, én log-Bayes-update og konservativ remap. Intet færdigt filter eller forecast-API.\\
+\texttt{src/validation/estimation.py} & Strenge kontroller af tider, masks, scalars, normaliserede masser og logmasser.\\
+\texttt{src/method/beta\_mixture.py} & Tilføjet offentligt opt-in projektor-interface samt celleintegreret beta-basis; de gamle funktioner og defaults er uændrede.\\
+\texttt{tests/test\_bm1\_estimation.py} & 46 nye primitive-, kontrakt- og korte integrationstests.\\
+\texttt{root/f4/verify\_preparation.py} & Genberegner statisk Bayes-eksempel, basisprojektion og variansens negative afledte. Ingen filer skrives uden eksplicit outputvalg.\\
+\bottomrule
+\end{longtable}
+
+Der er ikke tilføjet et tomt \texttt{estimate.py} eller en række uimplementerede API-stubs. Et nyt CLI kommer med et reelt F4-B/C-ansvar. Derfor bevares den eksisterende layout-test om fire BM-entrypoints. Ingen shared WM-kernel, package initializer, inputworkbook eller historisk F3-resultatfil er ændret.
+
+\subsection{Faktisk udførte tests}
+Den hentede F3-kilde blev verificeret ved Git-subtræshashes for \texttt{src}, \texttt{tests} og \texttt{root}. Den afsluttede baselinekørsel bestod 207 tests. Efter de nye primitiver består 253 tests i alt, heraf 46 nye. Lokalmiljøet var Python 3.13.5, NumPy 2.3.5 og SciPy 1.17.0. En særskilt parsingkontrol bruger Python 3.11-grammatik, men er ikke en runtime-test på Python 3.11.
+
+Testene omfatter Bayes mod direkte beregning, ægte nulstøtte, meget små likelihoods, genvindelige logvægte, density-værdier over 1, eksplicitte missing masks, ingen fremtidige værdier i en observationsprefix, konservativ remap, integrerede beta-celler, projektor-fallback og genbrug af geometri uden skjulte target-warmstarts. Korte integrationstests forbinder én FV-prediction til én Bayes-update, og den nye basis til den eksisterende zero-operator-propagator.
+
+Disse tests er ikke et parameter-recovery-studie, en fuld streaming-filtertest eller en validering af alle mulige priors og callbacks. Historiske Excel-data var ikke i det hentede kildeartifact, og der er ikke udført real-data-fit. Der er ikke ændret på repositoryets oprindelige miljøfil. Kør den fulde suite i brugerens eget miljø før merge.
+
+\subsection{Et konkret statisk resultat}
+Kontrollen bruger \(X_0\sim\Beta(20,20)\), \(B=U=Y=0.5\), \(k=2\), \(\Xi=1\) og \(\sigma_Y=0.01\), uden prediction. Uafhængig numerisk quadrature af den kontinuerte Bayes-update giver
+\begin{equation}
+ \E[X\mid Y]=0.5,\qquad
+ \Var(X\mid Y)\approx9.86542954\cdot10^{-5},\qquad z\approx4.97905563.
+ \label{eq:preparationresult}
+\end{equation}
+Grad 30 og 38 kan ikke repræsentere denne posterior. Alene den nødvendige variansbetingelse ville kræve \(M\gtrsim2532\), og dette er ikke en anbefaling om at løse problemet ved en så høj Bernstein-grad.
+
+På 801 celler giver statiske projektioner:
+\begin{center}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Basis & Center-varians & Cellemasse-\(L^1\)-fejl\\\midrule
+Eksisterende grad 30 & \(7.57576\cdot10^{-3}\) & 1.55786\\
+Eksisterende grad 38 & \(6.09756\cdot10^{-3}\) & 1.51495\\
+Fire symmetriske komponenter & \(1.04992\cdot10^{-4}\) & 0.02264\\\bottomrule
+\end{tabular}
+\end{center}
+Den illustrative firekomponentordbog er \(\Beta(a,a)\) for \(a\in\{20,200,1000,2000\}\). Den er kun egnet som demonstration af breddeproblemet; den er ikke valgt som F4-D's endelige basis og er ikke valideret for forskudte, bimodale eller randnære posteriors. \(L^1\)-fejlen ligger mellem 0 og 2, ikke mellem 0 og 1; totalvariation er halvdelen i dette diskrete tilfælde.
+
+De små optimalitetsgap viser, at projektionerne er løst numerisk, samtidig med at de gamle baser giver stor repræsentationsfejl. Det er netop forskellen mellem \emph{solverkorrekthed} og \emph{repræsentationsevne}. Den kontinuerte referencevarians og de viste cellecentervarianser er bevidst navngivet forskelligt.
+
+\section{Hvad der skal besluttes i F4-A, og hvad der kan vente}
+F4-A har nu et matematisk udkast og testede regneregler. Det resterende er at fastlåse første kontrollerede forsøg: prior, observationstidspunkter, sidekonvention ved prisspring, inputfamilie, første ukendte parameter, numeriske acceptmål og hvilket forecastudsagn der senere scores. Det sker før de store resultater, ikke bagefter.
+
+Følgende kræver senere evidens frem for flere generelle noter: state-filterets akkumulerede fejl, mixture-filterets egen dynamik, identifikation under forskellige input, parameterbankens grid/støtte og det operationelle forecast. Endelig basisordbog, komplette datakontrakter til intervalmålinger og historisk preprocessing fastlåses ikke ud fra én enkelt symmetrisk posterior.
+
+Til hvert kommende trin registreres matematisk ændring, kodeændring, model-/datakonfiguration, faktisk udførte tests, observerede resultater, begrænsninger og næste beslutning. Arbejdsplanen i \texttt{root/F4.md} er den løbende statuskilde; dette dokument er dens matematiske forberedelse.
+
+\begin{thebibliography}{99}
+\bibitem{project} STADS, projekt 111866: \emph{Stochastic optimal control and estimation for demand-side flexibility exploitation}. Brugerens upload \texttt{Screenshot 2026-09-19 230718.png}, især mål 4. Projektkilde, ikke en forskningspublikation.
+\bibitem{repo} \texttt{N1dhug/BSCe2026}, kildecommit \basecommit. Især \texttt{root/F1.md}, \texttt{F2.md}, \texttt{F3.md}, BM1-modellen, \texttt{finite\_volume.py}, \texttt{beta\_mixture.py}, diagnostik og tests. Kilden er F3-baseline; tilføjelser i F4-0 er særskilt mærket.
+\bibitem{plan} \emph{F4 --- Arbejdsplan for rekursiv tilstands- og parameterestimation}, version 1.0, 29. september 2026, leveret i projektchatten. Opdateret til version 1.1 i denne pakke; A--J-strukturen er bevaret.
+\bibitem{junker} R. G. Junker m.fl. \emph{Stochastic nonlinear modelling and application of price-based energy flexibility}. Applied Energy 275 (2020), 115096. DOI: 10.1016/j.apenergy.2020.115096. Model og Appendix B; dennes flertrinsobjective er ikke lig vores foreslåede sekventielle likelihood.
+\bibitem{higham} D. J. Higham. \emph{An Algorithmic Introduction to Numerical Simulation of Stochastic Differential Equations}. SIAM Review 43(3) (2001), 525--546. Brugerens upload; Itô, EM og konvergens.
+\bibitem{lecture} T. K. S. Ritschel. \emph{Stochastic Adaptive Control (02421), Lecture 8}, 24. marts 2026, brugerens upload. Filtering versus prediction og state-space-begreber; ikke en færdig BM1-estimator.
+\bibitem{alba} A. Gonzalo Primo. \emph{Adaptive demand-side flexibility exploitation through dynamic price signals}. Den uploadede version af \texttt{MSC\_AGP\_FINAL (1).pdf}, kapitel 6--7. Identifikations- og likelihoodreference med en delvist anden parameterisering.
+\bibitem{nielsen} A. Elbæk Nielsen. \emph{Approximation of the Fokker--Planck Equation by Mixture Distributions}. DTU, juni 2026, brugerens upload. Mixture-rum, constrained projection og dokumenterede numeriske begrænsninger.
+\bibitem{scipylog} SciPy-dokumentation, \texttt{scipy.special.logsumexp}. \url{https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.logsumexp.html}. Numerisk API-reference; ikke en kilde til projektets empiriske resultater.
+\bibitem{scipybeta} SciPy-dokumentation, \texttt{scipy.special.betainc} og \texttt{betaincc}, version 1.17.0. \url{https://docs.scipy.org/doc/scipy-1.17.0/reference/generated/scipy.special.betaincc.html}. CDF og komplementær CDF; \texttt{betaincc} kræver SciPy 1.11 eller nyere.
+\end{thebibliography}

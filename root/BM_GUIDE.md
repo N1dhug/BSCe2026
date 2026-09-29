@@ -160,3 +160,21 @@ Do not delete data, stashes, virtual environments or shared WM branches to clean
 BM source. Python caches and local run output are ignored and can be regenerated.
 The WM1/WM2 price-step demo import `src.exe.tool.input_builder` is a pre-existing
 WM issue, outside this BM change. WM import checks do not execute every WM run.
+
+## F4-0 preparation (local patch)
+
+The F4 plan and mathematics are in `F4.md` and `f4/main.tex`.
+The preparation adds opt-in observation/Bayes/remap primitives and a public
+prepared-projector interface. It does **not** yet add the recursive filter,
+parameter bank, historical fitting or a validated forecast. Existing BM/WM
+model equations, F3 defaults and the four existing entrypoints are unchanged.
+
+```powershell
+python -B -m unittest tests.test_bm1_estimation -v
+python -B root/f4/verify_preparation.py
+```
+
+Read `f4/README.md` for the detailed scope, mathematical source mapping,
+LaTeX build instructions and the handoff to F4-A. Forecast validation at
+1/6/12/24/48/72/168 hours is incorporated into the A–J plan; it is not a
+claim that operational week-ahead accuracy has already been established.

@@ -439,3 +439,118 @@ def evolve_projected_density(
             'used_renormalization': False,
         },
     }
+
+
+# F4 preparation: public opt-in geometry/projection and cell-integrated basis.
+# Existing F2/F3 callers above retain their basis, defaults and algorithms.
+class PreparedBetaProjector:
+    """Reusable simplex projection for a fixed cell-average density dictionary.
+
+    The supplied basis has shape (components, uniform cells). Preparation
+    caches geometry, never target-dependent coefficients. Each project call
+    starts from explicit coefficients, or a deterministic uniform start.
+    """
+
+    def __init__(self, basis, dx, *, cache_size=512):
+        if np.iscomplexobj(basis):
+            raise ValueError('basis must be real-valued.')
+        basis = np.asarray(basis, dtype=float)
+        dx = float(dx)
+        if (basis.ndim != 2 or basis.shape[0] < 1 or basis.shape[1] < 2
+                or not np.all(np.isfinite(basis)) or np.any(basis < 0.0)
+                or not np.isfinite(dx) or dx <= 0.0):
+            raise ValueError('basis must be a finite non-negative (components, cells) matrix; dx > 0.')
+        if not np.allclose(np.sum(basis, axis=1) * dx, 1.0, atol=_MASS_TOL, rtol=0.0):
+            raise ValueError('Each basis component must have unit discrete mass; no repair is applied.')
+        self.basis = basis.copy()
+        self.basis.setflags(write=False)
+        self.dx = dx
+        self.projection_data = _projection_matrices(self.basis, self.dx)
+        for item in self.projection_data[:2]:
+            item.setflags(write=False)
+        self.projection_solver = _SimplexProjector(self.projection_data[0], cache_size=cache_size)
+
+    def project(self, density, initial_coefficients=None):
+        """Return coefficients, density, and numerical/representation diagnostics.
+
+        A small optimality gap verifies this QP, not the quality of the basis.
+        Legacy boundary-coefficient diagnostics are not interpreted as boundary
+        mass for an arbitrary dictionary; actual end-cell mass is reported here.
+        """
+        if np.iscomplexobj(density):
+            raise ValueError('density must be real-valued.')
+        density = np.asarray(density, dtype=float)
+        if (density.shape != (self.basis.shape[1],) or not np.all(np.isfinite(density))
+                or np.any(density < 0.0)
+                or abs(float(np.sum(density) * self.dx) - 1.0) > _MASS_TOL):
+            raise ValueError('density must be non-negative, finite and have unit discrete mass.')
+        if initial_coefficients is None:
+            initial_coefficients = np.full(self.basis.shape[0], 1.0 / self.basis.shape[0])
+        if np.iscomplexobj(initial_coefficients):
+            raise ValueError('initial_coefficients must be real-valued.')
+        start = np.asarray(initial_coefficients, dtype=float)
+        if (start.shape != (self.basis.shape[0],) or not np.all(np.isfinite(start))
+                or np.any(start < 0.0) or abs(float(np.sum(start)) - 1.0) > _MASS_TOL):
+            raise ValueError('initial_coefficients must be a feasible probability vector.')
+        matrix, hessian, condition = self.projection_data
+        coefficients, projected, used_fallback = _project_with_warm_start(
+            density, self.basis, matrix, hessian, self.dx, start,
+            return_fallback=True, projector=self.projection_solver,
+        )
+        # A signed probability cannot be used as log input to Bayes. Do not
+        # silently clip a negative roundoff value accepted by the legacy QP.
+        if np.any(coefficients < 0.0) or np.any(projected < 0.0):
+            raise FloatingPointError('Projection returned signed probabilities; inspect its numerical solution.')
+        gap, _ = self.projection_solver.optimality_gap(density * np.sqrt(self.dx), coefficients)
+        error = projected - density
+        return {
+            'coefficients': coefficients,
+            'density': projected,
+            'diagnostics': {
+                'optimality_gap': gap,
+                'density_l2_error': float(np.sqrt(self.dx * (error @ error))),
+                'cell_mass_l1_error': float(self.dx * np.sum(np.abs(error))),
+                'boundary_cell_mass': float(self.dx * (projected[0] + projected[-1])),
+                'mass_error': abs(float(self.dx * np.sum(projected)) - 1.0),
+                'used_fallback': used_fallback,
+                'hessian_condition_number': condition,
+                'projection_matrix_condition_number': self.projection_solver.matrix_condition_number,
+                'used_clipping': False,
+                'used_renormalization': False,
+            },
+        }
+
+
+def beta_cell_average_basis(edges, alpha, beta):
+    """Integrate supplied Beta(a,b) components on a uniform grid covering [0,1].
+
+    Returns density averages (components, cells), not center-sampled PDFs.
+    Tail differences use the complementary CDF to reduce cancellation. Shapes
+    are explicit: no dictionary/default concentration is selected by this API.
+    Changing basis construction changes the approximation and must be validated.
+    """
+    from scipy.special import betainc, betaincc
+
+    if any(np.iscomplexobj(values) for values in (edges, alpha, beta)):
+        raise ValueError('grid and beta shape parameters must be real-valued.')
+    edges = np.asarray(edges, dtype=float)
+    alpha = np.atleast_1d(np.asarray(alpha, dtype=float))
+    beta = np.atleast_1d(np.asarray(beta, dtype=float))
+    if (edges.ndim != 1 or edges.size < 3 or not np.all(np.isfinite(edges))
+            or edges[0] != 0.0 or edges[-1] != 1.0 or np.any(np.diff(edges) <= 0.0)):
+        raise ValueError('edges must be a strictly increasing grid spanning exactly [0,1].')
+    widths = np.diff(edges)
+    dx = 1.0 / widths.size
+    if not np.allclose(widths, dx, rtol=1e-10, atol=1e-14):
+        raise ValueError('The prepared mixture dictionary requires a uniform cell grid.')
+    if (alpha.ndim != 1 or alpha.size == 0 or beta.shape != alpha.shape
+            or not np.all(np.isfinite(alpha)) or not np.all(np.isfinite(beta))
+            or np.any(alpha <= 0.0) or np.any(beta <= 0.0)):
+        raise ValueError('alpha and beta must be matching positive finite shape vectors.')
+    cdf = betainc(alpha[:, None], beta[:, None], edges[None, :])
+    survival = betaincc(alpha[:, None], beta[:, None], edges[None, :])
+    mass = np.where(cdf[:, :-1] >= 0.5, -np.diff(survival, axis=1), np.diff(cdf, axis=1))
+    if (not np.all(np.isfinite(mass)) or np.any(mass < 0.0)
+            or not np.allclose(np.sum(mass, axis=1), 1.0, atol=_MASS_TOL, rtol=0.0)):
+        raise FloatingPointError('Beta cell integration failed; inspect shapes/grid rather than normalizing.')
+    return mass / dx
