@@ -43,6 +43,9 @@ F3_D_MC_PATHS = 20000
 F3_D_MC_INITIAL_SEED = 2071
 F3_D_MC_BROWNIAN_SEED = 2072
 F3_E_SCENARIO_ORDER = ('deterministic', 'initial_only', 'process_only', 'full')
+F3_E_MC_PATHS = 20000
+F3_E_MC_INITIAL_SEED = 2081
+F3_E_MC_BROWNIAN_SEED = 2082
 F3_F_MC_PATHS = 20000
 F3_F_MC_INITIAL_SEED = 2091
 F3_F_MC_BROWNIAN_SEED = 2092
@@ -865,8 +868,14 @@ def build_f3_e_scenarios():
     }
 
 
-def run_f3_e(progress=print):
-    """Optimize and cross-evaluate the four initial/process uncertainty cases."""
+def run_f3_e(
+    *,
+    validate_mc=True,
+    mc_paths=F3_E_MC_PATHS,
+    progress=print,
+):
+    """Optimize/cross-evaluate uncertainty cases, then validate fixed policies with full-model MC."""
+    validated_mc_paths = _validated_mc_paths(mc_paths, validate_mc)
     setup = build_f3_e_scenarios()
     problems = setup['problems']
     evaluators = setup['evaluators']
@@ -913,6 +922,30 @@ def run_f3_e(progress=print):
             'l2': float(np.linalg.norm(difference)),
         }
 
+    mc = None
+    paired_mc = None
+    if validate_mc:
+        # Compare all fixed policies under one common full stochastic model.
+        # Common random numbers use the same Beta(20,20) starts and Wiener increments.
+        mc = control.evaluate_mc_candidates_common_random_numbers(
+            evaluators['full'],
+            policies,
+            n_paths=validated_mc_paths,
+            initial_seed=F3_E_MC_INITIAL_SEED,
+            brownian_seed=F3_E_MC_BROWNIAN_SEED,
+        )
+        paired_mc = {}
+        for name in ('deterministic', 'initial_only', 'process_only'):
+            difference, standard_error = control.paired_mc_improvement(
+                mc[name],
+                mc['full'],
+            )
+            paired_mc[name] = {
+                'candidate_minus_full': float(difference),
+                'standard_error': float(standard_error),
+                'ratio': standard_error_ratio(difference, standard_error),
+            }
+
     return {
         'numerics': setup['numerics'],
         'problems': problems,
@@ -923,6 +956,9 @@ def run_f3_e(progress=print):
         'evaluations': evaluations,
         'regrets': regrets,
         'policy_distances': policy_distances,
+        'mc_paths': validated_mc_paths,
+        'mc': mc,
+        'paired_mc': paired_mc,
     }
 
 
