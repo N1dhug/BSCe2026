@@ -1,0 +1,334 @@
+\section{F4-A: låst inverse problem før filterimplementation}
+\label{sec:f4a}
+
+F4-A følger samme arbejdsprincip som de foregående BM-trin: ét afgrænset spørgsmål
+låses matematisk, før en ny numerisk kæde implementeres. Formålet er derfor ikke at
+producere et state-filter endnu, men at fjerne de frihedsgrader som ellers kunne blive
+tilpasset, efter at resultaterne er set.
+
+Det centrale spørgsmål for den første kernecase er
+\[
+ \boxed{\text{Kan kendt BM1-dynamik og noisy demand-målinger rekonstruere den skjulte state }X_t?}
+\]
+Parameterestimation kommer først efter, at denne state-kæde er numerisk og statistisk
+forstået. Dette stemmer med state-space-opdelingen i \cite{alba}: state er skjult,
+pris og baseline er kendte inputs, og demand observeres med støj. Vores predictor er
+Fokker--Planck/FV snarere end EKF, men informationsproblemet er det samme.
+
+\subsection{Informationsmængde og roller}
+
+Ved observation \(k\) er
+\[
+ \Yhist_k=(Y_1,\ldots,Y_k),
+\]
+mens \(U(t)\), \(B(t)\), response functions og de kendte fysiske parametre er deklarerede
+inputs. Filteret estimerer
+\[
+ p_k^-(x)=p(X_{t_k}=x\mid\Yhist_{k-1}),
+ \qquad
+ p_k^+(x)=p(X_{t_k}=x\mid\Yhist_k).
+\]
+Synthetic ground truth \(X^{\mathrm{true}}\) gemmes kun til efterfølgende scoring. Den må
+ikke være et felt i den offentlige estimator-kontrakt.
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Størrelse & Rolle i F4-A-core\\
+\midrule
+\(B(t)\) & Kendt fysisk baseline-input.\\
+\(U(t)\) & Kendt, fast prisinput; ikke en beslutningsvariabel.\\
+\(Y_k\) & Observeret noisy punkt-demand.\\
+\(X_t\) & Skjult state, kun truth i synthetic evaluator.\\
+\(A(t)\) & F3-kontroltarget; findes ikke i estimationslikelihooden.\\
+\((C,k,\Xi,\sigma_X)\) & Kendt i den første state-filtercase.\\
+\(\sigma_Y\) & Kendt measurement-noise scale i core-casen.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Preregisteret referencecase}
+
+Tidsenheden er dage, så F3's fysiske parameterkonvention kan genbruges uden skjult
+reskalering. Den første case er
+\[
+ T=[0,1],\qquad
+ f(x)=1-2x,\qquad
+ g(u)=1-2u,
+\]
+\[
+ B(t)=0.5,\qquad
+ C=1,\qquad k=2,\qquad \Xi=1,\qquad \sigma_X=0.5,
+\]
+og
+\[
+ X_0\sim\Beta(20,20).
+\]
+Prisen er højre-kontinuert og stykvist konstant,
+\[
+ U(t)=
+ \begin{cases}
+ 0.65,&0\le t<1/3,\\
+ 0.35,&1/3\le t<2/3,\\
+ 0.65,&2/3\le t\le1.
+ \end{cases}
+\]
+De 24 observationer ligger ved
+\[
+ t_k=\frac{k}{24},\qquad k=1,\ldots,24,
+\]
+og
+\[
+ Y_k=D(X_{t_k},U(t_k),0.5)+\varepsilon_k,
+ \qquad
+ \varepsilon_k\stackrel{\mathrm{iid}}{\sim}\Normal(0,0.03^2).
+\]
+Der observeres ikke ved \(t=0\). Dermed er \(\Beta(20,20)\) en ægte prior før den
+første måling, og \(Y_1\) kan ikke utilsigtet bruges både i initialiseringen og i
+første likelihoodbidrag.
+
+Prisskiftene ved 8 og 16 timer falder bevidst sammen med observationstidspunkter.
+Kontrakten er: state er kontinuert over kanten, mens punktmålingen bruger den nye,
+højre-kontinuerte pris. Denne regel skal senere testes direkte.
+
+Til F4-B reserveres separate RNG-strømme:
+\[
+ s_{X_0}=4101,\qquad s_W=4102,\qquad s_Y=4103.
+\]
+Den deterministiske core-pris kræver ingen price-RNG. Seeds er reproduktionsmetadata,
+ikke parametre der tuneres efter resultatet.
+
+\subsection{Hvorfor den symmetriske baseline er første case}
+
+Ved \(B=0.5\) er de positive og negative demand-skalaer ens, og BM1 reduceres til
+\begin{equation}
+ D(x,u)=\frac12+\frac{\Xi}{2}\tanh\!\bigl(k(1-x-u)\bigr).
+ \label{eq:f4a_demand}
+\end{equation}
+Observationens state-følsomhed er derfor
+\begin{equation}
+ H(x,u):=\frac{\partial D}{\partial x}
+ =-\frac{\Xi k}{2}\operatorname{sech}^2\!\bigl(k(1-x-u)\bigr).
+ \label{eq:f4a_gain}
+\end{equation}
+For \(\Xi>0\), \(k>0\) og et endeligt sigmoidargument er \(H<0\). State påvirker altså
+øjeblikkelig demand monotont. Følsomheden går derimod mod nul i sigmoid-mætning, så
+ekstreme inputs kan give svag observation af state, selv om responsekurven stadig er
+matematisk monoton.
+
+I den støjfri interior-case kan \cref{eq:f4a_demand} inverteres:
+\begin{equation}
+ x
+ =1-u-\frac1k
+ \operatorname{artanh}\!\left(\frac{2(y-1/2)}{\Xi}\right),
+ \qquad
+ \left|\frac{2(y-1/2)}{\Xi}\right|<1.
+ \label{eq:f4a_inverse}
+\end{equation}
+Dette er ikke filteralgoritmen; det er en analytisk observabilitetskontrol.
+
+Ved \(x=0.5\) giver de to første prisniveauer
+\begin{center}
+\begin{tabular}{@{}rrrr@{}}
+\toprule
+\(u\) & \(k(1-x-u)\) & \(D(x,u)\) & \(H(x,u)\)\\
+\midrule
+0.65 & -0.30 & 0.354344 & -0.915137\\
+0.35 &  0.30 & 0.645656 & -0.915137\\
+\bottomrule
+\end{tabular}
+\end{center}
+Altså er measurement gain tydelig, men ikke placeret i ekstrem mætning. For
+\(\Beta(20,20)\) er
+\[
+ \Var(X_0)=\frac1{164}\approx0.00609756,
+ \qquad \operatorname{sd}(X_0)\approx0.07809.
+\]
+En lokal linearisering omkring den første måling giver measurement-equivalent
+state-standardafvigelse
+\[
+ \frac{\sigma_Y}{|H|}\approx0.03278.
+\]
+\(\sigma_Y=0.03\) er derfor informativt uden at være det meget skarpe
+\(\sigma_Y=0.01\)-stresscase fra F4-0. Sidstnævnte beholdes til mixture-repræsentationsstudiet.
+
+Den symmetriske baseline er et isolationsvalg: ved \(B=0.5\) er demand-map glat ved
+\(\delta=0\). F4-B tilføjer derefter mindst én \(B\ne0.5\)-case, hvor den korrekte
+stykkevise skala udøves. Vi undgår dermed at gøre den første filterdebugging til en
+samtidig test af alle modelhjørner.
+
+\subsection{Prisinput og dynamisk excitation}
+
+Med kendte parametre er state allerede observerbar gennem demand, men dynamikken skal
+også bevæges nok til, at prediction/update-kæden testes. Prisfølgen
+\[
+ (0.65,0.35,0.65)
+\]
+skifter fortegn på response omkring det centrale stateområde og holder samtidig
+sigmoidargumentet moderat. Den er fastlagt før simulation og må ikke efterfølgende
+erstattes af en pris valgt ud fra hvilket filterresultat der ser bedst ud.
+
+Til senere identifikationsstudier er dette kun én inputfamilie. F4-B/E skal også have
+en svagt informativ/konstant kontrol og mindst én mere varieret excitation. Det følger
+det generelle identifikationsprincip i \cite{alba}: et parameterbidrag kan kun
+identificeres, hvis det faktisk påvirker den observerede prediction eller dens
+usikkerhed over recordet.
+
+\subsection{Første parameterprior er preregistreret, men ikke endnu brugt}
+
+F4-A--C holder alle fysiske BM-parametre kendte. For at undgå at vælge support efter at
+have set et parameterfit preregistreres dog den første kandidatbank til F4-E/F:
+\[
+ \rho=\frac1C,\qquad
+ \rho_j=0.5+0.025j,\quad j=0,\ldots,40,
+\]
+med lige diskrete priorvægte \(w_j=1/41\). Enhederne er day\(^{-1}\), og den sande
+referenceværdi \(\rho=1\) er et nodepunkt.
+
+Dette er en \emph{diskret prior}, ikke en påstand om en kontinuert uniform prior på
+\(C\). Hvis de to yderste noder tilsammen får mere end 5\% posteriorvægt, er supporten
+på forhånd erklæret utilstrækkelig; hele historikken skal replayes på en bredere support,
+før posterioren fortolkes. F4-E kan stadig konkludere, at \(\rho\) ikke bør være den
+første frie parameter, men ændringen skal begrundes med likelihood-/identifikationsstudiet
+før F4-F-resultater produceres.
+
+Valget af reciprocal capacity følger også den numeriske observation i \cite{alba},
+at driftens afhængighed er lineær i \(C^{-1}\). Dette gør ikke den fulde likelihood
+lineær eller konveks.
+
+\subsection{Analytisk identifikationsscreening}
+
+Allerede før en numerisk likelihood kan flere særtilfælde fastslås:
+
+\begin{enumerate}
+\item Ved \(\Xi=0\) er \(D=B\), driften forsvinder, og demand-observationer indeholder
+ingen information om state gennem BM-response, ej heller om \(C\) eller \(k\).
+\item Når \(|k(1-x-u)|\) er stor, er \(\operatorname{sech}^2\) lille, og
+state-observationen bliver praktisk svag trods formel monotonitet.
+\item Med kendt \(\Xi\) påvirker \(\rho\) state over tid gennem driften; den har ingen
+direkte instantaneous observationseffekt. Recovery kræver derfor dynamisk information.
+\item I driften optræder produktet \(\rho\Xi\). Når \(\Xi\) senere også er fri, kan
+dynamikken alene ikke separere dem, men demand-amplituden giver en ekstra kanal.
+Om den er numerisk stærk nok er et likelihoodspørgsmål, ikke noget der antages.
+\item \(\sigma_X\) ændrer diffusionen og dermed predictive spread, men ikke
+\(h_\theta(x,t)\) direkte. Dens information kommer derfor primært gennem
+fordelings-/likelihoodbredden.
+\item Hvis lineære response slopes og \(k\) frigives samtidigt, findes den kendte
+scale-degeneracy beskrevet i \cite{alba}. F4-core undgår den ved at holde
+\(f(x)=1-2x\) og \(g(u)=1-2u\) fast under de første parameterstudier.
+\end{enumerate}
+
+Denne screening er grunden til, at F4 ikke begynder med alle parametre frie samtidig.
+
+\subsection{Numerisk protokol før resultater}
+
+Generator, filter og reference må ikke dele en skjult numerisk fejlkilde. Derfor låses
+følgende startpunkter:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lX@{}}
+\toprule
+Del & F4-A-protokol\\
+\midrule
+Synthetic truth i F4-B &
+Euler--Maruyama med \texttt{boundary='none'}, max step \(1/1152\) dag;
+generator-refinement \(1/2304\).\\
+FV working point i F4-C &
+201 celler på \([0,1]\), max step \(1/192\) dag.\\
+Spatial refinement &
+101, 201, 401, 801 celler med den øvrige numerik holdt fast.\\
+Time refinement &
+max step \(1/96,1/192,1/384\) ved fast spatialt referencegrid.\\
+Observationsupdate &
+Center-evalueret Gaussian likelihood på cellemasser i første implementation;
+skarpere observationer udløser quadrature/grid-check, ikke skjult smoothing.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Som i F3 ændres én numerisk dimension ad gangen. Et nyt optimum eller nye data
+genereres ikke blot fordi state-grid raffineres.
+
+\subsection{Preregisterede correctness- og performance-gates}
+
+Følgende er correctness-gates og kan ikke reddes af et godt RMSE-tal:
+\begin{enumerate}
+\item Prediction og posterior skal have mass error højst \(10^{-10}\), uden clipping
+eller efterfølgende repair.
+\item En one-step Bayes-update skal matche den direkte diskrete formel med
+cellemasse-\(L^1\)-fejl højst \(10^{-12}\).
+\item Målinger præcis ved 8 og 16 timer skal bruge den deklarerede højre pris.
+\item Ændring af fremtidige observationer må ikke ændre tidligere filterresultater.
+F3-target \(A\) må slet ikke være en estimationsinput.
+\item Raw EM-boundary violations rapporteres. Paths må ikke droppes, reflekteres eller
+clippes i truth-generatoren for at gøre benchmarken pænere.
+\end{enumerate}
+
+Før en videnskabelig state-effekt fortolkes, skal den relevante numeriske
+refinementændring være mindst en størrelsesorden mindre end den effekt, som tilskrives
+assimilationen. Hvis ikke, flyttes working pointet op; kriteriet sænkes ikke bagefter.
+
+Den afsluttende core-state-validering i F4-C skal bruge mindst 200 uafhængige synthetic
+sequences. Vi rapporterer predictive state-RMSE før målingen og posterior state-RMSE
+efter målingen separat. På den preregistrerede core-case kræves mindst 5\% lavere
+posterior-mean RMSE end prediction-only RMSE, når assimilationen er begyndt.
+
+Nominal 90\%-credible-interval coverage evalueres særskilt ved 6, 12 og 24 timer.
+I stedet for en efterfølgende valgt tolerance rapporteres Wilson 95\%-intervallet for
+coverage på tværs af de uafhængige sequences. Predictive log score for \(Y_k\) sammenlignes
+desuden med en no-assimilation propagation fra præcis samme initialprior.
+
+Disse krav er ikke påstande om historiske data. De er preregistrerede kontroller under
+den korrekte synthetic model.
+
+\subsection{Forecast-origin og en uges prediction}
+
+Forecast-valideringen begynder først efter state-filteret, men informationsreglen låses nu.
+Efter de 24 core-observationer sættes origin
+\[
+ \tau=1\text{ dag}.
+\]
+Et fixed-origin forecast propagerer derefter \(p(X_\tau\mid\Yhist_{24})\) uden at
+assimilere senere observationer. De faste horizons er
+\[
+ 1,\ 6,\ 12,\ 24,\ 48,\ 72,\ 168\text{ timer}.
+\]
+Den første synthetic horizon-test bruger kendte fremtidige \(B(t)\) og \(U(t)\). Det
+isolerer BM/state-estimatorens prediction fra et separat baseline- eller price-forecast.
+Et sådant forsøg må derfor kaldes \emph{conditional/oracle-input forecast}, ikke et fuldt
+operationelt ugeforecast.
+
+Vi scorer predictive demand før eventuel senere assimilation med mean-fejl,
+predictive log score af \(Y\), marginal 90\%-coverage og intervalbredde. En 168-timers
+claim gives kun, hvis det faktisk målte resultat understøtter den; horizonlisten i sig
+selv er ingen performancegaranti.
+
+\subsection{Historiske blockers, som F4-A ikke skjuler}
+
+Den synthetic core kan afsluttes uden historiske metadata. F4-H kan derimod ikke
+fortolkes stærkt før følgende er afklaret:
+\begin{itemize}
+\item om forbrugsfeltet er punkt/average power eller intervalenergi;
+\item hvilke målekolonner der beskriver samme population og med hvilken dækning;
+\item om DK1 spot er den pris populationen faktisk har set eller kun en proxy;
+\item hvordan normalization estimeres på træningshistorik uden test leakage;
+\item hvordan timezone og DST håndteres uden at gennemsnitte fysisk forskellige timer.
+\end{itemize}
+Manglende metadata må begrænse real-data-konklusionen; de må ikke absorberes
+stiltiende i \(\sigma_Y\).
+
+\subsection{Kodegrænse og handoff til F4-B}
+
+F4-A ændrer bevidst ikke \texttt{src/model}, \texttt{src/solver},
+\texttt{src/method} eller estimationskernen i \texttt{src/params/bm\_1.py}.
+Det er et designcheckpoint.
+
+Den næste selvstændige kodeleverance er F4-B i
+\texttt{src/validation/bm\_1/estimation.py}: en reproducerbar synthetic generator,
+der bruger eksisterende EM med \texttt{boundary='none'}, de tre separate RNG-strømme,
+den låste price-side og en truth-beholder som er adskilt fra estimator-inputtet.
+F4-C genbruger derefter den eksisterende FV-solver og F4-0's Bayes-primitiver.
+
+Dermed er F4-A lukket med de samme disciplinregler som F3: matematik og problemdefinition
+før ny solverkode, én numerisk ændring ad gangen, og ingen stærkere konklusion end den
+evidens det enkelte trin faktisk leverer.

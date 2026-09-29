@@ -23,6 +23,7 @@
 \newcommand{\LSE}{\operatorname{LSE}}
 \newcommand{\Yhist}{\mathcal Y}
 \newcommand{\basecommit}{\texttt{5a4793cd57d70a46beae2a6c758b4cd4e0556536}}
+\newcommand{\fzerocommit}{\texttt{4a4702317f23141a24ce788046906c0cbe2445b8}}
 \numberwithin{equation}{section}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{5pt plus 1pt}
@@ -31,32 +32,32 @@
 \pagestyle{fancy}
 \fancyhf{}
 \lhead{\small\textcolor{ink}{BSCe Batterimodel 2026}}
-\rhead{\small F4-0: matematisk forberedelse}
+\rhead{\small F4: estimation og filtering}
 \cfoot{\small\thepage}
 \setlength{\headheight}{14pt}
 \renewcommand{\headrulewidth}{0.3pt}
-\hypersetup{pdftitle={F4-0: Forberedende matematiske noter},pdfauthor={BSCe Batterimodel 2026 -- arbejdsnoter}}
+\hypersetup{pdftitle={F4: Rekursiv tilstands- og parameterestimation},pdfauthor={BSCe Batterimodel 2026 -- arbejdsnoter}}
 \begin{document}
 \begin{titlepage}
 \vspace*{16mm}
 {\large\textcolor{ink}{BSCe BATTERIMODEL 2026}\par}
 \vspace{16mm}
-{\Huge\bfseries F4-0\par}
+{\Huge\bfseries F4\par}
 \vspace{5mm}
-{\LARGE\bfseries Forberedende\par matematiske noter\par}
+{\LARGE\bfseries Rekursiv tilstands- og\par parameterestimation\par}
 \vspace{9mm}
-{\large Observationer, Fokker--Planck/Bayes, mixture-repræsentation, parameterusikkerhed og demand-forecast\par}
+{\large Fokker--Planck/Bayes, state-filtering, parameterusikkerhed og demand-forecast\par}
 \vspace{14mm}
 \rule{\linewidth}{0.5pt}
-\textbf{Formål.} Et kontrolleret fundament før F4-A--J: fast terminologi, centrale udledninger, testbare regneregler og tydelige beslutningspunkter. Noterne forklarer både den allerede implementerede forberedelse og den planlagte estimator. De to ting er ikke det samme.
+\textbf{Formål.} Sammenhængende arbejdsnoter for F4-A--J med matematik før implementation, tydelige informationskontrakter og reproducerbare beslutninger. F4-0 bevarer de testede primitiver; F4-A låser det første inverse problem før filterkoden skrives.
 
-\textbf{Status.} F4-0 indeholder en punktobservationskontrakt, algebraiske Bayes-primitiver, konservativ rebinning, et offentligt projektor-interface og statiske basisforsøg. Et fuldt rekursivt state-filter, parameter-recovery, kalibrering på historiske data og et valideret ugeforecast er endnu ikke implementeret.
+\textbf{Status.} F4-0 er merged. F4-A fastlægger referencecase, observationstidspunkter, right-edge-konvention, analytisk observabilitet, første parameterprior/support, acceptmål og forecast-origin. Et fuldt rekursivt state-filter, parameter-recovery, historisk kalibrering og et valideret ugeforecast er fortsat senere leverancer.
 
 \textbf{Kodegrundlag.}\par
-\basecommit\par
-Kildetræerne \texttt{src}, \texttt{tests} og \texttt{root} er kontrolleret mod denne F3-version.
+F3 closure: \basecommit\par
+F4-0 merged checkpoint: \fzerocommit
 \vfill
-Version 1.1 / forberedelsespakke\par
+Version 1.2 / F4-A\par
 30. september 2026
 \end{titlepage}
 \tableofcontents

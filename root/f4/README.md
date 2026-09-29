@@ -2,8 +2,8 @@
 
 ## Status
 
-Pakken er et lokalt, testet forberedelsespatch mod `5a4793cd57d70a46beae2a6c758b4cd4e0556536`.
-Det er ikke en færdig F4-estimator. Koden er ikke pushet/merged til GitHub.
+F4-0 er merged på `main` i commit `4a4702317f23141a24ce788046906c0cbe2445b8` og er lokalt valideret med 253/253 tests på Windows/Python 3.11.
+F4-A er næste dokumenterede checkpoint og låser det første inverse problem; det er stadig ikke en færdig F4-estimator.
 `../F4.md` er den opdaterede arbejdsplan og statuskilde. `main.tex` inkluderer
 `preparation.tex` og er den matematiske læsevej. Den genererede PDF ligger i
 leveringspakken, ikke som en ny binær kildefil i repositorypatch'et.
@@ -84,10 +84,14 @@ checksums er i leveringspakkens `evidence/`. Den eksisterende WM2-docstring give
 en SyntaxWarning i Python 3.13; den er ikke skjult eller ændret af F4-0.
 Inputworkbooks og lange historiske scientific runs er ikke genkørt.
 
-## Næste trin: F4-A
+## F4-A-status og næste trin
 
-Læs noteafsnit 1–5, og fastlås første forsøgsdefinition: initialprior, kendte/frie
-parametre, observationstider, price-side, synthetic inputfamilie, forecast-origin
-og præregistrerede acceptmål. Herved omsætter vi det forberedte matematiske
-udkast til en konkret F4-A-kontrakt. A–J-statusfelter markeres først færdige efter
-det faktisk gennemførte trin.
+F4-A-kontrakten er nu skrevet i `f4_a.tex` og opsummeret i `../F4.md`:
+initialprior, kendte parametre, observationstidspunkter, right-continuous price-side,
+synthetic inputfamilie, første rho-prior/support, numerisk refinement-protokol,
+forecast-origin og acceptmål er preregistreret før filterresultater.
+
+Næste kodefase er F4-B: den reproducerbare syntetiske generator med eksplicit
+`boundary='none'`, separate RNG-strømme og truth adskilt fra estimator-API'et.
+F4-C bygger derefter det rekursive FV-state-filter på de allerede testede
+Bayes-primitiver.
