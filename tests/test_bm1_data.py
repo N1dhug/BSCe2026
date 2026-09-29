@@ -39,6 +39,22 @@ def _synthetic_day_signals():
 
 class F3GHistoricalContractTests(unittest.TestCase):
 
+    def test_default_application_target_is_history_only_and_observed_mode_is_explicit(self):
+        signals = _synthetic_day_signals()
+        midpoints = 0.5 * (HOURLY_EDGES[:-1] + HOURLY_EDGES[1:])
+
+        application = build_problem(signals)
+        retrospective = build_problem(signals, target_mode='observed')
+
+        np.testing.assert_allclose(application.target(midpoints), signals.baseline)
+        np.testing.assert_allclose(retrospective.target(midpoints), signals.target)
+        self.assertGreater(
+            float(np.max(np.abs(application.target(midpoints) - signals.target))),
+            1e-3,
+        )
+        with self.assertRaisesRegex(ValueError, 'target_mode'):
+            build_problem(signals, target_mode='invalid')
+
     def test_historical_problem_owns_observed_prices_and_uses_hourly_contract(self):
         signals = _synthetic_day_signals()
         expected = signals.observed_price.copy()
