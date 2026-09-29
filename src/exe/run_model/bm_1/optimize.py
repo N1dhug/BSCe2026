@@ -294,8 +294,12 @@ def run_decision(args):
 
 
 def run_uncertainty(args):
-    """F3-E isolate initial-state and process-noise effects on the optimized policy."""
-    result = cases.run_f3_e(progress=print if args.verbose else None)
+    """F3-E isolate uncertainty sources, then validate fixed policies under common full-model MC."""
+    result = cases.run_f3_e(
+        validate_mc=not args.no_mc,
+        mc_paths=args.mc_paths,
+        progress=print if args.verbose else None,
+    )
     order = result['scenario_order']
 
     print('F3-E uncertainty-source decomposition')
@@ -328,6 +332,15 @@ def run_uncertainty(args):
     for name in order:
         print(f'  {name:15s}', end='')
         _solver_summary(result['optimizations'][name])
+
+    if result['paired_mc'] is not None:
+        print('Paired MC under the common full stochastic model: candidate minus full policy')
+        for name in ('deterministic', 'initial_only', 'process_only'):
+            row = result['paired_mc'][name]
+            print(
+                f'  {name:15s} difference={row["candidate_minus_full"]:.6e}; '
+                f'SE={row["standard_error"]:.3e}; ratio={row["ratio"]:.3f}',
+            )
     return result
 
 
@@ -636,6 +649,18 @@ def main(argv=None):
                 '--no-mc',
                 action='store_true',
                 help='Skip paired Monte Carlo and run only deterministic/FV cross-evaluation.',
+            )
+        if name == 'uncertainty':
+            command.add_argument(
+                '--mc-paths',
+                type=int,
+                default=cases.F3_E_MC_PATHS,
+                help='Paired Monte Carlo paths for full-model uncertainty-policy validation.',
+            )
+            command.add_argument(
+                '--no-mc',
+                action='store_true',
+                help='Skip paired Monte Carlo and run only the FV/ODE uncertainty cross-evaluation.',
             )
         if name == 'mixture-control':
             command.add_argument(
