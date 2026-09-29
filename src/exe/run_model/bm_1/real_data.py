@@ -38,6 +38,7 @@ class DayExperiment:
     optimization: object | None
     evaluations: dict
     mc: dict | None
+    fixed_paired_mc: dict | None
     paired_mc: dict | None
     plot_path: Path | None
 
@@ -202,6 +203,7 @@ def _result_record(result):
     }
     if result.mc is not None:
         record['mc'] = {name: data._mc_summary(item) for name, item in result.mc.items()}
+        record['fixed_paired_mc'] = result.fixed_paired_mc
         record['paired_mc'] = result.paired_mc
     return record
 
@@ -255,6 +257,7 @@ def run_day(
         evaluations['optimized'] = evaluator.evaluate(optimized)
 
     mc = None
+    fixed_paired = None
     paired = None
     if validate_mc:
         candidates = {
@@ -270,6 +273,14 @@ def run_day(
             initial_seed=MC_INITIAL_SEED,
             brownian_seed=MC_BROWNIAN_SEED,
         )
+        mean, standard_error = control.paired_mc_improvement(
+            mc['neutral'], mc['observed_spot'],
+        )
+        fixed_paired = {
+            'neutral_minus_observed_spot': float(mean),
+            'standard_error': float(standard_error),
+            'ratio': standard_error_ratio(mean, standard_error),
+        }
         if optimized is not None:
             paired = {}
             for reference_name in ('observed_spot', 'neutral'):
@@ -292,6 +303,7 @@ def run_day(
         optimization=optimization,
         evaluations=evaluations,
         mc=mc,
+        fixed_paired_mc=fixed_paired,
         paired_mc=paired,
         plot_path=path,
     )
@@ -381,6 +393,16 @@ def report_day(result, *, verbose=False):
             print(
                 f'MC {name:14s} J={item.total:.8e} SE={item.standard_error:.3e}',
             )
+    if result.fixed_paired_mc is not None:
+        row = result.fixed_paired_mc
+        print(
+            (
+                'Paired MC neutral - observed_spot: '
+                f"difference={row['neutral_minus_observed_spot']:.6e}, "
+                f"SE={row['standard_error']:.3e}; "
+                'positive means observed spot has lower MC cost'
+            ),
+        )
     if result.paired_mc is not None:
         for name, row in result.paired_mc.items():
             print(
