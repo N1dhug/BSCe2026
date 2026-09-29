@@ -9,6 +9,7 @@ import pandas as pd
 from src.tools.import_data.import_input import input_data
 from src.tools.import_data.import_prices import spot_price_data
 from src.tools.input_generator.input_builder import input_builder
+from src.validation.control import positive_integer
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -110,9 +111,7 @@ def _complete_day_values(series, day, name):
 
 
 def _representative_quantiles(n_days):
-    n_days = int(n_days)
-    if n_days < 1:
-        raise ValueError('n_days must be positive.')
+    n_days = positive_integer(n_days, 'n_days', 1)
     if n_days == 1:
         return np.array([0.5], dtype=float)
     if n_days == 2:
@@ -181,9 +180,7 @@ def build_day_signals(
 ):
     """Build a real target day and history-only matching-weekday baseline."""
     day = pd.Timestamp(day).normalize()
-    baseline_weeks = int(baseline_weeks)
-    if baseline_weeks < 3:
-        raise ValueError('baseline_weeks must be at least 3 for trimmed averaging.')
+    baseline_weeks = positive_integer(baseline_weeks, 'baseline_weeks', 3)
     target = _complete_day_values(consumption, day, 'normalized consumption')
     observed_price = _complete_day_values(price, day, 'normalized DK1 price')
     raw_target = _complete_day_values(consumption_raw, day, 'raw consumption')
@@ -224,7 +221,9 @@ def select_representative_days(
     baseline_weeks=DEFAULT_BASELINE_WEEKS,
 ):
     """Select complete low/typical/high-consumption days reproducibly."""
-    earliest = SEASON_START + pd.Timedelta(weeks=int(baseline_weeks))
+    n_days = positive_integer(n_days, 'n_days', 1)
+    baseline_weeks = positive_integer(baseline_weeks, 'baseline_weeks', 3)
+    earliest = SEASON_START + pd.Timedelta(weeks=baseline_weeks)
     latest = SEASON_END - pd.Timedelta(days=1)
     candidates = []
     for day in pd.date_range(earliest, latest, freq='D'):
@@ -240,7 +239,7 @@ def select_representative_days(
         except ValueError:
             continue
         candidates.append({'day': day, 'mean_consumption': float(np.mean(signals.target))})
-    if len(candidates) < int(n_days):
+    if len(candidates) < n_days:
         raise ValueError(
             (
                 f'Only {len(candidates)}'
