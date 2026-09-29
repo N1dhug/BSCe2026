@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from src.control import bm_1 as control
+from src.control.objective import standard_error_ratio
 from src.tools import bm_1_data as data
 from src.validation.bm_1 import cases
 from src.validation.bm_1 import control as scenario
@@ -268,7 +269,7 @@ def run_day(
                 paired[reference_name] = {
                     'improvement': float(mean),
                     'standard_error': float(standard_error),
-                    'ratio': control.tracking.standard_error_ratio(mean, standard_error),
+                    'ratio': standard_error_ratio(mean, standard_error),
                 }
 
     path = (
