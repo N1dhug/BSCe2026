@@ -1,9 +1,9 @@
 # BM1 — code and run guide
 
-F1, F2 and F3-A through F3-F are implemented and locally validated.
-F3-G is the current historical-price integration step and must be validated
-locally before this feature branch is merged. Run all commands from the
-repository root.
+F1, F2 and F3-A through F3-G are implemented and locally validated on this
+feature branch. F3-G has also passed the repository PR regression workflow;
+merge review remains the final gate. Run all commands from the repository
+root.
 
 The post-F3-F maintenance audit and its test/performance evidence are
 documented in `BM_AUDIT_F1_F3.md`. That audit is already merged. It keeps the
@@ -101,9 +101,11 @@ F3-G attaches imported hourly DK1 spot prices to the same
 baseline is a trimmed mean of the preceding five matching weekdays. Reference
 BM parameters remain fixed: this is a retrospective integration/diagnostic
 step, not parameter estimation or a causal savings study. Use
-`real_data --no-optimize` for the core fixed-input path. The older 24-price
-Powell calculation remains available as an explicitly retrospective oracle by
-omitting `--no-optimize`.
+`real_data --no-optimize` for the core fixed-input path. The three retained
+historical days reproduce the earlier FV and 20,000-path MC calculations, and
+the optional 24-price Powell oracle reproduces the retained optimized
+objectives, evaluation counts and displayed price vectors. F3-G is therefore
+closed as an integration step; parameter identification remains F4.
 
 Mixture/conditioning and full multi-price optimization can be expensive. Their
 numerical settings are not reduced just to make an output report shorter.
