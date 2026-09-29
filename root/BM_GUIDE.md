@@ -1,9 +1,9 @@
 # BM1 — code and run guide
 
-F1, F2 and F3-A through F3-G are implemented and locally validated on this
-feature branch. F3-G has also passed the repository PR regression workflow;
-merge review remains the final gate. Run all commands from the repository
-root.
+F1, F2 and F3-A through F3-H are implemented on this closure branch.
+The final F3-G application target and F3-E paired-MC closure runs have been
+validated locally; the branch regression workflow is the merge gate. Run all
+commands from the repository root.
 
 The post-F3-F maintenance audit and its test/performance evidence are
 documented in `BM_AUDIT_F1_F3.md`. That audit is already merged. It keeps the
@@ -73,7 +73,7 @@ python -B -m src.exe.run_model.bm_1.optimize sensitivity
 python -B -m src.exe.run_model.bm_1.optimize sensitivity --grid
 python -B -m src.exe.run_model.bm_1.optimize decision --no-mc
 python -B -m src.exe.run_model.bm_1.optimize decision
-python -B -m src.exe.run_model.bm_1.optimize uncertainty
+python -B -m src.exe.run_model.bm_1.optimize uncertainty --mc-paths 20000
 python -B -m src.exe.run_model.bm_1.optimize mixture-control --no-mc
 python -B -m src.exe.run_model.bm_1.optimize mixture-control --mc-paths 20000
 python -B -m src.exe.run_model.bm_1.optimize mixture-validate --fv-reference-prices 0.730609 0.264415 --fv-design-prices 0.729329 0.263873 --mixture-prices 0.735904 0.263610 --mc-paths 20000 --mc-time-paths 5000
@@ -82,8 +82,9 @@ python -B -m src.exe.run_model.bm_1.optimize complex --fast-fv
 python -B -m src.exe.run_model.bm_1.refine
 python -B -m src.exe.run_model.bm_1.refine --mc-paths 20000 --mc-time-paths 5000
 python -B -m src.exe.run_model.bm_1.real_data --help
-python -B -m src.exe.run_model.bm_1.real_data --no-optimize --no-mc
-python -B -m src.exe.run_model.bm_1.real_data --no-optimize
+python -B -m src.exe.run_model.bm_1.real_data --target-mode baseline --no-optimize --no-mc
+python -B -m src.exe.run_model.bm_1.real_data --target-mode baseline --no-mc
+python -B -m src.exe.run_model.bm_1.real_data --target-mode observed --no-optimize
 python -B -m src.exe.run_model.bm_1.verify benchmark --cells 201 1001 --repeats 7
 ```
 
@@ -91,21 +92,25 @@ The F3-C sensitivity command compares raw tracking cost, terminal MSE and price 
 
 F3-D optimizes a deterministic point-state controller and the stochastic FV controller under the same price grid/objective, then cross-evaluates both policies. Paired MC validates the stochastic policy difference.
 
-F3-E separates the two uncertainty sources into deterministic, initial-only, process-only and full cases, optimizes each independently and cross-evaluates the four returned policies. Compare policies within a fixed model row; objective levels across rows use different state laws.
+F3-E separates the two uncertainty sources into deterministic, initial-only, process-only and full cases, optimizes each independently and cross-evaluates the four returned policies. The final 20,000-path common-random-number check evaluates all fixed policies under the same full stochastic model and reports paired SEs. Compare policies within a fixed model row; objective levels across rows use different state laws.
 
 F3-F optimizes FV at both 201 and 81 cells plus the degree-30 dynamic mixture at the matched 81-cell design grid. The final `mixture-validate` step re-optimizes only FV at the F3-B high-resolution settings (801 cells, objective step 1/192, FV step 1/384) and checks the already-fixed policies with common-random-number MC and coupled EM refinement. In the retained validation the mixture policy has high-resolution FV regret 2.33e-6, about 0.0356% of the reference objective, and the 20,000-path paired MC difference is -2.21e-6 with SE 6.34e-7 under the convention FV-reference minus candidate. F3-F is therefore closed for the controlled two-price benchmark; the policies are not numerically identical, but their achieved control quality is very close.
 
 F3-G attaches imported hourly DK1 spot prices to the same
 `BM1ControlProblem.observed_prices` contract and evaluates them unchanged with
-`evaluate_observed`. The historical target is observed consumption and the
-baseline is a trimmed mean of the preceding five matching weekdays. Reference
-BM parameters remain fixed: this is a retrospective integration/diagnostic
-step, not parameter estimation or a causal savings study. Use
-`real_data --no-optimize` for the core fixed-input path. The three retained
-historical days reproduce the earlier FV and 20,000-path MC calculations, and
-the optional 24-price Powell oracle reproduces the retained optimized
-objectives, evaluation counts and displayed price vectors. F3-G is therefore
-closed as an integration step; parameter identification remains F4.
+`evaluate_observed`. The default application target is the history-only
+five-week matching-weekday baseline, so current-day observed consumption is
+diagnostic rather than the counterfactual target. `--target-mode observed`
+retains the earlier retrospective diagnostic explicitly. Reference BM
+parameters remain fixed: this is not parameter estimation or a causal savings
+study. The corrected 2022-05-17 application run evaluates observed spot prices
+and separately optimizes a 24-price alternative against the declared
+history-only target.
+
+F3-H records the exact validated closure source commit, canonical
+parameters/initial law, working and high-resolution grids, MC seeds, optimizer
+settings, reproduction commands and the two deliberate F3 scope decisions.
+This is the handoff contract for F4; no new numerical method is introduced.
 
 Mixture/conditioning and full multi-price optimization can be expensive. Their
 numerical settings are not reduced just to make an output report shorter.
