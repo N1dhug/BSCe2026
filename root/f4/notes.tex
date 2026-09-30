@@ -835,6 +835,29 @@ posterior-variance. Hvis undercoverage er næsten uændret, er det evidens imod,
 den primært skyldes den valgte C-baseline-numerik; det er ikke i sig selv bevis
 for, hvilken anden mekanisme der forklarer afvigelsen.
 
+\subsection{C4 numerisk kalibreringssensitivitet}
+Den post-hoc one-at-a-time-diagnostik på de samme 200 sekvenser gav ved 12 timer
+coverage 0.840 for både baseline, 401 celler og \(h_{\max}=1/384\), mens
+\(q=3\) gav 0.845. De gennemsnitlige 90\%-intervalbredder ved 12 timer var
+henholdsvis 0.079831, 0.079367, 0.079838 og 0.079878. Resultatet flytter derfor
+ikke undercoverage væsentligt.
+
+Som ekstra skala-check sammenlignes posterior-mean RMSE med
+\(\sqrt{\E[\Var(X\mid Y)]}\). Ved 12 timer lå forholdet mellem cirka 1.068
+og 1.075 på tværs af varianterne, mens 6 og 24 timer lå tættere på 1.02.
+Det er konsistent med en lokal tendens til for lille posterior-usikkerhed eller
+en lille model/approksimationsmismatch omkring 12 timer, men diagnosticerer ikke
+årsagen alene. Da rum-, tids- og measurement-quadrature-refinement næsten ikke
+ændrer resultatet, peger evidensen imod disse tre C-baselinevalg som hovedforklaring.
+
+Den næste målrettede diagnostic ændrer derfor ikke filteret. I stedet genbruges
+F4-B's koblede truth-refinement på sequence-id 1--200: samme initialdraw, samme
+Brownian-path og samme measurement-noise, men truth/observationer genereres på
+henholdsvis 1/1152- og 1/2304-dags EM-grid. Det samme C-filter anvendes på hvert
+medlem af parret. Coarse/fine coverage, intervalbredde og RMSE/posterior-sd ved
+6/12/24 timer sammenlignes sammen med størrelsen af truth-forskellen. Dette er
+en post-hoc årsagsdiagnostik og ændrer ikke det preregistrerede C4-resultat.
+
 \section{Bevaret statisk F4-0-evidens}
 \subsection{Et konkret statisk resultat}
 Kontrollen bruger \(X_0\sim\Beta(20,20)\), \(B=U=Y=0.5\), \(k=2\), \(\Xi=1\) og \(\sigma_Y=0.01\), uden prediction. Uafhængig numerisk quadrature af den kontinuerte Bayes-update giver
