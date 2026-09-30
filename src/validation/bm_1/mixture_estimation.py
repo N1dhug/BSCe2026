@@ -147,6 +147,57 @@ def build_d1_dictionaries(edges):
     return dictionaries
 
 
+
+def _adaptive_dictionary(edges, high_step):
+    """Scale-dependent D1b dictionary fixed after D1 and before D1b results."""
+    high_step = checks.finite_scalar(high_step, "high_step", positive=True)
+    low_means = np.arange(1, 10, dtype=float) / 10.0
+    medium_means = np.arange(1, 40, dtype=float) / 40.0
+    medium_means = np.sort(np.concatenate((medium_means, np.array([0.02, 0.98]))))
+    count = int(round(0.8 / high_step)) + 1
+    high_means = np.linspace(0.1, 0.9, count)
+    if not np.isclose(high_means[1] - high_means[0], high_step, atol=1e-14, rtol=0.0):
+        raise ValueError("high_step must divide [0.1, 0.9] exactly.")
+
+    means = np.concatenate((
+        low_means,
+        medium_means,
+        high_means,
+        high_means,
+    ))
+    concentrations = np.concatenate((
+        np.full(low_means.size, 20.0),
+        np.full(medium_means.size, 100.0),
+        np.full(high_means.size, 500.0),
+        np.full(high_means.size, 2000.0),
+    ))
+    alpha = concentrations * means
+    beta = concentrations * (1.0 - means)
+    basis = beta_cell_average_basis(edges, alpha, beta)
+    return {
+        "basis": basis,
+        "means": means,
+        "concentrations": concentrations,
+        "alpha": alpha,
+        "beta": beta,
+        "components": int(alpha.size),
+        "selectable": True,
+    }
+
+
+def build_d1b_dictionaries(edges):
+    """Build the two nested adaptive D1b dictionaries preregistered after D1."""
+    edges = checks.increasing_grid(edges, "edges")
+    widths = np.diff(edges)
+    dx = float(widths[0])
+    if edges[0] != 0.0 or edges[-1] != 1.0 or not np.allclose(widths, dx, atol=1e-14, rtol=1e-10):
+        raise ValueError("D1b dictionaries require a uniform grid spanning exactly [0, 1].")
+    return {
+        "adaptive_A": _adaptive_dictionary(edges, 0.025),
+        "adaptive_B": _adaptive_dictionary(edges, 0.0125),
+    }
+
+
 def _fit_target(projector, target, centers):
     projected = projector.project(target["density"])
     density = projected["density"]
@@ -170,17 +221,17 @@ def _fit_target(projector, target, centers):
     }
 
 
-def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
-    """Run the preregistered static D1 representation study.
 
-    The study returns no dynamic filter result.  Candidate selection is based
-    only on the six analytic targets and the gates declared in root/F4.md.
-    """
-    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
-    edges, centers, dx = finite_volume_1d.grid(x_steps)
-    targets = _target_suite(edges)
-    dictionaries = build_d1_dictionaries(edges)
-
+def _evaluate_static_dictionaries(
+    *,
+    edges,
+    centers,
+    dx,
+    targets,
+    dictionaries,
+    fallback_disqualifies,
+):
+    """Evaluate fixed dictionaries without changing the declared projection problem."""
     results = {}
     selected = None
     for name, dictionary in dictionaries.items():
@@ -217,7 +268,7 @@ def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
             not failed_targets
             and max_gap <= D1_GAP_TOL
             and max_mass_error <= D1_MASS_TOL
-            and not any_fallback
+            and (not fallback_disqualifies or not any_fallback)
         )
         representation_ok = (
             not failed_targets
@@ -256,8 +307,13 @@ def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
         }
         if selected is None and eligible:
             selected = name
+    return results, selected
 
+
+def _representation_payload(*, x_steps, edges, centers, dx, targets, dictionaries,
+                            results, selected, fallback_disqualifies, stage):
     return {
+        "stage": stage,
         "x_steps": x_steps,
         "edges": edges,
         "centers": centers,
@@ -266,6 +322,7 @@ def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
         "dictionary_order": tuple(dictionaries),
         "results": results,
         "selected_dictionary": selected,
+        "fallback_disqualifies": bool(fallback_disqualifies),
         "gates": {
             "optimality_gap": D1_GAP_TOL,
             "mass_error": D1_MASS_TOL,
@@ -274,3 +331,59 @@ def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
             "condition_alarm": D1_CONDITION_ALARM,
         },
     }
+
+
+def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
+    """Run the original preregistered static D1 representation study."""
+    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
+    edges, centers, dx = finite_volume_1d.grid(x_steps)
+    targets = _target_suite(edges)
+    dictionaries = build_d1_dictionaries(edges)
+    results, selected = _evaluate_static_dictionaries(
+        edges=edges,
+        centers=centers,
+        dx=dx,
+        targets=targets,
+        dictionaries=dictionaries,
+        fallback_disqualifies=True,
+    )
+    return _representation_payload(
+        x_steps=x_steps,
+        edges=edges,
+        centers=centers,
+        dx=dx,
+        targets=targets,
+        dictionaries=dictionaries,
+        results=results,
+        selected=selected,
+        fallback_disqualifies=True,
+        stage="D1",
+    )
+
+
+def run_f4_d_adaptive_representation_study(*, x_steps=D1_X_STEPS):
+    """Run D1b after D1; same targets/gates, adaptive dictionaries only."""
+    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
+    edges, centers, dx = finite_volume_1d.grid(x_steps)
+    targets = _target_suite(edges)
+    dictionaries = build_d1b_dictionaries(edges)
+    results, selected = _evaluate_static_dictionaries(
+        edges=edges,
+        centers=centers,
+        dx=dx,
+        targets=targets,
+        dictionaries=dictionaries,
+        fallback_disqualifies=False,
+    )
+    return _representation_payload(
+        x_steps=x_steps,
+        edges=edges,
+        centers=centers,
+        dx=dx,
+        targets=targets,
+        dictionaries=dictionaries,
+        results=results,
+        selected=selected,
+        fallback_disqualifies=False,
+        stage="D1b",
+    )
