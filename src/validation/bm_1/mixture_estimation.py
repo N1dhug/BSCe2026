@@ -383,15 +383,29 @@ def _snapshot_projection(projector, reference_mass, centers):
     if reference_mass.shape != centers.shape:
         raise ValueError("reference_mass and centers must have matching shapes.")
     target_mean, target_variance = _moments(reference_mass, centers)
-    target = {
-        "density": reference_mass / projector.dx,
-        "cell_mass": reference_mass,
-        "mean": target_mean,
-        "variance": target_variance,
+    target_density = reference_mass / projector.dx
+    projected = projector.project(target_density)
+    density = projected["density"]
+    projected_mass = density * projector.dx
+    mean, variance = _moments(projected_mass, centers)
+    diagnostics = projected["diagnostics"]
+    coefficients = projected["coefficients"]
+    fit = {
+        "status": "ok",
+        "density_l2": density_l2(density, target_density, projector.dx),
+        "cell_mass_l1": cell_mass_l1(projected_mass, reference_mass),
+        "cdf_sup": cell_mass_cdf_sup(projected_mass, reference_mass),
+        "wasserstein_1": cell_mass_wasserstein_1(
+            projected_mass, reference_mass, projector.dx,
+        ),
+        "mean_error": mean - target_mean,
+        "variance_error": variance - target_variance,
+        "optimality_gap": float(diagnostics["optimality_gap"]),
+        "mass_error": float(diagnostics["mass_error"]),
+        "used_fallback": bool(diagnostics["used_fallback"]),
+        "active_components": int(np.sum(coefficients > D1_ACTIVE_TOL)),
+        "maximum_coefficient": float(np.max(coefficients)),
     }
-    projected = projector.project(target["density"])
-    projected_mass = projected["density"] * projector.dx
-    fit = _fit_target(projector, target, centers)
     return fit, projected_mass
 
 
@@ -547,15 +561,28 @@ def run_f4_d_snapshot_holdout(
     posterior_summary = _aggregate_snapshot_fits(posterior_fits)
     evidence_errors = np.asarray(evidence_errors, dtype=float)
     daily_evidence_errors = np.asarray(daily_evidence_errors, dtype=float)
+    expected_evidence_count = (
+        (n_sequences - len(invalid_truth)) * case.observation_times.size
+    )
+    evidence_complete = evidence_errors.size == expected_evidence_count
     if evidence_errors.size:
         evidence_summary = {
+            "complete": bool(evidence_complete),
+            "count": int(evidence_errors.size),
+            "expected_count": int(expected_evidence_count),
             "mean_absolute_per_observation": float(np.mean(np.abs(evidence_errors))),
             "maximum_absolute_per_observation": float(np.max(np.abs(evidence_errors))),
             "mean_signed_per_observation": float(np.mean(evidence_errors)),
-            "maximum_absolute_daily_sum_difference": float(np.max(np.abs(daily_evidence_errors))),
+            "maximum_absolute_daily_sum_difference": (
+                float(np.max(np.abs(daily_evidence_errors)))
+                if evidence_complete else float("inf")
+            ),
         }
     else:
         evidence_summary = {
+            "complete": False,
+            "count": 0,
+            "expected_count": int(expected_evidence_count),
             "mean_absolute_per_observation": float("inf"),
             "maximum_absolute_per_observation": float("inf"),
             "mean_signed_per_observation": float("nan"),
