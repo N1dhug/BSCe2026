@@ -15,7 +15,8 @@ from src.params.bm_1 import (
     gaussian_log_likelihood, mass_to_log,
 )
 from src.method.bm_1_estimation import (
-    bm1_observation_update, fv_filter_step, run_fv_filter,
+    bm1_observation_update, fv_filter_step, mixture_filter_step,
+    run_fv_filter, run_mixture_filter,
 )
 from src.method.beta_mixture import (
     PreparedBetaProjector, beta_cell_average_basis,
@@ -1049,6 +1050,83 @@ class F4DRepresentationTests(unittest.TestCase):
         for label in ('prediction', 'posterior'):
             self.assertIn('maximum_cell_mass_l1', result[label])
             self.assertIn('passes_representation_gate', result[label])
+
+    def test_recursive_mixture_replay_matches_manual_streaming(self):
+        case = synthetic.build_f4_b_case()
+        sequence = synthetic.generate_synthetic_sequence(case, sequence_id=0)
+        observations = sequence.observations.prefix(2/24)
+        model, parameters = case.build_model()
+        edges, _, dx = model.fokker_planc_reference.grid(31, bounds=(0.0, 1.0))
+        dictionary = mixture_f4.build_d1c_dictionaries(edges)['shape_D']
+        projector = PreparedBetaProjector(dictionary['basis'], dx)
+        initial = synthetic.beta_initial_mass(case, model, 31)
+        replay = run_mixture_filter(
+            model, parameters, case.sigma_x, case.sigma_y,
+            initial, 0.0, observations, projector=projector,
+            breakpoints=case.breakpoints, max_step=1/24, cfl=.4,
+        )
+        initial_projection = projector.project(initial / dx)
+        coefficients = initial_projection['coefficients']
+        previous = 0.0
+        predicted = []
+        posterior = []
+        evidence = []
+        for time, value in zip(observations.times, observations.values):
+            step = mixture_filter_step(
+                model, parameters, case.sigma_x, case.sigma_y,
+                coefficients, previous, float(time), float(value),
+                projector=projector, breakpoints=case.breakpoints,
+                max_step=1/24, cfl=.4,
+            )
+            predicted.append(step['predicted_mass'])
+            posterior.append(step['posterior_mass'])
+            evidence.append(step['log_evidence'])
+            coefficients = step['posterior_coefficients']
+            previous = step['time']
+        np.testing.assert_allclose(replay.predicted_mass, np.stack(predicted), atol=2e-10, rtol=0.)
+        np.testing.assert_allclose(replay.posterior_mass, np.stack(posterior), atol=2e-10, rtol=0.)
+        np.testing.assert_allclose(replay.log_evidence, evidence, atol=2e-10, rtol=0.)
+
+    def test_recursive_mixture_missing_observation_is_prediction_only(self):
+        case = synthetic.build_f4_b_case()
+        sequence = synthetic.generate_synthetic_sequence(case, sequence_id=0)
+        model, parameters = case.build_model()
+        edges, _, dx = model.fokker_planc_reference.grid(31, bounds=(0.0, 1.0))
+        dictionary = mixture_f4.build_d1c_dictionaries(edges)['shape_D']
+        projector = PreparedBetaProjector(dictionary['basis'], dx)
+        initial = synthetic.beta_initial_mass(case, model, 31)
+        coefficients = projector.project(initial / dx)['coefficients']
+        step = mixture_filter_step(
+            model, parameters, case.sigma_x, case.sigma_y,
+            coefficients, 0.0, 1/24, np.nan,
+            projector=projector, observed=False,
+            breakpoints=case.breakpoints, max_step=1/24, cfl=.4,
+        )
+        np.testing.assert_array_equal(step['posterior_mass'], step['predicted_mass'])
+        np.testing.assert_array_equal(
+            step['posterior_coefficients'], step['predicted_coefficients']
+        )
+        self.assertTrue(np.isnan(step['log_evidence']))
+
+    def test_small_d3a_sanity_reports_static_dynamic_and_total_gaps(self):
+        result = mixture_f4.run_f4_d_recursive_sanity(
+            sequence_id=0, x_steps=31, max_step=1/24, cfl=.4,
+        )
+        self.assertEqual(result['stage'], 'D3a')
+        self.assertEqual(result['dictionary'], 'shape_D')
+        self.assertEqual(result['sequence_id'], 0)
+        for family in ('static_best_fit', 'dynamic_gap', 'total_fv_gap'):
+            self.assertEqual(set(result[family]), {'prediction', 'posterior'})
+            for item in result[family].values():
+                self.assertTrue(np.isfinite(item['maximum_cell_mass_l1']))
+                self.assertTrue(np.isfinite(item['maximum_wasserstein_1']))
+        self.assertTrue(np.isfinite(
+            result['log_evidence_error']['mean_absolute_per_observation']
+        ))
+        self.assertGreater(result['numerical']['total_internal_steps'], 0)
+        self.assertGreaterEqual(
+            result['numerical']['prediction_projection_fallback_count'], 0
+        )
 
     def test_d1_selection_never_selects_legacy_comparison(self):
         result = mixture_f4.run_f4_d_representation_study(x_steps=61)
