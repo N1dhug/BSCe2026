@@ -452,7 +452,10 @@ class SyntheticGeneratorTests(unittest.TestCase):
         np.testing.assert_array_equal(a.observations.values, b.observations.values)
 
     def test_coupled_refinement_reuses_x0_noise_and_nested_brownian_path(self):
+        base = synthetic.generate_synthetic_sequence(sequence_id=0)
         result = synthetic.generate_coupled_refinement(sequence_id=0)
+        np.testing.assert_array_equal(base.truth.state, result.coarse.truth.state)
+        np.testing.assert_array_equal(base.observations.values, result.coarse.observations.values)
         self.assertEqual(result.coarse.truth.initial_state, result.fine.truth.initial_state)
         np.testing.assert_array_equal(result.coarse.measurement_noise, result.fine.measurement_noise)
         self.assertEqual(result.coarse.truth.diagnostics['n_steps'], 1152)
