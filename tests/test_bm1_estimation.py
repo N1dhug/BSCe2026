@@ -752,6 +752,27 @@ class FVStateFilterTests(unittest.TestCase):
         mass = np.array([0.5, 0.5])
         self.assertAlmostEqual(synthetic._piecewise_constant_variance(edges, mass), 1/12)
 
+    def test_truth_refinement_uses_coupled_sequence_pairs(self):
+        result = synthetic.run_f4_c_truth_refinement(
+            n_sequences=2, sequence_start=1, x_steps=31, max_step=1/24,
+            likelihood_quadrature_order=1,
+        )
+        np.testing.assert_array_equal(result['sequence_ids'], [1, 2])
+        self.assertEqual(result['invalid_truth_pairs'], ())
+        self.assertEqual(set(result['coarse']['horizons']), {6, 12, 24})
+        self.assertEqual(set(result['fine']['horizons']), {6, 12, 24})
+        self.assertGreaterEqual(result['truth_difference']['maximum_abs_state'], 0.0)
+        self.assertGreaterEqual(result['truth_difference']['rms_state'], 0.0)
+        self.assertGreaterEqual(result['truth_difference']['maximum_abs_demand'], 0.0)
+        self.assertAlmostEqual(
+            result['truth_difference']['maximum_abs_observation'],
+            result['truth_difference']['maximum_abs_demand'],
+            places=14,
+        )
+        for label in ('coarse', 'fine'):
+            self.assertLessEqual(result[label]['maximum_abs_mass_error'], 1e-10)
+            for hour in (6, 12, 24):
+                self.assertEqual(result[label]['horizons'][hour]['total'], 2)
     def test_filter_inputs_fail_explicitly(self):
         with self.assertRaises(ValueError):
             fv_filter_step(
