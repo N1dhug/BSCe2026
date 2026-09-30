@@ -666,6 +666,68 @@ sanity-report; \texttt{--refine} kører det koblede par, og \texttt{--save} gemm
 eksplicit JSON under den ignorerede run-mappe. Dette er reproduktionsmetadata, ikke
 et filterresultat eller en parameterfit.
 
+\section{F4-C: rekursivt FV-state-filter med kendte parametre}
+\label{sec:f4c}
+F4-C kombinerer nu de to dele, der allerede var adskilt i F4-0: konservativ
+Fokker--Planck prediction og Bayes-opdatering. Parametrene er fortsat kendte;
+der indgår ingen parameterbank og ingen mixture-projektion i dette trin.
+
+\subsection{Ét rekursivt filtertrin}
+Lad \(m_{k-1}^+\) være posterior cellemasse efter den foregående måling.
+Det næste trin består af
+\begin{align}
+ m_k^- &= \mathcal P_{t_{k-1}\to t_k}(m_{k-1}^+),\\
+ \ell_{k,i} &= \log L_k(x_i),\\
+ m_k^+ &\propto m_{k,i}^-\exp(\ell_{k,i}),
+\end{align}
+hvor \(\mathcal P\) er den eksisterende konservative FV-propagator. Den nye
+filterkerne starter altså hvert interval i den seneste posterior og nulstiller
+ikke til den oprindelige prior.
+
+Ved manglende observation udføres kun prediction,
+\begin{equation}
+ m_k^+=m_k^-.
+\end{equation}
+Der opfindes ikke en måleværdi eller et likelihoodbidrag. I resultatobjektet
+markeres log-evidence derfor som manglende for dette tidspunkt.
+
+\subsection{Pris ved observationskanten}
+State-propagationen frem til et prisspring bruger dynamikken umiddelbart før
+springet. Selve punkt-likelihooden ved \(t_k\) bruger derimod observationskontraktens
+\texttt{price\_side}. For F4-A/B-casen er den højre-kontinuert, så målingen ved
+8 og 16 timer ser den nye pris. En eventuel venstre-konvention evaluerer kun
+prissignalet i venstre grænse; baseline evalueres fortsat ved det faktiske
+observationstidspunkt.
+
+\subsection{Measurement-quadrature er separat fra FV-gridet}
+Standardopdateringen bruger center-likelihooden fra \eqref{eq:discretebayes}.
+For at kunne undersøge denne approksimation uden at ændre FP-propagationen kan
+hver celles gennemsnitlige likelihood også approksimeres med Gauss--Legendre:
+\begin{equation}
+ \overline L_i=\frac1{\Delta x}\int_{V_i}L_k(x)\dd x
+ \approx \frac12\sum_{r=1}^{q}w_rL_k\!\left(x_i+\frac{\Delta x}{2}\xi_r\right).
+\end{equation}
+Bayes-update bruger da \(m_i^-\overline L_i\). \(q=1\) er den oprindelige
+center-evaluering. Dette ændrer observationens rumlige quadrature, ikke state-grid,
+FP-tidstrin eller den underliggende observationsmodel.
+
+\subsection{Streaming, replay og nulobservationskontrol}
+Den samme rene one-step-kerne bruges både ved sekventiel streaming og ved replay
+af en hel \texttt{BM1ObservationSeries}. Replay gemmer prediction \(m_k^-\),
+posterior \(m_k^+\), log-evidence og den faktiske interne FV-tidsgrid.
+
+En særlig nulobservationskontrol bruger de samme måletider som outputtider, men
+markerer alle observationer som manglende. Resultatet skal være identisk med direkte
+Fokker--Planck-propagation på den samme faktiske integrationsgrid. Denne kontrol
+skelner filterlogik fra ændringer, som alene skyldes et andet output-/time-grid.
+
+\subsection{Hvad der endnu mangler i F4-C}
+Core-filterets correctness-tests er ikke den statistiske afslutning. Efter lokal sanity
+skal rumopløsning, FP-tidstrin og measurement-quadrature raffineres separat på samme
+syntetiske datasæt. Først derefter køres mindst 200 uafhængige sekvenser med de
+præregistrerede \(\operatorname{RMSE}_0,\operatorname{RMSE}_-,\operatorname{RMSE}_+\),
+marginal 90\%-dækning ved 6/12/24 timer og predictive log score før assimilation.
+
 \section{Bevaret statisk F4-0-evidens}
 \subsection{Et konkret statisk resultat}
 Kontrollen bruger \(X_0\sim\Beta(20,20)\), \(B=U=Y=0.5\), \(k=2\), \(\Xi=1\) og \(\sigma_Y=0.01\), uden prediction. Uafhængig numerisk quadrature af den kontinuerte Bayes-update giver
