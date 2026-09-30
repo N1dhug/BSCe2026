@@ -140,6 +140,10 @@ class _SimplexProjector:
             scale = max(1.0, float(np.max(np.abs(gradient))))
             gap = float(gradient @ coefficients - np.min(gradient))
             if gap <= _PROJECTION_GAP_TOL * scale:
+                if np.any(coefficients < 0.0):
+                    raise RuntimeError(
+                        'Active-set projection reached optimality with a negative coefficient.'
+                    )
                 return coefficients
             indices = np.flatnonzero(free)
             if indices.size > 1:
@@ -149,17 +153,27 @@ class _SimplexProjector:
                 direction = np.zeros(1, dtype=float)
             if float(np.max(np.abs(direction))) > 1e-12:
                 decreasing = np.flatnonzero(direction < -1e-12)
-                alpha, blocking = 1.0, None
+                alpha = 1.0
+                blocking = np.empty(0, dtype=int)
                 if decreasing.size:
                     ratios = -coefficients[indices[decreasing]] / direction[decreasing]
                     first = int(np.argmin(ratios))
-                    if ratios[first] < alpha:
-                        alpha = max(0.0, float(ratios[first]))
-                        blocking = int(indices[decreasing[first]])
+                    minimum_ratio = float(ratios[first])
+                    if minimum_ratio < alpha:
+                        alpha = max(0.0, minimum_ratio)
+                        # Several bounds can become active in the same line-search
+                        # step. Enforce every numerically simultaneous blocker
+                        # exactly; otherwise roundoff can leave a tied coefficient
+                        # at a tiny negative value even though the constrained step
+                        # itself is feasible. This is active-set geometry, not
+                        # post-hoc probability clipping.
+                        ratio_tolerance = (
+                            64.0 * np.finfo(float).eps * max(1.0, abs(minimum_ratio))
+                        )
+                        tied = decreasing[ratios <= minimum_ratio + ratio_tolerance]
+                        blocking = indices[tied]
                 coefficients[indices] += alpha * direction
-                if blocking is not None:
-                    # Impose the blocking bound as part of the active-set step.
-                    # This is not clipping/renormalizing a computed density.
+                if blocking.size:
                     coefficients[blocking] = 0.0
                     free[blocking] = False
                     continue
@@ -172,6 +186,10 @@ class _SimplexProjector:
                     continue
             gap = float(gradient @ coefficients - np.min(gradient))
             if gap <= _PROJECTION_GAP_TOL * scale:
+                if np.any(coefficients < 0.0):
+                    raise RuntimeError(
+                        'Active-set projection reached optimality with a negative coefficient.'
+                    )
                 return coefficients
         raise RuntimeError('Simplex active-set least-squares solver did not converge.')
 
