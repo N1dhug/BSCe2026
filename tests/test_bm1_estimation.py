@@ -11,8 +11,8 @@ from scipy.special import betaln, logsumexp
 from scipy.stats import norm
 
 from src.params.bm_1 import (
-    BM1ObservationSeries, bayes_update, conservative_mass_transfer, fv_filter_step,
-    gaussian_log_likelihood, mass_to_log, run_fv_filter,
+    BM1ObservationSeries, bayes_update, bm1_observation_update, conservative_mass_transfer,
+    fv_filter_step, gaussian_log_likelihood, mass_to_log, run_fv_filter,
 )
 from src.method.beta_mixture import (
     PreparedBetaProjector, beta_cell_average_basis,
@@ -652,6 +652,47 @@ class FVStateFilterTests(unittest.TestCase):
         self.assertGreaterEqual(filtered.minimum_cell_mass, 0.0)
         np.testing.assert_allclose(filtered.predicted_mass.sum(axis=1), 1.0, atol=1e-10, rtol=0.)
         np.testing.assert_allclose(filtered.posterior_mass.sum(axis=1), 1.0, atol=1e-10, rtol=0.)
+
+    def test_observation_update_helper_reuses_filter_evidence(self):
+        time = self.sequence.observations.times[0]
+        value = self.sequence.observations.values[0]
+        step = fv_filter_step(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, time, value, observed=True, price_side='right',
+            breakpoints=self.case.breakpoints, max_step=1/96,
+        )
+        update = bm1_observation_update(
+            self.model, self.parameters, self.case.sigma_y, step.predicted_mass,
+            0.0, time, value, price_side='right', likelihood_quadrature_order=1,
+        )
+        np.testing.assert_array_equal(update.mass, step.posterior_mass)
+        self.assertEqual(update.log_evidence, step.log_evidence)
+
+    def test_piecewise_constant_quantile_interpolates_inside_cells(self):
+        edges = np.array([0.0, 0.5, 1.0])
+        mass = np.array([0.5, 0.5])
+        self.assertAlmostEqual(synthetic._piecewise_constant_quantile(edges, mass, .05), .05)
+        self.assertAlmostEqual(synthetic._piecewise_constant_quantile(edges, mass, .50), .50)
+        self.assertAlmostEqual(synthetic._piecewise_constant_quantile(edges, mass, .95), .95)
+
+    def test_small_population_study_is_paired_and_reproducible(self):
+        kwargs = dict(
+            n_sequences=3, sequence_start=1, x_steps=31, max_step=1/24,
+            likelihood_quadrature_order=1, bootstrap_replicates=100, bootstrap_seed=4321,
+        )
+        left = synthetic.run_f4_c_population(**kwargs)
+        right = synthetic.run_f4_c_population(**kwargs)
+        np.testing.assert_array_equal(left['sequence_ids'], [1, 2, 3])
+        self.assertEqual(left['rmse'], right['rmse'])
+        self.assertEqual(left['predictive_log_score'], right['predictive_log_score'])
+        self.assertEqual(left['coverage90_posterior'], right['coverage90_posterior'])
+        self.assertLess(left['predictive_log_score']['first_observation_max_abs_difference'], 1e-14)
+        self.assertEqual(left['diagnostics']['invalid_truth_sequences'], ())
+        for hour in (6, 12, 24):
+            item = left['coverage90_posterior'][hour]
+            self.assertEqual(item['total'], 3)
+            self.assertLessEqual(item['successes'], 3)
+            self.assertGreaterEqual(item['mean_width'], 0.0)
 
     def test_refinement_changes_one_numerical_dimension_at_a_time(self):
         result = synthetic.run_f4_c_refinement(
