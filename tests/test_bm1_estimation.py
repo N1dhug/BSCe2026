@@ -1128,6 +1128,80 @@ class F4DRepresentationTests(unittest.TestCase):
             result['numerical']['prediction_projection_fallback_count'], 0
         )
 
+    def test_d3b_refinement_reuses_shared_configuration_and_reports_gate(self):
+        def fake_result(*, sequence_id, x_steps, max_step, cfl, likelihood_quadrature_order):
+            scale = 1.0 + 0.01 * x_steps + max_step
+            metric = {
+                'maximum_cell_mass_l1': 0.02 * scale,
+                'maximum_cdf_sup': 0.005 * scale,
+                'maximum_wasserstein_1': 0.001 * scale,
+                'maximum_density_l2': 0.03 * scale,
+                'maximum_abs_mean_error': 1e-4 * scale,
+                'maximum_abs_variance_error': 1e-5 * scale,
+            }
+            static = {
+                'maximum_cell_mass_l1': 1e-5,
+                'maximum_wasserstein_1': 1e-6,
+            }
+            return {
+                'x_steps': x_steps,
+                'max_step': max_step,
+                'total_fv_gap': {'prediction': dict(metric), 'posterior': dict(metric)},
+                'dynamic_gap': {'prediction': dict(metric), 'posterior': dict(metric)},
+                'static_best_fit': {'prediction': dict(static), 'posterior': dict(static)},
+                'log_evidence_error': {
+                    'mean_absolute_per_observation': 0.005 * scale,
+                    'maximum_absolute_per_observation': 0.01 * scale,
+                    'absolute_total_log_likelihood_difference': 0.02 * scale,
+                },
+                'state_rmse': {
+                    'fv_predictive': 0.03,
+                    'fv_posterior': 0.02,
+                    'mixture_predictive': 0.031,
+                    'mixture_posterior': 0.021,
+                },
+                'numerical': {
+                    'maximum_internal_step': max_step,
+                    'minimum_internal_step': max_step / 2,
+                    'total_internal_steps': 10,
+                    'prediction_projection_fallback_count': 0,
+                    'posterior_projection_fallback_count': 0,
+                    'maximum_abs_raw_prediction_mass_error': 1e-15,
+                    'maximum_abs_projected_prediction_mass_error': 1e-15,
+                    'maximum_posterior_projection_mass_error': 1e-15,
+                    'maximum_bayes_to_projected_posterior_l1': 1e-6,
+                    'projection_matrix_condition_number': 10.0,
+                    'hessian_condition_number': 100.0,
+                },
+            }
+
+        with patch.object(
+            mixture_f4, 'run_f4_d_recursive_sanity', side_effect=fake_result,
+        ) as mocked:
+            result = mixture_f4.run_f4_d_recursive_refinement(
+                sequence_id=0,
+                time_steps=(1/24, 1/48),
+                spatial_cells=(31, 101),
+                spatial_max_step=1/48,
+            )
+        self.assertEqual(result['stage'], 'D3b')
+        self.assertEqual(mocked.call_count, 3)
+        self.assertEqual(len(result['unique_configurations']), 3)
+        self.assertEqual([row['level'] for row in result['time']], [1/24, 1/48])
+        self.assertEqual([row['level'] for row in result['spatial']], [31, 101])
+        for axis in ('time', 'spatial'):
+            self.assertIn('posterior_l1', result['summary'][axis])
+            self.assertIn('evidence_mean_abs', result['summary'][axis])
+            self.assertIsInstance(result['summary'][axis]['passes_stability_gate'], bool)
+
+    def test_d3b_refinement_requires_ordered_unique_levels(self):
+        with self.assertRaises(ValueError):
+            mixture_f4.run_f4_d_recursive_refinement(time_steps=(1/48, 1/24))
+        with self.assertRaises(ValueError):
+            mixture_f4.run_f4_d_recursive_refinement(spatial_cells=(101, 51))
+        with self.assertRaises(ValueError):
+            mixture_f4.run_f4_d_recursive_refinement(time_steps=(1/384, 1/384))
+
     def test_d1_selection_never_selects_legacy_comparison(self):
         result = mixture_f4.run_f4_d_representation_study(x_steps=61)
         self.assertNotIn(result['selected_dictionary'], ('legacy_degree_30', 'legacy_degree_38'))
