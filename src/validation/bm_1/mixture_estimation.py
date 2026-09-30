@@ -16,7 +16,11 @@ from src.diagnostics.bm_1 import (
     density_l2,
 )
 from src.method.beta_mixture import PreparedBetaProjector, beta_cell_average_basis
-from src.method.bm_1_estimation import bm1_observation_update, run_fv_filter
+from src.method.bm_1_estimation import (
+    bm1_observation_update,
+    run_fv_filter,
+    run_mixture_filter,
+)
 from src.solver.finite_volume import finite_volume_1d
 from src.validation import estimation as checks
 from src.validation.bm_1.estimation import (
@@ -39,6 +43,11 @@ D2_X_STEPS = 801
 D2_MAX_STEP = 1.0 / 192.0
 D2_QUADRATURE_ORDER = 1
 D2_DICTIONARY = "shape_D"
+D3A_SEQUENCE_ID = 0
+D3A_X_STEPS = 101
+D3A_MAX_STEP = 1.0 / 384.0
+D3A_CFL = 0.4
+D3A_QUADRATURE_ORDER = 1
 
 _INNER_MEANS = np.arange(1, 20, dtype=float) / 20.0
 _BOUNDARY_MEANS = np.array([0.01, 0.025, 0.975, 0.99], dtype=float)
@@ -409,6 +418,42 @@ def _snapshot_projection(projector, reference_mass, centers):
     return fit, projected_mass
 
 
+
+def _mass_distribution_errors(left_mass, right_mass, centers, dx):
+    left_mass = checks.probability_mass(left_mass, "left_mass")
+    right_mass = checks.probability_mass(right_mass, "right_mass")
+    if left_mass.shape != right_mass.shape or left_mass.shape != centers.shape:
+        raise ValueError("mass distributions and centers must have matching shapes.")
+    left_mean, left_variance = _moments(left_mass, centers)
+    right_mean, right_variance = _moments(right_mass, centers)
+    return {
+        "cell_mass_l1": cell_mass_l1(left_mass, right_mass),
+        "cdf_sup": cell_mass_cdf_sup(left_mass, right_mass),
+        "wasserstein_1": cell_mass_wasserstein_1(left_mass, right_mass, dx),
+        "density_l2": density_l2(left_mass / dx, right_mass / dx, dx),
+        "mean_error": left_mean - right_mean,
+        "variance_error": left_variance - right_variance,
+    }
+
+
+def _error_history(left, right, centers, dx):
+    return [
+        _mass_distribution_errors(lrow, rrow, centers, dx)
+        for lrow, rrow in zip(left, right)
+    ]
+
+
+def _max_error_history(history):
+    return {
+        "maximum_cell_mass_l1": max(item["cell_mass_l1"] for item in history),
+        "maximum_cdf_sup": max(item["cdf_sup"] for item in history),
+        "maximum_wasserstein_1": max(item["wasserstein_1"] for item in history),
+        "maximum_density_l2": max(item["density_l2"] for item in history),
+        "maximum_abs_mean_error": max(abs(item["mean_error"]) for item in history),
+        "maximum_abs_variance_error": max(abs(item["variance_error"]) for item in history),
+    }
+
+
 def _aggregate_snapshot_fits(fits):
     """Summarize a fixed set of successful/failed snapshot fits."""
     failed = tuple(index for index, item in enumerate(fits) if item["status"] != "ok")
@@ -718,3 +763,167 @@ def run_f4_d_shape_aware_representation_study(*, x_steps=D1_X_STEPS):
         fallback_disqualifies=False,
         stage="D1c",
     )
+
+
+def run_f4_d_recursive_sanity(
+    *,
+    sequence_id=D3A_SEQUENCE_ID,
+    x_steps=D3A_X_STEPS,
+    max_step=D3A_MAX_STEP,
+    cfl=D3A_CFL,
+    likelihood_quadrature_order=D3A_QUADRATURE_ORDER,
+):
+    """Run preregistered D3a recursive mixture sanity against matched-grid FV."""
+    sequence_id = checks.positive_integer(sequence_id, "sequence_id", minimum=0)
+    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
+    max_step = checks.finite_scalar(max_step, "max_step", positive=True)
+    cfl = checks.finite_scalar(cfl, "cfl", positive=True)
+    likelihood_quadrature_order = checks.positive_integer(
+        likelihood_quadrature_order, "likelihood_quadrature_order", minimum=1,
+    )
+    case = build_f4_b_case()
+    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+    model, parameters = case.build_model()
+    edges, centers, dx = model.fokker_planc_reference.grid(x_steps, bounds=(0.0, 1.0))
+    dictionary = build_d1c_dictionaries(edges)[D2_DICTIONARY]
+    mixture_projector = PreparedBetaProjector(dictionary["basis"], dx)
+    static_projector = PreparedBetaProjector(dictionary["basis"], dx)
+    initial_mass = beta_initial_mass(case, model, x_steps)
+
+    mixture = run_mixture_filter(
+        model,
+        parameters,
+        case.sigma_x,
+        case.sigma_y,
+        initial_mass,
+        case.horizon[0],
+        sequence.observations,
+        projector=mixture_projector,
+        breakpoints=case.breakpoints,
+        max_step=max_step,
+        cfl=cfl,
+        likelihood_quadrature_order=likelihood_quadrature_order,
+    )
+    fv = run_fv_filter(
+        model,
+        parameters,
+        case.sigma_x,
+        case.sigma_y,
+        initial_mass,
+        case.horizon[0],
+        sequence.observations,
+        breakpoints=case.breakpoints,
+        max_step=max_step,
+        likelihood_quadrature_order=likelihood_quadrature_order,
+    )
+
+    static_pred_mass = []
+    static_post_mass = []
+    static_pred_fits = []
+    static_post_fits = []
+    for pred, post in zip(fv.predicted_mass, fv.posterior_mass):
+        pred_fit, pred_mass = _snapshot_projection(static_projector, pred, centers)
+        post_fit, post_mass = _snapshot_projection(static_projector, post, centers)
+        static_pred_fits.append(pred_fit)
+        static_post_fits.append(post_fit)
+        static_pred_mass.append(pred_mass)
+        static_post_mass.append(post_mass)
+    static_pred_mass = np.stack(static_pred_mass)
+    static_post_mass = np.stack(static_post_mass)
+
+    original_initial = initial_mass
+    projected_initial = mixture.initial_mass
+    initial_error = _mass_distribution_errors(projected_initial, original_initial, centers, dx)
+    static_prediction = _aggregate_snapshot_fits(static_pred_fits)
+    static_posterior = _aggregate_snapshot_fits(static_post_fits)
+    dynamic_prediction = _max_error_history(
+        _error_history(mixture.predicted_mass, static_pred_mass, centers, dx)
+    )
+    dynamic_posterior = _max_error_history(
+        _error_history(mixture.posterior_mass, static_post_mass, centers, dx)
+    )
+    total_prediction = _max_error_history(
+        _error_history(mixture.predicted_mass, fv.predicted_mass, centers, dx)
+    )
+    total_posterior = _max_error_history(
+        _error_history(mixture.posterior_mass, fv.posterior_mass, centers, dx)
+    )
+
+    observed = sequence.observations.observed
+    evidence_error = mixture.log_evidence[observed] - fv.log_evidence[observed]
+    truth = sequence.truth.state[1:]
+    rmse = lambda values: float(np.sqrt(np.mean(np.square(values - truth))))
+
+    pred_diag = mixture.prediction_diagnostics
+    post_diag = mixture.posterior_projection_diagnostics
+    numerical = {
+        "total_internal_steps": int(sum(item["n_steps"] for item in pred_diag)),
+        "maximum_internal_step": float(max(item["maximum_internal_step"] for item in pred_diag)),
+        "minimum_internal_step": float(min(item["minimum_internal_step"] for item in pred_diag)),
+        "prediction_projection_fallback_count": int(
+            sum(item["projection_fallback_count"] for item in pred_diag)
+        ),
+        "posterior_projection_fallback_count": int(
+            sum(int(item["used_fallback"]) for item in post_diag)
+        ),
+        "maximum_raw_prediction_negativity": float(
+            min(item["minimum_raw_prediction"] for item in pred_diag)
+        ),
+        "maximum_abs_raw_prediction_mass_error": float(
+            max(item["maximum_abs_raw_prediction_mass_error"] for item in pred_diag)
+        ),
+        "maximum_abs_projected_prediction_mass_error": float(
+            max(item["maximum_abs_projected_mass_error"] for item in pred_diag)
+        ),
+        "maximum_posterior_projection_mass_error": float(
+            max(item["mass_error"] for item in post_diag)
+        ),
+        "maximum_bayes_to_projected_posterior_l1": float(
+            max(item["raw_to_projected_cell_mass_l1"] for item in post_diag)
+        ),
+        "projection_matrix_condition_number": float(
+            mixture_projector.projection_solver.matrix_condition_number
+        ),
+        "hessian_condition_number": float(mixture_projector.projection_data[2]),
+    }
+
+    return {
+        "stage": "D3a",
+        "sequence_id": sequence_id,
+        "dictionary": D2_DICTIONARY,
+        "components": dictionary["components"],
+        "x_steps": x_steps,
+        "max_step": max_step,
+        "cfl": cfl,
+        "likelihood_quadrature_order": likelihood_quadrature_order,
+        "initial_projection_error": initial_error,
+        "static_best_fit": {
+            "prediction": static_prediction,
+            "posterior": static_posterior,
+        },
+        "dynamic_gap": {
+            "prediction": dynamic_prediction,
+            "posterior": dynamic_posterior,
+        },
+        "total_fv_gap": {
+            "prediction": total_prediction,
+            "posterior": total_posterior,
+        },
+        "log_evidence_error": {
+            "mean_absolute_per_observation": float(np.mean(np.abs(evidence_error))),
+            "maximum_absolute_per_observation": float(np.max(np.abs(evidence_error))),
+            "mean_signed_per_observation": float(np.mean(evidence_error)),
+            "absolute_total_log_likelihood_difference": abs(
+                mixture.total_log_likelihood - fv.total_log_likelihood
+            ),
+        },
+        "state_rmse": {
+            "fv_predictive": rmse(fv.predicted_mean),
+            "fv_posterior": rmse(fv.posterior_mean),
+            "mixture_predictive": rmse(mixture.predicted_mean),
+            "mixture_posterior": rmse(mixture.posterior_mean),
+        },
+        "numerical": numerical,
+        "mixture": mixture,
+        "fv": fv,
+    }
