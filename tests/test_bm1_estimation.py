@@ -867,6 +867,12 @@ class F4DRepresentationTests(unittest.TestCase):
             self.assertEqual(set(litem['fits']), set(left['targets']))
             for target, fit in litem['fits'].items():
                 self.assertEqual(fit, ritem['fits'][target])
+                if fit['status'] == 'failed':
+                    self.assertIn('failure_type', fit)
+                    self.assertIn('failure_message', fit)
+                    self.assertFalse(litem['summary']['eligible'])
+                    continue
+                self.assertEqual(fit['status'], 'ok')
                 for key in (
                     'density_l2', 'cell_mass_l1', 'cdf_sup', 'wasserstein_1',
                     'mean_error', 'variance_error', 'optimality_gap', 'mass_error',
@@ -880,6 +886,25 @@ class F4DRepresentationTests(unittest.TestCase):
             self.assertTrue(chosen['numerical_ok'])
             self.assertTrue(chosen['representation_ok'])
             self.assertTrue(chosen['eligible'])
+
+    def test_d1_failed_projection_is_recorded_not_repaired(self):
+        with patch.object(
+            mixture_f4.PreparedBetaProjector,
+            'project',
+            side_effect=FloatingPointError('forced signed projection'),
+        ):
+            result = mixture_f4.run_f4_d_representation_study(x_steps=61)
+        self.assertIsNone(result['selected_dictionary'])
+        for name in result['dictionary_order']:
+            summary = result['results'][name]['summary']
+            self.assertEqual(set(summary['failed_targets']), set(result['targets']))
+            self.assertFalse(summary['numerical_ok'])
+            self.assertFalse(summary['representation_ok'])
+            self.assertFalse(summary['eligible'])
+            for fit in result['results'][name]['fits'].values():
+                self.assertEqual(fit['status'], 'failed')
+                self.assertEqual(fit['failure_type'], 'FloatingPointError')
+                self.assertIn('forced signed projection', fit['failure_message'])
 
     def test_d1_selection_never_selects_legacy_comparison(self):
         result = mixture_f4.run_f4_d_representation_study(x_steps=61)
