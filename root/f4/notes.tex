@@ -276,6 +276,90 @@ For en feasible kandidat og gradient \(g=A^T(Ac-b)\) gælder
 \end{equation}
 Den øvre grænse følger af konveksitet og \(g^Tc^*\geq\min_jg_j\). Den kontrollerer den numeriske løsning inden for den valgte basis, ikke afstanden til den sande posterior. F4-0's offentlige interface rapporterer derfor både optimalitetsgap og repræsentationsfejl. Faktisk masse i endecellerne rapporteres separat; første og sidste \emph{koefficient} er ikke generelle randindikatorer i en arbitrær ordbog.
 
+
+\section{F4-D: statisk basisvalg før dynamisk mixture-filter}
+\label{sec:f4d_static}
+
+Mixture-referencen bruger faste basisfunktioner med ikke-negative koefficienter på
+simplexen. Det bevarer en probabilistisk fortolkning i den valgte approximation,
+men garanterer ikke, at approximationfamilien kan repræsentere en given posterior.
+Referencearbejdet fremhæver fixed bases, simplex-constrained projektion og finite
+volume som benchmark \cite{nielsen}. F4-D adskiller derfor først
+\emph{repræsentationsfejl} fra dynamisk filterfejl.
+
+\subsection{Låst statisk target-suite}
+D1 køres på et uniformt grid med 801 celler. Følgende seks targets er fastlagt
+før resultaterne:
+\begin{align}
+ r_{\rm broad} &= \Beta(4,4),\\
+ r_{\rm narrow} &= \Beta(900,900),\\
+ r_{\rm shift} &= \Beta(296,504),\\
+ r_{\rm bi} &= \tfrac12\Beta(33.6,86.4)+\tfrac12\Beta(86.4,33.6),\\
+ r_{\rm left} &= \Beta(1.5,73.5),\\
+ r_{\rm right} &= \Beta(73.5,1.5).
+\end{align}
+De tester henholdsvis bred centerfordeling, meget smal centerfordeling,
+forskudt smal fordeling, bimodalitet og begge randnære retninger. Target-suiten
+er ikke et fit til sequence 0 og vælges derfor før de dynamiske F4-C snapshots
+undersøges.
+
+\subsection{Nestede kandidatordbøger}
+En komponent parameteriseres med mean \(\mu\) og concentration \(\kappa\):
+\[
+ a=\kappa\mu,\qquad b=\kappa(1-\mu).
+\]
+Den indre mean-grid er
+\[
+ \mathcal M=\{0.05,0.10,\ldots,0.95\}.
+\]
+Fire på forhånd definerede kandidater er
+\begin{align}
+ \mathcal D_2 &: \mathcal M\times\{20,100\},\\
+ \mathcal D_3 &: \mathcal M\times\{20,100,500\},\\
+ \mathcal D_4 &: \mathcal M\times\{20,100,500,2500\},\\
+ \mathcal D_{4b} &: (\mathcal M\cup\{0.01,0.025,0.975,0.99\})
+                    \times\{20,100,500,2500\}.
+\end{align}
+De har henholdsvis 38, 57, 76 og 92 komponenter. Grad 30 og 38 i den
+eksisterende Bernstein-familie er referencepunkter, ikke kandidater til det
+nye basisvalg. Celleintegrationen bruger \eqref{eq:integratedbasis}; ingen
+post-hoc normalisering tilføjes.
+
+\subsection{Metrikker og valg før resultater}
+For target cell masses \(m\) og projected masses \(\hat m\) rapporteres mindst
+\[
+ \|m-\hat m\|_1,\qquad
+ \sup_i|F_i-\hat F_i|,\qquad
+ W_1(m,\hat m),
+\]
+samt density-\(L^2\), mean-/variancefejl og QP-optimalitetsgap. Matrix- og
+Hessian-conditioning, antal aktive koefficienter og fallback-status rapporteres
+separat, fordi et lille gap kun viser at det valgte QP er løst.
+
+En multiscale-kandidat er numerisk acceptabel hvis alle seks fits har
+\[
+ {\rm gap}\le10^{-9},\qquad
+ |\text{mass error}|\le10^{-9},
+\]
+og ingen fallback. Repræsentationsgaten er
+\[
+ \max_{\rm targets}\|m-\hat m\|_1\le0.05,\qquad
+ \max_{\rm targets}W_1\le0.01.
+\]
+Blandt kandidater der opfylder begge vælges den med færrest komponenter.
+Condition number over \(10^{12}\) udløser en alarm og skal undersøges; det er
+ikke en grund til at skjule et fit. Hvis ingen kandidat opfylder de fastlagte
+krav, konkluderes "ingen basis valgt" og en ny ordbogsfamilie skal erklæres
+før næste studie.
+
+\subsection{Hvorfor D1 kommer før det rekursive filter}
+Referencearbejdet skelner mellem projection error fra det endelige mixture-rum
+og temporal/dynamisk discretization error \cite{nielsen}. Det samme princip
+bruges her: D1 måler den bedste statiske approximation først. D2 validerer den
+valgte ordbog på holdout-FV snapshots. Først D3 kører et selvstændigt rekursivt
+mixture-filter. Ellers kunne en dårlig dynamisk kurve fejlagtigt tilskrives
+time stepping, selv om basisrummet allerede var utilstrækkeligt.
+
 \section{Parameteridentifikation før store fits}
 \subsection{En lokal algebraisk screening}
 Med faste \(f,g\) kan \(\theta=(\rho,\Xi,k,\sigma_X,\sigma_Y)\) være en mulig parameterliste. Det er ikke en anvisning om at estimere alle fem samtidigt. Ved fast \(x,u,B\) gælder
