@@ -144,7 +144,7 @@ def run_filter(args):
 
 def _print_refinement_axis(title, rows):
     print(title)
-    print('  level          RMSE open    RMSE pred    RMSE post    logL        steps   actual h')
+    print('  level          RMSE open    RMSE pred    RMSE post    logL        steps   actual h      mass err   min mass')
     for row in rows:
         level = row['level']
         level_text = f'{level:.6g}' if isinstance(level, float) else str(level)
@@ -152,7 +152,8 @@ def _print_refinement_axis(title, rows):
             f"  {level_text:<12} "
             f"{row['rmse_open']:.6e}  {row['rmse_predictive']:.6e}  "
             f"{row['rmse_posterior']:.6e}  {row['total_log_likelihood']:.6f}  "
-            f"{row['n_steps']:>5d}   {row['actual_max_step']:.6e}"
+            f"{row['n_steps']:>5d}   {row['actual_max_step']:.6e}  "
+            f"{row['maximum_abs_mass_error']:.1e}  {row['minimum_cell_mass']:.1e}"
         )
 
 
@@ -173,6 +174,64 @@ def run_filter_refinement(args):
             f"effect/assimilation={ratio_text}; "
             f"max |delta logL|={summary['maximum_log_likelihood_effect']:.6e}"
         )
+    return result
+
+
+
+def run_filter_study(args):
+    """Run the preregistered multi-sequence F4-C state-filter study."""
+    print(
+        f'F4-C population study: sequences {args.start}..'
+        f'{args.start + args.sequences - 1} (n={args.sequences})'
+    )
+    result = synthetic.run_f4_c_population(
+        n_sequences=args.sequences,
+        sequence_start=args.start,
+        bootstrap_replicates=args.bootstrap_replicates,
+    )
+    rmse = result['rmse']
+    score = result['predictive_log_score']
+    print(
+        f"  RMSE open={rmse['open']:.6e}; predictive={rmse['predictive']:.6e}; "
+        f"posterior={rmse['posterior']:.6e}"
+    )
+    print(
+        f"  RMSE-/RMSE0={rmse['predictive_over_open']:.6f} "
+        f"[bootstrap95 {rmse['predictive_over_open_bootstrap95'][0]:.6f}, "
+        f"{rmse['predictive_over_open_bootstrap95'][1]:.6f}]"
+    )
+    print(
+        f"  RMSE+/RMSE0={rmse['posterior_over_open']:.6f} "
+        f"[bootstrap95 {rmse['posterior_over_open_bootstrap95'][0]:.6f}, "
+        f"{rmse['posterior_over_open_bootstrap95'][1]:.6f}]"
+    )
+    print(
+        f"  predictive Y log score/obs: filter={score['filter_mean_per_observation']:.6f}; "
+        f"open={score['open_mean_per_observation']:.6f}; "
+        f"paired delta={score['paired_difference']:.6f} "
+        f"[bootstrap95 {score['paired_difference_bootstrap95'][0]:.6f}, "
+        f"{score['paired_difference_bootstrap95'][1]:.6f}]"
+    )
+    print(
+        f"  first-observation score agreement max abs diff="
+        f"{score['first_observation_max_abs_difference']:.3e}"
+    )
+    for hour in (6, 12, 24):
+        item = result['coverage90_posterior'][hour]
+        print(
+            f"  posterior 90% coverage at {hour:02d}h: "
+            f"{item['successes']}/{item['total']}={item['coverage']:.3f}; "
+            f"Wilson95=[{item['wilson95'][0]:.3f}, {item['wilson95'][1]:.3f}]; "
+            f"mean width={item['mean_width']:.6f}"
+        )
+    diagnostics = result['diagnostics']
+    print(
+        f"  invalid truth sequences={len(diagnostics['invalid_truth_sequences'])}; "
+        f"open max mass error={diagnostics['open_maximum_abs_mass_error']:.3e}; "
+        f"open min cell mass={diagnostics['open_minimum_cell_mass']:.3e}"
+    )
+    if args.sequences < 200:
+        print('  diagnostic only: preregistered F4-C population study requires >=200 sequences')
     return result
 
 def build_parser():
@@ -211,6 +270,15 @@ def build_parser():
     )
     refinement.add_argument('--sequence-id', type=int, default=0)
     refinement.set_defaults(handler=run_filter_refinement)
+
+    study = subparsers.add_parser(
+        'filter-study',
+        help='Run the preregistered F4-C multi-sequence state-filter evaluation.',
+    )
+    study.add_argument('--sequences', type=int, default=200)
+    study.add_argument('--start', type=int, default=1)
+    study.add_argument('--bootstrap-replicates', type=int, default=5000)
+    study.set_defaults(handler=run_filter_study)
     return parser
 
 
