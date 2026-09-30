@@ -12,9 +12,10 @@ import operator
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from scipy.special import betainc
 
 from src.model.bm_1 import bm_1
-from src.params.bm_1 import BM1ObservationSeries
+from src.params.bm_1 import BM1ObservationSeries, BM1FVFilterResult, run_fv_filter
 from src.tools.input_generator.input_builder import input_builder
 from src.validation import estimation as checks
 from src.validation.bm_1 import cases
@@ -421,3 +422,66 @@ def generate_coupled_refinement(case=None, *, sequence_id=0):
         brownian_increments=fine_brownian,
     )
     return BM1SyntheticRefinement(coarse=coarse, fine=fine)
+
+
+
+@dataclass(frozen=True)
+class BM1FVCReference:
+    """One F4-C synthetic sequence with assimilating and open-propagation filters."""
+
+    case: BM1SyntheticCase
+    sequence: BM1SyntheticSequence
+    filtered: BM1FVFilterResult
+    open_propagation: BM1FVFilterResult
+
+
+def beta_initial_mass(case, model, x_steps):
+    """Discretize the declared Beta initial prior exactly on the FV cells."""
+    if not isinstance(case, BM1SyntheticCase):
+        raise TypeError('case must be a BM1SyntheticCase.')
+    x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
+    edges, _, _ = model.fokker_planc_reference.grid(x_steps, bounds=(0.0, 1.0))
+    mass = np.diff(betainc(case.initial_alpha, case.initial_beta, edges))
+    return checks.probability_mass(mass, 'initial_mass')
+
+
+def missing_copy(observations):
+    """Return the same observation times as explicit missing values."""
+    if not isinstance(observations, BM1ObservationSeries):
+        raise TypeError('observations must be a BM1ObservationSeries.')
+    return BM1ObservationSeries(
+        observations.times,
+        np.full(observations.times.size, np.nan),
+        observations.time_unit,
+        np.zeros(observations.times.size, dtype=bool),
+        observations.observation_kind,
+        observations.price_side,
+    )
+
+
+def run_f4_c_reference(sequence_id=0, *, x_steps=201, max_step=1.0 / 192.0,
+                       likelihood_quadrature_order=1):
+    """Run the F4-C known-parameter FV filter and its no-assimilation baseline."""
+    case = build_f4_b_case()
+    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+    model, parameters = case.build_model()
+    initial_mass = beta_initial_mass(case, model, x_steps)
+    common = dict(
+        model=model,
+        parameters=parameters,
+        sigma_x=case.sigma_x,
+        sigma_y=case.sigma_y,
+        initial_mass=initial_mass,
+        initial_time=case.horizon[0],
+        breakpoints=case.breakpoints,
+        max_step=max_step,
+        likelihood_quadrature_order=likelihood_quadrature_order,
+    )
+    filtered = run_fv_filter(observations=sequence.observations, **common)
+    open_propagation = run_fv_filter(observations=missing_copy(sequence.observations), **common)
+    return BM1FVCReference(
+        case=case,
+        sequence=sequence,
+        filtered=filtered,
+        open_propagation=open_propagation,
+    )
