@@ -477,6 +477,58 @@ maksimale absolutte forskel i dagssummen rapporteres, men bruges ikke som en
 ny post-hoc basis-selection gate. Hvis D2 fejler repræsentationsgaten, ændres
 dictionaryen ikke ud fra holdout; D3 stoppes.
 
+
+\subsection{D2-resultat og D3a rekursiv mixture-kontrakt}
+Det uafhængige D2-holdout på sequence-id 1001--1010 gav for 240 predictions
+maksimal cellemasse-\(L^1\)-fejl \(3.13\times10^{-6}\) og maksimal
+\(W_1=1.24\times10^{-8}\). For 240 posteriors var de tilsvarende tal
+\(1.10\times10^{-5}\) og \(5.08\times10^{-8}\). Maksimalt QP-gap var cirka
+\(10^{-11}\), massefejlen højst \(1.22\times10^{-15}\), og ingen fallback blev
+brugt. Predictive log-evidence fra den statisk projicerede prediction afveg fra
+FV-evidence med mean absolut fejl \(7.69\times10^{-10}\) per observation,
+maksimum \(1.63\times10^{-8}\) og maksimal absolut dagssum-difference
+\(3.30\times10^{-8}\). Dermed generaliserer shape-D til de holdout-densities,
+selv om matrix-conditioning fortsat er høj.
+
+D3 må nu teste en anden fejlmekanisme: akkumulering når mixture-filteret selv
+leverer næste prior. Med koefficienter \(c_{k-1}^+\) og fixed basis
+\(\Phi\) sættes
+\[
+ p_{k-1}^{+,M}(x)=\sum_j c_{k-1,j}^+\phi_j(x).
+\]
+Den eksisterende explicit mixture/FP-kernel propagerer denne approximation til
+\(p_k^{-,M}\), hvorefter predictive evidence beregnes før nogen posterior-
+projektion:
+\[
+ z_k^M=\int L_k(x)p_k^{-,M}(x)\,\mathrm dx.
+\]
+Bayes-posterioren
+\[
+ \tilde p_k^{+,M}(x)=\frac{L_k(x)p_k^{-,M}(x)}{z_k^M}
+\]
+ligger generelt ikke i det fixed mixture-rum. Derfor løses samme constrained
+projection som i D1--D2 én gang efter assimilation,
+\[
+ p_k^{+,M}=\Pi_{\mathcal D}(\tilde p_k^{+,M}),
+\]
+og \(p_k^{+,M}\) er den eneste state-law der må starte næste prediction.
+Et FV-filter må kun bruges som ekstern reference; FV-posterior restart ville
+fjerne den dynamiske mixture-fejl, som D3 skal måle.
+
+D3a er en preregistreret sanity på sequence 0 med shape-D, 101 working cells,
+\(\mathrm{cfl}=0.4\), \(h_{\max}=1/384\) dag og observation-q=1.
+Initial \(\mathrm{Beta}(20,20)\) projiceres én gang til mixture-rummet.
+På samme grid køres FV-reference på samme observationer. For hvert tidspunkt
+beregnes også den statiske bedste projection af FV prediction/posterior.
+Dermed kan static best-fit gap, dynamic gap og total FV-gap rapporteres
+separat; de er ikke en eksakt additiv dekomposition. Evidence-error,
+prediction/posterior mean-RMSE mod truth, masse/nonnegativitet, internal
+step count, fallback count og conditioning rapporteres også.
+
+D3a er kun en kerne-/runtime-sanity. Spatial/time refinement og et eventuelt
+populationstudie fastlægges før deres resultater, efter at det er verificeret
+at den rekursive kæde kan køres uden FV-restart.
+
 \subsection{Hvorfor D1 kommer før det rekursive filter}
 Referencearbejdet skelner mellem projection error fra det endelige mixture-rum
 og temporal/dynamisk discretization error \cite{nielsen}. Det samme princip
