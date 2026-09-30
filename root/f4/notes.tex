@@ -433,6 +433,50 @@ D som modelvalg; D fungerer da kun som resolution check. Hvis kun D består,
 vælges D. Hvis ingen består, stoppes dictionary-engineeringen før D2 frem for
 at fortsætte med post-hoc udvidelser.
 
+
+\subsection{D1c-resultat og låst D2-holdout}
+Shape-aware kandidat C med 120 komponenter gav
+\[
+ \max \|m-\hat m\|_1=0.08170,\qquad
+ \max W_1=7.418\times10^{-4},
+\]
+og bestod derfor ikke den låste \(L^1\)-gate. Kandidat D med 184 komponenter gav
+\[
+ \max \|m-\hat m\|_1=0.03804,\qquad
+ \max W_1=2.602\times10^{-4},
+\]
+med maksimalt QP-gap \(9.89\times10^{-12}\) og uden fallback. D består dermed
+D1c's numeriske og repræsentationsmæssige gates og fryses som F4-D-basis.
+Projection-matrix condition number var dog \(1.665\times10^{14}\), så den
+foruddefinerede conditioning-alarm er aktiv; bestået statisk fit er ikke det samme
+som numerisk robust dynamik.
+
+D2 er derfor et uafhængigt holdout på faktiske FV-filterdensities. Sekvens-ID
+1001--1010 låses før resultater. For hver sekvens køres det assimilerende
+kendt-parameter FV-filter med
+\[
+ N_x=801,\qquad h_{\max}=1/192\ {m\ day},\qquad q=1.
+\]
+Ved hvert af de 24 observationstidspunkter projekteres både predictionen
+\(p_k^-\) og posterioren \(p_k^+\) statisk til den frosne shape-D-basis.
+Synthetic truth indgår ikke i basisbeslutningen.
+
+De samme gates som i D1c anvendes separat på predictions og posteriors:
+\[
+ \max \|m-\hat m\|_1\le0.05,\qquad
+ \max W_1\le0.01,
+\]
+samt QP-gap og massefejl højst \(10^{-9}\) og ingen failed projection.
+En fallback er kun acceptabel, hvis den returnerede kandidat består feasibility
+og den uafhængige optimality-kontrol; antallet rapporteres.
+
+Som ekstra diagnostik beregnes predictive log-evidence fra den statisk
+projicerede \(p_k^-\) med præcis samme observationsoperator som FV-filteret.
+Mean og maksimum af den absolutte per-observation log-evidence-fejl samt den
+maksimale absolutte forskel i dagssummen rapporteres, men bruges ikke som en
+ny post-hoc basis-selection gate. Hvis D2 fejler repræsentationsgaten, ændres
+dictionaryen ikke ud fra holdout; D3 stoppes.
+
 \subsection{Hvorfor D1 kommer før det rekursive filter}
 Referencearbejdet skelner mellem projection error fra det endelige mixture-rum
 og temporal/dynamisk discretization error \cite{nielsen}. Det samme princip
