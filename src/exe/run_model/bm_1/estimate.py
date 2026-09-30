@@ -264,6 +264,41 @@ def run_filter_calibration(args):
     print(f"  invalid truth sequences={len(result['invalid_truth_sequences'])}")
     return result
 
+def run_filter_truth_refine(args):
+    """Run the paired coarse/fine truth-EM calibration sensitivity diagnostic."""
+    result = synthetic.run_f4_c_truth_refinement(
+        n_sequences=args.sequences,
+        sequence_start=args.start,
+    )
+    print(
+        f'F4-C truth refinement: sequences {args.start}..'
+        f'{args.start + args.sequences - 1} (n={args.sequences})'
+    )
+    for label in ('coarse', 'fine'):
+        summary = result[label]
+        print(
+            f"  {label}: max mass error={summary['maximum_abs_mass_error']:.3e}; "
+            f"min cell mass={summary['minimum_cell_mass']:.3e}"
+        )
+        for hour in (6, 12, 24):
+            item = summary['horizons'][hour]
+            print(
+                f"    {hour:02d}h coverage={item['coverage']:.3f} "
+                f"[Wilson95 {item['wilson95'][0]:.3f}, {item['wilson95'][1]:.3f}]; "
+                f"width={item['mean_width']:.6f}; "
+                f"RMSE={item['posterior_mean_rmse']:.6f}; "
+                f"sqrt(E[var])={item['root_mean_posterior_variance']:.6f}; "
+                f"RMSE/sd={item['rmse_over_posterior_sd']:.3f}"
+            )
+    diff = result['truth_difference']
+    print(
+        f"  coarse/fine truth differences: max |dX|={diff['maximum_abs_state']:.3e}; "
+        f"RMS dX={diff['rms_state']:.3e}; max |dD|={diff['maximum_abs_demand']:.3e}; "
+        f"RMS dD={diff['rms_demand']:.3e}; max |dY|={diff['maximum_abs_observation']:.3e}"
+    )
+    print(f"  invalid truth pairs={len(result['invalid_truth_pairs'])}")
+    return result
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -317,6 +352,14 @@ def build_parser():
     calibration.add_argument('--sequences', type=int, default=200)
     calibration.add_argument('--start', type=int, default=1)
     calibration.set_defaults(handler=run_filter_calibration)
+
+    truth_refine = subparsers.add_parser(
+        'filter-truth-refine',
+        help='Compare F4-C calibration under the coupled coarse/fine F4-B truth grids.',
+    )
+    truth_refine.add_argument('--sequences', type=int, default=200)
+    truth_refine.add_argument('--start', type=int, default=1)
+    truth_refine.set_defaults(handler=run_filter_truth_refine)
     return parser
 
 
