@@ -20,6 +20,8 @@ vi vedligeholder ikke parallelle audit-/performance-/closure-dokumenter.
 ```powershell
 python -B -m unittest tests.test_bm1_estimation -q
 python -B -m src.exe.run_model.bm_1.estimate synthetic
+python -B -m src.exe.run_model.bm_1.estimate filter
+python -B -m src.exe.run_model.bm_1.estimate filter-refine
 python -B -m unittest discover -s tests -q
 python -B root/f4/build.py
 ```
