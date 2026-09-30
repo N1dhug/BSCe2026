@@ -15,7 +15,9 @@ from numpy.typing import ArrayLike, NDArray
 
 from src.model.bm_1 import bm_1
 from src.method.beta_mixture import beta_cell_average_basis
-from src.params.bm_1 import BM1ObservationSeries, BM1FVFilterResult, run_fv_filter
+from src.params.bm_1 import (
+    BM1ObservationSeries, BM1FVFilterResult, bm1_observation_update, run_fv_filter,
+)
 from src.tools.input_generator.input_builder import input_builder
 from src.validation import estimation as checks
 from src.validation.bm_1 import cases
@@ -27,6 +29,7 @@ CORE_OBSERVATION_TIMES = np.arange(1, 25, dtype=float) / 24.0
 INITIAL_SEED_ROOT = 4101
 BROWNIAN_SEED_ROOT = 4102
 MEASUREMENT_SEED_ROOT = 4103
+F4_C_BOOTSTRAP_SEED = 4201
 
 
 def _readonly_vector(values: ArrayLike, name: str, *, minimum_size: int = 1) -> NDArray[np.float64]:
@@ -609,5 +612,290 @@ def run_f4_c_refinement(
             'spatial': _refinement_summary(spatial),
             'time': _refinement_summary(time),
             'quadrature': _refinement_summary(quadrature),
+        },
+    }
+
+
+
+def _piecewise_constant_quantile(edges, mass, probability):
+    """Quantile of the FV piecewise-constant density without center snapping."""
+    edges = checks.increasing_grid(edges, 'edges')
+    mass = checks.probability_mass(mass, 'mass')
+    probability = checks.finite_scalar(probability, 'probability')
+    if not 0.0 <= probability <= 1.0:
+        raise ValueError('probability must lie in [0, 1].')
+    if mass.size != edges.size - 1:
+        raise ValueError('mass must contain one value per cell.')
+    if probability == 0.0:
+        return float(edges[0])
+    if probability == 1.0:
+        return float(edges[-1])
+    cumulative = np.cumsum(mass)
+    cell = int(np.searchsorted(cumulative, probability, side='left'))
+    before = 0.0 if cell == 0 else float(cumulative[cell - 1])
+    cell_mass = float(mass[cell])
+    if cell_mass <= 0.0:
+        raise FloatingPointError('Quantile landed in a zero-mass cell; inspect probability mass.')
+    fraction = (probability - before) / cell_mass
+    return float(edges[cell] + fraction * (edges[cell + 1] - edges[cell]))
+
+
+def _wilson_interval(successes, total, z=1.959963984540054):
+    successes = checks.positive_integer(successes, 'successes', minimum=0)
+    total = checks.positive_integer(total, 'total', minimum=1)
+    if successes > total:
+        raise ValueError('successes cannot exceed total.')
+    z = checks.finite_scalar(z, 'z', positive=True)
+    p = successes / total
+    denom = 1.0 + z * z / total
+    center = (p + z * z / (2.0 * total)) / denom
+    half = z * np.sqrt(p * (1.0 - p) / total + z * z / (4.0 * total * total)) / denom
+    return float(max(0.0, center - half)), float(min(1.0, center + half))
+
+
+def _paired_bootstrap_interval(values_a, values_b, statistic, *, replicates, seed):
+    """Percentile bootstrap resampling whole paired synthetic sequences."""
+    a = checks.finite_vector(values_a, 'values_a')
+    b = checks.finite_vector(values_b, 'values_b')
+    if a.shape != b.shape:
+        raise ValueError('Paired bootstrap vectors must have the same shape.')
+    replicates = checks.positive_integer(replicates, 'bootstrap_replicates', minimum=100)
+    seed = _nonnegative_integer(seed, 'bootstrap_seed')
+    rng = np.random.default_rng(seed)
+    indices = rng.integers(0, a.size, size=(replicates, a.size))
+    samples = np.asarray(statistic(a[indices], b[indices]), dtype=float)
+    if samples.shape != (replicates,) or not np.all(np.isfinite(samples)):
+        raise FloatingPointError('Bootstrap statistic returned invalid values.')
+    return tuple(float(value) for value in np.quantile(samples, [0.025, 0.975]))
+
+
+def _open_log_scores(model, parameters, case, observations, open_result, quadrature_order):
+    scores = np.empty(observations.times.size, dtype=float)
+    previous = case.horizon[0]
+    for index, (time, value) in enumerate(zip(observations.times, observations.values)):
+        update = bm1_observation_update(
+            model,
+            parameters,
+            case.sigma_y,
+            open_result.posterior_mass[index],
+            previous,
+            float(time),
+            float(value),
+            price_side=observations.price_side,
+            likelihood_quadrature_order=quadrature_order,
+        )
+        scores[index] = update.log_evidence
+        previous = float(time)
+    return scores
+
+
+def run_f4_c_population(
+    n_sequences=200,
+    *,
+    sequence_start=1,
+    x_steps=201,
+    max_step=1.0 / 192.0,
+    likelihood_quadrature_order=1,
+    bootstrap_replicates=5000,
+    bootstrap_seed=F4_C_BOOTSTRAP_SEED,
+):
+    """Run the preregistered F4-C population study on unseen synthetic sequences.
+
+    Sequence zero is intentionally excluded from the default study because it was
+    used for sanity and numerical refinement. Whole sequences are the independent
+    resampling unit for paired uncertainty.
+    """
+    n_sequences = checks.positive_integer(n_sequences, 'n_sequences', minimum=2)
+    sequence_start = _nonnegative_integer(sequence_start, 'sequence_start')
+    x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
+    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
+    quadrature_order = checks.positive_integer(
+        likelihood_quadrature_order, 'likelihood_quadrature_order', minimum=1,
+    )
+    bootstrap_replicates = checks.positive_integer(
+        bootstrap_replicates, 'bootstrap_replicates', minimum=100,
+    )
+    bootstrap_seed = _nonnegative_integer(bootstrap_seed, 'bootstrap_seed')
+
+    case = build_f4_b_case()
+    model, parameters = case.build_model()
+    initial_mass = beta_initial_mass(case, model, x_steps)
+    empty = BM1ObservationSeries(
+        case.observation_times,
+        np.full(case.observation_times.size, np.nan),
+        'day',
+        np.zeros(case.observation_times.size, dtype=bool),
+        'point',
+        'right',
+    )
+    open_result = run_fv_filter(
+        model,
+        parameters,
+        case.sigma_x,
+        case.sigma_y,
+        initial_mass,
+        case.horizon[0],
+        empty,
+        breakpoints=case.breakpoints,
+        max_step=max_step,
+        likelihood_quadrature_order=quadrature_order,
+    )
+    open_mean = open_result.posterior_mean
+
+    sequence_ids = np.arange(sequence_start, sequence_start + n_sequences, dtype=int)
+    sequences = [generate_synthetic_sequence(case, sequence_id=int(i)) for i in sequence_ids]
+    invalid = [sequence.sequence_id for sequence in sequences if not sequence.truth.valid]
+    if invalid:
+        raise RuntimeError(
+            'F4-C population truth contains raw EM boundary violations for sequence ids '
+            + ', '.join(str(value) for value in invalid)
+            + '; do not drop or repair these sequences silently.'
+        )
+
+    n_times = case.observation_times.size
+    mse_open = np.empty(n_sequences)
+    mse_predictive = np.empty(n_sequences)
+    mse_posterior = np.empty(n_sequences)
+    filter_log_score = np.empty(n_sequences)
+    open_log_score = np.empty(n_sequences)
+
+    coverage_hours = (6, 12, 24)
+    coverage_indices = []
+    for hour in coverage_hours:
+        matches = np.flatnonzero(np.isclose(case.observation_times, hour / 24.0, atol=1e-14, rtol=0.0))
+        if matches.size != 1:
+            raise RuntimeError(f'Expected exactly one {hour}h observation time.')
+        coverage_indices.append(int(matches[0]))
+    covered = {hour: np.zeros(n_sequences, dtype=bool) for hour in coverage_hours}
+    widths = {hour: np.empty(n_sequences) for hour in coverage_hours}
+
+    first_filter_score = np.empty(n_sequences)
+    first_open_score = np.empty(n_sequences)
+
+    for row, sequence in enumerate(sequences):
+        filtered = run_fv_filter(
+            model,
+            parameters,
+            case.sigma_x,
+            case.sigma_y,
+            initial_mass,
+            case.horizon[0],
+            sequence.observations,
+            breakpoints=case.breakpoints,
+            max_step=max_step,
+            likelihood_quadrature_order=quadrature_order,
+        )
+        truth = sequence.truth.state[1:]
+        if truth.size != n_times:
+            raise RuntimeError('Synthetic truth and observation lengths no longer match.')
+        mse_open[row] = np.mean(np.square(open_mean - truth))
+        mse_predictive[row] = np.mean(np.square(filtered.predicted_mean - truth))
+        mse_posterior[row] = np.mean(np.square(filtered.posterior_mean - truth))
+        filter_scores = filtered.log_evidence
+        baseline_scores = _open_log_scores(
+            model, parameters, case, sequence.observations, open_result, quadrature_order,
+        )
+        filter_log_score[row] = float(np.mean(filter_scores))
+        open_log_score[row] = float(np.mean(baseline_scores))
+        first_filter_score[row] = filter_scores[0]
+        first_open_score[row] = baseline_scores[0]
+
+        for hour, index in zip(coverage_hours, coverage_indices):
+            mass = filtered.posterior_mass[index]
+            lower = _piecewise_constant_quantile(filtered.x_edges, mass, 0.05)
+            upper = _piecewise_constant_quantile(filtered.x_edges, mass, 0.95)
+            state = float(truth[index])
+            covered[hour][row] = lower <= state <= upper
+            widths[hour][row] = upper - lower
+
+    def global_rmse(mse):
+        return float(np.sqrt(np.mean(mse)))
+
+    rmse_open = global_rmse(mse_open)
+    rmse_predictive = global_rmse(mse_predictive)
+    rmse_posterior = global_rmse(mse_posterior)
+
+    def rmse_ratio_stat(numerator_mse, denominator_mse):
+        return np.sqrt(np.mean(numerator_mse, axis=1) / np.mean(denominator_mse, axis=1))
+
+    posterior_ratio_ci = _paired_bootstrap_interval(
+        mse_posterior,
+        mse_open,
+        rmse_ratio_stat,
+        replicates=bootstrap_replicates,
+        seed=bootstrap_seed,
+    )
+    predictive_ratio_ci = _paired_bootstrap_interval(
+        mse_predictive,
+        mse_open,
+        rmse_ratio_stat,
+        replicates=bootstrap_replicates,
+        seed=bootstrap_seed + 1,
+    )
+
+    log_score_difference = filter_log_score - open_log_score
+    def mean_difference_stat(filter_values, open_values):
+        return np.mean(filter_values - open_values, axis=1)
+
+    log_score_ci = _paired_bootstrap_interval(
+        filter_log_score,
+        open_log_score,
+        mean_difference_stat,
+        replicates=bootstrap_replicates,
+        seed=bootstrap_seed + 2,
+    )
+
+    coverage = {}
+    for hour in coverage_hours:
+        successes = int(np.sum(covered[hour]))
+        low, high = _wilson_interval(successes, n_sequences)
+        coverage[hour] = {
+            'successes': successes,
+            'total': n_sequences,
+            'coverage': successes / n_sequences,
+            'wilson95': (low, high),
+            'mean_width': float(np.mean(widths[hour])),
+        }
+
+    return {
+        'sequence_ids': sequence_ids,
+        'n_sequences': n_sequences,
+        'settings': {
+            'x_steps': x_steps,
+            'max_step': max_step,
+            'likelihood_quadrature_order': quadrature_order,
+            'bootstrap_replicates': bootstrap_replicates,
+            'bootstrap_seed': bootstrap_seed,
+        },
+        'rmse': {
+            'open': rmse_open,
+            'predictive': rmse_predictive,
+            'posterior': rmse_posterior,
+            'predictive_over_open': rmse_predictive / rmse_open,
+            'posterior_over_open': rmse_posterior / rmse_open,
+            'predictive_over_open_bootstrap95': predictive_ratio_ci,
+            'posterior_over_open_bootstrap95': posterior_ratio_ci,
+        },
+        'predictive_log_score': {
+            'filter_mean_per_observation': float(np.mean(filter_log_score)),
+            'open_mean_per_observation': float(np.mean(open_log_score)),
+            'paired_difference': float(np.mean(log_score_difference)),
+            'paired_difference_bootstrap95': log_score_ci,
+            'first_observation_max_abs_difference': float(
+                np.max(np.abs(first_filter_score - first_open_score))
+            ),
+        },
+        'coverage90_posterior': coverage,
+        'diagnostics': {
+            'invalid_truth_sequences': tuple(invalid),
+            'open_maximum_abs_mass_error': open_result.maximum_abs_mass_error,
+            'open_minimum_cell_mass': open_result.minimum_cell_mass,
+        },
+        'per_sequence': {
+            'mse_open': mse_open,
+            'mse_predictive': mse_predictive,
+            'mse_posterior': mse_posterior,
+            'filter_log_score': filter_log_score,
+            'open_log_score': open_log_score,
         },
     }
