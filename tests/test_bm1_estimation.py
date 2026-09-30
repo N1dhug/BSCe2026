@@ -1,4 +1,4 @@
-"""F4 estimation primitives and F4-B generator; no recursive filter yet."""
+"""F4 estimation primitives, synthetic generator and known-parameter FV filter."""
 
 import ast
 from pathlib import Path
@@ -11,8 +11,8 @@ from scipy.special import betaln, logsumexp
 from scipy.stats import norm
 
 from src.params.bm_1 import (
-    BM1ObservationSeries, bayes_update, conservative_mass_transfer,
-    gaussian_log_likelihood, mass_to_log,
+    BM1ObservationSeries, bayes_update, conservative_mass_transfer, fv_filter_step,
+    gaussian_log_likelihood, mass_to_log, run_fv_filter,
 )
 from src.method.beta_mixture import (
     PreparedBetaProjector, beta_cell_average_basis,
@@ -485,6 +485,186 @@ class SyntheticGeneratorTests(unittest.TestCase):
         for value in (-1, 1.5, True):
             with self.subTest(sequence_id=value), self.assertRaises((ValueError, TypeError)):
                 synthetic.generate_synthetic_sequence(sequence_id=value)
+
+
+class FVStateFilterTests(unittest.TestCase):
+    def setUp(self):
+        self.case = synthetic.build_f4_b_case()
+        self.sequence = synthetic.generate_synthetic_sequence(self.case, sequence_id=0)
+        self.model, self.parameters = self.case.build_model()
+        self.initial = synthetic.beta_initial_mass(self.case, self.model, 61)
+
+    def test_one_step_matches_direct_prediction_and_center_bayes(self):
+        time = self.sequence.observations.times[0]
+        y = self.sequence.observations.values[0]
+        step = fv_filter_step(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, time, y, observed=True, price_side='right',
+            breakpoints=self.case.breakpoints, max_step=1/96, likelihood_quadrature_order=1,
+        )
+        direct = self.model.fokker_planc_reference_solver(
+            self.initial, self.parameters, self.case.sigma_x,
+            t_eval=[0.0, time], max_step=1/96,
+        )
+        predicted = direct[3][-1]
+        demand = self.model.eval(
+            time, step.x_grid, self.parameters[0], self.parameters[1],
+            self.parameters[2], self.parameters[4], self.parameters[5],
+        )[-1]
+        expected = bayes_update(
+            mass_to_log(predicted),
+            gaussian_log_likelihood(y, demand, self.case.sigma_y),
+        )
+        np.testing.assert_allclose(step.predicted_mass, predicted, atol=1e-15, rtol=0.)
+        np.testing.assert_allclose(step.posterior_mass, expected.mass, atol=1e-14, rtol=0.)
+        self.assertAlmostEqual(step.log_evidence, expected.log_evidence, places=13)
+
+    def test_missing_observation_is_prediction_only(self):
+        step = fv_filter_step(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, 1/24, np.nan, observed=False, price_side='right',
+            breakpoints=self.case.breakpoints, max_step=1/96,
+        )
+        np.testing.assert_array_equal(step.posterior_mass, step.predicted_mass)
+        self.assertTrue(np.isnan(step.log_evidence))
+
+    def test_replay_matches_manual_streaming_kernel(self):
+        observations = self.sequence.observations.prefix(4/24)
+        replay = run_fv_filter(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, observations,
+            breakpoints=self.case.breakpoints, max_step=1/96,
+        )
+        mass = self.initial
+        time = 0.0
+        predicted, posterior, evidence = [], [], []
+        grids = []
+        for t, y in zip(observations.times, observations.values):
+            step = fv_filter_step(
+                self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+                mass, time, t, y, observed=True, price_side='right',
+                breakpoints=self.case.breakpoints, max_step=1/96,
+            )
+            predicted.append(step.predicted_mass)
+            posterior.append(step.posterior_mass)
+            evidence.append(step.log_evidence)
+            grid = step.diagnostics['integration_t']
+            grids.append(grid if not grids else grid[1:])
+            mass, time = step.posterior_mass, step.time
+        np.testing.assert_array_equal(replay.predicted_mass, np.stack(predicted))
+        np.testing.assert_array_equal(replay.posterior_mass, np.stack(posterior))
+        np.testing.assert_array_equal(replay.log_evidence, evidence)
+        np.testing.assert_array_equal(replay.integration_t, np.concatenate(grids))
+
+    def test_no_assimilation_matches_direct_fp_on_identical_actual_grid(self):
+        observations = synthetic.missing_copy(self.sequence.observations.prefix(6/24))
+        replay = run_fv_filter(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, observations,
+            breakpoints=self.case.breakpoints, max_step=1/96,
+        )
+        direct_t = np.r_[0.0, observations.times]
+        direct = self.model.fokker_planc_reference_solver(
+            self.initial, self.parameters, self.case.sigma_x,
+            t_eval=direct_t, max_step=1/96,
+        )
+        np.testing.assert_array_equal(replay.integration_t, direct[-1]['integration_t'])
+        np.testing.assert_allclose(replay.posterior_mass, direct[3][1:], atol=2e-14, rtol=0.)
+
+    def test_right_edge_update_uses_new_price(self):
+        previous_time, time = 7/24, 8/24
+        y = 0.65
+        step = fv_filter_step(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, previous_time, time, y, observed=True, price_side='right',
+            breakpoints=self.case.breakpoints, max_step=1/192,
+        )
+        prediction = self.model.fokker_planc_reference_solver(
+            self.initial, self.parameters, self.case.sigma_x,
+            t_eval=[previous_time, time], max_step=1/192,
+        )[3][-1]
+        self.assertAlmostEqual(float(self.parameters[0](time)), .35, places=15)
+        demand_new = self.model.eval(
+            time, step.x_grid, self.parameters[0], self.parameters[1],
+            self.parameters[2], self.parameters[4], self.parameters[5],
+        )[-1]
+        expected = bayes_update(
+            mass_to_log(prediction),
+            gaussian_log_likelihood(y, demand_new, self.case.sigma_y),
+        )
+        np.testing.assert_allclose(step.posterior_mass, expected.mass, atol=1e-14, rtol=0.)
+
+    def test_future_observations_cannot_change_earlier_results(self):
+        base = self.sequence.observations.prefix(4/24)
+        changed_values = base.values.copy()
+        changed_values[-2:] += 5.0
+        changed = BM1ObservationSeries(base.times, changed_values, 'day', price_side='right')
+        left = run_fv_filter(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, base, breakpoints=self.case.breakpoints, max_step=1/96,
+        )
+        right = run_fv_filter(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, changed, breakpoints=self.case.breakpoints, max_step=1/96,
+        )
+        np.testing.assert_array_equal(left.posterior_mass[:2], right.posterior_mass[:2])
+        np.testing.assert_array_equal(left.predicted_mass[:2], right.predicted_mass[:2])
+
+    def test_control_target_is_not_filter_input(self):
+        from src.model.bm_1 import bm_1
+        alternative = bm_1(self.model.B, lambda t: np.asarray(t)*0.99, self.model.T, self.model.t_steps)
+        observations = self.sequence.observations.prefix(3/24)
+        left = run_fv_filter(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, observations, breakpoints=self.case.breakpoints, max_step=1/96,
+        )
+        right = run_fv_filter(
+            alternative, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, observations, breakpoints=self.case.breakpoints, max_step=1/96,
+        )
+        np.testing.assert_array_equal(left.predicted_mass, right.predicted_mass)
+        np.testing.assert_array_equal(left.posterior_mass, right.posterior_mass)
+
+    def test_measurement_quadrature_changes_update_not_fp_prediction(self):
+        observations = self.sequence.observations.prefix(2/24)
+        center = run_fv_filter(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, observations, breakpoints=self.case.breakpoints,
+            max_step=1/96, likelihood_quadrature_order=1,
+        )
+        gauss = run_fv_filter(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.initial, 0.0, observations, breakpoints=self.case.breakpoints,
+            max_step=1/96, likelihood_quadrature_order=5,
+        )
+        np.testing.assert_array_equal(center.predicted_mass[0], gauss.predicted_mass[0])
+        self.assertFalse(np.array_equal(center.posterior_mass[0], gauss.posterior_mass[0]))
+        self.assertGreater(np.max(np.abs(center.posterior_mass[0] - gauss.posterior_mass[0])), 0.0)
+
+    def test_full_reference_preserves_mass_and_nonnegativity(self):
+        reference = synthetic.run_f4_c_reference(sequence_id=0, x_steps=101, max_step=1/192)
+        filtered = reference.filtered
+        self.assertLessEqual(filtered.maximum_abs_mass_error, 1e-10)
+        self.assertGreaterEqual(filtered.minimum_cell_mass, 0.0)
+        np.testing.assert_allclose(filtered.predicted_mass.sum(axis=1), 1.0, atol=1e-10, rtol=0.)
+        np.testing.assert_allclose(filtered.posterior_mass.sum(axis=1), 1.0, atol=1e-10, rtol=0.)
+
+    def test_filter_inputs_fail_explicitly(self):
+        with self.assertRaises(ValueError):
+            fv_filter_step(
+                self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+                self.initial, 1/24, 1/24, .5, max_step=1/96,
+            )
+        with self.assertRaises(ValueError):
+            fv_filter_step(
+                self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+                self.initial, 0., 1/24, .5, max_step=-1.,
+            )
+        with self.assertRaises((ValueError, TypeError)):
+            fv_filter_step(
+                self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+                self.initial, 0., 1/24, .5, max_step=1/96, likelihood_quadrature_order=1.5,
+            )
 
 
 if __name__ == '__main__':
