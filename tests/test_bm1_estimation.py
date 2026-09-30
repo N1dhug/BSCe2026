@@ -19,6 +19,7 @@ from src.method.beta_mixture import (
     _project_with_warm_start, _projection_matrices, evolve_projected_density,
 )
 from src.validation import estimation as checks
+from src.validation.bm_1 import estimation as synthetic
 
 
 class ObservationContractTests(unittest.TestCase):
@@ -378,6 +379,108 @@ class PreparationIntegrationTests(unittest.TestCase):
                          else [x.name for x in node.names] if isinstance(node, ast.Import) else [])
                 self.assertFalse(any(x.startswith(('src.control', 'src.exe', 'src.validation.bm_1', 'matplotlib'))
                                      for x in names))
+
+
+class SyntheticGeneratorTests(unittest.TestCase):
+    def test_locked_case_matches_f4_a_contract(self):
+        case = synthetic.build_f4_b_case()
+        np.testing.assert_allclose(case.price_edges, [0., 1/3, 2/3, 1.], atol=0., rtol=0.)
+        np.testing.assert_array_equal(case.price_values, [.65, .35, .65])
+        np.testing.assert_allclose(case.observation_times, np.arange(1, 25)/24, atol=0., rtol=0.)
+        self.assertEqual(case.horizon, (0., 1.))
+        self.assertEqual(case.baseline, .5)
+        self.assertEqual((case.C, case.k, case.Xi, case.sigma_x, case.sigma_y), (1., 2., 1., .5, .03))
+        self.assertEqual((case.initial_seed_root, case.brownian_seed_root, case.measurement_seed_root),
+                         (4101, 4102, 4103))
+
+    def test_sequence_is_reproducible_owned_and_truth_is_separate(self):
+        left = synthetic.generate_synthetic_sequence(sequence_id=0)
+        right = synthetic.generate_synthetic_sequence(sequence_id=0)
+        np.testing.assert_array_equal(left.observations.times, right.observations.times)
+        np.testing.assert_array_equal(left.observations.values, right.observations.values)
+        np.testing.assert_array_equal(left.truth.state, right.truth.state)
+        np.testing.assert_array_equal(left.measurement_noise, right.measurement_noise)
+        self.assertTrue(left.truth.valid)
+        self.assertEqual(left.truth.diagnostics['boundary'], 'none')
+        self.assertEqual(left.truth.diagnostics['boundary_corrections'], 0)
+        self.assertEqual(left.truth.diagnostics['total_violations'], 0)
+        self.assertFalse(left.truth.state.flags.writeable)
+        self.assertFalse(left.measurement_noise.flags.writeable)
+        self.assertFalse(hasattr(left.observations, 'truth'))
+
+    def test_observations_are_exactly_demand_plus_measurement_noise(self):
+        result = synthetic.generate_synthetic_sequence(sequence_id=0)
+        np.testing.assert_allclose(
+            result.observations.values,
+            result.truth.demand[1:] + result.measurement_noise,
+            atol=0.0, rtol=0.0,
+        )
+        self.assertEqual(result.observations.time_unit, 'day')
+        self.assertEqual(result.observations.price_side, 'right')
+        np.testing.assert_array_equal(result.observations.observed, np.ones(24, dtype=bool))
+
+    def test_price_edges_use_new_right_continuous_price(self):
+        result = synthetic.generate_synthetic_sequence(sequence_id=0)
+        np.testing.assert_allclose(result.truth.times, np.arange(25)/24, atol=2e-16, rtol=0.)
+        self.assertAlmostEqual(result.truth.price[8], .35, places=15)
+        self.assertAlmostEqual(result.truth.price[16], .65, places=15)
+        self.assertAlmostEqual(result.truth.state[8], result.truth.state[8], places=15)
+
+    def test_rng_streams_are_separate_and_sequence_ids_are_stable(self):
+        base = synthetic.build_f4_b_case()
+        measurement_changed = synthetic.build_f4_b_case(measurement_seed_root=5103)
+        brownian_changed = synthetic.build_f4_b_case(brownian_seed_root=5102)
+        a = synthetic.generate_synthetic_sequence(base, sequence_id=3)
+        b = synthetic.generate_synthetic_sequence(measurement_changed, sequence_id=3)
+        c = synthetic.generate_synthetic_sequence(brownian_changed, sequence_id=3)
+        np.testing.assert_array_equal(a.truth.state, b.truth.state)
+        self.assertFalse(np.array_equal(a.measurement_noise, b.measurement_noise))
+        np.testing.assert_array_equal(a.measurement_noise, c.measurement_noise)
+        self.assertFalse(np.array_equal(a.truth.state, c.truth.state))
+        lone = synthetic.generate_synthetic_sequence(sequence_id=7)
+        after_other_ids = [synthetic.generate_synthetic_sequence(sequence_id=i) for i in range(8)][7]
+        np.testing.assert_array_equal(lone.truth.state, after_other_ids.truth.state)
+        np.testing.assert_array_equal(lone.observations.values, after_other_ids.observations.values)
+
+    def test_zero_process_noise_removes_brownian_stream_dependence(self):
+        a = synthetic.generate_synthetic_sequence(
+            synthetic.build_f4_b_case(sigma_x=0., brownian_seed_root=4102), sequence_id=2)
+        b = synthetic.generate_synthetic_sequence(
+            synthetic.build_f4_b_case(sigma_x=0., brownian_seed_root=9992), sequence_id=2)
+        np.testing.assert_array_equal(a.truth.state, b.truth.state)
+        np.testing.assert_array_equal(a.observations.values, b.observations.values)
+
+    def test_coupled_refinement_reuses_x0_noise_and_nested_brownian_path(self):
+        result = synthetic.generate_coupled_refinement(sequence_id=0)
+        self.assertEqual(result.coarse.truth.initial_state, result.fine.truth.initial_state)
+        np.testing.assert_array_equal(result.coarse.measurement_noise, result.fine.measurement_noise)
+        self.assertEqual(result.coarse.truth.diagnostics['n_steps'], 1152)
+        self.assertEqual(result.fine.truth.diagnostics['n_steps'], 2304)
+        self.assertEqual(result.coarse.truth.diagnostics['total_violations'], 0)
+        self.assertEqual(result.fine.truth.diagnostics['total_violations'], 0)
+        self.assertLess(result.maximum_abs_state_difference, 0.02)
+        self.assertLess(result.maximum_abs_demand_difference, 0.02)
+
+    def test_alternative_baseline_and_flexibility_case_exercises_piecewise_demand(self):
+        result = synthetic.generate_synthetic_sequence(
+            synthetic.build_f4_b_case(baseline=.3, Xi=.7), sequence_id=0)
+        self.assertTrue(np.all(result.truth.demand >= 0.0))
+        self.assertTrue(np.all(result.truth.demand <= 1.0))
+        self.assertTrue(np.any(result.truth.demand > .3))
+        self.assertTrue(np.any(result.truth.demand < .3))
+
+    def test_invalid_case_and_sequence_inputs_fail_explicitly(self):
+        for kwargs in (
+            {'sigma_y': 0.0}, {'sigma_x': -1.0}, {'Xi': 1.1},
+            {'price_values': [.2, 1.2, .4]}, {'observation_times': [0., 1.]},
+            {'truth_fine_max_step': 1/1000},
+            {'initial_seed_root': 4101, 'brownian_seed_root': 4101},
+        ):
+            with self.subTest(kwargs=kwargs), self.assertRaises((ValueError, TypeError)):
+                synthetic.build_f4_b_case(**kwargs)
+        for value in (-1, 1.5, True):
+            with self.subTest(sequence_id=value), self.assertRaises((ValueError, TypeError)):
+                synthetic.generate_synthetic_sequence(sequence_id=value)
 
 
 if __name__ == '__main__':
