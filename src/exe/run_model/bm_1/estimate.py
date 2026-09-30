@@ -370,6 +370,58 @@ def run_mixture_static_shape_aware(args):
     result = mixture_validation.run_f4_d_shape_aware_representation_study(x_steps=args.cells)
     return _print_mixture_representation_result(result, 'shape-aware static representation D1c')
 
+
+def run_mixture_holdout(args):
+    """Run the preregistered F4-D D2 FV-snapshot holdout."""
+    result = mixture_validation.run_f4_d_snapshot_holdout(
+        sequence_start=args.start,
+        n_sequences=args.sequences,
+        x_steps=args.cells,
+        max_step=args.max_step,
+        likelihood_quadrature_order=args.quadrature_order,
+    )
+    print(
+        f"F4-D D2 snapshot holdout: dictionary={result['dictionary']}; "
+        f"sequences={result['sequence_ids'][0]}..{result['sequence_ids'][-1]}; "
+        f"cells={result['x_steps']}"
+    )
+    for label in ('prediction', 'posterior'):
+        item = result[label]
+        print(
+            f"  {label}: max L1={item['maximum_cell_mass_l1']:.6e}; "
+            f"max W1={item['maximum_wasserstein_1']:.6e}; "
+            f"max CDF={item['maximum_cdf_sup']:.6e}; "
+            f"max L2={item['maximum_density_l2']:.6e}"
+        )
+        print(
+            f"    max |dmean|={item['maximum_abs_mean_error']:.6e}; "
+            f"max |dvar|={item['maximum_abs_variance_error']:.6e}; "
+            f"max gap={item['maximum_optimality_gap']:.3e}; "
+            f"max mass error={item['maximum_mass_error']:.3e}; "
+            f"fallbacks={item['fallback_count']}; "
+            f"passes={item['passes_representation_gate']}"
+        )
+        if item['failed_snapshot_indices']:
+            print(
+                f"    failed snapshot indices={item['failed_snapshot_indices']}"
+            )
+    score = result['predictive_log_evidence_error']
+    print(
+        f"  predictive log-evidence error: complete={score['complete']}; "
+        f"count={score['count']}/{score['expected_count']}; "
+        f"mean abs/obs={score['mean_absolute_per_observation']:.6e}; "
+        f"max abs/obs={score['maximum_absolute_per_observation']:.6e}; "
+        f"mean signed/obs={score['mean_signed_per_observation']:.6e}; "
+        f"max |daily sum diff|={score['maximum_absolute_daily_sum_difference']:.6e}"
+    )
+    print(
+        f"  cond(A)={result['projection_matrix_condition_number']:.3e}; "
+        f"cond(H)={result['hessian_condition_number']:.3e}; "
+        f"invalid truth sequences={len(result['invalid_truth_sequences'])}; "
+        f"passes holdout={result['passes_holdout']}"
+    )
+    return result
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -452,6 +504,17 @@ def build_parser():
     )
     mixture_static_shape.add_argument('--cells', type=int, default=801)
     mixture_static_shape.set_defaults(handler=run_mixture_static_shape_aware)
+
+    mixture_holdout = subparsers.add_parser(
+        'mixture-holdout',
+        help='Run the preregistered F4-D D2 static holdout on FV filter snapshots.',
+    )
+    mixture_holdout.add_argument('--start', type=int, default=1001)
+    mixture_holdout.add_argument('--sequences', type=int, default=10)
+    mixture_holdout.add_argument('--cells', type=int, default=801)
+    mixture_holdout.add_argument('--max-step', type=float, default=1.0 / 192.0)
+    mixture_holdout.add_argument('--quadrature-order', type=int, default=1)
+    mixture_holdout.set_defaults(handler=run_mixture_holdout)
     return parser
 
 
