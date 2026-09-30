@@ -918,6 +918,76 @@ def _piecewise_constant_variance(edges, mass):
     return max(variance, 0.0)
 
 
+def _calibration_summary_for_sequences(case, model, parameters, sequences, *,
+                                       x_steps, max_step, quadrature_order):
+    """Coverage and posterior-scale diagnostics for one fixed sequence collection."""
+    n_sequences = len(sequences)
+    if n_sequences < 1:
+        raise ValueError('At least one sequence is required for calibration diagnostics.')
+    hours = (6, 12, 24)
+    indices = []
+    for hour in hours:
+        matches = np.flatnonzero(
+            np.isclose(case.observation_times, hour / 24.0, atol=1e-14, rtol=0.0)
+        )
+        if matches.size != 1:
+            raise RuntimeError(f'Expected exactly one {hour}h observation time.')
+        indices.append(int(matches[0]))
+
+    initial_mass = beta_initial_mass(case, model, x_steps)
+    covered = {hour: np.zeros(n_sequences, dtype=bool) for hour in hours}
+    widths = {hour: np.empty(n_sequences) for hour in hours}
+    squared_error = {hour: np.empty(n_sequences) for hour in hours}
+    posterior_variance = {hour: np.empty(n_sequences) for hour in hours}
+    maximum_mass_error = 0.0
+    minimum_cell_mass = np.inf
+
+    for row, sequence in enumerate(sequences):
+        filtered = run_fv_filter(
+            model, parameters, case.sigma_x, case.sigma_y, initial_mass,
+            case.horizon[0], sequence.observations, breakpoints=case.breakpoints,
+            max_step=max_step, likelihood_quadrature_order=quadrature_order,
+        )
+        maximum_mass_error = max(maximum_mass_error, filtered.maximum_abs_mass_error)
+        minimum_cell_mass = min(minimum_cell_mass, filtered.minimum_cell_mass)
+        truth = sequence.truth.state[1:]
+        for hour, index in zip(hours, indices):
+            mass = filtered.posterior_mass[index]
+            lower = _piecewise_constant_quantile(filtered.x_edges, mass, 0.05)
+            upper = _piecewise_constant_quantile(filtered.x_edges, mass, 0.95)
+            state = float(truth[index])
+            mean = float(mass @ filtered.x_grid)
+            covered[hour][row] = lower <= state <= upper
+            widths[hour][row] = upper - lower
+            squared_error[hour][row] = (mean - state) ** 2
+            posterior_variance[hour][row] = _piecewise_constant_variance(
+                filtered.x_edges, mass
+            )
+
+    horizons = {}
+    for hour in hours:
+        successes = int(np.sum(covered[hour]))
+        low, high = _wilson_interval(successes, n_sequences)
+        rmse = float(np.sqrt(np.mean(squared_error[hour])))
+        posterior_sd = float(np.sqrt(np.mean(posterior_variance[hour])))
+        horizons[hour] = {
+            'successes': successes,
+            'total': n_sequences,
+            'coverage': successes / n_sequences,
+            'wilson95': (low, high),
+            'mean_width': float(np.mean(widths[hour])),
+            'posterior_mean_rmse': rmse,
+            'root_mean_posterior_variance': posterior_sd,
+            'rmse_over_posterior_sd': (
+                np.nan if posterior_sd == 0.0 else rmse / posterior_sd
+            ),
+        }
+    return {
+        'horizons': horizons,
+        'maximum_abs_mass_error': maximum_mass_error,
+        'minimum_cell_mass': float(minimum_cell_mass),
+    }
+
 def run_f4_c_calibration_sensitivity(
     n_sequences=200,
     *,
@@ -968,75 +1038,103 @@ def run_f4_c_calibration_sensitivity(
             + ', '.join(str(value) for value in invalid)
         )
 
-    hours = (6, 12, 24)
-    indices = []
-    for hour in hours:
-        matches = np.flatnonzero(np.isclose(case.observation_times, hour / 24.0, atol=1e-14, rtol=0.0))
-        if matches.size != 1:
-            raise RuntimeError(f'Expected exactly one {hour}h observation time.')
-        indices.append(int(matches[0]))
-
     results = {}
     for name, x_steps, max_step, order in parsed:
-        initial_mass = beta_initial_mass(case, model, x_steps)
-        covered = {hour: np.zeros(n_sequences, dtype=bool) for hour in hours}
-        widths = {hour: np.empty(n_sequences) for hour in hours}
-        squared_error = {hour: np.empty(n_sequences) for hour in hours}
-        posterior_variance = {hour: np.empty(n_sequences) for hour in hours}
-
-        for row, sequence in enumerate(sequences):
-            filtered = run_fv_filter(
-                model,
-                parameters,
-                case.sigma_x,
-                case.sigma_y,
-                initial_mass,
-                case.horizon[0],
-                sequence.observations,
-                breakpoints=case.breakpoints,
-                max_step=max_step,
-                likelihood_quadrature_order=order,
-            )
-            truth = sequence.truth.state[1:]
-            for hour, index in zip(hours, indices):
-                mass = filtered.posterior_mass[index]
-                lower = _piecewise_constant_quantile(filtered.x_edges, mass, 0.05)
-                upper = _piecewise_constant_quantile(filtered.x_edges, mass, 0.95)
-                state = float(truth[index])
-                mean = float(mass @ filtered.x_grid)
-                covered[hour][row] = lower <= state <= upper
-                widths[hour][row] = upper - lower
-                squared_error[hour][row] = (mean - state) ** 2
-                posterior_variance[hour][row] = _piecewise_constant_variance(filtered.x_edges, mass)
-
-        horizon_results = {}
-        for hour in hours:
-            successes = int(np.sum(covered[hour]))
-            low, high = _wilson_interval(successes, n_sequences)
-            rmse = float(np.sqrt(np.mean(squared_error[hour])))
-            posterior_sd = float(np.sqrt(np.mean(posterior_variance[hour])))
-            horizon_results[hour] = {
-                'successes': successes,
-                'total': n_sequences,
-                'coverage': successes / n_sequences,
-                'wilson95': (low, high),
-                'mean_width': float(np.mean(widths[hour])),
-                'posterior_mean_rmse': rmse,
-                'root_mean_posterior_variance': posterior_sd,
-                'rmse_over_posterior_sd': (
-                    np.nan if posterior_sd == 0.0 else rmse / posterior_sd
-                ),
-            }
+        summary = _calibration_summary_for_sequences(
+            case, model, parameters, sequences,
+            x_steps=x_steps, max_step=max_step, quadrature_order=order,
+        )
         results[name] = {
             'x_steps': x_steps,
             'max_step': max_step,
             'quadrature_order': order,
-            'horizons': horizon_results,
+            **summary,
         }
-
     return {
         'sequence_ids': sequence_ids,
         'n_sequences': n_sequences,
         'invalid_truth_sequences': tuple(invalid),
         'variants': results,
+    }
+
+def run_f4_c_truth_refinement(
+    n_sequences=200,
+    *,
+    sequence_start=1,
+    x_steps=201,
+    max_step=1.0 / 192.0,
+    likelihood_quadrature_order=1,
+):
+    """Post-hoc paired coarse/fine truth-EM sensitivity for C4 calibration.
+
+    The F4-B coupled generator supplies the same initial draw, Brownian path and
+    measurement noise to both truth resolutions. The filter numerics are held fixed.
+    """
+    n_sequences = checks.positive_integer(n_sequences, 'n_sequences', minimum=2)
+    sequence_start = _nonnegative_integer(sequence_start, 'sequence_start')
+    x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
+    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
+    order = checks.positive_integer(
+        likelihood_quadrature_order, 'likelihood_quadrature_order', minimum=1,
+    )
+    case = build_f4_b_case()
+    model, parameters = case.build_model()
+    sequence_ids = np.arange(sequence_start, sequence_start + n_sequences, dtype=int)
+    pairs = [
+        generate_coupled_refinement(case, sequence_id=int(sequence_id))
+        for sequence_id in sequence_ids
+    ]
+    invalid = [
+        (pair.coarse.sequence_id, pair.coarse.truth.valid, pair.fine.truth.valid)
+        for pair in pairs
+        if not pair.coarse.truth.valid or not pair.fine.truth.valid
+    ]
+    if invalid:
+        raise RuntimeError(
+            'Truth-refinement diagnostic contains raw EM boundary violations; '
+            f'details={invalid}'
+        )
+    coarse = [pair.coarse for pair in pairs]
+    fine = [pair.fine for pair in pairs]
+    coarse_summary = _calibration_summary_for_sequences(
+        case, model, parameters, coarse,
+        x_steps=x_steps, max_step=max_step, quadrature_order=order,
+    )
+    fine_summary = _calibration_summary_for_sequences(
+        case, model, parameters, fine,
+        x_steps=x_steps, max_step=max_step, quadrature_order=order,
+    )
+
+    state_differences = np.stack([
+        np.abs(pair.coarse.truth.state[1:] - pair.fine.truth.state[1:])
+        for pair in pairs
+    ])
+    demand_differences = np.stack([
+        np.abs(pair.coarse.truth.demand[1:] - pair.fine.truth.demand[1:])
+        for pair in pairs
+    ])
+    measurement_differences = np.stack([
+        np.abs(pair.coarse.observations.values - pair.fine.observations.values)
+        for pair in pairs
+    ])
+    return {
+        'sequence_ids': sequence_ids,
+        'n_sequences': n_sequences,
+        'settings': {
+            'x_steps': x_steps,
+            'max_step': max_step,
+            'likelihood_quadrature_order': order,
+            'coarse_truth_max_step': case.truth_max_step,
+            'fine_truth_max_step': case.truth_fine_max_step,
+        },
+        'invalid_truth_pairs': tuple(invalid),
+        'coarse': coarse_summary,
+        'fine': fine_summary,
+        'truth_difference': {
+            'maximum_abs_state': float(np.max(state_differences)),
+            'rms_state': float(np.sqrt(np.mean(np.square(state_differences)))),
+            'maximum_abs_demand': float(np.max(demand_differences)),
+            'rms_demand': float(np.sqrt(np.mean(np.square(demand_differences)))),
+            'maximum_abs_observation': float(np.max(measurement_differences)),
+        },
     }
