@@ -500,7 +500,12 @@ class PreparedBetaProjector:
         # A signed probability cannot be used as log input to Bayes. Do not
         # silently clip a negative roundoff value accepted by the legacy QP.
         if np.any(coefficients < 0.0) or np.any(projected < 0.0):
-            raise FloatingPointError('Projection returned signed probabilities; inspect its numerical solution.')
+            raise FloatingPointError(
+                'Projection returned signed probabilities; '
+                f'min coefficient={float(np.min(coefficients)):.3e}, '
+                f'min density={float(np.min(projected)):.3e}. '
+                'Inspect the numerical solution; no clipping is applied.'
+            )
         gap, _ = self.projection_solver.optimality_gap(density * np.sqrt(self.dx), coefficients)
         error = projected - density
         return {
