@@ -40,10 +40,16 @@ _CANDIDATE_LEVELS = (
 
 
 def _moments(cell_mass, centers):
-    mass = checks.probability_mass(cell_mass, "cell_mass")
+    """Discrete center moments under D1's declared 1e-9 mass tolerance."""
+    mass = checks.finite_vector(cell_mass, "cell_mass")
     centers = checks.finite_vector(centers, "centers")
     if mass.shape != centers.shape:
         raise ValueError("cell_mass and centers must have matching shapes.")
+    if np.any(mass < 0.0) or abs(float(np.sum(mass)) - 1.0) > D1_MASS_TOL:
+        raise ValueError(
+            "cell_mass must be non-negative and sum to one within the declared D1 "
+            "mass tolerance; no repair is applied."
+        )
     mean = float(mass @ centers)
     variance = float(mass @ np.square(centers - mean))
     return mean, variance
