@@ -11,8 +11,11 @@ from scipy.special import betaln, logsumexp
 from scipy.stats import norm
 
 from src.params.bm_1 import (
-    BM1ObservationSeries, bayes_update, bm1_observation_update, conservative_mass_transfer,
-    fv_filter_step, gaussian_log_likelihood, mass_to_log, run_fv_filter,
+    BM1ObservationSeries, bayes_update, conservative_mass_transfer,
+    gaussian_log_likelihood, mass_to_log,
+)
+from src.method.bm_1_estimation import (
+    bm1_observation_update, fv_filter_step, run_fv_filter,
 )
 from src.method.beta_mixture import (
     PreparedBetaProjector, beta_cell_average_basis,
@@ -373,7 +376,10 @@ class PreparationIntegrationTests(unittest.TestCase):
 
     def test_new_core_modules_have_no_reverse_dependencies(self):
         root = Path(__file__).resolve().parents[1]
-        for path in (root/'src/params/bm_1.py', root/'src/validation/estimation.py'):
+        for path in (
+            root/'src/params/bm_1.py', root/'src/method/bm_1_estimation.py',
+            root/'src/validation/estimation.py',
+        ):
             for node in ast.walk(ast.parse(path.read_text())):
                 names = ([node.module or ''] if isinstance(node, ast.ImportFrom)
                          else [x.name for x in node.names] if isinstance(node, ast.Import) else [])
