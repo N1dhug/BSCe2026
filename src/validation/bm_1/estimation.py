@@ -899,3 +899,144 @@ def run_f4_c_population(
             'open_log_score': open_log_score,
         },
     }
+
+
+
+def _piecewise_constant_variance(edges, mass):
+    """Variance under the FV piecewise-constant density, including within-cell spread."""
+    edges = checks.increasing_grid(edges, 'edges')
+    mass = checks.probability_mass(mass, 'mass')
+    if mass.size != edges.size - 1:
+        raise ValueError('mass must contain one value per cell.')
+    left, right = edges[:-1], edges[1:]
+    centers = 0.5 * (left + right)
+    second = (left * left + left * right + right * right) / 3.0
+    mean = float(mass @ centers)
+    variance = float(mass @ second - mean * mean)
+    if variance < -1e-14:
+        raise FloatingPointError('Piecewise-constant variance became materially negative.')
+    return max(variance, 0.0)
+
+
+def run_f4_c_calibration_sensitivity(
+    n_sequences=200,
+    *,
+    sequence_start=1,
+    variants=None,
+):
+    """Post-hoc numerical sensitivity of the preregistered 6/12/24 h coverage result.
+
+    This does not replace or retune the primary C4 result. It reuses the same
+    fixed synthetic sequence ids and changes one numerical dimension at a time
+    to diagnose whether coverage is materially driven by filter discretization.
+    """
+    n_sequences = checks.positive_integer(n_sequences, 'n_sequences', minimum=2)
+    sequence_start = _nonnegative_integer(sequence_start, 'sequence_start')
+    if variants is None:
+        variants = (
+            ('base', 201, 1.0 / 192.0, 1),
+            ('space401', 401, 1.0 / 192.0, 1),
+            ('time384', 201, 1.0 / 384.0, 1),
+            ('quad3', 201, 1.0 / 192.0, 3),
+        )
+    parsed = []
+    names = set()
+    for item in variants:
+        if len(item) != 4:
+            raise ValueError('Each calibration variant must be (name, x_steps, max_step, quadrature_order).')
+        name, x_steps, max_step, order = item
+        if not isinstance(name, str) or not name:
+            raise ValueError('Calibration variant names must be non-empty strings.')
+        if name in names:
+            raise ValueError('Calibration variant names must be unique.')
+        names.add(name)
+        parsed.append((
+            name,
+            checks.positive_integer(x_steps, 'x_steps', minimum=3),
+            checks.finite_scalar(max_step, 'max_step', positive=True),
+            checks.positive_integer(order, 'quadrature_order', minimum=1),
+        ))
+
+    case = build_f4_b_case()
+    model, parameters = case.build_model()
+    sequence_ids = np.arange(sequence_start, sequence_start + n_sequences, dtype=int)
+    sequences = [generate_synthetic_sequence(case, sequence_id=int(i)) for i in sequence_ids]
+    invalid = [sequence.sequence_id for sequence in sequences if not sequence.truth.valid]
+    if invalid:
+        raise RuntimeError(
+            'Calibration sensitivity truth contains raw EM boundary violations for sequence ids '
+            + ', '.join(str(value) for value in invalid)
+        )
+
+    hours = (6, 12, 24)
+    indices = []
+    for hour in hours:
+        matches = np.flatnonzero(np.isclose(case.observation_times, hour / 24.0, atol=1e-14, rtol=0.0))
+        if matches.size != 1:
+            raise RuntimeError(f'Expected exactly one {hour}h observation time.')
+        indices.append(int(matches[0]))
+
+    results = {}
+    for name, x_steps, max_step, order in parsed:
+        initial_mass = beta_initial_mass(case, model, x_steps)
+        covered = {hour: np.zeros(n_sequences, dtype=bool) for hour in hours}
+        widths = {hour: np.empty(n_sequences) for hour in hours}
+        squared_error = {hour: np.empty(n_sequences) for hour in hours}
+        posterior_variance = {hour: np.empty(n_sequences) for hour in hours}
+
+        for row, sequence in enumerate(sequences):
+            filtered = run_fv_filter(
+                model,
+                parameters,
+                case.sigma_x,
+                case.sigma_y,
+                initial_mass,
+                case.horizon[0],
+                sequence.observations,
+                breakpoints=case.breakpoints,
+                max_step=max_step,
+                likelihood_quadrature_order=order,
+            )
+            truth = sequence.truth.state[1:]
+            for hour, index in zip(hours, indices):
+                mass = filtered.posterior_mass[index]
+                lower = _piecewise_constant_quantile(filtered.x_edges, mass, 0.05)
+                upper = _piecewise_constant_quantile(filtered.x_edges, mass, 0.95)
+                state = float(truth[index])
+                mean = float(mass @ filtered.x_grid)
+                covered[hour][row] = lower <= state <= upper
+                widths[hour][row] = upper - lower
+                squared_error[hour][row] = (mean - state) ** 2
+                posterior_variance[hour][row] = _piecewise_constant_variance(filtered.x_edges, mass)
+
+        horizon_results = {}
+        for hour in hours:
+            successes = int(np.sum(covered[hour]))
+            low, high = _wilson_interval(successes, n_sequences)
+            rmse = float(np.sqrt(np.mean(squared_error[hour])))
+            posterior_sd = float(np.sqrt(np.mean(posterior_variance[hour])))
+            horizon_results[hour] = {
+                'successes': successes,
+                'total': n_sequences,
+                'coverage': successes / n_sequences,
+                'wilson95': (low, high),
+                'mean_width': float(np.mean(widths[hour])),
+                'posterior_mean_rmse': rmse,
+                'root_mean_posterior_variance': posterior_sd,
+                'rmse_over_posterior_sd': (
+                    np.nan if posterior_sd == 0.0 else rmse / posterior_sd
+                ),
+            }
+        results[name] = {
+            'x_steps': x_steps,
+            'max_step': max_step,
+            'quadrature_order': order,
+            'horizons': horizon_results,
+        }
+
+    return {
+        'sequence_ids': sequence_ids,
+        'n_sequences': n_sequences,
+        'invalid_truth_sequences': tuple(invalid),
+        'variants': results,
+    }
