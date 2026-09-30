@@ -362,37 +362,8 @@ def _simulate(case, sequence_id, *, initial_state, measurement_noise, max_step,
     return BM1SyntheticSequence(observations, truth, measurement_noise, sequence_id)
 
 
-def generate_synthetic_sequence(case=None, *, sequence_id=0):
-    """Generate one reproducible locked-case sequence at the declared base truth step."""
-    case = build_f4_b_case() if case is None else case
-    if not isinstance(case, BM1SyntheticCase):
-        raise TypeError('case must be a BM1SyntheticCase.')
-    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
-    initial_state = _draw_initial_state(case, sequence_id)
-    measurement_noise = _draw_measurement_noise(case, sequence_id)
-    integration_t, _ = _truth_grid(case, case.truth_max_step)
-    model, _ = case.build_model()
-    brownian = model.euler_maruyama.brownian_increments(
-        integration_t,
-        n_paths=1,
-        seed=_seed(case.brownian_seed_root, sequence_id),
-    )
-    return _simulate(
-        case,
-        sequence_id,
-        initial_state=initial_state,
-        measurement_noise=measurement_noise,
-        max_step=case.truth_max_step,
-        brownian_increments=brownian,
-    )
-
-
-def generate_coupled_refinement(case=None, *, sequence_id=0):
-    """Generate base/fine EM truth using one fine Wiener path and exact coarsening."""
-    case = build_f4_b_case() if case is None else case
-    if not isinstance(case, BM1SyntheticCase):
-        raise TypeError('case must be a BM1SyntheticCase.')
-    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
+def _coupled_truth_noise(case, sequence_id):
+    """Draw the canonical fine Wiener path and its exactly coarsened counterpart."""
     coarse_t, _ = _truth_grid(case, case.truth_max_step)
     fine_t, _ = _truth_grid(case, case.truth_fine_max_step)
     ratio = case.truth_max_step / case.truth_fine_max_step
@@ -403,8 +374,6 @@ def generate_coupled_refinement(case=None, *, sequence_id=0):
         fine_t[::factor], coarse_t, atol=1e-14, rtol=0.0
     ):
         raise ValueError('Declared base/fine truth grids are not nested; coupling would be ambiguous.')
-    initial_state = _draw_initial_state(case, sequence_id)
-    measurement_noise = _draw_measurement_noise(case, sequence_id)
     model, _ = case.build_model()
     fine_brownian = model.euler_maruyama.brownian_increments(
         fine_t,
@@ -415,6 +384,42 @@ def generate_coupled_refinement(case=None, *, sequence_id=0):
         fine_brownian,
         factor=factor,
     )
+    return coarse_brownian, fine_brownian
+
+
+def generate_synthetic_sequence(case=None, *, sequence_id=0):
+    """Generate the canonical coarse member of the reproducible truth pair.
+
+    Sequence identity is independent of whether the caller also requests the
+    fine refinement: synthetic and synthetic --refine therefore use exactly
+    the same coarse truth for a given case and sequence_id.
+    """
+    case = build_f4_b_case() if case is None else case
+    if not isinstance(case, BM1SyntheticCase):
+        raise TypeError('case must be a BM1SyntheticCase.')
+    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
+    initial_state = _draw_initial_state(case, sequence_id)
+    measurement_noise = _draw_measurement_noise(case, sequence_id)
+    coarse_brownian, _ = _coupled_truth_noise(case, sequence_id)
+    return _simulate(
+        case,
+        sequence_id,
+        initial_state=initial_state,
+        measurement_noise=measurement_noise,
+        max_step=case.truth_max_step,
+        brownian_increments=coarse_brownian,
+    )
+
+
+def generate_coupled_refinement(case=None, *, sequence_id=0):
+    """Generate base/fine EM truth using one fine Wiener path and exact coarsening."""
+    case = build_f4_b_case() if case is None else case
+    if not isinstance(case, BM1SyntheticCase):
+        raise TypeError('case must be a BM1SyntheticCase.')
+    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
+    initial_state = _draw_initial_state(case, sequence_id)
+    measurement_noise = _draw_measurement_noise(case, sequence_id)
+    coarse_brownian, fine_brownian = _coupled_truth_noise(case, sequence_id)
     coarse = _simulate(
         case,
         sequence_id,
