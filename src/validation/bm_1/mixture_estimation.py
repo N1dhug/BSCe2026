@@ -16,9 +16,14 @@ from src.diagnostics.bm_1 import (
     density_l2,
 )
 from src.method.beta_mixture import PreparedBetaProjector, beta_cell_average_basis
+from src.method.bm_1_estimation import bm1_observation_update, run_fv_filter
 from src.solver.finite_volume import finite_volume_1d
 from src.validation import estimation as checks
-from src.validation.bm_1.estimation import build_f4_b_case
+from src.validation.bm_1.estimation import (
+    beta_initial_mass,
+    build_f4_b_case,
+    generate_synthetic_sequence,
+)
 
 
 D1_X_STEPS = 801
@@ -28,6 +33,12 @@ D1_L1_GATE = 0.05
 D1_W1_GATE = 0.01
 D1_CONDITION_ALARM = 1.0e12
 D1_ACTIVE_TOL = 1.0e-10
+D2_SEQUENCE_START = 1001
+D2_SEQUENCE_COUNT = 10
+D2_X_STEPS = 801
+D2_MAX_STEP = 1.0 / 192.0
+D2_QUADRATURE_ORDER = 1
+D2_DICTIONARY = "shape_D"
 
 _INNER_MEANS = np.arange(1, 20, dtype=float) / 20.0
 _BOUNDARY_MEANS = np.array([0.01, 0.025, 0.975, 0.99], dtype=float)
@@ -363,6 +374,216 @@ def _evaluate_static_dictionaries(
         if selected is None and eligible:
             selected = name
     return results, selected
+
+
+
+def _snapshot_projection(projector, reference_mass, centers):
+    """Project one FV cell-mass snapshot and return metrics plus projected mass."""
+    reference_mass = checks.probability_mass(reference_mass, "reference_mass")
+    if reference_mass.shape != centers.shape:
+        raise ValueError("reference_mass and centers must have matching shapes.")
+    target_mean, target_variance = _moments(reference_mass, centers)
+    target = {
+        "density": reference_mass / projector.dx,
+        "cell_mass": reference_mass,
+        "mean": target_mean,
+        "variance": target_variance,
+    }
+    projected = projector.project(target["density"])
+    projected_mass = projected["density"] * projector.dx
+    fit = _fit_target(projector, target, centers)
+    return fit, projected_mass
+
+
+def _aggregate_snapshot_fits(fits):
+    """Summarize a fixed set of successful/failed snapshot fits."""
+    failed = tuple(index for index, item in enumerate(fits) if item["status"] != "ok")
+    successful = [item for item in fits if item["status"] == "ok"]
+    if failed or not successful:
+        return {
+            "failed_snapshot_indices": failed,
+            "maximum_cell_mass_l1": float("inf"),
+            "maximum_wasserstein_1": float("inf"),
+            "maximum_cdf_sup": float("inf"),
+            "maximum_density_l2": float("inf"),
+            "maximum_abs_mean_error": float("inf"),
+            "maximum_abs_variance_error": float("inf"),
+            "maximum_optimality_gap": float("inf"),
+            "maximum_mass_error": float("inf"),
+            "fallback_count": sum(
+                int(item.get("used_fallback", False)) for item in successful
+            ),
+            "passes_representation_gate": False,
+        }
+    max_l1 = max(item["cell_mass_l1"] for item in successful)
+    max_w1 = max(item["wasserstein_1"] for item in successful)
+    max_gap = max(item["optimality_gap"] for item in successful)
+    max_mass_error = max(item["mass_error"] for item in successful)
+    return {
+        "failed_snapshot_indices": (),
+        "maximum_cell_mass_l1": max_l1,
+        "maximum_wasserstein_1": max_w1,
+        "maximum_cdf_sup": max(item["cdf_sup"] for item in successful),
+        "maximum_density_l2": max(item["density_l2"] for item in successful),
+        "maximum_abs_mean_error": max(abs(item["mean_error"]) for item in successful),
+        "maximum_abs_variance_error": max(abs(item["variance_error"]) for item in successful),
+        "maximum_optimality_gap": max_gap,
+        "maximum_mass_error": max_mass_error,
+        "fallback_count": sum(int(item["used_fallback"]) for item in successful),
+        "passes_representation_gate": bool(
+            max_l1 <= D1_L1_GATE
+            and max_w1 <= D1_W1_GATE
+            and max_gap <= D1_GAP_TOL
+            and max_mass_error <= D1_MASS_TOL
+        ),
+    }
+
+
+def run_f4_d_snapshot_holdout(
+    *,
+    sequence_start=D2_SEQUENCE_START,
+    n_sequences=D2_SEQUENCE_COUNT,
+    x_steps=D2_X_STEPS,
+    max_step=D2_MAX_STEP,
+    likelihood_quadrature_order=D2_QUADRATURE_ORDER,
+):
+    """Run preregistered D2 static holdout on FV predictions/posteriors.
+
+    The selected shape-D dictionary is frozen.  FV truth states are not used.
+    Projected predictions are scored through the same observation operator only
+    to diagnose evidence distortion; those projected posteriors are never
+    carried forward.
+    """
+    sequence_start = checks.positive_integer(sequence_start, "sequence_start", minimum=0)
+    n_sequences = checks.positive_integer(n_sequences, "n_sequences", minimum=1)
+    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
+    max_step = checks.finite_scalar(max_step, "max_step", positive=True)
+    likelihood_quadrature_order = checks.positive_integer(
+        likelihood_quadrature_order, "likelihood_quadrature_order", minimum=1,
+    )
+
+    case = build_f4_b_case()
+    model, parameters = case.build_model()
+    edges, centers, dx = model.fokker_planc_reference.grid(x_steps, bounds=(0.0, 1.0))
+    dictionary = build_d1c_dictionaries(edges)[D2_DICTIONARY]
+    projector = PreparedBetaProjector(dictionary["basis"], dx)
+
+    sequence_ids = tuple(range(sequence_start, sequence_start + n_sequences))
+    prediction_fits = []
+    posterior_fits = []
+    evidence_errors = []
+    daily_evidence_errors = []
+    invalid_truth = []
+
+    for sequence_id in sequence_ids:
+        sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+        if not sequence.truth.valid:
+            invalid_truth.append(sequence_id)
+            continue
+        initial_mass = beta_initial_mass(case, model, x_steps)
+        filtered = run_fv_filter(
+            model,
+            parameters,
+            case.sigma_x,
+            case.sigma_y,
+            initial_mass,
+            case.horizon[0],
+            sequence.observations,
+            breakpoints=case.breakpoints,
+            max_step=max_step,
+            likelihood_quadrature_order=likelihood_quadrature_order,
+        )
+        previous_time = case.horizon[0]
+        sequence_evidence_error = 0.0
+        for index, (time, value, observed) in enumerate(zip(
+            sequence.observations.times,
+            sequence.observations.values,
+            sequence.observations.observed,
+        )):
+            try:
+                pred_fit, projected_pred_mass = _snapshot_projection(
+                    projector, filtered.predicted_mass[index], centers,
+                )
+            except (FloatingPointError, RuntimeError, np.linalg.LinAlgError) as exc:
+                pred_fit = {
+                    "status": "failed",
+                    "failure_type": type(exc).__name__,
+                    "failure_message": str(exc),
+                }
+                projected_pred_mass = None
+            prediction_fits.append(pred_fit)
+
+            try:
+                post_fit, _ = _snapshot_projection(
+                    projector, filtered.posterior_mass[index], centers,
+                )
+            except (FloatingPointError, RuntimeError, np.linalg.LinAlgError) as exc:
+                post_fit = {
+                    "status": "failed",
+                    "failure_type": type(exc).__name__,
+                    "failure_message": str(exc),
+                }
+            posterior_fits.append(post_fit)
+
+            if observed and projected_pred_mass is not None:
+                update = bm1_observation_update(
+                    model,
+                    parameters,
+                    case.sigma_y,
+                    projected_pred_mass,
+                    previous_time,
+                    float(time),
+                    float(value),
+                    price_side=sequence.observations.price_side,
+                    likelihood_quadrature_order=likelihood_quadrature_order,
+                )
+                error = float(update.log_evidence - filtered.log_evidence[index])
+                evidence_errors.append(error)
+                sequence_evidence_error += error
+            previous_time = float(time)
+        daily_evidence_errors.append(sequence_evidence_error)
+
+    prediction_summary = _aggregate_snapshot_fits(prediction_fits)
+    posterior_summary = _aggregate_snapshot_fits(posterior_fits)
+    evidence_errors = np.asarray(evidence_errors, dtype=float)
+    daily_evidence_errors = np.asarray(daily_evidence_errors, dtype=float)
+    if evidence_errors.size:
+        evidence_summary = {
+            "mean_absolute_per_observation": float(np.mean(np.abs(evidence_errors))),
+            "maximum_absolute_per_observation": float(np.max(np.abs(evidence_errors))),
+            "mean_signed_per_observation": float(np.mean(evidence_errors)),
+            "maximum_absolute_daily_sum_difference": float(np.max(np.abs(daily_evidence_errors))),
+        }
+    else:
+        evidence_summary = {
+            "mean_absolute_per_observation": float("inf"),
+            "maximum_absolute_per_observation": float("inf"),
+            "mean_signed_per_observation": float("nan"),
+            "maximum_absolute_daily_sum_difference": float("inf"),
+        }
+
+    return {
+        "stage": "D2",
+        "dictionary": D2_DICTIONARY,
+        "components": dictionary["components"],
+        "sequence_ids": sequence_ids,
+        "x_steps": x_steps,
+        "max_step": max_step,
+        "likelihood_quadrature_order": likelihood_quadrature_order,
+        "prediction": prediction_summary,
+        "posterior": posterior_summary,
+        "predictive_log_evidence_error": evidence_summary,
+        "invalid_truth_sequences": tuple(invalid_truth),
+        "projection_matrix_condition_number": float(
+            projector.projection_solver.matrix_condition_number
+        ),
+        "hessian_condition_number": float(projector.projection_data[2]),
+        "passes_holdout": bool(
+            not invalid_truth
+            and prediction_summary["passes_representation_gate"]
+            and posterior_summary["passes_representation_gate"]
+        ),
+    }
 
 
 def _representation_payload(*, x_steps, edges, centers, dx, targets, dictionaries,
