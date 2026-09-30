@@ -1,4 +1,4 @@
-"""F4-0 primitives only: not evidence that a recursive F4 filter is complete."""
+"""F4 estimation primitives and F4-B generator; no recursive filter yet."""
 
 import ast
 from pathlib import Path
@@ -424,7 +424,8 @@ class SyntheticGeneratorTests(unittest.TestCase):
         np.testing.assert_allclose(result.truth.times, np.arange(25)/24, atol=2e-16, rtol=0.)
         self.assertAlmostEqual(result.truth.price[8], .35, places=15)
         self.assertAlmostEqual(result.truth.price[16], .65, places=15)
-        self.assertAlmostEqual(result.truth.state[8], result.truth.state[8], places=15)
+        self.assertTrue(np.isfinite(result.truth.state[8]))
+        self.assertTrue(np.isfinite(result.truth.state[16]))
 
     def test_rng_streams_are_separate_and_sequence_ids_are_stable(self):
         base = synthetic.build_f4_b_case()
