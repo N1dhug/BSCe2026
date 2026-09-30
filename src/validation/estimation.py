@@ -36,6 +36,22 @@ def finite_scalar(value: float, name: str, *, positive: bool = False) -> float:
     return scalar
 
 
+def positive_integer(value, name: str, *, minimum: int = 1) -> int:
+    if isinstance(value, (bool, np.bool_)):
+        raise TypeError(f'{name} must be an integer.')
+    array = np.asarray(value)
+    if array.ndim != 0 or array.dtype.kind in ('b', 'c'):
+        raise TypeError(f'{name} must be an integer.')
+    try:
+        integer = int(array)
+        same = float(integer) == float(array)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise TypeError(f'{name} must be an integer.') from exc
+    if not same or integer < minimum:
+        raise ValueError(f'{name} must be an integer >= {minimum}.')
+    return integer
+
+
 def increasing_grid(values: ArrayLike, name: str, *, minimum_size: int = 2) -> NDArray[np.float64]:
     array = finite_vector(values, name, minimum_size=minimum_size)
     if np.any(np.diff(array) <= 0.0):
