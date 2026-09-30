@@ -303,10 +303,8 @@ def run_filter_truth_refine(args):
 
 
 
-def run_mixture_static(args):
-    """Run the preregistered F4-D static mixture representation study."""
-    result = mixture_validation.run_f4_d_representation_study(x_steps=args.cells)
-    print(f"F4-D static mixture representation: cells={result['x_steps']}")
+def _print_mixture_representation_result(result, label):
+    print(f"F4-D {label}: cells={result['x_steps']}")
     print(
         "  dictionary                 comp   max L1      max W1      "
         "max gap     cond(A)      fallback  eligible"
@@ -353,6 +351,18 @@ def run_mixture_static(args):
                 f"active={fit['active_components']}"
             )
     return result
+
+
+def run_mixture_static(args):
+    """Run the original preregistered F4-D D1 representation study."""
+    result = mixture_validation.run_f4_d_representation_study(x_steps=args.cells)
+    return _print_mixture_representation_result(result, 'static mixture representation D1')
+
+
+def run_mixture_static_adaptive(args):
+    """Run the preregistered post-D1 adaptive D1b representation study."""
+    result = mixture_validation.run_f4_d_adaptive_representation_study(x_steps=args.cells)
+    return _print_mixture_representation_result(result, 'adaptive static representation D1b')
 
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -422,6 +432,13 @@ def build_parser():
     )
     mixture_static.add_argument('--cells', type=int, default=801)
     mixture_static.set_defaults(handler=run_mixture_static)
+
+    mixture_static_adaptive = subparsers.add_parser(
+        'mixture-static-adaptive',
+        help='Run the post-D1 F4-D adaptive multiresolution representation study.',
+    )
+    mixture_static_adaptive.add_argument('--cells', type=int, default=801)
+    mixture_static_adaptive.set_defaults(handler=run_mixture_static_adaptive)
     return parser
 
 
