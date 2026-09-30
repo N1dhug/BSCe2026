@@ -29,6 +29,7 @@ python -B -m src.exe.run_model.bm_1.estimate mixture-static
 python -B -m src.exe.run_model.bm_1.estimate mixture-static-adaptive
 python -B -m src.exe.run_model.bm_1.estimate mixture-static-shape
 python -B -m src.exe.run_model.bm_1.estimate mixture-holdout
+python -B -m src.exe.run_model.bm_1.estimate mixture-filter
 python -B -m unittest discover -s tests -q
 python -B root/f4/build.py
 ```
