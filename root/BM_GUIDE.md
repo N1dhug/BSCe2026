@@ -23,6 +23,7 @@ python -B -m src.exe.run_model.bm_1.estimate synthetic
 python -B -m src.exe.run_model.bm_1.estimate filter
 python -B -m src.exe.run_model.bm_1.estimate filter-refine
 python -B -m src.exe.run_model.bm_1.estimate filter-study
+python -B -m src.exe.run_model.bm_1.estimate filter-calibration
 python -B -m unittest discover -s tests -q
 python -B root/f4/build.py
 ```
