@@ -575,7 +575,6 @@ class PreparedBetaProjector:
                 'used_fallback': used_fallback,
                 'hessian_condition_number': condition,
                 'projection_matrix_condition_number': self.projection_solver.matrix_condition_number,
-                'projection_matrix_condition_number': self.projection_solver.matrix_condition_number,
                 'used_clipping': False,
                 'used_renormalization': False,
             },
