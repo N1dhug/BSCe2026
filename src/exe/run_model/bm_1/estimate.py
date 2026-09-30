@@ -1,7 +1,7 @@
 """F4 estimation entry point.
 
-F4-B currently exposes only the reproducible synthetic generator.  Recursive
-state filtering and parameter estimation are added in later F4 milestones.
+F4-B exposes the reproducible synthetic generator. F4-C adds the known-parameter
+finite-volume state filter. Parameter estimation remains a later F4 milestone.
 """
 
 from __future__ import annotations
@@ -99,6 +99,48 @@ def run_synthetic(args):
     return result
 
 
+
+def run_filter(args):
+    """Run one F4-C known-parameter filter sanity case."""
+    result = synthetic.run_f4_c_reference(
+        sequence_id=args.sequence_id,
+        x_steps=args.cells,
+        max_step=args.max_step,
+        likelihood_quadrature_order=args.quadrature_order,
+    )
+    truth = result.sequence.truth.state[1:]
+    open_mean = result.open_propagation.posterior_mean
+    predictive = result.filtered.predicted_mean
+    posterior = result.filtered.posterior_mean
+
+    def rmse(values):
+        return float(np.sqrt(np.mean(np.square(values - truth))))
+
+    print(f'F4-C FV filter: sequence {args.sequence_id}')
+    print(
+        f'  cells={result.filtered.x_grid.size}; '
+        f'FP steps={result.filtered.integration_t.size - 1}; '
+        f'actual max step={np.max(np.diff(result.filtered.integration_t)):.6e} day'
+    )
+    print(
+        f'  RMSE open={rmse(open_mean):.6e}; '
+        f'predictive={rmse(predictive):.6e}; '
+        f'posterior={rmse(posterior):.6e}'
+    )
+    print(
+        f'  log likelihood={result.filtered.total_log_likelihood:.6f}; '
+        f'max mass error={result.filtered.maximum_abs_mass_error:.3e}; '
+        f'min cell mass={result.filtered.minimum_cell_mass:.3e}'
+    )
+    for hour in (6, 12, 24):
+        index = hour - 1
+        print(
+            f'  t={hour:02d}h: true={truth[index]:.6f}; '
+            f'open={open_mean[index]:.6f}; pred={predictive[index]:.6f}; '
+            f'post={posterior[index]:.6f}'
+        )
+    return result
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -118,6 +160,16 @@ def build_parser():
         help='Write the generated sequence/refinement JSON under files/output/bm_1/runs/estimation.',
     )
     command.set_defaults(handler=run_synthetic)
+
+    filter_command = subparsers.add_parser(
+        'filter',
+        help='Run the F4-C known-parameter finite-volume state filter.',
+    )
+    filter_command.add_argument('--sequence-id', type=int, default=0)
+    filter_command.add_argument('--cells', type=int, default=201)
+    filter_command.add_argument('--max-step', type=float, default=1.0 / 192.0)
+    filter_command.add_argument('--quadrature-order', type=int, default=1)
+    filter_command.set_defaults(handler=run_filter)
     return parser
 
 
