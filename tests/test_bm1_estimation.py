@@ -653,6 +653,34 @@ class FVStateFilterTests(unittest.TestCase):
         np.testing.assert_allclose(filtered.predicted_mass.sum(axis=1), 1.0, atol=1e-10, rtol=0.)
         np.testing.assert_allclose(filtered.posterior_mass.sum(axis=1), 1.0, atol=1e-10, rtol=0.)
 
+    def test_refinement_changes_one_numerical_dimension_at_a_time(self):
+        result = synthetic.run_f4_c_refinement(
+            sequence_id=0,
+            spatial_cells=(31, 61),
+            time_steps=(1/24, 1/48),
+            quadrature_orders=(1, 3),
+        )
+        self.assertEqual([row['x_steps'] for row in result['spatial']], [31, 61])
+        self.assertTrue(all(row['requested_max_step'] == 1/192 for row in result['spatial']))
+        self.assertTrue(all(row['quadrature_order'] == 1 for row in result['spatial']))
+        self.assertTrue(all(row['x_steps'] == 201 for row in result['time']))
+        self.assertEqual([row['requested_max_step'] for row in result['time']], [1/24, 1/48])
+        self.assertTrue(all(row['quadrature_order'] == 1 for row in result['time']))
+        self.assertTrue(all(row['x_steps'] == 201 for row in result['quadrature']))
+        self.assertTrue(all(row['requested_max_step'] == 1/192 for row in result['quadrature']))
+        self.assertEqual([row['quadrature_order'] for row in result['quadrature']], [1, 3])
+        for axis in ('spatial', 'time', 'quadrature'):
+            self.assertTrue(np.isfinite(result['summary'][axis]['maximum_posterior_rmse_effect']))
+            self.assertTrue(np.isfinite(result['summary'][axis]['maximum_log_likelihood_effect']))
+
+    def test_refinement_requires_ordered_unique_levels(self):
+        with self.assertRaises(ValueError):
+            synthetic.run_f4_c_refinement(spatial_cells=(61, 31))
+        with self.assertRaises(ValueError):
+            synthetic.run_f4_c_refinement(time_steps=(1/48, 1/24))
+        with self.assertRaises(ValueError):
+            synthetic.run_f4_c_refinement(quadrature_orders=(1, 1))
+
     def test_filter_inputs_fail_explicitly(self):
         with self.assertRaises(ValueError):
             fv_filter_step(
