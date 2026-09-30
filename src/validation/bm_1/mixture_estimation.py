@@ -198,6 +198,61 @@ def build_d1b_dictionaries(edges):
     }
 
 
+
+def _shape_aware_dictionary(edges, high_step):
+    """D1c scale-aware dictionary fixed after D1b and before D1c results."""
+    high_step = checks.finite_scalar(high_step, "high_step", positive=True)
+    low_means = np.arange(1, 10, dtype=float) / 10.0
+    medium_means = np.arange(1, 40, dtype=float) / 40.0
+    medium_means = np.sort(np.concatenate((medium_means, np.array([0.02, 0.98]))))
+    boundary_means = np.array([0.02, 0.05, 0.95, 0.98], dtype=float)
+
+    count = int(round(0.8 / high_step)) + 1
+    high_means = np.linspace(0.1, 0.9, count)
+    if not np.isclose(high_means[1] - high_means[0], high_step, atol=1e-14, rtol=0.0):
+        raise ValueError("high_step must divide [0.1, 0.9] exactly.")
+
+    means = np.concatenate((
+        low_means,
+        boundary_means,
+        medium_means,
+        high_means,
+        high_means,
+    ))
+    concentrations = np.concatenate((
+        np.full(low_means.size, 20.0),
+        np.full(boundary_means.size, 50.0),
+        np.full(medium_means.size, 100.0),
+        np.full(high_means.size, 800.0),
+        np.full(high_means.size, 2000.0),
+    ))
+    alpha = concentrations * means
+    beta = concentrations * (1.0 - means)
+    basis = beta_cell_average_basis(edges, alpha, beta)
+    return {
+        "basis": basis,
+        "means": means,
+        "concentrations": concentrations,
+        "alpha": alpha,
+        "beta": beta,
+        "components": int(alpha.size),
+        "selectable": True,
+    }
+
+
+def build_d1c_dictionaries(edges):
+    """Build the two nested D1c shape-aware dictionaries preregistered after D1b."""
+    edges = checks.increasing_grid(edges, "edges")
+    widths = np.diff(edges)
+    dx = float(widths[0])
+    if edges[0] != 0.0 or edges[-1] != 1.0 or not np.allclose(widths, dx, atol=1e-14, rtol=1e-10):
+        raise ValueError("D1c dictionaries require a uniform grid spanning exactly [0, 1].")
+    return {
+        "shape_C": _shape_aware_dictionary(edges, 0.025),
+        "shape_D": _shape_aware_dictionary(edges, 0.0125),
+    }
+
+
 def _fit_target(projector, target, centers):
     projected = projector.project(target["density"])
     density = projected["density"]
@@ -386,4 +441,32 @@ def run_f4_d_adaptive_representation_study(*, x_steps=D1_X_STEPS):
         selected=selected,
         fallback_disqualifies=False,
         stage="D1b",
+    )
+
+
+def run_f4_d_shape_aware_representation_study(*, x_steps=D1_X_STEPS):
+    """Run D1c after D1b; same targets/gates, shape-aware dictionaries only."""
+    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
+    edges, centers, dx = finite_volume_1d.grid(x_steps)
+    targets = _target_suite(edges)
+    dictionaries = build_d1c_dictionaries(edges)
+    results, selected = _evaluate_static_dictionaries(
+        edges=edges,
+        centers=centers,
+        dx=dx,
+        targets=targets,
+        dictionaries=dictionaries,
+        fallback_disqualifies=False,
+    )
+    return _representation_payload(
+        x_steps=x_steps,
+        edges=edges,
+        centers=centers,
+        dx=dx,
+        targets=targets,
+        dictionaries=dictionaries,
+        results=results,
+        selected=selected,
+        fallback_disqualifies=False,
+        stage="D1c",
     )
