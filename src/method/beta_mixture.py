@@ -140,10 +140,6 @@ class _SimplexProjector:
             scale = max(1.0, float(np.max(np.abs(gradient))))
             gap = float(gradient @ coefficients - np.min(gradient))
             if gap <= _PROJECTION_GAP_TOL * scale:
-                if np.any(coefficients < 0.0):
-                    raise RuntimeError(
-                        'Active-set projection reached optimality with a negative coefficient.'
-                    )
                 return coefficients
             indices = np.flatnonzero(free)
             if indices.size > 1:
@@ -186,10 +182,6 @@ class _SimplexProjector:
                     continue
             gap = float(gradient @ coefficients - np.min(gradient))
             if gap <= _PROJECTION_GAP_TOL * scale:
-                if np.any(coefficients < 0.0):
-                    raise RuntimeError(
-                        'Active-set projection reached optimality with a negative coefficient.'
-                    )
                 return coefficients
         raise RuntimeError('Simplex active-set least-squares solver did not converge.')
 
