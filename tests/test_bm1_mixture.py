@@ -210,6 +210,57 @@ class ActiveSetBoundaryRegressionTests(unittest.TestCase):
 
 class PreparedSimplexAuditTests(unittest.TestCase):
 
+    def test_distinct_tiny_blocking_ratios_do_not_remove_positive_mass(self):
+        from src.method.beta_mixture import _simplex_face_step
+        coefficients = np.array([0.4, 0.3, 0.3])
+        direction = np.array([-2e13, -1e13, 3e13])
+        # The ratios 2e-14 and 3e-14 are close absolutely, but not simultaneous.
+        # The former absolute tie tolerance set BOTH coordinates to zero.
+        updated, blocking = _simplex_face_step(coefficients, direction)
+        np.testing.assert_array_equal(blocking, [0])
+        np.testing.assert_allclose(updated, [0.0, 0.1, 0.9], atol=2e-16, rtol=0.0)
+        self.assertAlmostEqual(float(np.sum(updated)), 1.0, places=15)
+        np.testing.assert_array_equal(coefficients, [0.4, 0.3, 0.3])
+
+    def test_face_step_detects_small_negative_directions(self):
+        from src.method.beta_mixture import _simplex_face_step
+        coefficients = np.array([1e-15, 0.5, 0.5 - 1e-15])
+        direction = np.array([-1e-13, 0.2, -0.2 + 1e-13])
+        updated, blocking = _simplex_face_step(coefficients, direction)
+        np.testing.assert_array_equal(blocking, [0])
+        self.assertGreaterEqual(float(np.min(updated)), 0.0)
+        self.assertAlmostEqual(float(np.sum(updated)), 1.0, places=15)
+        self.assertAlmostEqual(updated[1], 0.502, places=15)
+
+    def test_face_step_enforces_exact_simultaneous_and_full_step_bounds(self):
+        from src.method.beta_mixture import _simplex_face_step
+        for direction in (np.array([-0.25, -0.25, 0.25, 0.25]),
+                          np.array([-1.0, -1.0, 1.0, 1.0])):
+            with self.subTest(direction=direction):
+                updated, blocking = _simplex_face_step(np.full(4, 0.25), direction)
+                np.testing.assert_array_equal(blocking, [0, 1])
+                np.testing.assert_array_equal(updated, [0.0, 0.0, 0.5, 0.5])
+
+    def test_small_correction_is_not_discarded_before_gap_is_satisfied(self):
+        from src.method.beta_mixture import _SimplexProjector
+        projector = _SimplexProjector(100.0 * np.eye(2))
+        target = np.array([50.0, 50.0])
+        start = np.array([0.5 + 4e-13, 0.5 - 4e-13])
+        self.assertGreater(projector.optimality_gap(target, start)[0], 1e-11)
+        result = projector.solve(target, start)
+        np.testing.assert_allclose(result, [0.5, 0.5], atol=1e-15, rtol=0.0)
+        self.assertLessEqual(projector.optimality_gap(target, result)[0], 1e-11)
+
+    def test_tiny_positive_coefficient_is_free_not_artificially_frozen(self):
+        from src.method.beta_mixture import _SimplexProjector
+        projector = _SimplexProjector(np.eye(2))
+        target = np.array([0.0, 1.0])
+        start = np.array([5e-11, 1.0 - 5e-11])
+        result = projector.solve(target, start)
+        self.assertGreaterEqual(float(np.min(result)), 0.0)
+        self.assertLessEqual(projector.optimality_gap(target, result)[0], 1e-11)
+
+
     def test_identity_problem_matches_exact_simplex_projection(self):
         from src.method.beta_mixture import _SimplexProjector
         rng = np.random.default_rng(431)
@@ -320,6 +371,46 @@ class PreparedSimplexAuditTests(unittest.TestCase):
         ):
             with self.assertRaises(ValueError):
                 call()
+
+
+class RecursiveMixtureProjectionRegressionTests(unittest.TestCase):
+
+    def test_d3a_default_grid_completes_without_fv_restart_or_probability_repair(self):
+        from src.method.beta_mixture import PreparedBetaProjector
+        from src.method.bm_1_estimation import run_mixture_filter
+        from src.validation.bm_1 import estimation as synthetic
+        from src.validation.bm_1 import mixture_estimation as mixture_f4
+        case = synthetic.build_f4_b_case()
+        sequence = synthetic.generate_synthetic_sequence(case, sequence_id=0)
+        model, parameters = case.build_model()
+        edges, _, dx = model.fokker_planc_reference.grid(101, bounds=(0.0, 1.0))
+        dictionary = mixture_f4.build_d1c_dictionaries(edges)['shape_D']
+        projector = PreparedBetaProjector(dictionary['basis'], dx)
+        initial = synthetic.beta_initial_mass(case, model, 101)
+        # Exercise all 24 updates on the actual D3a grid, not just the small
+        # 31-cell diagnostic. FV must not secretly restart the mixture filter.
+        with patch.object(
+            model, 'fokker_planc_reference_solver',
+            side_effect=AssertionError('FV restart is forbidden'),
+        ):
+            result = run_mixture_filter(
+                model, parameters, case.sigma_x, case.sigma_y,
+                initial, 0.0, sequence.observations, projector=projector,
+                breakpoints=case.breakpoints, max_step=1/384, cfl=.4,
+            )
+        self.assertEqual(result.posterior_mass.shape, (24, 101))
+        self.assertTrue(np.all(np.isfinite(result.log_evidence)))
+        for mass in (result.predicted_mass, result.posterior_mass):
+            self.assertGreaterEqual(float(np.min(mass)), 0.0)
+            np.testing.assert_allclose(mass.sum(axis=1), 1.0, atol=1e-10, rtol=0.0)
+        for item in result.prediction_diagnostics:
+            self.assertFalse(item['used_clipping'])
+            self.assertFalse(item['used_renormalization'])
+            self.assertLessEqual(item['maximum_abs_raw_prediction_mass_error'], 1e-10)
+        for item in result.posterior_projection_diagnostics:
+            self.assertFalse(item['used_clipping'])
+            self.assertFalse(item['used_renormalization'])
+            self.assertLessEqual(item['optimality_gap'], 1e-9)
 
 
 if __name__ == '__main__':
