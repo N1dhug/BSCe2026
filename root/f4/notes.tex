@@ -515,6 +515,18 @@ og \(p_k^{+,M}\) er den eneste state-law der må starte næste prediction.
 Et FV-filter må kun bruges som ekstern reference; FV-posterior restart ville
 fjerne den dynamiske mixture-fejl, som D3 skal måle.
 
+
+\paragraph{Første D3a-kørsel og solver-retry.}
+Den første D3a-implementation gav ikke et filterresultat. Både lokal Windows-kørsel
+og GitHub-CI stoppede på den uafhængige simplex-optimality-kontrol i en projection.
+Det identificerede et backend-hul: primary active-set kunne returnere en feasible kandidat,
+som bagefter ikke bestod gap-kontrollen, men fallback blev kun forsøgt hvis primary
+\texttt{solve()} selv kastede en exception. Projectionens matematiske objective,
+simplex-constraints, basis og data ændres ikke. Efter rettelsen retries det samme konvekse
+problem med SLSQP også når primary-kandidaten fejler den uafhængige optimality-test.
+Fallback-kandidaten skal fortsat være feasible og bestå den strengere deklarerede
+fallback-gap-kontrol; ingen coefficient-clipping eller renormalisering anvendes.
+
 D3a er en preregistreret sanity på sequence 0 med shape-D, 101 working cells,
 \(\mathrm{cfl}=0.4\), \(h_{\max}=1/384\) dag og observation-q=1.
 Initial \(\mathrm{Beta}(20,20)\) projiceres én gang til mixture-rummet.
