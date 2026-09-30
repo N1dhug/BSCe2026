@@ -250,6 +250,27 @@ class PreparedSimplexAuditTests(unittest.TestCase):
         np.testing.assert_array_equal(warm.matrix, original)
         self.assertFalse(warm.matrix.flags.writeable)
 
+    def test_projection_can_accept_non_success_status_when_independently_optimal(self):
+        from types import SimpleNamespace
+        from src.method.beta_mixture import _SimplexProjector
+        matrix = np.eye(2)
+        with patch.object(_SimplexProjector, 'solve', side_effect=RuntimeError('forced')), \
+             patch('src.method.beta_mixture.minimize', return_value=SimpleNamespace(
+                 x=np.array([1.0, 0.0]), success=False,
+                 message='positive directional derivative')):
+            coefficients, projected, used_fallback = _project_with_warm_start(
+                np.array([1.0, 0.0]),
+                matrix,
+                matrix,
+                matrix,
+                1.0,
+                np.array([0.5, 0.5]),
+                return_fallback=True,
+            )
+        self.assertTrue(used_fallback)
+        np.testing.assert_array_equal(coefficients, [1.0, 0.0])
+        np.testing.assert_array_equal(projected, [1.0, 0.0])
+
     def test_projection_does_not_accept_success_flag_without_optimality(self):
         from types import SimpleNamespace
         from src.method.beta_mixture import _SimplexProjector
