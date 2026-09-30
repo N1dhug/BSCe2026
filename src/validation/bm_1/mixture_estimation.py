@@ -149,6 +149,7 @@ def _fit_target(projector, target, centers):
     diagnostics = projected["diagnostics"]
     coefficients = projected["coefficients"]
     return {
+        "status": "ok",
         "density_l2": density_l2(density, target["density"], projector.dx),
         "cell_mass_l1": cell_mass_l1(mass, target["cell_mass"]),
         "cdf_sup": cell_mass_cdf_sup(mass, target["cell_mass"]),
@@ -178,23 +179,45 @@ def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
     selected = None
     for name, dictionary in dictionaries.items():
         projector = PreparedBetaProjector(dictionary["basis"], dx)
-        fits = {
-            target_name: _fit_target(projector, target, centers)
-            for target_name, target in targets.items()
-        }
-        max_l1 = max(item["cell_mass_l1"] for item in fits.values())
-        max_w1 = max(item["wasserstein_1"] for item in fits.values())
-        max_gap = max(item["optimality_gap"] for item in fits.values())
-        max_mass_error = max(item["mass_error"] for item in fits.values())
-        any_fallback = any(item["used_fallback"] for item in fits.values())
+        fits = {}
+        for target_name, target in targets.items():
+            try:
+                fits[target_name] = _fit_target(projector, target, centers)
+            except (FloatingPointError, RuntimeError, np.linalg.LinAlgError) as exc:
+                fits[target_name] = {
+                    "status": "failed",
+                    "failure_type": type(exc).__name__,
+                    "failure_message": str(exc),
+                }
+        failed_targets = tuple(
+            target_name for target_name, item in fits.items()
+            if item["status"] != "ok"
+        )
+        successful = [item for item in fits.values() if item["status"] == "ok"]
+        if successful:
+            max_l1 = max(item["cell_mass_l1"] for item in successful)
+            max_w1 = max(item["wasserstein_1"] for item in successful)
+            max_gap = max(item["optimality_gap"] for item in successful)
+            max_mass_error = max(item["mass_error"] for item in successful)
+            any_fallback = any(item["used_fallback"] for item in successful)
+        else:
+            max_l1 = max_w1 = max_gap = max_mass_error = float("inf")
+            any_fallback = False
+        if failed_targets:
+            max_l1 = max_w1 = max_gap = max_mass_error = float("inf")
         matrix_condition = float(projector.projection_solver.matrix_condition_number)
         hessian_condition = float(projector.projection_data[2])
         numerical_ok = (
-            max_gap <= D1_GAP_TOL
+            not failed_targets
+            and max_gap <= D1_GAP_TOL
             and max_mass_error <= D1_MASS_TOL
             and not any_fallback
         )
-        representation_ok = max_l1 <= D1_L1_GATE and max_w1 <= D1_W1_GATE
+        representation_ok = (
+            not failed_targets
+            and max_l1 <= D1_L1_GATE
+            and max_w1 <= D1_W1_GATE
+        )
         eligible = bool(dictionary["selectable"] and numerical_ok and representation_ok)
         summary = {
             "components": dictionary["components"],
@@ -207,14 +230,19 @@ def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
             "maximum_optimality_gap": max_gap,
             "maximum_mass_error": max_mass_error,
             "any_fallback": any_fallback,
+            "failed_targets": failed_targets,
             "projection_matrix_condition_number": matrix_condition,
             "hessian_condition_number": hessian_condition,
             "conditioning_alarm": (
                 not np.isfinite(matrix_condition)
                 or matrix_condition > D1_CONDITION_ALARM
             ),
-            "worst_l1_target": max(fits, key=lambda key: fits[key]["cell_mass_l1"]),
-            "worst_w1_target": max(fits, key=lambda key: fits[key]["wasserstein_1"]),
+            "worst_l1_target": (
+                None if failed_targets else max(fits, key=lambda key: fits[key]["cell_mass_l1"])
+            ),
+            "worst_w1_target": (
+                None if failed_targets else max(fits, key=lambda key: fits[key]["wasserstein_1"])
+            ),
         }
         results[name] = {
             "summary": summary,
