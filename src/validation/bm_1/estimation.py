@@ -461,11 +461,8 @@ def missing_copy(observations):
     )
 
 
-def run_f4_c_reference(sequence_id=0, *, x_steps=201, max_step=1.0 / 192.0,
-                       likelihood_quadrature_order=1):
-    """Run the F4-C known-parameter FV filter and its no-assimilation baseline."""
-    case = build_f4_b_case()
-    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+def _run_f4_c_pair(case, sequence, *, x_steps, max_step, likelihood_quadrature_order):
+    """Run assimilating and open filters on one already fixed synthetic sequence."""
     model, parameters = case.build_model()
     initial_mass = beta_initial_mass(case, model, x_steps)
     common = dict(
@@ -487,3 +484,130 @@ def run_f4_c_reference(sequence_id=0, *, x_steps=201, max_step=1.0 / 192.0,
         filtered=filtered,
         open_propagation=open_propagation,
     )
+
+
+def run_f4_c_reference(sequence_id=0, *, x_steps=201, max_step=1.0 / 192.0,
+                       likelihood_quadrature_order=1):
+    """Run the F4-C known-parameter FV filter and its no-assimilation baseline."""
+    case = build_f4_b_case()
+    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+    return _run_f4_c_pair(
+        case,
+        sequence,
+        x_steps=x_steps,
+        max_step=max_step,
+        likelihood_quadrature_order=likelihood_quadrature_order,
+    )
+
+
+def _filter_metrics(reference):
+    truth = reference.sequence.truth.state[1:]
+    open_mean = reference.open_propagation.posterior_mean
+    predictive = reference.filtered.predicted_mean
+    posterior = reference.filtered.posterior_mean
+
+    def rmse(values):
+        return float(np.sqrt(np.mean(np.square(values - truth))))
+
+    integration_t = reference.filtered.integration_t
+    return {
+        'rmse_open': rmse(open_mean),
+        'rmse_predictive': rmse(predictive),
+        'rmse_posterior': rmse(posterior),
+        'total_log_likelihood': reference.filtered.total_log_likelihood,
+        'maximum_abs_mass_error': reference.filtered.maximum_abs_mass_error,
+        'minimum_cell_mass': reference.filtered.minimum_cell_mass,
+        'n_steps': int(integration_t.size - 1),
+        'actual_max_step': float(np.max(np.diff(integration_t))),
+    }
+
+
+def _refinement_summary(rows):
+    reference = rows[-1]
+    assimilation = reference['rmse_open'] - reference['rmse_posterior']
+    effects = [abs(row['rmse_posterior'] - reference['rmse_posterior']) for row in rows[:-1]]
+    likelihood_effects = [
+        abs(row['total_log_likelihood'] - reference['total_log_likelihood'])
+        for row in rows[:-1]
+    ]
+    maximum_effect = max(effects, default=0.0)
+    return {
+        'reference_level': reference['level'],
+        'reference_posterior_rmse': reference['rmse_posterior'],
+        'reference_assimilation_improvement': assimilation,
+        'maximum_posterior_rmse_effect': maximum_effect,
+        'effect_to_assimilation_ratio': (
+            np.nan if abs(assimilation) < 1e-14 else maximum_effect / abs(assimilation)
+        ),
+        'maximum_log_likelihood_effect': max(likelihood_effects, default=0.0),
+    }
+
+
+def run_f4_c_refinement(
+    sequence_id=0,
+    *,
+    spatial_cells=(101, 201, 401, 801),
+    time_steps=(1.0 / 96.0, 1.0 / 192.0, 1.0 / 384.0),
+    quadrature_orders=(1, 3, 5),
+):
+    """Refine space, FP time and measurement quadrature one dimension at a time."""
+    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
+    cells = tuple(checks.positive_integer(value, 'spatial cell count', minimum=3)
+                  for value in spatial_cells)
+    steps = tuple(checks.finite_scalar(value, 'time max_step', positive=True)
+                  for value in time_steps)
+    orders = tuple(checks.positive_integer(value, 'quadrature order', minimum=1)
+                   for value in quadrature_orders)
+    if not cells or not steps or not orders:
+        raise ValueError('Refinement levels must be non-empty.')
+    if tuple(sorted(set(cells))) != cells:
+        raise ValueError('spatial_cells must be unique and increasing.')
+    if tuple(sorted(set(steps), reverse=True)) != steps:
+        raise ValueError('time_steps must be unique and strictly refined (decreasing).')
+    if tuple(sorted(set(orders))) != orders:
+        raise ValueError('quadrature_orders must be unique and increasing.')
+
+    case = build_f4_b_case()
+    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+
+    def run(axis, level, x_steps, max_step, quadrature_order):
+        reference = _run_f4_c_pair(
+            case,
+            sequence,
+            x_steps=x_steps,
+            max_step=max_step,
+            likelihood_quadrature_order=quadrature_order,
+        )
+        return {
+            'axis': axis,
+            'level': level,
+            'x_steps': x_steps,
+            'requested_max_step': max_step,
+            'quadrature_order': quadrature_order,
+            **_filter_metrics(reference),
+        }
+
+    spatial = [
+        run('space', n, n, 1.0 / 192.0, 1)
+        for n in cells
+    ]
+    time = [
+        run('time', h, 201, h, 1)
+        for h in steps
+    ]
+    quadrature = [
+        run('quadrature', q, 201, 1.0 / 192.0, q)
+        for q in orders
+    ]
+    return {
+        'sequence_id': sequence_id,
+        'truth_state': sequence.truth.state[1:].copy(),
+        'spatial': spatial,
+        'time': time,
+        'quadrature': quadrature,
+        'summary': {
+            'spatial': _refinement_summary(spatial),
+            'time': _refinement_summary(time),
+            'quadrature': _refinement_summary(quadrature),
+        },
+    }
