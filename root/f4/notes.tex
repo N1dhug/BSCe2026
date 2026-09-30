@@ -850,13 +850,30 @@ en lille model/approksimationsmismatch omkring 12 timer, men diagnosticerer ikke
 årsagen alene. Da rum-, tids- og measurement-quadrature-refinement næsten ikke
 ændrer resultatet, peger evidensen imod disse tre C-baselinevalg som hovedforklaring.
 
-Den næste målrettede diagnostic ændrer derfor ikke filteret. I stedet genbruges
-F4-B's koblede truth-refinement på sequence-id 1--200: samme initialdraw, samme
-Brownian-path og samme measurement-noise, men truth/observationer genereres på
-henholdsvis 1/1152- og 1/2304-dags EM-grid. Det samme C-filter anvendes på hvert
-medlem af parret. Coarse/fine coverage, intervalbredde og RMSE/posterior-sd ved
-6/12/24 timer sammenlignes sammen med størrelsen af truth-forskellen. Dette er
-en post-hoc årsagsdiagnostik og ændrer ikke det preregistrerede C4-resultat.
+Den koblede truth-refinement gav ved 12 timer coverage 0.840 på
+(1/1152)-dags truth-grid og 0.845 på (1/2304)-dags truth-grid. Ved 6 og
+24 timer var coverage uændret henholdsvis 0.880 og 0.900. Ved 12 timer var
+RMSE/posterior-sd fortsat 1.068, og den gennemsnitlige intervalbredde var 0.079831
+for begge truth-opløsninger til seks decimaler. Over alle 24 observationstider og
+200 sekvenser var RMS coarse--fine state-forskel (8.250\times10^{-5}), mens den
+maksimale state-forskel var (4.698\times10^{-4}). Ingen af truth-parrene havde
+rå randoverskridelser. Halvering af truth-EM-trinnet flytter altså ikke
+kalibreringsresultatet materielt og er ikke en plausibel hovedforklaring på
+12h-undercoverage.
+
+Som sidste statistiske C-diagnostic fastlægges nu en uafhængig replication, efter
+at ovenstående årsagsdiagnostik er set. Det oprindelige sequence-id 1--200-studie
+forbliver det primære preregistrerede resultat. Replicationen bruger de hidtil
+usete sequence-id 201--1000, altså (n=800), med uændret
+[
+ N_x=201,qquad h_{max}=1/192 	ext{dag},qquad q=1,
+]
+og samme paired bootstrap-procedure med 5000 replikater. RMSE-ratioer, predictive
+Y-log score og 6/12/24h coverage rapporteres separat for replicationen. De 800
+sekvenser pooles ikke med de oprindelige 200 for at erstatte det første resultat.
+Hvis 12h-Wilsonintervallet igen ligger under det nominelle 0.90-niveau, behandles
+det som reproduceret lokal undercoverage og dokumenteres som en begrænsning i
+F4-C frem for at tune grid, støj eller intervaldefinition bagefter.
 
 \section{Bevaret statisk F4-0-evidens}
 \subsection{Et konkret statisk resultat}
