@@ -352,6 +352,49 @@ ikke en grund til at skjule et fit. Hvis ingen kandidat opfylder de fastlagte
 krav, konkluderes "ingen basis valgt" og en ny ordbogsfamilie skal erklæres
 før næste studie.
 
+
+\subsection{D1-resultat og D1b-redesign}
+Det låste D1-studie valgte ingen dictionary. Legacy grad 30 havde worst-case
+cellemasse-\(L^1\)-fejl 1.491 og \(W_1=0.0606\). Multiscale-2 reducerede dette
+til 1.201 og 0.0304, mens multiscale-3 og multiscale-4 nåede cirka 0.715 og
+0.0300 med randnære targets som worst case. Dermed var de finite, numerisk
+kontrollerede kandidater stadig langt over \eqref{eq:projection}'s D1
+repræsentationskrav.
+
+Den fulde boundary-enriched Cartesian dictionary gav desuden independent
+optimality failures på broad/narrow targets. Det er konsistent med den generelle
+conditioning-risiko ved stærkt overlappende fixed mixture-bases dokumenteret i
+referencearbejdet \cite{nielsen}. D1-resultatet bruges derfor ikke til at
+efterrationalisere en bestået basis: konklusionen er eksplicit, at ingen af de
+preregistrerede kandidater blev valgt.
+
+D1b fastlægges efter dette observerede resultat og er derfor et dictionary-designstudie,
+ikke en ny uafhængig validering. D2 forbliver holdout. I D1b bruges scale-dependent
+mean-placement:
+\begin{align}
+ \kappa=20 &: \quad \mu=0.1,0.2,\ldots,0.9,\\
+ \kappa=100 &: \quad \mu=0.025,0.05,\ldots,0.975
+                    \text{ samt }0.02,0.98.
+\end{align}
+For \(\kappa\in\{500,2000\}\) begrænses high-resolution means til
+\([0.1,0.9]\). Kandidat A bruger spacing 0.025 og har 116 komponenter.
+Kandidat B er nested og bruger spacing 0.0125 og har 180 komponenter.
+Denne multiresolution-struktur følger komponentbredden bedre end et fuldt
+Cartesian produkt og reducerer samtidig unødvendige brede/næsten-kollineære
+boundary-komponenter.
+
+De oprindelige repræsentationskrav bevares:
+\[
+ \max \|m-\hat m\|_1\le0.05,\qquad
+ \max W_1\le0.01,
+\]
+sammen med gap og massefejl højst \(10^{-9}\). Efter erfaringen fra D1 er en
+numerisk fallback ikke i sig selv en failure i D1b, fordi fallbacken løser det
+samme konvekse simplex-problem. Den rapporteres altid, og kandidaten accepteres
+kun hvis feasibility og den uafhængige optimality-gap-kontrol består. Condition
+number over \(10^{12}\) er fortsat en alarm. Den mindste bestående adaptive
+dictionary vælges; hvis ingen består, går D ikke videre til holdout/dynamik.
+
 \subsection{Hvorfor D1 kommer før det rekursive filter}
 Referencearbejdet skelner mellem projection error fra det endelige mixture-rum
 og temporal/dynamisk discretization error \cite{nielsen}. Det samme princip
