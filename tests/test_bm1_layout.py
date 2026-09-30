@@ -125,10 +125,10 @@ class BMReviewEvaluatorTests(unittest.TestCase):
 
 
 class ConsolidatedLayoutTests(unittest.TestCase):
-    def test_exactly_four_bm_entrypoints(self):
+    def test_expected_bm_entrypoints(self):
         root = Path(__file__).resolve().parents[1]
         actual = {p.name for p in (root / 'src/exe/run_model/bm_1').glob('*.py')}
-        self.assertEqual(actual, {'verify.py', 'optimize.py', 'refine.py', 'real_data.py'})
+        self.assertEqual(actual, {'verify.py', 'optimize.py', 'refine.py', 'real_data.py', 'estimate.py'})
         for retired in (
             'src/method/bm_1_control.py', 'src/method/bm_1_objective.py',
             'src/method/bm_1_mixture.py', 'src/validation/method/bm_1.py',
@@ -165,7 +165,7 @@ class ConsolidatedLayoutTests(unittest.TestCase):
 
     def test_reference_cli_help(self):
         root = Path(__file__).resolve().parents[1]
-        for module in ('verify', 'optimize', 'refine', 'real_data'):
+        for module in ('verify', 'optimize', 'refine', 'real_data', 'estimate'):
             result = subprocess.run([sys.executable, '-B', '-m', 'src.exe.run_model.bm_1.' + module, '--help'],
                                     cwd=root, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -226,10 +226,10 @@ class ReportingTests(unittest.TestCase):
         self.assertLess(len(outputs[0].splitlines()), 12)
 
     def test_default_output_paths_cannot_overwrite_retained_evidence(self):
-        from src.exe.run_model.bm_1 import verify, optimize, refine, real_data
+        from src.exe.run_model.bm_1 import verify, optimize, refine, real_data, estimate
         root = Path(__file__).resolve().parents[1]
         runs = root / 'files/output/bm_1/runs'
-        for module in (verify, optimize, refine, real_data):
+        for module in (verify, optimize, refine, real_data, estimate):
             with self.subTest(module=module.__name__):
                 self.assertTrue(module.OUTPUT_DIR.is_relative_to(runs))
         self.assertIsNone(real_data._plot_location(None))
