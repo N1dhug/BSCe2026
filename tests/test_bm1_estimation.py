@@ -906,6 +906,44 @@ class F4DRepresentationTests(unittest.TestCase):
                 self.assertEqual(fit['failure_type'], 'FloatingPointError')
                 self.assertIn('forced signed projection', fit['failure_message'])
 
+    def test_d1b_adaptive_dictionaries_are_nested_and_preregistered_sizes(self):
+        from src.solver.finite_volume import finite_volume_1d
+        edges, _, dx = finite_volume_1d.grid(101)
+        dictionaries = mixture_f4.build_d1b_dictionaries(edges)
+        self.assertEqual(tuple(dictionaries), ('adaptive_A', 'adaptive_B'))
+        self.assertEqual(dictionaries['adaptive_A']['components'], 116)
+        self.assertEqual(dictionaries['adaptive_B']['components'], 180)
+        for dictionary in dictionaries.values():
+            np.testing.assert_allclose(
+                np.sum(dictionary['basis'], axis=1) * dx,
+                1.0,
+                atol=1e-9,
+                rtol=0.0,
+            )
+        pairs_a = set(zip(
+            np.round(dictionaries['adaptive_A']['means'], 12),
+            np.round(dictionaries['adaptive_A']['concentrations'], 12),
+        ))
+        pairs_b = set(zip(
+            np.round(dictionaries['adaptive_B']['means'], 12),
+            np.round(dictionaries['adaptive_B']['concentrations'], 12),
+        ))
+        self.assertLess(pairs_a, pairs_b)
+
+    def test_small_d1b_study_keeps_same_gates_and_allows_validated_fallback(self):
+        result = mixture_f4.run_f4_d_adaptive_representation_study(x_steps=61)
+        self.assertEqual(result['stage'], 'D1b')
+        self.assertFalse(result['fallback_disqualifies'])
+        self.assertEqual(result['gates']['cell_mass_l1'], mixture_f4.D1_L1_GATE)
+        self.assertEqual(result['gates']['wasserstein_1'], mixture_f4.D1_W1_GATE)
+        self.assertEqual(result['dictionary_order'], ('adaptive_A', 'adaptive_B'))
+        for name in result['dictionary_order']:
+            summary = result['results'][name]['summary']
+            self.assertEqual(summary['components'], 116 if name == 'adaptive_A' else 180)
+            if summary['eligible']:
+                self.assertTrue(summary['numerical_ok'])
+                self.assertTrue(summary['representation_ok'])
+
     def test_d1_selection_never_selects_legacy_comparison(self):
         result = mixture_f4.run_f4_d_representation_study(x_steps=61)
         self.assertNotIn(result['selected_dictionary'], ('legacy_degree_30', 'legacy_degree_38'))
