@@ -23,6 +23,7 @@ from src.method.beta_mixture import (
 )
 from src.validation import estimation as checks
 from src.validation.bm_1 import estimation as synthetic
+from src.validation.bm_1 import mixture_estimation as mixture_f4
 
 
 class ObservationContractTests(unittest.TestCase):
@@ -795,6 +796,99 @@ class FVStateFilterTests(unittest.TestCase):
                 self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
                 self.initial, 0., 1/24, .5, max_step=1/96, likelihood_quadrature_order=1.5,
             )
+
+
+class F4DRepresentationTests(unittest.TestCase):
+    def test_d1_target_suite_is_fixed_normalized_and_distinct(self):
+        from src.solver.finite_volume import finite_volume_1d
+        edges, _, dx = finite_volume_1d.grid(101)
+        targets = mixture_f4._target_suite(edges)
+        self.assertEqual(
+            tuple(targets),
+            (
+                'broad_center', 'narrow_center', 'shifted_narrow',
+                'bimodal', 'left_boundary', 'right_boundary',
+            ),
+        )
+        for target in targets.values():
+            self.assertAlmostEqual(float(np.sum(target['cell_mass'])), 1.0, places=12)
+            self.assertAlmostEqual(float(np.sum(target['density']) * dx), 1.0, places=12)
+            self.assertGreaterEqual(target['variance'], 0.0)
+        self.assertLess(targets['left_boundary']['mean'], 0.03)
+        self.assertGreater(targets['right_boundary']['mean'], 0.97)
+        self.assertLess(targets['narrow_center']['variance'], targets['broad_center']['variance'])
+
+    def test_d1_candidate_dictionaries_are_nested_and_legacy_is_comparison_only(self):
+        from src.solver.finite_volume import finite_volume_1d
+        edges, _, dx = finite_volume_1d.grid(101)
+        dictionaries = mixture_f4.build_d1_dictionaries(edges)
+        self.assertEqual(
+            tuple(dictionaries),
+            (
+                'legacy_degree_30', 'legacy_degree_38',
+                'multiscale_2', 'multiscale_3', 'multiscale_4',
+                'multiscale_4_boundary',
+            ),
+        )
+        self.assertEqual(
+            [dictionaries[name]['components'] for name in dictionaries],
+            [31, 39, 38, 57, 76, 92],
+        )
+        self.assertFalse(dictionaries['legacy_degree_30']['selectable'])
+        self.assertFalse(dictionaries['legacy_degree_38']['selectable'])
+        for name in ('multiscale_2', 'multiscale_3', 'multiscale_4', 'multiscale_4_boundary'):
+            dictionary = dictionaries[name]
+            self.assertTrue(dictionary['selectable'])
+            np.testing.assert_allclose(
+                np.sum(dictionary['basis'], axis=1) * dx,
+                1.0,
+                atol=1e-9,
+                rtol=0.0,
+            )
+        self.assertTrue(
+            set(np.round(dictionaries['multiscale_2']['concentrations'], 12))
+            < set(np.round(dictionaries['multiscale_3']['concentrations'], 12))
+        )
+        self.assertTrue(
+            set(np.round(dictionaries['multiscale_3']['concentrations'], 12))
+            < set(np.round(dictionaries['multiscale_4']['concentrations'], 12))
+        )
+
+    def test_small_d1_study_reports_all_declared_metrics_and_is_deterministic(self):
+        left = mixture_f4.run_f4_d_representation_study(x_steps=81)
+        right = mixture_f4.run_f4_d_representation_study(x_steps=81)
+        self.assertEqual(left['selected_dictionary'], right['selected_dictionary'])
+        self.assertEqual(left['dictionary_order'], right['dictionary_order'])
+        self.assertEqual(left['gates'], right['gates'])
+        for name in left['dictionary_order']:
+            litem = left['results'][name]
+            ritem = right['results'][name]
+            self.assertEqual(litem['summary'], ritem['summary'])
+            self.assertEqual(set(litem['fits']), set(left['targets']))
+            for target, fit in litem['fits'].items():
+                self.assertEqual(fit, ritem['fits'][target])
+                for key in (
+                    'density_l2', 'cell_mass_l1', 'cdf_sup', 'wasserstein_1',
+                    'mean_error', 'variance_error', 'optimality_gap', 'mass_error',
+                    'maximum_coefficient',
+                ):
+                    self.assertTrue(np.isfinite(fit[key]))
+                self.assertGreaterEqual(fit['active_components'], 1)
+        if left['selected_dictionary'] is not None:
+            chosen = left['results'][left['selected_dictionary']]['summary']
+            self.assertTrue(chosen['selectable'])
+            self.assertTrue(chosen['numerical_ok'])
+            self.assertTrue(chosen['representation_ok'])
+            self.assertTrue(chosen['eligible'])
+
+    def test_d1_selection_never_selects_legacy_comparison(self):
+        result = mixture_f4.run_f4_d_representation_study(x_steps=61)
+        self.assertNotIn(result['selected_dictionary'], ('legacy_degree_30', 'legacy_degree_38'))
+
+    def test_d1_invalid_grid_size_fails_explicitly(self):
+        for value in (20, 20.5, True):
+            with self.subTest(value=value), self.assertRaises((ValueError, TypeError)):
+                mixture_f4.run_f4_d_representation_study(x_steps=value)
 
 
 if __name__ == '__main__':
