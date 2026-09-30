@@ -218,14 +218,18 @@ def _slsqp_simplex_projection(matrix, target, x0):
         options={'ftol': 1e-16, 'maxiter': _FALLBACK_PROJECTION_MAX_ITER, 'disp': False},
     )
     coefficients = np.asarray(result.x, dtype=float)
+    # SLSQP's status flag is advisory here.  Some ill-conditioned but convex
+    # simplex projections terminate with e.g. "positive directional derivative"
+    # even though the returned point is feasible and satisfies our independent
+    # first-order optimality check below.  Reject infeasible/non-finite output
+    # here; _project_with_warm_start remains the authoritative optimality gate.
     if (
-        not result.success
-        or not np.all(np.isfinite(coefficients))
+        not np.all(np.isfinite(coefficients))
         or np.min(coefficients) < -_MASS_TOL
         or abs(float(np.sum(coefficients)) - 1.0) > _MASS_TOL
     ):
         raise RuntimeError(
-            'SLSQP fallback failed to solve the simplex-constrained Beta projection: '
+            'SLSQP fallback returned an infeasible simplex point: '
             + str(result.message),
         )
     return coefficients
@@ -248,11 +252,16 @@ def _project_with_warm_start(
     used_fallback = False
     try:
         coefficients = projector.solve(target, np.asarray(x0, dtype=float))
+        # A primary active-set result with even a tiny signed coefficient is
+        # not a valid probability vector.  Retry the *same* constrained problem
+        # with the independent backend instead of clipping/renormalizing it.
+        if np.any(coefficients < 0.0):
+            raise RuntimeError('Primary active-set projection returned a signed coefficient.')
     except (RuntimeError, np.linalg.LinAlgError):
         coefficients = _slsqp_simplex_projection(matrix, target, x0)
         used_fallback = True
     if (not np.all(np.isfinite(coefficients))
-            or np.min(coefficients) < -_MASS_TOL
+            or np.any(coefficients < 0.0)
             or abs(float(np.sum(coefficients)) - 1.0) > _MASS_TOL):
         raise RuntimeError('Beta projection failed probability constraints.')
     gap, gradient = projector.optimality_gap(target, coefficients)
