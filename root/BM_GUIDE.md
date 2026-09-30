@@ -19,6 +19,7 @@ vi vedligeholder ikke parallelle audit-/performance-/closure-dokumenter.
 
 ```powershell
 python -B -m unittest tests.test_bm1_estimation -q
+python -B -m src.exe.run_model.bm_1.estimate synthetic
 python -B -m unittest discover -s tests -q
 python -B root/f4/build.py
 ```
@@ -40,10 +41,10 @@ F4-0's uafhængige statiske kontrol er fortsat tilgængelig:
 python -B root/f4/verify_preparation.py
 ```
 
-Kommandoen laver ikke filter-, parameter- eller forecast-forsøg. Se eksisterende
-BM-kørsler med `python -B -m src.exe.run_model.bm_1.verify --help` og tilsvarende
-`optimize`, `refine`, `real_data`. En rigtig `estimate`-kommando tilføjes først,
-når den har en implementeret opgave i F4-B/C.
+Kommandoen laver ikke filter-, parameter- eller forecast-forsøg. Se eksisterende BM-kørsler med `python -B -m src.exe.run_model.bm_1.verify --help` og
+tilsvarende `optimize`, `refine`, `real_data`. F4-B tilføjer den første reelle estimation-
+entrypoint: `python -B -m src.exe.run_model.bm_1.estimate synthetic --help`. Den genererer
+kun syntetisk truth/observationer; det rekursive filter kommer i F4-C.
 
 ## Hvor kode hører hjemme
 
