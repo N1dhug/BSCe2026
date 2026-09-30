@@ -422,6 +422,77 @@ def run_mixture_holdout(args):
     )
     return result
 
+
+
+def run_mixture_filter_sanity(args):
+    """Run the preregistered F4-D D3a recursive mixture filter sanity."""
+    result = mixture_validation.run_f4_d_recursive_sanity(
+        sequence_id=args.sequence_id,
+        x_steps=args.cells,
+        max_step=args.max_step,
+        cfl=args.cfl,
+        likelihood_quadrature_order=args.quadrature_order,
+    )
+    print(
+        f"F4-D D3a recursive mixture filter: sequence={result['sequence_id']}; "
+        f"dictionary={result['dictionary']}; cells={result['x_steps']}; "
+        f"cfl={result['cfl']}; max_step={result['max_step']:.6e}"
+    )
+    initial = result['initial_projection_error']
+    print(
+        f"  initial projection: L1={initial['cell_mass_l1']:.6e}; "
+        f"W1={initial['wasserstein_1']:.6e}; L2={initial['density_l2']:.6e}"
+    )
+    for family, title in (
+        ('static_best_fit', 'static best-fit FV->mixture'),
+        ('dynamic_gap', 'dynamic mixture->static best-fit'),
+        ('total_fv_gap', 'total mixture->FV'),
+    ):
+        print(f"  {title}:")
+        for label in ('prediction', 'posterior'):
+            item = result[family][label]
+            print(
+                f"    {label}: max L1={item['maximum_cell_mass_l1']:.6e}; "
+                f"max W1={item['maximum_wasserstein_1']:.6e}; "
+                f"max CDF={item['maximum_cdf_sup']:.6e}; "
+                f"max L2={item['maximum_density_l2']:.6e}; "
+                f"max |dmean|={item['maximum_abs_mean_error']:.6e}; "
+                f"max |dvar|={item['maximum_abs_variance_error']:.6e}"
+            )
+    score = result['log_evidence_error']
+    print(
+        f"  log-evidence error: mean abs/obs={score['mean_absolute_per_observation']:.6e}; "
+        f"max abs/obs={score['maximum_absolute_per_observation']:.6e}; "
+        f"mean signed/obs={score['mean_signed_per_observation']:.6e}; "
+        f"|total diff|={score['absolute_total_log_likelihood_difference']:.6e}"
+    )
+    rmse = result['state_rmse']
+    print(
+        f"  state RMSE: FV pred={rmse['fv_predictive']:.6e}; "
+        f"FV post={rmse['fv_posterior']:.6e}; "
+        f"mixture pred={rmse['mixture_predictive']:.6e}; "
+        f"mixture post={rmse['mixture_posterior']:.6e}"
+    )
+    num = result['numerical']
+    print(
+        f"  numerics: internal steps={num['total_internal_steps']}; "
+        f"h range=[{num['minimum_internal_step']:.3e}, {num['maximum_internal_step']:.3e}]; "
+        f"prediction fallbacks={num['prediction_projection_fallback_count']}; "
+        f"posterior fallbacks={num['posterior_projection_fallback_count']}"
+    )
+    print(
+        f"    min raw prediction={num['maximum_raw_prediction_negativity']:.3e}; "
+        f"max raw mass error={num['maximum_abs_raw_prediction_mass_error']:.3e}; "
+        f"max projected mass error={num['maximum_abs_projected_prediction_mass_error']:.3e}; "
+        f"max Bayes->projected posterior L1={num['maximum_bayes_to_projected_posterior_l1']:.3e}"
+    )
+    print(
+        f"    cond(A)={num['projection_matrix_condition_number']:.3e}; "
+        f"cond(H)={num['hessian_condition_number']:.3e}"
+    )
+    return result
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -515,6 +586,17 @@ def build_parser():
     mixture_holdout.add_argument('--max-step', type=float, default=1.0 / 192.0)
     mixture_holdout.add_argument('--quadrature-order', type=int, default=1)
     mixture_holdout.set_defaults(handler=run_mixture_holdout)
+
+    mixture_filter = subparsers.add_parser(
+        'mixture-filter',
+        help='Run the preregistered F4-D D3a recursive mixture-filter sanity.',
+    )
+    mixture_filter.add_argument('--sequence-id', type=int, default=0)
+    mixture_filter.add_argument('--cells', type=int, default=101)
+    mixture_filter.add_argument('--max-step', type=float, default=1.0 / 384.0)
+    mixture_filter.add_argument('--cfl', type=float, default=0.4)
+    mixture_filter.add_argument('--quadrature-order', type=int, default=1)
+    mixture_filter.set_defaults(handler=run_mixture_filter_sanity)
     return parser
 
 
