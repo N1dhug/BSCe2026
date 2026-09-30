@@ -494,6 +494,10 @@ class FVStateFilterTests(unittest.TestCase):
         self.model, self.parameters = self.case.build_model()
         self.initial = synthetic.beta_initial_mass(self.case, self.model, 61)
 
+    def test_beta_initial_mass_preserves_resolvable_tails(self):
+        self.assertTrue(np.all(self.initial > 0.0))
+        self.assertAlmostEqual(float(np.sum(self.initial)), 1.0, places=14)
+
     def test_one_step_matches_direct_prediction_and_center_bayes(self):
         time = self.sequence.observations.times[0]
         y = self.sequence.observations.values[0]
