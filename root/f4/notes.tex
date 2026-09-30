@@ -749,6 +749,48 @@ afslutning. Først derefter køres mindst 200 uafhængige sekvenser med de prær
 \(\operatorname{RMSE}_0,\operatorname{RMSE}_-,\operatorname{RMSE}_+\), marginal
 90\%-dækning ved 6/12/24 timer og predictive log score før assimilation.
 
+\subsection{C3-resultat og C4-preregistrering}
+På sequence 0 med den låste refinementplan gav rumrækken en maksimal ændring i
+posterior-RMSE på \(1.152522\times10^{-4}\), tidsrækken
+\(1.768636\times10^{-5}\), og measurement-quadraturen
+\(3.073403\times10^{-6}\), målt mod det fineste niveau i hver række. Relative
+til samme referencekørsels assimilationseffekt er forholdene henholdsvis cirka
+\(0.0038\), \(0.0006\) og \(0.0001\), altså alle langt under 10\%-arbejdsgaten.
+Gauss--Legendre \(q=3\) og \(q=5\) gav samme viste RMSE og log-likelihood.
+Den største ændring i samlet predictive log-likelihood var derimod cirka
+\(0.0483\) under FV-tidsrefinement. Det ændrer ikke C's state-RMSE-konklusion,
+men senere parameter-likelihoodstudier skal derfor genundersøge evidence-numerikken
+på deres egen skala og recordlængde.
+
+Populationsstudiet låses før resultaterne til 200 nye, uafhængige sekvenser med
+sequence-id 1--200. Sequence 0 udelades, fordi den allerede er brugt til sanity og
+refinement. Numerikken holdes på det tidligere baselinevalg
+\[
+ N_x=201,\qquad h_{\max}=1/192\ \text{dag},\qquad q=1.
+\]
+Det primære benchmark er fortsat
+\[
+ \operatorname{RMSE}_+\leq0.95\operatorname{RMSE}_0
+\]
+beregnet over alle 24 observationstider og alle sekvenser. Der rapporteres også
+\(\operatorname{RMSE}_-\). Usikkerheden på RMSE-ratioerne beregnes med paired
+nonparametrisk bootstrap, hvor hele sekvenser resamples som enheder; 5000
+replikater og fast bootstrap-seed 4201 bruges. Dermed behandles de 24 tider i
+samme sekvens ikke som 24 uafhængige observationer.
+
+Predictive log score for \(Y_k\) beregnes før assimilation fra \(p_k^-\). Som
+baseline scores den samme faktiske \(Y_k\) mod open-propagation state-law uden at
+Bayes-posterioren føres videre. Første observation skal derfor have identisk
+filter- og open-score, fordi ingen tidligere måling findes.
+
+Kalibrering rapporteres som centrale 90\%-posteriorintervaller for state ved
+6, 12 og 24 timer. Kvantiler beregnes inde i FV-cellerne under den
+piecewise-konstante density, ikke ved at snap'e til cellecentre. På hvert tidspunkt
+er de 200 sekvenser observationsenheden; coverage ledsages af Wilson 95\%-interval
+og gennemsnitlig intervalbredde. Hvis en synthetic truth-sekvens har rå
+Euler--Maruyama-randoverskridelser, stoppes populationsstudiet eksplicit; sådanne
+sekvenser må ikke droppes, clippes eller reflekteres i stilhed.
+
 \section{Bevaret statisk F4-0-evidens}
 \subsection{Et konkret statisk resultat}
 Kontrollen bruger \(X_0\sim\Beta(20,20)\), \(B=U=Y=0.5\), \(k=2\), \(\Xi=1\) og \(\sigma_Y=0.01\), uden prediction. Uafhængig numerisk quadrature af den kontinuerte Bayes-update giver
