@@ -48,6 +48,10 @@ D3A_X_STEPS = 101
 D3A_MAX_STEP = 1.0 / 384.0
 D3A_CFL = 0.4
 D3A_QUADRATURE_ORDER = 1
+D3B_TIME_STEPS = (1.0 / 384.0, 1.0 / 768.0, 1.0 / 1536.0)
+D3B_SPATIAL_CELLS = (51, 101, 151)
+D3B_SPATIAL_MAX_STEP = 1.0 / 1536.0
+D3B_STABILITY_RATIO = 0.10
 
 _INNER_MEANS = np.arange(1, 20, dtype=float) / 20.0
 _BOUNDARY_MEANS = np.array([0.01, 0.025, 0.975, 0.99], dtype=float)
@@ -926,4 +930,147 @@ def run_f4_d_recursive_sanity(
         "numerical": numerical,
         "mixture": mixture,
         "fv": fv,
+    }
+
+
+
+def _d3_refinement_row(result, *, axis, level):
+    """Extract compact metrics from one D3a configuration for refinement."""
+    total_pred = result["total_fv_gap"]["prediction"]
+    total_post = result["total_fv_gap"]["posterior"]
+    dynamic_pred = result["dynamic_gap"]["prediction"]
+    dynamic_post = result["dynamic_gap"]["posterior"]
+    static_pred = result["static_best_fit"]["prediction"]
+    static_post = result["static_best_fit"]["posterior"]
+    evidence = result["log_evidence_error"]
+    rmse = result["state_rmse"]
+    numerical = result["numerical"]
+    return {
+        "axis": axis,
+        "level": level,
+        "x_steps": result["x_steps"],
+        "requested_max_step": result["max_step"],
+        "actual_max_step": numerical["maximum_internal_step"],
+        "actual_min_step": numerical["minimum_internal_step"],
+        "internal_steps": numerical["total_internal_steps"],
+        "static_prediction_l1": static_pred["maximum_cell_mass_l1"],
+        "static_posterior_l1": static_post["maximum_cell_mass_l1"],
+        "dynamic_prediction_l1": dynamic_pred["maximum_cell_mass_l1"],
+        "dynamic_posterior_l1": dynamic_post["maximum_cell_mass_l1"],
+        "total_prediction_l1": total_pred["maximum_cell_mass_l1"],
+        "total_posterior_l1": total_post["maximum_cell_mass_l1"],
+        "total_prediction_w1": total_pred["maximum_wasserstein_1"],
+        "total_posterior_w1": total_post["maximum_wasserstein_1"],
+        "evidence_mean_abs": evidence["mean_absolute_per_observation"],
+        "evidence_max_abs": evidence["maximum_absolute_per_observation"],
+        "evidence_total_abs": evidence["absolute_total_log_likelihood_difference"],
+        "fv_predictive_rmse": rmse["fv_predictive"],
+        "fv_posterior_rmse": rmse["fv_posterior"],
+        "mixture_predictive_rmse": rmse["mixture_predictive"],
+        "mixture_posterior_rmse": rmse["mixture_posterior"],
+        "prediction_fallbacks": numerical["prediction_projection_fallback_count"],
+        "posterior_fallbacks": numerical["posterior_projection_fallback_count"],
+        "max_raw_mass_error": numerical["maximum_abs_raw_prediction_mass_error"],
+        "max_projected_mass_error": numerical["maximum_abs_projected_prediction_mass_error"],
+        "max_posterior_projection_mass_error": numerical["maximum_posterior_projection_mass_error"],
+        "max_bayes_projection_l1": numerical["maximum_bayes_to_projected_posterior_l1"],
+        "projection_matrix_condition_number": numerical["projection_matrix_condition_number"],
+        "hessian_condition_number": numerical["hessian_condition_number"],
+    }
+
+
+def _d3_refinement_metric_summary(rows, metric):
+    reference = rows[-1]
+    reference_value = float(reference[metric])
+    effects = [abs(float(row[metric]) - reference_value) for row in rows[:-1]]
+    maximum_effect = max(effects, default=0.0)
+    ratio = np.nan if abs(reference_value) < 1e-14 else maximum_effect / abs(reference_value)
+    return {
+        "reference_level": reference["level"],
+        "reference_value": reference_value,
+        "maximum_effect": maximum_effect,
+        "effect_to_reference_ratio": ratio,
+        "passes_10pct": bool(np.isfinite(ratio) and ratio <= D3B_STABILITY_RATIO),
+    }
+
+
+def _d3_refinement_axis_summary(rows):
+    posterior = _d3_refinement_metric_summary(rows, "total_posterior_l1")
+    evidence = _d3_refinement_metric_summary(rows, "evidence_mean_abs")
+    return {
+        "posterior_l1": posterior,
+        "evidence_mean_abs": evidence,
+        "passes_stability_gate": bool(
+            posterior["passes_10pct"] and evidence["passes_10pct"]
+        ),
+    }
+
+
+def run_f4_d_recursive_refinement(
+    sequence_id=D3A_SEQUENCE_ID,
+    *,
+    time_steps=D3B_TIME_STEPS,
+    spatial_cells=D3B_SPATIAL_CELLS,
+    spatial_max_step=D3B_SPATIAL_MAX_STEP,
+    cfl=D3A_CFL,
+    likelihood_quadrature_order=D3A_QUADRATURE_ORDER,
+):
+    """Run preregistered D3b time/projection-frequency and spatial refinement.
+
+    The exact (x_steps, max_step) configuration is memoized within this study,
+    so the shared (101, 1/1536) fine-time/spatial-middle run is computed once.
+    """
+    sequence_id = checks.positive_integer(sequence_id, "sequence_id", minimum=0)
+    time_steps = tuple(checks.finite_scalar(v, "time step", positive=True) for v in time_steps)
+    spatial_cells = tuple(checks.positive_integer(v, "spatial cell count", minimum=21) for v in spatial_cells)
+    spatial_max_step = checks.finite_scalar(spatial_max_step, "spatial_max_step", positive=True)
+    cfl = checks.finite_scalar(cfl, "cfl", positive=True)
+    order = checks.positive_integer(
+        likelihood_quadrature_order, "likelihood_quadrature_order", minimum=1,
+    )
+    if not time_steps or not spatial_cells:
+        raise ValueError("D3b refinement levels must be non-empty.")
+    if tuple(sorted(set(time_steps), reverse=True)) != time_steps:
+        raise ValueError("time_steps must be unique and strictly refined (decreasing).")
+    if tuple(sorted(set(spatial_cells))) != spatial_cells:
+        raise ValueError("spatial_cells must be unique and increasing.")
+
+    cache = {}
+    def run_config(x_steps, max_step):
+        key = (int(x_steps), float(max_step))
+        if key not in cache:
+            cache[key] = run_f4_d_recursive_sanity(
+                sequence_id=sequence_id,
+                x_steps=x_steps,
+                max_step=max_step,
+                cfl=cfl,
+                likelihood_quadrature_order=order,
+            )
+        return cache[key]
+
+    time_rows = [
+        _d3_refinement_row(
+            run_config(D3A_X_STEPS, h), axis="time", level=h,
+        )
+        for h in time_steps
+    ]
+    spatial_rows = [
+        _d3_refinement_row(
+            run_config(n, spatial_max_step), axis="space", level=n,
+        )
+        for n in spatial_cells
+    ]
+    return {
+        "stage": "D3b",
+        "sequence_id": sequence_id,
+        "cfl": cfl,
+        "likelihood_quadrature_order": order,
+        "time": time_rows,
+        "spatial": spatial_rows,
+        "summary": {
+            "time": _d3_refinement_axis_summary(time_rows),
+            "spatial": _d3_refinement_axis_summary(spatial_rows),
+        },
+        "unique_configurations": tuple(cache),
+        "stability_ratio": D3B_STABILITY_RATIO,
     }
