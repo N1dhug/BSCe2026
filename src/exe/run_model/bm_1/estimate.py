@@ -493,6 +493,46 @@ def run_mixture_filter_sanity(args):
     return result
 
 
+
+def run_mixture_filter_refinement(args):
+    """Run the preregistered F4-D D3b numerical refinement study."""
+    result = mixture_validation.run_f4_d_recursive_refinement(
+        sequence_id=args.sequence_id,
+    )
+    print(f"F4-D D3b recursive mixture refinement: sequence={result['sequence_id']}")
+    print(
+        "  axis/level          cells  req h        actual h     steps   "
+        "total post L1  evidence |err|/obs  mix post RMSE  fallbacks"
+    )
+    for axis in ('time', 'spatial'):
+        for row in result[axis]:
+            level = row['level']
+            level_text = f"{level:.6g}" if isinstance(level, float) else str(level)
+            fallbacks = row['prediction_fallbacks'] + row['posterior_fallbacks']
+            print(
+                f"  {axis}/{level_text:<11} {row['x_steps']:>5d}  "
+                f"{row['requested_max_step']:.3e}  {row['actual_max_step']:.3e}  "
+                f"{row['internal_steps']:>5d}   {row['total_posterior_l1']:.6e}   "
+                f"{row['evidence_mean_abs']:.6e}       "
+                f"{row['mixture_posterior_rmse']:.6e}   {fallbacks}"
+            )
+        summary = result['summary'][axis]
+        p = summary['posterior_l1']
+        e = summary['evidence_mean_abs']
+        print(
+            f"  {axis} summary: posterior-L1 max effect={p['maximum_effect']:.6e}; "
+            f"effect/reference={p['effect_to_reference_ratio']:.4f}; "
+            f"evidence max effect={e['maximum_effect']:.6e}; "
+            f"effect/reference={e['effect_to_reference_ratio']:.4f}; "
+            f"passes={summary['passes_stability_gate']}"
+        )
+    print(
+        f"  unique configurations={len(result['unique_configurations'])}; "
+        f"stability ratio gate={result['stability_ratio']:.2f}"
+    )
+    return result
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -597,6 +637,13 @@ def build_parser():
     mixture_filter.add_argument('--cfl', type=float, default=0.4)
     mixture_filter.add_argument('--quadrature-order', type=int, default=1)
     mixture_filter.set_defaults(handler=run_mixture_filter_sanity)
+
+    mixture_filter_refine = subparsers.add_parser(
+        'mixture-filter-refine',
+        help='Run the preregistered F4-D D3b time/spatial refinement study.',
+    )
+    mixture_filter_refine.add_argument('--sequence-id', type=int, default=0)
+    mixture_filter_refine.set_defaults(handler=run_mixture_filter_refinement)
     return parser
 
 
