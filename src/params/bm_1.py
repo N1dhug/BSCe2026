@@ -1,4 +1,4 @@
-"""F4 preparation: observation contract, Bayes primitives and conservative remap.
+"""F4 estimation primitives: observation contract, Bayes update and conservative remap.
 
 These are not a complete filter, parameter fitter or forecasting application.
 FP prediction remains in the existing method/solver modules. The module does
