@@ -195,6 +195,19 @@ class ConditioningIntegrationTests(unittest.TestCase):
         self.assertTrue(np.isfinite(pert['maximum_coefficient_amplification']))
 
 
+class ActiveSetBoundaryRegressionTests(unittest.TestCase):
+
+    def test_simultaneous_active_bounds_do_not_leave_negative_roundoff(self):
+        from src.method.beta_mixture import _SimplexProjector
+        matrix = np.eye(4)
+        target = np.array([1.0, 1.0, -1.0, -1.0])
+        start = np.full(4, 0.25)
+        result = _SimplexProjector(matrix).solve(target, start)
+        np.testing.assert_allclose(result, [0.5, 0.5, 0.0, 0.0], atol=1e-14, rtol=0.0)
+        self.assertGreaterEqual(float(np.min(result)), 0.0)
+        self.assertAlmostEqual(float(np.sum(result)), 1.0, places=14)
+
+
 class PreparedSimplexAuditTests(unittest.TestCase):
 
     def test_identity_problem_matches_exact_simplex_projection(self):
