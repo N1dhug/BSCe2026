@@ -321,11 +321,24 @@ def run_mixture_static(args):
             f"{item['projection_matrix_condition_number']:.3e}  "
             f"{str(item['any_fallback']):>8}  {str(item['eligible']):>8}"
         )
-        print(
-            f"    worst L1={item['worst_l1_target']}; "
-            f"worst W1={item['worst_w1_target']}; "
-            f"condition alarm={item['conditioning_alarm']}"
-        )
+        if item['failed_targets']:
+            print(
+                "    FAILED targets="
+                + ", ".join(item['failed_targets'])
+                + "; no clipping/repair was applied"
+            )
+            for target in item['failed_targets']:
+                fit = result['results'][name]['fits'][target]
+                print(
+                    f"      {target}: {fit['failure_type']}: "
+                    f"{fit['failure_message']}"
+                )
+        else:
+            print(
+                f"    worst L1={item['worst_l1_target']}; "
+                f"worst W1={item['worst_w1_target']}; "
+                f"condition alarm={item['conditioning_alarm']}"
+            )
     selected = result['selected_dictionary']
     print(f"  selected dictionary={selected if selected is not None else 'NONE'}")
     if selected is not None:
