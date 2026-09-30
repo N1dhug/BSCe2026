@@ -274,31 +274,74 @@ def _draw_measurement_noise(case, sequence_id):
     return rng.normal(0.0, case.sigma_y, size=case.observation_times.size)
 
 
-def _integration_grid(case, max_step):
-    model, _ = case.build_model()
-    return model.euler_maruyama.build_time_grid(
-        case.output_times,
-        breakpoints=case.breakpoints,
-        max_step=max_step,
-    )[0]
+def _truth_grid(case, max_step):
+    """Build the declared uniform truth grid and exact output indices.
+
+    F4-B's 1/1152 and 1/2304 day grids are mathematically nested.  Building
+    them directly avoids output-segment floating-point roundoff from silently
+    adding different substeps and destroying Brownian coupling.
+    """
+    start, end = case.horizon
+    ratio = (end - start) / max_step
+    n_steps = int(round(ratio))
+    if n_steps < 1 or not np.isclose(ratio, n_steps, atol=1e-12, rtol=0.0):
+        raise ValueError('truth max step must divide the synthetic horizon exactly.')
+    integration_t = np.linspace(start, end, n_steps + 1, dtype=float)
+
+    def indices_for(values, name):
+        values = np.asarray(values, dtype=float)
+        scaled = (values - start) / (end - start) * n_steps
+        indices = np.rint(scaled).astype(int)
+        if (np.any(indices < 0) or np.any(indices > n_steps)
+                or not np.allclose(integration_t[indices], values, atol=1e-14, rtol=0.0)):
+            raise ValueError(f'{name} must lie exactly on the declared uniform truth grid.')
+        return indices
+
+    output_indices = indices_for(case.output_times, 'output_times')
+    indices_for(case.breakpoints, 'price breakpoints')
+    return integration_t, output_indices
 
 
 def _simulate(case, sequence_id, *, initial_state, measurement_noise, max_step,
               brownian_increments):
     model, parameters = case.build_model()
-    result = model.euler_maruyama_solver(
+    integration_t, output_indices = _truth_grid(case, max_step)
+
+    def drift(time, states):
+        return model._drift(time, states, parameters)
+
+    def diffusion(time, states):
+        del time
+        return model.diffusion_coefficient(states, case.sigma_x)
+
+    paths, diagnostics = model.euler_maruyama.solve_paths(
+        integration_t,
         [initial_state],
-        parameters,
-        case.sigma_x,
+        drift,
+        diffusion,
         n_paths=1,
         boundary='none',
-        t_eval=case.output_times,
-        breakpoints=case.breakpoints,
-        max_step=max_step,
         brownian_increments=brownian_increments,
         return_diagnostics=True,
     )
-    times, state, price, baseline, _, _, _, demand, diagnostics = result
+    state = paths[0, output_indices]
+    times = case.output_times
+    price, baseline, _, _, _, demand = model.eval(
+        times,
+        state,
+        parameters[0],
+        parameters[1],
+        parameters[2],
+        parameters[4],
+        parameters[5],
+    )
+    diagnostics = diagnostics.copy()
+    diagnostics.update({
+        'output_t': np.asarray(times, dtype=float).copy(),
+        'output_indices': output_indices.copy(),
+        'breakpoints': np.asarray(case.breakpoints, dtype=float).copy(),
+        'requested_max_step': max_step,
+    })
     observations = BM1ObservationSeries(
         times=case.observation_times,
         values=np.asarray(demand[1:], dtype=float) + measurement_noise,
@@ -327,7 +370,7 @@ def generate_synthetic_sequence(case=None, *, sequence_id=0):
     sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
     initial_state = _draw_initial_state(case, sequence_id)
     measurement_noise = _draw_measurement_noise(case, sequence_id)
-    integration_t = _integration_grid(case, case.truth_max_step)
+    integration_t, _ = _truth_grid(case, case.truth_max_step)
     model, _ = case.build_model()
     brownian = model.euler_maruyama.brownian_increments(
         integration_t,
@@ -350,8 +393,8 @@ def generate_coupled_refinement(case=None, *, sequence_id=0):
     if not isinstance(case, BM1SyntheticCase):
         raise TypeError('case must be a BM1SyntheticCase.')
     sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
-    coarse_t = _integration_grid(case, case.truth_max_step)
-    fine_t = _integration_grid(case, case.truth_fine_max_step)
+    coarse_t, _ = _truth_grid(case, case.truth_max_step)
+    fine_t, _ = _truth_grid(case, case.truth_fine_max_step)
     ratio = case.truth_max_step / case.truth_fine_max_step
     factor = int(round(ratio))
     if factor < 2 or not np.isclose(ratio, factor, atol=1e-12, rtol=0.0):
