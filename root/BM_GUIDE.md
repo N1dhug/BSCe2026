@@ -47,17 +47,16 @@ python -B root/f4/verify_preparation.py
 ```
 
 Kommandoen laver ikke filter-, parameter- eller forecast-forsøg. Se eksisterende BM-kørsler med `python -B -m src.exe.run_model.bm_1.verify --help` og
-tilsvarende `optimize`, `refine`, `real_data`. F4-B tilføjer den første reelle estimation-
-entrypoint: `python -B -m src.exe.run_model.bm_1.estimate synthetic --help`. Den genererer
-kun syntetisk truth/observationer; det rekursive filter kommer i F4-C.
+tilsvarende `optimize`, `refine`, `real_data`. F4-B tilføjer den første reelle estimation-entrypoint via `estimate synthetic`; F4-C
+udvider samme entrypoint med det rekursive FV-filter og de dokumenterede validation-kørsler.
 
 ## Hvor kode hører hjemme
 
 | Placering | Ansvar |
 |---|---|
 | `src/model/` | Fysiske ligninger og modelinterfaces. |
-| `src/method/`, `src/solver/` | Numeriske metoder og lavniveau-solvers. |
-| `src/params/bm_1.py` | Estimationskontrakter, filter, likelihood og parameterestimation. |
+| `src/method/`, `src/solver/` | Numeriske metoder og lavniveau-solvers; `bm_1_estimation.py` indeholder den rekursive BM1-estimatorkerne. |
+| `src/params/bm_1.py` | Generiske F4-observations-, Bayes-, likelihood- og remap-primitiver; ingen komplet estimator. |
 | `src/control/` | F3-problem, fælles cost og prisoptimering. |
 | `src/validation/estimation.py` | Offentlige inputkontroller; ingen eksperimenter. |
 | `src/validation/bm_1/` | Referencecases, datagenerator og videnskabelige undersøgelser. |
