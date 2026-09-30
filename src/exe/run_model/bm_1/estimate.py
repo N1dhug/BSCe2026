@@ -141,6 +141,40 @@ def run_filter(args):
         )
     return result
 
+
+def _print_refinement_axis(title, rows):
+    print(title)
+    print('  level          RMSE open    RMSE pred    RMSE post    logL        steps   actual h')
+    for row in rows:
+        level = row['level']
+        level_text = f'{level:.6g}' if isinstance(level, float) else str(level)
+        print(
+            f"  {level_text:<12} "
+            f"{row['rmse_open']:.6e}  {row['rmse_predictive']:.6e}  "
+            f"{row['rmse_posterior']:.6e}  {row['total_log_likelihood']:.6f}  "
+            f"{row['n_steps']:>5d}   {row['actual_max_step']:.6e}"
+        )
+
+
+def run_filter_refinement(args):
+    """Run the preregistered one-at-a-time F4-C numerical refinement study."""
+    result = synthetic.run_f4_c_refinement(sequence_id=args.sequence_id)
+    print(f'F4-C numerical refinement: sequence {args.sequence_id}')
+    _print_refinement_axis('Spatial cells', result['spatial'])
+    _print_refinement_axis('FV max step [day]', result['time'])
+    _print_refinement_axis('Measurement quadrature order', result['quadrature'])
+    for axis in ('spatial', 'time', 'quadrature'):
+        summary = result['summary'][axis]
+        ratio = summary['effect_to_assimilation_ratio']
+        ratio_text = 'n/a' if not np.isfinite(ratio) else f'{ratio:.4f}'
+        print(
+            f"  {axis}: max posterior-RMSE refinement effect="
+            f"{summary['maximum_posterior_rmse_effect']:.6e}; "
+            f"effect/assimilation={ratio_text}; "
+            f"max |delta logL|={summary['maximum_log_likelihood_effect']:.6e}"
+        )
+    return result
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -170,6 +204,13 @@ def build_parser():
     filter_command.add_argument('--max-step', type=float, default=1.0 / 192.0)
     filter_command.add_argument('--quadrature-order', type=int, default=1)
     filter_command.set_defaults(handler=run_filter)
+
+    refinement = subparsers.add_parser(
+        'filter-refine',
+        help='Run F4-C spatial/time/measurement-quadrature refinement on fixed synthetic data.',
+    )
+    refinement.add_argument('--sequence-id', type=int, default=0)
+    refinement.set_defaults(handler=run_filter_refinement)
     return parser
 
 
