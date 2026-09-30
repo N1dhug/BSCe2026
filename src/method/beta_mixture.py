@@ -250,15 +250,30 @@ def _project_with_warm_start(
     if projector is None:
         projector = _SimplexProjector(matrix)
     used_fallback = False
+    start = np.asarray(x0, dtype=float)
     try:
-        coefficients = projector.solve(target, np.asarray(x0, dtype=float))
+        coefficients = projector.solve(target, start)
         # A primary active-set result with even a tiny signed coefficient is
-        # not a valid probability vector.  Retry the *same* constrained problem
+        # not a valid probability vector. Retry the *same* constrained problem
         # with the independent backend instead of clipping/renormalizing it.
         if np.any(coefficients < 0.0):
             raise RuntimeError('Primary active-set projection returned a signed coefficient.')
+        primary_gap, primary_gradient = projector.optimality_gap(target, coefficients)
+        primary_scale = max(1.0, float(np.max(np.abs(primary_gradient))))
+        if (
+            not np.isfinite(primary_gap)
+            or primary_gap > _PROJECTION_GAP_TOL * primary_scale
+        ):
+            # A solver may terminate at a feasible point that does not satisfy
+            # the independent first-order simplex check. That is a numerical
+            # backend failure, not a reason to reject the unchanged convex
+            # projection problem. Retry it with SLSQP from the feasible point.
+            coefficients = _slsqp_simplex_projection(
+                matrix, target, coefficients,
+            )
+            used_fallback = True
     except (RuntimeError, np.linalg.LinAlgError):
-        coefficients = _slsqp_simplex_projection(matrix, target, x0)
+        coefficients = _slsqp_simplex_projection(matrix, target, start)
         used_fallback = True
     if (not np.all(np.isfinite(coefficients))
             or np.any(coefficients < 0.0)
@@ -266,8 +281,13 @@ def _project_with_warm_start(
         raise RuntimeError('Beta projection failed probability constraints.')
     gap, gradient = projector.optimality_gap(target, coefficients)
     tolerance = _FALLBACK_GAP_TOL if used_fallback else _PROJECTION_GAP_TOL
-    if not np.isfinite(gap) or gap > tolerance * max(1.0, float(np.max(np.abs(gradient)))):
-        raise RuntimeError('Beta projection failed the independent simplex optimality check.')
+    scale = max(1.0, float(np.max(np.abs(gradient))))
+    if not np.isfinite(gap) or gap > tolerance * scale:
+        raise RuntimeError(
+            'Beta projection failed the independent simplex optimality check: '
+            f'gap={gap:.3e}, allowed={tolerance * scale:.3e}, '
+            f'backend={"slsqp-fallback" if used_fallback else "active-set"}.'
+        )
     projected = coefficients @ basis
     if return_fallback:
         return (coefficients, projected, used_fallback)
