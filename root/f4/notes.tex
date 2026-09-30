@@ -791,6 +791,50 @@ og gennemsnitlig intervalbredde. Hvis en synthetic truth-sekvens har rå
 Euler--Maruyama-randoverskridelser, stoppes populationsstudiet eksplicit; sådanne
 sekvenser må ikke droppes, clippes eller reflekteres i stilhed.
 
+\subsection{C4-populationsresultat og kalibreringsdiagnostik}
+Det preregistrerede studie blev kørt på sequence-id 1--200 med
+\(N_x=201\), \(h_{\max}=1/192\) dag og \(q=1\). Resultatet var
+\begin{align}
+ \operatorname{RMSE}_0 &= 8.713209\times10^{-2},\\
+ \operatorname{RMSE}_- &= 3.663522\times10^{-2},\\
+ \operatorname{RMSE}_+ &= 2.419590\times10^{-2}.
+\end{align}
+Ratioerne blev
+\[
+ \operatorname{RMSE}_-/\operatorname{RMSE}_0=0.420456,\qquad
+ \operatorname{RMSE}_+/\operatorname{RMSE}_0=0.277692,
+\]
+med paired bootstrap-95\%-intervaller henholdsvis
+\([0.395617,0.447835]\) og \([0.258974,0.298796]\). Det låste
+5\%-benchmark \(\operatorname{RMSE}_+\leq0.95\operatorname{RMSE}_0\)
+er dermed klart opfyldt.
+
+Den predictive Y-log score før assimilation var i gennemsnit 1.701590 pr.
+observation for filteret og 1.042833 for open propagation. Den paired forbedring
+var 0.658757 med bootstrap-95\% \([0.603060,0.722258]\). Ved første observation
+var forskellen numerisk nul, som krævet, fordi ingen tidligere observation findes.
+
+De centrale 90\%-posteriorintervaller gav coverage
+\[
+ 0.88\ (6\text{h}),\qquad 0.84\ (12\text{h}),\qquad 0.90\ (24\text{h}).
+\]
+Wilson-95\%-intervallerne var henholdsvis \([0.828,0.918]\),
+\([0.783,0.884]\) og \([0.851,0.934]\). Det nominelle 0.90-niveau ligger derfor
+ikke i 12h-intervallet. Resultatet viser god point-estimation og predictive score,
+men midt-dagskalibreringen må ikke beskrives som fuldt valideret.
+
+Ingen af de 200 truth-sekvenser havde rå EM-randoverskridelser. Open-propagationen
+havde maksimal massefejl \(3.109\times10^{-15}\) og positiv minimum cellemasse.
+
+Efter dette resultat fastlægges en særskilt post-hoc årsagsdiagnostik, som ikke
+ændrer det primære C4-resultat: de samme sequence-id 1--200 køres med én numerisk
+ændring ad gangen, nemlig 401 celler, \(h_{\max}=1/384\) dag og
+measurement-quadrature \(q=3\). For hver variant rapporteres coverage og
+intervalbredde ved 6/12/24h samt posterior-mean RMSE divideret med root-mean
+posterior-variance. Hvis undercoverage er næsten uændret, er det evidens imod, at
+den primært skyldes den valgte C-baseline-numerik; det er ikke i sig selv bevis
+for, hvilken anden mekanisme der forklarer afvigelsen.
+
 \section{Bevaret statisk F4-0-evidens}
 \subsection{Et konkret statisk resultat}
 Kontrollen bruger \(X_0\sim\Beta(20,20)\), \(B=U=Y=0.5\), \(k=2\), \(\Xi=1\) og \(\sigma_Y=0.01\), uden prediction. Uafhængig numerisk quadrature af den kontinuerte Bayes-update giver
