@@ -986,6 +986,70 @@ class F4DRepresentationTests(unittest.TestCase):
                 self.assertTrue(summary['numerical_ok'])
                 self.assertTrue(summary['representation_ok'])
 
+    def test_d2_holdout_constants_are_frozen_beyond_c_population_ids(self):
+        self.assertEqual(mixture_f4.D2_SEQUENCE_START, 1001)
+        self.assertEqual(mixture_f4.D2_SEQUENCE_COUNT, 10)
+        self.assertEqual(mixture_f4.D2_X_STEPS, 801)
+        self.assertEqual(mixture_f4.D2_MAX_STEP, 1/192)
+        self.assertEqual(mixture_f4.D2_QUADRATURE_ORDER, 1)
+        self.assertEqual(mixture_f4.D2_DICTIONARY, 'shape_D')
+
+    def test_d2_snapshot_summary_requires_both_representation_and_numerics(self):
+        good = {
+            'status': 'ok',
+            'density_l2': .01,
+            'cell_mass_l1': .02,
+            'cdf_sup': .01,
+            'wasserstein_1': .002,
+            'mean_error': 1e-4,
+            'variance_error': 2e-5,
+            'optimality_gap': 1e-12,
+            'mass_error': 1e-12,
+            'used_fallback': True,
+            'active_components': 3,
+            'maximum_coefficient': .7,
+        }
+        summary = mixture_f4._aggregate_snapshot_fits([good, dict(good)])
+        self.assertTrue(summary['passes_representation_gate'])
+        self.assertEqual(summary['fallback_count'], 2)
+        bad = dict(good)
+        bad['cell_mass_l1'] = .051
+        self.assertFalse(
+            mixture_f4._aggregate_snapshot_fits([bad])['passes_representation_gate']
+        )
+        failed = {
+            'status': 'failed',
+            'failure_type': 'RuntimeError',
+            'failure_message': 'forced',
+        }
+        failed_summary = mixture_f4._aggregate_snapshot_fits([good, failed])
+        self.assertFalse(failed_summary['passes_representation_gate'])
+        self.assertEqual(failed_summary['failed_snapshot_indices'], (1,))
+
+    def test_small_d2_holdout_uses_frozen_shape_d_and_reports_evidence(self):
+        result = mixture_f4.run_f4_d_snapshot_holdout(
+            sequence_start=0,
+            n_sequences=1,
+            x_steps=201,
+            max_step=1/24,
+            likelihood_quadrature_order=1,
+        )
+        self.assertEqual(result['stage'], 'D2')
+        self.assertEqual(result['dictionary'], 'shape_D')
+        self.assertEqual(result['sequence_ids'], (0,))
+        self.assertEqual(result['invalid_truth_sequences'], ())
+        self.assertEqual(result['x_steps'], 201)
+        self.assertEqual(
+            result['predictive_log_evidence_error']['expected_count'], 24
+        )
+        self.assertGreaterEqual(
+            result['predictive_log_evidence_error']['count'], 0
+        )
+        self.assertTrue(np.isfinite(result['projection_matrix_condition_number']))
+        for label in ('prediction', 'posterior'):
+            self.assertIn('maximum_cell_mass_l1', result[label])
+            self.assertIn('passes_representation_gate', result[label])
+
     def test_d1_selection_never_selects_legacy_comparison(self):
         result = mixture_f4.run_f4_d_representation_study(x_steps=61)
         self.assertNotIn(result['selected_dictionary'], ('legacy_degree_30', 'legacy_degree_38'))
