@@ -333,6 +333,32 @@ def _cell_log_likelihood(model, parameters, time, previous_time, edges, observat
     return logsumexp(logs + np.log(0.5 * weights)[None, :], axis=1)
 
 
+def bm1_observation_update(model, parameters, sigma_y, state_mass, previous_time,
+                           observation_time, observation_value, *, price_side='right',
+                           likelihood_quadrature_order=1):
+    """Apply one BM1 point-observation update to an already predicted state mass.
+
+    This helper exposes the same predictive evidence used by fv_filter_step.
+    It is useful when a fixed prediction (for example open propagation) must be
+    scored against an observation without carrying the resulting posterior
+    forward. No state propagation occurs here.
+    """
+    previous_time = checks.finite_scalar(previous_time, 'previous_time')
+    observation_time = checks.finite_scalar(observation_time, 'observation_time')
+    if observation_time <= previous_time:
+        raise ValueError('observation_time must be strictly after previous_time.')
+    state_mass = checks.probability_mass(state_mass, 'state_mass')
+    sigma_y = checks.finite_scalar(sigma_y, 'sigma_y', positive=True)
+    if price_side not in ('left', 'right'):
+        raise ValueError('price_side must be left or right.')
+    order = checks.positive_integer(likelihood_quadrature_order, 'likelihood_quadrature_order')
+    edges, _, _ = model.fokker_planc_reference.grid(state_mass.size, bounds=(0.0, 1.0))
+    log_likelihood = _cell_log_likelihood(
+        model, parameters, observation_time, previous_time, edges, observation_value,
+        sigma_y, price_side, order,
+    )
+    return bayes_update(mass_to_log(state_mass), log_likelihood)
+
 def _positive_filter_step(value, name):
     array = np.asarray(value)
     if array.ndim != 0 or array.dtype.kind in ('b', 'c'):
@@ -387,11 +413,11 @@ def fv_filter_step(model, parameters, sigma_x, sigma_y, prior_mass, previous_tim
     if not np.array_equal(centers, x_grid):
         raise RuntimeError('FV prediction grid changed unexpectedly during filtering.')
     if bool(observed):
-        log_likelihood = _cell_log_likelihood(
-            model, parameters, observation_time, previous_time, edges, observation_value,
-            sigma_y, price_side, order,
+        update = bm1_observation_update(
+            model, parameters, sigma_y, predicted, previous_time, observation_time,
+            observation_value, price_side=price_side,
+            likelihood_quadrature_order=order,
         )
-        update = bayes_update(mass_to_log(predicted), log_likelihood)
         posterior = update.mass
         log_evidence = update.log_evidence
     else:
