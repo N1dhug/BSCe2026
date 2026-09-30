@@ -109,7 +109,7 @@ def _legacy_dictionary(model, centers, dx, degree):
     basis = model.fokker_planc._normalise_basis_discretely(raw, dx)
     return {
         "basis": basis,
-        "means": np.arange(degree + 1, dtype=float) / degree if degree > 0 else np.array([0.5]),
+        "means": (np.arange(degree + 1, dtype=float) + 1.0) / (degree + 2.0),
         "concentrations": np.full(degree + 1, degree + 2.0),
         "alpha": None,
         "beta": None,
