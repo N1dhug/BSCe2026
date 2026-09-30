@@ -364,6 +364,12 @@ def run_mixture_static_adaptive(args):
     result = mixture_validation.run_f4_d_adaptive_representation_study(x_steps=args.cells)
     return _print_mixture_representation_result(result, 'adaptive static representation D1b')
 
+
+def run_mixture_static_shape_aware(args):
+    """Run the preregistered post-D1b shape-aware D1c representation study."""
+    result = mixture_validation.run_f4_d_shape_aware_representation_study(x_steps=args.cells)
+    return _print_mixture_representation_result(result, 'shape-aware static representation D1c')
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -439,6 +445,13 @@ def build_parser():
     )
     mixture_static_adaptive.add_argument('--cells', type=int, default=801)
     mixture_static_adaptive.set_defaults(handler=run_mixture_static_adaptive)
+
+    mixture_static_shape = subparsers.add_parser(
+        'mixture-static-shape',
+        help='Run the post-D1b F4-D shape-aware multiresolution representation study.',
+    )
+    mixture_static_shape.add_argument('--cells', type=int, default=801)
+    mixture_static_shape.set_defaults(handler=run_mixture_static_shape_aware)
     return parser
 
 
