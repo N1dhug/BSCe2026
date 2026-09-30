@@ -234,6 +234,36 @@ def run_filter_study(args):
         print('  diagnostic only: preregistered F4-C population study requires >=200 sequences')
     return result
 
+
+
+def run_filter_calibration(args):
+    """Run the post-hoc C4 numerical coverage sensitivity diagnostic."""
+    result = synthetic.run_f4_c_calibration_sensitivity(
+        n_sequences=args.sequences,
+        sequence_start=args.start,
+    )
+    print(
+        f'F4-C calibration sensitivity: sequences {args.start}..'
+        f'{args.start + args.sequences - 1} (n={args.sequences})'
+    )
+    for name, variant in result['variants'].items():
+        print(
+            f"  {name}: cells={variant['x_steps']}; "
+            f"hmax={variant['max_step']:.6e}; q={variant['quadrature_order']}"
+        )
+        for hour in (6, 12, 24):
+            item = variant['horizons'][hour]
+            print(
+                f"    {hour:02d}h coverage={item['coverage']:.3f} "
+                f"[Wilson95 {item['wilson95'][0]:.3f}, {item['wilson95'][1]:.3f}]; "
+                f"width={item['mean_width']:.6f}; "
+                f"RMSE={item['posterior_mean_rmse']:.6f}; "
+                f"sqrt(E[var])={item['root_mean_posterior_variance']:.6f}; "
+                f"RMSE/sd={item['rmse_over_posterior_sd']:.3f}"
+            )
+    print(f"  invalid truth sequences={len(result['invalid_truth_sequences'])}")
+    return result
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -279,6 +309,14 @@ def build_parser():
     study.add_argument('--start', type=int, default=1)
     study.add_argument('--bootstrap-replicates', type=int, default=5000)
     study.set_defaults(handler=run_filter_study)
+
+    calibration = subparsers.add_parser(
+        'filter-calibration',
+        help='Diagnose C4 coverage sensitivity to one-at-a-time numerical refinement.',
+    )
+    calibration.add_argument('--sequences', type=int, default=200)
+    calibration.add_argument('--start', type=int, default=1)
+    calibration.set_defaults(handler=run_filter_calibration)
     return parser
 
 
