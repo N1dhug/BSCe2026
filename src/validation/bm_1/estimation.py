@@ -16,6 +16,7 @@ from numpy.typing import ArrayLike, NDArray
 from src.model.bm_1 import bm_1
 from src.params.bm_1 import BM1ObservationSeries
 from src.tools.input_generator.input_builder import input_builder
+from src.validation import estimation as checks
 from src.validation.bm_1 import cases
 
 
@@ -28,28 +29,9 @@ MEASUREMENT_SEED_ROOT = 4103
 
 
 def _readonly_vector(values: ArrayLike, name: str, *, minimum_size: int = 1) -> NDArray[np.float64]:
-    if np.iscomplexobj(values):
-        raise ValueError(f'{name} must be real-valued.')
-    array = np.asarray(values, dtype=float)
-    if array.ndim != 1 or array.size < minimum_size or not np.all(np.isfinite(array)):
-        raise ValueError(f'{name} must be a finite one-dimensional vector.')
-    array = array.copy()
+    array = checks.finite_vector(values, name, minimum_size=minimum_size)
     array.setflags(write=False)
     return array
-
-
-def _finite_scalar(value, name, *, positive=False, nonnegative=False):
-    array = np.asarray(value)
-    if array.ndim != 0 or array.dtype.kind in ('b', 'c'):
-        raise TypeError(f'{name} must be a real scalar.')
-    value = float(array)
-    if not np.isfinite(value):
-        raise ValueError(f'{name} must be finite.')
-    if positive and value <= 0.0:
-        raise ValueError(f'{name} must be strictly positive.')
-    if nonnegative and value < 0.0:
-        raise ValueError(f'{name} must be non-negative.')
-    return value
 
 
 def _nonnegative_integer(value, name):
@@ -95,7 +77,7 @@ class BM1SyntheticCase:
         horizon = _readonly_vector(self.horizon, 'horizon', minimum_size=2)
         if horizon.size != 2 or horizon[1] <= horizon[0]:
             raise ValueError('horizon must contain exactly two increasing values.')
-        baseline = _finite_scalar(self.baseline, 'baseline')
+        baseline = checks.finite_scalar(self.baseline, 'baseline')
         if not 0.0 <= baseline <= 1.0:
             raise ValueError('baseline must lie in [0, 1].')
         price_edges = _readonly_vector(self.price_edges, 'price_edges', minimum_size=2)
@@ -111,17 +93,19 @@ class BM1SyntheticCase:
                 or observation_times[0] <= horizon[0]
                 or observation_times[-1] > horizon[1]):
             raise ValueError('observation_times must strictly increase in (start, end].')
-        C = _finite_scalar(self.C, 'C', positive=True)
-        k = _finite_scalar(self.k, 'k', positive=True)
-        Xi = _finite_scalar(self.Xi, 'Xi')
+        C = checks.finite_scalar(self.C, 'C', positive=True)
+        k = checks.finite_scalar(self.k, 'k', positive=True)
+        Xi = checks.finite_scalar(self.Xi, 'Xi')
         if not 0.0 <= Xi <= 1.0:
             raise ValueError('Xi must lie in [0, 1].')
-        sigma_x = _finite_scalar(self.sigma_x, 'sigma_x', nonnegative=True)
-        sigma_y = _finite_scalar(self.sigma_y, 'sigma_y', positive=True)
-        initial_alpha = _finite_scalar(self.initial_alpha, 'initial_alpha', positive=True)
-        initial_beta = _finite_scalar(self.initial_beta, 'initial_beta', positive=True)
-        truth_max_step = _finite_scalar(self.truth_max_step, 'truth_max_step', positive=True)
-        truth_fine_max_step = _finite_scalar(self.truth_fine_max_step, 'truth_fine_max_step', positive=True)
+        sigma_x = checks.finite_scalar(self.sigma_x, 'sigma_x')
+        if sigma_x < 0.0:
+            raise ValueError('sigma_x must be non-negative.')
+        sigma_y = checks.finite_scalar(self.sigma_y, 'sigma_y', positive=True)
+        initial_alpha = checks.finite_scalar(self.initial_alpha, 'initial_alpha', positive=True)
+        initial_beta = checks.finite_scalar(self.initial_beta, 'initial_beta', positive=True)
+        truth_max_step = checks.finite_scalar(self.truth_max_step, 'truth_max_step', positive=True)
+        truth_fine_max_step = checks.finite_scalar(self.truth_fine_max_step, 'truth_fine_max_step', positive=True)
         if truth_fine_max_step >= truth_max_step:
             raise ValueError('truth_fine_max_step must be smaller than truth_max_step.')
         roots = tuple(_nonnegative_integer(value, name) for value, name in (
@@ -200,7 +184,7 @@ class BM1SyntheticTruth:
         size = arrays['times'].size
         if any(values.size != size for name, values in arrays.items() if name != 'times'):
             raise ValueError('Synthetic truth arrays must have matching lengths.')
-        initial_state = _finite_scalar(self.initial_state, 'initial_state')
+        initial_state = checks.finite_scalar(self.initial_state, 'initial_state')
         if not 0.0 <= initial_state <= 1.0:
             raise ValueError('initial_state must lie in [0, 1].')
         diagnostics = {}
