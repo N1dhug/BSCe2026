@@ -12,9 +12,9 @@ import operator
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy.special import betainc
 
 from src.model.bm_1 import bm_1
+from src.method.beta_mixture import beta_cell_average_basis
 from src.params.bm_1 import BM1ObservationSeries, BM1FVFilterResult, run_fv_filter
 from src.tools.input_generator.input_builder import input_builder
 from src.validation import estimation as checks
@@ -440,9 +440,11 @@ def beta_initial_mass(case, model, x_steps):
     if not isinstance(case, BM1SyntheticCase):
         raise TypeError('case must be a BM1SyntheticCase.')
     x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
-    edges, _, _ = model.fokker_planc_reference.grid(x_steps, bounds=(0.0, 1.0))
-    mass = np.diff(betainc(case.initial_alpha, case.initial_beta, edges))
-    return checks.probability_mass(mass, 'initial_mass')
+    edges, _, dx = model.fokker_planc_reference.grid(x_steps, bounds=(0.0, 1.0))
+    density = beta_cell_average_basis(
+        edges, case.initial_alpha, case.initial_beta,
+    )[0]
+    return checks.probability_mass(density * dx, 'initial_mass')
 
 
 def missing_copy(observations):
