@@ -270,5 +270,117 @@ class ReportingTests(unittest.TestCase):
                 evaluator.evaluate([0.7, 0.3])
                 self.assertEqual(validate.call_count, 1)
 
+
+class F4DocumentationBuildTests(unittest.TestCase):
+    """Build-tool and documentation regressions; no installed LaTeX required."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        path = Path(__file__).resolve().parents[1] / 'root/f4/build.py'
+        spec = importlib.util.spec_from_file_location('f4_note_builder', path)
+        cls.builder = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.builder)
+
+    def test_import_and_help_have_no_build_side_effect(self):
+        with patch.object(self.builder.subprocess, 'run', side_effect=AssertionError('compile')):
+            self.assertTrue(callable(self.builder.main))
+            with self.assertRaises(SystemExit) as result:
+                with patch('sys.stdout'):
+                    self.builder.main(['--help'])
+            self.assertEqual(result.exception.code, 0)
+
+    def test_missing_engine_gives_one_actionable_error(self):
+        with patch.object(self.builder.shutil, 'which', return_value=None), \
+             patch.dict(self.builder.os.environ, {}, clear=True):
+            with self.assertRaisesRegex(self.builder.BuildError, 'GitHub PR'):
+                self.builder.find_engine()
+
+    def test_miktex_can_be_found_without_changing_path(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            exe = Path(folder) / 'Programs/MiKTeX/miktex/bin/x64/pdflatex.exe'
+            exe.parent.mkdir(parents=True)
+            exe.touch()
+            with patch.object(self.builder.shutil, 'which', return_value=None), \
+                 patch.dict(self.builder.os.environ, {'LOCALAPPDATA': folder, 'PATH': 'unchanged'}, clear=True):
+                self.assertEqual(self.builder.find_engine(), str(exe))
+                self.assertEqual(self.builder.os.environ['PATH'], 'unchanged')
+
+    def _fake_build(self, folder, *, failure=False, unresolved=False, duplicate=False):
+        from types import SimpleNamespace
+        directory = Path(folder)
+        for name in ('main.tex', 'notes.tex'):
+            (directory / name).write_text('test', encoding='utf-8')
+        calls = []
+        def run(command, **kwargs):
+            if command[-1] == '--version':
+                return SimpleNamespace(returncode=0, stdout='pdfTeX', stderr='')
+            self.assertEqual(kwargs['cwd'], directory.resolve())
+            calls.append(command)
+            build = directory / 'build'
+            (build / 'main.pdf').write_bytes(b'%PDF-stub')
+            (build / 'main.aux').write_text('stable', encoding='utf-8')
+            message = 'There were undefined references.' if unresolved else ''
+            if duplicate:
+                message = 'destination with the same identifier (name{page.1})'
+            return SimpleNamespace(returncode=int(failure), stdout=message, stderr='')
+        return run, calls
+
+    def test_two_passes_stabilize_without_changing_working_directory(self):
+        import tempfile
+        original = Path.cwd()
+        with tempfile.TemporaryDirectory() as folder:
+            run, calls = self._fake_build(folder)
+            with patch.object(self.builder.subprocess, 'run', side_effect=run), patch('sys.stdout'):
+                pdf = self.builder.build_notes(Path(folder), 'pdflatex')
+            self.assertTrue(pdf.is_file())
+            self.assertEqual(len(calls), 2)
+            self.assertIn('-no-shell-escape', calls[0])
+        self.assertEqual(Path.cwd(), original)
+
+    def test_failed_pass_stops_and_removes_partial_pdf(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            run, calls = self._fake_build(folder, failure=True)
+            with patch.object(self.builder.subprocess, 'run', side_effect=run):
+                with self.assertRaisesRegex(self.builder.BuildError, 'pass 1'):
+                    self.builder.build_notes(Path(folder), 'pdflatex')
+            self.assertEqual(len(calls), 1)
+            self.assertFalse((Path(folder) / 'build/main.pdf').exists())
+
+    def test_undefined_references_fail_after_bounded_retries(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            run, calls = self._fake_build(folder, unresolved=True)
+            with patch.object(self.builder.subprocess, 'run', side_effect=run):
+                with self.assertRaisesRegex(self.builder.BuildError, 'did not stabilize'):
+                    self.builder.build_notes(Path(folder), 'pdflatex', max_runs=3)
+            self.assertEqual(len(calls), 3)
+            self.assertFalse((Path(folder) / 'build/main.pdf').exists())
+
+    def test_duplicate_anchors_fail(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            run, _ = self._fake_build(folder, duplicate=True)
+            with patch.object(self.builder.subprocess, 'run', side_effect=run):
+                with self.assertRaisesRegex(self.builder.BuildError, 'Duplicate'):
+                    self.builder.build_notes(Path(folder), 'pdflatex')
+
+    def test_active_document_links_and_tex_inputs_resolve(self):
+        import re
+        root = Path(__file__).resolve().parents[1] / 'root'
+        for name in ('BM_GUIDE.md', 'BM_REFERENCE.md', 'F4.md'):
+            path = root / name
+            for link in re.findall(r'\]\(([^)#]+)(?:#[^)]*)?\)', path.read_text(encoding='utf-8')):
+                if not link.startswith(('http:', 'https:')):
+                    self.assertTrue((path.parent / link).is_file(), link)
+        for path in (root / 'f4').glob('*.tex'):
+            for target in re.findall(r'\\input\{([^}]+)\}', path.read_text(encoding='utf-8')):
+                self.assertTrue((path.parent / target).is_file(), target)
+        self.assertFalse((root / 'f4/README.md').exists())
+        self.assertNotIn('Afventer F4-A', (root / 'F4.md').read_text(encoding='utf-8'))
+
+
 if __name__ == '__main__':
     unittest.main()

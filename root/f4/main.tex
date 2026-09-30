@@ -7,12 +7,9 @@
 \usepackage{amsmath,amssymb,mathtools,bm}
 \usepackage{booktabs,array,longtable,tabularx}
 \usepackage{enumitem,microtype}
-\usepackage{xcolor}
 \usepackage[hidelinks]{hyperref}
 \usepackage[nameinlink,noabbrev]{cleveref}
-\usepackage{siunitx}
-\usepackage{fancyhdr}
-\definecolor{ink}{HTML}{18384B}
+\usepackage{siunitx,fancyhdr}
 \newcommand{\E}{\mathbb E}
 \newcommand{\R}{\mathbb R}
 \newcommand{\dd}{\,\mathrm d}
@@ -22,8 +19,7 @@
 \newcommand{\Beta}{\operatorname{Beta}}
 \newcommand{\LSE}{\operatorname{LSE}}
 \newcommand{\Yhist}{\mathcal Y}
-\newcommand{\basecommit}{\texttt{5a4793cd57d70a46beae2a6c758b4cd4e0556536}}
-\newcommand{\fzerocommit}{\texttt{4a4702317f23141a24ce788046906c0cbe2445b8}}
+\newcommand{\basecommit}{\texttt{5a4793c}}
 \numberwithin{equation}{section}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{5pt plus 1pt}
@@ -31,40 +27,32 @@
 \setlist{nosep,leftmargin=*}
 \pagestyle{fancy}
 \fancyhf{}
-\lhead{\small\textcolor{ink}{BSCe Batterimodel 2026}}
-\rhead{\small F4: estimation og filtering}
+\lhead{\small BSCe Batterimodel 2026}
+\rhead{\small F4: matematiske noter}
 \cfoot{\small\thepage}
 \setlength{\headheight}{14pt}
-\renewcommand{\headrulewidth}{0.3pt}
-\hypersetup{pdftitle={F4: Rekursiv tilstands- og parameterestimation},pdfauthor={BSCe Batterimodel 2026 -- arbejdsnoter}}
+\hypersetup{pdftitle={F4: Rekursiv tilstands- og parameterestimation},pdfauthor={BSCe Batterimodel 2026}}
 \begin{document}
 \hypersetup{pageanchor=false}
 \begin{titlepage}
-\vspace*{16mm}
-{\large\textcolor{ink}{BSCe BATTERIMODEL 2026}\par}
-\vspace{16mm}
+\vspace*{20mm}
+{\Large BSCe Batterimodel 2026\par}
+\vspace{20mm}
 {\Huge\bfseries F4\par}
-\vspace{5mm}
-{\LARGE\bfseries Rekursiv tilstands- og\par parameterestimation\par}
-\vspace{9mm}
-{\large Fokker--Planck/Bayes, state-filtering, parameterusikkerhed og demand-forecast\par}
-\vspace{14mm}
-\rule{\linewidth}{0.5pt}
-\textbf{Formål.} Sammenhængende arbejdsnoter for F4-A--J med matematik før implementation, tydelige informationskontrakter og reproducerbare beslutninger. F4-0 bevarer de testede primitiver; F4-A låser det første inverse problem før filterkoden skrives.
+\vspace{6mm}
+{\LARGE Rekursiv tilstands- og\par parameterestimation\par}
+\vspace{12mm}
+Fokker--Planck/Bayes, mixture-repræsentation, identifikation og demand-forecast.
 
-\textbf{Status.} F4-0 er merged. F4-A fastlægger referencecase, observationstidspunkter, right-edge-konvention, analytisk observabilitet, første parameterprior/support, acceptmål og forecast-origin. Et fuldt rekursivt state-filter, parameter-recovery, historisk kalibrering og et valideret ugeforecast er fortsat senere leverancer.
-
-\textbf{Kodegrundlag.}\par
-F3 closure: \basecommit\par
-F4-0 merged checkpoint: \fzerocommit
+Sammenhængende matematiske arbejdsnoter. Implementationsstatus og den løbende
+arbejdsplan vedligeholdes kun i \texttt{root/F4.md}.
 \vfill
-Version 1.2 / F4-A\par
-30. september 2026
+Fagligt grundlag: F4-0 og F4-A. Konsolideret 30. september 2026.
 \end{titlepage}
 \hypersetup{pageanchor=true}
 \pagenumbering{roman}
 \tableofcontents
 \clearpage
 \pagenumbering{arabic}
-\input{preparation.tex}
+\input{notes.tex}
 \end{document}

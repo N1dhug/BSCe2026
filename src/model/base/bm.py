@@ -13,7 +13,7 @@ class bm:
     Together with suitable Lipschitz regularity, inward boundary drift
     and vanishing boundary diffusion keep the continuous state in [0, 1].
     This is not a guarantee for a finite Euler-Maruyama step.
-    See root/F2.md for the model contract and numerical limitations.
+    See root/BM_REFERENCE.md for the model contract and numerical limitations.
     """
     def __init__(self, B, A, T, t_steps):
         B, A, T, t_steps = bm_validation.constructor(B, A, T, t_steps)

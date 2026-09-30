@@ -1,14 +1,10 @@
-name: BM F1 F3 regression
+name: BM regression and notes
 on:
   pull_request:
     paths:
       - 'src/**'
       - 'tests/**'
-      - 'root/F1.md'
-      - 'root/F2*.md'
-      - 'root/F3.md'
-      - 'root/BM_GUIDE.md'
-      - 'root/BM_PERFORMANCE.md'
+      - 'root/**'
       - '.github/workflows/bm-review.yml'
   workflow_dispatch:
 permissions:
@@ -51,4 +47,36 @@ jobs:
         with:
           name: bm-review-${{ github.sha }}
           path: review-results/
+          retention-days: 7
+  notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install LaTeX for the runner only
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends texlive-latex-base texlive-latex-recommended texlive-latex-extra texlive-science texlive-lang-european lmodern
+      - name: Build notes to stable references
+        run: python -B root/f4/build.py
+      - name: Save verified PDF
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f4-notes-${{ github.sha }}
+          path: root/f4/build/main.pdf
+          if-no-files-found: error
+          retention-days: 30
+      - name: Save LaTeX logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f4-note-logs-${{ github.sha }}
+          path: root/f4/build/*.log
+          if-no-files-found: ignore
           retention-days: 7

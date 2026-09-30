@@ -1,20 +1,10 @@
-\section{Projektmål, scope og læsevejledning}
-Den formelle bachelorprojektbeskrivelse kræver rekursiv tilstands- og parameterestimation baseret på en approksimeret løsning til Fokker--Planck-ligningen. Projektets indledning fremhæver mixture-approksimationer. F4 skal derfor ikke ende som alene et offline-fit eller som en Kalman-filterdemonstration \cite{project}. F3 leverer allerede et kontrolproblem med givne modelparametre og en given initialfordeling; F4 skal udlede disse fra observationer og give dem tilbage til den samme kontrolkæde \cite{repo}.
-
-Arbejdsplanens A--J-opdeling bevares \cite{plan}. Dette dokument er et forberedende grundlag, ikke en afslutning af alle dens deltrin. Teksten bruger tre forskellige former for udsagn: \emph{modelkontrakten} er den valgte BM1-/observationsmodel; \emph{udledningerne} følger af denne kontrakt; \emph{designforslagene} skal endnu undersøges i F4. Et vellykket test af en regneregel er ikke et bevis for, at en hel estimator er præcis.
-
-\begin{tabularx}{\linewidth}{@{}lX@{}}
-\toprule
-Del & Bidrag til den samlede kæde\\\midrule
-F1--F2 & Deterministisk model, Itô-SDE, EM, FV og mixture-prediction.\\
-F3 & Prisoptimering med kendte parametre og erklæret state-usikkerhed.\\
-F4-0 & Notation, grundudledninger, lokale kodeprimitiver og tests.\\
-F4-A--F & Observationer, rekursivt state-filter og første parameterbank.\\
-F4-G--J & Fælles identifikation, betinget dataanvendelse, forecast/handoff og afslutning.\\
-\bottomrule
-\end{tabularx}
-
-En analyse af en historisk prishistorik optimerer ikke denne historie. \(U(t)\) er et fast input under estimation. Kontroltarget \(A(t)\) har ingen plads i observationernes likelihood. De to aktiviteter skal kunne udføres og testes uafhængigt.
+\section{Formål og læsevej}
+Projektet skal levere rekursiv state- og parameterestimation baseret på en
+approksimeret Fokker--Planck-løsning, herunder mixture-metoden \cite{project}.
+Disse noter samler F4-0's udledninger og F4-A's forsøgsdesign. Aktuel status og
+resterende opgaver står kun i \texttt{root/F4.md}; kommandoer i \texttt{root/BM\_GUIDE.md}.
+Modellen videreføres fra F1--F3 \cite{repo,junker}. Et beskrevet filter/forecast er
+ikke dermed et implementeret eller valideret resultat.
 
 \section{BM1: model, notation og enheder}
 \subsection{Demand og fleksibilitetsstate}
@@ -507,28 +497,105 @@ Hver \(J_j\) kan genbruge F3's evaluator. Gennemsnittet af separat optimerede pr
 
 F4-0 tester kun, at den konservative remap kan levere en gyldig \texttt{initial\_mass\_builder} til det eksisterende F3-interface. Der er endnu ikke kørt et kontrolforsøg med estimerede parametre.
 
-\section{Den implementerede forberedelse og testgrænser}
-\subsection{Kodeansvar}
-\begin{longtable}{@{}p{.40\linewidth}p{.55\linewidth}@{}}
-\toprule
-Placering & Faktisk leverance i F4-0\\\midrule\endhead
-\texttt{src/params/bm\_1.py} & Punktobservationsbeholder, Gaussian log-likelihood, én log-Bayes-update og konservativ remap. Intet færdigt filter eller forecast-API.\\
-\texttt{src/validation/estimation.py} & Strenge kontroller af tider, masks, scalars, normaliserede masser og logmasser.\\
-\texttt{src/method/beta\_mixture.py} & Tilføjet offentligt opt-in projektor-interface samt celleintegreret beta-basis; de gamle funktioner og defaults er uændrede.\\
-\texttt{tests/test\_bm1\_estimation.py} & 46 nye primitive-, kontrakt- og korte integrationstests.\\
-\texttt{root/f4/verify\_preparation.py} & Genberegner statisk Bayes-eksempel, basisprojektion og variansens negative afledte. Ingen filer skrives uden eksplicit outputvalg.\\
-\bottomrule
-\end{longtable}
+\section{F4-A: forsøgsdesign og valideringsdefinitioner}
+\label{sec:f4a}
+Dette er det dokumenterede designcheckpoint fra F4-A; generator og filter udvikles
+efterfølgende. Modelparametrene er kendte i første state-forsøg. Kontroltarget og sand
+state er ikke estimatorinputs. Syntetisk truth bruges kun til scoring.
 
-Der er ikke tilføjet et tomt \texttt{estimate.py} eller en række uimplementerede API-stubs. Et nyt CLI kommer med et reelt F4-B/C-ansvar. Derfor bevares den eksisterende layout-test om fire BM-entrypoints. Ingen shared WM-kernel, package initializer, inputworkbook eller historisk F3-resultatfil er ændret.
+\subsection{Referencecase og information}
+Tidsenheden er dage. Den låste kernecase er
+\[
+ T=[0,1],\quad B(t)=0.5,\quad f(x)=1-2x,\quad g(u)=1-2u,
+\]
+\[
+ C=1,\quad k=2,\quad\Xi=1,\quad\sigma_X=0.5,\quad X_0\sim\Beta(20,20).
+\]
+Prisen har edges \((0,1/3,2/3,1)\) og værdier \((0.65,0.35,0.65)\).
+Observationerne er punktmålinger ved \(t_k=k/24\), \(k=1,\ldots,24\), med
+\(\sigma_Y=0.03\). Der er ingen observation ved 0. Ved 8 og 16 timer bruges den
+nye højre-kontinuerte pris; state er kontinuert, demand kan hoppe.
 
-\subsection{Faktisk udførte tests}
-Den hentede F3-kilde blev verificeret ved Git-subtræshashes for \texttt{src}, \texttt{tests} og \texttt{root}. Den afsluttede baselinekørsel bestod 207 tests. Efter de nye primitiver består 253 tests i alt, heraf 46 nye. Forberedelsesmiljøet var Python 3.13.5, NumPy 2.3.5 og SciPy 1.17.0. Før F4-0 blev merged, kørte brugeren desuden den fulde suite på Windows/Python 3.11, hvor 253/253 tests bestod.
+Seed-rødder 4101, 4102 og 4103 er reserveret til henholdsvis initialstate, Wiener-støj
+og målestøj. Uafhængige sekvenser får separate reproducerbare understrømme. Samme
+seed alene kobler ikke to EM-grids: coarse increments skal summeres fra fine increments.
+Truth-refinement starter ved \(h_{\max}=1/1152\) og \(1/2304\) dag uden randkorrektion.
+FV starter ved 201 celler og \(h_{\max}=1/192\); rumstudiet bruger 101/201/401/801 celler,
+tidsstudiet \(1/96,1/192,1/384\), én dimension ad gangen.
 
-Testene omfatter Bayes mod direkte beregning, ægte nulstøtte, meget små likelihoods, genvindelige logvægte, density-værdier over 1, eksplicitte missing masks, ingen fremtidige værdier i en observationsprefix, konservativ remap, integrerede beta-celler, projektor-fallback og genbrug af geometri uden skjulte target-warmstarts. Korte integrationstests forbinder én FV-prediction til én Bayes-update, og den nye basis til den eksisterende zero-operator-propagator.
+\subsection{Hvorfor den skjulte state kan påvirke målingen}
+Ved den symmetriske baseline forsvinder knækket i demand-skalaen:
+\begin{equation}
+ D(x,u)=\frac12+\frac\Xi2\tanh(k(1-x-u)),\qquad
+ H(x,u)=\partial_x D=-\frac{\Xi k}{2}\operatorname{sech}^2(k(1-x-u)).
+ \label{eq:f4a_demand}
+\end{equation}
+For \(\Xi,k>0\) er map'et strengt faldende; i mætning kan hældningen dog være meget
+lille. Støjfri inversion giver
+\begin{equation}
+ x=1-u-\frac1k\operatorname{artanh}\!\left(\frac{2(y-1/2)}\Xi\right).
+ \label{eq:f4a_inverse}
+\end{equation}
+Argumentet skal ligge i \((-1,1)\), og for en fysisk state skal \(y\) også ligge i
+\([D(1,u),D(0,u)]\). Noisy observationer udenfor håndteres med likelihood, ikke clipping
+eller direkte inversion. Inversionen er en analytisk kontrol, ikke filteralgoritmen.
 
-Disse tests er ikke et parameter-recovery-studie, en fuld streaming-filtertest eller en validering af alle mulige priors og callbacks. Der er ikke udført real-data-fit som del af F4-0, og repositoryets oprindelige miljøfil er uændret. Den fulde lokale Windows/Python 3.11-suite blev kørt før merge; senere F4-deltrin skal fortsat have deres egen lokale merge-gate.
+Ved \(x=0.5\) giver \(u=0.65/0.35\) demand \(0.354344/0.645656\) og
+\(H\approx-0.915137\). Priorens standardafvigelse er \(\sqrt{1/164}\approx0.07809\);
+lokal måleækvivalent state-støj er \(\sigma_Y/|H|\approx0.03278\).
+Det begrunder en informativ første case uden meget skarp målestøj. Den skarpere
+\(\sigma_Y=0.01\)-case beholdes som repræsentationsstress. Senere skal \(B\ne0.5\),
+interior-Xi, varieret pris og konstant-pris-kontrol undersøges. Konstant pris er ikke
+ensbetydende med manglende state-information.
 
+\subsection{Parameterbankens første støtte}
+Første forslag til E/F er \(\rho_j=0.5+0.025j\), j=0,...,40, i dag\(^{-1}\),
+med vægte \(1/41\). Sand \(\rho=1\) ligger på griddet. Valget af \(\rho=1/C\)
+er numerisk begrundet, men gør ikke likelihood konveks \cite{alba}.
+F4-E skal vurdere identifikationen før banken bruges til en recovery-claim.
+
+\textbf{Præcisering ved konsolideringen:} Den tidligere alarmgrænse på 5\% samlet
+vægt på de to randnoder udløser et supportstudie; den er ikke bevis på utilstrækkelig
+støtte. Omvendt certificerer lav randvægt heller ikke en god støtte. En bredere bank
+kræver eksplicit ny prior og fuldt replay. Støtteudvidelse og ændring af diskret
+opløsning skal fortolkes særskilt.
+
+\subsection{Hvad RMSE og kalibrering sammenligner}
+For sekvens r og måletid k betegnes åbent propagationsmiddel uden observationer med
+\(\mu^0_{r,k}\), predictive middel med tidligere data med \(\mu^-_{r,k}\), og
+posterior efter målingen med \(\mu^+_{r,k}\). Definér
+\[
+ \operatorname{RMSE}_{s}=\sqrt{\frac1{24R}\sum_{r=1}^{R}\sum_{k=1}^{24}
+ (\mu^s_{r,k}-X^{true}_{r,k})^2},\qquad s\in\{0,-,+\}.
+\]
+F4-A's 5\%-mål specificeres som \(\operatorname{RMSE}_+\leq0.95\operatorname{RMSE}_0\),
+med mindst 200 uafhængige sekvenser. Det er et empirisk benchmarkmål, ikke en
+matematisk garanti eller en unit-test som skal bestås for enhver seed. Paired
+usikkerhed beregnes på hele sekvenser; timer på samme path er ikke uafhængige.
+\(\operatorname{RMSE}_-\) rapporteres separat, så værdien af den nye måling kan ses.
+
+Ved 6/12/24 timer måles marginal 90\%-intervaldækning på tværs af sekvenser og
+rapporteres med Wilson 95\%-usikkerhed. Predictive log score af Y måles før
+assimilation og sammenlignes med samme prior propageret uden målinger. En forbedret
+posteriorfejl alene er ikke dokumentation af god forecasting.
+
+Massefejl højst \(10^{-10}\), ingen skjult repair og direkte diskret Bayes-reference
+med \(L^1\leq10^{-12}\) er separate correctness-kontroller. Numerisk refinement skal
+være mindre end 10\% af assimilationseffekten på samme metrik; nær nul effekt kræver
+absolut fejlrapportering. Empiriske mål ændres ikke stiltiende efter resultater.
+
+\subsection{Forecast og historiske adgangsbetingelser}
+Origin er \(\tau=1\) dag efter 24 målinger; horisonterne er
+1/6/12/24/48/72/168 timer. Ingen senere målinger bruges i et fixed-origin forecast.
+Konkrete fremtidige B/U-forløb skal erklæres før forsøget; de er endnu ikke valgt.
+Kendte syntetiske inputs isolerer betinget prediction fra et operationelt
+baseline-/prisforecast. De øvrige forecastforbehold følger foregående afsnit.
+
+Historiske målinger kræver afklaring af punkt/average/energi, population/kolonner,
+forbrugertarif kontra spotpris, train-only skalering, missing-data-politik og DST.
+Disse mangler begrænser real-data-claims, ikke den syntetiske algoritmeleverance.
+
+\section{Bevaret statisk F4-0-evidens}
 \subsection{Et konkret statisk resultat}
 Kontrollen bruger \(X_0\sim\Beta(20,20)\), \(B=U=Y=0.5\), \(k=2\), \(\Xi=1\) og \(\sigma_Y=0.01\), uden prediction. Uafhængig numerisk quadrature af den kontinuerte Bayes-update giver
 \begin{equation}
@@ -552,19 +619,12 @@ Den illustrative firekomponentordbog er \(\Beta(a,a)\) for \(a\in\{20,200,1000,2
 
 De små optimalitetsgap viser, at projektionerne er løst numerisk, samtidig med at de gamle baser giver stor repræsentationsfejl. Det er netop forskellen mellem \emph{solverkorrekthed} og \emph{repræsentationsevne}. Den kontinuerte referencevarians og de viste cellecentervarianser er bevidst navngivet forskelligt.
 
-\section{Hvad der skal besluttes i F4-A, og hvad der kan vente}
-F4-A har nu et matematisk udkast og testede regneregler. Det resterende er at fastlåse første kontrollerede forsøg: prior, observationstidspunkter, sidekonvention ved prisspring, inputfamilie, første ukendte parameter, numeriske acceptmål og hvilket forecastudsagn der senere scores. Det sker før de store resultater, ikke bagefter.
-
-Følgende kræver senere evidens frem for flere generelle noter: state-filterets akkumulerede fejl, mixture-filterets egen dynamik, identifikation under forskellige input, parameterbankens grid/støtte og det operationelle forecast. Endelig basisordbog, komplette datakontrakter til intervalmålinger og historisk preprocessing fastlåses ikke ud fra én enkelt symmetrisk posterior.
-
-Til hvert kommende trin registreres matematisk ændring, kodeændring, model-/datakonfiguration, faktisk udførte tests, observerede resultater, begrænsninger og næste beslutning. Arbejdsplanen i \texttt{root/F4.md} er den løbende statuskilde; dette dokument er dens matematiske forberedelse.
-
-\input{f4_a.tex}
-
+\begingroup
+\raggedright
 \begin{thebibliography}{99}
 \bibitem{project} STADS, projekt 111866: \emph{Stochastic optimal control and estimation for demand-side flexibility exploitation}. Brugerens upload \texttt{Screenshot 2026-09-19 230718.png}, især mål 4. Projektkilde, ikke en forskningspublikation.
-\bibitem{repo} \texttt{N1dhug/BSCe2026}, kildecommit \basecommit. Især \texttt{root/F1.md}, \texttt{F2.md}, \texttt{F3.md}, BM1-modellen, \texttt{finite\_volume.py}, \texttt{beta\_mixture.py}, diagnostik og tests. Kilden er F3-baseline; tilføjelser i F4-0 er særskilt mærket.
-\bibitem{plan} \emph{F4 --- Arbejdsplan for rekursiv tilstands- og parameterestimation}, version 1.0, 29. september 2026, leveret i projektchatten. Opdateret til version 1.1 i denne pakke; A--J-strukturen er bevaret.
+\bibitem{repo} \texttt{N1dhug/BSCe2026}, kildecommit \basecommit. Den samlede reference er nu \texttt{root/BM\_REFERENCE.md}; oprindelige noter findes ved denne historiske commit. BM1-modellen, \texttt{finite\_volume.py}, \texttt{beta\_mixture.py}, diagnostik og tests. Kilden er F3-baseline; tilføjelser i F4-0 er særskilt mærket.
+\bibitem{plan} \emph{F4 --- Arbejdsplan for rekursiv tilstands- og parameterestimation}, version 1.0, 29. september 2026, leveret i projektchatten. Den aktive, konsoliderede plan er \texttt{root/F4.md}; A--J-strukturen er bevaret.
 \bibitem{junker} R. G. Junker m.fl. \emph{Stochastic nonlinear modelling and application of price-based energy flexibility}. Applied Energy 275 (2020), 115096. DOI: 10.1016/j.apenergy.2020.115096. Model og Appendix B; dennes flertrinsobjective er ikke lig vores foreslåede sekventielle likelihood.
 \bibitem{higham} D. J. Higham. \emph{An Algorithmic Introduction to Numerical Simulation of Stochastic Differential Equations}. SIAM Review 43(3) (2001), 525--546. Brugerens upload; Itô, EM og konvergens.
 \bibitem{lecture} T. K. S. Ritschel. \emph{Stochastic Adaptive Control (02421), Lecture 8}, 24. marts 2026, brugerens upload. Filtering versus prediction og state-space-begreber; ikke en færdig BM1-estimator.
@@ -573,3 +633,4 @@ Til hvert kommende trin registreres matematisk ændring, kodeændring, model-/da
 \bibitem{scipylog} SciPy-dokumentation, \texttt{scipy.special.logsumexp}. \url{https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.logsumexp.html}. Numerisk API-reference; ikke en kilde til projektets empiriske resultater.
 \bibitem{scipybeta} SciPy-dokumentation, \texttt{scipy.special.betainc} og \texttt{betaincc}, version 1.17.0. \url{https://docs.scipy.org/doc/scipy-1.17.0/reference/generated/scipy.special.betaincc.html}. CDF og komplementær CDF; \texttt{betaincc} kræver SciPy 1.11 eller nyere.
 \end{thebibliography}
+\endgroup
