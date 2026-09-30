@@ -1,7 +1,8 @@
 """F4 estimation entry point.
 
 F4-B exposes the reproducible synthetic generator. F4-C adds the known-parameter
-finite-volume state filter. Parameter estimation remains a later F4 milestone.
+finite-volume state filter. F4-D begins with static mixture representation before
+any recursive mixture filter is accepted. Parameter estimation remains later.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from src.validation.bm_1 import estimation as synthetic
+from src.validation.bm_1 import mixture_estimation as mixture_validation
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -299,6 +301,46 @@ def run_filter_truth_refine(args):
     print(f"  invalid truth pairs={len(result['invalid_truth_pairs'])}")
     return result
 
+
+
+def run_mixture_static(args):
+    """Run the preregistered F4-D static mixture representation study."""
+    result = mixture_validation.run_f4_d_representation_study(x_steps=args.cells)
+    print(f"F4-D static mixture representation: cells={result['x_steps']}")
+    print(
+        "  dictionary                 comp   max L1      max W1      "
+        "max gap     cond(A)      fallback  eligible"
+    )
+    for name in result['dictionary_order']:
+        item = result['results'][name]['summary']
+        print(
+            f"  {name:<26} {item['components']:>4d}   "
+            f"{item['maximum_cell_mass_l1']:.3e}  "
+            f"{item['maximum_wasserstein_1']:.3e}  "
+            f"{item['maximum_optimality_gap']:.2e}  "
+            f"{item['projection_matrix_condition_number']:.3e}  "
+            f"{str(item['any_fallback']):>8}  {str(item['eligible']):>8}"
+        )
+        print(
+            f"    worst L1={item['worst_l1_target']}; "
+            f"worst W1={item['worst_w1_target']}; "
+            f"condition alarm={item['conditioning_alarm']}"
+        )
+    selected = result['selected_dictionary']
+    print(f"  selected dictionary={selected if selected is not None else 'NONE'}")
+    if selected is not None:
+        print("  selected per-target errors:")
+        for target, fit in result['results'][selected]['fits'].items():
+            print(
+                f"    {target:<16} L1={fit['cell_mass_l1']:.3e}; "
+                f"W1={fit['wasserstein_1']:.3e}; "
+                f"L2={fit['density_l2']:.3e}; "
+                f"dmean={fit['mean_error']:.3e}; "
+                f"dvar={fit['variance_error']:.3e}; "
+                f"active={fit['active_components']}"
+            )
+    return result
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -360,6 +402,13 @@ def build_parser():
     truth_refine.add_argument('--sequences', type=int, default=200)
     truth_refine.add_argument('--start', type=int, default=1)
     truth_refine.set_defaults(handler=run_filter_truth_refine)
+
+    mixture_static = subparsers.add_parser(
+        'mixture-static',
+        help='Run the F4-D preregistered static mixture representation study.',
+    )
+    mixture_static.add_argument('--cells', type=int, default=801)
+    mixture_static.set_defaults(handler=run_mixture_static)
     return parser
 
 
