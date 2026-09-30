@@ -395,6 +395,44 @@ kun hvis feasibility og den uafhængige optimality-gap-kontrol består. Conditio
 number over \(10^{12}\) er fortsat en alarm. Den mindste bestående adaptive
 dictionary vælges; hvis ingen består, går D ikke videre til holdout/dynamik.
 
+
+\subsection{D1b-resultat og D1c shape-aware redesign}
+D1b valgte heller ingen dictionary. Adaptive A med 116 komponenter gav
+\[
+ \max \|m-\hat m\|_1=0.1408,\qquad
+ \max W_1=0.009683,
+\]
+med projection-matrix condition number \(8.18\times10^{13}\). Adaptive B med
+180 komponenter gav praktisk samme maksimum-\(L^1\), \(W_1=0.009680\), men
+condition number voksede til \(1.64\times10^{14}\). Begge havde den højre
+randtarget som worst case. Den fordoblede high-scale mean-resolution gav derfor
+ingen relevant repræsentationsgevinst; fejlen peger på manglende scale/shape
+nær randen snarere end manglende interior mean-resolution.
+
+D1c ændrer derfor ikke gates, men ændrer dictionary-geometrien før nye resultater.
+Det brede lag bevares ved \(\kappa=20\), og mediumlaget ved \(\kappa=100\).
+High-resolution laget \(\kappa=500\) erstattes af \(\kappa=800\) på
+\([0.1,0.9]\), mens \(\kappa=2000\) bevares. Randlaget suppleres symmetrisk med
+\[
+ (\mu,\kappa)\in
+ \{(0.02,50),(0.05,50),(0.95,50),(0.98,50)\}.
+\]
+Dette bracketter randtargetens koncentrationsskala mellem \(\kappa=50\) og det
+allerede eksisterende \(\kappa=100\), uden at indsætte den eksakte target-
+concentration \(75\).
+
+Kandidat C bruger spacing 0.025 for \(\kappa=800,2000\) og har 120 komponenter.
+Kandidat D er nested, bruger spacing 0.0125 og har 184 komponenter. Samme krav
+\[
+ \max \|m-\hat m\|_1\le0.05,\qquad
+ \max W_1\le0.01,
+\]
+samt gap og massefejl højst \(10^{-9}\), bevares. Condition number over
+\(10^{12}\) forbliver en eksplicit alarm. Hvis C består, vælges C uden at bruge
+D som modelvalg; D fungerer da kun som resolution check. Hvis kun D består,
+vælges D. Hvis ingen består, stoppes dictionary-engineeringen før D2 frem for
+at fortsætte med post-hoc udvidelser.
+
 \subsection{Hvorfor D1 kommer før det rekursive filter}
 Referencearbejdet skelner mellem projection error fra det endelige mixture-rum
 og temporal/dynamisk discretization error \cite{nielsen}. Det samme princip
