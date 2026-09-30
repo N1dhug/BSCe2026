@@ -944,6 +944,48 @@ class F4DRepresentationTests(unittest.TestCase):
                 self.assertTrue(summary['numerical_ok'])
                 self.assertTrue(summary['representation_ok'])
 
+    def test_d1c_shape_aware_dictionaries_are_nested_and_preregistered_sizes(self):
+        from src.solver.finite_volume import finite_volume_1d
+        edges, _, dx = finite_volume_1d.grid(101)
+        dictionaries = mixture_f4.build_d1c_dictionaries(edges)
+        self.assertEqual(tuple(dictionaries), ('shape_C', 'shape_D'))
+        self.assertEqual(dictionaries['shape_C']['components'], 120)
+        self.assertEqual(dictionaries['shape_D']['components'], 184)
+        for dictionary in dictionaries.values():
+            np.testing.assert_allclose(
+                np.sum(dictionary['basis'], axis=1) * dx,
+                1.0,
+                atol=1e-9,
+                rtol=0.0,
+            )
+        pairs_c = set(zip(
+            np.round(dictionaries['shape_C']['means'], 12),
+            np.round(dictionaries['shape_C']['concentrations'], 12),
+        ))
+        pairs_d = set(zip(
+            np.round(dictionaries['shape_D']['means'], 12),
+            np.round(dictionaries['shape_D']['concentrations'], 12),
+        ))
+        self.assertLess(pairs_c, pairs_d)
+        self.assertIn((0.02, 50.0), pairs_c)
+        self.assertIn((0.98, 50.0), pairs_c)
+        self.assertIn((0.5, 800.0), pairs_c)
+
+    def test_small_d1c_study_keeps_same_gates_and_reports_conditioning(self):
+        result = mixture_f4.run_f4_d_shape_aware_representation_study(x_steps=61)
+        self.assertEqual(result['stage'], 'D1c')
+        self.assertFalse(result['fallback_disqualifies'])
+        self.assertEqual(result['dictionary_order'], ('shape_C', 'shape_D'))
+        self.assertEqual(result['gates']['cell_mass_l1'], mixture_f4.D1_L1_GATE)
+        self.assertEqual(result['gates']['wasserstein_1'], mixture_f4.D1_W1_GATE)
+        for name in result['dictionary_order']:
+            summary = result['results'][name]['summary']
+            self.assertTrue(np.isfinite(summary['projection_matrix_condition_number']))
+            self.assertEqual(summary['components'], 120 if name == 'shape_C' else 184)
+            if summary['eligible']:
+                self.assertTrue(summary['numerical_ok'])
+                self.assertTrue(summary['representation_ok'])
+
     def test_d1_selection_never_selects_legacy_comparison(self):
         result = mixture_f4.run_f4_d_representation_study(x_steps=61)
         self.assertNotIn(result['selected_dictionary'], ('legacy_degree_30', 'legacy_degree_38'))
