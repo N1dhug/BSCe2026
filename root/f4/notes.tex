@@ -595,6 +595,77 @@ Historiske målinger kræver afklaring af punkt/average/energi, population/kolon
 forbrugertarif kontra spotpris, train-only skalering, missing-data-politik og DST.
 Disse mangler begrænser real-data-claims, ikke den syntetiske algoritmeleverance.
 
+\section{F4-B: syntetisk truth og observationer}
+\label{sec:f4b}
+F4-B implementerer kun datagenereringen til den låste F4-A-case. Den rekursive
+estimator starter først i F4-C. Formålet er at have en reproducerbar sand state-path,
+en separat observerbar datastrøm og numeriske diagnostics uden at ændre BM1-SDE'en.
+
+\subsection{Fra SDE-path til observationer}
+Truth-pathen genereres med den eksisterende Euler--Maruyama-metode,
+\begin{equation}
+ X_{n+1}=X_n+a(t_n,X_n)h_n+b(X_n)\Delta W_n,\qquad
+ \Delta W_n\sim\Normal(0,h_n),
+ \label{eq:f4b_em}
+\end{equation}
+med \texttt{boundary='none'}. Der foretages altså ingen refleksion eller clipping af
+synthetic truth. EM-gridet indeholder både de 24 observationstidspunkter og
+prisbreakpoints ved \(1/3\) og \(2/3\) dag. Efter propagation evalueres latent demand
+på outputgridet med den samme BM1-model,
+\begin{equation}
+ D_k^{\rm true}=D(X_{t_k}^{\rm true},U(t_k),B(t_k)).
+ \label{eq:f4b_demand}
+\end{equation}
+Observationen dannes først derefter:
+\begin{equation}
+ Y_k=D_k^{\rm true}+\varepsilon_k,\qquad
+ \varepsilon_k\overset{\rm iid}{\sim}\Normal(0,\sigma_Y^2).
+ \label{eq:f4b_observation}
+\end{equation}
+Dermed er processtøj og målefejl forskellige stokastiske kilder. Synthetic truth
+gemmes i et særskilt resultatobjekt til scoring. Estimatorens offentlige måleinput er
+fortsat kun \texttt{BM1ObservationSeries}; truth er ikke et felt i den klasse.
+
+\subsection{Reproducerbare, adskilte RNG-strømme}
+De tre F4-A-seed-rødder \(4101,4102,4103\) bruges til henholdsvis \(X_0\),
+Wiener-increments og målefejl. For sekvens-id \(r\) afledes hver strøm deterministisk
+fra parret \((s_{\rm root},r)\). Derfor ændres sekvens \(r\) ikke, hvis andre sekvens-id'er
+genereres før eller efter den. Samtidig kan én støjkilde ændres uden at flytte de andre:
+ændret måleseed ændrer ikke truth-pathen, og ændret Brownian-seed ændrer ikke
+measurement-noise.
+
+Dette er et reproduktionsvalg, ikke en antagelse om fysisk uafhængighed ud over den
+syntetiske observationsmodel. Ved \(\sigma_X=0\) skal truth-pathen være uafhængig af
+Brownian-strømmen; det bruges som en direkte regressionstest.
+
+\subsection{Koblet EM-refinement}
+Base-truth bruger \(h_{\max}=1/1152\) dag og den finere kontrol \(1/2304\) dag.
+Refinementen genererer først fine increments og definerer de grove ved
+\begin{equation}
+ \Delta W_j^{\rm coarse}
+ =\Delta W_{2j}^{\rm fine}+\Delta W_{2j+1}^{\rm fine}.
+ \label{eq:f4b_coupling}
+\end{equation}
+Begge runs bruger samme initialdraw og samme \(\varepsilon_k\). Forskellen mellem
+coarse og fine demand skyldes dermed EM-diskretiseringen af den samme Brownian-path,
+ikke nye random draws. Koden kræver eksplicit, at de erklærede grids er nestede.
+
+EM-diagnostics rapporterer blandt andet faktisk antal trin, rå forslag uden for
+\([0,1]\) og antal boundary-corrections. I F4-B skal \texttt{boundary\_corrections}=0.
+Hvis den deklarerede truth-kørsel forlader modeldomænet, må den ikke gøres ``gyldig''
+ved at ændre pathen; numerikken skal undersøges og et finere, deklareret forsøg køres.
+
+\subsection{Pris ved måletid og dataadskillelse}
+\texttt{input\_builder.price\_interval} er højre-kontinuert. Derfor bruger
+observationerne ved 8 og 16 timer den nye pris, præcis som låst i F4-A. Der er fortsat
+ingen observation ved \(t=0\), så \(\Beta(20,20)\)-drawet er en prior/truth-initialisering
+og ikke en skjult brug af den første måling.
+
+F4-B's CLI skriver intet som standard. \texttt{estimate synthetic} viser kun et kort
+sanity-report; \texttt{--refine} kører det koblede par, og \texttt{--save} gemmer
+eksplicit JSON under den ignorerede run-mappe. Dette er reproduktionsmetadata, ikke
+et filterresultat eller en parameterfit.
+
 \section{Bevaret statisk F4-0-evidens}
 \subsection{Et konkret statisk resultat}
 Kontrollen bruger \(X_0\sim\Beta(20,20)\), \(B=U=Y=0.5\), \(k=2\), \(\Xi=1\) og \(\sigma_Y=0.01\), uden prediction. Uafhængig numerisk quadrature af den kontinuerte Bayes-update giver
