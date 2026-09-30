@@ -271,6 +271,27 @@ class ReportingTests(unittest.TestCase):
                 self.assertEqual(validate.call_count, 1)
 
 
+    def test_estimate_synthetic_writes_only_with_explicit_save(self):
+        import contextlib
+        import io
+        import tempfile
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / 'estimation'
+            with patch.object(estimate, 'OUTPUT_DIR', output):
+                stream = io.StringIO()
+                with contextlib.redirect_stdout(stream):
+                    result = estimate.main(['synthetic', '--sequence-id', '0'])
+                self.assertFalse(output.exists())
+                self.assertIn('raw boundary violations=0', stream.getvalue())
+                self.assertTrue(result.truth.valid)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    estimate.main(['synthetic', '--sequence-id', '0', '--save'])
+            saved = list(output.glob('*.json'))
+            self.assertEqual(len(saved), 1)
+            self.assertGreater(saved[0].stat().st_size, 0)
+
+
 class F4DocumentationBuildTests(unittest.TestCase):
     """Build-tool and documentation regressions; no installed LaTeX required."""
 
