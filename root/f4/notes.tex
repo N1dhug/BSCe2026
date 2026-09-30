@@ -721,12 +721,33 @@ markerer alle observationer som manglende. Resultatet skal være identisk med di
 Fokker--Planck-propagation på den samme faktiske integrationsgrid. Denne kontrol
 skelner filterlogik fra ændringer, som alene skyldes et andet output-/time-grid.
 
-\subsection{Hvad der endnu mangler i F4-C}
-Core-filterets correctness-tests er ikke den statistiske afslutning. Efter lokal sanity
-skal rumopløsning, FP-tidstrin og measurement-quadrature raffineres separat på samme
-syntetiske datasæt. Først derefter køres mindst 200 uafhængige sekvenser med de
-præregistrerede \(\operatorname{RMSE}_0,\operatorname{RMSE}_-,\operatorname{RMSE}_+\),
-marginal 90\%-dækning ved 6/12/24 timer og predictive log score før assimilation.
+\subsection{Låst refinement før populationsstudiet}
+Efter den lokale sequence-0 sanity ændres én numerisk dimension ad gangen på præcis
+samme syntetiske datasæt. Rumrækken er
+\[
+ N_x\in\{101,201,401,801\},\qquad h_{\max}=1/192,\qquad q=1.
+\]
+Tidsrækken er
+\[
+ h_{\max}\in\{1/96,1/192,1/384\}\ \text{dag},\qquad N_x=201,\qquad q=1,
+\]
+og observationsquadraturen er
+\[
+ q\in\{1,3,5\},\qquad N_x=201,\qquad h_{\max}=1/192.
+\]
+Det sidste niveau i hver række bruges kun som numerisk reference for den akse; det er
+ikke en påstand om eksakt løsning. Vi rapporterer \(\operatorname{RMSE}_0\),
+\(\operatorname{RMSE}_-\), \(\operatorname{RMSE}_+\), samlet predictive
+log-likelihood, faktisk antal FV-trin, faktisk største trin, massefejl og minimum
+cellemasse. Den største ændring i posterior-RMSE mod aksens fineste niveau sammenholdes
+med reference-run'ets assimilationseffekt \(\operatorname{RMSE}_0-\operatorname{RMSE}_+\).
+Hvis assimilationseffekten er nær nul, bruges den absolutte refinementfejl i stedet
+for en ustabil ratio.
+
+Core-filterets correctness-tests og én-sekvens-refinement er stadig ikke den statistiske
+afslutning. Først derefter køres mindst 200 uafhængige sekvenser med de præregistrerede
+\(\operatorname{RMSE}_0,\operatorname{RMSE}_-,\operatorname{RMSE}_+\), marginal
+90\%-dækning ved 6/12/24 timer og predictive log score før assimilation.
 
 \section{Bevaret statisk F4-0-evidens}
 \subsection{Et konkret statisk resultat}
