@@ -54,6 +54,38 @@ def _projection_matrices(basis, dx):
     return (matrix, hessian, condition)
 
 
+def _simplex_face_step(coefficients, direction):
+    """Take c + alpha*d on the current face, with alpha in [0, 1].
+
+    Every negative direction is a candidate blocker. Ratios that differ on a
+    tiny absolute scale are not necessarily simultaneous: merging them with an
+    absolute tolerance can delete positive mass. Only equal computed ratios
+    activate together. For other decreasing coordinates, c*(1-alpha/ratio)
+    evaluates the same step without cancellation across the nonnegative bound.
+    There is no probability clipping or coefficient renormalization.
+    """
+    decreasing = np.flatnonzero(direction < 0.0)
+    alpha = 1.0
+    blocking = np.empty(0, dtype=int)
+    if decreasing.size:
+        # An overflowed ratio is +inf and cannot block a finite step.
+        with np.errstate(over='ignore'):
+            ratios = -coefficients[decreasing] / direction[decreasing]
+        minimum_ratio = float(np.min(ratios))
+        if minimum_ratio <= 1.0:
+            alpha = minimum_ratio
+            blocking = decreasing[ratios == minimum_ratio]
+    updated = coefficients + alpha * direction
+    if decreasing.size:
+        nonblocking = ratios > alpha
+        local = decreasing[nonblocking]
+        updated[local] = coefficients[local] * (1.0 - alpha / ratios[nonblocking])
+    # These coordinates hit the bound by the line-search definition, not by
+    # inspecting/clipping an already computed negative probability.
+    updated[blocking] = 0.0
+    return updated, blocking
+
+
 class _SimplexProjector:
     """Prepared active-set least squares on the probability simplex.
 
@@ -131,7 +163,9 @@ class _SimplexProjector:
             raise ValueError('projection target/start must be finite vectors matching the matrix.')
         if np.min(coefficients) < -1e-10 or abs(float(np.sum(coefficients)) - 1.0) > _MASS_TOL:
             raise ValueError('projection warm start must satisfy the probability simplex.')
-        free = coefficients > 1e-10
+        if np.any(coefficients < 0.0):
+            raise RuntimeError('Signed warm-start roundoff requires a constrained fallback solve.')
+        free = coefficients > 0.0
         if not np.any(free):
             free[int(np.argmax(coefficients))] = True
         for _ in range(_ACTIVE_SET_PROJECTION_MAX_ITER):
@@ -147,31 +181,13 @@ class _SimplexProjector:
                 direction = -tangent @ (right.T @ ((left.T @ residual) / singular_values))
             else:
                 direction = np.zeros(1, dtype=float)
-            if float(np.max(np.abs(direction))) > 1e-12:
-                decreasing = np.flatnonzero(direction < -1e-12)
-                alpha = 1.0
-                blocking = np.empty(0, dtype=int)
-                if decreasing.size:
-                    ratios = -coefficients[indices[decreasing]] / direction[decreasing]
-                    first = int(np.argmin(ratios))
-                    minimum_ratio = float(ratios[first])
-                    if minimum_ratio < alpha:
-                        alpha = max(0.0, minimum_ratio)
-                        # Several bounds can become active in the same line-search
-                        # step. Enforce every numerically simultaneous blocker
-                        # exactly; otherwise roundoff can leave a tied coefficient
-                        # at a tiny negative value even though the constrained step
-                        # itself is feasible. This is active-set geometry, not
-                        # post-hoc probability clipping.
-                        ratio_tolerance = (
-                            64.0 * np.finfo(float).eps * max(1.0, abs(minimum_ratio))
-                        )
-                        tied = decreasing[ratios <= minimum_ratio + ratio_tolerance]
-                        blocking = indices[tied]
-                coefficients[indices] += alpha * direction
+            # A tiny coefficient step may still be required by the gap test;
+            # do not impose an unrelated absolute step-size stopping rule.
+            if np.any(direction != 0.0):
+                updated, blocking = _simplex_face_step(coefficients[indices], direction)
+                coefficients[indices] = updated
                 if blocking.size:
-                    coefficients[blocking] = 0.0
-                    free[blocking] = False
+                    free[indices[blocking]] = False
                     continue
                 gradient = self.matrix.T @ (self.matrix @ coefficients - target)
             inactive = np.flatnonzero(~free)
@@ -558,6 +574,7 @@ class PreparedBetaProjector:
                 'mass_error': abs(float(self.dx * np.sum(projected)) - 1.0),
                 'used_fallback': used_fallback,
                 'hessian_condition_number': condition,
+                'projection_matrix_condition_number': self.projection_solver.matrix_condition_number,
                 'projection_matrix_condition_number': self.projection_solver.matrix_condition_number,
                 'used_clipping': False,
                 'used_renormalization': False,
