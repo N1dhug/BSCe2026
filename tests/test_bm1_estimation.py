@@ -722,6 +722,36 @@ class FVStateFilterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             synthetic.run_f4_c_refinement(quadrature_orders=(1, 1))
 
+    def test_calibration_sensitivity_reuses_fixed_sequences(self):
+        result = synthetic.run_f4_c_calibration_sensitivity(
+            n_sequences=3,
+            sequence_start=1,
+            variants=(
+                ('base', 31, 1/24, 1),
+                ('space', 61, 1/24, 1),
+                ('time', 31, 1/48, 1),
+                ('quad', 31, 1/24, 3),
+            ),
+        )
+        np.testing.assert_array_equal(result['sequence_ids'], [1, 2, 3])
+        self.assertEqual(result['invalid_truth_sequences'], ())
+        self.assertEqual(set(result['variants']), {'base', 'space', 'time', 'quad'})
+        for variant in result['variants'].values():
+            self.assertEqual(set(variant['horizons']), {6, 12, 24})
+            for item in variant['horizons'].values():
+                self.assertEqual(item['total'], 3)
+                self.assertGreaterEqual(item['coverage'], 0.0)
+                self.assertLessEqual(item['coverage'], 1.0)
+                self.assertGreater(item['mean_width'], 0.0)
+                self.assertGreaterEqual(item['posterior_mean_rmse'], 0.0)
+                self.assertGreater(item['root_mean_posterior_variance'], 0.0)
+                self.assertTrue(np.isfinite(item['rmse_over_posterior_sd']))
+
+    def test_piecewise_constant_variance_includes_within_cell_spread(self):
+        edges = np.array([0.0, 0.5, 1.0])
+        mass = np.array([0.5, 0.5])
+        self.assertAlmostEqual(synthetic._piecewise_constant_variance(edges, mass), 1/12)
+
     def test_filter_inputs_fail_explicitly(self):
         with self.assertRaises(ValueError):
             fv_filter_step(
