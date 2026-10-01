@@ -13,7 +13,7 @@ from src.params.wm_4 import qp_params
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "daily"
-INIT_F = 0.5
+INIT_F = 0.0
 INIT = np.array([INIT_F, 0.0], dtype=float)
 DAY_HOURS = 24
 PARAMETER_WEEKS = 5
@@ -21,6 +21,10 @@ BASELINE_WEEKS = PARAMETER_WEEKS
 
 
 def day_start(value): return pd.Timestamp(value).normalize()
+
+
+def aligned_wm4_data(tag="MED"):
+    return aligned_data(tag, price_domain=(-1.0, 1.0), price_year=2022)
 
 
 def fit_expected_output(frame, start):
@@ -132,12 +136,12 @@ def print_result(start, end, total_start, output_fit, fit, model, plot_path, ste
     print(f"warm-up={total_start} -> {start} ({warmup_hours} h); target={start} -> {end}")
     print(f"model time measured in days: T={model.T}, dt={model.dt:.12f}, response grid={3600.0 / steps_per_hour:.4f} physical seconds")
     print(f"observations={np.count_nonzero(fit['observation_mask'])} target-day hourly I samples; total state grid points={model.t_steps}")
-    print("parameter solver: src.params.wm_4.qp_params | dR/dt=r0+rF*F+rU*U+rR*R, I=O+R")
+    print("parameter solver: src.params.wm_4.qp_params | dR/dt=rF*F+rU*U+rR*R, I=O+R")
     print(f"O: robust Huber-ridge model using time-of-day Fourier terms, weekday, season and temperature/chill interactions")
     print(f"O training: {output_fit['fit_start']} -> {output_fit['fit_end']}, samples={output_fit['samples']}, features={output_fit['features']}, MSE={output_fit['mse']:.8f}, MAE={output_fit['mae']:.8f}")
     print(f"O temperature range=[{output_fit['temperature_min']:.3f}, {output_fit['temperature_max']:.3f}] C, heating base={output_fit['base_temperature']:.1f} C")
     r = fit["r"]
-    print(f"coefficients: r_0={r[0]:.8f}, r_F={r[1]:.8f}, r_U={r[2]:.8f}, r_R={r[3]:.8f}")
+    print(f"coefficients: r_F={r[0]:.8f}, r_U={r[1]:.8f}, r_R={r[2]:.8f}")
     print(f"damping: branch={fit['damping_branch']}, zeta={fit['damping_ratio']:.8f}")
     print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"fitted initial [F0,R0]={np.array2string(fit['init_cond'], precision=8)}")
@@ -164,7 +168,7 @@ def main():
     parser.add_argument("--steps-per-hour", type=int, default=60, help="Internal wm_4 response substeps per physical hour; default 60 gives a one-minute grid.")
     args = parser.parse_args()
 
-    frame, _ = aligned_data("MED")
+    frame, _ = aligned_wm4_data("MED")
     start = day_start(args.day)
     end, day, output_fit, fit, model, fine_index, total_start = fit_day(frame, start, args.warmup_hours, args.steps_per_hour)
     plot_path = save_plot(start, end, day, fine_index, fit, args.warmup_hours)
