@@ -9,7 +9,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[4]
 OPTIMIZED = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized"
 OUTPUT = OPTIMIZED / "analysis"
-PARAMETERS = ("r_0", "r_F", "r_U", "r_R")
+PARAMETERS = ("r_F", "r_U", "r_R")
 METRICS = ("mse", "rmse", "mae", "bias")
 
 
@@ -196,8 +196,8 @@ def save_plots(analyzed, output):
     fig.savefig(output / "optimized_F0_over_time.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 9), sharex=True)
-    for ax, parameter in zip(axes.flat, PARAMETERS):
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5), sharex=True)
+    for ax, parameter in zip(axes, PARAMETERS):
         ax.plot(analyzed["day"], analyzed[parameter])
         ax.set_title(parameter)
         ax.grid(True, alpha=0.25)
