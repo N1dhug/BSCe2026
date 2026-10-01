@@ -32,6 +32,7 @@ python -B -m src.exe.run_model.bm_1.estimate mixture-holdout
 python -B -m src.exe.run_model.bm_1.estimate mixture-filter
 python -B -m src.exe.run_model.bm_1.estimate mixture-filter-refine
 python -B -m src.exe.run_model.bm_1.estimate mixture-filter-converge
+python -B -m src.exe.run_model.bm_1.estimate mixture-filter-population
 python -B -m unittest discover -s tests -q
 python -B root/f4/build.py
 ```
