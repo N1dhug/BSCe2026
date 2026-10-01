@@ -12,11 +12,12 @@ from src.exe.run_model.wm_4.predict_daily import deviation_metrics, fit_history,
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days"
+TOP_END_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_top_end"
 START_DAY = "2022-02-28"
 END_DAY = "2022-08-22"
 
 
-def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deterministic=False, optimize_prediction_state=False, save_daily_plots=False, **fit_kwargs):
+def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deterministic=False, optimize_prediction_state=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
     output_model, output_fit, fit, _, _, _ = fit_history(
         frame, start, baseline_weeks, warmup_hours, steps_per_hour,
         fit_diffusion=not deterministic, **fit_kwargs,
@@ -55,7 +56,7 @@ def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deter
     hourly.index.name = "time"
 
     if save_daily_plots:
-        path = OUTPUT / "daily" / f"daily_prediction_{start:%Y-%m-%d}.png"
+        path = Path(output_root) / "daily" / f"daily_prediction_{start:%Y-%m-%d}.png"
         save_plot(start, end, actual, fine_index, state, path, baseline_weeks)
 
     return daily, hourly
@@ -98,7 +99,7 @@ def print_summary(hourly, fitted_days, skipped):
         for day, reason in skipped: print(f"{day:%Y-%m-%d}: {reason}")
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, warmup_hours=24, steps_per_hour=60, deterministic=False, optimize_prediction_state=False, save_daily_plots=False, fail_fast=False, **fit_kwargs):
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, warmup_hours=24, steps_per_hour=60, deterministic=False, optimize_prediction_state=False, save_daily_plots=False, fail_fast=False, output_root=OUTPUT, **fit_kwargs):
     start, end = day_start(start), day_start(end)
     if end < start: raise ValueError("end must be on or after start.")
 
@@ -108,7 +109,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
             daily, hourly = day_result(
                 frame, day, baseline_weeks, warmup_hours, steps_per_hour,
                 deterministic=deterministic, optimize_prediction_state=optimize_prediction_state,
-                save_daily_plots=save_daily_plots, **fit_kwargs,
+                save_daily_plots=save_daily_plots, output_root=output_root, **fit_kwargs,
             )
             daily_rows.append(daily); hourly_frames.append(hourly)
             print(f"{day:%Y-%m-%d} | r=[{daily['r_0']:.6f}, {daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}] | initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | WM4 MSE={daily['wm4_mse']:.8f} | O MSE={daily['O_mse']:.8f}")
@@ -135,16 +136,17 @@ def main():
     args = parser.parse_args()
 
     frame, _ = aligned_data("MED")
+    output_root = TOP_END_OUTPUT if args.optimize_prediction_state else OUTPUT
     daily, hourly, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
         deterministic=args.deterministic, optimize_prediction_state=args.optimize_prediction_state,
-        save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast,
+        save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast, output_root=output_root,
     )
-    OUTPUT.mkdir(parents=True, exist_ok=True)
-    daily.to_csv(OUTPUT / "daily_metrics.csv", index=False)
-    hourly.to_csv(OUTPUT / "hourly_predictions.csv")
-    if skipped: pd.DataFrame([{"day": day, "reason": reason} for day, reason in skipped]).to_csv(OUTPUT / "skipped_days.csv", index=False)
-    save_performance_plot(hourly, daily, OUTPUT / "all_days_performance.png")
+    output_root.mkdir(parents=True, exist_ok=True)
+    daily.to_csv(output_root / "daily_metrics.csv", index=False)
+    hourly.to_csv(output_root / "hourly_predictions.csv")
+    if skipped: pd.DataFrame([{"day": day, "reason": reason} for day, reason in skipped]).to_csv(output_root / "skipped_days.csv", index=False)
+    save_performance_plot(hourly, daily, output_root / "all_days_performance.png")
     print()
     print_summary(hourly, len(daily), skipped)
 
