@@ -2259,6 +2259,29 @@ class OneParameterBankTests(unittest.TestCase):
         updated = self.reduce(b['conditional_log_evidence'], np.log([1/3]*3), np.array([True]))
         self.assertTrue(np.isfinite(updated['log_weights'][0,0]))
 
+    def test_grid_reuse_requires_exact_candidate_case_observations_and_numerics(self):
+        settings = synthetic._f4_f_numerics(21,1/24,1)
+        a = synthetic._f4_f_group('rho',1263,1.,[.75,1.],settings,'first')
+        b = synthetic._f4_f_group('rho',1263,1.,[1.,1.25],settings,'second')
+        original = synthetic._f4_f_candidate_replay
+        with patch.object(synthetic,'_f4_f_candidate_replay',wraps=original) as run:
+            rows = synthetic._f4_f_execute_groups([a,b],1)
+            self.assertEqual(run.call_count,3)
+        standalone = synthetic._f4_f_execute_groups([b],1)[0]
+        np.testing.assert_array_equal(rows[1]['conditional_log_evidence'],standalone['conditional_log_evidence'])
+        for change in ('observations','numerics','node'):
+            changed = copy.deepcopy(b)
+            if change == 'observations':
+                obs=changed['observations']
+                changed['observations']=BM1ObservationSeries(obs.times,obs.values+.001,'day')
+            elif change == 'numerics':
+                changed['settings']['likelihood_quadrature_order']=3
+            else:
+                changed['values']=(np.nextafter(1.,2.),1.25)
+            with self.subTest(change=change), patch.object(synthetic,'_f4_f_candidate_replay',wraps=original) as run:
+                synthetic._f4_f_execute_groups([a,changed],1)
+                self.assertEqual(run.call_count,4)
+
 
 if __name__ == '__main__':
     unittest.main()

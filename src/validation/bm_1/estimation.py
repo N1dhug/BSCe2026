@@ -2532,8 +2532,26 @@ def _f4_f_execute_groups(groups, workers, progress=None, *, priors=False, keep_m
     carries its own conditional posterior through the observation chronology.
     """
     workers = checks.positive_integer(workers, 'workers')
-    tasks = [(i, j, g['coordinate'], float(v), g['case'], g['observations'], g['settings'])
-             for i, g in enumerate(groups) for j, v in enumerate(g['values'])]
+    tasks, exact_replays, consumers = [], {}, {}
+    for i, g in enumerate(groups):
+        case_key = tuple((name, np.asarray(getattr(g['case'], name)).dtype.str,
+                          np.asarray(getattr(g['case'], name)).shape,
+                          np.asarray(getattr(g['case'], name)).tobytes())
+                         for name in g['case'].__dataclass_fields__)
+        obs = g['observations']
+        observation_key = (obs.time_unit, obs.observation_kind, obs.price_side,
+                           obs.times.tobytes(), obs.values.tobytes(), obs.observed.tobytes())
+        for j, value in enumerate(g['values']):
+            # No rounding or approximate match. Only the same fixed-candidate
+            # replay may be shared across grids/priors; never another candidate's
+            # conditional posterior. Neither parameter grid nor prior enters it.
+            key = (g['coordinate'], float(value), case_key, observation_key,
+                   tuple(sorted(g['settings'].items())))
+            if key not in exact_replays:
+                exact_replays[key] = (i, j)
+                consumers[(i, j)] = []
+                tasks.append((i, j, g['coordinate'], float(value), g['case'], obs, g['settings']))
+            consumers[exact_replays[key]].append((i, j))
     pending = {i: [None] * len(g['values']) for i, g in enumerate(groups)}
     rows = [None] * len(groups)
     manager = (ProcessPoolExecutor(max_workers=workers, mp_context=get_context('spawn'))
@@ -2557,18 +2575,19 @@ def _f4_f_execute_groups(groups, workers, progress=None, *, priors=False, keep_m
 
             results = completed_results()
         for completed, (i, j, conditional) in enumerate(results, 1):
-            pending[i][j] = conditional
-            if all(c is not None for c in pending[i]):
-                group = groups[i]
-                reduced = _f4_f_reduce_conditionals(group, pending[i])
-                row = _f4_f_public_row(group, reduced, keep_mass=keep_mass)
-                if priors:
-                    names = ['uniform_parameter', 'wrong_concentrated']
-                    names.append('uniform_capacity' if group['coordinate'] == 'rho' else 'uniform_log')
-                    row['prior_sensitivity'] = {name: _f4_f_public_row(
-                        group, _f4_f_reduce_conditionals(group, pending[i], name)) for name in names}
-                rows[i] = row
-                del pending[i]
+            for destination, node_index in consumers[(i, j)]:
+                pending[destination][node_index] = conditional
+                if all(c is not None for c in pending[destination]):
+                    group = groups[destination]
+                    reduced = _f4_f_reduce_conditionals(group, pending[destination])
+                    row = _f4_f_public_row(group, reduced, keep_mass=keep_mass)
+                    if priors:
+                        names = ['uniform_parameter', 'wrong_concentrated']
+                        names.append('uniform_capacity' if group['coordinate'] == 'rho' else 'uniform_log')
+                        row['prior_sensitivity'] = {name: _f4_f_public_row(
+                            group, _f4_f_reduce_conditionals(group, pending[destination], name)) for name in names}
+                    rows[destination] = row
+                    del pending[destination]
             if progress is not None:
                 progress(dict(completed=completed, total=len(tasks), sequence_id=groups[i]['sequence_id'],
                               coordinate=groups[i]['coordinate'], label=groups[i]['label']))
