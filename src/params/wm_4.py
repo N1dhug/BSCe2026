@@ -226,7 +226,6 @@ class qp_params:
         if fit_initial_state: raise ValueError("wm_4 QP fitting requires fixed initial [F0, R0]; fit_initial_state is no longer supported.")
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         fit_start = perf_counter()
-        if deterministic: fit_diffusion = False
         datasets = [self._prepare_data(data) for data in input_data]
         raw_init = np.asarray(initial_conditions, dtype=float)
         if raw_init.shape == (2,): init_conds = [wm_4_validation.initial_condition(raw_init) for _ in datasets]
@@ -376,6 +375,7 @@ class optimized_qp_params(qp_params):
     def fit_many(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, deterministic=False, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, parameter_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), max_parameter_iter=1000, parameter_ftol=1e-12, **_legacy_kwargs):
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         fit_start = perf_counter()
+        if deterministic: fit_diffusion = False
         datasets = [self._prepare_data(data) for data in input_data]
         raw_init = np.asarray(initial_conditions, dtype=float)
         if raw_init.shape == (2,): seeds = [wm_4_validation.initial_condition(raw_init) for _ in datasets]
