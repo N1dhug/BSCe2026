@@ -295,6 +295,102 @@ Alba-thesen analyserer blandt andet frie lineære responsfunktioner og deres sam
 
 Diffusion optræder ikke som et additivt led i \(\frac{\dd}{\dd t}\E[X_t]=\E[a_\theta(t,X_t)]\). Men i en ikke-lineær model afhænger højresiden af hele fordelingen, som selv afhænger af \(\sigma_X\). Man må derfor ikke konkludere, at diffusionsparameteren kun kan påvirke varianser og aldrig predictive means i det præcise density-baserede filter.
 
+
+\subsection{F4-E: fixed-parameter likelihood før parameterbank}
+F4-E ændrer ikke endnu parametrene rekursivt. For en kandidat
+\[
+ \theta=(\rho,\Xi,k,\sigma_X,\sigma_Y),\qquad \rho=1/C,
+\]
+holdes \(f(x)=1-2x\) og \(g(u)=1-2u\) faste, og hele state-filteret replayes fra den
+samme initialprior. Kandidat \(j\) har altså sin egen sekvens
+\[
+ p_{0}^{+,j}\longrightarrow p_{1}^{-,j}\longrightarrow p_{1}^{+,j}
+ \longrightarrow\cdots\longrightarrow p_N^{+,j},
+\]
+og sin egen predictive evidence \(z_k^{(j)}\). Et kandidatskift må ikke fortsætte fra
+forrige kandidats state-posterior. F4-E scorer
+\begin{equation}
+ \ell_N(\theta)=\sum_{k=1}^{N}\log z_k(\theta),\qquad
+ \Delta\ell_N(\theta)=\ell_N(\theta)-\max_{\vartheta\in\mathcal G}\ell_N(\vartheta),
+ \label{eq:f4e-centered-likelihood}
+\end{equation}
+på et på forhånd fastlagt grid \(\mathcal G\). Centeringen fjerner kun et fælles additivt
+offset og ændrer ikke likelihood-ratioer eller gridets maximizer.
+
+Før slices accepteres som videnskabelige resultater, testes evaluatorens algebra.
+Truth-kandidaten skal matche samme kendt-parameter replay gennem den eksisterende
+FV-filterkerne; kandidatpermutation og gentagelse må ikke ændre værdierne. En særlig
+\(\Xi=0\)-kontrol er stærkere: her er
+\[
+ D(x,u,B)=B,\qquad L_k(x)=L_k
+\]
+konstant i state. Derfor
+\[
+ z_k=L_k\int_0^1p_k^-(x)\dd x=L_k,
+\]
+så \(\ell_N\) er matematisk uafhængig af \(\rho\), \(k\) og \(\sigma_X\), når
+\(\sigma_Y\) holdes fast. En ikke-flad numerisk slice i denne kontrol afslører dermed
+filter-/likelihoodkobling eller massefejl, ikke manglende identifikation i data.
+
+Den første numeriske stabilitetskontrol bruger sequence-id 1211 og
+\[
+ \rho_j=0.5+0.025j,\qquad j=0,\ldots,40.
+\]
+Tidsrefinement køres ved \(N_x=201,q=3\) med
+\(h_{\max}\in\{1/192,1/384,1/768\}\) dag; spatial refinement ved
+\(h_{\max}=1/768,q=3\) med \(N_x\in\{201,401,801\}\); observation-quadrature ved
+\(N_x=401,h_{\max}=1/768\) med \(q\in\{1,3,5\}\). De to fineste niveauer
+betragtes som stabile til screening, hvis rho-gridets maximizer er samme node, og
+\[
+ \max_{\rho\in\mathcal R}
+ |\Delta\ell_{\rm fine}(\rho)-\Delta\ell_{\rm mid}(\rho)|\le0.10,
+ \label{eq:f4e-numerical-gate}
+\]
+hvor \(\mathcal R\) er unionen af gridpunkter, der ligger højst fem log-enheder under
+et af de to maxima. Fejler dette kriterium, raffineres numerikken igen i stedet for at
+vælge den resolution, der giver den ønskede parameterkonklusion.
+
+Den efterfølgende en-parameter-screening bruger 50 hidtil ubrugte sekvenser,
+ID 1212--1261, med følgende grids:
+\[
+ \rho\in\{0.5,0.525,\ldots,1.5\},\qquad
+ \Xi\in\{0,0.025,\ldots,1\},
+\]
+\[
+ k_j=0.5+0.075j,\qquad j=0,\ldots,40,
+\]
+og for skala-parametrene
+\[
+ \sigma_{X,j}=0.5\,2^{(j-20)/10},\qquad
+ \sigma_{Y,j}=0.03\,2^{(j-20)/10},\qquad j=0,\ldots,40.
+\]
+For hver sekvens rapporteres grid-MLE, rand-MLE, forskellen mellem maximalt og
+truth-node log-likelihood og det diskrete likelihood-ratio-område
+\begin{equation}
+ \mathcal I_{\rm LR}
+ =\{\theta_j:2[\ell_{\max}-\ell(\theta_j)]\le3.841\}.
+ \label{eq:f4e-lr-set}
+\end{equation}
+Mængden bruges kun som en sammenlignelig shape-diagnostik. Med kort record, diskret
+grid og især \(\Xi^\star=1\) på den fysiske rand er Wilks-approksimationens antagelser
+ikke verificeret, så \(\mathcal I_{\rm LR}\) betegnes ikke som et kalibreret
+95-procents konfidensinterval.
+
+Tre analytisk relevante 2D-diagnoser reserveres efter singles:
+\[
+ (\rho,\Xi),\qquad(k,\Xi),\qquad(\sigma_X,\sigma_Y).
+\]
+De bruger hver anden node fra de tilsvarende 1D-grids og de første ti
+screeningsekvenser. Dette er likelihood-flader til ridge-diagnostik, ikke joint
+parameterestimation. Den egentlige rekursive en-parameterbank begynder først i F4-F.
+
+Valget af første F-parameter fastlåses først efter E. \(\rho\) er arbejdshypotesen:
+sandheden ligger interiørt i den allerede foreslåede støtte, og driftens afhængighed
+af \(\rho\) er enkel. Det er ikke et acceptkriterium; hvis slice og numerisk refinement
+viser svag information, dokumenteres den svage identifikation i stedet for at tvinge
+banken til at recovere sandheden.
+
+
 \subsection{Likelihood-snit, profil og batch-replay}
 For en fast kandidat er den sekventielle log-likelihood
 \begin{equation}
