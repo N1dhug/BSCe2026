@@ -47,7 +47,6 @@ def historical_optimized_state(fit):
     if states.ndim != 2 or states.shape[1] != 2: raise ValueError("Optimized historical fit must contain one [F0,R0] row per training day.")
     init = np.median(states, axis=0)
     init[0] = np.clip(init[0], 0.0, 1.0)
-    init[1] = np.clip(init[1], -1.0, 1.0)
     return init
 
 
