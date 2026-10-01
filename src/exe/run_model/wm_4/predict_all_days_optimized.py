@@ -78,7 +78,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
         "training_R0_mean": float(np.mean(training_states[:, 1])),
         "training_R0_std": float(np.std(training_states[:, 1])),
         "state_iterations": int(fit["state_iterations"]),
-        "qp_loss": float(fit["qp_loss"]),
+        "input_fit_loss": float(fit["input_fit_loss"]),
         "sigma_0": np.nan if deterministic else fit["sigma_0"],
         "sigma_I": np.nan if deterministic else fit["sigma_I"],
         "O_fit_mse": output_fit["mse"], "O_fit_samples": output_fit["samples"],
@@ -110,7 +110,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
 def save_performance_plot(hourly, daily, path):
     fig, axes = plt.subplots(3, 1, figsize=(18, 12), sharex=False)
     axes[0].plot(hourly.index, hourly["I_observed"], label="Observed I")
-    axes[0].plot(hourly.index, hourly["I_wm4"], label="WM4 optimized-QP")
+    axes[0].plot(hourly.index, hourly["I_wm4"], label="WM4 optimized-input")
     axes[0].plot(hourly.index, hourly["O"], label="Weather-aware O", alpha=0.8)
     axes[0].set_ylabel("Normalized input"); axes[0].legend(); axes[0].grid(True, alpha=0.25)
 
@@ -123,7 +123,7 @@ def save_performance_plot(hourly, daily, path):
     axes[2].plot(daily["day"], daily["F_0"], label="Prediction F0 = historical median")
     axes[2].set_ylabel("F0"); axes[2].set_xlabel("Day"); axes[2].legend(); axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle("wm_4 optimized-state QP out-of-sample performance")
+    fig.suptitle("wm_4 optimized-state input-fit out-of-sample performance")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -170,7 +170,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
 
 
 def main():
-    parser = ArgumentParser(description="Evaluate wm_4 predictions using optimized historical initial states in the parameter QP.")
+    parser = ArgumentParser(description="Evaluate wm_4 predictions using parameters and historical initial states fitted directly to observed input I.")
     parser.add_argument("--start-day", default=START_DAY)
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
