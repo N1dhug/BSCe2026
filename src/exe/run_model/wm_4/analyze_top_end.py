@@ -29,6 +29,21 @@ def paired_results(warmup, optimized):
         np.nan,
     )
     merged["optimized_better"] = merged["mse_gain"] > 0.0
+    merged["winner"] = np.where(merged["mse_gain"] > 0.0, "optimized", np.where(merged["mse_gain"] < 0.0, "warmup", "equal"))
+    merged["pair_mean_mse"] = 0.5 * (merged["wm4_mse_warmup"] + merged["wm4_mse_optimized"])
+    merged["winning_margin"] = np.abs(merged["mse_gain"])
+    merged["winner_mse"] = np.minimum(merged["wm4_mse_warmup"], merged["wm4_mse_optimized"])
+    merged["loser_mse"] = np.maximum(merged["wm4_mse_warmup"], merged["wm4_mse_optimized"])
+    merged["winning_margin_pct"] = np.where(
+        merged["loser_mse"] > 0.0,
+        100.0 * merged["winning_margin"] / merged["loser_mse"],
+        np.nan,
+    )
+    merged["error_quartile"] = pd.qcut(
+        merged["pair_mean_mse"].rank(method="first"),
+        4,
+        labels=("Q1 low error", "Q2", "Q3", "Q4 high error"),
+    )
     merged["F0_delta"] = merged["F_0_optimized"] - merged["F_0_warmup"]
     merged["R0_delta"] = merged["R_0_optimized"] - merged["R_0_warmup"]
     for parameter in PARAMETERS:
@@ -46,9 +61,58 @@ def summary_table(frame):
         "mean_mse_gain": frame["mse_gain"].mean(),
         "median_mse_gain": frame["mse_gain"].median(),
         "mean_mse_improvement_pct": frame["mse_improvement_pct"].mean(),
+        "aggregate_mse_improvement_pct": 100.0 * (frame["wm4_mse_warmup"].mean() - frame["wm4_mse_optimized"].mean()) / frame["wm4_mse_warmup"].mean(),
+        "mean_winning_margin": frame["winning_margin"].mean(),
+        "median_winning_margin": frame["winning_margin"].median(),
+        "mean_winning_margin_pct": frame["winning_margin_pct"].mean(),
+        "median_winning_margin_pct": frame["winning_margin_pct"].median(),
         "mean_abs_F0_delta": np.abs(frame["F0_delta"]).mean(),
         "mean_abs_R0_delta": np.abs(frame["R0_delta"]).mean(),
     }])
+
+
+def winner_margin_summary(frame):
+    rows = []
+    for winner in ("optimized", "warmup"):
+        part = frame.loc[frame["winner"] == winner]
+        if part.empty: continue
+        rows.append({
+            "winner": winner,
+            "wins": len(part),
+            "mean_winner_mse": part["winner_mse"].mean(),
+            "mean_loser_mse": part["loser_mse"].mean(),
+            "mean_pair_mse": part["pair_mean_mse"].mean(),
+            "median_pair_mse": part["pair_mean_mse"].median(),
+            "mean_winning_margin": part["winning_margin"].mean(),
+            "median_winning_margin": part["winning_margin"].median(),
+            "mean_winning_margin_pct": part["winning_margin_pct"].mean(),
+            "median_winning_margin_pct": part["winning_margin_pct"].median(),
+        })
+    return pd.DataFrame(rows)
+
+
+def error_level_summary(frame):
+    rows = []
+    for error_quartile, part in frame.groupby("error_quartile", observed=True):
+        optimized = part.loc[part["winner"] == "optimized"]
+        warmup = part.loc[part["winner"] == "warmup"]
+        rows.append({
+            "error_quartile": str(error_quartile),
+            "days": len(part),
+            "mean_pair_mse": part["pair_mean_mse"].mean(),
+            "min_pair_mse": part["pair_mean_mse"].min(),
+            "max_pair_mse": part["pair_mean_mse"].max(),
+            "optimized_wins": len(optimized),
+            "warmup_wins": len(warmup),
+            "optimized_win_pct": 100.0 * len(optimized) / len(part),
+            "mean_winning_margin": part["winning_margin"].mean(),
+            "mean_winning_margin_pct": part["winning_margin_pct"].mean(),
+            "optimized_mean_margin": optimized["winning_margin"].mean() if not optimized.empty else np.nan,
+            "optimized_mean_margin_pct": optimized["winning_margin_pct"].mean() if not optimized.empty else np.nan,
+            "warmup_mean_margin": warmup["winning_margin"].mean() if not warmup.empty else np.nan,
+            "warmup_mean_margin_pct": warmup["winning_margin_pct"].mean() if not warmup.empty else np.nan,
+        })
+    return pd.DataFrame(rows)
 
 
 def state_summary(frame):
@@ -129,6 +193,27 @@ def save_plots(frame, output):
     fig.savefig(output / "top_end_F0_comparison.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
+    fig, ax = plt.subplots(figsize=(9, 7))
+    ax.scatter(frame["pair_mean_mse"], frame["mse_gain"], alpha=0.7)
+    ax.axhline(0.0, linestyle="--")
+    ax.set_xlabel("Mean MSE of the two models on the day")
+    ax.set_ylabel("Warmup MSE - optimized MSE")
+    ax.set_title("Which parameterization wins as day-level error increases")
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(output / "mse_gain_vs_error_level.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(9, 7))
+    ax.scatter(frame["pair_mean_mse"], frame["winning_margin_pct"], alpha=0.7)
+    ax.set_xlabel("Mean MSE of the two models on the day")
+    ax.set_ylabel("Winner margin relative to worse MSE [%]")
+    ax.set_title("Relative winning margin versus day-level error")
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(output / "relative_margin_vs_error_level.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
     fig, ax = plt.subplots(figsize=(16, 6))
     ax.plot(frame["day"], frame["R_0_warmup"], label="Warmup-parameter oracle R0")
     ax.plot(frame["day"], frame["R_0_optimized"], label="Optimized-parameter oracle R0")
@@ -140,12 +225,19 @@ def save_plots(frame, output):
     plt.close(fig)
 
 
-def print_summary(summary, states):
+def print_summary(summary, states, margins, error_levels):
     row = summary.iloc[0]
     print(f"days={int(row['days'])}")
     print(f"optimized parameter fit better with oracle state on {int(row['optimized_better_days'])}/{int(row['days'])} days ({row['optimized_better_pct']:.2f}%)")
     print(f"mean top-end MSE: warmup={row['mean_warmup_mse']:.10f}, optimized={row['mean_optimized_mse']:.10f}, gain={row['mean_mse_gain']:.10f}")
-    print(f"mean MSE improvement={row['mean_mse_improvement_pct']:.2f}%")
+    print(f"aggregate MSE improvement={row['aggregate_mse_improvement_pct']:.2f}%")
+    print(f"mean absolute winning margin={row['mean_winning_margin']:.10f}, mean relative winning margin={row['mean_winning_margin_pct']:.2f}%")
+    print()
+    print("margin conditional on which model wins")
+    print(margins.to_string(index=False))
+    print()
+    print("performance by day-level error quartile")
+    print(error_levels.to_string(index=False))
     print()
     print("oracle prediction-state summary")
     print(states.to_string(index=False))
@@ -163,6 +255,8 @@ def main():
     paired = paired_results(warmup, optimized)
     summary = summary_table(paired)
     states = state_summary(paired)
+    margins = winner_margin_summary(paired)
+    error_levels = error_level_summary(paired)
     parameters = parameter_summary(paired)
     weekdays = weekday_summary(paired)
     output = Path(args.output); output.mkdir(parents=True, exist_ok=True)
@@ -170,12 +264,14 @@ def main():
     paired.to_csv(output / "paired_top_end_comparison.csv", index=False)
     summary.to_csv(output / "summary.csv", index=False)
     states.to_csv(output / "oracle_state_comparison.csv", index=False)
+    margins.to_csv(output / "winner_margin_summary.csv", index=False)
+    error_levels.to_csv(output / "error_level_summary.csv", index=False)
     parameters.to_csv(output / "parameter_comparison.csv", index=False)
     weekdays.to_csv(output / "weekday_comparison.csv", index=False)
     paired.sort_values("mse_gain", ascending=False).head(20).to_csv(output / "largest_optimized_improvements.csv", index=False)
     paired.sort_values("mse_gain").head(20).to_csv(output / "largest_optimized_regressions.csv", index=False)
     save_plots(paired, output)
-    print_summary(summary, states)
+    print_summary(summary, states, margins, error_levels)
 
 
 if __name__ == "__main__": main()
