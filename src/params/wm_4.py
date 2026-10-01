@@ -275,7 +275,7 @@ class optimized_qp_params(qp_params):
         residual = (observed["X"] @ np.asarray(r, dtype=float) - observed["y"])[mask]
         return float(np.mean(residual ** 2)) if residual.size else np.inf
 
-    def _optimize_initial_state(self, data, r, seed, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0)):
+    def _optimize_initial_state(self, data, r, seed, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf)):
         seed = wm_4_validation.initial_condition(seed)
         r = wm_4_validation.r_coefficients(r)
 
@@ -294,7 +294,7 @@ class optimized_qp_params(qp_params):
         init = self.model._least_squares_qp(X, y, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE, x0=np.clip(seed, lb, ub))
         return wm_4_validation.initial_condition(init)
 
-    def _alternating_fit(self, datasets, init_conds, stabilize=True, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0), verbose=False):
+    def _alternating_fit(self, datasets, init_conds, stabilize=True, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), verbose=False):
         init_conds = [wm_4_validation.initial_condition(init).copy() for init in init_conds]
         history, total_qp_time = [], 0.0
         previous_loss = np.inf
@@ -318,7 +318,7 @@ class optimized_qp_params(qp_params):
 
         return r, observed, init_conds, float(qp_loss), float(total_qp_time), history
 
-    def fit(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0), **_legacy_kwargs):
+    def fit(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), **_legacy_kwargs):
         fit_start = perf_counter()
         data = self._prepare_data(input_data)
         seed = wm_4_validation.initial_condition(initial_conditions)
@@ -349,7 +349,7 @@ class optimized_qp_params(qp_params):
         if verbose: print(f"[optimized_qp] transitions={np.count_nonzero(data['transition_mask'])} loss={qp_loss:.8g} iterations={len(history)}")
         return result
 
-    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0), **_legacy_kwargs):
+    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), **_legacy_kwargs):
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         if not fit_initial_state:
             return super().fit_many(input_data, initial_conditions, fit_initial_state=False, fit_diffusion=fit_diffusion, stabilize=stabilize, verbose=verbose)
