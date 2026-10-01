@@ -533,6 +533,68 @@ def run_mixture_filter_refinement(args):
     return result
 
 
+
+def run_mixture_filter_convergence(args):
+    """Run the preregistered F4-D D3c convergence confirmation."""
+    result = mixture_validation.run_f4_d_recursive_convergence(
+        sequence_id=args.sequence_id,
+    )
+    print(f"F4-D D3c convergence confirmation: sequence={result['sequence_id']}")
+    print(
+        "  axis/level          cells  req h        actual h     steps   "
+        "total post L1  evidence |err|/obs  mix post RMSE  fallbacks"
+    )
+    for axis in ('time', 'spatial'):
+        for row in result[axis]:
+            level = row['level']
+            level_text = f"{level:.6g}" if isinstance(level, float) else str(level)
+            fallbacks = row['prediction_fallbacks'] + row['posterior_fallbacks']
+            print(
+                f"  {axis}/{level_text:<11} {row['x_steps']:>5d}  "
+                f"{row['requested_max_step']:.3e}  {row['actual_max_step']:.3e}  "
+                f"{row['internal_steps']:>5d}   {row['total_posterior_l1']:.6e}   "
+                f"{row['evidence_mean_abs']:.6e}       "
+                f"{row['mixture_posterior_rmse']:.6e}   {fallbacks}"
+            )
+    t = result['summary']['time']
+    for label in ('posterior_l1', 'evidence_mean_abs'):
+        item = t[label]
+        print(
+            f"  time {label}: E0={item['extrapolated_limit']:.6e}; "
+            f"pred fine={item['predicted_fine']:.6e}; "
+            f"obs fine={item['observed_fine']:.6e}; "
+            f"pred rel err={item['relative_prediction_error']:.4f}; "
+            f"|E0|/mid={item['limit_to_middle_ratio']:.4f}; "
+            f"monotone={item['monotone_decrease']}; "
+            f"step-bound={item['step_limit_binding']}; "
+            f"passes={item['passes']}"
+        )
+    sp = result['summary']['spatial']
+    for label in ('posterior_l1', 'evidence_mean_abs'):
+        item = sp[label]
+        changes = item['successive_relative_changes']
+        print(
+            f"  spatial {label}: successive rel changes="
+            f"({changes[0]:.4f}, {changes[1]:.4f}); "
+            f"max={item['maximum_relative_change']:.4f}; "
+            f"step-bound={item['step_limit_binding']}; "
+            f"passes={item['passes']}"
+        )
+    print(
+        f"  time passes={t['passes']}; spatial passes={sp['passes']}; "
+        f"overall={result['summary']['passes_convergence']}; "
+        f"unique configurations={len(result['unique_configurations'])}"
+    )
+    setting = result['summary']['population_setting']
+    if setting is not None:
+        print(
+            f"  locked population setting: cells={setting['x_steps']}; "
+            f"hmax={setting['max_step']:.6e}; cfl={setting['cfl']}; "
+            f"q={setting['likelihood_quadrature_order']}"
+        )
+    return result
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -644,6 +706,13 @@ def build_parser():
     )
     mixture_filter_refine.add_argument('--sequence-id', type=int, default=0)
     mixture_filter_refine.set_defaults(handler=run_mixture_filter_refinement)
+
+    mixture_filter_converge = subparsers.add_parser(
+        'mixture-filter-converge',
+        help='Run the preregistered F4-D D3c convergence confirmation.',
+    )
+    mixture_filter_converge.add_argument('--sequence-id', type=int, default=0)
+    mixture_filter_converge.set_defaults(handler=run_mixture_filter_convergence)
     return parser
 
 
