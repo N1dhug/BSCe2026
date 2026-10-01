@@ -217,9 +217,12 @@ def r0_rf_identifiability(frame, f_reference=0.5):
         r0 = frame[f"r_0_{method}"].to_numpy(dtype=float)
         rF = frame[f"r_F_{method}"].to_numpy(dtype=float)
         centered = r0 + float(f_reference) * rF
+        r0_std = float(np.std(r0, ddof=1))
+        rF_std = float(np.std(rF, ddof=1))
+        correlation = float(np.corrcoef(r0, rF)[0, 1]) if r0_std > 1e-12 and rF_std > 1e-12 else np.nan
         rows.append({
             "method": method,
-            "r0_rF_correlation": float(np.corrcoef(r0, rF)[0, 1]),
+            "r0_rF_correlation": correlation,
             "r0_variance": float(np.var(r0, ddof=1)),
             "rF_variance": float(np.var(rF, ddof=1)),
             "centered_drift_reference_F": float(f_reference),
