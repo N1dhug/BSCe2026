@@ -735,10 +735,31 @@ Udviklingskontrollen viste, at rho og støj ikke kan dele numerik ukritisk.
 kontrol fejlede. En kontrol med 1601 mod 3201 celler viste fortsat
 likelihood-følsomhed. Kandidaten er derfor 3201 celler, \(h\leq1/1536\),
 \(q=3\) for støj; rho beholder 401, \(h\leq1/768\), \(q=3\).
-Disse kandidater skal gennem den registrerede F1-kontrol før næste studie.
+Den registrerede F1-kontrol af disse kandidater er nu gennemgået nedenfor.
 De oprindelige kontroller beholdes som diagnostik; udviklingsfund er ikke
 registreret recovery-evidens. Den opdaterede vinduesdefinition ovenfor
 erstatter en indledende streng all-node-odds-gate og dokumenteres eksplicit.
+
+\paragraph{Registreret F1-resultat.}
+Windows-kørslen på \texttt{2f518b3} med ren working tree, 8 workers og BLAS=1
+fuldførte 57 banks og 2337 conditional replays på 1294.94 s.
+Alle 18 valgte kontroller bestod ved alle 24 observationsprefixer.
+For rho var maksimal relevant log-odds-fejl 0.044674, whole-bank TV 0.005048
+og kumuleret marginal log-evidence-fejl 0.029078. For støj var de tilsvarende
+tal 0.067406, 0.003355 og 0.005306. Vi accepterer derfor FV401,
+\(h\leq1/768,q=3\) for rho og FV3201, \(h\leq1/1536,q=3\) for støj
+på dette registrerede design.
+
+Max mass error over alle banks var \(2.9130\cdot10^{-12}\), minimum
+cellemasse 0 og ingen fallbacks. Rå scores, Bayes-opdateringer og alle
+27 sammenligninger blev genberegnet; de gennemgåede statistikker stemte
+inden for \(3.84\cdot10^{-13}\). Windows- og identiske udviklingskurver
+stemte inden for \(4.20\cdot10^{-13}\). Artifact-digest står i F4-statusfilen.
+De tre oprindelige 401-mod-801-støjkontroller fejler fortsat og beholdes.
+All-node-odds-fejlen i de valgte støjkontroller er op til 0.224096;
+det beståede vindue giver derfor ikke global hale-konvergens.
+F1 fastlægger numerik, ikke recovery. Rho's endelige effektive hypotesetal
+var 35.53--40.98 af 41. Næste registrerede studie er F2.
 
 F1 bruger nye ID1263--1265 og de oprindelige 41 noder for hver parameter.
 Rum, tid og observationsquadrature ændres hver for sig. F2 bruger ti

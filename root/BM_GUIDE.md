@@ -127,8 +127,9 @@ prefix-fejl, diagnostik, kildecommit og endelige betingede state-masser. Eksiste
 output afvises før beregningen; en fejlet gate gemmes og giver derefter en fejl.
 F0 tester metoden, ikke parameter-recovery, mixture eller ugeforecast.
 
-De resterende F-studier køres og gennemgås i rækkefølge; første næste lokale kørsel
-er F1. Alle har default 7 workers, fast videnskabeligt design og løbende progress.
+De resterende F-studier køres og gennemgås i rækkefølge. F1 er nu bestået og den
+rå rapport gennemgået; næste kørsel er F2 med den gemte F1-rapport. Alle har
+default 7 workers, fast videnskabeligt design og løbende progress.
 F1 genundersøger begge enparametergrids; sigma_x får finere state-numerik efter
 det første udviklingsforsøgs fejl. Forsøgsdefinition og tilpasning står i `F4.md`.
 
