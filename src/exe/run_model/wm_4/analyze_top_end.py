@@ -25,6 +25,12 @@ def load_daily(root):
 def paired_results(warmup, optimized):
     merged = warmup.merge(optimized, on="day", suffixes=("_warmup", "_optimized"), how="inner")
     if merged.empty: raise RuntimeError("Warmup and optimized parameterizations have no overlapping top-end prediction days.")
+    if len(merged) < 4:
+        raise RuntimeError(
+            f"Top-end comparison requires at least 4 overlapping days for quartile analysis; "
+            f"warmup rows={len(warmup)}, optimized rows={len(optimized)}, overlapping days={len(merged)}. "
+            "Re-run both top-end predictors over the full date range and inspect their skipped-day output."
+        )
     merged["mse_gain"] = merged["wm4_mse_warmup"] - merged["wm4_mse_optimized"]
     merged["mse_improvement_pct"] = np.where(
         merged["wm4_mse_warmup"] > 0.0,
@@ -348,6 +354,7 @@ def main():
     optimized_root = OPTIMIZED_R0_ZERO if args.zero_intercept and args.optimized == str(OPTIMIZED) else Path(args.optimized)
     warmup = load_daily(warmup_root)
     optimized = load_daily(optimized_root)
+    print(f"warmup rows={len(warmup)}, optimized rows={len(optimized)}, overlapping days={len(set(warmup['day']).intersection(set(optimized['day'])))}")
     paired = paired_results(warmup, optimized)
     summary = summary_table(paired)
     states = state_summary(paired)
