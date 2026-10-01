@@ -7,6 +7,7 @@ solver or expose synthetic truth through the estimator input contract.
 
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 import operator
 
@@ -34,6 +35,18 @@ F4_C_BOOTSTRAP_SEED = 4201
 F4_E_NUMERICAL_SEQUENCE_ID = 1211
 F4_E_SCREEN_SEQUENCE_START = 1212
 F4_E_SCREEN_SEQUENCE_COUNT = 50
+F4_E_RHO_GRID = tuple(0.5 + 0.025 * j for j in range(41))
+F4_E_TIME_STEPS = (1.0 / 192.0, 1.0 / 384.0, 1.0 / 768.0)
+F4_E_TIME_X_STEPS = 201
+F4_E_TIME_QUADRATURE_ORDER = 3
+F4_E_SPATIAL_CELLS = (201, 401, 801)
+F4_E_SPATIAL_MAX_STEP = 1.0 / 768.0
+F4_E_SPATIAL_QUADRATURE_ORDER = 3
+F4_E_QUADRATURE_ORDERS = (1, 3, 5)
+F4_E_QUADRATURE_X_STEPS = 401
+F4_E_QUADRATURE_MAX_STEP = 1.0 / 768.0
+F4_E_LIKELIHOOD_WINDOW = 5.0
+F4_E_CENTERED_LIKELIHOOD_TOL = 0.10
 
 
 def _readonly_vector(values: ArrayLike, name: str, *, minimum_size: int = 1) -> NDArray[np.float64]:
@@ -1241,6 +1254,49 @@ def _f4_e_parameters(base_parameters, candidate):
     return parameters
 
 
+def _evaluate_f4_e_prepared(
+    case,
+    observations,
+    candidate,
+    *,
+    model,
+    base_parameters,
+    initial_mass,
+    x_steps,
+    max_step,
+    likelihood_quadrature_order,
+):
+    """Evaluate one candidate with common immutable inputs prepared by the caller."""
+    parameters = _f4_e_parameters(base_parameters, candidate)
+    filtered = run_fv_filter(
+        model,
+        parameters,
+        candidate.sigma_x,
+        candidate.sigma_y,
+        initial_mass,
+        case.horizon[0],
+        observations,
+        breakpoints=case.breakpoints,
+        max_step=max_step,
+        likelihood_quadrature_order=likelihood_quadrature_order,
+    )
+    log_evidence = filtered.log_evidence[filtered.observed].copy()
+    log_evidence.setflags(write=False)
+    integration_t = filtered.integration_t
+    return {
+        'candidate': candidate,
+        'total_log_likelihood': float(np.sum(log_evidence)),
+        'log_evidence': log_evidence,
+        'maximum_abs_mass_error': filtered.maximum_abs_mass_error,
+        'minimum_cell_mass': filtered.minimum_cell_mass,
+        'x_steps': x_steps,
+        'max_step': max_step,
+        'actual_max_step': float(np.max(np.diff(integration_t))),
+        'n_steps': int(integration_t.size - 1),
+        'likelihood_quadrature_order': likelihood_quadrature_order,
+    }
+
+
 def evaluate_f4_e_candidate(
     case,
     observations,
@@ -1256,45 +1312,14 @@ def evaluate_f4_e_candidate(
     starts run_fv_filter from case.horizon[0]; callers must not carry a posterior
     from another candidate into this evaluation.
     """
-    if not isinstance(case, BM1SyntheticCase):
-        raise TypeError('case must be a BM1SyntheticCase.')
-    if not isinstance(observations, BM1ObservationSeries):
-        raise TypeError('observations must be a BM1ObservationSeries.')
-    if not isinstance(candidate, F4ELikelihoodCandidate):
-        raise TypeError('candidate must be an F4ELikelihoodCandidate.')
-    x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
-    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
-    order = checks.positive_integer(
-        likelihood_quadrature_order, 'likelihood_quadrature_order', minimum=1,
-    )
-
-    model, base_parameters = case.build_model()
-    parameters = _f4_e_parameters(base_parameters, candidate)
-    initial_mass = beta_initial_mass(case, model, x_steps)
-    filtered = run_fv_filter(
-        model,
-        parameters,
-        candidate.sigma_x,
-        candidate.sigma_y,
-        initial_mass,
-        case.horizon[0],
+    return evaluate_f4_e_candidates(
+        case,
         observations,
-        breakpoints=case.breakpoints,
+        (candidate,),
+        x_steps=x_steps,
         max_step=max_step,
-        likelihood_quadrature_order=order,
-    )
-    log_evidence = filtered.log_evidence[filtered.observed].copy()
-    log_evidence.setflags(write=False)
-    return {
-        'candidate': candidate,
-        'total_log_likelihood': float(np.sum(log_evidence)),
-        'log_evidence': log_evidence,
-        'maximum_abs_mass_error': filtered.maximum_abs_mass_error,
-        'minimum_cell_mass': filtered.minimum_cell_mass,
-        'x_steps': x_steps,
-        'max_step': max_step,
-        'likelihood_quadrature_order': order,
-    }
+        likelihood_quadrature_order=likelihood_quadrature_order,
+    )[0]
 
 
 def evaluate_f4_e_candidates(
@@ -1306,21 +1331,40 @@ def evaluate_f4_e_candidates(
     max_step=1.0 / 192.0,
     likelihood_quadrature_order=1,
 ):
-    """Evaluate candidates independently, preserving caller order and duplicates."""
+    """Evaluate candidates independently while reusing only candidate-free setup.
+
+    Model/input objects and the declared initial probability are common. Every
+    candidate still gets a fresh parameter vector and a complete run_fv_filter
+    replay from the same initial mass. Caller order and duplicates are preserved.
+    """
+    if not isinstance(case, BM1SyntheticCase):
+        raise TypeError('case must be a BM1SyntheticCase.')
+    if not isinstance(observations, BM1ObservationSeries):
+        raise TypeError('observations must be a BM1ObservationSeries.')
     candidates = tuple(candidates)
     if not candidates:
         raise ValueError('candidates must be non-empty.')
     for candidate in candidates:
         if not isinstance(candidate, F4ELikelihoodCandidate):
             raise TypeError('Every candidate must be an F4ELikelihoodCandidate.')
+    x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
+    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
+    order = checks.positive_integer(
+        likelihood_quadrature_order, 'likelihood_quadrature_order', minimum=1,
+    )
+    model, base_parameters = case.build_model()
+    initial_mass = beta_initial_mass(case, model, x_steps)
     return tuple(
-        evaluate_f4_e_candidate(
+        _evaluate_f4_e_prepared(
             case,
             observations,
             candidate,
+            model=model,
+            base_parameters=base_parameters,
+            initial_mass=initial_mass,
             x_steps=x_steps,
             max_step=max_step,
-            likelihood_quadrature_order=likelihood_quadrature_order,
+            likelihood_quadrature_order=order,
         )
         for candidate in candidates
     )
@@ -1340,6 +1384,273 @@ def f4_e_centered_log_likelihood(evaluations):
     centered.setflags(write=False)
     return centered
 
+
+
+def _f4_e_rho_curve(sequence_id, rho_values, x_steps, max_step, quadrature_order):
+    """Evaluate one numerical configuration on the fixed E1 rho grid."""
+    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
+    rho_values = tuple(checks.finite_scalar(value, 'rho', positive=True) for value in rho_values)
+    if not rho_values or len(set(rho_values)) != len(rho_values):
+        raise ValueError('rho_values must be non-empty and unique.')
+    if tuple(sorted(rho_values)) != rho_values:
+        raise ValueError('rho_values must be strictly increasing.')
+    x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
+    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
+    quadrature_order = checks.positive_integer(
+        quadrature_order, 'quadrature_order', minimum=1,
+    )
+
+    case = build_f4_b_case()
+    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+    if not sequence.truth.valid:
+        raise RuntimeError(
+            f'F4-E sequence {sequence_id} has raw EM boundary violations; '
+            'do not repair or drop it silently.'
+        )
+    truth = f4_e_truth_candidate(case)
+    candidates = tuple(
+        F4ELikelihoodCandidate(
+            rho=rho,
+            Xi=truth.Xi,
+            k=truth.k,
+            sigma_x=truth.sigma_x,
+            sigma_y=truth.sigma_y,
+        )
+        for rho in rho_values
+    )
+    evaluations = evaluate_f4_e_candidates(
+        case,
+        sequence.observations,
+        candidates,
+        x_steps=x_steps,
+        max_step=max_step,
+        likelihood_quadrature_order=quadrature_order,
+    )
+    total = np.asarray(
+        [item['total_log_likelihood'] for item in evaluations], dtype=float,
+    )
+    centered = f4_e_centered_log_likelihood(evaluations)
+    maximum = float(np.max(total))
+    maximizers = tuple(
+        int(index) for index in np.flatnonzero(
+            np.isclose(total, maximum, atol=1e-12, rtol=0.0)
+        )
+    )
+    return {
+        'rho_values': rho_values,
+        'total_log_likelihood': tuple(float(value) for value in total),
+        'centered_log_likelihood': tuple(float(value) for value in centered),
+        'maximizer_indices': maximizers,
+        'maximizer_rho': (
+            float(rho_values[maximizers[0]]) if len(maximizers) == 1 else None
+        ),
+        'x_steps': x_steps,
+        'requested_max_step': max_step,
+        'actual_max_step': max(item['actual_max_step'] for item in evaluations),
+        'n_steps': max(item['n_steps'] for item in evaluations),
+        'likelihood_quadrature_order': quadrature_order,
+        'maximum_abs_mass_error': max(
+            item['maximum_abs_mass_error'] for item in evaluations
+        ),
+        'minimum_cell_mass': min(item['minimum_cell_mass'] for item in evaluations),
+    }
+
+
+def _f4_e_rho_curve_task(task):
+    sequence_id, rho_values, x_steps, max_step, quadrature_order = task
+    key = (int(x_steps), float(max_step), int(quadrature_order))
+    return key, _f4_e_rho_curve(
+        sequence_id, rho_values, x_steps, max_step, quadrature_order,
+    )
+
+
+def _f4_e_likelihood_stability(
+    middle,
+    fine,
+    *,
+    window=F4_E_LIKELIHOOD_WINDOW,
+    tolerance=F4_E_CENTERED_LIKELIHOOD_TOL,
+):
+    """Compare two centered likelihood curves on the preregistered local window."""
+    window = checks.finite_scalar(window, 'likelihood window', positive=True)
+    tolerance = checks.finite_scalar(
+        tolerance, 'centered likelihood tolerance', positive=True,
+    )
+    if tuple(middle['rho_values']) != tuple(fine['rho_values']):
+        raise ValueError('Likelihood curves must use the same rho grid.')
+    rho = np.asarray(middle['rho_values'], dtype=float)
+    middle_curve = np.asarray(middle['centered_log_likelihood'], dtype=float)
+    fine_curve = np.asarray(fine['centered_log_likelihood'], dtype=float)
+    if (
+        rho.ndim != 1 or middle_curve.shape != rho.shape or fine_curve.shape != rho.shape
+        or not np.all(np.isfinite(middle_curve)) or not np.all(np.isfinite(fine_curve))
+    ):
+        raise ValueError('Likelihood curves must be finite vectors matching rho_values.')
+    mask = (middle_curve >= -window) | (fine_curve >= -window)
+    if not np.any(mask):
+        raise RuntimeError('Likelihood comparison window unexpectedly contains no grid points.')
+    maximum_difference = float(np.max(np.abs(middle_curve[mask] - fine_curve[mask])))
+    middle_max = tuple(middle['maximizer_indices'])
+    fine_max = tuple(fine['maximizer_indices'])
+    unique_same_maximizer = bool(
+        len(middle_max) == 1 and len(fine_max) == 1 and middle_max == fine_max
+    )
+    return {
+        'middle_maximizer_indices': middle_max,
+        'fine_maximizer_indices': fine_max,
+        'unique_same_maximizer': unique_same_maximizer,
+        'comparison_indices': tuple(int(index) for index in np.flatnonzero(mask)),
+        'comparison_rho_range': (
+            float(rho[np.flatnonzero(mask)[0]]),
+            float(rho[np.flatnonzero(mask)[-1]]),
+        ),
+        'maximum_centered_log_likelihood_change': maximum_difference,
+        'window': window,
+        'tolerance': tolerance,
+        'passes': bool(unique_same_maximizer and maximum_difference <= tolerance),
+    }
+
+
+def run_f4_e_likelihood_refinement(
+    *,
+    sequence_id=F4_E_NUMERICAL_SEQUENCE_ID,
+    rho_values=F4_E_RHO_GRID,
+    time_steps=F4_E_TIME_STEPS,
+    time_x_steps=F4_E_TIME_X_STEPS,
+    time_quadrature_order=F4_E_TIME_QUADRATURE_ORDER,
+    spatial_cells=F4_E_SPATIAL_CELLS,
+    spatial_max_step=F4_E_SPATIAL_MAX_STEP,
+    spatial_quadrature_order=F4_E_SPATIAL_QUADRATURE_ORDER,
+    quadrature_orders=F4_E_QUADRATURE_ORDERS,
+    quadrature_x_steps=F4_E_QUADRATURE_X_STEPS,
+    quadrature_max_step=F4_E_QUADRATURE_MAX_STEP,
+    workers=1,
+    progress=None,
+):
+    """Run preregistered E1 rho-likelihood refinement with deduplicated configs."""
+    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
+    rho_values = tuple(checks.finite_scalar(value, 'rho', positive=True) for value in rho_values)
+    if not rho_values or len(set(rho_values)) != len(rho_values) or tuple(sorted(rho_values)) != rho_values:
+        raise ValueError('rho_values must be unique and strictly increasing.')
+    time_steps = tuple(
+        checks.finite_scalar(value, 'time max_step', positive=True) for value in time_steps
+    )
+    spatial_cells = tuple(
+        checks.positive_integer(value, 'spatial cell count', minimum=3)
+        for value in spatial_cells
+    )
+    quadrature_orders = tuple(
+        checks.positive_integer(value, 'quadrature order', minimum=1)
+        for value in quadrature_orders
+    )
+    if len(time_steps) != 3 or tuple(sorted(set(time_steps), reverse=True)) != time_steps:
+        raise ValueError('E1 time_steps must contain exactly three unique decreasing levels.')
+    if len(spatial_cells) != 3 or tuple(sorted(set(spatial_cells))) != spatial_cells:
+        raise ValueError('E1 spatial_cells must contain exactly three unique increasing levels.')
+    if len(quadrature_orders) != 3 or tuple(sorted(set(quadrature_orders))) != quadrature_orders:
+        raise ValueError('E1 quadrature_orders must contain exactly three unique increasing levels.')
+    time_x_steps = checks.positive_integer(time_x_steps, 'time_x_steps', minimum=3)
+    time_quadrature_order = checks.positive_integer(
+        time_quadrature_order, 'time_quadrature_order', minimum=1,
+    )
+    spatial_max_step = checks.finite_scalar(
+        spatial_max_step, 'spatial_max_step', positive=True,
+    )
+    spatial_quadrature_order = checks.positive_integer(
+        spatial_quadrature_order, 'spatial_quadrature_order', minimum=1,
+    )
+    quadrature_x_steps = checks.positive_integer(
+        quadrature_x_steps, 'quadrature_x_steps', minimum=3,
+    )
+    quadrature_max_step = checks.finite_scalar(
+        quadrature_max_step, 'quadrature_max_step', positive=True,
+    )
+    workers = checks.positive_integer(workers, 'workers', minimum=1)
+    if progress is not None and not callable(progress):
+        raise TypeError('progress must be callable or None.')
+
+    axis_configs = {
+        'time': tuple(
+            (time_x_steps, h, time_quadrature_order) for h in time_steps
+        ),
+        'spatial': tuple(
+            (n, spatial_max_step, spatial_quadrature_order) for n in spatial_cells
+        ),
+        'quadrature': tuple(
+            (quadrature_x_steps, quadrature_max_step, q) for q in quadrature_orders
+        ),
+    }
+    unique_configs = tuple(dict.fromkeys(
+        config for configs in axis_configs.values() for config in configs
+    ))
+    tasks = tuple(
+        (sequence_id, rho_values, config[0], config[1], config[2])
+        for config in unique_configs
+    )
+    curves = {}
+    if workers == 1:
+        for completed, task in enumerate(tasks, start=1):
+            key, curve = _f4_e_rho_curve_task(task)
+            curves[key] = curve
+            if progress is not None:
+                progress(completed, len(tasks), key, dict(curve))
+    else:
+        with ProcessPoolExecutor(max_workers=min(workers, len(tasks))) as executor:
+            futures = {
+                executor.submit(_f4_e_rho_curve_task, task): (
+                    int(task[2]), float(task[3]), int(task[4])
+                )
+                for task in tasks
+            }
+            completed = 0
+            for future in as_completed(futures):
+                key, curve = future.result()
+                curves[key] = curve
+                completed += 1
+                if progress is not None:
+                    progress(completed, len(tasks), key, dict(curve))
+
+    rows = {
+        axis: tuple(curves[config] for config in configs)
+        for axis, configs in axis_configs.items()
+    }
+    summary = {
+        axis: _f4_e_likelihood_stability(values[-2], values[-1])
+        for axis, values in rows.items()
+    }
+    registered = bool(
+        sequence_id == F4_E_NUMERICAL_SEQUENCE_ID
+        and rho_values == F4_E_RHO_GRID
+        and time_steps == F4_E_TIME_STEPS
+        and time_x_steps == F4_E_TIME_X_STEPS
+        and time_quadrature_order == F4_E_TIME_QUADRATURE_ORDER
+        and spatial_cells == F4_E_SPATIAL_CELLS
+        and spatial_max_step == F4_E_SPATIAL_MAX_STEP
+        and spatial_quadrature_order == F4_E_SPATIAL_QUADRATURE_ORDER
+        and quadrature_orders == F4_E_QUADRATURE_ORDERS
+        and quadrature_x_steps == F4_E_QUADRATURE_X_STEPS
+        and quadrature_max_step == F4_E_QUADRATURE_MAX_STEP
+    )
+    return {
+        'stage': 'E1',
+        'sequence_id': sequence_id,
+        'rho_values': rho_values,
+        'workers': workers,
+        'time': rows['time'],
+        'spatial': rows['spatial'],
+        'quadrature': rows['quadrature'],
+        'summary': summary,
+        'unique_configurations': unique_configs,
+        'matches_registered_design': registered,
+        'passes_numerical_refinement': bool(
+            registered and all(item['passes'] for item in summary.values())
+        ),
+        'criteria': {
+            'centered_log_likelihood_window': F4_E_LIKELIHOOD_WINDOW,
+            'maximum_centered_log_likelihood_change': F4_E_CENTERED_LIKELIHOOD_TOL,
+            'requires_unique_same_grid_maximizer': True,
+        },
+    }
 
 def run_f4_preparation_checks() -> dict:
     """Independent F4-0 quadrature checks; not a fitted or recursive model.
