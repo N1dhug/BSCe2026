@@ -485,6 +485,37 @@ contours er likelihood-niveauer, ikke konfidensområder. Der tilføjes intet nyt
 recovery-passmål. Dette er flader til ridge-diagnostik; den egentlige rekursive
 en-parameterbank begynder først i F4-F.
 
+Den registrerede E3-kørsel (kildecommit \texttt{313df5b}, brugerens Windows-kørsel
+den 1. oktober 2026) fuldførte alle 30 flader på ca. 1288 s med syv workers
+og én BLAS-tråd. Maksimal massefejl var \(4.174\cdot10^{-14}\), mindste masse
+nul og maksimal truth-snit-forskel til E2 præcis nul. Alle sekvens- og samlede
+grid-maxima var entydige. Terminalresuméet gav:
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+Par & Samlet grid-MLE (10 records) & Randfrekvenser pr. sekvens \\
+\midrule
+\((\rho,\Xi)\) & \((1.15,1.00)\) & \((50\%,60\%)\) \\
+\((k,\Xi)\) & \((2.15,0.95)\) & \((20\%,40\%)\) \\
+\((\sigma_X,\sigma_Y)\) & \((0.50,0.03)\) & \((10\%,0\%)\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+Kun \(\Xi\) lå på støtteranden i de samlede maxima. De rå flader og profiler
+er endnu ikke gennemgået her. På de samme records ses allerede en væsentlig
+afhængighed af, om \(\Xi\) holdes fast: ID1213 og ID1219 havde E2-k-MLE
+\(2.15\) ved \(\Xi=1\), mens E3-par-MLE var \((3.5,0.65)\); ID1217 gik
+fra \(1.85\) til \((3.2,0.65)\). E3's grovere k-grid, med spacing 0.15 mod
+E2's 0.075, kan ikke alene forklare forskydningerne. Disse maxima viser
+parameterkobling i fittet, men bestemmer ikke ridge-bredden eller graden af
+identifikation. To k-maxima rammer øvre støtte, hvilket kræver undersøgelse
+af mulig support-trunkering før eventuel støtteudvidelse.
+Støjparrets samlede maksimum på truth er et positivt foreløbigt signal;
+maximizerens placering alene fastlægger ikke likelihoodens skarphed.
+E2's samlede 50-records resumé og E3's 10-records resumé må ikke sammenlignes
+som effekten af en ekstra fri parameter uden samme records og grids.
+
 Valget af første F-parameter fastlåses først efter E. \(\rho\) er arbejdshypotesen:
 sandheden ligger interiørt i den allerede foreslåede støtte, og driftens afhængighed
 af \(\rho\) er enkel. Det er ikke et acceptkriterium; hvis slice og numerisk refinement
