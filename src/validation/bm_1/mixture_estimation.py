@@ -29,6 +29,7 @@ from src.validation.bm_1.estimation import (
     beta_initial_mass,
     build_f4_b_case,
     generate_synthetic_sequence,
+    generate_synthetic_sequences,
     _paired_bootstrap_interval,
 )
 
@@ -193,42 +194,33 @@ def build_d1_dictionaries(edges):
     return dictionaries
 
 
+def _multiresolution_dictionary(edges, high_step, *, shape_aware):
+    """Shared geometry builder; historical D1b/D1c specifications stay explicit."""
+    high_step = checks.finite_scalar(high_step, "high_step", positive=True)
+    low = np.arange(1, 10, dtype=float) / 10.0
+    medium = np.sort(np.concatenate((np.arange(1, 40) / 40.0, [0.02, 0.98])))
+    count = int(round(0.8 / high_step)) + 1
+    if count < 2:
+        raise ValueError("high_step must divide [0.1, 0.9] exactly.")
+    high = np.linspace(0.1, 0.9, count)
+    if not np.isclose(high[1] - high[0], high_step, atol=1e-14, rtol=0.0):
+        raise ValueError("high_step must divide [0.1, 0.9] exactly.")
+    layers = [(20.0, low)]
+    if shape_aware:
+        layers.append((50.0, np.array([0.02, 0.05, 0.95, 0.98])))
+    layers.extend([(100.0, medium), (800.0 if shape_aware else 500.0, high),
+                   (2000.0, high)])
+    means = np.concatenate([values for _, values in layers])
+    concentrations = np.concatenate([np.full(len(values), kappa) for kappa, values in layers])
+    alpha, beta = concentrations * means, concentrations * (1.0 - means)
+    return dict(basis=beta_cell_average_basis(edges, alpha, beta), means=means,
+                concentrations=concentrations, alpha=alpha, beta=beta,
+                components=int(alpha.size), selectable=True)
+
 
 def _adaptive_dictionary(edges, high_step):
-    """Scale-dependent D1b dictionary fixed after D1 and before D1b results."""
-    high_step = checks.finite_scalar(high_step, "high_step", positive=True)
-    low_means = np.arange(1, 10, dtype=float) / 10.0
-    medium_means = np.arange(1, 40, dtype=float) / 40.0
-    medium_means = np.sort(np.concatenate((medium_means, np.array([0.02, 0.98]))))
-    count = int(round(0.8 / high_step)) + 1
-    high_means = np.linspace(0.1, 0.9, count)
-    if not np.isclose(high_means[1] - high_means[0], high_step, atol=1e-14, rtol=0.0):
-        raise ValueError("high_step must divide [0.1, 0.9] exactly.")
-
-    means = np.concatenate((
-        low_means,
-        medium_means,
-        high_means,
-        high_means,
-    ))
-    concentrations = np.concatenate((
-        np.full(low_means.size, 20.0),
-        np.full(medium_means.size, 100.0),
-        np.full(high_means.size, 500.0),
-        np.full(high_means.size, 2000.0),
-    ))
-    alpha = concentrations * means
-    beta = concentrations * (1.0 - means)
-    basis = beta_cell_average_basis(edges, alpha, beta)
-    return {
-        "basis": basis,
-        "means": means,
-        "concentrations": concentrations,
-        "alpha": alpha,
-        "beta": beta,
-        "components": int(alpha.size),
-        "selectable": True,
-    }
+    """Declared D1b layers (20, 100, 500, 2000)."""
+    return _multiresolution_dictionary(edges, high_step, shape_aware=False)
 
 
 def build_d1b_dictionaries(edges):
@@ -244,46 +236,9 @@ def build_d1b_dictionaries(edges):
     }
 
 
-
 def _shape_aware_dictionary(edges, high_step):
-    """D1c scale-aware dictionary fixed after D1b and before D1c results."""
-    high_step = checks.finite_scalar(high_step, "high_step", positive=True)
-    low_means = np.arange(1, 10, dtype=float) / 10.0
-    medium_means = np.arange(1, 40, dtype=float) / 40.0
-    medium_means = np.sort(np.concatenate((medium_means, np.array([0.02, 0.98]))))
-    boundary_means = np.array([0.02, 0.05, 0.95, 0.98], dtype=float)
-
-    count = int(round(0.8 / high_step)) + 1
-    high_means = np.linspace(0.1, 0.9, count)
-    if not np.isclose(high_means[1] - high_means[0], high_step, atol=1e-14, rtol=0.0):
-        raise ValueError("high_step must divide [0.1, 0.9] exactly.")
-
-    means = np.concatenate((
-        low_means,
-        boundary_means,
-        medium_means,
-        high_means,
-        high_means,
-    ))
-    concentrations = np.concatenate((
-        np.full(low_means.size, 20.0),
-        np.full(boundary_means.size, 50.0),
-        np.full(medium_means.size, 100.0),
-        np.full(high_means.size, 800.0),
-        np.full(high_means.size, 2000.0),
-    ))
-    alpha = concentrations * means
-    beta = concentrations * (1.0 - means)
-    basis = beta_cell_average_basis(edges, alpha, beta)
-    return {
-        "basis": basis,
-        "means": means,
-        "concentrations": concentrations,
-        "alpha": alpha,
-        "beta": beta,
-        "components": int(alpha.size),
-        "selectable": True,
-    }
+    """Declared D1c layers, including the frozen shape_D at high_step=0.0125."""
+    return _multiresolution_dictionary(edges, high_step, shape_aware=True)
 
 
 def build_d1c_dictionaries(edges):
@@ -299,28 +254,34 @@ def build_d1c_dictionaries(edges):
     }
 
 
-def _fit_target(projector, target, centers):
-    projected = projector.project(target["density"])
+def _projection_metrics(projector, projected, reference_mass, target_density, centers):
+    target_mean, target_variance = _moments(reference_mass, centers)
     density = projected["density"]
-    mass = density * projector.dx
-    mean, variance = _moments(mass, centers)
+    projected_mass = density * projector.dx
+    mean, variance = _moments(projected_mass, centers)
     diagnostics = projected["diagnostics"]
     coefficients = projected["coefficients"]
-    return {
+    fit = {
         "status": "ok",
-        "density_l2": density_l2(density, target["density"], projector.dx),
-        "cell_mass_l1": cell_mass_l1(mass, target["cell_mass"]),
-        "cdf_sup": cell_mass_cdf_sup(mass, target["cell_mass"]),
-        "wasserstein_1": cell_mass_wasserstein_1(mass, target["cell_mass"], projector.dx),
-        "mean_error": mean - target["mean"],
-        "variance_error": variance - target["variance"],
+        "density_l2": density_l2(density, target_density, projector.dx),
+        "cell_mass_l1": cell_mass_l1(projected_mass, reference_mass),
+        "cdf_sup": cell_mass_cdf_sup(projected_mass, reference_mass),
+        "wasserstein_1": cell_mass_wasserstein_1(
+            projected_mass, reference_mass, projector.dx,
+        ),
+        "mean_error": mean - target_mean,
+        "variance_error": variance - target_variance,
         "optimality_gap": float(diagnostics["optimality_gap"]),
         "mass_error": float(diagnostics["mass_error"]),
         "used_fallback": bool(diagnostics["used_fallback"]),
         "active_components": int(np.sum(coefficients > D1_ACTIVE_TOL)),
         "maximum_coefficient": float(np.max(coefficients)),
     }
+    return fit, projected_mass, coefficients
 
+def _fit_target(projector, target, centers):
+    projected = projector.project(target["density"])
+    return _projection_metrics(projector, projected, target["cell_mass"], target["density"], centers)[0]
 
 
 def _evaluate_static_dictionaries(
@@ -411,38 +372,19 @@ def _evaluate_static_dictionaries(
     return results, selected
 
 
+def _snapshot_projection(projector, reference_mass, centers, *, initial_coefficients=None):
+    """Solve the same snapshot QP, optionally from explicit feasible coefficients.
 
-def _snapshot_projection(projector, reference_mass, centers):
-    """Project one FV cell-mass snapshot and return metrics plus projected mass."""
+    Warm starts change the numerical starting point, never the target or gates.
+    The returned coefficients may initialize the next *static* reference fit;
+    they are never supplied to the independent recursive mixture filter.
+    """
     reference_mass = checks.probability_mass(reference_mass, "reference_mass")
     if reference_mass.shape != centers.shape:
         raise ValueError("reference_mass and centers must have matching shapes.")
-    target_mean, target_variance = _moments(reference_mass, centers)
     target_density = reference_mass / projector.dx
-    projected = projector.project(target_density)
-    density = projected["density"]
-    projected_mass = density * projector.dx
-    mean, variance = _moments(projected_mass, centers)
-    diagnostics = projected["diagnostics"]
-    coefficients = projected["coefficients"]
-    fit = {
-        "status": "ok",
-        "density_l2": density_l2(density, target_density, projector.dx),
-        "cell_mass_l1": cell_mass_l1(projected_mass, reference_mass),
-        "cdf_sup": cell_mass_cdf_sup(projected_mass, reference_mass),
-        "wasserstein_1": cell_mass_wasserstein_1(
-            projected_mass, reference_mass, projector.dx,
-        ),
-        "mean_error": mean - target_mean,
-        "variance_error": variance - target_variance,
-        "optimality_gap": float(diagnostics["optimality_gap"]),
-        "mass_error": float(diagnostics["mass_error"]),
-        "used_fallback": bool(diagnostics["used_fallback"]),
-        "active_components": int(np.sum(coefficients > D1_ACTIVE_TOL)),
-        "maximum_coefficient": float(np.max(coefficients)),
-    }
-    return fit, projected_mass
-
+    projected = projector.project(target_density, initial_coefficients=initial_coefficients)
+    return _projection_metrics(projector, projected, reference_mass, target_density, centers)
 
 
 def _mass_distribution_errors(left_mass, right_mass, centers, dx):
@@ -452,10 +394,12 @@ def _mass_distribution_errors(left_mass, right_mass, centers, dx):
         raise ValueError("mass distributions and centers must have matching shapes.")
     left_mean, left_variance = _moments(left_mass, centers)
     right_mean, right_variance = _moments(right_mass, centers)
+    difference = left_mass - right_mass
+    cdf_difference = np.cumsum(left_mass) - np.cumsum(right_mass)
     return {
-        "cell_mass_l1": cell_mass_l1(left_mass, right_mass),
-        "cdf_sup": cell_mass_cdf_sup(left_mass, right_mass),
-        "wasserstein_1": cell_mass_wasserstein_1(left_mass, right_mass, dx),
+        "cell_mass_l1": float(np.sum(np.abs(difference))),
+        "cdf_sup": float(np.max(np.abs(cdf_difference))),
+        "wasserstein_1": float(dx * np.sum(np.abs(cdf_difference))),
         "density_l2": density_l2(left_mass / dx, right_mass / dx, dx),
         "mean_error": left_mean - right_mean,
         "variance_error": left_variance - right_variance,
@@ -463,6 +407,8 @@ def _mass_distribution_errors(left_mass, right_mass, centers, dx):
 
 
 def _error_history(left, right, centers, dx):
+    if np.shape(left) != np.shape(right) or len(np.shape(left)) != 2:
+        raise ValueError("Distribution histories must have identical (times, cells) shapes.")
     return [
         _mass_distribution_errors(lrow, rrow, centers, dx)
         for lrow, rrow in zip(left, right)
@@ -550,7 +496,7 @@ def run_f4_d_snapshot_holdout(
     case = build_f4_b_case()
     model, parameters = case.build_model()
     edges, centers, dx = model.fokker_planc_reference.grid(x_steps, bounds=(0.0, 1.0))
-    dictionary = build_d1c_dictionaries(edges)[D2_DICTIONARY]
+    dictionary = _shape_aware_dictionary(edges, 0.0125)
     projector = PreparedBetaProjector(dictionary["basis"], dx)
 
     sequence_ids = tuple(range(sequence_start, sequence_start + n_sequences))
@@ -560,12 +506,12 @@ def run_f4_d_snapshot_holdout(
     daily_evidence_errors = []
     invalid_truth = []
 
-    for sequence_id in sequence_ids:
-        sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+    initial_mass = beta_initial_mass(case, model, x_steps)
+    for sequence in generate_synthetic_sequences(case, sequence_ids=sequence_ids):
+        sequence_id = sequence.sequence_id
         if not sequence.truth.valid:
             invalid_truth.append(sequence_id)
             continue
-        initial_mass = beta_initial_mass(case, model, x_steps)
         filtered = run_fv_filter(
             model,
             parameters,
@@ -579,6 +525,7 @@ def run_f4_d_snapshot_holdout(
             likelihood_quadrature_order=likelihood_quadrature_order,
         )
         previous_time = case.horizon[0]
+        static_coefficients = None
         sequence_evidence_error = 0.0
         for index, (time, value, observed) in enumerate(zip(
             sequence.observations.times,
@@ -586,8 +533,9 @@ def run_f4_d_snapshot_holdout(
             sequence.observations.observed,
         )):
             try:
-                pred_fit, projected_pred_mass = _snapshot_projection(
+                pred_fit, projected_pred_mass, static_coefficients = _snapshot_projection(
                     projector, filtered.predicted_mass[index], centers,
+                    initial_coefficients=static_coefficients,
                 )
             except (FloatingPointError, RuntimeError, np.linalg.LinAlgError) as exc:
                 pred_fit = {
@@ -599,8 +547,9 @@ def run_f4_d_snapshot_holdout(
             prediction_fits.append(pred_fit)
 
             try:
-                post_fit, _ = _snapshot_projection(
+                post_fit, _, static_coefficients = _snapshot_projection(
                     projector, filtered.posterior_mass[index], centers,
+                    initial_coefficients=static_coefficients,
                 )
             except (FloatingPointError, RuntimeError, np.linalg.LinAlgError) as exc:
                 post_fit = {
@@ -707,88 +656,35 @@ def _representation_payload(*, x_steps, edges, centers, dx, targets, dictionarie
     }
 
 
-def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
-    """Run the original preregistered static D1 representation study."""
+def _run_representation_study(x_steps, builder, stage, fallback_disqualifies):
     x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
     edges, centers, dx = finite_volume_1d.grid(x_steps)
     targets = _target_suite(edges)
-    dictionaries = build_d1_dictionaries(edges)
+    dictionaries = builder(edges)
     results, selected = _evaluate_static_dictionaries(
-        edges=edges,
-        centers=centers,
-        dx=dx,
-        targets=targets,
-        dictionaries=dictionaries,
-        fallback_disqualifies=True,
+        edges=edges, centers=centers, dx=dx, targets=targets, dictionaries=dictionaries,
+        fallback_disqualifies=fallback_disqualifies,
     )
     return _representation_payload(
-        x_steps=x_steps,
-        edges=edges,
-        centers=centers,
-        dx=dx,
-        targets=targets,
-        dictionaries=dictionaries,
-        results=results,
-        selected=selected,
-        fallback_disqualifies=True,
-        stage="D1",
+        x_steps=x_steps, edges=edges, centers=centers, dx=dx, targets=targets,
+        dictionaries=dictionaries, results=results, selected=selected,
+        fallback_disqualifies=fallback_disqualifies, stage=stage,
     )
+
+
+def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
+    """Reproduce the declared D1 study without changing its candidates or gates."""
+    return _run_representation_study(x_steps, build_d1_dictionaries, "D1", True)
 
 
 def run_f4_d_adaptive_representation_study(*, x_steps=D1_X_STEPS):
-    """Run D1b after D1; same targets/gates, adaptive dictionaries only."""
-    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
-    edges, centers, dx = finite_volume_1d.grid(x_steps)
-    targets = _target_suite(edges)
-    dictionaries = build_d1b_dictionaries(edges)
-    results, selected = _evaluate_static_dictionaries(
-        edges=edges,
-        centers=centers,
-        dx=dx,
-        targets=targets,
-        dictionaries=dictionaries,
-        fallback_disqualifies=False,
-    )
-    return _representation_payload(
-        x_steps=x_steps,
-        edges=edges,
-        centers=centers,
-        dx=dx,
-        targets=targets,
-        dictionaries=dictionaries,
-        results=results,
-        selected=selected,
-        fallback_disqualifies=False,
-        stage="D1b",
-    )
+    """Reproduce the declared D1b study without changing its candidates or gates."""
+    return _run_representation_study(x_steps, build_d1b_dictionaries, "D1b", False)
 
 
 def run_f4_d_shape_aware_representation_study(*, x_steps=D1_X_STEPS):
-    """Run D1c after D1b; same targets/gates, shape-aware dictionaries only."""
-    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
-    edges, centers, dx = finite_volume_1d.grid(x_steps)
-    targets = _target_suite(edges)
-    dictionaries = build_d1c_dictionaries(edges)
-    results, selected = _evaluate_static_dictionaries(
-        edges=edges,
-        centers=centers,
-        dx=dx,
-        targets=targets,
-        dictionaries=dictionaries,
-        fallback_disqualifies=False,
-    )
-    return _representation_payload(
-        x_steps=x_steps,
-        edges=edges,
-        centers=centers,
-        dx=dx,
-        targets=targets,
-        dictionaries=dictionaries,
-        results=results,
-        selected=selected,
-        fallback_disqualifies=False,
-        stage="D1c",
-    )
+    """Reproduce the declared D1c study without changing its candidates or gates."""
+    return _run_representation_study(x_steps, build_d1c_dictionaries, "D1c", False)
 
 
 def run_f4_d_recursive_sanity(
@@ -811,7 +707,7 @@ def run_f4_d_recursive_sanity(
     sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
     model, parameters = case.build_model()
     edges, centers, dx = model.fokker_planc_reference.grid(x_steps, bounds=(0.0, 1.0))
-    dictionary = build_d1c_dictionaries(edges)[D2_DICTIONARY]
+    dictionary = _shape_aware_dictionary(edges, 0.0125)
     mixture_projector = PreparedBetaProjector(dictionary["basis"], dx)
     static_projector = PreparedBetaProjector(dictionary["basis"], dx)
     initial_mass = beta_initial_mass(case, model, x_steps)
@@ -847,9 +743,14 @@ def run_f4_d_recursive_sanity(
     static_post_mass = []
     static_pred_fits = []
     static_post_fits = []
+    static_coefficients = None
     for pred, post in zip(fv.predicted_mass, fv.posterior_mass):
-        pred_fit, pred_mass = _snapshot_projection(static_projector, pred, centers)
-        post_fit, post_mass = _snapshot_projection(static_projector, post, centers)
+        pred_fit, pred_mass, static_coefficients = _snapshot_projection(
+            static_projector, pred, centers, initial_coefficients=static_coefficients,
+        )
+        post_fit, post_mass, static_coefficients = _snapshot_projection(
+            static_projector, post, centers, initial_coefficients=static_coefficients,
+        )
         static_pred_fits.append(pred_fit)
         static_post_fits.append(post_fit)
         static_pred_mass.append(pred_mass)
@@ -955,7 +856,6 @@ def run_f4_d_recursive_sanity(
     }
 
 
-
 def _d3_refinement_row(result, *, axis, level):
     """Extract compact metrics from one D3a configuration for refinement."""
     total_pred = result["total_fv_gap"]["prediction"]
@@ -1028,6 +928,35 @@ def _d3_refinement_axis_summary(rows):
     }
 
 
+def _recursive_study_rows(sequence_id, time_steps, spatial_cells, spatial_max_step, cfl, order):
+    cache = {}
+    def run_config(x_steps, max_step):
+        key = (int(x_steps), float(max_step))
+        if key not in cache:
+            cache[key] = run_f4_d_recursive_sanity(
+                sequence_id=sequence_id,
+                x_steps=x_steps,
+                max_step=max_step,
+                cfl=cfl,
+                likelihood_quadrature_order=order,
+            )
+        return cache[key]
+
+    time_rows = [
+        _d3_refinement_row(
+            run_config(D3A_X_STEPS, h), axis="time", level=h,
+        )
+        for h in time_steps
+    ]
+    spatial_rows = [
+        _d3_refinement_row(
+            run_config(n, spatial_max_step), axis="space", level=n,
+        )
+        for n in spatial_cells
+    ]
+    return time_rows, spatial_rows, tuple(cache)
+
+
 def run_f4_d_recursive_refinement(
     sequence_id=D3A_SEQUENCE_ID,
     *,
@@ -1057,31 +986,9 @@ def run_f4_d_recursive_refinement(
     if tuple(sorted(set(spatial_cells))) != spatial_cells:
         raise ValueError("spatial_cells must be unique and increasing.")
 
-    cache = {}
-    def run_config(x_steps, max_step):
-        key = (int(x_steps), float(max_step))
-        if key not in cache:
-            cache[key] = run_f4_d_recursive_sanity(
-                sequence_id=sequence_id,
-                x_steps=x_steps,
-                max_step=max_step,
-                cfl=cfl,
-                likelihood_quadrature_order=order,
-            )
-        return cache[key]
-
-    time_rows = [
-        _d3_refinement_row(
-            run_config(D3A_X_STEPS, h), axis="time", level=h,
-        )
-        for h in time_steps
-    ]
-    spatial_rows = [
-        _d3_refinement_row(
-            run_config(n, spatial_max_step), axis="space", level=n,
-        )
-        for n in spatial_cells
-    ]
+    time_rows, spatial_rows, configurations = _recursive_study_rows(
+        sequence_id, time_steps, spatial_cells, spatial_max_step, cfl, order,
+    )
     return {
         "stage": "D3b",
         "sequence_id": sequence_id,
@@ -1093,10 +1000,9 @@ def run_f4_d_recursive_refinement(
             "time": _d3_refinement_axis_summary(time_rows),
             "spatial": _d3_refinement_axis_summary(spatial_rows),
         },
-        "unique_configurations": tuple(cache),
+        "unique_configurations": configurations,
         "stability_ratio": D3B_STABILITY_RATIO,
     }
-
 
 
 def _d3c_first_order_summary(rows, metric):
@@ -1149,6 +1055,9 @@ def _d3c_spatial_summary(rows, metric):
     """Check two successive relative spatial changes at common requested max-step."""
     if len(rows) != 3:
         raise ValueError("D3c spatial summary requires exactly three levels.")
+    common_step = float(rows[0]["requested_max_step"])
+    if not all(float(row["requested_max_step"]) == common_step for row in rows):
+        raise ValueError("Spatial convergence requires a common requested time step.")
     changes = []
     for left, right in zip(rows[:-1], rows[1:]):
         left_value = float(left[metric])
@@ -1205,32 +1114,21 @@ def run_f4_d_recursive_convergence(
         raise ValueError("D3c time_steps must be unique and decreasing.")
     if tuple(sorted(set(spatial_cells))) != spatial_cells:
         raise ValueError("D3c spatial_cells must be unique and increasing.")
+    if not np.allclose(np.asarray(time_steps[:-1]), 2 * np.asarray(time_steps[1:]),
+                       atol=1e-15, rtol=1e-12):
+        raise ValueError("D3c temporal levels must halve exactly.")
+    if cfl >= 1.0:
+        raise ValueError("cfl must be less than one.")
 
-    cache = {}
-    def run_config(x_steps, max_step):
-        key = (int(x_steps), float(max_step))
-        if key not in cache:
-            cache[key] = run_f4_d_recursive_sanity(
-                sequence_id=sequence_id,
-                x_steps=x_steps,
-                max_step=max_step,
-                cfl=cfl,
-                likelihood_quadrature_order=order,
-            )
-        return cache[key]
-
-    time_rows = [
-        _d3_refinement_row(
-            run_config(D3A_X_STEPS, h), axis="time", level=h,
-        )
-        for h in time_steps
-    ]
-    spatial_rows = [
-        _d3_refinement_row(
-            run_config(n, spatial_max_step), axis="space", level=n,
-        )
-        for n in spatial_cells
-    ]
+    registered_settings = (
+        time_steps == D3C_TIME_STEPS and spatial_cells == D3C_SPATIAL_CELLS
+        and spatial_max_step == D3C_SPATIAL_MAX_STEP
+        and cfl == D3A_CFL and order == D3A_QUADRATURE_ORDER
+        and sequence_id == D3A_SEQUENCE_ID
+    )
+    time_rows, spatial_rows, configurations = _recursive_study_rows(
+        sequence_id, time_steps, spatial_cells, spatial_max_step, cfl, order,
+    )
 
     time_posterior = _d3c_first_order_summary(time_rows, "total_posterior_l1")
     time_evidence = _d3c_first_order_summary(time_rows, "evidence_mean_abs")
@@ -1259,6 +1157,7 @@ def run_f4_d_recursive_convergence(
                 "passes": spatial_passes,
             },
             "passes_convergence": passes,
+            "matches_registered_settings": registered_settings,
             "population_setting": (
                 {
                     "x_steps": D3C_POPULATION_X_STEPS,
@@ -1266,10 +1165,10 @@ def run_f4_d_recursive_convergence(
                     "cfl": D3A_CFL,
                     "likelihood_quadrature_order": D3A_QUADRATURE_ORDER,
                 }
-                if passes else None
+                if passes and registered_settings else None
             ),
         },
-        "unique_configurations": tuple(cache),
+        "unique_configurations": configurations,
         "criteria": {
             "limit_to_middle_ratio": D3C_LIMIT_RATIO,
             "fine_prediction_relative_error": D3C_PREDICTION_REL_TOL,
@@ -1278,22 +1177,21 @@ def run_f4_d_recursive_convergence(
     }
 
 
-
 _D3D_WORKER_STATE = None
 
 
-def _init_d3d_worker(x_steps, max_step, cfl, likelihood_quadrature_order):
-    """Prepare immutable/common D3d geometry once per process."""
-    global _D3D_WORKER_STATE
+def _prepare_d3d_state(x_steps, max_step, cfl, likelihood_quadrature_order):
+    """Prepare one isolated population runner; no target-dependent cross-run state."""
     case = build_f4_b_case()
     model, parameters = case.build_model()
     edges, centers, dx = model.fokker_planc_reference.grid(
         x_steps, bounds=(0.0, 1.0),
     )
-    dictionary = build_d1c_dictionaries(edges)[D2_DICTIONARY]
+    dictionary = _shape_aware_dictionary(edges, 0.0125)
     projector = PreparedBetaProjector(dictionary["basis"], dx)
     initial_mass = beta_initial_mass(case, model, x_steps)
-    _D3D_WORKER_STATE = {
+    initial_coefficients = projector.project(initial_mass / dx)["coefficients"]
+    return {
         "case": case,
         "model": model,
         "parameters": parameters,
@@ -1302,6 +1200,7 @@ def _init_d3d_worker(x_steps, max_step, cfl, likelihood_quadrature_order):
         "dx": dx,
         "projector": projector,
         "initial_mass": initial_mass,
+        "initial_coefficients": initial_coefficients,
         "x_steps": int(x_steps),
         "max_step": float(max_step),
         "cfl": float(cfl),
@@ -1309,14 +1208,18 @@ def _init_d3d_worker(x_steps, max_step, cfl, likelihood_quadrature_order):
     }
 
 
-def _run_d3d_sequence(sequence_id):
+def _init_d3d_worker(x_steps, max_step, cfl, likelihood_quadrature_order):
+    global _D3D_WORKER_STATE
+    _D3D_WORKER_STATE = _prepare_d3d_state(x_steps, max_step, cfl, likelihood_quadrature_order)
+
+
+def _run_d3d_sequence(sequence, *, state=None):
     """Run one paired mixture/FV population sequence using prepared worker state."""
-    state = _D3D_WORKER_STATE
+    state = _D3D_WORKER_STATE if state is None else state
     if state is None:
         raise RuntimeError("D3d worker state was not initialized.")
-    sequence_id = checks.positive_integer(sequence_id, "sequence_id", minimum=0)
+    sequence_id = sequence.sequence_id
     case = state["case"]
-    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
     if not sequence.truth.valid:
         return {
             "sequence_id": sequence_id,
@@ -1334,6 +1237,7 @@ def _run_d3d_sequence(sequence_id):
             case.horizon[0],
             sequence.observations,
             projector=state["projector"],
+            initial_coefficients=state["initial_coefficients"],
             breakpoints=case.breakpoints,
             max_step=state["max_step"],
             cfl=state["cfl"],
@@ -1424,6 +1328,8 @@ def _d3d_rmse_summary(mixture_mse, fv_mse, *, replicates, seed):
     fv_mse = checks.finite_vector(fv_mse, "fv_mse")
     if mixture_mse.shape != fv_mse.shape:
         raise ValueError("Paired D3d MSE vectors must match.")
+    if np.any(mixture_mse < 0.0) or np.any(fv_mse <= 0.0):
+        raise ValueError("MSEs must be non-negative and FV MSEs positive for a finite ratio bootstrap.")
     mixture_rmse = float(np.sqrt(np.mean(mixture_mse)))
     fv_rmse = float(np.sqrt(np.mean(fv_mse)))
     ratio = mixture_rmse / fv_rmse
@@ -1487,8 +1393,13 @@ def run_f4_d_recursive_population(
     bootstrap_replicates=D3D_BOOTSTRAP_REPLICATES,
     bootstrap_seed=D3D_BOOTSTRAP_SEED,
     workers=1,
+    progress=None,
 ):
-    """Run the final preregistered D3d paired mixture/FV population study."""
+    """Run paired D3d evaluation; progress(completed, total, row) runs in the parent.
+
+    Batch generation preserves per-ID randomness. Geometry is reused per worker;
+    serial calls own their state and do not leave a module-global cache behind.
+    """
     n_sequences = checks.positive_integer(n_sequences, "n_sequences", minimum=2)
     sequence_start = checks.positive_integer(
         sequence_start, "sequence_start", minimum=0,
@@ -1508,17 +1419,30 @@ def run_f4_d_recursive_population(
     workers = checks.positive_integer(workers, "workers", minimum=1)
 
     sequence_ids = tuple(range(sequence_start, sequence_start + n_sequences))
+    if cfl >= 1.0:
+        raise ValueError("cfl must be less than one.")
+    if progress is not None and not callable(progress):
+        raise TypeError("progress must be callable or None.")
+    sequences = generate_synthetic_sequences(sequence_ids=sequence_ids)
     initargs = (x_steps, max_step, cfl, order)
+
+    def collect(iterator):
+        rows = []
+        for row in iterator:
+            rows.append(row)
+            if progress is not None:
+                progress(len(rows), n_sequences, dict(row))
+        return rows
+
     if workers == 1:
-        _init_d3d_worker(*initargs)
-        rows = [_run_d3d_sequence(sequence_id) for sequence_id in sequence_ids]
+        state = _prepare_d3d_state(*initargs)
+        rows = collect(_run_d3d_sequence(sequence, state=state) for sequence in sequences)
     else:
         with ProcessPoolExecutor(
-            max_workers=workers,
-            initializer=_init_d3d_worker,
-            initargs=initargs,
+            max_workers=min(workers, n_sequences),
+            initializer=_init_d3d_worker, initargs=initargs,
         ) as executor:
-            rows = list(executor.map(_run_d3d_sequence, sequence_ids, chunksize=1))
+            rows = collect(executor.map(_run_d3d_sequence, sequences, chunksize=1))
 
     invalid = tuple(
         row["sequence_id"] for row in rows if row["status"] == "invalid_truth"
@@ -1532,15 +1456,25 @@ def run_f4_d_recursive_population(
         for row in rows if row["status"] == "failed"
     )
     ok = [row for row in rows if row["status"] == "ok"]
+    metadata = {
+        "stage": "D3d", "sequence_ids": sequence_ids, "workers": workers,
+        "x_steps": x_steps, "max_step": max_step, "cfl": cfl,
+        "likelihood_quadrature_order": order,
+        "bootstrap_replicates": bootstrap_replicates, "bootstrap_seed": bootstrap_seed,
+        "successful_sequences": len(ok), "invalid_truth_sequences": invalid,
+        "failed_sequences": failed, "per_sequence": rows,
+        "complete": len(ok) == n_sequences,
+        "summaries_conditioned_on_success": len(ok) != n_sequences,
+        "matches_registered_design": (
+            sequence_start == D3D_SEQUENCE_START and n_sequences == D3D_SEQUENCE_COUNT
+            and x_steps == D3C_POPULATION_X_STEPS and max_step == D3C_POPULATION_MAX_STEP
+            and cfl == D3A_CFL and order == D3A_QUADRATURE_ORDER
+            and bootstrap_replicates == D3D_BOOTSTRAP_REPLICATES
+            and bootstrap_seed == D3D_BOOTSTRAP_SEED
+        ),
+    }
     if not ok:
-        return {
-            "stage": "D3d",
-            "sequence_ids": sequence_ids,
-            "workers": workers,
-            "invalid_truth_sequences": invalid,
-            "failed_sequences": failed,
-            "passes_population": False,
-        }
+        return {**metadata, "passes_population": False}
 
     vector = lambda key: np.asarray([row[key] for row in ok], dtype=float)
     predictive_rmse = _d3d_rmse_summary(
@@ -1615,18 +1549,7 @@ def run_f4_d_recursive_population(
         and numerical["passes"]
     )
     return {
-        "stage": "D3d",
-        "sequence_ids": sequence_ids,
-        "workers": workers,
-        "x_steps": x_steps,
-        "max_step": max_step,
-        "cfl": cfl,
-        "likelihood_quadrature_order": order,
-        "bootstrap_replicates": bootstrap_replicates,
-        "bootstrap_seed": bootstrap_seed,
-        "successful_sequences": len(ok),
-        "invalid_truth_sequences": invalid,
-        "failed_sequences": failed,
+        **metadata,
         "rmse": {
             "predictive": predictive_rmse,
             "posterior": posterior_rmse,

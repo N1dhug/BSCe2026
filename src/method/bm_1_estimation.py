@@ -8,6 +8,7 @@ not synthetic experiments, plotting, control, or parameter fitting.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -19,6 +20,7 @@ from src.params.bm_1 import (
     BM1ObservationSeries, bayes_update, gaussian_log_likelihood, mass_to_log,
 )
 from src.validation import estimation as checks
+from src.validation.model.bm import bm_validation
 
 @dataclass(frozen=True)
 class BM1FVFilterStep:
@@ -90,10 +92,12 @@ class BM1FVFilterResult:
         initial_time = checks.finite_scalar(self.initial_time, 'initial_time')
         initial_mass = checks.probability_mass(self.initial_mass, 'initial_mass')
         times = checks.increasing_grid(self.times, 'filter times', minimum_size=1)
+        if times[0] <= initial_time:
+            raise ValueError('Filter times must lie strictly after initial_time.')
         x_edges = checks.increasing_grid(self.x_edges, 'x_edges')
         x_grid = checks.finite_vector(self.x_grid, 'x_grid')
-        predicted = np.asarray(self.predicted_mass, dtype=float).copy()
-        posterior = np.asarray(self.posterior_mass, dtype=float).copy()
+        predicted = checks.probability_rows(self.predicted_mass, 'predicted_mass')
+        posterior = checks.probability_rows(self.posterior_mass, 'posterior_mass')
         observed = np.asarray(self.observed).copy()
         log_evidence = np.asarray(self.log_evidence, dtype=float).copy()
         integration_t = checks.increasing_grid(self.integration_t, 'integration_t', minimum_size=2)
@@ -108,10 +112,6 @@ class BM1FVFilterResult:
             raise ValueError('log_evidence must match filter times.')
         if np.any(~np.isfinite(log_evidence[observed])) or np.any(~np.isnan(log_evidence[~observed])):
             raise ValueError('Log evidence must be finite exactly where observations are present.')
-        for row in predicted:
-            checks.probability_mass(row, 'predicted mass row')
-        for row in posterior:
-            checks.probability_mass(row, 'posterior mass row')
         diagnostics = tuple(dict(item) for item in self.prediction_diagnostics)
         if len(diagnostics) != times.size:
             raise ValueError('One prediction diagnostic record is required per filter time.')
@@ -180,12 +180,18 @@ class BM1MixtureFilterResult:
         if np.any(initial_coefficients < 0.0) or abs(float(np.sum(initial_coefficients)) - 1.0) > 1e-9:
             raise ValueError('initial_coefficients must satisfy the probability simplex.')
         times = checks.increasing_grid(self.times, 'filter times', minimum_size=1)
+        if times[0] <= initial_time:
+            raise ValueError('Filter times must lie strictly after initial_time.')
         x_edges = checks.increasing_grid(self.x_edges, 'x_edges')
         x_grid = checks.finite_vector(self.x_grid, 'x_grid')
-        predicted = np.asarray(self.predicted_mass, dtype=float).copy()
-        posterior = np.asarray(self.posterior_mass, dtype=float).copy()
-        pred_coeff = np.asarray(self.predicted_coefficients, dtype=float).copy()
-        post_coeff = np.asarray(self.posterior_coefficients, dtype=float).copy()
+        predicted = checks.probability_rows(self.predicted_mass, 'predicted_mass')
+        posterior = checks.probability_rows(self.posterior_mass, 'posterior_mass')
+        pred_coeff = checks.probability_rows(
+            self.predicted_coefficients, 'predicted_coefficients', atol=1e-9,
+        )
+        post_coeff = checks.probability_rows(
+            self.posterior_coefficients, 'posterior_coefficients', atol=1e-9,
+        )
         observed = np.asarray(self.observed).copy()
         log_evidence = np.asarray(self.log_evidence, dtype=float).copy()
         mass_shape = (times.size, x_grid.size)
@@ -202,16 +208,6 @@ class BM1MixtureFilterResult:
             raise ValueError('log_evidence must match filter times.')
         if np.any(~np.isfinite(log_evidence[observed])) or np.any(~np.isnan(log_evidence[~observed])):
             raise ValueError('Log evidence must be finite exactly for observed steps.')
-        for row in predicted:
-            checks.probability_mass(row, 'mixture predicted mass row')
-        for row in posterior:
-            checks.probability_mass(row, 'mixture posterior mass row')
-        for row in pred_coeff:
-            if np.any(row < 0.0) or abs(float(np.sum(row)) - 1.0) > 1e-9:
-                raise ValueError('Predicted mixture coefficients must satisfy the simplex.')
-        for row in post_coeff:
-            if np.any(row < 0.0) or abs(float(np.sum(row)) - 1.0) > 1e-9:
-                raise ValueError('Posterior mixture coefficients must satisfy the simplex.')
         prediction_diagnostics = tuple(dict(item) for item in self.prediction_diagnostics)
         projection_diagnostics = tuple(dict(item) for item in self.posterior_projection_diagnostics)
         if len(prediction_diagnostics) != times.size or len(projection_diagnostics) != times.size:
@@ -298,6 +294,13 @@ def mixture_filter_step(
     coefficients = _simplex_coefficients(
         prior_coefficients, projector.basis.shape[0], 'prior_coefficients',
     )
+    parameters = bm_validation.parameters(parameters)
+    bm_validation.response_endpoints(parameters[1], parameters[2])
+    sigma_x = checks.finite_scalar(sigma_x, 'sigma_x')
+    if sigma_x < 0.0:
+        raise ValueError('sigma_x must be non-negative.')
+    if previous_time < model.T[0] or observation_time > model.T[1]:
+        raise ValueError('Mixture filter interval must lie inside the model horizon.')
 
     edges, x_grid, dx = model.fokker_planc_reference.grid(
         projector.basis.shape[1], bounds=(0.0, 1.0),
@@ -410,8 +413,13 @@ def run_mixture_filter(
     max_step=np.inf,
     cfl=0.4,
     likelihood_quadrature_order=1,
+    initial_coefficients=None,
 ):
-    """Replay observations through the self-contained recursive mixture filter."""
+    """Replay the independent mixture filter, optionally warm-starting the initial QP.
+
+    Explicit initial coefficients are only a solver start: project() still checks
+    the unchanged initial-prior objective and simplex optimality.
+    """
     if not isinstance(observations, BM1ObservationSeries):
         raise TypeError('observations must be a BM1ObservationSeries.')
     if not isinstance(projector, PreparedBetaProjector):
@@ -422,7 +430,9 @@ def run_mixture_filter(
     initial_mass = checks.probability_mass(initial_mass, 'initial_mass')
     if initial_mass.size != projector.basis.shape[1]:
         raise ValueError('initial_mass must use the projector cell grid.')
-    initial_projection = projector.project(initial_mass / projector.dx)
+    initial_projection = projector.project(
+        initial_mass / projector.dx, initial_coefficients=initial_coefficients,
+    )
     current_coefficients = initial_projection['coefficients']
     current_time = initial_time
     steps = []
@@ -477,10 +487,19 @@ def _observation_demand(model, parameters, time, states, price_side, previous_ti
         raise ValueError('price_side must be left or right.')
     U, f, g, _, k, Xi = parameters
     price_time = time if price_side == 'right' else np.nextafter(time, previous_time)
-    Ut = U(price_time)
+    Ut = bm_validation.bounded_array(U(price_time), 0.0, 1.0, "U(observation time)")
     Bt = model.B(time)
     delta = model.l(f(states), g(Ut), k)
     return np.asarray(model.D(Bt, Xi, delta), dtype=float)
+
+
+@lru_cache(maxsize=32)
+def _legendre_rule(order):
+    """Immutable quadrature geometry, shared across observations and parameters."""
+    nodes, weights = np.polynomial.legendre.leggauss(order)
+    nodes.setflags(write=False)
+    weights.setflags(write=False)
+    return nodes, weights
 
 
 def _cell_log_likelihood(model, parameters, time, previous_time, edges, observation,
@@ -491,7 +510,7 @@ def _cell_log_likelihood(model, parameters, time, previous_time, edges, observat
     if order == 1:
         demand = _observation_demand(model, parameters, time, centers, price_side, previous_time)
         return gaussian_log_likelihood(observation, demand, sigma_y)
-    nodes, weights = np.polynomial.legendre.leggauss(order)
+    nodes, weights = _legendre_rule(order)
     points = centers[:, None] + 0.5 * np.diff(edges)[:, None] * nodes[None, :]
     demand = _observation_demand(
         model, parameters, time, points.reshape(-1), price_side, previous_time,
@@ -609,7 +628,7 @@ def run_fv_filter(model, parameters, sigma_x, sigma_y, initial_mass, initial_tim
     current_mass = checks.probability_mass(initial_mass, 'initial_mass')
     current_time = initial_time
     steps = []
-    full_grid = None
+    grids = []
     for time, value, is_observed in zip(observations.times, observations.values, observations.observed):
         step = fv_filter_step(
             model, parameters, sigma_x, sigma_y, current_mass, current_time, float(time),
@@ -619,7 +638,7 @@ def run_fv_filter(model, parameters, sigma_x, sigma_y, initial_mass, initial_tim
         )
         steps.append(step)
         grid = np.asarray(step.diagnostics['integration_t'], dtype=float)
-        full_grid = grid.copy() if full_grid is None else np.concatenate((full_grid, grid[1:]))
+        grids.append(grid if not grids else grid[1:])
         current_mass = step.posterior_mass
         current_time = step.time
     return BM1FVFilterResult(
@@ -629,6 +648,6 @@ def run_fv_filter(model, parameters, sigma_x, sigma_y, initial_mass, initial_tim
         posterior_mass=np.stack([step.posterior_mass for step in steps]),
         observed=observations.observed,
         log_evidence=np.array([step.log_evidence for step in steps], dtype=float),
-        integration_t=full_grid,
+        integration_t=np.concatenate(grids),
         prediction_diagnostics=tuple(step.diagnostics for step in steps),
     )

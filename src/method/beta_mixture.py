@@ -5,6 +5,7 @@ supplied as callbacks. Invalid probabilities are rejected, never repaired.
 """
 
 from collections import OrderedDict
+from functools import lru_cache
 
 import numpy as np
 from scipy.optimize import minimize
@@ -86,6 +87,18 @@ def _simplex_face_step(coefficients, direction):
     return updated, blocking
 
 
+@lru_cache(maxsize=256)
+def _simplex_tangent(count):
+    """Read-only zero-sum geometry; depends on face size, never on target data."""
+    tangent = np.zeros((count, count - 1), dtype=float)
+    for j in range(count - 1):
+        scale = 1.0 / np.sqrt((j + 1) * (j + 2))
+        tangent[:j + 1, j] = scale
+        tangent[j + 1, j] = -(j + 1) * scale
+    tangent.setflags(write=False)
+    return tangent
+
+
 class _SimplexProjector:
     """Prepared active-set least squares on the probability simplex.
 
@@ -123,12 +136,7 @@ class _SimplexProjector:
             self._faces.move_to_end(key)
             self.cache_hits += 1
             return self._faces[key]
-        count = len(indices)
-        tangent = np.zeros((count, count - 1), dtype=float)
-        for j in range(count - 1):
-            scale = 1.0 / np.sqrt((j + 1) * (j + 2))
-            tangent[:j + 1, j] = scale
-            tangent[j + 1, j] = -(j + 1) * scale
+        tangent = _simplex_tangent(len(indices))
         reduced = self.matrix[:, indices] @ tangent
         left, singular_values, right = np.linalg.svd(reduced, full_matrices=False)
         cutoff = max(reduced.shape) * np.finfo(float).eps * singular_values[0]

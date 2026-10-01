@@ -9,8 +9,34 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
+from time import perf_counter
 
+def _configure_blas_startup(argv):
+    """Opt-in process-local BLAS limits, before importing NumPy/SciPy.
+
+    Spawned workers inherit these settings. Importing this module as a library
+    never changes the environment; notebook users can use threadpoolctl instead.
+    """
+    probe = argparse.ArgumentParser(add_help=False)
+    probe.add_argument('--blas-threads', type=int)
+    requested, _ = probe.parse_known_args(argv)
+    if requested.blas_threads is not None:
+        if requested.blas_threads < 1:
+            probe.error('--blas-threads must be positive')
+        for variable in ('OPENBLAS_NUM_THREADS', 'OPENBLAS_DEFAULT_NUM_THREADS',
+                         'OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'BLIS_NUM_THREADS',
+                         'VECLIB_MAXIMUM_THREADS'):
+            os.environ[variable] = str(requested.blas_threads)
+
+
+if __name__ == '__main__':
+    _configure_blas_startup(sys.argv[1:])
+
+# Numerical libraries are deliberately imported after the optional CLI limits.
 import numpy as np
 
 from src.validation.bm_1 import estimation as synthetic
@@ -603,7 +629,18 @@ def run_mixture_filter_population(args):
         f"{args.start + args.sequences - 1}; cells={args.cells}; "
         f"hmax={args.max_step:.6e}; workers={args.workers}"
     )
-    print("  This is the final heavy F4-D population run; no progress rows are emitted.")
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(f"Refusing to overwrite {args.output}; choose a new result path.")
+    started = perf_counter()
+
+    def progress(completed, total, row):
+        if not args.quiet and (completed == 1 or completed % max(1, total // 20) == 0):
+            elapsed = perf_counter() - started
+            remaining = elapsed * (total - completed) / completed
+            print(f"  completed {completed}/{total}; sequence={row['sequence_id']}; "
+                  f"status={row['status']}; elapsed={elapsed:.1f}s; ETA~{remaining:.1f}s",
+                  flush=True)
+
     result = mixture_validation.run_f4_d_recursive_population(
         n_sequences=args.sequences,
         sequence_start=args.start,
@@ -613,7 +650,24 @@ def run_mixture_filter_population(args):
         likelihood_quadrature_order=args.quadrature_order,
         bootstrap_replicates=args.bootstrap_replicates,
         workers=args.workers,
+        progress=progress,
     )
+    if args.output is not None:
+        try:
+            revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT,
+                                      text=True, capture_output=True, check=True).stdout.strip()
+            dirty = bool(subprocess.run(['git', 'status', '--porcelain'], cwd=ROOT,
+                                        text=True, capture_output=True, check=True).stdout)
+        except (OSError, subprocess.SubprocessError):
+            revision, dirty = None, None
+        payload = {**result, 'source_commit': revision, 'working_tree_dirty': dirty,
+                   'elapsed_seconds': perf_counter() - started,
+                   'blas_threads_requested': args.blas_threads}
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with args.output.open('x', encoding='utf-8') as handle:
+            json.dump(payload, handle, indent=2, allow_nan=False)
+            handle.write('\n')
+        print(f'Saved {args.output}')
     if result.get('successful_sequences', 0) == 0:
         print(
             f"  no successful sequences; invalid={result['invalid_truth_sequences']}; "
@@ -669,9 +723,28 @@ def run_mixture_filter_population(args):
     return result
 
 
+def run_preparation(args):
+    """Reproduce independent F4-0 quadrature through the common entry point."""
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(f"Refusing to overwrite {args.output}.")
+    report = synthetic.run_f4_preparation_checks()
+    text = json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False)
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with args.output.open('x', encoding='utf-8') as handle:
+            handle.write(text + '\n')
+    print(text)
+    return report
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
+    preparation = subparsers.add_parser(
+        'preparation', help='Independent continuous F4-0 quadrature and Bayes checks.',
+    )
+    preparation.add_argument('--output', type=Path, help='Optional new JSON file.')
+    preparation.set_defaults(handler=run_preparation)
     command = subparsers.add_parser(
         'synthetic',
         help='Generate one locked F4-A synthetic truth/observation sequence.',
@@ -803,7 +876,14 @@ def build_parser():
         '--workers', type=int, default=1,
         help='Independent process workers; changes runtime only, not the scientific design.',
     )
+    mixture_filter_population.add_argument('--output', type=Path,
+        help='Optional new JSON file, including every sequence and source revision.')
+    mixture_filter_population.add_argument('--quiet', action='store_true',
+        help='Suppress intermediate progress rows, not the final summary.')
     mixture_filter_population.set_defaults(handler=run_mixture_filter_population)
+    for command_parser in subparsers.choices.values():
+        command_parser.add_argument('--blas-threads', type=int,
+            help='Opt-in BLAS/OpenMP thread limit per process, applied at CLI startup.')
     return parser
 
 

@@ -291,64 +291,64 @@ def _truth_grid(case, max_step):
     return integration_t, output_indices
 
 
-def _simulate(case, sequence_id, *, initial_state, measurement_noise, max_step,
-              brownian_increments):
+def _simulate_batch(case, sequence_ids, *, initial_states, measurement_noises,
+                    max_step, brownian_increments):
+    """Use the existing EM solver once for independent, explicitly seeded paths.
+
+    With boundary='none', path[:, 1:] contains exactly the raw proposals.
+    Diagnostics are reconstructed per path, never pooled across sequences.
+    """
     model, parameters = case.build_model()
     integration_t, output_indices = _truth_grid(case, max_step)
-
-    def drift(time, states):
-        return model._drift(time, states, parameters)
-
-    def diffusion(time, states):
-        del time
-        return model.diffusion_coefficient(states, case.sigma_x)
-
-    paths, diagnostics = model.euler_maruyama.solve_paths(
-        integration_t,
-        [initial_state],
-        drift,
-        diffusion,
-        n_paths=1,
-        boundary='none',
-        brownian_increments=brownian_increments,
-        return_diagnostics=True,
+    paths = model.euler_maruyama.solve_paths(
+        integration_t, initial_states,
+        lambda time, states: model._drift(time, states, parameters),
+        lambda time, states: model.diffusion_coefficient(states, case.sigma_x),
+        n_paths=len(sequence_ids), boundary='none',
+        brownian_increments=brownian_increments, return_diagnostics=False,
     )
-    state = paths[0, output_indices]
+    results = []
     times = case.output_times
-    price, baseline, _, _, _, demand = model.eval(
-        times,
-        state,
-        parameters[0],
-        parameters[1],
-        parameters[2],
-        parameters[4],
-        parameters[5],
-    )
-    diagnostics = diagnostics.copy()
-    diagnostics.update({
-        'output_t': np.asarray(times, dtype=float).copy(),
-        'output_indices': output_indices.copy(),
-        'breakpoints': np.asarray(case.breakpoints, dtype=float).copy(),
-        'requested_max_step': max_step,
-    })
-    observations = BM1ObservationSeries(
-        times=case.observation_times,
-        values=np.asarray(demand[1:], dtype=float) + measurement_noise,
-        time_unit='day',
-        observed=np.ones(case.observation_times.size, dtype=bool),
-        observation_kind='point',
-        price_side='right',
-    )
-    truth = BM1SyntheticTruth(
-        times=times,
-        state=state,
-        price=price,
-        baseline=baseline,
-        demand=demand,
-        initial_state=initial_state,
-        diagnostics=diagnostics,
-    )
-    return BM1SyntheticSequence(observations, truth, measurement_noise, sequence_id)
+    for sequence_id, path, initial_state, noise in zip(
+        sequence_ids, paths, initial_states, measurement_noises,
+    ):
+        raw = path[1:]
+        lower, upper = (raw < 0.0).astype(int), (raw > 1.0).astype(int)
+        violations = int(lower.sum() + upper.sum())
+        diagnostics = {
+            'integration_t': integration_t.copy(), 'n_paths': 1,
+            'n_steps': integration_t.size - 1, 'boundary': 'none',
+            'minimum_raw_proposal': float(raw.min()),
+            'maximum_raw_proposal': float(raw.max()),
+            'lower_violations': int(lower.sum()), 'upper_violations': int(upper.sum()),
+            'total_violations': violations, 'violating_paths': int(violations > 0),
+            'lower_violations_by_step': lower, 'upper_violations_by_step': upper,
+            'boundary_corrections': 0, 'output_t': times.copy(),
+            'output_indices': output_indices.copy(), 'breakpoints': case.breakpoints,
+            'requested_max_step': max_step,
+        }
+        state = path[output_indices]
+        price, baseline, _, _, _, demand = model.eval(
+            times, state, parameters[0], parameters[1], parameters[2],
+            parameters[4], parameters[5],
+        )
+        observations = BM1ObservationSeries(
+            case.observation_times, np.asarray(demand[1:]) + noise, 'day',
+            np.ones(case.observation_times.size, dtype=bool), 'point', 'right',
+        )
+        truth = BM1SyntheticTruth(times, state, price, baseline, demand,
+                                  float(initial_state), diagnostics)
+        results.append(BM1SyntheticSequence(observations, truth, noise, sequence_id))
+    return results
+
+
+def _simulate(case, sequence_id, *, initial_state, measurement_noise, max_step,
+              brownian_increments):
+    return _simulate_batch(
+        case, (sequence_id,), initial_states=[initial_state],
+        measurement_noises=[measurement_noise], max_step=max_step,
+        brownian_increments=brownian_increments,
+    )[0]
 
 
 def _coupled_truth_noise(case, sequence_id):
@@ -427,6 +427,38 @@ def generate_coupled_refinement(case=None, *, sequence_id=0):
     )
     return BM1SyntheticRefinement(coarse=coarse, fine=fine)
 
+
+
+def generate_synthetic_sequences(case=None, *, sequence_ids, refine=False):
+    """Batch F4-B generation with the same per-ID RNG streams as single calls.
+
+    refine=True returns coupled coarse/fine pairs; no sequence is dropped,
+    repaired or re-seeded. Batch size and ordering do not define randomness.
+    """
+    case = build_f4_b_case() if case is None else case
+    if not isinstance(case, BM1SyntheticCase):
+        raise TypeError('case must be a BM1SyntheticCase.')
+    ids = tuple(_nonnegative_integer(i, 'sequence_id') for i in sequence_ids)
+    if not ids or len(set(ids)) != len(ids):
+        raise ValueError('sequence_ids must be non-empty and unique.')
+    if not isinstance(refine, (bool, np.bool_)):
+        raise TypeError('refine must be boolean.')
+    initial = [_draw_initial_state(case, i) for i in ids]
+    noise = [_draw_measurement_noise(case, i) for i in ids]
+    brownian = [_coupled_truth_noise(case, i) for i in ids]
+    coarse = _simulate_batch(
+        case, ids, initial_states=initial, measurement_noises=noise,
+        max_step=case.truth_max_step,
+        brownian_increments=np.concatenate([pair[0] for pair in brownian]),
+    )
+    if not refine:
+        return coarse
+    fine = _simulate_batch(
+        case, ids, initial_states=initial, measurement_noises=noise,
+        max_step=case.truth_fine_max_step,
+        brownian_increments=np.concatenate([pair[1] for pair in brownian]),
+    )
+    return [BM1SyntheticRefinement(c, f) for c, f in zip(coarse, fine)]
 
 
 @dataclass(frozen=True)
@@ -574,14 +606,16 @@ def run_f4_c_refinement(
     case = build_f4_b_case()
     sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
 
+    cache = {}
+
     def run(axis, level, x_steps, max_step, quadrature_order):
-        reference = _run_f4_c_pair(
-            case,
-            sequence,
-            x_steps=x_steps,
-            max_step=max_step,
-            likelihood_quadrature_order=quadrature_order,
-        )
+        key = (x_steps, max_step, quadrature_order)
+        if key not in cache:
+            cache[key] = _run_f4_c_pair(
+                case, sequence, x_steps=x_steps, max_step=max_step,
+                likelihood_quadrature_order=quadrature_order,
+            )
+        reference = cache[key]
         return {
             'axis': axis,
             'level': level,
@@ -744,7 +778,7 @@ def run_f4_c_population(
     open_mean = open_result.posterior_mean
 
     sequence_ids = np.arange(sequence_start, sequence_start + n_sequences, dtype=int)
-    sequences = [generate_synthetic_sequence(case, sequence_id=int(i)) for i in sequence_ids]
+    sequences = generate_synthetic_sequences(case, sequence_ids=sequence_ids)
     invalid = [sequence.sequence_id for sequence in sequences if not sequence.truth.valid]
     if invalid:
         raise RuntimeError(
@@ -1031,7 +1065,7 @@ def run_f4_c_calibration_sensitivity(
     case = build_f4_b_case()
     model, parameters = case.build_model()
     sequence_ids = np.arange(sequence_start, sequence_start + n_sequences, dtype=int)
-    sequences = [generate_synthetic_sequence(case, sequence_id=int(i)) for i in sequence_ids]
+    sequences = generate_synthetic_sequences(case, sequence_ids=sequence_ids)
     invalid = [sequence.sequence_id for sequence in sequences if not sequence.truth.valid]
     if invalid:
         raise RuntimeError(
@@ -1081,10 +1115,7 @@ def run_f4_c_truth_refinement(
     case = build_f4_b_case()
     model, parameters = case.build_model()
     sequence_ids = np.arange(sequence_start, sequence_start + n_sequences, dtype=int)
-    pairs = [
-        generate_coupled_refinement(case, sequence_id=int(sequence_id))
-        for sequence_id in sequence_ids
-    ]
+    pairs = generate_synthetic_sequences(case, sequence_ids=sequence_ids, refine=True)
     invalid = [
         (pair.coarse.sequence_id, pair.coarse.truth.valid, pair.fine.truth.valid)
         for pair in pairs
@@ -1138,4 +1169,92 @@ def run_f4_c_truth_refinement(
             'rms_demand': float(np.sqrt(np.mean(np.square(demand_differences)))),
             'maximum_abs_observation': float(np.max(measurement_differences)),
         },
+    }
+
+
+def run_f4_preparation_checks() -> dict:
+    """Independent F4-0 quadrature checks; not a fitted or recursive model.
+
+    Moved intact from root/f4/verify_preparation.py. Continuous reference formulas
+    deliberately do not call the model's demand function.
+    """
+    from scipy.integrate import quad
+    from scipy.special import betaln
+    from src.params.bm_1 import bayes_update, gaussian_log_likelihood, mass_to_log
+    from src.method.beta_mixture import PreparedBetaProjector, beta_cell_average_basis
+    from src.method.fokker_planc import bm_1_fokker_planc
+    from src.diagnostics.bm_1 import beta_mixture_variance_floor
+    def prior_pdf(x):
+        if not 0. < x < 1.:
+            return 0.
+        return np.exp(19*np.log(x)+19*np.log1p(-x)-betaln(20, 20))
+
+    def demand(x):
+        # Independent formula for linear f/g, B=U=1/2, k=2, Xi=1.
+        return .5+.5*np.tanh(2*(.5-x))
+
+    def posterior_kernel(x):
+        return prior_pdf(x)*np.exp(-.5*((.5-demand(x))/.01)**2)
+
+    z_scaled, z_error = quad(posterior_kernel, 0., 1., epsabs=1e-13, epsrel=1e-12, points=[.5])
+    v_numerator, v_error = quad(lambda x: (x-.5)**2*posterior_kernel(x), 0., 1.,
+                                 epsabs=1e-14, epsrel=1e-11, points=[.5])
+    variance = v_numerator/z_scaled
+    example = bayes_update(mass_to_log([.6, .4]), gaussian_log_likelihood(.65, [.3, .7], .1))
+    bank_example = bayes_update(mass_to_log([.6, .4]), np.log([.2, .8]))
+
+    # Nonmonotone uncertainty: an admissible BM1 example with negative initial
+    # variance derivative, obtained from Ito's formula. This is not a forecast.
+    def wide_pdf(x):
+        return 6*x*(1-x)
+    covariance = quad(lambda x: (x-.5)*(demand(x)-.5)*wide_pdf(x), 0, 1,
+                      epsabs=1e-13)[0]
+    noise_contribution = quad(lambda x: (.1*x*(1-x))**2*wide_pdf(x), 0, 1,
+                             epsabs=1e-13)[0]
+    projections = []
+    for cells in (201, 801):
+        dx = 1./cells
+        edges = np.linspace(0, 1, cells+1)
+        centers = (edges[:-1]+edges[1:])/2
+        # Integrate the continuous posterior in each cell, not just its PDF.
+        target_mass = np.array([quad(posterior_kernel, a, b, epsabs=1e-15)[0]
+                                for a,b in zip(edges[:-1], edges[1:])])/z_scaled
+        target = target_mass/dx
+        for degree in (30, 38):
+            method = bm_1_fokker_planc()
+            basis = method._normalise_basis_discretely(method.beta_basis(centers, degree), dx)
+            result = PreparedBetaProjector(basis, dx).project(target)
+            mass = result['density']*dx
+            projections.append({'cells':cells, 'basis':f'legacy_{degree}',
+                'mean':float(mass@centers), 'center_variance':float(mass@(centers-.5)**2),
+                **result['diagnostics']})
+        # Illustrative, fixed dictionary only; no final F4-D basis selection.
+        shapes = np.array([20., 200., 1000., 2000.])
+        basis = beta_cell_average_basis(edges, shapes, shapes)
+        result = PreparedBetaProjector(basis, dx).project(target)
+        mass = result['density']*dx
+        projections.append({'cells':cells, 'basis':'illustration_symmetric_20_200_1000_2000',
+            'mean':float(mass@centers), 'center_variance':float(mass@(centers-.5)**2),
+            **result['diagnostics']})
+    return {
+        'scope':'F4-0 static/preparatory checks only; no recursive filter, parameter recovery or week forecast',
+        'source_base':'5a4793cd57d70a46beae2a6c758b4cd4e0556536',
+        'single_measurement':{
+            'prior':'Beta(20,20)', 'B':.5, 'U':.5, 'Y':.5, 'k':2., 'Xi':1., 'sigma_y':.01,
+            'continuous_posterior_mean':.5, 'continuous_posterior_variance':variance,
+            'gaussian_predictive_density':float(z_scaled/(np.sqrt(2*np.pi)*.01)),
+            'quad_absolute_error_estimates':[z_error, v_error],
+            'continuous_variance_floor_30':float(beta_mixture_variance_floor(.5,30)),
+            'continuous_variance_floor_38':float(beta_mixture_variance_floor(.5,38)),
+        },
+        'two_node_bayes_example':{'posterior':example.mass.tolist(), 'log_evidence':example.log_evidence},
+        'two_hypothesis_algebra_example':{'posterior':bank_example.mass.tolist(),
+                                         'log_evidence':bank_example.log_evidence},
+        'nonmonotone_variance_example':{'prior':'Beta(2,2)', 'rho':1.,'B':.5,'U':.5,
+            'k':2.,'Xi':1.,'sigma_x':.1,'initial_variance':.05,
+            'two_covariance':2*covariance,'expected_diffusion_squared':noise_contribution,
+            'initial_variance_derivative':2*covariance+noise_contribution},
+        'static_projection':projections,
+        'dictionary_warning':'Symmetric four-component illustration only; shifted, bimodal and boundary posteriors unvalidated.',
+        'variance_warning':'Continuous beta variance floor is not an exact finite-grid theorem; cell-center variances are labeled separately.',
     }

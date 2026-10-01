@@ -1,93 +1,95 @@
-# BM — start her
+# BM — arbejdsvejviser
 
-Kør kommandoer fra repositoryroden (`BSCe2026`), ikke fra `root/`.
-**Aktuel F4-status og næste opgave står kun i [F4.md](F4.md).**
+**F4-status og næste opgave:** [F4.md](F4.md).
+**Sammenhængende matematik:** [f4/main.tex](f4/main.tex) + [f4/notes.tex](f4/notes.tex).
+**Afsluttet F1–F3-evidens:** [BM_REFERENCE.md](BM_REFERENCE.md).
+Der vedligeholdes ikke parallelle audit-/closure-rapporter i `root`.
 
-## Tre dokumenter, tre formål
-
-| Fil | Bruges til |
-|---|---|
-| [F4.md](F4.md) | Status, beslutninger og konkret plan for næste F4-leverance. |
-| [BM_REFERENCE.md](BM_REFERENCE.md) | Samlet F1–F3-reference: matematik, afsluttede resultater og reproduktion. |
-| [f4/main.tex](f4/main.tex) + [f4/notes.tex](f4/notes.tex) | Sammenhængende F4-matematik; ikke endnu en statuslog. |
-
-`environment.yml` er bevaret. Data, WM-kode og eksisterende BM-metoder er ikke
-ændret af dokumentoprydningen. Detaljeret tidligere udviklingshistorik findes i Git;
-vi vedligeholder ikke parallelle audit-/performance-/closure-dokumenter.
-
-## Daglige kommandoer
+## Almindelig kontrol fra projektmappen
 
 ```powershell
-python -B -m unittest tests.test_bm1_estimation -q
-python -B -m src.exe.run_model.bm_1.estimate synthetic
-python -B -m src.exe.run_model.bm_1.estimate filter
-python -B -m src.exe.run_model.bm_1.estimate filter-refine
-python -B -m src.exe.run_model.bm_1.estimate filter-study
-python -B -m src.exe.run_model.bm_1.estimate filter-calibration
-python -B -m src.exe.run_model.bm_1.estimate filter-truth-refine
-python -B -m src.exe.run_model.bm_1.estimate mixture-static
-python -B -m src.exe.run_model.bm_1.estimate mixture-static-adaptive
-python -B -m src.exe.run_model.bm_1.estimate mixture-static-shape
-python -B -m src.exe.run_model.bm_1.estimate mixture-holdout
-python -B -m src.exe.run_model.bm_1.estimate mixture-filter
-python -B -m src.exe.run_model.bm_1.estimate mixture-filter-refine
-python -B -m src.exe.run_model.bm_1.estimate mixture-filter-converge
-python -B -m src.exe.run_model.bm_1.estimate mixture-filter-population
 python -B -m unittest discover -s tests -q
 python -B root/f4/build.py
 ```
 
-Den sidste kommando bygger PDF til `root/f4/build/main.pdf` og gentager selv
-LaTeX-kørslen, indtil referencerne er stabile. Den ændrer ikke terminalens mappe
-eller Windows PATH. Ingen `latexmk`/Perl kræves. En fundet MiKTeX-installation under
-brugerens normale installationsmappe kan bruges, selv om PATH endnu ikke er opdateret.
-Manglende LaTeX giver én klar fejl; Python-tests kræver ikke LaTeX.
+PDF'en skrives til `root/f4/build/main.pdf`. Buildscriptet gentager selv LaTeX,
+indtil referencerne er stabile; ingen `latexmk`/Perl og ingen manuel PATH-ændring
+kræves. MiKTeX i brugerens normale installationsmappe kan findes automatisk.
+Manglende LaTeX giver en klar fejl; Python-tests kræver ikke LaTeX. CI bygger også
+PDF og gemmer logs/artifacts. Underfull-linjer er layoutdiagnostik; uløste labels,
+overflow og egentlige buildfejl skal undersøges.
 
-GitHub-PR'en kører både regression og samme PDF-build og gemmer PDF/logs som
-artifacts. Derfor er lokal LaTeX-installation **ikke en forudsætning for at arbejde
-videre med modellen**. `Underfull`-linjer er layoutdiagnostik, ikke en grund til en
-ny debugrunde. Undefined references, ustabile labels og fejl i selve buildet skal løses.
+## Kør kun det relevante forsøg
 
-F4-0's uafhængige statiske kontrol er fortsat tilgængelig:
+Fælles indgang: `python -B -m src.exe.run_model.bm_1.estimate <kommando>`.
+Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks.
+
+| Formål | Kommando |
+|---|---|
+| F4-0 uafhængig kontinuert kvadratur/Bayes | `preparation` |
+| F4-B syntetisk sekvens / koblet EM | `synthetic`, `synthetic --refine` |
+| F4-C sanity / numerik | `filter`, `filter-refine` |
+| F4-C population / diagnostik | `filter-study`, `filter-calibration`, `filter-truth-refine` |
+| Historisk D1 / D1b / D1c basisdesign | `mixture-static`, `mixture-static-adaptive`, `mixture-static-shape` |
+| D2 statisk holdout | `mixture-holdout` |
+| D3a / D3b / D3c | `mixture-filter`, `mixture-filter-refine`, `mixture-filter-converge` |
+| D3d population | `mixture-filter-population` |
+
+`preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
+uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
+F3-kommandoer findes stadig via `verify`, `optimize`, `refine` og `real_data` i samme
+BM1 entrypoint-mappe. F3-data, WM-kode og `environment.yml` er bevaret.
+
+## Lange kørsler og reproduktion
+
+Populationen viser nu løbende antal færdige sekvenser, elapsed og grov ETA.
+`--quiet` skjuler kun progress, ikke slutresultatet. `--output` gemmer hele rapporten,
+alle sekvensrækker, settings, source-commit og dirty-flag i en **ny** JSON-fil;
+eksisterende output overskrives ikke. Uden eksplicit output skrives ingen resultatfiler.
 
 ```powershell
-python -B root/f4/verify_preparation.py
+python -B -m src.exe.run_model.bm_1.estimate mixture-filter-population --workers 8 --blas-threads 1 --output files/output/bm_1/runs/f4_population.json
 ```
 
-Kommandoen laver ikke filter-, parameter- eller forecast-forsøg. Se eksisterende BM-kørsler med `python -B -m src.exe.run_model.bm_1.verify --help` og
-tilsvarende `optimize`, `refine`, `real_data`. F4-B tilføjer den første reelle estimation-entrypoint via `estimate synthetic`; F4-C
-udvider samme entrypoint med det rekursive FV-filter og de dokumenterede validation-kørsler.
+`--blas-threads 1` er opt-in: BLAS/OpenMP-miljøvariabler sættes for denne Python-proces
+**før** NumPy/SciPy importeres og arves af worker-processer. Det ændrer ikke permanent
+Windows-miljøet, tolerancer, seeds eller worker-fordelingen af sekvenser. Det undgår, at
+mange processer hver starter mange BLAS-tråde. Flere workers er ikke automatisk hurtigere;
+mål på egen maskine. Uden flaget beholdes bibliotekernes eksisterende thread-indstillinger.
+I en allerede startet notebook kræver threadkontrol en runtime-mekanisme som threadpoolctl.
+
+Batchgenerering bruger samme pr.-ID RNG-strømme og samme EM-grid som enkeltgenerering.
+Caches indeholder kun target-uafhængig geometri eller eksplicitte, validerede startgæt;
+FV-referenceprojektioner starter aldrig mixture-filteret. Den registrerede D3d-protokol
+er uændret; rapporten markerer, om en kørsels settings faktisk matcher den.
 
 ## Hvor kode hører hjemme
 
 | Placering | Ansvar |
 |---|---|
 | `src/model/` | Fysiske ligninger og modelinterfaces. |
-| `src/method/`, `src/solver/` | Numeriske metoder og lavniveau-solvers; `bm_1_estimation.py` indeholder den rekursive BM1-estimatorkerne. |
-| `src/params/bm_1.py` | Generiske F4-observations-, Bayes-, likelihood- og remap-primitiver; ingen komplet estimator. |
+| `src/method/`, `src/solver/` | Estimatorkerner, numeriske metoder og lavniveau-solvers. |
+| `src/params/bm_1.py` | Observations-, Bayes-, likelihood- og remap-primitiver. |
 | `src/control/` | F3-problem, fælles cost og prisoptimering. |
-| `src/validation/estimation.py` | Offentlige inputkontroller; ingen eksperimenter. |
-| `src/validation/bm_1/` | Referencecases, datagenerator og videnskabelige undersøgelser. |
+| `src/validation/estimation.py` | Offentlige inputkontroller, ingen eksperimenter. |
+| `src/validation/bm_1/` | Referencecases, syntetisk data og videnskabelige studier. |
 | `src/diagnostics/`, `src/tools/` | Metrikker henholdsvis data/preprocessing. |
-| `src/exe/run_model/bm_1/` | Argumenter, orkestrering, rapporter og valgfrie plots. |
-| `tests/` | Hurtige regressionstests; ingen fulde videnskabelige benchmarks ved import. |
+| `src/exe/run_model/bm_1/` | CLI, progress, rapporter og eksplicit filoutput. |
+| `tests/` | Regression og små integrationstests; ikke hele populationer ved import. |
 
-Udvid eksisterende ansvar før nye filer oprettes. Et F4-bogstav er ikke et
-Python-modul. Ingen `_new`-/compatibility-kopier, omvendte imports fra core til CLI,
-skjulte normaliseringer eller ændring af numeriske settings for at pynte på runtime.
-FV-reference og fast FV er bevidst uafhængige implementeringer af samme scheme;
-de skal ikke deduplikeres væk som led i oprydning. Shared WM-kode ændres kun i en
-særskilt begrundet og testet ændring.
+Udvid eksisterende ansvar før nye moduler oprettes. Ingen `_new`-/compatibility-kopier,
+omvendte core→CLI-imports eller skjulte normaliseringer. FV-reference og fast FV er
+bevidst uafhængige implementeringer af samme scheme; de skal ikke deduplikeres væk.
+Shared WM ændres kun i en særskilt begrundet og testet ændring.
 
 ## Levering og filer
 
-Én afgrænset feature-branch fra seneste `main`, én samlet PR med matematik, kode,
-tests og nødvendig dokumentation. PR'en angiver kildecommit, faktiske testresultater,
-begrænsninger og højst få lokale kommandoer. Små statusrettelser går i samme PR;
-de kræver ikke deres egen closure-fase. Brugeren reviewer/merger; ingen automatisk merge.
+Én afgrænset branch/PR med matematik, kode, tests og nødvendig dokumentation. Test og
+sammenlign efter hver selvstændig rettelse; benchmark på samme settings/hardware og
+rapportér også uændrede output eller relevante numeriske afvigelser. Brugeren merger;
+derefter sync, branch-delete og prune. Ingen automatisk merge.
 
-Normale simulationskørsler skriver intet uden `--save`/eksplicit output. Lokale
-resultater hører i ignoreret `files/output/bm_1/runs/`, PDF-build i `root/f4/build/`.
-Bevar de oprindelige inputworkbooks og afsluttet evidens i
-`files/output/bm_1/f3_b/` og `files/output/bm_1/real_data/`.
-Slet ikke brugerens lokale arbejde, stashes eller miljøer for at opnå en ren status.
+Lokale resultater hører i ignoreret `files/output/bm_1/runs/`, PDF-build i
+`root/f4/build/`. Bevar inputworkbooks og afsluttet evidens i
+`files/output/bm_1/f3_b/` og `files/output/bm_1/real_data/`. Slet ikke brugerens
+lokale arbejde, stashes eller miljøer for at opnå en ren status.

@@ -1,7 +1,7 @@
 \section{Formål og læsevej}
 Projektet skal levere rekursiv state- og parameterestimation baseret på en
 approksimeret Fokker--Planck-løsning, herunder mixture-metoden \cite{project}.
-Disse noter samler F4-0--C's matematik, forsøgsdesign og validerede synthetic evidens. Aktuel status og
+Disse noter samler F4-0--D's matematik, forsøgsdesign og validerede synthetic evidens. Aktuel status og
 resterende opgaver står kun i \texttt{root/F4.md}; kommandoer i \texttt{root/BM\_GUIDE.md}.
 Modellen videreføres fra F1--F3 \cite{repo,junker}. Et beskrevet filter/forecast er
 ikke dermed et implementeret eller valideret resultat.
@@ -276,477 +276,6 @@ For en feasible kandidat og gradient \(g=A^T(Ac-b)\) gælder
 \end{equation}
 Den øvre grænse følger af konveksitet og \(g^Tc^*\geq\min_jg_j\). Den kontrollerer den numeriske løsning inden for den valgte basis, ikke afstanden til den sande posterior. F4-0's offentlige interface rapporterer derfor både optimalitetsgap og repræsentationsfejl. Faktisk masse i endecellerne rapporteres separat; første og sidste \emph{koefficient} er ikke generelle randindikatorer i en arbitrær ordbog.
 
-
-\section{F4-D: statisk basisvalg før dynamisk mixture-filter}
-\label{sec:f4d_static}
-
-Mixture-referencen bruger faste basisfunktioner med ikke-negative koefficienter på
-simplexen. Det bevarer en probabilistisk fortolkning i den valgte approximation,
-men garanterer ikke, at approximationfamilien kan repræsentere en given posterior.
-Referencearbejdet fremhæver fixed bases, simplex-constrained projektion og finite
-volume som benchmark \cite{nielsen}. F4-D adskiller derfor først
-\emph{repræsentationsfejl} fra dynamisk filterfejl.
-
-\subsection{Låst statisk target-suite}
-D1 køres på et uniformt grid med 801 celler. Følgende seks targets er fastlagt
-før resultaterne:
-\begin{align}
- r_{\rm broad} &= \Beta(4,4),\\
- r_{\rm narrow} &= \Beta(900,900),\\
- r_{\rm shift} &= \Beta(296,504),\\
- r_{\rm bi} &= \tfrac12\Beta(33.6,86.4)+\tfrac12\Beta(86.4,33.6),\\
- r_{\rm left} &= \Beta(1.5,73.5),\\
- r_{\rm right} &= \Beta(73.5,1.5).
-\end{align}
-De tester henholdsvis bred centerfordeling, meget smal centerfordeling,
-forskudt smal fordeling, bimodalitet og begge randnære retninger. Target-suiten
-er ikke et fit til sequence 0 og vælges derfor før de dynamiske F4-C snapshots
-undersøges.
-
-\subsection{Nestede kandidatordbøger}
-En komponent parameteriseres med mean \(\mu\) og concentration \(\kappa\):
-\[
- a=\kappa\mu,\qquad b=\kappa(1-\mu).
-\]
-Den indre mean-grid er
-\[
- \mathcal M=\{0.05,0.10,\ldots,0.95\}.
-\]
-Fire på forhånd definerede kandidater er
-\begin{align}
- \mathcal D_2 &: \mathcal M\times\{20,100\},\\
- \mathcal D_3 &: \mathcal M\times\{20,100,500\},\\
- \mathcal D_4 &: \mathcal M\times\{20,100,500,2500\},\\
- \mathcal D_{4b} &: (\mathcal M\cup\{0.01,0.025,0.975,0.99\})
-                    \times\{20,100,500,2500\}.
-\end{align}
-De har henholdsvis 38, 57, 76 og 92 komponenter. Grad 30 og 38 i den
-eksisterende Bernstein-familie er referencepunkter, ikke kandidater til det
-nye basisvalg. Celleintegrationen bruger \eqref{eq:integratedbasis}; ingen
-post-hoc normalisering tilføjes.
-
-\subsection{Metrikker og valg før resultater}
-For target cell masses \(m\) og projected masses \(\hat m\) rapporteres mindst
-\[
- \|m-\hat m\|_1,\qquad
- \sup_i|F_i-\hat F_i|,\qquad
- W_1(m,\hat m),
-\]
-samt density-\(L^2\), mean-/variancefejl og QP-optimalitetsgap. Matrix- og
-Hessian-conditioning, antal aktive koefficienter og fallback-status rapporteres
-separat, fordi et lille gap kun viser at det valgte QP er løst.
-
-En multiscale-kandidat er numerisk acceptabel hvis alle seks fits har
-\[
- {\rm gap}\le10^{-9},\qquad
- |\text{mass error}|\le10^{-9},
-\]
-og ingen fallback. Repræsentationsgaten er
-\[
- \max_{\rm targets}\|m-\hat m\|_1\le0.05,\qquad
- \max_{\rm targets}W_1\le0.01.
-\]
-Blandt kandidater der opfylder begge vælges den med færrest komponenter.
-Condition number over \(10^{12}\) udløser en alarm og skal undersøges; det er
-ikke en grund til at skjule et fit. Hvis ingen kandidat opfylder de fastlagte
-krav, konkluderes "ingen basis valgt" og en ny ordbogsfamilie skal erklæres
-før næste studie.
-
-
-\subsection{D1-resultat og D1b-redesign}
-Det låste D1-studie valgte ingen dictionary. Legacy grad 30 havde worst-case
-cellemasse-\(L^1\)-fejl 1.491 og \(W_1=0.0606\). Multiscale-2 reducerede dette
-til 1.201 og 0.0304, mens multiscale-3 og multiscale-4 nåede cirka 0.715 og
-0.0300 med randnære targets som worst case. Dermed var de finite, numerisk
-kontrollerede kandidater stadig langt over \eqref{eq:projection}'s D1
-repræsentationskrav.
-
-Den fulde boundary-enriched Cartesian dictionary gav desuden independent
-optimality failures på broad/narrow targets. Det er konsistent med den generelle
-conditioning-risiko ved stærkt overlappende fixed mixture-bases dokumenteret i
-referencearbejdet \cite{nielsen}. D1-resultatet bruges derfor ikke til at
-efterrationalisere en bestået basis: konklusionen er eksplicit, at ingen af de
-preregistrerede kandidater blev valgt.
-
-D1b fastlægges efter dette observerede resultat og er derfor et dictionary-designstudie,
-ikke en ny uafhængig validering. D2 forbliver holdout. I D1b bruges scale-dependent
-mean-placement:
-\begin{align}
- \kappa=20 &: \quad \mu=0.1,0.2,\ldots,0.9,\\
- \kappa=100 &: \quad \mu=0.025,0.05,\ldots,0.975
-                    \text{ samt }0.02,0.98.
-\end{align}
-For \(\kappa\in\{500,2000\}\) begrænses high-resolution means til
-\([0.1,0.9]\). Kandidat A bruger spacing 0.025 og har 116 komponenter.
-Kandidat B er nested og bruger spacing 0.0125 og har 180 komponenter.
-Denne multiresolution-struktur følger komponentbredden bedre end et fuldt
-Cartesian produkt og reducerer samtidig unødvendige brede/næsten-kollineære
-boundary-komponenter.
-
-De oprindelige repræsentationskrav bevares:
-\[
- \max \|m-\hat m\|_1\le0.05,\qquad
- \max W_1\le0.01,
-\]
-sammen med gap og massefejl højst \(10^{-9}\). Efter erfaringen fra D1 er en
-numerisk fallback ikke i sig selv en failure i D1b, fordi fallbacken løser det
-samme konvekse simplex-problem. Den rapporteres altid, og kandidaten accepteres
-kun hvis feasibility og den uafhængige optimality-gap-kontrol består. Condition
-number over \(10^{12}\) er fortsat en alarm. Den mindste bestående adaptive
-dictionary vælges; hvis ingen består, går D ikke videre til holdout/dynamik.
-
-
-\subsection{D1b-resultat og D1c shape-aware redesign}
-D1b valgte heller ingen dictionary. Adaptive A med 116 komponenter gav
-\[
- \max \|m-\hat m\|_1=0.1408,\qquad
- \max W_1=0.009683,
-\]
-med projection-matrix condition number \(8.18\times10^{13}\). Adaptive B med
-180 komponenter gav praktisk samme maksimum-\(L^1\), \(W_1=0.009680\), men
-condition number voksede til \(1.64\times10^{14}\). Begge havde den højre
-randtarget som worst case. Den fordoblede high-scale mean-resolution gav derfor
-ingen relevant repræsentationsgevinst; fejlen peger på manglende scale/shape
-nær randen snarere end manglende interior mean-resolution.
-
-D1c ændrer derfor ikke gates, men ændrer dictionary-geometrien før nye resultater.
-Det brede lag bevares ved \(\kappa=20\), og mediumlaget ved \(\kappa=100\).
-High-resolution laget \(\kappa=500\) erstattes af \(\kappa=800\) på
-\([0.1,0.9]\), mens \(\kappa=2000\) bevares. Randlaget suppleres symmetrisk med
-\[
- (\mu,\kappa)\in
- \{(0.02,50),(0.05,50),(0.95,50),(0.98,50)\}.
-\]
-Dette bracketter randtargetens koncentrationsskala mellem \(\kappa=50\) og det
-allerede eksisterende \(\kappa=100\), uden at indsætte den eksakte target-
-concentration \(75\).
-
-Kandidat C bruger spacing 0.025 for \(\kappa=800,2000\) og har 120 komponenter.
-Kandidat D er nested, bruger spacing 0.0125 og har 184 komponenter. Samme krav
-\[
- \max \|m-\hat m\|_1\le0.05,\qquad
- \max W_1\le0.01,
-\]
-samt gap og massefejl højst \(10^{-9}\), bevares. Condition number over
-\(10^{12}\) forbliver en eksplicit alarm. Hvis C består, vælges C uden at bruge
-D som modelvalg; D fungerer da kun som resolution check. Hvis kun D består,
-vælges D. Hvis ingen består, stoppes dictionary-engineeringen før D2 frem for
-at fortsætte med post-hoc udvidelser.
-
-
-\subsection{D1c-resultat og låst D2-holdout}
-Shape-aware kandidat C med 120 komponenter gav
-\[
- \max \|m-\hat m\|_1=0.08170,\qquad
- \max W_1=7.418\times10^{-4},
-\]
-og bestod derfor ikke den låste \(L^1\)-gate. Kandidat D med 184 komponenter gav
-\[
- \max \|m-\hat m\|_1=0.03804,\qquad
- \max W_1=2.602\times10^{-4},
-\]
-med maksimalt QP-gap \(9.89\times10^{-12}\) og uden fallback. D består dermed
-D1c's numeriske og repræsentationsmæssige gates og fryses som F4-D-basis.
-Projection-matrix condition number var dog \(1.665\times10^{14}\), så den
-foruddefinerede conditioning-alarm er aktiv; bestået statisk fit er ikke det samme
-som numerisk robust dynamik.
-
-D2 er derfor et uafhængigt holdout på faktiske FV-filterdensities. Sekvens-ID
-1001--1010 låses før resultater. For hver sekvens køres det assimilerende
-kendt-parameter FV-filter med
-\[
- N_x=801,\qquad h_{\max}=1/192\ {\rm\ day},\qquad q=1.
-\]
-Ved hvert af de 24 observationstidspunkter projekteres både predictionen
-\(p_k^-\) og posterioren \(p_k^+\) statisk til den frosne shape-D-basis.
-Synthetic truth indgår ikke i basisbeslutningen.
-
-De samme gates som i D1c anvendes separat på predictions og posteriors:
-\[
- \max \|m-\hat m\|_1\le0.05,\qquad
- \max W_1\le0.01,
-\]
-samt QP-gap og massefejl højst \(10^{-9}\) og ingen failed projection.
-En fallback er kun acceptabel, hvis den returnerede kandidat består feasibility
-og den uafhængige optimality-kontrol; antallet rapporteres.
-
-Som ekstra diagnostik beregnes predictive log-evidence fra den statisk
-projicerede \(p_k^-\) med præcis samme observationsoperator som FV-filteret.
-Mean og maksimum af den absolutte per-observation log-evidence-fejl samt den
-maksimale absolutte forskel i dagssummen rapporteres, men bruges ikke som en
-ny post-hoc basis-selection gate. Hvis D2 fejler repræsentationsgaten, ændres
-dictionaryen ikke ud fra holdout; D3 stoppes.
-
-
-\subsection{D2-resultat og D3a rekursiv mixture-kontrakt}
-Det uafhængige D2-holdout på sequence-id 1001--1010 gav for 240 predictions
-maksimal cellemasse-\(L^1\)-fejl \(3.13\times10^{-6}\) og maksimal
-\(W_1=1.24\times10^{-8}\). For 240 posteriors var de tilsvarende tal
-\(1.10\times10^{-5}\) og \(5.08\times10^{-8}\). Maksimalt QP-gap var cirka
-\(10^{-11}\), massefejlen højst \(1.22\times10^{-15}\), og ingen fallback blev
-brugt. Predictive log-evidence fra den statisk projicerede prediction afveg fra
-FV-evidence med mean absolut fejl \(7.69\times10^{-10}\) per observation,
-maksimum \(1.63\times10^{-8}\) og maksimal absolut dagssum-difference
-\(3.30\times10^{-8}\). Dermed generaliserer shape-D til de holdout-densities,
-selv om matrix-conditioning fortsat er høj.
-
-D3 må nu teste en anden fejlmekanisme: akkumulering når mixture-filteret selv
-leverer næste prior. Med koefficienter \(c_{k-1}^+\) og fixed basis
-\(\Phi\) sættes
-\[
- p_{k-1}^{+,M}(x)=\sum_j c_{k-1,j}^+\phi_j(x).
-\]
-Den eksisterende explicit mixture/FP-kernel propagerer denne approximation til
-\(p_k^{-,M}\), hvorefter predictive evidence beregnes før nogen posterior-
-projektion:
-\[
- z_k^M=\int L_k(x)p_k^{-,M}(x)\,\mathrm dx.
-\]
-Bayes-posterioren
-\[
- \tilde p_k^{+,M}(x)=\frac{L_k(x)p_k^{-,M}(x)}{z_k^M}
-\]
-ligger generelt ikke i det fixed mixture-rum. Derfor løses samme constrained
-projection som i D1--D2 én gang efter assimilation,
-\[
- p_k^{+,M}=\Pi_{\mathcal D}(\tilde p_k^{+,M}),
-\]
-og \(p_k^{+,M}\) er den eneste state-law der må starte næste prediction.
-Et FV-filter må kun bruges som ekstern reference; FV-posterior restart ville
-fjerne den dynamiske mixture-fejl, som D3 skal måle.
-
-
-\paragraph{D3a solver-audit og sanity-resultat.}
-De første D3a-kørsler stoppede på simplex-optimality-kontrollen. Den efterfølgende
-audit fandt tre konkrete active-set-fejl: en absolut tolerance på næsten samtidige
-blocking-ratios kunne nulstille en koefficient, der endnu var positiv; en separat
-direction-threshold kunne kassere en nødvendig lille korrektion; og små positive
-koefficienter blev tidligere behandlet som inaktive. Den korrigerede line search bruger
-den feasible skridtlængde
-\[
- \alpha=\min\!\left(1,\min_{d_j<0}\frac{-c_j}{d_j}\right),
-\]
-aktiverer kun faktiske blockers, og alle strengt positive koefficienter forbliver frie.
-Dette ændrer ikke objective, simplex-constraints, basis, data eller tolerancer. Der
-anvendes fortsat ingen clipping, renormalisering, ridge eller target-repair.
-
-Med den korrigerede solver gennemførte det preregistrerede D3a-design:
-sequence 0, shape-D, 101 celler, \(\mathrm{cfl}=0.4\),
-\(h_{\max}=1/384\) dag og observation-q=1. Der blev brugt 456 interne
-mixture-steps uden prediction- eller posterior-fallbacks. Initialprojektionen havde
-cellemasse-\(L^1=9.61\times10^{-11}\). Static best-fit FV\(\to\)mixture var
-meget lille; maksimal posterior-\(L^1\) var \(3.48\times10^{-7}\).
-Derimod var det rekursive dynamic gap
-\[
- \max L^1_{\rm pred}=1.659\times10^{-2},\qquad
- \max L^1_{\rm post}=2.026\times10^{-2},
-\]
-med \(W_1\) omkring \(4.7\times10^{-4}\). Total mixture\(\to\)FV-gap
-var praktisk identisk med dynamic gap, så D3a peger på propagation/projection-
-akkumulation frem for utilstrækkelig static repræsentation.
-
-Predictive log-evidence havde mean absolut fejl
-\(5.09\times10^{-3}\) per observation, maksimum
-\(1.48\times10^{-2}\), og den absolutte forskel i samlet dags-loglikelihood
-var \(3.51\times10^{-2}\). FV- og mixture-posterior-RMSE var henholdsvis
-\(0.021689\) og \(0.021671\); den lille forskel bruges ikke som evidens for at
-mixture er bedre. Maksimal raw/projected prediction-massefejl var cirka
-\(2\times10^{-15}\), og Bayes-til-projected posterior-\(L^1\) højst
-\(1.15\times10^{-6}\).
-
-\paragraph{D3b numerisk refinement før populationsstudie.}
-D3b genbruger sequence 0, shape-D, observation-q=1 og
-\(\mathrm{cfl}=0.4\). Tidsaksen holder 101 celler og bruger
-\[
- h_{\max}\in\{1/384,1/768,1/1536\}\ {\rm day}.
-\]
-Spatialaksen holder \(h_{\max}=1/1536\) dag og bruger
-\[
- N_x\in\{51,101,151\}.
-\]
-Det fælles fine tidsloft vælges for at reducere sammenblanding af spatial- og
-tidsfejl; faktisk maksimal intern step rapporteres og afgør, om CFL alligevel binder.
-Identiske konfigurationer genbruges, så \((101,1/1536)\) ikke beregnes to gange.
-
-For hvert niveau rapporteres static best-fit, dynamic og total prediction/posterior
-\(L^1\) og \(W_1\), predictive evidence-fejl, FV/mixture-RMSE,
-step-count, faktisk step-range, fallback-count, massefejl og conditioning.
-Fineste niveau på hver akse er reference. For total posterior-\(L^1\) og mean
-absolute evidence-error beregnes den maksimale ændring fra alle grovere niveauer
-til fineste niveau. Hvis reference-discrepancy ikke er numerisk nær nul, kræves
-\[
- \frac{\max |E_{\rm coarse}-E_{\rm fine}|}{|E_{\rm fine}|}\le0.10
-\]
-på begge metrikker for at kalde numerikken stabil til den efterfølgende
-populationsevaluering. Ved næsten nul denominator rapporteres absolut effekt i stedet.
-En fejlet gate udløser yderligere preregistreret refinement; der vælges ikke et gunstigt
-niveau bagefter.
-
-
-\paragraph{D3b-resultat og D3c-konvergenstest.}
-Den preregistrerede D3b-gate blev ikke bestået. På 101 celler faldt total
-posterior-\(L^1\)-discrepancy ved tidsrefinement som
-\[
- 2.026\times10^{-2},\quad 1.091\times10^{-2},\quad 5.459\times10^{-3}
-\]
-for \(h_{\max}=1/384,1/768,1/1536\). Mean absolute predictive
-log-evidence-error faldt tilsvarende som
-\[
- 5.089\times10^{-3},\quad 2.749\times10^{-3},\quad 1.379\times10^{-3}.
-\]
-Den låste D3b-definition tog maksimal coarse-to-fine ændring relativt til den
-fineste discrepancy og gav ratios 2.71 og 2.69, så D3b er formelt fejlet.
-For en discrepancy, der ser ud til at konvergere mod nul, er denne relative
-definition dog ikke en hensigtsmæssig konvergenstest: ved førsteordens
-\(E(h)\approx Ch\) forbliver forskellen mellem et groft og fint niveau stor
-relativt til den fineste fejl. Dette ændrer ikke D3b-resultatet; en ny test
-fastlægges i stedet før yderligere resultater.
-
-Ved fælles \(h_{\max}=1/1536\) gav 51, 101 og 151 celler posterior-\(L^1\)
-\[
- 4.747\times10^{-3},\quad5.459\times10^{-3},\quad5.567\times10^{-3}.
-\]
-Den oprindelige max-coarse-to-fine gate gav 14.7 procent, mens ændringen fra
-101 til 151 celler kun var cirka 1.9 procent. Evidence-error ændrede sig under
-1 procent mellem de to fineste spatialniveauer.
-
-D3c bruger derfor en eksplicit førsteordens Richardson-kontrol. Tidsaksen er
-\[
- N_x=101,\qquad
- h_{\max}\in\{1/768,1/1536,1/3072\}.
-\]
-For en positiv discrepancy-metrik antages kun til testen
-\[
- E(h)=E_0+Ch+O(h^2).
-\]
-Fra de to første niveauer beregnes
-\[
- \widehat E_0=2E(h/2)-E(h),
- \qquad
- \widehat E(h/4)=\widehat E_0+
- \tfrac12\bigl(E(h/2)-\widehat E_0\bigr).
-\]
-Det tredje niveau er nyt holdout for denne prediktion. For både total
-posterior-\(L^1\) og mean absolute evidence-error kræves: monoton nedgang,
-\(|\widehat E_0|\le0.1E(h/2)\), og relativ afvigelse mellem observeret og
-forudsagt \(h/4\)-værdi højst 20 procent.
-
-Spatialaksen bruger
-\[
- N_x\in\{101,151,201\},\qquad h_{\max}=1/3072.
-\]
-For begge samme metrikker kræves relativ ændring højst 10 procent for både
-101\(\to\)151 og 151\(\to\)201. Den rapporterede faktiske maximale interne
-step skal desuden være det fælles requested time-limit på alle tre grids;
-ellers kan spatial- og tidsfejl ikke betragtes som adskilt. Kun hvis både
-temporal og spatial D3c består, låses numerikken til et efterfølgende
-populationsdesign.
-
-
-\paragraph{D3c-resultat og D3d populationstest.}
-D3c bekræftede den forventede tidskonvergens. På 101 celler gav
-\(h_{\max}=1/768,1/1536,1/3072\) total posterior-\(L^1\)
-\[
- 1.091\times10^{-2},\quad5.459\times10^{-3},\quad2.732\times10^{-3},
-\]
-mens mean absolute log-evidence-error gav
-\[
- 2.749\times10^{-3},\quad1.379\times10^{-3},\quad6.905\times10^{-4}.
-\]
-Richardson-ekstrapolationens \(|\widehat E_0|/E(h/2)\) var 0.0008 for
-posterior-\(L^1\) og 0.0058 for evidence; det nye fine niveau matchede den
-førsteordens prediktion med relativ fejl under \(10^{-4}\) og 0.0041.
-Ved fælles \(h_{\max}=1/3072\) var successive spatialændringer fra
-101\(\to\)151\(\to\)201 celler 1.89/0.46 procent for posterior-\(L^1\) og
-0.91/0.67 procent for evidence. Det requested tidsloft var bindende på alle grids.
-Populationens numerical baseline fryses derfor til
-\[
- N_x=151,\qquad h_{\max}=1/3072\ {\rm\ day},\qquad
- \mathrm{cfl}=0.4,\qquad q=1.
-\]
-
-D3d er F4-D's sidste preregistrerede populationstest. Den bruger 200 nye
-synthetic sekvenser, ID 1011--1210. Hver sekvens køres paired gennem det
-selvstændige shape-D mixture-filter og en matched-grid FV-reference; FV må aldrig
-restart mixture-kæden. Whole sequences er bootstrap-enheden, med 5000 paired
-replikater og seed 4301.
-
-Mixture skal demonstrere praktisk equivalence til FV, ikke forbedring. For både
-predictive og posterior state-RMSE kræves, at hele bootstrap-95 procent intervallet
-for ratio
-\[
- \frac{\mathrm{RMSE}_{M}}{\mathrm{RMSE}_{FV}}
-\]
-ligger i \([0.95,1.05]\). For predictive log-evidence kræves upper bootstrap-95
-bound for mean absolute per-observation difference højst 0.002, og 95-procent-
-quantilen af absolut dagssum-difference højst 0.1.
-
-For hver sekvens beregnes maksimum over de 24 tider af cell-mass \(L^1\) og
-\(W_1\), separat for predictions og posteriors. For begge snapshot-typer kræves
-95-procent-quantil af sequence-max \(L^1\) højst 0.02, global maximum højst
-0.05 og global maximum \(W_1\) højst 0.01. Massefejl skal være højst
-\(10^{-10}\), og ingen invalid truth eller failed filtersekvens må droppes.
-En fallback, der allerede har bestået solverens feasibility/optimality-check,
-er tilladt men rapporteres. Parallel worker-count er kun runtime-konfiguration og
-må ikke ændre estimater eller rækkefølge-uafhængige summaries.
-
-Hvis D3d består, er F4-D's videnskabelige testkæde afsluttet. Derefter mangler kun
-code/math/claims review, focused/full regression, PDF/CI og normal PR/branch closure.
-
-
-\paragraph{D3d population-resultat og F4-D-konklusion.}
-Den sidste preregistrerede D3d-population brugte 200 nye synthetic sekvenser,
-ID 1011--1210, ved den låste numerik
-\[
- N_x=151,\qquad h_{\max}=1/3072\ {\rm day},\qquad
- \mathrm{cfl}=0.4,\qquad q=1.
-\]
-Alle 200 sekvenser gennemførte uden invalid truth, filterfejl eller projection
-fallbacks. Predictive state-RMSE var
-\[
- \mathrm{RMSE}_{FV}=3.645553\times10^{-2},\qquad
- \mathrm{RMSE}_{M}=3.645558\times10^{-2},
-\]
-med ratio 1.000001 og paired bootstrap-95 procent interval
-\([0.999970,1.000034]\). Posterior-RMSE var
-\[
- 2.383041\times10^{-2}\quad\text{mod}\quad2.383120\times10^{-2},
-\]
-med ratio 1.000033 og bootstrapinterval \([0.999974,1.000097]\).
-Begge intervaller ligger klart inden for den preregistrerede equivalence-region
-\([0.95,1.05]\); resultatet fortolkes som praktisk equivalence til FV, ikke som
-at mixture er bedre.
-
-Mean absolute predictive log-evidence-difference var
-\(6.609\times10^{-4}\) per observation med bootstrap95
-\([6.316,6.921]\times10^{-4}\). Den signed mean var
-\(2.0\times10^{-6}\), og 95-procent-quantilen af den absolutte forskel i
-dagssummer var \(8.965\times10^{-3}\). Begge likelihood-gates bestod.
-
-For sequence-max distribution gaps var 95-procent-quantilerne
-\(5.06\times10^{-3}\) for prediction-\(L^1\) og
-\(8.56\times10^{-3}\) for posterior-\(L^1\), med globale maxima henholdsvis
-\(1.22\times10^{-2}\) og \(1.74\times10^{-2}\). De globale \(W_1\)-maxima var
-\(4.98\times10^{-4}\) og \(5.08\times10^{-4}\). Alle repræsentationsgates
-bestod. Over 614400 interne mixture-steps var maksimal massefejl
-\(4.89\times10^{-15}\), og der blev ikke brugt fallbacks.
-
-F4-D's videnskabelige testkæde er dermed afsluttet: en fixed multiscale Beta-basis
-blev valgt før holdout, generaliserede statisk til ubrugte FV-posteriors, den rekursive
-mixture-kæde blev kørt uden FV-restart, dens tids-/spatialkonvergens blev verificeret,
-og den låste metode var praktisk ækvivalent med FV på en uafhængig 200-sekvens
-population. Den høje algebraiske conditioning af basisen forbliver en dokumenteret
-begrænsning; i de gennemførte D2/D3-studier gav den ingen observerede failures eller
-fallbacks. Dette validerer ikke ukendte parametre, historiske data eller generelle
-responsfunktioner; de hører til senere F4-trin.
-
-\subsection{Hvorfor D1 kommer før det rekursive filter}
-Referencearbejdet skelner mellem projection error fra det endelige mixture-rum
-og temporal/dynamisk discretization error \cite{nielsen}. Det samme princip
-bruges her: D1 måler den bedste statiske approximation først. D2 validerer den
-valgte ordbog på holdout-FV snapshots. Først D3 kører et selvstændigt rekursivt
-mixture-filter. Ellers kunne en dårlig dynamisk kurve fejlagtigt tilskrives
-time stepping, selv om basisrummet allerede var utilstrækkeligt.
 
 \section{Parameteridentifikation før store fits}
 \subsection{En lokal algebraisk screening}
@@ -1387,6 +916,240 @@ havde en ikke-replikeret 12h-afvigelse. Derfor beskrives uncertainty calibration
 som rimelig i den kontrollerede synthetic case, ikke som perfekt eller generelt
 valideret. F4-C estimerer kun state ved kendte parametre; mixture-filtering og
 parameterestimation hører fortsat til de senere F4-trin.
+
+\section{F4-D: statisk basisvalg før dynamisk mixture-filter}
+\label{sec:f4d_static}
+
+Mixture-referencen bruger faste basisfunktioner med ikke-negative koefficienter på
+simplexen. Det bevarer en probabilistisk fortolkning i den valgte approximation,
+men garanterer ikke, at approximationfamilien kan repræsentere en given posterior.
+Referencearbejdet fremhæver fixed bases, simplex-constrained projektion og finite
+volume som benchmark \cite{nielsen}. F4-D adskiller derfor først
+\emph{repræsentationsfejl} fra dynamisk filterfejl.
+
+\subsection{Låst statisk target-suite}
+D1 køres på et uniformt grid med 801 celler. Følgende seks targets er fastlagt
+før resultaterne:
+\begin{align}
+ r_{\rm broad} &= \Beta(4,4),\\
+ r_{\rm narrow} &= \Beta(900,900),\\
+ r_{\rm shift} &= \Beta(296,504),\\
+ r_{\rm bi} &= \tfrac12\Beta(33.6,86.4)+\tfrac12\Beta(86.4,33.6),\\
+ r_{\rm left} &= \Beta(1.5,73.5),\\
+ r_{\rm right} &= \Beta(73.5,1.5).
+\end{align}
+De tester henholdsvis bred centerfordeling, meget smal centerfordeling,
+forskudt smal fordeling, bimodalitet og begge randnære retninger. Target-suiten
+er ikke et fit til sequence 0 og vælges derfor før de dynamiske F4-C snapshots
+undersøges.
+
+\subsection{Nestede kandidatordbøger}
+En komponent parameteriseres med mean \(\mu\) og concentration \(\kappa\):
+\[
+ a=\kappa\mu,\qquad b=\kappa(1-\mu).
+\]
+Den indre mean-grid er
+\[
+ \mathcal M=\{0.05,0.10,\ldots,0.95\}.
+\]
+Fire på forhånd definerede kandidater er
+\begin{align}
+ \mathcal D_2 &: \mathcal M\times\{20,100\},\\
+ \mathcal D_3 &: \mathcal M\times\{20,100,500\},\\
+ \mathcal D_4 &: \mathcal M\times\{20,100,500,2500\},\\
+ \mathcal D_{4b} &: (\mathcal M\cup\{0.01,0.025,0.975,0.99\})
+                    \times\{20,100,500,2500\}.
+\end{align}
+De har henholdsvis 38, 57, 76 og 92 komponenter. Grad 30 og 38 i den
+eksisterende Bernstein-familie er referencepunkter, ikke kandidater til det
+nye basisvalg. Celleintegrationen bruger \eqref{eq:integratedbasis}; ingen
+post-hoc normalisering tilføjes.
+
+\subsection{Metrikker og valg før resultater}
+For target cell masses \(m\) og projected masses \(\hat m\) rapporteres mindst
+\[
+ \|m-\hat m\|_1,\qquad
+ \sup_i|F_i-\hat F_i|,\qquad
+ W_1(m,\hat m),
+\]
+samt density-\(L^2\), mean-/variancefejl og QP-optimalitetsgap. Matrix- og
+Hessian-conditioning, antal aktive koefficienter og fallback-status rapporteres
+separat, fordi et lille gap kun viser at det valgte QP er løst.
+
+En multiscale-kandidat er numerisk acceptabel hvis alle seks fits har
+\[
+ {\rm gap}\le10^{-9},\qquad
+ |\text{mass error}|\le10^{-9},
+\]
+og ingen fallback. Repræsentationsgaten er
+\[
+ \max_{\rm targets}\|m-\hat m\|_1\le0.05,\qquad
+ \max_{\rm targets}W_1\le0.01.
+\]
+Blandt kandidater der opfylder begge vælges den med færrest komponenter.
+Condition number over \(10^{12}\) udløser en alarm og skal undersøges; det er
+ikke en grund til at skjule et fit. Hvis ingen kandidat opfylder de fastlagte
+krav, konkluderes "ingen basis valgt" og en ny ordbogsfamilie skal erklæres
+før næste studie.
+
+
+
+\subsection{D1b og D1c: design og fravalg}
+D1 valgte ingen dictionary: legacy grad 30 gav worst-case cellemasse-\(L^1=1.491\)
+og \(W_1=0.0606\); multiscale-2 gav 1.201/0.0304 og multiscale-3/4 cirka
+0.715/0.0300. Randtargets dominerede de sidste. Boundary-enrichment havde desuden
+optimality-failures. Det var ikke evidens for en bestået basis.
+
+D1b og D1c er efterfølgende \emph{dictionary engineering}, ikke nye uafhængige tests:
+de genbruger de seks targets. Det brede lag er i begge tilfælde
+\(\kappa=20,\;\mu=0.1,0.2,\ldots,0.9\), og mediumlaget er
+\(\kappa=100,\;\mu=0.025,0.05,\ldots,0.975\) samt 0.02 og 0.98.
+De resterende komponenter er:
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Kandidat & Høje koncentrationer & Mean-grid på $[0.1,0.9]$ & Antal \\
+\midrule
+Adaptive A & $500,2000$ & spacing $0.025$ & 116 \\
+Adaptive B & $500,2000$ & spacing $0.0125$ & 180 \\
+Shape C & $800,2000$ & spacing $0.025$ & 120 \\
+Shape D & $800,2000$ & spacing $0.0125$ & 184 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Shape C/D tilføjer desuden \(\kappa=50\) ved means 0.02, 0.05, 0.95 og 0.98.
+Det bracketter randtargetens koncentration 75 uden at indsætte den præcise target.
+I hvert design vælges den mindste bestående kandidat. Gates for L1, W1, gap og masse
+fra D1 bevares. Fra D1b er en fallback ikke automatisk diskvalificerende: den løser
+samme konvekse problem, skal rapporteres og skal bestå feasibility/optimality-kontrollen.
+D1's oprindelige regel og resultat omskrives ikke.
+
+Adaptive A/B gav begge max L1=0.1408 og W1 cirka 0.00968; L1-gaten fejlede.
+Matrix-conditioning var henholdsvis \(8.18\times10^{13}\) og
+\(1.64\times10^{14}\); finere interior-means løste ikke boundary-formfejlen.
+Shape C gav max L1=0.08170, W1=\(7.418\times10^{-4}\), gap
+\(5.24\times10^{-12}\), ingen fallback og cond(A)=\(8.98\times10^{13}\).
+Shape D gav max L1=0.03804, W1=\(2.602\times10^{-4}\), gap
+\(9.89\times10^{-12}\), ingen fallback og cond(A)=\(1.665\times10^{14}\).
+Derfor blev \texttt{shape\_D} frosset før D2. Conditioning-alarmen er ikke ophævet.
+
+\subsection{D2: holdout af FV-predictions og posteriors}
+D2 bruger de tidligere ubrugte ID 1001--1010, \(N_x=801\),
+\(h_{\max}=1/192\) dag, observation-q=1, og den frosne shape-D.
+Ved alle 24 måletider projekteres FV-prediction og FV-posterior separat, i alt 240 af
+hver. Truth-state bruges ikke til basisvurderingen. For begge typer kræves max L1
+\(\le0.05\), W1 \(\le0.01\), gap og massefejl \(\le10^{-9}\), ingen failed projection;
+valideret fallback rapporteres. Fejlet holdout må ikke bruges til retuning.
+
+Holdout bestod: prediction/posterior max L1 var
+\(3.13\times10^{-6}/1.10\times10^{-5}\), W1
+\(1.24\times10^{-8}/5.08\times10^{-8}\), gap omkring \(10^{-11}\) og massefejl
+højst \(1.22\times10^{-15}\); ingen fallback eller invalid truth. Evidence fra
+statisk projiceret prediction blev beregnet med samme observationsoperator som FV:
+mean absolut log-fejl var \(7.69\times10^{-10}\)/obs, max
+\(1.63\times10^{-8}\), og max absolut dagssumsforskel \(3.30\times10^{-8}\).
+Disse evidence-tal var diagnostik, ikke en ekstra post-hoc selection gate.
+
+\subsection{Selvstændig rekursion og solver-korrekthed}
+Det dynamiske filter må ikke starte hvert interval fra FV. Med fast basis sættes
+\[
+ p_{k-1}^{+,M}(x)=\sum_j c_{k-1,j}^{+}\phi_j(x).
+\]
+Den eksisterende explicit mixture/FP-kerne propagerer denne law og projekterer ved de
+interne trin. Fra dens egen prediction beregnes \emph{før} posteriorprojektionen
+\[
+ z_k^M=\int L_k(x)p_k^{-,M}(x)\dd x,\qquad
+ \widetilde p_k^{+,M}=\frac{L_kp_k^{-,M}}{z_k^M},\qquad
+ p_k^{+,M}=\Pi_{\mathcal D}(\widetilde p_k^{+,M}).
+\]
+Kun sidste mixture-posterior må levere næste prior; FV er ekstern reference.
+Missing observation er prediction-only. Initial Beta(20,20) projekteres én gang.
+Static best-fit FV\(\to\)mixture, dynamic mixture\(\to\)best-fit og total
+mixture\(\to\)FV rapporteres særskilt; normerne er ikke en eksakt additiv dekomposition.
+
+De første D3a-kørsler fandt konkrete active-set-fejl, ikke et nyt matematisk objective.
+En absolut tolerance på blocking-ratios kunne nulstille positiv ikke-blocking masse;
+en direction-threshold kunne kassere nødvendige små skridt; små positive koefficienter
+blev behandlet som inaktive. Rettelsen bruger
+\[
+ \alpha=\min\!\left(1,\min_{d_j<0}\frac{-c_j}{d_j}\right)
+\]
+og aktiverer kun faktiske blockers. Alle strengt positive koefficienter kan bevæge sig.
+Ingen ridge, clipping, renormalisering, target-repair eller tolerancelempelse anvendes.
+Backend-retry af samme QP erstatter ikke den uafhængige feasibility/gap-kontrol.
+
+\subsection{D3a--c: sanity og numerisk refinement}
+D3a's fastlagte case er ID0, 101 celler, CFL=0.4, \(h_{\max}=1/384\) dag, q=1.
+Efter solverrettelsen gennemførte den 456 interne steps uden fallback. Initial L1 var
+\(9.61\times10^{-11}\), static posterior-L1 højst \(3.48\times10^{-7}\), mens
+dynamic prediction/posterior-L1 var 0.01659/0.02026 med W1 omkring
+\(4.7\times10^{-4}\). Total FV-gap var næsten det samme som dynamic gap.
+Mean absolut log-evidence-fejl var 0.00509/obs, max 0.0148 og absolut dagssum 0.0351.
+FV/mixture posterior-RMSE var 0.021689/0.021671; den lille forskel er ikke evidens
+for forbedring. Massefejl var omkring \(2\times10^{-15}\), og Bayes-til-projected
+posterior-L1 højst \(1.15\times10^{-6}\).
+
+D3b låste tidsaksen til 101 celler og \(h=1/384,1/768,1/1536\), samt spatialaksen
+til 51/101/151 celler ved fælles \(h=1/1536\); CFL=0.4 og q=1 var uændrede.
+Gaten krævede max coarse-to-fine-ændring relativt til fineste discrepancy \(\le10\%\)
+for total posterior-L1 og mean absolut evidence-fejl. Den fejlede: tidsfejlene var
+\(0.02026,0.01091,0.005459\) og \(0.005089,0.002749,0.001379\), med ratios
+2.71/2.69. Spatial posterior-L1 var 0.004747/0.005459/0.005567 og ratio14.7\%.
+D3b-resultatet bevares. Når \(E(h)\simeq Ch\), er denne relative gate ikke en egnet
+test af konvergens mod nul: halvering af fejl gør ikke den relative coarse/fine-forskel lille.
+
+D3c blev derfor fastlagt \emph{efter} D3b og før det nye fine niveau. Ved 101 celler
+bruges \(h=1/768,1/1536,1/3072\). Den testede model er
+\[
+ E(h)=E_0+Ch+O(h^2),\qquad
+ \widehat E_0=2E(h/2)-E(h),\qquad
+ \widehat E(h/4)=\widehat E_0+\tfrac12(E(h/2)-\widehat E_0).
+\]
+For begge metrikker kræves monoton nedgang, \(|\widehat E_0|/E(h/2)\le0.1\) og
+relativ fejl i prediktionen af det nye fine niveau \(\le0.2\).
+Spatialaksen er 101/151/201 celler ved fælles \(h=1/3072\); begge successive relative
+ændringer skal være \(\le10\%\), og faktisk max-step skal matche det fælles tidsloft.
+
+D3c bestod: fineste posterior-L1 var 0.002732 og evidence-fejl 0.0006905.
+Limit/middle-ratios var 0.0008/0.0058, og fine-prediktionsfejl var under
+\(10^{-4}\)/0.0041. Spatialændringer var 1.89/0.46\% for L1 og 0.91/0.67\% for
+evidence. Ingen fallback. Som fastlagt \emph{før} resultaterne blev populationens
+numerik derfor 151 celler, \(h_{\max}=1/3072\) dag, CFL=0.4 og q=1.
+
+Dette er empirisk konvergens af \emph{discrepancy mellem to diskrete filtre} i den
+kontrollerede case, ikke i sig selv et bevis på deres absolutte fejl mod den kontinuerte
+SDE. En matched-grid reference kan dele spatialfejl med mixture-kernen. Kriterierne er
+også følsomme over for nonsmooth maksimum-/absolutværdi-metrikker; Richardson er her
+en diagnosticeret lokal approksimationsmodel, ikke en generel sætning om filteret.
+
+\subsection{D3d: uafhængig population og afgrænset konklusion}
+Den sidste registrerede D3d-test bruger ID1011--1210, altså 200 nye sekvenser, den
+frosne shape-D/numerik og paired mixture/FV-kørsler uden restart. Whole sequences er
+bootstrap-enheden, 5000 replikater med seed4301. Worker-count er afvikling, ikke modelvalg.
+For begge RMSE-ratioer kræves hele bootstrap95 inden for \([0.95,1.05]\). For evidence
+kræves upper bootstrap95 af mean absolut fejl \(\le0.002\)/obs og q95 absolut
+ dagssumsforskel \(\le0.1\). For begge distributionstyper kræves q95 af sequence-max
+L1 \(\le0.02\), global max L1 \(\le0.05\), global max W1 \(\le0.01\), massefejl
+\(\le10^{-10}\) og ingen droppede/fejlede sekvenser; valideret fallback rapporteres.
+
+Alle 200 gennemførte. FV/mixture predictive RMSE var
+0.03645553/0.03645558, ratio1.000001 med bootstrap95
+\([0.999970,1.000034]\). Posterior-RMSE var 0.02383041/0.02383120,
+ratio1.000033 med \([0.999974,1.000097]\). Mean absolut evidence-fejl var
+\(6.609\times10^{-4}\)/obs med bootstrap95 \([6.316,6.921]\times10^{-4}\);
+signed mean var cirka \(2.0\times10^{-6}\), og dagssums-q95 var 0.008965.
+Prediction/posterior-L1-q95 var 0.00506/0.00856, globale maxima 0.0122/0.0174,
+og globale W1-maxima 0.000498/0.000508. Over 614400 interne steps var massefejlen
+højst \(4.89\times10^{-15}\), uden fallback eller invalid truth. Alle gates bestod.
+
+Konklusionen er praktisk ækvivalens til FV i den kendt-parameter syntetiske case,
+ikke bedre state-estimation, ukendt-parameter-recovery, historisk validering eller en
+operationel ugeprognose. Den høje conditioning er stadig en begrænsning. Især når
+antal komponenter overstiger antal celler, er koefficientafbildningen rangdeficient:
+et endeligt konditionstal for den rektangulære matrix beskriver kun dens returnerede
+singularværdier, ikke entydige koefficienter. Derfor sammenlignes densities, objective
+og likelihood frem for at kræve samme koefficientvektor. D2/D3d's beståede resultater
+ophæver ikke behovet for nye likelihood-kontroller ved parameterestimation.
 
 \section{Bevaret statisk F4-0-evidens}
 \subsection{Et konkret statisk resultat}

@@ -66,6 +66,21 @@ def probability_mass(values: ArrayLike, name: str = 'mass') -> NDArray[np.float6
     return mass
 
 
+def probability_rows(values, name='mass histories', *, atol=MASS_ATOL):
+    """Validate and own a matrix of probability vectors without row-copy loops."""
+    atol = finite_scalar(atol, 'atol')
+    if atol < 0.0:
+        raise ValueError('atol must be non-negative.')
+    if np.iscomplexobj(values):
+        raise ValueError(f'{name} must be real-valued.')
+    rows = np.asarray(values, dtype=float)
+    if (rows.ndim != 2 or min(rows.shape) < 1
+            or not np.all(np.isfinite(rows)) or np.any(rows < 0.0)
+            or np.any(np.abs(np.sum(rows, axis=1) - 1.0) > atol)):
+        raise ValueError(f'{name} must contain finite non-negative unit-sum rows; no repair is applied.')
+    return rows.copy()
+
+
 def log_probability_mass(values: ArrayLike, name: str = 'log_mass') -> NDArray[np.float64]:
     if np.iscomplexobj(values):
         raise ValueError(f'{name} must be real-valued.')
