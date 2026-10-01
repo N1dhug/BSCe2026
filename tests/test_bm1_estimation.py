@@ -1359,5 +1359,102 @@ class F4DRepresentationTests(unittest.TestCase):
                 mixture_f4.run_f4_d_representation_study(x_steps=value)
 
 
+class F4EFixedLikelihoodTests(unittest.TestCase):
+    def test_candidate_contract_uses_rho_and_rejects_invalid_values(self):
+        candidate = synthetic.F4ELikelihoodCandidate(1.25, .8, 2., .4, .03)
+        self.assertAlmostEqual(candidate.C, .8)
+        self.assertEqual(candidate.as_tuple(), (1.25, .8, 2., .4, .03))
+        bad = (
+            (0., .8, 2., .4, .03),
+            (1., -0.1, 2., .4, .03),
+            (1., 1.1, 2., .4, .03),
+            (1., .8, 0., .4, .03),
+            (1., .8, 2., -0.1, .03),
+            (1., .8, 2., .4, 0.),
+        )
+        for values in bad:
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                synthetic.F4ELikelihoodCandidate(*values)
+
+    def test_truth_candidate_matches_direct_known_parameter_filter(self):
+        case = synthetic.build_f4_b_case()
+        sequence = synthetic.generate_synthetic_sequence(case, sequence_id=0)
+        observations = sequence.observations.prefix(6/24)
+        candidate = synthetic.f4_e_truth_candidate(case)
+        result = synthetic.evaluate_f4_e_candidate(
+            case, observations, candidate, x_steps=31, max_step=1/24,
+        )
+
+        model, parameters = case.build_model()
+        initial = synthetic.beta_initial_mass(case, model, 31)
+        direct = run_fv_filter(
+            model, parameters, case.sigma_x, case.sigma_y, initial,
+            case.horizon[0], observations, breakpoints=case.breakpoints,
+            max_step=1/24, likelihood_quadrature_order=1,
+        )
+        np.testing.assert_allclose(
+            result['log_evidence'], direct.log_evidence[direct.observed],
+            atol=1e-12, rtol=0.,
+        )
+        self.assertAlmostEqual(
+            result['total_log_likelihood'], direct.total_log_likelihood, places=12,
+        )
+
+    def test_candidate_order_and_duplicates_do_not_change_likelihood(self):
+        case = synthetic.build_f4_b_case()
+        observations = synthetic.generate_synthetic_sequence(
+            case, sequence_id=1,
+        ).observations.prefix(4/24)
+        truth = synthetic.f4_e_truth_candidate(case)
+        alternative = synthetic.F4ELikelihoodCandidate(
+            .8, case.Xi, case.k, case.sigma_x, case.sigma_y,
+        )
+        first = synthetic.evaluate_f4_e_candidates(
+            case, observations, (truth, alternative, truth),
+            x_steps=31, max_step=1/24,
+        )
+        second = synthetic.evaluate_f4_e_candidates(
+            case, observations, (alternative, truth),
+            x_steps=31, max_step=1/24,
+        )
+        np.testing.assert_array_equal(first[0]['log_evidence'], first[2]['log_evidence'])
+        np.testing.assert_array_equal(first[0]['log_evidence'], second[1]['log_evidence'])
+        np.testing.assert_array_equal(first[1]['log_evidence'], second[0]['log_evidence'])
+        self.assertEqual(first[0]['total_log_likelihood'], first[2]['total_log_likelihood'])
+
+    def test_xi_zero_makes_rho_k_and_sigma_x_likelihood_flat(self):
+        case = synthetic.build_f4_b_case(Xi=0.0)
+        observations = synthetic.generate_synthetic_sequence(
+            case, sequence_id=2,
+        ).observations.prefix(6/24)
+        candidates = (
+            synthetic.F4ELikelihoodCandidate(.6, 0., 2., .5, case.sigma_y),
+            synthetic.F4ELikelihoodCandidate(1.4, 0., 2., .5, case.sigma_y),
+            synthetic.F4ELikelihoodCandidate(1., 0., 1., .5, case.sigma_y),
+            synthetic.F4ELikelihoodCandidate(1., 0., 3., .5, case.sigma_y),
+            synthetic.F4ELikelihoodCandidate(1., 0., 2., .2, case.sigma_y),
+            synthetic.F4ELikelihoodCandidate(1., 0., 2., .8, case.sigma_y),
+        )
+        results = synthetic.evaluate_f4_e_candidates(
+            case, observations, candidates, x_steps=31, max_step=1/24,
+        )
+        totals = np.array([item['total_log_likelihood'] for item in results])
+        self.assertLessEqual(float(np.ptp(totals)), 1e-10)
+        reference = results[0]['log_evidence']
+        for item in results[1:]:
+            np.testing.assert_allclose(item['log_evidence'], reference, atol=1e-10, rtol=0.)
+
+    def test_centered_likelihood_has_zero_maximum_and_preserves_order(self):
+        evaluations = (
+            {'total_log_likelihood': 2.},
+            {'total_log_likelihood': -1.},
+            {'total_log_likelihood': 1.5},
+        )
+        centered = synthetic.f4_e_centered_log_likelihood(evaluations)
+        np.testing.assert_array_equal(centered, [0., -3., -.5])
+        self.assertFalse(centered.flags.writeable)
+
+
+
 if __name__ == '__main__':
     unittest.main()
