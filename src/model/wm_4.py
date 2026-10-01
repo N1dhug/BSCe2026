@@ -2,7 +2,7 @@ import numpy as np
 
 from src.method.fokker_planc import wm_fokker_planc
 from src.model.base.wm import wm
-from src.params.wm_4 import qp_params
+from src.params.wm_4 import optimized_qp_params, qp_params
 from src.solver.active_set import active_set
 from src.validation.model.wm_4 import wm_4_validation
 
@@ -160,5 +160,6 @@ class wm_4(wm):
 
     def fit_params_qp(self, input_data, initial_conditions, **kwargs): return qp_params(self).fit(input_data, initial_conditions, **kwargs)
 
+    def fit_params_optimized_qp(self, input_data, initial_conditions, **kwargs): return optimized_qp_params(self).fit(input_data, initial_conditions, **kwargs)
 
     def fit_params(self, input_data, initial_conditions, **kwargs): return self.fit_params_qp(input_data, initial_conditions, **kwargs)
