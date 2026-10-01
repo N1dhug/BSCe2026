@@ -582,6 +582,66 @@ populationsevaluering. Ved næsten nul denominator rapporteres absolut effekt i 
 En fejlet gate udløser yderligere preregistreret refinement; der vælges ikke et gunstigt
 niveau bagefter.
 
+
+\paragraph{D3b-resultat og D3c-konvergenstest.}
+Den preregistrerede D3b-gate blev ikke bestået. På 101 celler faldt total
+posterior-\(L^1\)-discrepancy ved tidsrefinement som
+\[
+ 2.026\times10^{-2},\quad 1.091\times10^{-2},\quad 5.459\times10^{-3}
+\]
+for \(h_{\max}=1/384,1/768,1/1536\). Mean absolute predictive
+log-evidence-error faldt tilsvarende som
+\[
+ 5.089\times10^{-3},\quad 2.749\times10^{-3},\quad 1.379\times10^{-3}.
+\]
+Den låste D3b-definition tog maksimal coarse-to-fine ændring relativt til den
+fineste discrepancy og gav ratios 2.71 og 2.69, så D3b er formelt fejlet.
+For en discrepancy, der ser ud til at konvergere mod nul, er denne relative
+definition dog ikke en hensigtsmæssig konvergenstest: ved førsteordens
+\(E(h)\approx Ch\) forbliver forskellen mellem et groft og fint niveau stor
+relativt til den fineste fejl. Dette ændrer ikke D3b-resultatet; en ny test
+fastlægges i stedet før yderligere resultater.
+
+Ved fælles \(h_{\max}=1/1536\) gav 51, 101 og 151 celler posterior-\(L^1\)
+\[
+ 4.747\times10^{-3},\quad5.459\times10^{-3},\quad5.567\times10^{-3}.
+\]
+Den oprindelige max-coarse-to-fine gate gav 14.7 procent, mens ændringen fra
+101 til 151 celler kun var cirka 1.9 procent. Evidence-error ændrede sig under
+1 procent mellem de to fineste spatialniveauer.
+
+D3c bruger derfor en eksplicit førsteordens Richardson-kontrol. Tidsaksen er
+\[
+ N_x=101,\qquad
+ h_{\max}\in\{1/768,1/1536,1/3072\}.
+\]
+For en positiv discrepancy-metrik antages kun til testen
+\[
+ E(h)=E_0+Ch+O(h^2).
+\]
+Fra de to første niveauer beregnes
+\[
+ \widehat E_0=2E(h/2)-E(h),
+ \qquad
+ \widehat E(h/4)=\widehat E_0+
+ \tfrac12\bigl(E(h/2)-\widehat E_0\bigr).
+\]
+Det tredje niveau er nyt holdout for denne prediktion. For både total
+posterior-\(L^1\) og mean absolute evidence-error kræves: monoton nedgang,
+\(|\widehat E_0|\le0.1E(h/2)\), og relativ afvigelse mellem observeret og
+forudsagt \(h/4\)-værdi højst 20 procent.
+
+Spatialaksen bruger
+\[
+ N_x\in\{101,151,201\},\qquad h_{\max}=1/3072.
+\]
+For begge samme metrikker kræves relativ ændring højst 10 procent for både
+101\(\to\)151 og 151\(\to\)201. Den rapporterede faktiske maximale interne
+step skal desuden være det fælles requested time-limit på alle tre grids;
+ellers kan spatial- og tidsfejl ikke betragtes som adskilt. Kun hvis både
+temporal og spatial D3c består, låses numerikken til et efterfølgende
+populationsdesign.
+
 \subsection{Hvorfor D1 kommer før det rekursive filter}
 Referencearbejdet skelner mellem projection error fra det endelige mixture-rum
 og temporal/dynamisk discretization error \cite{nielsen}. Det samme princip
