@@ -294,6 +294,28 @@ class optimized_qp_params(qp_params):
         init = self.model._least_squares_qp(X, y, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE, x0=np.clip(seed, lb, ub))
         return wm_4_validation.initial_condition(init)
 
+    def optimize_prediction_initial_state(self, input_data, r, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0)):
+        """Oracle/diagnostic initial-state fit for a fixed parameter vector.
+
+        Fits [F0,R0] directly to observed I over the supplied trajectory while
+        keeping r fixed. This is intended for top-end parameterization
+        comparisons, not deployable forecasting, because it uses target-period I.
+        """
+        data = self._prepare_data(input_data)
+        r = wm_4_validation.r_coefficients(r)
+        base = self._state_from_parameters(data, np.array([0.0, 0.0]), r)
+        f_unit = self._state_from_parameters(data, np.array([1.0, 0.0]), r)
+        r_unit = self._state_from_parameters(data, np.array([0.0, 1.0]), r)
+        obs = np.asarray(data["observation_mask"], dtype=bool)
+        X = np.column_stack(((f_unit["I"] - base["I"])[obs], (r_unit["I"] - base["I"])[obs]))
+        y = data["I"][obs] - base["I"][obs]
+        lb = np.array([float(f_bounds[0]), float(r_bounds[0])], dtype=float)
+        ub = np.array([float(f_bounds[1]), float(r_bounds[1])], dtype=float)
+        init = self.model._least_squares_qp(X, y, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
+        state = self._state_from_parameters(data, init, r, full=True)
+        loss = float(np.mean((state["I"][obs] - data["I"][obs]) ** 2))
+        return {"init_cond": np.asarray(init, dtype=float), "deterministic_state": state, "loss": loss, "observation_mask": obs.copy()}
+
     def _alternating_fit(self, datasets, init_conds, stabilize=True, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), verbose=False):
         init_conds = [wm_4_validation.initial_condition(init).copy() for init in init_conds]
         history, total_qp_time = [], 0.0
