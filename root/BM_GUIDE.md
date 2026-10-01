@@ -36,6 +36,7 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | D3d population | `mixture-filter-population` |
 | F4-E E1 likelihood-refinement | `likelihood-refine` |
 | F4-E E2 en-parameter screening | `parameter-screen --e1-report <E1-JSON>` |
+| F4-E E3 diagnostiske parflader | `pair-surfaces --e2-report <E2-JSON>` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -75,6 +76,28 @@ python -B -m src.exe.run_model.bm_1.estimate parameter-screen `
 Der udføres 50 x 5 x 41 = 10250 selvstændige kandidat-replays, med løbende progress.
 Output må ikke overskrives. LR-mængder er shape-diagnostik, og de øvrige parametre
 holdes på truth i hvert snit; parameterudvælgelse kræver stadig E3/E4.
+
+E3 bruger præcis de gemte observationer fra E2's første ti records, ID1212..1221,
+og hver anden gridnode. CLI kræver det komplette registrerede E2-artifact;
+sekvenser, grids og numerik kan ikke ændres gennem CLI. Der udføres
+10 x 3 x 21 x 21 = 13230 kandidat-replays fordelt på 30 uafhængige process-opgaver.
+Kør efter E2 med samme process-/BLAS-indstillinger:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate pair-surfaces `
+  --e2-report files/output/bm_1/runs/estimation/f4_e_e2_parameter_screening.json `
+  --workers 7 `
+  --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_e_e3_pair_surfaces.json `
+  --figure-prefix files/output/bm_1/runs/estimation/f4_e_e3
+```
+
+JSON gemmer alle rå/centrerede flader, predictive log-evidence, maxima/ties,
+grid-profiler, conditional ridges og E2-digest. Truth-snit kontrolleres mod E2-kurverne
+til `1e-10`; ingen ny truth eller målingsstøj genereres. Det valgfrie figure-prefix
+giver `_rho_Xi.png`, `_k_Xi.png` og `_sigma_x_sigma_y.png`, hver med samlet flade
+og ti sekvensflader. Både JSON og PNG afvises før beregningen, hvis de allerede findes.
+Summen bruger kun de samme ti E2-records; likelihood-contours er ikke konfidensområder.
 
 Batchgenerering bruger samme pr.-ID RNG-strømme og samme EM-grid som enkeltgenerering.
 Caches indeholder kun target-uafhængig geometri eller eksplicitte, validerede startgæt;

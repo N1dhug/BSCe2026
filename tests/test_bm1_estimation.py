@@ -1676,5 +1676,200 @@ class F4EParameterScreeningTests(unittest.TestCase):
             self.assertEqual(output.read_text(encoding='utf-8'), 'keep me')
 
 
+class F4EPairSurfaceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.e2 = synthetic.run_f4_e_parameter_screening(
+            e1_refinement=F4EParameterScreeningTests.passing_e1(),
+            n_sequences=2, sequence_start=0, x_steps=21, max_step=1/24,
+            likelihood_quadrature_order=1,
+            parameter_grids=dict(rho=(.5, .75, 1., 1.25, 1.5),
+                                 Xi=(0., .25, .5, .75, 1.), k=(1., 1.5, 2., 2.5, 3.),
+                                 sigma_x=(.25, .375, .5, .75, 1.),
+                                 sigma_y=(.015, .0225, .03, .045, .06)),
+        )
+        cls.serial = synthetic.run_f4_e_pair_surfaces(e2_screening=cls.e2, n_sequences=2)
+
+    @staticmethod
+    def registered_e2():
+        # Full-design fixture with coherent sums, not scientific evidence.
+        def sequence(task):
+            seq, grids, cells, step, order = task
+            truth = synthetic.f4_e_truth_candidate()
+            slices = {}
+            for name, grid in grids.items():
+                total = -(np.asarray(grid) - getattr(truth, name)) ** 2
+                item = synthetic._f4_e_slice_summary(grid, total, getattr(truth, name))
+                item.update(log_evidence=tuple((float(x / 24),) * 24 for x in total),
+                            maximum_abs_mass_error=0., minimum_cell_mass=0.)
+                slices[name] = item
+            return dict(sequence_id=seq, observation_times=tuple(synthetic.CORE_OBSERVATION_TIMES),
+                        observations=(.5,) * 24, truth_boundary_violations=0, slices=slices)
+        with patch.object(synthetic, '_f4_e_screen_sequence_task', side_effect=sequence):
+            return synthetic.run_f4_e_parameter_screening(
+                e1_refinement=F4EParameterScreeningTests.passing_e1())
+
+    def test_surface_orientation_profiles_conditional_ridges_and_ties(self):
+        total = np.array([[-2., -1., -3.], [-4., 0., 0.], [-5., -1., -2.]])
+        item = synthetic._f4_e_surface_summary(('rho', 'Xi'), (.5, 1., 1.5), (0., .5, 1.), total)
+        self.assertEqual(item['maximizer_indices'], ((1, 1), (1, 2)))
+        self.assertIsNone(item['grid_mle'])
+        self.assertEqual(item['boundary_dimensions'], ('Xi',))
+        self.assertEqual(item['truth_indices'], (1, 2))
+        self.assertEqual(item['log_likelihood_loss_at_truth'], 0.)
+        self.assertEqual(item['profile_first_centered_log_likelihood'], (-1., 0., -1.))
+        self.assertEqual(item['profile_second_centered_log_likelihood'], (-2., 0., 0.))
+        self.assertEqual(item['ridge_second_indices_given_first'], ((1,), (1, 2), (1,)))
+        self.assertEqual(item['ridge_first_indices_given_second'], ((0,), (1,), (1,)))
+
+    def test_saved_observations_truth_cuts_evidence_and_aggregate_identity(self):
+        result = self.serial
+        self.assertFalse(result['matches_registered_design'])
+        self.assertEqual(result['sequence_ids'], (0, 1))
+        self.assertLess(result['maximum_e2_truth_cut_difference'], 1e-10)
+        for record, row in zip(result['observations'], self.e2['sequence_results']):
+            np.testing.assert_array_equal(record['values'], row['observations'])
+        for pair in synthetic.F4_E_PAIRS:
+            item = result['pair_results']['__'.join(pair)]
+            for surface, row in zip(item['sequence_surfaces'], self.e2['sequence_results']):
+                total = np.asarray(surface['total_log_likelihood'])
+                evidence = np.asarray(surface['log_evidence'])
+                np.testing.assert_allclose(total.ravel(), evidence.sum(axis=1), atol=1e-12, rtol=0)
+                ia, ib = surface['truth_indices']
+                np.testing.assert_allclose(total[:, ib], row['slices'][pair[0]]['total_log_likelihood'][::2],
+                                           atol=1e-12, rtol=0)
+                np.testing.assert_allclose(total[ia, :], row['slices'][pair[1]]['total_log_likelihood'][::2],
+                                           atol=1e-12, rtol=0)
+                if pair[1] == 'Xi':
+                    # Exact Xi=0 negative control survives the 2D evaluation.
+                    self.assertLess(np.ptp(total[:, 0]), 1e-10)
+            summed = np.sum([s['total_log_likelihood'] for s in item['sequence_surfaces']], axis=0)
+            np.testing.assert_array_equal(item['aggregate_surface']['total_log_likelihood'], summed)
+            np.testing.assert_array_equal(item['aggregate_surface']['centered_log_likelihood'],
+                                          summed - summed.max())
+
+    def test_parallel_matches_serial_without_regenerating_observations(self):
+        completed = []
+        # Workers receive saved observations; serial would also fail this guard
+        # if it tried generating fresh truth/data instead of reusing E2.
+        with patch.object(synthetic, 'generate_synthetic_sequence', side_effect=AssertionError('new draw')):
+            serial = synthetic.run_f4_e_pair_surfaces(e2_screening=self.e2, n_sequences=2)
+            parallel = synthetic.run_f4_e_pair_surfaces(
+                e2_screening=self.e2, n_sequences=2, workers=2,
+                progress=lambda *args: completed.append(args[:3]))
+        self.assertEqual(len(completed), 6)
+        self.assertEqual(parallel['pair_results'], serial['pair_results'])
+        self.assertEqual(parallel['observations'], serial['observations'])
+
+    def test_e2_validation_checks_all_fifty_rows_and_raw_evidence(self):
+        good = self.registered_e2()
+        self.assertTrue(synthetic.f4_e_screening_inputs(json.loads(json.dumps(good)))['matches_registered_design'])
+        for mutation in ('last_observation_time', 'evidence', 'centered', 'probability', 'lock'):
+            bad = copy.deepcopy(good)
+            row = bad['sequence_results'][-1]
+            if mutation == 'last_observation_time':
+                row['observation_times'] = tuple(np.linspace(.04, .96, 24))
+            elif mutation == 'evidence':
+                row['slices']['rho']['log_evidence'] = ((0.,) * 24,) * 41
+            elif mutation == 'centered':
+                row['slices']['rho']['centered_log_likelihood'] = (0.,) * 41
+            elif mutation == 'probability':
+                row['slices']['rho']['maximum_abs_mass_error'] = 1e-5
+            else:
+                bad['e1_numerical_lock']['e1_summary']['time']['passes'] = False
+            with self.subTest(mutation=mutation), patch.object(synthetic, '_f4_e_pair_surface_task') as run:
+                with self.assertRaises(ValueError):
+                    synthetic.run_f4_e_pair_surfaces(e2_screening=bad)
+                run.assert_not_called()
+
+    def test_official_requires_registered_e2_and_diagnostics_cannot_claim_registration(self):
+        with self.assertRaisesRegex(ValueError, 'registered 50-sequence'):
+            synthetic.f4_e_screening_inputs(self.e2)
+        bad = copy.deepcopy(self.e2)
+        bad['matches_registered_design'] = True
+        with self.assertRaisesRegex(ValueError, 'claims a registered'):
+            synthetic.f4_e_screening_inputs(bad)
+        bad = self.registered_e2()
+        bad['settings']['x_steps'] = 201
+        with self.assertRaisesRegex(ValueError, 'claims a registered'):
+            synthetic.f4_e_screening_inputs(bad)
+
+    def test_official_dispatches_only_first_ten_records_three_pairs_and_twentyone_nodes(self):
+        tasks = []
+        def surface(task):
+            row, pair, a, b, stride, cells, step, order = task
+            tasks.append(task)
+            truth = synthetic.f4_e_truth_candidate()
+            total = -(np.asarray(a)[:, None] - getattr(truth, pair[0])) ** 2 \
+                    -(np.asarray(b)[None, :] - getattr(truth, pair[1])) ** 2
+            item = synthetic._f4_e_surface_summary(pair, a, b, total)
+            item.update(sequence_id=row['sequence_id'], maximum_abs_mass_error=0., minimum_cell_mass=0.,
+                        e2_truth_cut_maximum_abs_differences=(0., 0.))
+            return (row['sequence_id'], pair), item
+        with patch.object(synthetic, '_f4_e_pair_surface_task', side_effect=surface):
+            result = synthetic.run_f4_e_pair_surfaces(e2_screening=self.registered_e2())
+        self.assertTrue(result['matches_registered_design'])
+        self.assertEqual(result['sequence_ids'], tuple(range(1212, 1222)))
+        self.assertEqual(len(tasks), 30)
+        for row, pair, a, b, stride, cells, step, order in tasks:
+            self.assertEqual((len(a), len(b), stride, cells, step, order), (21, 21, 2, 401, 1/768, 3))
+            self.assertEqual(a, synthetic.F4_E_PARAMETER_GRIDS[pair[0]][::2])
+            self.assertEqual(b, synthetic.F4_E_PARAMETER_GRIDS[pair[1]][::2])
+
+    def test_subsampling_must_retain_truth_and_truth_cut_mismatch_aborts(self):
+        with self.assertRaisesRegex(ValueError, 'retain'):
+            synthetic.run_f4_e_pair_surfaces(e2_screening=self.e2, n_sequences=2, grid_stride=3)
+        bad = copy.deepcopy(self.e2['sequence_results'][0])
+        # Internally coherent but wrong E2 slice: the scientific replay identity
+        # catches a changed numerical likelihood, beyond file-integrity checks.
+        bad['slices']['rho']['total_log_likelihood'] = tuple(
+            x + .01 for x in bad['slices']['rho']['total_log_likelihood'])
+        with self.assertRaisesRegex(RuntimeError, 'truth-coordinate cuts'):
+            synthetic._f4_e_pair_surface_task((bad, ('rho', 'Xi'),
+                self.e2['parameter_grids']['rho'][::2], self.e2['parameter_grids']['Xi'][::2], 2, 21, 1/24, 1))
+
+    def test_cli_refuses_existing_json_or_png_before_reading_or_running(self):
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'report.json'
+            prefix = Path(directory) / 'surface'
+            for existing in (output, estimate._pair_surface_figure_paths(prefix)[1]):
+                existing.write_text('keep me', encoding='utf-8')
+                args = estimate.build_parser().parse_args(
+                    ['pair-surfaces', '--e2-report', 'missing.json', '--output', str(output),
+                     '--figure-prefix', str(prefix), '--workers', '7', '--blas-threads', '1'])
+                with patch.object(synthetic, 'run_f4_e_pair_surfaces') as run:
+                    with self.assertRaises(FileExistsError):
+                        estimate.run_pair_surfaces(args)
+                    run.assert_not_called()
+                self.assertEqual(existing.read_text(encoding='utf-8'), 'keep me')
+                existing.unlink()
+
+    def test_cli_retains_input_digest_and_serializes_raw_scientific_results(self):
+        import hashlib
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as directory:
+            input_path, output = Path(directory) / 'e2.json', Path(directory) / 'e3.json'
+            raw = json.dumps(self.registered_e2()).encode('utf-8')
+            input_path.write_bytes(raw)
+            args = estimate.build_parser().parse_args(
+                ['pair-surfaces', '--e2-report', str(input_path), '--output', str(output),
+                 '--workers', '7', '--blas-threads', '1', '--quiet'])
+            # Actual small-kernel result exercises serialization; the expensive
+            # official dispatch is mocked and remains explicitly diagnostic.
+            with patch.object(synthetic, 'run_f4_e_pair_surfaces', return_value=copy.deepcopy(self.serial)) as run, \
+                    patch('builtins.print'):
+                estimate.run_pair_surfaces(args)
+            self.assertEqual(run.call_args.kwargs['workers'], 7)
+            self.assertEqual(run.call_args.kwargs['e2_screening']['sequence_ids'], list(range(1212, 1262)))
+            saved = json.loads(output.read_text(encoding='utf-8'))
+            self.assertEqual(saved['e2_report_sha256'], hashlib.sha256(raw).hexdigest())
+            self.assertEqual(saved['blas_threads_requested'], 1)
+            self.assertFalse(saved['matches_registered_design'])
+            for name, item in self.serial['pair_results'].items():
+                np.testing.assert_array_equal(saved['pair_results'][name]['aggregate_surface']['total_log_likelihood'],
+                                              item['aggregate_surface']['total_log_likelihood'])
+
+
 if __name__ == '__main__':
     unittest.main()

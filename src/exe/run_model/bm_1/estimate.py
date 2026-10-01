@@ -726,7 +726,7 @@ def run_mixture_filter_population(args):
 
 
 def _write_likelihood_report(args, result, started):
-    """Write E1/E2 evidence with common source metadata, never overwrite a run."""
+    """Write F4-E evidence with common source metadata, never overwrite a run."""
     if args.output is None:
         return
     try:
@@ -862,6 +862,123 @@ def run_parameter_screening(args):
     return result
 
 
+def _pair_surface_figure_paths(prefix):
+    if prefix is None:
+        return ()
+    return tuple(prefix.parent / f"{prefix.name}_{'_'.join(pair)}.png"
+                 for pair in synthetic.F4_E_PAIRS)
+
+
+def _save_pair_surface_figures(result, paths):
+    """Plot exact E3 matrices; color clipping changes only the display."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import Normalize
+
+    labels = {'rho': r'$\rho$', 'Xi': r'$\Xi$', 'k': r'$k$',
+              'sigma_x': r'$\sigma_X$', 'sigma_y': r'$\sigma_Y$'}
+    for pair, path in zip(synthetic.F4_E_PAIRS, paths):
+        items = result['pair_results']['__'.join(pair)]
+        surfaces = (items['aggregate_surface'], *items['sequence_surfaces'])
+        rows = (len(surfaces) + 2) // 3
+        fig, axes = plt.subplots(rows, 3, figsize=(12, 3 * rows + 1),
+                                 squeeze=False, constrained_layout=True)
+        try:
+            for index, (axis, surface) in enumerate(zip(axes.flat, surfaces)):
+                a, b = np.asarray(surface['first_values']), np.asarray(surface['second_values'])
+                z = np.asarray(surface['centered_log_likelihood'])
+                mesh = axis.pcolormesh(a, b, z.T, shading='auto', cmap='viridis',
+                                       norm=Normalize(vmin=-10, vmax=0, clip=True))
+                levels = [v for v in (-10, -5, -2, -.5) if np.min(z) < v < np.max(z)]
+                if levels:
+                    contours = axis.contour(a, b, z.T, levels=levels, colors='white', linewidths=.65)
+                    axis.clabel(contours, fontsize=7, fmt='%g')
+                ta, tb = surface['truth_values']
+                axis.plot(ta, tb, '*', color='red', markersize=8, clip_on=False)
+                maxima = np.asarray(surface['maximizer_values'])
+                axis.plot(maxima[:, 0], maxima[:, 1], 'x', color='orange', markersize=6,
+                          markeredgewidth=1.4, clip_on=False)
+                for name, set_scale, set_ticks, values in (
+                    (pair[0], axis.set_xscale, axis.set_xticks, a),
+                    (pair[1], axis.set_yscale, axis.set_yticks, b),
+                ):
+                    if name.startswith('sigma_'):
+                        set_scale('log', base=2)
+                        ticks = values[::max(1, (len(values) - 1) // 4)]
+                        set_ticks(ticks, labels=[f'{v:.3g}' for v in ticks])
+                axis.set_xlim(a[0], a[-1])
+                axis.set_ylim(b[0], b[-1])
+                axis.set_xlabel(labels[pair[0]])
+                axis.set_ylabel(labels[pair[1]])
+                title = f"Aggregate ({result['n_sequences']} records)" if index == 0 else \
+                        f"ID {surface['sequence_id']}"
+                axis.set_title(title, fontsize=10)
+                axis.tick_params(labelsize=8)
+            for axis in list(axes.flat)[len(surfaces):]:
+                axis.set_visible(False)
+            fig.colorbar(mesh, ax=list(axes.flat)[:len(surfaces)], shrink=.8,
+                         label='Centered log-likelihood (display floor -10)')
+            fig.suptitle(f"F4-E E3: {pair[0]} / {pair[1]}\n"
+                         "Other parameters fixed at truth; star = truth; x = grid maximum\n"
+                         "Contours are likelihood levels, not confidence regions", fontsize=12)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open('xb') as handle:
+                fig.savefig(handle, format='png', dpi=150)
+        finally:
+            plt.close(fig)
+        print(f"Saved {path}")
+
+
+def run_pair_surfaces(args):
+    """Replay registered E3 from saved E2 observations, with no new draws."""
+    figures = _pair_surface_figure_paths(args.figure_prefix)
+    targets = ((args.output,) if args.output is not None else ()) + figures
+    if len({path.resolve() for path in targets}) != len(targets):
+        raise ValueError('JSON and figure paths must be distinct.')
+    for path in targets:
+        if path.exists():
+            raise FileExistsError(f"Refusing to overwrite {path}; choose a new result path.")
+    raw = args.e2_report.read_bytes()
+    e2 = json.loads(raw.decode('utf-8'))
+    settings = synthetic.f4_e_screening_inputs(e2)
+    print(f"F4-E E3 pair surfaces: sequences=1212..1221; 3 pairs x 21x21 nodes; "
+          f"cells={settings['x_steps']}; hmax={settings['max_step']:.6e}; "
+          f"q={settings['likelihood_quadrature_order']}; workers={args.workers}")
+    started = perf_counter()
+
+    def progress(completed, total, key, surface):
+        if not args.quiet:
+            elapsed = perf_counter() - started
+            remaining = elapsed * (total - completed) / completed
+            sequence_id, pair = key
+            print(f"  completed {completed}/{total}; sequence={sequence_id}; pair={pair}; "
+                  f"MLE={surface['grid_mle']}; elapsed={elapsed:.1f}s; ETA~{remaining:.1f}s",
+                  flush=True)
+
+    result = synthetic.run_f4_e_pair_surfaces(e2_screening=e2, workers=args.workers, progress=progress)
+    result['e2_report_path'] = str(args.e2_report)
+    result['e2_report_sha256'] = hashlib.sha256(raw).hexdigest()
+    result['figure_paths'] = tuple(str(path) for path in figures)
+    for pair in synthetic.F4_E_PAIRS:
+        item = result['pair_results']['__'.join(pair)]
+        surface = item['aggregate_surface']
+        print(f"  {pair}: aggregate MLE={surface['grid_mle']}; "
+              f"aggregate boundary={surface['boundary_dimensions']}; "
+              f"sequence boundary frequency={item['boundary_mle_frequency']}; "
+              f"ties={item['nonunique_mle_count']}")
+    print(f"  mass err={result['maximum_abs_mass_error']:.3e}; "
+          f"min mass={result['minimum_cell_mass']:.3e}; "
+          f"max E2 truth-cut difference={result['maximum_e2_truth_cut_difference']:.3e}; "
+          f"registered={result['matches_registered_design']}")
+    print('  Aggregate uses the same first ten E2 records. Surfaces and grid profiles are '
+          'diagnostics; parameter selection remains E4.')
+    if figures:
+        _save_pair_surface_figures(result, figures)
+    _write_likelihood_report(args, result, started)
+    return result
+
+
 def run_preparation(args):
     """Reproduce independent F4-0 quadrature through the common entry point."""
     if args.output is not None and args.output.exists():
@@ -978,6 +1095,21 @@ def build_parser():
     parameter_screening.add_argument('--quiet', action='store_true',
                                     help='Suppress per-sequence progress, not the final summary.')
     parameter_screening.set_defaults(handler=run_parameter_screening)
+
+    pair_surfaces = subparsers.add_parser(
+        'pair-surfaces', help='Run registered F4-E E3 pair surfaces on the first ten E2 records.',
+    )
+    pair_surfaces.add_argument('--e2-report', type=Path, required=True,
+                               help='Complete registered E2 JSON; saved observations are reused.')
+    pair_surfaces.add_argument('--workers', type=int, default=1,
+                               help='Independent (sequence,pair) workers; runtime only.')
+    pair_surfaces.add_argument('--output', type=Path,
+                               help='Optional new JSON with raw surfaces, ridges and evidence.')
+    pair_surfaces.add_argument('--figure-prefix', type=Path,
+                               help='Optional prefix for three new PNGs with aggregate and per-record surfaces.')
+    pair_surfaces.add_argument('--quiet', action='store_true',
+                               help='Suppress per-surface progress, not the final summary.')
+    pair_surfaces.set_defaults(handler=run_pair_surfaces)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',

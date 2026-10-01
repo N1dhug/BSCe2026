@@ -1,7 +1,7 @@
 \section{Formål og læsevej}
 Projektet skal levere rekursiv state- og parameterestimation baseret på en
 approksimeret Fokker--Planck-løsning, herunder mixture-metoden \cite{project}.
-Disse noter samler F4-0--D's matematik, forsøgsdesign og validerede synthetic evidens. Aktuel status og
+Disse noter samler F4-0--E's matematik, forsøgsdesign og validerede synthetic evidens. Aktuel status og
 resterende opgaver står kun i \texttt{root/F4.md}; kommandoer i \texttt{root/BM\_GUIDE.md}.
 Modellen videreføres fra F1--F3 \cite{repo,junker}. Et beskrevet filter/forecast er
 ikke dermed et implementeret eller valideret resultat.
@@ -417,13 +417,73 @@ Det er en fælles-parameter-slice over flere uafhængige records; alle fire andr
 parametre holdes stadig på truth. Den skelnes derfor fra både en profil og et
 joint fit. E2 indfører ikke et nyt recovery-passmål.
 
+Den registrerede E2-kørsel (kildecommit \texttt{2022d95}, brugerens Windows-kørsel
+den 1. oktober 2026) fuldførte alle 50 sekvenser på ca. 1014 s med syv
+worker-processer og én BLAS-tråd. Terminalresuméet gav nedenstående resultater;
+de individuelle rå kurver er endnu ikke gennemgået her.
+Maksimal massefejl var \(3.775\cdot10^{-14}\), mindste masse nul og alle
+grid-MLE'er entydige.
+\begin{center}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Parameter & Median MLE & Rand-MLE & Median LR-span & Samlet MLE \\
+\midrule
+\(\rho\)     & 0.875    & 68\% & 1.000000 & 0.825 \\
+\(\Xi\)      & 1.000    & 62\% & 0.125000 & 1.000 \\
+\(k\)        & 2.000    & 0\%  & 0.675000 & 2.000 \\
+\(\sigma_X\) & 0.435275 & 8\%  & 0.652913 & 0.466516 \\
+\(\sigma_Y\) & 0.030000 & 0\%  & 0.022685 & 0.030000 \\
+\bottomrule
+\end{tabular}
+\end{center}
+De empiriske 5/95-procents MLE-quantiler var \((0.5,1.5)\) for \(\rho\),
+\((0.86125,1)\) for \(\Xi\), \((1.7,2.3)\) for \(k\),
+\((0.125,0.757858)\) for \(\sigma_X\) og \((0.017152,0.038392)\) for
+\(\sigma_Y\). Median log-likelihood-tab ved truth var henholdsvis
+0.197894, 0, 0.260400, 0.328338 og 0.183843.
+Rho har svag information i én-døgns-records: 34/50 MLE'er rammer støtteranden,
+og LR-spannets median er hele støttebredden. Det beviser ikke strukturel
+ikke-identifikation eller uinformativ fælles-parameter-likelihood på flere records.
+K og målingsstøjen ligger mere samlet omkring truth, når de fire øvrige parametre
+er kendte; det siger endnu ikke, om dette holder ved parameterkobling.
+Xi's randfrekvens er ikke alene en fejl, da truth ligger på den fysiske rand.
+Spans i forskellige parameterenheder kan ikke direkte rangordne identifikation.
+
 Tre analytisk relevante 2D-diagnoser reserveres efter singles:
 \[
  (\rho,\Xi),\qquad(k,\Xi),\qquad(\sigma_X,\sigma_Y).
 \]
-De bruger hver anden node fra de tilsvarende 1D-grids og de første ti
-screeningsekvenser. Dette er likelihood-flader til ridge-diagnostik, ikke joint
-parameterestimation. Den egentlige rekursive en-parameterbank begynder først i F4-F.
+De bruger hver anden node fra de tilsvarende 1D-grids, altså \(21\times21\), og
+præcis de første ti screeningsekvenser, ID1212--1221. De gemte E2-observationer
+genbruges uden nye tilfældighedstræk. For et par \((a,b)\) defineres
+\[
+ L_s(a_i,b_j)=\ell_s(\theta[a=a_i,b=b_j]),\qquad
+ \Delta L_s=L_s-\max_{i,j}L_s(a_i,b_j),
+\]
+hvor de tre øvrige parametre er låst på truth og hver kandidat replayes selvstændigt.
+Som implementeringskontrol skal snittene gennem truth reproducere E2:
+\[
+ L_s(a_i,b^\star)=\ell_s(\theta[a=a_i]),\qquad
+ L_s(a^\star,b_j)=\ell_s(\theta[b=b_j]),
+\]
+med maksimal absolut forskel højst \(10^{-10}\) i rå log-likelihood. Denne identitet
+er en kodekontrol; den erstatter ikke parameter-specifik numerisk refinement.
+
+De gemte grid-profiler er
+\[
+ P_{a,s}(a_i)=\max_j\Delta L_s(a_i,b_j),\qquad
+ P_{b,s}(b_j)=\max_i\Delta L_s(a_i,b_j).
+\]
+Betingede ridges repræsenteres ved samtlige \(\arg\max_jL_s(a_i,b_j)\) for hver
+fast \(a_i\), og omvendt for hver fast \(b_j\). Ties inden for \(10^{-12}\) beholdes.
+Profilerne er diskrete og begrænset til den erklærede parstøtte; de profilerer
+ikke over alle fem parametre. Den samlede flade er \(\sum_{s=1}^{10}L_s\), centreret
+efter summation. Den bruger de samme ti records og er derfor ikke direkte den samme
+population som E2's 50-records resumé. Farvevinduer ændrer kun figurvisningen;
+contours er likelihood-niveauer, ikke konfidensområder. Der tilføjes intet nyt
+recovery-passmål. Dette er flader til ridge-diagnostik; den egentlige rekursive
+en-parameterbank begynder først i F4-F.
 
 Valget af første F-parameter fastlåses først efter E. \(\rho\) er arbejdshypotesen:
 sandheden ligger interiørt i den allerede foreslåede støtte, og driftens afhængighed

@@ -58,6 +58,9 @@ F4_E_SCREEN_X_STEPS = 401
 F4_E_SCREEN_MAX_STEP = 1.0 / 768.0
 F4_E_SCREEN_QUADRATURE_ORDER = 3
 F4_E_LR_THRESHOLD = 3.841
+F4_E_PAIRS = (('rho', 'Xi'), ('k', 'Xi'), ('sigma_x', 'sigma_y'))
+F4_E_PAIR_SEQUENCE_COUNT = 10
+F4_E_PAIR_GRID_STRIDE = 2
 
 
 def _readonly_vector(values: ArrayLike, name: str, *, minimum_size: int = 1) -> NDArray[np.float64]:
@@ -1898,6 +1901,252 @@ def run_f4_e_parameter_screening(
             'lr_is_calibrated_confidence_interval': False,
             'Xi_truth_on_physical_boundary': True,
             'parameter_selection_for_F4_F': 'deferred until E3/E4 and parameter-specific refinement',
+        },
+    }
+
+
+def f4_e_screening_inputs(report, *, require_registered=True):
+    """Validate E2 evidence before reusing its observations in E3.
+
+    All sequence rows and per-observation likelihood sums are checked, including
+    the 40 records not selected for E3. No regeneration or truth-state input.
+    """
+    if not isinstance(report, dict) or report.get('stage') != 'E2':
+        raise ValueError('E3 requires a complete E2 screening report.')
+    ids = tuple(_nonnegative_integer(i, 'sequence_id') for i in report['sequence_ids'])
+    n = checks.positive_integer(report['n_sequences'], 'n_sequences', minimum=1)
+    if len(ids) != n or len(set(ids)) != n or tuple(sorted(ids)) != ids:
+        raise ValueError('E2 sequence IDs must be unique, ordered and complete.')
+    settings = report['settings']
+    cells = checks.positive_integer(settings['x_steps'], 'x_steps', minimum=3)
+    step = checks.finite_scalar(settings['max_step'], 'max_step', positive=True)
+    order = checks.positive_integer(settings['likelihood_quadrature_order'], 'quadrature order', minimum=1)
+    truth = f4_e_truth_candidate()
+    if set(report['parameter_grids']) != set(F4_E_PARAMETER_GRIDS):
+        raise ValueError('E2 requires all five parameter grids.')
+    grids = {}
+    for name in F4_E_PARAMETER_GRIDS:
+        grid = checks.finite_vector(report['parameter_grids'][name], f'{name} grid', minimum_size=2)
+        if np.any(np.diff(grid) <= 0) or np.count_nonzero(grid == getattr(truth, name)) != 1:
+            raise ValueError('E2 grids must strictly increase and contain truth.')
+        for value in grid:
+            replace(truth, **{name: float(value)})
+        grids[name] = tuple(float(x) for x in grid)
+    declared_settings = (cells, step, order)
+    registered = bool(
+        report.get('matches_registered_design') is True
+        and ids == tuple(range(F4_E_SCREEN_SEQUENCE_START,
+                               F4_E_SCREEN_SEQUENCE_START + F4_E_SCREEN_SEQUENCE_COUNT))
+        and grids == F4_E_PARAMETER_GRIDS
+        and declared_settings == (F4_E_SCREEN_X_STEPS, F4_E_SCREEN_MAX_STEP,
+                                   F4_E_SCREEN_QUADRATURE_ORDER)
+        and settings.get('truth_max_step') == build_f4_b_case().truth_max_step
+        and tuple(settings.get('rng_seed_roots', ())) ==
+        (INITIAL_SEED_ROOT, BROWNIAN_SEED_ROOT, MEASUREMENT_SEED_ROOT))
+    if report.get('matches_registered_design') is True and not registered:
+        raise ValueError('E2 claims a registered design but its settings/IDs/grids differ.')
+    if require_registered and not registered:
+        raise ValueError('Official E3 requires the registered 50-sequence E2 report.')
+    if registered:
+        lock = report['e1_numerical_lock']
+        if ((lock['x_steps'], lock['max_step'], lock['likelihood_quadrature_order']) != declared_settings
+                or lock['e1_sequence_id'] != F4_E_NUMERICAL_SEQUENCE_ID):
+            raise ValueError('E2 numerical settings differ from its E1 lock.')
+        for axis in ('time', 'spatial', 'quadrature'):
+            gate = lock['e1_summary'][axis]
+            change = checks.finite_scalar(gate['maximum_centered_log_likelihood_change'], 'E1 change')
+            if (gate['passes'] is not True or gate['unique_same_maximizer'] is not True
+                    or gate['window'] != F4_E_LIKELIHOOD_WINDOW
+                    or gate['tolerance'] != F4_E_CENTERED_LIKELIHOOD_TOL
+                    or not 0 <= change <= F4_E_CENTERED_LIKELIHOOD_TOL):
+                raise ValueError('E2 does not contain passing registered E1 gates.')
+    rows = tuple(report['sequence_results'])
+    if len(rows) != n or tuple(row['sequence_id'] for row in rows) != ids:
+        raise ValueError('E2 rows must match every declared sequence ID in order.')
+    for row in rows:
+        if row['truth_boundary_violations'] != 0:
+            raise ValueError('E2 has invalid synthetic truth; do not omit the sequence.')
+        obs = BM1ObservationSeries(row['observation_times'], row['observations'], 'day')
+        if not np.array_equal(obs.times, CORE_OBSERVATION_TIMES):
+            raise ValueError('E2 observations do not follow the locked 24-hour point contract.')
+        if set(row['slices']) != set(grids):
+            raise ValueError('Every E2 sequence must have all five slices.')
+        for name, grid in grids.items():
+            item = row['slices'][name]
+            if tuple(item['parameter_values']) != grid:
+                raise ValueError('E2 per-sequence grid differs from the report grid.')
+            total = checks.finite_vector(item['total_log_likelihood'], 'E2 likelihood')
+            centered = checks.finite_vector(item['centered_log_likelihood'], 'E2 centered likelihood')
+            evidence = np.asarray(item['log_evidence'], dtype=float)
+            if (total.shape != (len(grid),) or centered.shape != total.shape
+                    or evidence.shape != (len(grid), 24) or not np.all(np.isfinite(evidence))
+                    or not np.allclose(total, np.sum(evidence, axis=1), atol=1e-10, rtol=0)
+                    or not np.allclose(centered, total - np.max(total), atol=1e-10, rtol=0)):
+                raise ValueError('E2 likelihood curves disagree with predictive log-evidence.')
+            error = checks.finite_scalar(item['maximum_abs_mass_error'], 'E2 mass error')
+            minimum = checks.finite_scalar(item['minimum_cell_mass'], 'E2 minimum mass')
+            if not 0 <= error <= 1e-10 or minimum < -1e-14:
+                raise ValueError('E2 probability diagnostics failed.')
+    return {'sequence_ids': ids, 'rows': rows, 'parameter_grids': grids,
+            'x_steps': cells, 'max_step': step, 'likelihood_quadrature_order': order,
+            'matches_registered_design': registered}
+
+
+def _f4_e_surface_summary(pair, first_values, second_values, total_log_likelihood):
+    """2D grid maxima and conditional ridges; no new statistical acceptance gate."""
+    a = checks.finite_vector(first_values, 'first parameter grid', minimum_size=2)
+    b = checks.finite_vector(second_values, 'second parameter grid', minimum_size=2)
+    total = np.asarray(total_log_likelihood, dtype=float)
+    if (total.shape != (a.size, b.size) or not np.all(np.isfinite(total))
+            or np.any(np.diff(a) <= 0) or np.any(np.diff(b) <= 0)):
+        raise ValueError('A finite surface must match its two increasing parameter grids.')
+    truth = f4_e_truth_candidate()
+    ia = np.flatnonzero(a == getattr(truth, pair[0]))
+    ib = np.flatnonzero(b == getattr(truth, pair[1]))
+    if ia.size != 1 or ib.size != 1:
+        raise ValueError('E3 subsampled grids must retain both truth nodes.')
+    centered = total - np.max(total)
+    maxima = tuple(tuple(int(x) for x in ij) for ij in np.argwhere(
+        np.isclose(centered, 0., atol=1e-12, rtol=0)))
+    boundary = tuple(name for axis, name in enumerate(pair) if any(
+        ij[axis] in (0, total.shape[axis] - 1) for ij in maxima))
+
+    def ridge(values, axis):
+        # At each fixed value on the other axis, retain every conditional maximum.
+        reference = np.max(values, axis=axis, keepdims=True)
+        mask = np.isclose(values, reference, atol=1e-12, rtol=0)
+        return tuple(tuple(int(j) for j in np.flatnonzero(row)) for row in mask)
+
+    return {
+        'pair': tuple(pair), 'first_values': tuple(float(x) for x in a),
+        'second_values': tuple(float(x) for x in b),
+        'total_log_likelihood': tuple(tuple(float(x) for x in row) for row in total),
+        'centered_log_likelihood': tuple(tuple(float(x) for x in row) for row in centered),
+        'maximizer_indices': maxima,
+        'maximizer_values': tuple((float(a[i]), float(b[j])) for i, j in maxima),
+        'unique_mle': len(maxima) == 1,
+        'grid_mle': (float(a[maxima[0][0]]), float(b[maxima[0][1]])) if len(maxima) == 1 else None,
+        'boundary_dimensions': boundary,
+        'truth_indices': (int(ia[0]), int(ib[0])),
+        'truth_values': (getattr(truth, pair[0]), getattr(truth, pair[1])),
+        'log_likelihood_loss_at_truth': float(-centered[ia[0], ib[0]]),
+        'profile_first_centered_log_likelihood': tuple(float(x) for x in np.max(centered, axis=1)),
+        'profile_second_centered_log_likelihood': tuple(float(x) for x in np.max(centered, axis=0)),
+        'ridge_second_indices_given_first': ridge(total, 1),
+        'ridge_first_indices_given_second': ridge(total.T, 1),
+    }
+
+
+def _f4_e_pair_surface_task(task):
+    row, pair, first_values, second_values, stride, cells, step, order = task
+    case = build_f4_b_case()
+    truth = f4_e_truth_candidate(case)
+    observations = BM1ObservationSeries(row['observation_times'], row['observations'], 'day')
+    candidates = tuple(replace(truth, **{pair[0]: a, pair[1]: b})
+                       for a in first_values for b in second_values)
+    evaluations = evaluate_f4_e_candidates(case, observations, candidates,
+        x_steps=cells, max_step=step, likelihood_quadrature_order=order)
+    shape = (len(first_values), len(second_values))
+    total = np.asarray([e['total_log_likelihood'] for e in evaluations]).reshape(shape)
+    surface = _f4_e_surface_summary(pair, first_values, second_values, total)
+    ia, ib = surface['truth_indices']
+    discrepancies = (float(np.max(np.abs(total[:, ib] -
+                         np.asarray(row['slices'][pair[0]]['total_log_likelihood'])[::stride]))),
+                     float(np.max(np.abs(total[ia, :] -
+                         np.asarray(row['slices'][pair[1]]['total_log_likelihood'])[::stride]))))
+    if max(discrepancies) > 1e-10:
+        raise RuntimeError('E3 truth-coordinate cuts do not reproduce E2 slices; '
+                           'check observations, history replay and numerical settings.')
+    surface.update({
+        'sequence_id': row['sequence_id'],
+        'e2_truth_cut_maximum_abs_differences': discrepancies,
+        'log_evidence': tuple(tuple(float(x) for x in e['log_evidence']) for e in evaluations),
+        'candidate_order': 'first parameter outer, second parameter inner',
+        'maximum_abs_mass_error': max(e['maximum_abs_mass_error'] for e in evaluations),
+        'minimum_cell_mass': min(e['minimum_cell_mass'] for e in evaluations),
+        'actual_max_step': max(e['actual_max_step'] for e in evaluations),
+        'n_steps': max(e['n_steps'] for e in evaluations),
+    })
+    if surface['maximum_abs_mass_error'] > 1e-10 or surface['minimum_cell_mass'] < -1e-14:
+        raise RuntimeError('E3 surface failed probability diagnostics.')
+    return (row['sequence_id'], tuple(pair)), surface
+
+
+def run_f4_e_pair_surfaces(
+    *, e2_screening, n_sequences=F4_E_PAIR_SEQUENCE_COUNT,
+    grid_stride=F4_E_PAIR_GRID_STRIDE, workers=1, progress=None,
+):
+    """Registered E3 surfaces on the first ten E2 records, without new draws.
+
+    The validation API also supports labelled small E2 diagnostics. The CLI
+    explicitly requires the official E2 artifact before invoking this runner.
+    Independent (sequence,pair) jobs are parallel; candidate histories stay local.
+    """
+    inputs = f4_e_screening_inputs(e2_screening, require_registered=False)
+    n_sequences = checks.positive_integer(n_sequences, 'n_sequences', minimum=1)
+    stride = checks.positive_integer(grid_stride, 'grid_stride', minimum=1)
+    workers = checks.positive_integer(workers, 'workers', minimum=1)
+    if n_sequences > len(inputs['rows']):
+        raise ValueError('E3 cannot select more sequences than the supplied E2 report.')
+    if progress is not None and not callable(progress):
+        raise TypeError('progress must be callable or None.')
+    rows = inputs['rows'][:n_sequences]
+    grids = {name: values[::stride] for name, values in inputs['parameter_grids'].items()}
+    truth = f4_e_truth_candidate()
+    for name, values in grids.items():
+        if len(values) < 2 or getattr(truth, name) not in values:
+            raise ValueError('Subsampled E3 grids must retain at least two nodes and truth.')
+    tasks = tuple((row, pair, grids[pair[0]], grids[pair[1]], stride,
+                   inputs['x_steps'], inputs['max_step'], inputs['likelihood_quadrature_order'])
+                  for row in rows for pair in F4_E_PAIRS)
+    surfaces = {}
+    if workers == 1:
+        for completed, task in enumerate(tasks, start=1):
+            key, surface = _f4_e_pair_surface_task(task)
+            surfaces[key] = surface
+            if progress is not None:
+                progress(completed, len(tasks), key, surface)
+    else:
+        with ProcessPoolExecutor(max_workers=min(workers, len(tasks))) as executor:
+            futures = [executor.submit(_f4_e_pair_surface_task, task) for task in tasks]
+            for completed, future in enumerate(as_completed(futures), start=1):
+                key, surface = future.result()
+                surfaces[key] = surface
+                if progress is not None:
+                    progress(completed, len(tasks), key, surface)
+    pair_results = {}
+    for pair in F4_E_PAIRS:
+        values = tuple(surfaces[(row['sequence_id'], pair)] for row in rows)
+        summed = np.sum([s['total_log_likelihood'] for s in values], axis=0)
+        pair_results['__'.join(pair)] = {
+            'sequence_surfaces': values,
+            'aggregate_surface': _f4_e_surface_summary(pair, grids[pair[0]], grids[pair[1]], summed),
+            'nonunique_mle_count': sum(not s['unique_mle'] for s in values),
+            'boundary_mle_frequency': {name: float(np.mean(
+                [name in s['boundary_dimensions'] for s in values])) for name in pair},
+        }
+    return {
+        'stage': 'E3', 'sequence_ids': tuple(row['sequence_id'] for row in rows),
+        'n_sequences': n_sequences, 'pairs': F4_E_PAIRS, 'grid_stride': stride, 'workers': workers,
+        'settings': {name: inputs[name] for name in
+                     ('x_steps', 'max_step', 'likelihood_quadrature_order')},
+        'matches_registered_design': bool(inputs['matches_registered_design']
+            and n_sequences == F4_E_PAIR_SEQUENCE_COUNT and stride == F4_E_PAIR_GRID_STRIDE),
+        'e2_source_commit': e2_screening.get('source_commit'),
+        'observations': tuple({'sequence_id': row['sequence_id'],
+            'observation_times': tuple(row['observation_times']), 'values': tuple(row['observations'])}
+            for row in rows),
+        'pair_results': pair_results,
+        'maximum_abs_mass_error': max(s['maximum_abs_mass_error'] for s in surfaces.values()),
+        'minimum_cell_mass': min(s['minimum_cell_mass'] for s in surfaces.values()),
+        'maximum_e2_truth_cut_difference': max(max(s['e2_truth_cut_maximum_abs_differences'])
+                                               for s in surfaces.values()),
+        'interpretation': {
+            'purpose': 'diagnostic pair surfaces; three other parameters held at truth',
+            'ridge_definition': 'all grid maximizers on each conditional row/column',
+            'profiles': 'grid maxima within the displayed two-parameter support',
+            'aggregate': 'same first ten E2 records only; no additional replication sample',
+            'new_recovery_gate': False, 'parameter_selection_for_F4_F': 'deferred to E4',
         },
     }
 
