@@ -149,6 +149,84 @@ def parameter_summary(frame):
     return pd.DataFrame(rows)
 
 
+def parameter_stability(frame, f_reference=0.5):
+    rows = []
+    for method in ("warmup", "optimized"):
+        values = {parameter: frame[f"{parameter}_{method}"].to_numpy(dtype=float) for parameter in PARAMETERS}
+        centered = values["r_0"] + float(f_reference) * values["r_F"]
+        kappa = -values["r_R"]
+        derived = {
+            **values,
+            f"r_0+{float(f_reference):g}r_F": centered,
+            "kappa_R": kappa,
+        }
+        for parameter, series in derived.items():
+            mean = float(np.mean(series))
+            std = float(np.std(series, ddof=1))
+            rows.append({
+                "method": method,
+                "parameter": parameter,
+                "mean": mean,
+                "variance": float(np.var(series, ddof=1)),
+                "std": std,
+                "relative_std_pct": 100.0 * std / abs(mean) if abs(mean) > 1e-12 else np.nan,
+                "q25": float(np.quantile(series, 0.25)),
+                "median": float(np.median(series)),
+                "q75": float(np.quantile(series, 0.75)),
+                "iqr": float(np.quantile(series, 0.75) - np.quantile(series, 0.25)),
+                "min": float(np.min(series)),
+                "max": float(np.max(series)),
+            })
+    return pd.DataFrame(rows)
+
+
+def same_weekday_parameter_stability(frame):
+    rows = []
+    weekdays = frame["weekday_warmup"].astype(str)
+    for method in ("warmup", "optimized"):
+        for parameter in PARAMETERS:
+            changes = []
+            levels = []
+            for weekday in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"):
+                part = frame.loc[weekdays == weekday].sort_values("day")
+                values = part[f"{parameter}_{method}"].to_numpy(dtype=float)
+                if values.size < 2: continue
+                changes.extend(np.diff(values))
+                levels.extend(values)
+            changes = np.asarray(changes, dtype=float)
+            levels = np.asarray(levels, dtype=float)
+            rows.append({
+                "method": method,
+                "parameter": parameter,
+                "paired_weekly_changes": int(changes.size),
+                "mean_abs_weekly_change": float(np.mean(np.abs(changes))) if changes.size else np.nan,
+                "median_abs_weekly_change": float(np.median(np.abs(changes))) if changes.size else np.nan,
+                "rms_weekly_change": float(np.sqrt(np.mean(changes ** 2))) if changes.size else np.nan,
+                "weekly_change_std": float(np.std(changes, ddof=1)) if changes.size > 1 else np.nan,
+                "level_std": float(np.std(levels, ddof=1)) if levels.size > 1 else np.nan,
+            })
+    return pd.DataFrame(rows)
+
+
+def r0_rf_identifiability(frame, f_reference=0.5):
+    rows = []
+    for method in ("warmup", "optimized"):
+        r0 = frame[f"r_0_{method}"].to_numpy(dtype=float)
+        rF = frame[f"r_F_{method}"].to_numpy(dtype=float)
+        centered = r0 + float(f_reference) * rF
+        rows.append({
+            "method": method,
+            "r0_rF_correlation": float(np.corrcoef(r0, rF)[0, 1]),
+            "r0_variance": float(np.var(r0, ddof=1)),
+            "rF_variance": float(np.var(rF, ddof=1)),
+            "centered_drift_reference_F": float(f_reference),
+            "centered_drift_mean": float(np.mean(centered)),
+            "centered_drift_variance": float(np.var(centered, ddof=1)),
+            "centered_drift_std": float(np.std(centered, ddof=1)),
+        })
+    return pd.DataFrame(rows)
+
+
 def weekday_summary(frame):
     rows = []
     for weekday, part in frame.groupby("weekday_warmup"):
@@ -225,7 +303,7 @@ def save_plots(frame, output):
     plt.close(fig)
 
 
-def print_summary(summary, states, margins, error_levels):
+def print_summary(summary, states, margins, error_levels, stability, weekly_stability, identifiability):
     row = summary.iloc[0]
     print(f"days={int(row['days'])}")
     print(f"optimized parameter fit better with oracle state on {int(row['optimized_better_days'])}/{int(row['days'])} days ({row['optimized_better_pct']:.2f}%)")
@@ -241,6 +319,15 @@ def print_summary(summary, states, margins, error_levels):
     print()
     print("oracle prediction-state summary")
     print(states.to_string(index=False))
+    print()
+    print("parameter stability")
+    print(stability.to_string(index=False))
+    print()
+    print("same-weekday week-to-week parameter changes")
+    print(weekly_stability.to_string(index=False))
+    print()
+    print("r0/rF identifiability around F=0.5")
+    print(identifiability.to_string(index=False))
 
 
 def main():
@@ -258,6 +345,9 @@ def main():
     margins = winner_margin_summary(paired)
     error_levels = error_level_summary(paired)
     parameters = parameter_summary(paired)
+    stability = parameter_stability(paired)
+    weekly_stability = same_weekday_parameter_stability(paired)
+    identifiability = r0_rf_identifiability(paired)
     weekdays = weekday_summary(paired)
     output = Path(args.output); output.mkdir(parents=True, exist_ok=True)
 
@@ -267,11 +357,14 @@ def main():
     margins.to_csv(output / "winner_margin_summary.csv", index=False)
     error_levels.to_csv(output / "error_level_summary.csv", index=False)
     parameters.to_csv(output / "parameter_comparison.csv", index=False)
+    stability.to_csv(output / "parameter_stability.csv", index=False)
+    weekly_stability.to_csv(output / "same_weekday_parameter_stability.csv", index=False)
+    identifiability.to_csv(output / "r0_rF_identifiability.csv", index=False)
     weekdays.to_csv(output / "weekday_comparison.csv", index=False)
     paired.sort_values("mse_gain", ascending=False).head(20).to_csv(output / "largest_optimized_improvements.csv", index=False)
     paired.sort_values("mse_gain").head(20).to_csv(output / "largest_optimized_regressions.csv", index=False)
     save_plots(paired, output)
-    print_summary(summary, states, margins, error_levels)
+    print_summary(summary, states, margins, error_levels, stability, weekly_stability, identifiability)
 
 
 if __name__ == "__main__": main()
