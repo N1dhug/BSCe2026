@@ -12,6 +12,7 @@ OPTIMIZED = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimi
 WARMUP_R0_ZERO = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_top_end_r0_zero"
 OPTIMIZED_R0_ZERO = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end_r0_zero"
 OUTPUT = OPTIMIZED / "top_end_analysis"
+OUTPUT_R0_ZERO = OPTIMIZED_R0_ZERO / "top_end_analysis"
 PARAMETERS = ("r_0", "r_F", "r_U", "r_R")
 
 
@@ -354,7 +355,8 @@ def main():
     weekly_stability = same_weekday_parameter_stability(paired)
     identifiability = r0_rf_identifiability(paired)
     weekdays = weekday_summary(paired)
-    output = Path(args.output); output.mkdir(parents=True, exist_ok=True)
+    output = OUTPUT_R0_ZERO if args.zero_intercept and args.output == str(OUTPUT) else Path(args.output)
+    output.mkdir(parents=True, exist_ok=True)
 
     paired.to_csv(output / "paired_top_end_comparison.csv", index=False)
     summary.to_csv(output / "summary.csv", index=False)
