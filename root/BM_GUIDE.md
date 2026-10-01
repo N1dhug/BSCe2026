@@ -38,6 +38,10 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | F4-E E2 en-parameter screening | `parameter-screen --e1-report <E1-JSON>` |
 | F4-E E3 diagnostiske parflader | `pair-surfaces --e2-report <E2-JSON>` |
 | F4-F F0 rekursiv FV-rho-bank og prefix-identiteter | `bank-identity` |
+| F4-F F1 FV-bank numerik for rho og sigma_x | `bank-refine` |
+| F4-F F2 grid, støtte og parameterprior | `bank-sensitivity` |
+| F4-F F3 rekursiv rho-mixture-pilot | `bank-mixture-check` |
+| F4-F F4 rho FV/mixture og separat sigma_x FV-population | `bank-population` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -122,6 +126,55 @@ tidspunkt, ikke observationstidspunkter. JSON indeholder alle scores/log-vægte,
 prefix-fejl, diagnostik, kildecommit og endelige betingede state-masser. Eksisterende
 output afvises før beregningen; en fejlet gate gemmes og giver derefter en fejl.
 F0 tester metoden, ikke parameter-recovery, mixture eller ugeforecast.
+
+De resterende F-studier køres og gennemgås i rækkefølge; første næste lokale kørsel
+er F1. Alle har default 7 workers, fast videnskabeligt design og løbende progress.
+F1 genundersøger begge enparametergrids; sigma_x får finere state-numerik efter
+det første udviklingsforsøgs fejl. Forsøgsdefinition og tilpasning står i `F4.md`.
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate bank-refine `
+  --workers 7 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F1 numerik fejlede; behold rapporten til review." }
+```
+
+Send F1-resumé og rå `.json.gz` til review før længere studier. Gzip-kompression er
+tabsfri og holder rapporterne håndterlige; ingen scores afrundes. Et fejlresultat
+gemmes og giver nonzero exit. Eksisterende output afvises før læsning/beregning.
+F1-input til senere studier skal have source-commit og ren working tree; input og
+alle rå kurver genvalideres, ikke blot `passes`-flaget.
+
+Efter F1-review kan disse kommandoer bruges; de er ikke en instruktion om at starte
+alle kørsler før review. Planen må tilpasses dokumenteret efter resultaterne.
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate bank-sensitivity `
+  --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
+  --workers 7 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f2_bank_sensitivity.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F2 fejlede; behold rapporten til review." }
+
+python -B -m src.exe.run_model.bm_1.estimate bank-mixture-check `
+  --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
+  --workers 7 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_check.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F3 mixture-kontrol fejlede; behold rapporten til review." }
+
+python -B -m src.exe.run_model.bm_1.estimate bank-population `
+  --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
+  --mixture-report files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_check.json.gz `
+  --workers 7 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f4_bank_population.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F4 population fejlede; behold rapporten til review." }
+```
+
+Mixture-piloten undersøger rho med frossen `shape_D`, ikke en ny sigma_x-mixture-bank.
+F4-populationen omfatter også sigma_x, men med den separate FV-reference. Lange
+uafhængige hypotesereplays fordeles over en vedvarende Windows-compatible spawn-pool;
+hver replay følger observationsrækkefølgen og sin egen state-posterior. Priorvariationer
+genbruger kun conditional replays med uændrede hypoteser, observationsmodel og state-prior.
+Ingen nye filer eller studier påbegyndes ved import. Ugeforecast hører stadig til I.
 
 ## Hvor kode hører hjemme
 
