@@ -188,6 +188,7 @@ def main():
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
     parser.add_argument("--optimize-initial-state", action="store_true", help="Oracle diagnostic: fit prediction-day [F0,R0] from that day's observed I for top-end parameterization comparison.")
+    parser.add_argument("--zero-intercept", action="store_true", help="Fit WM4 with r_0 fixed to zero while retaining r_U.")
     parser.add_argument("--save-daily-plots", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--max-state-iter", type=int, default=50)
