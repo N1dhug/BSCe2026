@@ -1456,5 +1456,63 @@ class F4EFixedLikelihoodTests(unittest.TestCase):
 
 
 
+class F4ELikelihoodRefinementTests(unittest.TestCase):
+    def test_registered_rho_grid_contains_truth_and_unused_sequence(self):
+        self.assertEqual(synthetic.F4_E_NUMERICAL_SEQUENCE_ID, 1211)
+        self.assertEqual(len(synthetic.F4_E_RHO_GRID), 41)
+        self.assertEqual(synthetic.F4_E_RHO_GRID[0], .5)
+        self.assertEqual(synthetic.F4_E_RHO_GRID[-1], 1.5)
+        self.assertIn(1.0, synthetic.F4_E_RHO_GRID)
+
+    def test_likelihood_stability_requires_same_unique_maximum_and_local_agreement(self):
+        base = {
+            'rho_values': (.9, 1.0, 1.1),
+            'centered_log_likelihood': (-2.0, 0.0, -1.0),
+            'maximizer_indices': (1,),
+        }
+        close = {
+            'rho_values': (.9, 1.0, 1.1),
+            'centered_log_likelihood': (-2.04, 0.0, -1.03),
+            'maximizer_indices': (1,),
+        }
+        summary = synthetic._f4_e_likelihood_stability(base, close)
+        self.assertTrue(summary['passes'])
+        self.assertLessEqual(
+            summary['maximum_centered_log_likelihood_change'],
+            synthetic.F4_E_CENTERED_LIKELIHOOD_TOL,
+        )
+        changed = dict(close)
+        changed['centered_log_likelihood'] = (0.0, -.02, -1.03)
+        changed['maximizer_indices'] = (0,)
+        self.assertFalse(
+            synthetic._f4_e_likelihood_stability(base, changed)['passes']
+        )
+
+    def test_small_refinement_deduplicates_configs_and_parallel_matches_serial(self):
+        kwargs = dict(
+            sequence_id=0,
+            rho_values=(.9, 1.0, 1.1),
+            time_steps=(1/6, 1/12, 1/24),
+            time_x_steps=21,
+            time_quadrature_order=1,
+            spatial_cells=(21, 31, 41),
+            spatial_max_step=1/24,
+            spatial_quadrature_order=1,
+            quadrature_orders=(1, 2, 3),
+            quadrature_x_steps=31,
+            quadrature_max_step=1/24,
+        )
+        serial = synthetic.run_f4_e_likelihood_refinement(**kwargs, workers=1)
+        parallel = synthetic.run_f4_e_likelihood_refinement(**kwargs, workers=2)
+        self.assertEqual(len(serial['unique_configurations']), 7)
+        self.assertFalse(serial['matches_registered_design'])
+        self.assertFalse(serial['passes_numerical_refinement'])
+        left, right = dict(serial), dict(parallel)
+        left.pop('workers')
+        right.pop('workers')
+        self.assertEqual(left, right)
+
+
+
 if __name__ == '__main__':
     unittest.main()
