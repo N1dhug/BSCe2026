@@ -1,8 +1,8 @@
 """F4 estimation entry point.
 
 F4-B exposes the reproducible synthetic generator. F4-C adds the known-parameter
-finite-volume state filter. F4-D begins with static mixture representation before
-any recursive mixture filter is accepted. Parameter estimation remains later.
+finite-volume state filter. F4-D validates the recursive mixture representation. F4-E screens fixed-parameter
+predictive likelihoods before any recursive parameter bank is introduced.
 """
 
 from __future__ import annotations
@@ -723,6 +723,91 @@ def run_mixture_filter_population(args):
     return result
 
 
+
+def run_likelihood_refinement(args):
+    """Run preregistered F4-E E1 rho-likelihood numerical refinement."""
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(
+            f"Refusing to overwrite {args.output}; choose a new result path."
+        )
+    print(
+        f"F4-E E1 likelihood refinement: sequence={args.sequence_id}; "
+        f"rho nodes={len(synthetic.F4_E_RHO_GRID)}; workers={args.workers}"
+    )
+    started = perf_counter()
+
+    def progress(completed, total, key, curve):
+        if not args.quiet:
+            elapsed = perf_counter() - started
+            remaining = elapsed * (total - completed) / completed
+            cells, hmax, order = key
+            print(
+                f"  completed {completed}/{total}; cells={cells}; "
+                f"hmax={hmax:.6e}; q={order}; "
+                f"MLE rho={curve['maximizer_rho']}; "
+                f"elapsed={elapsed:.1f}s; ETA~{remaining:.1f}s",
+                flush=True,
+            )
+
+    result = synthetic.run_f4_e_likelihood_refinement(
+        sequence_id=args.sequence_id,
+        workers=args.workers,
+        progress=progress,
+    )
+    for axis in ('time', 'spatial', 'quadrature'):
+        print(f"  {axis}:")
+        for row in result[axis]:
+            if axis == 'time':
+                level = f"h={row['requested_max_step']:.6e}"
+            elif axis == 'spatial':
+                level = f"N={row['x_steps']}"
+            else:
+                level = f"q={row['likelihood_quadrature_order']}"
+            print(
+                f"    {level}: MLE rho={row['maximizer_rho']}; "
+                f"actual h={row['actual_max_step']:.6e}; "
+                f"steps={row['n_steps']}; "
+                f"mass err={row['maximum_abs_mass_error']:.3e}"
+            )
+        item = result['summary'][axis]
+        print(
+            f"    fine/middle: same unique MLE={item['unique_same_maximizer']}; "
+            f"max |delta centered logL|={item['maximum_centered_log_likelihood_change']:.6e}; "
+            f"rho window={item['comparison_rho_range']}; passes={item['passes']}"
+        )
+    print(
+        f"  unique configurations={len(result['unique_configurations'])}; "
+        f"registered={result['matches_registered_design']}; "
+        f"passes E1={result['passes_numerical_refinement']}"
+    )
+
+    if args.output is not None:
+        try:
+            revision = subprocess.run(
+                ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True,
+                capture_output=True, check=True,
+            ).stdout.strip()
+            dirty = bool(subprocess.run(
+                ['git', 'status', '--porcelain'], cwd=ROOT, text=True,
+                capture_output=True, check=True,
+            ).stdout)
+        except (OSError, subprocess.SubprocessError):
+            revision, dirty = None, None
+        payload = {
+            **result,
+            'source_commit': revision,
+            'working_tree_dirty': dirty,
+            'elapsed_seconds': perf_counter() - started,
+            'blas_threads_requested': args.blas_threads,
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with args.output.open('x', encoding='utf-8') as handle:
+            json.dump(payload, handle, indent=2, allow_nan=False)
+            handle.write('\n')
+        print(f"Saved {args.output}")
+    return result
+
+
 def run_preparation(args):
     """Reproduce independent F4-0 quadrature through the common entry point."""
     if args.output is not None and args.output.exists():
@@ -803,6 +888,27 @@ def build_parser():
     truth_refine.add_argument('--sequences', type=int, default=200)
     truth_refine.add_argument('--start', type=int, default=1)
     truth_refine.set_defaults(handler=run_filter_truth_refine)
+
+    likelihood_refinement = subparsers.add_parser(
+        'likelihood-refine',
+        help='Run preregistered F4-E E1 rho likelihood numerical refinement.',
+    )
+    likelihood_refinement.add_argument(
+        '--sequence-id', type=int, default=synthetic.F4_E_NUMERICAL_SEQUENCE_ID,
+    )
+    likelihood_refinement.add_argument(
+        '--workers', type=int, default=1,
+        help='Independent numerical-configuration workers; runtime only.',
+    )
+    likelihood_refinement.add_argument(
+        '--output', type=Path,
+        help='Optional new JSON file with curves, gates, settings and source revision.',
+    )
+    likelihood_refinement.add_argument(
+        '--quiet', action='store_true',
+        help='Suppress per-configuration progress, not the final summary.',
+    )
+    likelihood_refinement.set_defaults(handler=run_likelihood_refinement)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',
