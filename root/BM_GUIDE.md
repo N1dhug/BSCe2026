@@ -34,6 +34,7 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | D2 statisk holdout | `mixture-holdout` |
 | D3a / D3b / D3c | `mixture-filter`, `mixture-filter-refine`, `mixture-filter-converge` |
 | D3d population | `mixture-filter-population` |
+| F4-E E1 likelihood-refinement | `likelihood-refine` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
