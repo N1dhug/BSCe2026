@@ -693,6 +693,53 @@ må ikke ændre estimater eller rækkefølge-uafhængige summaries.
 Hvis D3d består, er F4-D's videnskabelige testkæde afsluttet. Derefter mangler kun
 code/math/claims review, focused/full regression, PDF/CI og normal PR/branch closure.
 
+
+\paragraph{D3d population-resultat og F4-D-konklusion.}
+Den sidste preregistrerede D3d-population brugte 200 nye synthetic sekvenser,
+ID 1011--1210, ved den låste numerik
+\[
+ N_x=151,\qquad h_{\max}=1/3072\ {\rm day},\qquad
+ \mathrm{cfl}=0.4,\qquad q=1.
+\]
+Alle 200 sekvenser gennemførte uden invalid truth, filterfejl eller projection
+fallbacks. Predictive state-RMSE var
+\[
+ \mathrm{RMSE}_{FV}=3.645553\times10^{-2},\qquad
+ \mathrm{RMSE}_{M}=3.645558\times10^{-2},
+\]
+med ratio 1.000001 og paired bootstrap-95 procent interval
+\([0.999970,1.000034]\). Posterior-RMSE var
+\[
+ 2.383041\times10^{-2}\quad\text{mod}\quad2.383120\times10^{-2},
+\]
+med ratio 1.000033 og bootstrapinterval \([0.999974,1.000097]\).
+Begge intervaller ligger klart inden for den preregistrerede equivalence-region
+\([0.95,1.05]\); resultatet fortolkes som praktisk equivalence til FV, ikke som
+at mixture er bedre.
+
+Mean absolute predictive log-evidence-difference var
+\(6.609\times10^{-4}\) per observation med bootstrap95
+\([6.316,6.921]\times10^{-4}\). Den signed mean var
+\(2.0\times10^{-6}\), og 95-procent-quantilen af den absolutte forskel i
+dagssummer var \(8.965\times10^{-3}\). Begge likelihood-gates bestod.
+
+For sequence-max distribution gaps var 95-procent-quantilerne
+\(5.06\times10^{-3}\) for prediction-\(L^1\) og
+\(8.56\times10^{-3}\) for posterior-\(L^1\), med globale maxima henholdsvis
+\(1.22\times10^{-2}\) og \(1.74\times10^{-2}\). De globale \(W_1\)-maxima var
+\(4.98\times10^{-4}\) og \(5.08\times10^{-4}\). Alle repræsentationsgates
+bestod. Over 614400 interne mixture-steps var maksimal massefejl
+\(4.89\times10^{-15}\), og der blev ikke brugt fallbacks.
+
+F4-D's videnskabelige testkæde er dermed afsluttet: en fixed multiscale Beta-basis
+blev valgt før holdout, generaliserede statisk til ubrugte FV-posteriors, den rekursive
+mixture-kæde blev kørt uden FV-restart, dens tids-/spatialkonvergens blev verificeret,
+og den låste metode var praktisk ækvivalent med FV på en uafhængig 200-sekvens
+population. Den høje algebraiske conditioning af basisen forbliver en dokumenteret
+begrænsning; i de gennemførte D2/D3-studier gav den ingen observerede failures eller
+fallbacks. Dette validerer ikke ukendte parametre, historiske data eller generelle
+responsfunktioner; de hører til senere F4-trin.
+
 \subsection{Hvorfor D1 kommer før det rekursive filter}
 Referencearbejdet skelner mellem projection error fra det endelige mixture-rum
 og temporal/dynamisk discretization error \cite{nielsen}. Det samme princip
