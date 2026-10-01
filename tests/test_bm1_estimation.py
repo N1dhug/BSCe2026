@@ -1202,6 +1202,97 @@ class F4DRepresentationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mixture_f4.run_f4_d_recursive_refinement(time_steps=(1/384, 1/384))
 
+    def test_d3c_first_order_summary_checks_new_fine_level(self):
+        rows = [
+            {'requested_max_step': 1/8, 'actual_max_step': 1/8, 'metric': .04},
+            {'requested_max_step': 1/16, 'actual_max_step': 1/16, 'metric': .02},
+            {'requested_max_step': 1/32, 'actual_max_step': 1/32, 'metric': .01},
+        ]
+        summary = mixture_f4._d3c_first_order_summary(rows, 'metric')
+        self.assertAlmostEqual(summary['extrapolated_limit'], 0.0, places=14)
+        self.assertAlmostEqual(summary['predicted_fine'], .01, places=14)
+        self.assertAlmostEqual(summary['relative_prediction_error'], 0.0, places=14)
+        self.assertTrue(summary['passes'])
+
+    def test_d3c_spatial_summary_requires_successive_stability_and_bound_step(self):
+        stable = [
+            {'requested_max_step': 1/32, 'actual_max_step': 1/32, 'metric': .0100},
+            {'requested_max_step': 1/32, 'actual_max_step': 1/32, 'metric': .0105},
+            {'requested_max_step': 1/32, 'actual_max_step': 1/32, 'metric': .0107},
+        ]
+        summary = mixture_f4._d3c_spatial_summary(stable, 'metric')
+        self.assertTrue(summary['passes'])
+        unstable = [dict(row) for row in stable]
+        unstable[-1]['metric'] = .02
+        self.assertFalse(mixture_f4._d3c_spatial_summary(unstable, 'metric')['passes'])
+        unbound = [dict(row) for row in stable]
+        unbound[-1]['actual_max_step'] = 1/64
+        self.assertFalse(mixture_f4._d3c_spatial_summary(unbound, 'metric')['passes'])
+
+    def test_d3c_convergence_wrapper_caches_shared_configuration(self):
+        def fake_result(*, sequence_id, x_steps, max_step, cfl, likelihood_quadrature_order):
+            hscale = max_step / (1/768)
+            spatial = 1.0 + 0.0005 * (x_steps - 101)
+            post = 0.01 * hscale * spatial
+            evidence = 0.002 * hscale * spatial
+            metric = {
+                'maximum_cell_mass_l1': post,
+                'maximum_cdf_sup': post / 4,
+                'maximum_wasserstein_1': post / 10,
+                'maximum_density_l2': post * 2,
+                'maximum_abs_mean_error': 1e-4,
+                'maximum_abs_variance_error': 1e-5,
+            }
+            static = {
+                'maximum_cell_mass_l1': 1e-6,
+                'maximum_wasserstein_1': 1e-7,
+            }
+            return {
+                'x_steps': x_steps, 'max_step': max_step,
+                'total_fv_gap': {'prediction': dict(metric), 'posterior': dict(metric)},
+                'dynamic_gap': {'prediction': dict(metric), 'posterior': dict(metric)},
+                'static_best_fit': {'prediction': dict(static), 'posterior': dict(static)},
+                'log_evidence_error': {
+                    'mean_absolute_per_observation': evidence,
+                    'maximum_absolute_per_observation': evidence * 2,
+                    'absolute_total_log_likelihood_difference': evidence * 24,
+                },
+                'state_rmse': {
+                    'fv_predictive': .03, 'fv_posterior': .02,
+                    'mixture_predictive': .031, 'mixture_posterior': .021,
+                },
+                'numerical': {
+                    'maximum_internal_step': max_step,
+                    'minimum_internal_step': max_step / 2,
+                    'total_internal_steps': 10,
+                    'prediction_projection_fallback_count': 0,
+                    'posterior_projection_fallback_count': 0,
+                    'maximum_abs_raw_prediction_mass_error': 1e-15,
+                    'maximum_abs_projected_prediction_mass_error': 1e-15,
+                    'maximum_posterior_projection_mass_error': 1e-15,
+                    'maximum_bayes_to_projected_posterior_l1': 1e-6,
+                    'projection_matrix_condition_number': 10.0,
+                    'hessian_condition_number': 100.0,
+                },
+            }
+
+        with patch.object(
+            mixture_f4, 'run_f4_d_recursive_sanity', side_effect=fake_result,
+        ) as mocked:
+            result = mixture_f4.run_f4_d_recursive_convergence(
+                sequence_id=0,
+                time_steps=(1/768, 1/1536, 1/3072),
+                spatial_cells=(101, 151, 201),
+                spatial_max_step=1/3072,
+            )
+        self.assertEqual(result['stage'], 'D3c')
+        self.assertEqual(mocked.call_count, 5)
+        self.assertEqual(len(result['unique_configurations']), 5)
+        self.assertTrue(result['summary']['time']['passes'])
+        self.assertTrue(result['summary']['spatial']['passes'])
+        self.assertTrue(result['summary']['passes_convergence'])
+        self.assertEqual(result['summary']['population_setting']['x_steps'], 151)
+
     def test_d1_selection_never_selects_legacy_comparison(self):
         result = mixture_f4.run_f4_d_representation_study(x_steps=61)
         self.assertNotIn(result['selected_dictionary'], ('legacy_degree_30', 'legacy_degree_38'))
