@@ -7,6 +7,8 @@ mixture defaults.
 
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor
+
 import numpy as np
 
 from src.diagnostics.bm_1 import (
@@ -27,6 +29,7 @@ from src.validation.bm_1.estimation import (
     beta_initial_mass,
     build_f4_b_case,
     generate_synthetic_sequence,
+    _paired_bootstrap_interval,
 )
 
 
@@ -60,6 +63,17 @@ D3C_PREDICTION_REL_TOL = 0.20
 D3C_SPATIAL_REL_TOL = 0.10
 D3C_POPULATION_X_STEPS = 151
 D3C_POPULATION_MAX_STEP = 1.0 / 3072.0
+D3D_SEQUENCE_START = 1011
+D3D_SEQUENCE_COUNT = 200
+D3D_BOOTSTRAP_REPLICATES = 5000
+D3D_BOOTSTRAP_SEED = 4301
+D3D_RMSE_EQUIVALENCE_LOW = 0.95
+D3D_RMSE_EQUIVALENCE_HIGH = 1.05
+D3D_EVIDENCE_MEAN_ABS_UPPER = 0.002
+D3D_DAILY_LOG_LIKELIHOOD_Q95 = 0.1
+D3D_SEQUENCE_MAX_L1_Q95 = 0.02
+D3D_GLOBAL_MAX_L1 = 0.05
+D3D_GLOBAL_MAX_W1 = 0.01
 
 _INNER_MEANS = np.arange(1, 20, dtype=float) / 20.0
 _BOUNDARY_MEANS = np.array([0.01, 0.025, 0.975, 0.99], dtype=float)
@@ -1261,4 +1275,375 @@ def run_f4_d_recursive_convergence(
             "fine_prediction_relative_error": D3C_PREDICTION_REL_TOL,
             "spatial_successive_relative_change": D3C_SPATIAL_REL_TOL,
         },
+    }
+
+
+
+_D3D_WORKER_STATE = None
+
+
+def _init_d3d_worker(x_steps, max_step, cfl, likelihood_quadrature_order):
+    """Prepare immutable/common D3d geometry once per process."""
+    global _D3D_WORKER_STATE
+    case = build_f4_b_case()
+    model, parameters = case.build_model()
+    edges, centers, dx = model.fokker_planc_reference.grid(
+        x_steps, bounds=(0.0, 1.0),
+    )
+    dictionary = build_d1c_dictionaries(edges)[D2_DICTIONARY]
+    projector = PreparedBetaProjector(dictionary["basis"], dx)
+    initial_mass = beta_initial_mass(case, model, x_steps)
+    _D3D_WORKER_STATE = {
+        "case": case,
+        "model": model,
+        "parameters": parameters,
+        "edges": edges,
+        "centers": centers,
+        "dx": dx,
+        "projector": projector,
+        "initial_mass": initial_mass,
+        "x_steps": int(x_steps),
+        "max_step": float(max_step),
+        "cfl": float(cfl),
+        "likelihood_quadrature_order": int(likelihood_quadrature_order),
+    }
+
+
+def _run_d3d_sequence(sequence_id):
+    """Run one paired mixture/FV population sequence using prepared worker state."""
+    state = _D3D_WORKER_STATE
+    if state is None:
+        raise RuntimeError("D3d worker state was not initialized.")
+    sequence_id = checks.positive_integer(sequence_id, "sequence_id", minimum=0)
+    case = state["case"]
+    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+    if not sequence.truth.valid:
+        return {
+            "sequence_id": sequence_id,
+            "valid_truth": False,
+            "status": "invalid_truth",
+        }
+
+    try:
+        mixture = run_mixture_filter(
+            state["model"],
+            state["parameters"],
+            case.sigma_x,
+            case.sigma_y,
+            state["initial_mass"],
+            case.horizon[0],
+            sequence.observations,
+            projector=state["projector"],
+            breakpoints=case.breakpoints,
+            max_step=state["max_step"],
+            cfl=state["cfl"],
+            likelihood_quadrature_order=state["likelihood_quadrature_order"],
+        )
+        fv = run_fv_filter(
+            state["model"],
+            state["parameters"],
+            case.sigma_x,
+            case.sigma_y,
+            state["initial_mass"],
+            case.horizon[0],
+            sequence.observations,
+            breakpoints=case.breakpoints,
+            max_step=state["max_step"],
+            likelihood_quadrature_order=state["likelihood_quadrature_order"],
+        )
+    except (FloatingPointError, RuntimeError, ValueError, np.linalg.LinAlgError) as exc:
+        return {
+            "sequence_id": sequence_id,
+            "valid_truth": True,
+            "status": "failed",
+            "failure_type": type(exc).__name__,
+            "failure_message": str(exc),
+        }
+
+    truth = sequence.truth.state[1:]
+    prediction_errors = _error_history(
+        mixture.predicted_mass, fv.predicted_mass, state["centers"], state["dx"],
+    )
+    posterior_errors = _error_history(
+        mixture.posterior_mass, fv.posterior_mass, state["centers"], state["dx"],
+    )
+    evidence = mixture.log_evidence - fv.log_evidence
+    pred_diag = mixture.prediction_diagnostics
+    post_diag = mixture.posterior_projection_diagnostics
+    return {
+        "sequence_id": sequence_id,
+        "valid_truth": True,
+        "status": "ok",
+        "mse_fv_predictive": float(np.mean(np.square(fv.predicted_mean - truth))),
+        "mse_fv_posterior": float(np.mean(np.square(fv.posterior_mean - truth))),
+        "mse_mixture_predictive": float(np.mean(np.square(mixture.predicted_mean - truth))),
+        "mse_mixture_posterior": float(np.mean(np.square(mixture.posterior_mean - truth))),
+        "evidence_mean_abs": float(np.mean(np.abs(evidence))),
+        "evidence_mean_signed": float(np.mean(evidence)),
+        "evidence_max_abs": float(np.max(np.abs(evidence))),
+        "evidence_abs_daily_total": abs(
+            mixture.total_log_likelihood - fv.total_log_likelihood
+        ),
+        "prediction_max_l1": max(item["cell_mass_l1"] for item in prediction_errors),
+        "posterior_max_l1": max(item["cell_mass_l1"] for item in posterior_errors),
+        "prediction_max_w1": max(item["wasserstein_1"] for item in prediction_errors),
+        "posterior_max_w1": max(item["wasserstein_1"] for item in posterior_errors),
+        "prediction_fallbacks": int(
+            sum(item["projection_fallback_count"] for item in pred_diag)
+        ),
+        "posterior_fallbacks": int(
+            sum(int(item["used_fallback"]) for item in post_diag)
+        ),
+        "internal_steps": int(sum(item["n_steps"] for item in pred_diag)),
+        "max_raw_mass_error": float(
+            max(item["maximum_abs_raw_prediction_mass_error"] for item in pred_diag)
+        ),
+        "max_projected_mass_error": float(
+            max(item["maximum_abs_projected_mass_error"] for item in pred_diag)
+        ),
+        "max_posterior_projection_mass_error": float(
+            max(item["mass_error"] for item in post_diag)
+        ),
+    }
+
+
+def _bootstrap_mean_interval(values, *, replicates, seed):
+    values = checks.finite_vector(values, "bootstrap values")
+    zeros = np.zeros_like(values)
+    return _paired_bootstrap_interval(
+        values,
+        zeros,
+        lambda left, right: np.mean(left - right, axis=1),
+        replicates=replicates,
+        seed=seed,
+    )
+
+
+def _d3d_rmse_summary(mixture_mse, fv_mse, *, replicates, seed):
+    mixture_mse = checks.finite_vector(mixture_mse, "mixture_mse")
+    fv_mse = checks.finite_vector(fv_mse, "fv_mse")
+    if mixture_mse.shape != fv_mse.shape:
+        raise ValueError("Paired D3d MSE vectors must match.")
+    mixture_rmse = float(np.sqrt(np.mean(mixture_mse)))
+    fv_rmse = float(np.sqrt(np.mean(fv_mse)))
+    ratio = mixture_rmse / fv_rmse
+    ratio_ci = _paired_bootstrap_interval(
+        mixture_mse,
+        fv_mse,
+        lambda left, right: (
+            np.sqrt(np.mean(left, axis=1)) / np.sqrt(np.mean(right, axis=1))
+        ),
+        replicates=replicates,
+        seed=seed,
+    )
+    difference_ci = _paired_bootstrap_interval(
+        mixture_mse,
+        fv_mse,
+        lambda left, right: (
+            np.sqrt(np.mean(left, axis=1)) - np.sqrt(np.mean(right, axis=1))
+        ),
+        replicates=replicates,
+        seed=seed + 1,
+    )
+    return {
+        "fv": fv_rmse,
+        "mixture": mixture_rmse,
+        "ratio": ratio,
+        "ratio_bootstrap95": ratio_ci,
+        "difference": mixture_rmse - fv_rmse,
+        "difference_bootstrap95": difference_ci,
+        "passes_equivalence": bool(
+            ratio_ci[0] >= D3D_RMSE_EQUIVALENCE_LOW
+            and ratio_ci[1] <= D3D_RMSE_EQUIVALENCE_HIGH
+        ),
+    }
+
+
+def _d3d_gap_summary(values, *, l1):
+    values = checks.finite_vector(values, "gap values")
+    result = {
+        "mean": float(np.mean(values)),
+        "q95": float(np.quantile(values, 0.95)),
+        "maximum": float(np.max(values)),
+    }
+    if l1:
+        result["passes"] = bool(
+            result["q95"] <= D3D_SEQUENCE_MAX_L1_Q95
+            and result["maximum"] <= D3D_GLOBAL_MAX_L1
+        )
+    else:
+        result["passes"] = bool(result["maximum"] <= D3D_GLOBAL_MAX_W1)
+    return result
+
+
+def run_f4_d_recursive_population(
+    n_sequences=D3D_SEQUENCE_COUNT,
+    *,
+    sequence_start=D3D_SEQUENCE_START,
+    x_steps=D3C_POPULATION_X_STEPS,
+    max_step=D3C_POPULATION_MAX_STEP,
+    cfl=D3A_CFL,
+    likelihood_quadrature_order=D3A_QUADRATURE_ORDER,
+    bootstrap_replicates=D3D_BOOTSTRAP_REPLICATES,
+    bootstrap_seed=D3D_BOOTSTRAP_SEED,
+    workers=1,
+):
+    """Run the final preregistered D3d paired mixture/FV population study."""
+    n_sequences = checks.positive_integer(n_sequences, "n_sequences", minimum=2)
+    sequence_start = checks.positive_integer(
+        sequence_start, "sequence_start", minimum=0,
+    )
+    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
+    max_step = checks.finite_scalar(max_step, "max_step", positive=True)
+    cfl = checks.finite_scalar(cfl, "cfl", positive=True)
+    order = checks.positive_integer(
+        likelihood_quadrature_order, "likelihood_quadrature_order", minimum=1,
+    )
+    bootstrap_replicates = checks.positive_integer(
+        bootstrap_replicates, "bootstrap_replicates", minimum=100,
+    )
+    bootstrap_seed = checks.positive_integer(
+        bootstrap_seed, "bootstrap_seed", minimum=0,
+    )
+    workers = checks.positive_integer(workers, "workers", minimum=1)
+
+    sequence_ids = tuple(range(sequence_start, sequence_start + n_sequences))
+    initargs = (x_steps, max_step, cfl, order)
+    if workers == 1:
+        _init_d3d_worker(*initargs)
+        rows = [_run_d3d_sequence(sequence_id) for sequence_id in sequence_ids]
+    else:
+        with ProcessPoolExecutor(
+            max_workers=workers,
+            initializer=_init_d3d_worker,
+            initargs=initargs,
+        ) as executor:
+            rows = list(executor.map(_run_d3d_sequence, sequence_ids, chunksize=1))
+
+    invalid = tuple(
+        row["sequence_id"] for row in rows if row["status"] == "invalid_truth"
+    )
+    failed = tuple(
+        {
+            "sequence_id": row["sequence_id"],
+            "failure_type": row.get("failure_type"),
+            "failure_message": row.get("failure_message"),
+        }
+        for row in rows if row["status"] == "failed"
+    )
+    ok = [row for row in rows if row["status"] == "ok"]
+    if not ok:
+        return {
+            "stage": "D3d",
+            "sequence_ids": sequence_ids,
+            "workers": workers,
+            "invalid_truth_sequences": invalid,
+            "failed_sequences": failed,
+            "passes_population": False,
+        }
+
+    vector = lambda key: np.asarray([row[key] for row in ok], dtype=float)
+    predictive_rmse = _d3d_rmse_summary(
+        vector("mse_mixture_predictive"),
+        vector("mse_fv_predictive"),
+        replicates=bootstrap_replicates,
+        seed=bootstrap_seed,
+    )
+    posterior_rmse = _d3d_rmse_summary(
+        vector("mse_mixture_posterior"),
+        vector("mse_fv_posterior"),
+        replicates=bootstrap_replicates,
+        seed=bootstrap_seed + 10,
+    )
+
+    evidence_abs = vector("evidence_mean_abs")
+    evidence_abs_ci = _bootstrap_mean_interval(
+        evidence_abs,
+        replicates=bootstrap_replicates,
+        seed=bootstrap_seed + 20,
+    )
+    evidence_signed = vector("evidence_mean_signed")
+    evidence_signed_ci = _bootstrap_mean_interval(
+        evidence_signed,
+        replicates=bootstrap_replicates,
+        seed=bootstrap_seed + 21,
+    )
+    daily_abs = vector("evidence_abs_daily_total")
+    evidence_summary = {
+        "mean_absolute_per_observation": float(np.mean(evidence_abs)),
+        "mean_absolute_bootstrap95": evidence_abs_ci,
+        "maximum_absolute_per_observation": float(
+            np.max(vector("evidence_max_abs"))
+        ),
+        "mean_signed_per_observation": float(np.mean(evidence_signed)),
+        "mean_signed_bootstrap95": evidence_signed_ci,
+        "daily_absolute_mean": float(np.mean(daily_abs)),
+        "daily_absolute_q95": float(np.quantile(daily_abs, 0.95)),
+        "daily_absolute_maximum": float(np.max(daily_abs)),
+        "passes": bool(
+            evidence_abs_ci[1] <= D3D_EVIDENCE_MEAN_ABS_UPPER
+            and np.quantile(daily_abs, 0.95) <= D3D_DAILY_LOG_LIKELIHOOD_Q95
+        ),
+    }
+
+    gaps = {
+        "prediction_l1": _d3d_gap_summary(vector("prediction_max_l1"), l1=True),
+        "posterior_l1": _d3d_gap_summary(vector("posterior_max_l1"), l1=True),
+        "prediction_w1": _d3d_gap_summary(vector("prediction_max_w1"), l1=False),
+        "posterior_w1": _d3d_gap_summary(vector("posterior_max_w1"), l1=False),
+    }
+    mass_error = max(
+        float(np.max(vector("max_raw_mass_error"))),
+        float(np.max(vector("max_projected_mass_error"))),
+        float(np.max(vector("max_posterior_projection_mass_error"))),
+    )
+    numerical = {
+        "total_internal_steps": int(sum(row["internal_steps"] for row in ok)),
+        "prediction_fallbacks": int(sum(row["prediction_fallbacks"] for row in ok)),
+        "posterior_fallbacks": int(sum(row["posterior_fallbacks"] for row in ok)),
+        "maximum_mass_error": mass_error,
+        "passes": bool(mass_error <= 1.0e-10),
+    }
+    passes = bool(
+        not invalid
+        and not failed
+        and len(ok) == n_sequences
+        and predictive_rmse["passes_equivalence"]
+        and posterior_rmse["passes_equivalence"]
+        and evidence_summary["passes"]
+        and all(item["passes"] for item in gaps.values())
+        and numerical["passes"]
+    )
+    return {
+        "stage": "D3d",
+        "sequence_ids": sequence_ids,
+        "workers": workers,
+        "x_steps": x_steps,
+        "max_step": max_step,
+        "cfl": cfl,
+        "likelihood_quadrature_order": order,
+        "bootstrap_replicates": bootstrap_replicates,
+        "bootstrap_seed": bootstrap_seed,
+        "successful_sequences": len(ok),
+        "invalid_truth_sequences": invalid,
+        "failed_sequences": failed,
+        "rmse": {
+            "predictive": predictive_rmse,
+            "posterior": posterior_rmse,
+        },
+        "log_evidence_difference": evidence_summary,
+        "distribution_gap": gaps,
+        "numerical": numerical,
+        "criteria": {
+            "rmse_equivalence": (
+                D3D_RMSE_EQUIVALENCE_LOW, D3D_RMSE_EQUIVALENCE_HIGH,
+            ),
+            "evidence_mean_abs_upper": D3D_EVIDENCE_MEAN_ABS_UPPER,
+            "daily_log_likelihood_q95_upper": D3D_DAILY_LOG_LIKELIHOOD_Q95,
+            "sequence_max_l1_q95_upper": D3D_SEQUENCE_MAX_L1_Q95,
+            "global_max_l1_upper": D3D_GLOBAL_MAX_L1,
+            "global_max_w1_upper": D3D_GLOBAL_MAX_W1,
+            "mass_error_upper": 1.0e-10,
+        },
+        "passes_population": passes,
     }
