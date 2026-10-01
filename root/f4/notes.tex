@@ -759,7 +759,7 @@ De tre oprindelige 401-mod-801-støjkontroller fejler fortsat og beholdes.
 All-node-odds-fejlen i de valgte støjkontroller er op til 0.224096;
 det beståede vindue giver derfor ikke global hale-konvergens.
 F1 fastlægger numerik, ikke recovery. Rho's endelige effektive hypotesetal
-var 35.53--40.98 af 41. Næste registrerede studie er F2.
+var 35.53--40.98 af 41. Det efterfølgende F2-resultat er gennemgået nedenfor.
 
 F1 bruger nye ID1263--1265 og de oprindelige 41 noder for hver parameter.
 Rum, tid og observationsquadrature ændres hver for sig. F2 bruger ti
@@ -783,6 +783,46 @@ Det er særskilte forsøg ved siden af den oprindelige uniformt diskrete
 prior. En positiv men forkert koncentreret diskret prior undersøges også.
 Kun ændret \emph{parameterprior} tillader genbrug af samme conditional
 scores/states: deres rekursion afhænger ikke af bankvægtene.
+
+\paragraph{Registreret F2-resultat og fortolkning.}
+Windows-kørslen på \texttt{4437436}, ren working tree, brugte 8 workers og
+BLAS=1. Alle 180 banks fuldførtes; rapportens elapsed var 3202.29 s før
+komprimeret skrivning. Eksakt genbrug reducerede 10980 replays til 6270.
+Alle 720 prior-varianter og 72 resuméer blev genberegnet fra rå scores;
+største statistikafvigelse var \(1.21\cdot10^{-12}\). De 60 seed-records
+og F1-digest blev kontrolleret. Max mass error var
+\(1.8194\cdot10^{-12}\), minimum cellemasse 0 og ingen fallbacks.
+Sandsynlighedsgaten bestod; den er ikke en recovery- eller konvergensgate.
+
+For rho-truth 1 gav primærprioren daglig middel-RMSE 0.0730, men median
+posterior-SD var 0.2886 og effektivt hypotesetal 40.59 af 41.
+Den forkerte koncentrerede prior gav bias \(-0.3326\); ti uafhængige
+daglige likelihoods gav pooled middel 0.7293 mod 1.0889 med primærprioren.
+Lille RMSE nær priorens centrum kan derfor ikke fortolkes som stærk læring.
+For støj-truth 0.5 var daglig RMSE 0.1572, median SD 0.1852 og effektivt
+hypotesetal 20.28. Pooled middel var 0.5042, men 0.4197 med forkert prior.
+
+Med samme kontinuerte uniform-parameterprior gav 41 mod 81 noder på
+in-support-records højst 0.000193 i rho-middel og 0.000466 i støjmiddel
+ved alle prefixer. Primærpriorens tilsvarende ændringer var 0.004406 og
+0.010337; dens diskrete mål ændres også, når antallet af noder ændres.
+
+Finere grid på samme støtte kan ikke rumme en outside-truth.
+Ved \(\sigma_X=2.5\) lå alle ti oprindelige MAPs på den øvre grænse;
+pooled middel var 1.9973, mod 2.3788 på udvidet støtte. Daglig RMSE
+faldt fra 0.6668 til 0.3888. For rho-truth 1.7 var de tilsvarende pooled
+midler 1.3972 og 1.8115, og daglig RMSE 0.6081 og 0.3861.
+Rho's randvægt kan forblive lille under forkert støtte; endpoint-MAPs ses
+også med truth inde i støtten. Ingen af målene er en selvstændig støttetest.
+De udvidede posteriorområder ramte begge outside-truths på 10 af 10 dage;
+Wilson-intervallet er \([0.7225,1]\), ikke et kalibreret 95\%-løfte.
+Udvidelsen ændrer også prioren; den gør ikke alle in-support-resultater bedre.
+Ti pooled dage har separate Beta(20,20)-initialiseringer, ikke én lang state.
+
+Vi beholder den oprindelige rho-prior og støtte i F3 og sammenligner
+mixture med FV. F2's outside-støjresultater kræver egen numerisk refinement
+før stærke konvergenspåstande. Ingen posthoc indsnævring eller MAP-substitution
+erstatter den brede parameterposterior. Artifact-digest står i F4-statusfilen.
 
 F3-piloten bruger rho ID1326--1327, frossen \texttt{shape\_D}, 151 celler,
 CFL 0.4, \(q=3\), og \(h=1/768,1/1536,1/3072\). Den fineste mixture-bank
