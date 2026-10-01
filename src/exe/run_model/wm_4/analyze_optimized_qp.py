@@ -7,7 +7,6 @@ import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[4]
-CURRENT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days"
 OPTIMIZED = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized"
 OUTPUT = OPTIMIZED / "analysis"
 PARAMETERS = ("r_0", "r_F", "r_U", "r_R")
@@ -17,71 +16,87 @@ METRICS = ("mse", "rmse", "mae", "bias")
 def load_results(root):
     root = Path(root)
     daily_path, hourly_path = root / "daily_metrics.csv", root / "hourly_predictions.csv"
-    if not daily_path.exists(): raise FileNotFoundError(f"Missing {daily_path}. Run the corresponding predictor first.")
-    if not hourly_path.exists(): raise FileNotFoundError(f"Missing {hourly_path}. Run the corresponding predictor first.")
+    if not daily_path.exists(): raise FileNotFoundError(f"Missing {daily_path}. Run the optimized predictor first.")
+    if not hourly_path.exists(): raise FileNotFoundError(f"Missing {hourly_path}. Run the optimized predictor first.")
     daily = pd.read_csv(daily_path, parse_dates=["day"])
     hourly = pd.read_csv(hourly_path, parse_dates=["time"]).set_index("time")
     return daily, hourly
 
 
-def paired_days(current, optimized):
-    merged = current.merge(optimized, on="day", suffixes=("_current", "_optimized"), how="inner")
-    if merged.empty: raise RuntimeError("Current and optimized predictions have no overlapping days.")
-    merged["weekday"] = merged["day"].dt.day_name()
+def analyze_daily(frame, atol=1e-12):
+    result = frame.copy()
     for metric in METRICS:
-        left, right = f"wm4_{metric}_current", f"wm4_{metric}_optimized"
         if metric == "bias":
-            merged[f"{metric}_gain"] = np.abs(merged[left]) - np.abs(merged[right])
+            gain = np.abs(result["O_bias"]) - np.abs(result["wm4_bias"])
         else:
-            merged[f"{metric}_gain"] = merged[left] - merged[right]
-    merged["mse_improvement_pct"] = np.where(
-        merged["wm4_mse_current"] > 0.0,
-        100.0 * merged["mse_gain"] / merged["wm4_mse_current"],
+            gain = result[f"O_{metric}"] - result[f"wm4_{metric}"]
+        result[f"{metric}_gain"] = gain
+        result[f"wm4_better_{metric}"] = gain > atol
+        result[f"wm4_equal_{metric}"] = np.abs(gain) <= atol
+
+    result["mse_improvement_pct"] = np.where(
+        result["O_mse"] > atol,
+        100.0 * result["mse_gain"] / result["O_mse"],
         np.nan,
     )
-    merged["optimized_better"] = merged["mse_gain"] > 0.0
-    for parameter in PARAMETERS:
-        merged[f"{parameter}_delta"] = merged[f"{parameter}_optimized"] - merged[f"{parameter}_current"]
-    return merged
+    result["performance"] = np.select(
+        [result["wm4_better_mse"], result["wm4_equal_mse"]],
+        ["better", "equal"],
+        default="worse",
+    )
+    return result
 
 
-def global_summary(paired, current_hourly, optimized_hourly):
-    current_hourly = current_hourly.loc[current_hourly.index.intersection(optimized_hourly.index)]
-    optimized_hourly = optimized_hourly.loc[current_hourly.index]
-    current_residual = current_hourly["I_wm4"].to_numpy(dtype=float) - current_hourly["I_observed"].to_numpy(dtype=float)
-    optimized_residual = optimized_hourly["I_wm4"].to_numpy(dtype=float) - optimized_hourly["I_observed"].to_numpy(dtype=float)
+def global_summary(daily, hourly):
+    observed = hourly["I_observed"].to_numpy(dtype=float)
+    wm4 = hourly["I_wm4"].to_numpy(dtype=float)
+    baseline = hourly["O"].to_numpy(dtype=float)
+    wm4_residual = wm4 - observed
+    baseline_residual = baseline - observed
+    wm4_mse = float(np.mean(wm4_residual ** 2))
+    baseline_mse = float(np.mean(baseline_residual ** 2))
+    better = int(daily["wm4_better_mse"].sum())
+    equal = int(daily["wm4_equal_mse"].sum())
+    worse = len(daily) - better - equal
+
     return pd.DataFrame([{
-        "days": len(paired),
-        "optimized_better_days": int(paired["optimized_better"].sum()),
-        "optimized_better_pct": 100.0 * float(paired["optimized_better"].mean()),
-        "mean_current_mse": paired["wm4_mse_current"].mean(),
-        "mean_optimized_mse": paired["wm4_mse_optimized"].mean(),
-        "mean_daily_mse_gain": paired["mse_gain"].mean(),
-        "median_daily_mse_gain": paired["mse_gain"].median(),
-        "mean_daily_mse_improvement_pct": paired["mse_improvement_pct"].mean(),
-        "global_current_mse": float(np.mean(current_residual ** 2)),
-        "global_optimized_mse": float(np.mean(optimized_residual ** 2)),
-        "global_current_mae": float(np.mean(np.abs(current_residual))),
-        "global_optimized_mae": float(np.mean(np.abs(optimized_residual))),
-        "global_current_bias": float(np.mean(current_residual)),
-        "global_optimized_bias": float(np.mean(optimized_residual)),
+        "days": len(daily),
+        "wm4_better_mse_days": better,
+        "wm4_equal_mse_days": equal,
+        "wm4_worse_mse_days": worse,
+        "wm4_better_mse_pct": 100.0 * better / len(daily),
+        "mean_daily_wm4_mse": daily["wm4_mse"].mean(),
+        "mean_daily_O_mse": daily["O_mse"].mean(),
+        "mean_daily_mse_gain": daily["mse_gain"].mean(),
+        "median_daily_mse_gain": daily["mse_gain"].median(),
+        "mean_daily_mse_improvement_pct": daily["mse_improvement_pct"].mean(),
+        "global_wm4_mse": wm4_mse,
+        "global_O_mse": baseline_mse,
+        "global_mse_gain": baseline_mse - wm4_mse,
+        "global_mse_improvement_pct": 100.0 * (baseline_mse - wm4_mse) / baseline_mse if baseline_mse > 0.0 else np.nan,
+        "global_wm4_mae": float(np.mean(np.abs(wm4_residual))),
+        "global_O_mae": float(np.mean(np.abs(baseline_residual))),
+        "global_wm4_bias": float(np.mean(wm4_residual)),
+        "global_O_bias": float(np.mean(baseline_residual)),
     }])
 
 
-def weekday_summary(paired):
+def weekday_summary(frame):
     rows = []
-    for weekday, part in paired.groupby("weekday"):
+    for weekday, part in frame.groupby("weekday"):
         rows.append({
             "weekday": weekday,
             "days": len(part),
-            "optimized_better_days": int(part["optimized_better"].sum()),
-            "optimized_better_pct": 100.0 * float(part["optimized_better"].mean()),
-            "mean_current_mse": part["wm4_mse_current"].mean(),
-            "mean_optimized_mse": part["wm4_mse_optimized"].mean(),
+            "wm4_better_mse_days": int(part["wm4_better_mse"].sum()),
+            "wm4_better_mse_pct": 100.0 * float(part["wm4_better_mse"].mean()),
+            "mean_wm4_mse": part["wm4_mse"].mean(),
+            "mean_O_mse": part["O_mse"].mean(),
             "mean_mse_gain": part["mse_gain"].mean(),
             "mean_mse_improvement_pct": part["mse_improvement_pct"].mean(),
-            "mean_F0": part["F_0_optimized"].mean(),
-            "std_F0": part["F_0_optimized"].std(),
+            "mean_F0": part["F_0"].mean(),
+            "std_F0": part["F_0"].std(),
+            "mean_R0": part["R_0"].mean(),
+            "std_R0": part["R_0"].std(),
         })
     order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     result = pd.DataFrame(rows)
@@ -89,17 +104,17 @@ def weekday_summary(paired):
     return result.sort_values("weekday").reset_index(drop=True)
 
 
-def parameter_summary(paired):
+def parameter_summary(frame):
     rows = []
     for parameter in PARAMETERS:
-        current, optimized = paired[f"{parameter}_current"], paired[f"{parameter}_optimized"]
+        values = frame[parameter]
         rows.append({
             "parameter": parameter,
-            "current_mean": current.mean(), "optimized_mean": optimized.mean(),
-            "current_std": current.std(), "optimized_std": optimized.std(),
-            "mean_delta": (optimized - current).mean(),
-            "mean_abs_delta": np.abs(optimized - current).mean(),
-            "correlation": current.corr(optimized),
+            "mean": values.mean(),
+            "std": values.std(),
+            "min": values.min(),
+            "median": values.median(),
+            "max": values.max(),
         })
     return pd.DataFrame(rows)
 
@@ -137,57 +152,72 @@ def continuity_analysis(training_states):
     return frame
 
 
-def save_plots(paired, optimized, output):
+def save_plots(analyzed, output):
     output.mkdir(parents=True, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(9, 7))
-    ax.scatter(paired["wm4_mse_current"], paired["wm4_mse_optimized"], alpha=0.7)
-    limit = max(float(paired["wm4_mse_current"].max()), float(paired["wm4_mse_optimized"].max()))
+    ax.scatter(analyzed["O_mse"], analyzed["wm4_mse"], alpha=0.7)
+    limit = max(float(analyzed["O_mse"].max()), float(analyzed["wm4_mse"].max()))
     ax.plot([0.0, limit], [0.0, limit], linestyle="--")
-    ax.set_xlabel("Current QP daily MSE"); ax.set_ylabel("Optimized-state QP daily MSE")
-    ax.set_title("WM4 parameter-fit comparison"); ax.grid(True, alpha=0.25)
-    fig.tight_layout(); fig.savefig(output / "mse_current_vs_optimized.png", dpi=300, bbox_inches="tight"); plt.close(fig)
+    ax.set_xlabel("Baseline O(t) daily MSE")
+    ax.set_ylabel("Optimized-state WM4 daily MSE")
+    ax.set_title("WM4 versus exogenous-output baseline")
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(output / "mse_baseline_vs_wm4.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(16, 6))
-    ax.plot(paired["day"], paired["mse_improvement_pct"])
+    ax.plot(analyzed["day"], analyzed["mse_improvement_pct"])
     ax.axhline(0.0, linestyle="--")
-    ax.set_xlabel("Prediction day"); ax.set_ylabel("MSE improvement over current fit [%]")
-    ax.set_title("Effect of optimizing historical initial states"); ax.grid(True, alpha=0.25)
-    fig.tight_layout(); fig.savefig(output / "mse_improvement_by_day.png", dpi=300, bbox_inches="tight"); plt.close(fig)
+    ax.set_xlabel("Prediction day")
+    ax.set_ylabel("MSE improvement over O(t) [%]")
+    ax.set_title("Optimized-state WM4 improvement over baseline")
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(output / "mse_improvement_over_baseline.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(16, 6))
-    ax.plot(optimized["day"], optimized["training_F0_mean"], label="Training F0 mean")
+    ax.plot(analyzed["day"], analyzed["training_F0_mean"], label="Training F0 mean")
     ax.fill_between(
-        optimized["day"],
-        optimized["training_F0_mean"] - optimized["training_F0_std"],
-        optimized["training_F0_mean"] + optimized["training_F0_std"],
+        analyzed["day"],
+        analyzed["training_F0_mean"] - analyzed["training_F0_std"],
+        analyzed["training_F0_mean"] + analyzed["training_F0_std"],
         alpha=0.2, label="+/- one training-state std",
     )
-    ax.plot(optimized["day"], optimized["F_0"], label="Prediction F0 median")
-    ax.set_xlabel("Prediction day"); ax.set_ylabel("F0"); ax.set_title("Optimized historical-state variation")
-    ax.legend(); ax.grid(True, alpha=0.25)
-    fig.tight_layout(); fig.savefig(output / "optimized_F0_over_time.png", dpi=300, bbox_inches="tight"); plt.close(fig)
+    ax.plot(analyzed["day"], analyzed["F_0"], label="Prediction F0 median")
+    ax.set_xlabel("Prediction day")
+    ax.set_ylabel("F0")
+    ax.set_title("Optimized historical-state variation")
+    ax.legend()
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(output / "optimized_F0_over_time.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 9), sharex=True)
     for ax, parameter in zip(axes.flat, PARAMETERS):
-        ax.plot(paired["day"], paired[f"{parameter}_current"], label="Current")
-        ax.plot(paired["day"], paired[f"{parameter}_optimized"], label="Optimized-state")
-        ax.set_title(parameter); ax.grid(True, alpha=0.25)
-    axes[0, 0].legend(); fig.suptitle("Rolling five-week WM4 parameter estimates")
-    fig.tight_layout(); fig.savefig(output / "parameter_comparison.png", dpi=300, bbox_inches="tight"); plt.close(fig)
+        ax.plot(analyzed["day"], analyzed[parameter])
+        ax.set_title(parameter)
+        ax.grid(True, alpha=0.25)
+    fig.suptitle("Rolling five-week optimized-state WM4 parameters")
+    fig.tight_layout()
+    fig.savefig(output / "parameter_trajectories.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
 
 
 def print_summary(summary, weekday, parameter, state):
     row = summary.iloc[0]
-    print(f"paired days={int(row['days'])}")
-    print(f"optimized-state parameterization better on {int(row['optimized_better_days'])}/{int(row['days'])} days ({row['optimized_better_pct']:.2f}%)")
-    print(f"mean daily MSE: current={row['mean_current_mse']:.10f}, optimized={row['mean_optimized_mse']:.10f}, gain={row['mean_daily_mse_gain']:.10f}")
-    print(f"global MSE: current={row['global_current_mse']:.10f}, optimized={row['global_optimized_mse']:.10f}")
+    print(f"days={int(row['days'])}")
+    print(f"WM4 better than O(t) on MSE: {int(row['wm4_better_mse_days'])}/{int(row['days'])} ({row['wm4_better_mse_pct']:.2f}%)")
+    print(f"mean daily MSE: WM4={row['mean_daily_wm4_mse']:.10f}, O(t)={row['mean_daily_O_mse']:.10f}, gain={row['mean_daily_mse_gain']:.10f}")
+    print(f"global MSE: WM4={row['global_wm4_mse']:.10f}, O(t)={row['global_O_mse']:.10f}, improvement={row['global_mse_improvement_pct']:.2f}%")
     print()
     print("weekday performance")
     print(weekday.to_string(index=False))
     print()
-    print("parameter comparison")
+    print("optimized parameter summary")
     print(parameter.to_string(index=False))
     print()
     print("state summary")
@@ -195,37 +225,36 @@ def print_summary(summary, weekday, parameter, state):
 
 
 def main():
-    parser = ArgumentParser(description="Complete paired analysis of current and optimized-state wm_4 QP parameter fits.")
-    parser.add_argument("--current", default=str(CURRENT))
+    parser = ArgumentParser(description="Analyze optimized-state wm_4 predictions only against the exogenous O(t) baseline.")
     parser.add_argument("--optimized", default=str(OPTIMIZED))
     parser.add_argument("--output", default=str(OUTPUT))
     args = parser.parse_args()
 
-    current, current_hourly = load_results(args.current)
-    optimized, optimized_hourly = load_results(args.optimized)
+    optimized, hourly = load_results(args.optimized)
+    analyzed = analyze_daily(optimized)
     training_path = Path(args.optimized) / "optimized_training_states.csv"
     training = pd.read_csv(training_path, parse_dates=["prediction_day", "training_day"]) if training_path.exists() else None
 
-    paired = paired_days(current, optimized)
-    summary = global_summary(paired, current_hourly, optimized_hourly)
-    weekdays = weekday_summary(paired)
-    parameters = parameter_summary(paired)
-    states = state_summary(optimized, training)
+    summary = global_summary(analyzed, hourly)
+    weekdays = weekday_summary(analyzed)
+    parameters = parameter_summary(analyzed)
+    states = state_summary(analyzed, training)
     continuity = continuity_analysis(training)
-    output = Path(args.output); output.mkdir(parents=True, exist_ok=True)
+    output = Path(args.output)
+    output.mkdir(parents=True, exist_ok=True)
 
-    paired.to_csv(output / "paired_daily_comparison.csv", index=False)
+    analyzed.to_csv(output / "baseline_comparison_by_day.csv", index=False)
     summary.to_csv(output / "summary.csv", index=False)
     weekdays.to_csv(output / "weekday_comparison.csv", index=False)
-    parameters.to_csv(output / "parameter_comparison.csv", index=False)
+    parameters.to_csv(output / "parameter_summary.csv", index=False)
     states.to_csv(output / "state_summary.csv", index=False)
     if not continuity.empty: continuity.to_csv(output / "optimized_state_continuity.csv", index=False)
 
-    best = paired.sort_values("mse_gain", ascending=False).head(20)
-    worst = paired.sort_values("mse_gain").head(20)
-    best.to_csv(output / "largest_improvements.csv", index=False)
-    worst.to_csv(output / "largest_regressions.csv", index=False)
-    save_plots(paired, optimized, output)
+    best = analyzed.sort_values("mse_gain", ascending=False).head(20)
+    worst = analyzed.sort_values("mse_gain").head(20)
+    best.to_csv(output / "largest_improvements_over_baseline.csv", index=False)
+    worst.to_csv(output / "largest_regressions_vs_baseline.csv", index=False)
+    save_plots(analyzed, output)
     print_summary(summary, weekdays, parameters, states)
 
 
