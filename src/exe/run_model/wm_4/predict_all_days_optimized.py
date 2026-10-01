@@ -5,8 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_3.fit_weekly import aligned_data
-from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, day_start, fit_expected_output, fitted_initial_condition, model_input, model_output
+from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, aligned_wm4_data, day_start, fit_expected_output, fitted_initial_condition, model_input, model_output
 from src.exe.run_model.wm_4.predict_daily import deviation_metrics, prediction_setup, save_plot
 from src.model.wm_4 import wm_4
 from src.params.wm_4 import optimized_qp_params
@@ -15,8 +14,6 @@ from src.params.wm_4 import optimized_qp_params
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized"
 TOP_END_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end"
-ZERO_INTERCEPT_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_r0_zero"
-ZERO_INTERCEPT_TOP_END_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end_r0_zero"
 START_DAY = "2022-02-28"
 END_DAY = "2022-08-22"
 
@@ -49,7 +46,7 @@ def historical_optimized_state(fit):
     states = np.asarray(fit["init_cond"], dtype=float)
     if states.ndim != 2 or states.shape[1] != 2: raise ValueError("Optimized historical fit must contain one [F0,R0] row per training day.")
     init = np.median(states, axis=0)
-    init[0] = np.clip(init[0], 0.0, 1.0)
+    init[0] = np.clip(init[0], -1.0, 1.0)
     return init
 
 
@@ -61,11 +58,11 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
     if optimize_initial_state:
         prediction_data, fine_index, _, _ = model_input(frame, start, steps_per_hour, 0, output_model)
-        oracle = optimized_qp_params(model).optimize_prediction_initial_state(prediction_data, fit["r"], zero_intercept=bool(fit.get("zero_intercept", False)))
+        oracle = optimized_qp_params(model).optimize_prediction_initial_state(prediction_data, fit["r"])
         init, state, init_fit_mse = oracle["init_cond"], oracle["deterministic_state"], oracle["loss"]
     else:
         init = historical_optimized_state(fit)
-        state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"], "enforce_equilibrium": not bool(fit.get("zero_intercept", False))})
+        state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
         init_fit_mse = np.nan
 
     hourly_index = np.arange(DAY_HOURS) * steps_per_hour
@@ -77,9 +74,9 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
     training_states = np.asarray(fit["init_cond"], dtype=float)
 
     daily = {
-        "day": start, "weekday": start.day_name(), "fit_method": fit["fit_method"], "zero_intercept": bool(fit.get("zero_intercept", False)),
+        "day": start, "weekday": start.day_name(), "fit_method": fit["fit_method"],
         "optimized_prediction_state": bool(optimize_initial_state), "prediction_state_fit_mse": init_fit_mse,
-        "r_0": r[0], "r_F": r[1], "r_U": r[2], "r_R": r[3],
+        "r_F": r[0], "r_U": r[1], "r_R": r[2],
         "F_0": init[0], "R_0": init[1],
         "training_F0_mean": float(np.mean(training_states[:, 0])),
         "training_F0_std": float(np.std(training_states[:, 0])),
@@ -166,7 +163,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
                 save_daily_plots=save_daily_plots, output_root=output_root, **fit_kwargs,
             )
             daily_rows.append(daily); hourly_frames.append(hourly); training_frames.append(training)
-            print(f"{day:%Y-%m-%d} | r=[{daily['r_0']:.6f}, {daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}] | initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | state_iters={daily['state_iterations']} | WM4 MSE={daily['wm4_mse']:.8f} | O MSE={daily['O_mse']:.8f}")
+            print(f"{day:%Y-%m-%d} | r=[{daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}] | initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | state_iters={daily['state_iterations']} | WM4 MSE={daily['wm4_mse']:.8f} | O MSE={daily['O_mse']:.8f}")
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
             if fail_fast: raise
             skipped.append((day, str(exc))); print(f"{day:%Y-%m-%d} | skipped | {exc}")
@@ -188,23 +185,19 @@ def main():
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
     parser.add_argument("--optimize-initial-state", action="store_true", help="Oracle diagnostic: fit prediction-day [F0,R0] from that day's observed I for top-end parameterization comparison.")
-    parser.add_argument("--zero-intercept", action="store_true", help="Fit WM4 with r_0 fixed to zero while retaining r_U.")
     parser.add_argument("--save-daily-plots", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
     args = parser.parse_args()
 
-    frame, _ = aligned_data("MED")
-    if args.zero_intercept:
-        output_root = ZERO_INTERCEPT_TOP_END_OUTPUT if args.optimize_initial_state else ZERO_INTERCEPT_OUTPUT
-    else:
-        output_root = TOP_END_OUTPUT if args.optimize_initial_state else OUTPUT
+    frame, _ = aligned_wm4_data("MED")
+    output_root = TOP_END_OUTPUT if args.optimize_initial_state else OUTPUT
     daily, hourly, training, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.steps_per_hour,
         deterministic=args.deterministic, optimize_initial_state=args.optimize_initial_state,
         save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast, output_root=output_root,
-        max_state_iter=args.max_state_iter, state_tol=args.state_tol, zero_intercept=args.zero_intercept,
+        max_state_iter=args.max_state_iter, state_tol=args.state_tol,
     )
     output_root.mkdir(parents=True, exist_ok=True)
     daily.to_csv(output_root / "daily_metrics.csv", index=False)
