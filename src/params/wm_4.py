@@ -226,6 +226,7 @@ class qp_params:
         if fit_initial_state: raise ValueError("wm_4 QP fitting requires fixed initial [F0, R0]; fit_initial_state is no longer supported.")
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         fit_start = perf_counter()
+        if deterministic: fit_diffusion = False
         datasets = [self._prepare_data(data) for data in input_data]
         raw_init = np.asarray(initial_conditions, dtype=float)
         if raw_init.shape == (2,): init_conds = [wm_4_validation.initial_condition(raw_init) for _ in datasets]
@@ -342,8 +343,9 @@ class optimized_qp_params(qp_params):
         r, loss, solve_time = self._optimize_r(datasets, init_conds, seed, stabilize=stabilize, max_iter=max_parameter_iter, ftol=parameter_ftol)
         return r, observed, init_conds, loss, seed_time + solve_time, seed_loss, []
 
-    def fit(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, parameter_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), max_parameter_iter=1000, parameter_ftol=1e-12, **_legacy_kwargs):
+    def fit(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, deterministic=False, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, parameter_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), max_parameter_iter=1000, parameter_ftol=1e-12, **_legacy_kwargs):
         fit_start = perf_counter()
+        if deterministic: fit_diffusion = False
         data = self._prepare_data(input_data)
         seed = wm_4_validation.initial_condition(initial_conditions)
         solve = self._alternating_fit if fit_initial_state else self._fixed_state_fit
@@ -366,11 +368,12 @@ class optimized_qp_params(qp_params):
         result = self._finish_result(result, input_loss, solve_time, fit_start, stabilize)
         result["fit_method"] = "optimized_input_qp"
         result["fit_initial_state"] = bool(fit_initial_state)
+        result["deterministic_fit"] = bool(deterministic)
         result["input_fit_loss"] = float(input_loss)
         if verbose: print(f"[optimized_qp] observations={np.count_nonzero(obs)} input_mse={input_loss:.8g} iterations={len(history)}")
         return result
 
-    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, parameter_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), max_parameter_iter=1000, parameter_ftol=1e-12, **_legacy_kwargs):
+    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, deterministic=False, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, parameter_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), max_parameter_iter=1000, parameter_ftol=1e-12, **_legacy_kwargs):
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         fit_start = perf_counter()
         datasets = [self._prepare_data(data) for data in input_data]
@@ -401,6 +404,7 @@ class optimized_qp_params(qp_params):
         result = self._finish_result(result, input_loss, solve_time, fit_start, stabilize)
         result["fit_method"] = "optimized_input_qp_many"
         result["fit_initial_state"] = bool(fit_initial_state)
+        result["deterministic_fit"] = bool(deterministic)
         result["input_fit_loss"] = float(input_loss)
         if verbose: print(f"[optimized_qp] trajectories={len(datasets)} input_mse={input_loss:.8g} iterations={len(history)}")
         return result
