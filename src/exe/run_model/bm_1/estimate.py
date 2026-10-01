@@ -2,7 +2,7 @@
 
 F4-B exposes the reproducible synthetic generator. F4-C adds the known-parameter
 finite-volume state filter. F4-D validates the recursive mixture representation. F4-E screens fixed-parameter
-predictive likelihoods before any recursive parameter bank is introduced.
+predictive likelihoods. F4-F adds a recursive FV rho bank and prefix identities.
 """
 
 from __future__ import annotations
@@ -726,7 +726,7 @@ def run_mixture_filter_population(args):
 
 
 def _write_likelihood_report(args, result, started):
-    """Write F4-E evidence with common source metadata, never overwrite a run."""
+    """Write estimation evidence with common source metadata, never overwrite a run."""
     if args.output is None:
         return
     try:
@@ -979,6 +979,34 @@ def run_pair_surfaces(args):
     return result
 
 
+def run_bank_identity(args):
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    started = perf_counter()
+    print('F4-F F0 FV rho bank: sequence=1262; hypotheses=41; cells=401; '
+          f'hmax={1/768:.6e}; q=3; workers={args.workers}')
+
+    def progress(row):
+        if not args.quiet:
+            print(f"  {row['phase']}: completed {row['completed']}/{row['total']}; "
+                  f"elapsed={perf_counter() - started:.1f}s", flush=True)
+
+    result = synthetic.run_f4_f_bank_identity(workers=args.workers, progress=progress)
+    for name, error in result['maximum_errors'].items():
+        print(f'  max |delta {name}|={error:.6e}')
+    print(f"  mass err={result['maximum_abs_mass_error']:.3e}; "
+          f"min mass={result['minimum_cell_mass']:.3e}; "
+          f"actual h={result['actual_max_step']:.6e}")
+    print(f"  final rho mean={result['rho_posterior_mean'][-1]:.6g}; "
+          f"MAP rho={result['map_rho'][-1]}; "
+          f"effective hypotheses={result['effective_hypotheses'][-1]:.6g}; "
+          f"endpoint weight={result['endpoint_weight'][-1]:.3%}")
+    print(f"  registered={result['registered_design']}; passes F0={result['passes_f0']}")
+    _write_likelihood_report(args, result, started)
+    if not result['passes_f0']:
+        raise RuntimeError('F0 bank identity/probability gates failed; report retained.')
+
+
 def run_preparation(args):
     """Reproduce independent F4-0 quadrature through the common entry point."""
     if args.output is not None and args.output.exists():
@@ -1110,6 +1138,17 @@ def build_parser():
     pair_surfaces.add_argument('--quiet', action='store_true',
                                help='Suppress per-surface progress, not the final summary.')
     pair_surfaces.set_defaults(handler=run_pair_surfaces)
+
+    bank_identity = subparsers.add_parser(
+        'bank-identity', help='Run registered F4-F F0 FV rho bank identities on new ID1262.',
+    )
+    bank_identity.add_argument('--workers', type=int, default=7,
+                               help='Persistent process workers over independent hypotheses.')
+    bank_identity.add_argument('--output', type=Path,
+                               help='Optional new JSON with prefix identities and final conditional states.')
+    bank_identity.add_argument('--quiet', action='store_true',
+                               help='Suppress progress, not the final summary.')
+    bank_identity.set_defaults(handler=run_bank_identity)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',

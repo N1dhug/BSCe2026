@@ -9,15 +9,19 @@ from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
+from contextlib import nullcontext
+from multiprocessing import get_context
 import operator
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from scipy.special import logsumexp
 
 from src.model.bm_1 import bm_1
 from src.method.beta_mixture import beta_cell_average_basis
 from src.method.bm_1_estimation import (
-    BM1FVFilterResult, bm1_observation_update, run_fv_filter,
+    BM1FVFilterResult, BM1FVRhoBankStep, BM1FVRhoBankResult,
+    bm1_observation_update, fv_filter_step, fv_rho_bank_step, run_fv_filter,
 )
 from src.params.bm_1 import BM1ObservationSeries
 from src.tools.input_generator.input_builder import input_builder
@@ -61,6 +65,8 @@ F4_E_LR_THRESHOLD = 3.841
 F4_E_PAIRS = (('rho', 'Xi'), ('k', 'Xi'), ('sigma_x', 'sigma_y'))
 F4_E_PAIR_SEQUENCE_COUNT = 10
 F4_E_PAIR_GRID_STRIDE = 2
+F4_F_METHOD_SEQUENCE_ID = 1262
+F4_F_IDENTITY_TOL = 1e-10
 
 
 def _readonly_vector(values: ArrayLike, name: str, *, minimum_size: int = 1) -> NDArray[np.float64]:
@@ -2148,6 +2154,185 @@ def run_f4_e_pair_surfaces(
             'aggregate': 'same first ten E2 records only; no additional replication sample',
             'new_recovery_gate': False, 'parameter_selection_for_F4_F': 'deferred to E4',
         },
+    }
+
+
+_F4_F_WORKER_CONTEXT = None
+
+
+def _f4_f_initialize_worker(case, x_steps, max_step, order):
+    """Each spawned process builds its own input callables and common geometry."""
+    global _F4_F_WORKER_CONTEXT
+    model, parameters = case.build_model()
+    _F4_F_WORKER_CONTEXT = (case, model, parameters, x_steps, max_step, order)
+
+
+def _f4_f_conditional_step(context, task):
+    case, model, base, _, max_step, order = context
+    rho, mass, previous, time, value, observed, price_side = task
+    parameters = list(base)
+    parameters[3] = 1.0 / rho
+    return fv_filter_step(
+        model, parameters, case.sigma_x, case.sigma_y, mass, previous, time,
+        value, observed=observed, price_side=price_side,
+        breakpoints=case.breakpoints, max_step=max_step,
+        likelihood_quadrature_order=order,
+    )
+
+
+def _f4_f_step_worker(task):
+    return _f4_f_conditional_step(_F4_F_WORKER_CONTEXT, task)
+
+
+def _f4_f_offline(context, task):
+    """Fresh fixed-candidate replay, never seeded by a bank posterior."""
+    case, model, base, cells, max_step, order = context
+    rho, observations = task
+    parameters = list(base)
+    parameters[3] = 1.0 / rho
+    return run_fv_filter(
+        model, parameters, case.sigma_x, case.sigma_y,
+        beta_initial_mass(case, model, cells), case.horizon[0], observations,
+        breakpoints=case.breakpoints, max_step=max_step,
+        likelihood_quadrature_order=order,
+    )
+
+
+def _f4_f_offline_worker(task):
+    return _f4_f_offline(_F4_F_WORKER_CONTEXT, task)
+
+
+def run_f4_f_bank_identity(*, sequence_id=F4_F_METHOD_SEQUENCE_ID,
+                           rho_values=F4_E_RHO_GRID, x_steps=F4_E_SCREEN_X_STEPS,
+                           max_step=F4_E_SCREEN_MAX_STEP,
+                           likelihood_quadrature_order=F4_E_SCREEN_QUADRATURE_ORDER,
+                           workers=1, progress=None):
+    """F0 online bank vs independent offline replays at every prefix.
+
+    Small API overrides are labelled diagnostics. CLI fixes the registered
+    design. A persistent spawn pool parallelizes hypotheses, never chronology.
+    """
+    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
+    rho = checks.finite_vector(rho_values, 'rho_values')
+    if np.any(rho <= 0.0):
+        raise ValueError('rho_values must be strictly positive.')
+    cells = checks.positive_integer(x_steps, 'x_steps', minimum=3)
+    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
+    order = checks.positive_integer(likelihood_quadrature_order, 'likelihood_quadrature_order')
+    workers = checks.positive_integer(workers, 'workers')
+    case = build_f4_b_case()
+    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+    if not sequence.truth.valid:
+        raise RuntimeError('F0 truth left the physical interval; no sequence is dropped or repaired.')
+    observations = sequence.observations
+    model, parameters = case.build_model()
+    initial = beta_initial_mass(case, model, cells)
+    prior_logs = np.full(rho.size, -np.log(rho.size))
+    logs, mass, time = prior_logs, np.tile(initial, (rho.size, 1)), case.horizon[0]
+    steps = []
+    context = (case, model, parameters, cells, max_step, order)
+    manager = (ProcessPoolExecutor(
+        max_workers=workers, mp_context=get_context('spawn'),
+        initializer=_f4_f_initialize_worker, initargs=(case, cells, max_step, order),
+    ) if workers > 1 else nullcontext(None))
+    with manager as pool:
+        for index, (when, value, observed) in enumerate(zip(
+                observations.times, observations.values, observations.observed)):
+            if pool is None:
+                step = fv_rho_bank_step(
+                    model, parameters, case.sigma_x, case.sigma_y, rho, logs,
+                    mass, time, float(when), float(value), observed=bool(observed),
+                    price_side=observations.price_side, breakpoints=case.breakpoints,
+                    max_step=max_step, likelihood_quadrature_order=order,
+                )
+            else:
+                tasks = [(float(r), m, time, float(when), float(value), bool(observed),
+                          observations.price_side) for r, m in zip(rho, mass)]
+                step = BM1FVRhoBankStep(rho, logs, tuple(pool.map(_f4_f_step_worker, tasks)))
+            steps.append(step)
+            mass, logs, time = step.conditional_posterior_mass, step.log_weights, step.time
+            if progress is not None:
+                progress({'phase': 'online', 'completed': index + 1,
+                          'total': observations.times.size})
+        tasks = [(float(r), observations) for r in rho]
+        offline = (tuple(_f4_f_offline(context, task) for task in tasks) if pool is None
+                   else tuple(pool.map(_f4_f_offline_worker, tasks)))
+        if progress is not None:
+            progress({'phase': 'offline', 'completed': rho.size, 'total': rho.size})
+    bank = BM1FVRhoBankResult(case.horizon[0], initial, rho, prior_logs, tuple(steps))
+    offline_evidence = np.stack([item.log_evidence for item in offline], axis=1)
+    cumulative = np.cumsum(offline_evidence, axis=0)
+    offline_bank_evidence = logsumexp(prior_logs[None, :] + cumulative, axis=1)
+    offline_logs = prior_logs[None, :] + cumulative - offline_bank_evidence[:, None]
+    state_error = np.array([max(
+        float(np.max(np.abs(step.conditional_predicted_mass - np.stack(
+            [item.predicted_mass[k] for item in offline])))),
+        float(np.max(np.abs(step.conditional_posterior_mass - np.stack(
+            [item.posterior_mass[k] for item in offline])))),
+    ) for k, step in enumerate(steps)])
+    weight_error = np.max(np.abs(bank.log_weights - offline_logs), axis=1)
+    conditional_error = np.max(np.abs(bank.conditional_log_evidence - offline_evidence), axis=1)
+    evidence_error = np.abs(np.cumsum(bank.log_evidence) - offline_bank_evidence)
+    all_conditional = [item for step in steps for item in step.conditional_steps]
+    mass_error = max(
+        max(item.diagnostics['maximum_abs_mass_error'] for item in all_conditional),
+        max(item.maximum_abs_mass_error for item in offline),
+        max(abs(float(np.sum(m)) - 1.0)
+            for step in steps for m in (step.predicted_mass, step.posterior_mass)),
+    )
+    minimum_mass = min(min(item.diagnostics['minimum_cell_mass'] for item in all_conditional),
+                       min(item.minimum_cell_mass for item in offline))
+    maxima = dict(log_weights=float(np.max(weight_error)),
+                  conditional_log_evidence=float(np.max(conditional_error)),
+                  cumulative_log_evidence=float(np.max(evidence_error)),
+                  conditional_state_mass=float(np.max(state_error)))
+    passes = all(value <= F4_F_IDENTITY_TOL for value in maxima.values())
+    passes = passes and mass_error <= 1e-10 and minimum_mass >= 0.0
+    weights = np.exp(bank.log_weights)
+    registered = (sequence_id == F4_F_METHOD_SEQUENCE_ID
+                  and np.array_equal(rho, F4_E_RHO_GRID) and cells == F4_E_SCREEN_X_STEPS
+                  and max_step == F4_E_SCREEN_MAX_STEP and order == F4_E_SCREEN_QUADRATURE_ORDER)
+    return {
+        'stage': 'F0', 'registered_design': bool(registered), 'passes_f0': bool(passes),
+        'sequence_id': sequence_id, 'rho_values': rho.tolist(),
+        'initial_log_weights': prior_logs.tolist(), 'initial_mass': initial.tolist(),
+        'settings': dict(x_steps=cells, max_step=max_step, likelihood_quadrature_order=order,
+                         workers=workers, fixed_parameters=dict(k=case.k, Xi=case.Xi,
+                         sigma_x=case.sigma_x, sigma_y=case.sigma_y),
+                         initial_beta=(case.initial_alpha, case.initial_beta),
+                         truth_max_step=case.truth_max_step,
+                         seed_roots=(case.initial_seed_root, case.brownian_seed_root,
+                                     case.measurement_seed_root)),
+        'observation_times': observations.times.tolist(),
+        'observations': observations.values.tolist(),
+        'online_log_weights': bank.log_weights.tolist(),
+        'observation_contract': dict(time_unit=observations.time_unit,
+                                    observation_kind=observations.observation_kind,
+                                    price_side=observations.price_side),
+        'inputs': dict(baseline=case.baseline, price_edges=case.price_edges.tolist(),
+                       price_values=case.price_values.tolist(),
+                       state_response='1-2*x', price_response='1-2*u'),
+        'online_conditional_log_evidence': bank.conditional_log_evidence.tolist(),
+        'online_bank_log_evidence': bank.log_evidence.tolist(),
+        'offline_conditional_log_evidence': offline_evidence.tolist(),
+        'offline_cumulative_bank_log_evidence': offline_bank_evidence.tolist(),
+        'prefix_errors': dict(log_weights=weight_error.tolist(),
+                              conditional_log_evidence=conditional_error.tolist(),
+                              cumulative_log_evidence=evidence_error.tolist(),
+                              conditional_state_mass=state_error.tolist()),
+        'maximum_errors': maxima, 'identity_tolerance': F4_F_IDENTITY_TOL,
+        'maximum_abs_mass_error': float(mass_error), 'minimum_cell_mass': float(minimum_mass),
+        'actual_max_step': max(item.diagnostics['actual_max_step'] for item in all_conditional),
+        'rho_posterior_mean': (weights @ rho).tolist(),
+        'effective_hypotheses': np.exp(-np.sum(weights * bank.log_weights, axis=1)).tolist(),
+        'endpoint_weight': (weights[:, 0] + weights[:, -1]).tolist(),
+        'map_rho': [rho[row == np.max(row)].tolist() for row in bank.log_weights],
+        'conditional_predicted_mean': [[item.predicted_mean for item in step.conditional_steps]
+                                       for step in steps],
+        'conditional_posterior_mean': [[item.posterior_mean for item in step.conditional_steps]
+                                       for step in steps],
+        'final_conditional_posterior_mass': steps[-1].conditional_posterior_mass.tolist(),
+        'x_edges': steps[-1].conditional_steps[0].x_edges.tolist(),
     }
 
 

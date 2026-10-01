@@ -1,4 +1,4 @@
-"""Recursive BM1 state estimation with known parameters.
+"""Recursive BM1 state estimation and a static discrete FV rho bank.
 
 This module composes the existing conservative FV/Fokker--Planck solver with
 the generic F4 observation/Bayes primitives. It contains estimator mechanics,
@@ -7,7 +7,7 @@ not synthetic experiments, plotting, control, or parameter fitting.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 import numpy as np
@@ -651,3 +651,184 @@ def run_fv_filter(model, parameters, sigma_x, sigma_y, initial_mass, initial_tim
         integration_t=np.concatenate(grids),
         prediction_diagnostics=tuple(step.diagnostics for step in steps),
     )
+
+
+@dataclass(frozen=True)
+class BM1FVRhoBankStep:
+    """Combine independent conditional FV steps without replacing their states.
+
+    Supplying already computed steps permits process parallelism outside the
+    numerical kernel. Prediction uses the previous parameter weights; posterior
+    uses the updated weights. Ordinary weights are views of retained log weights.
+    """
+
+    rho_values: ArrayLike
+    prior_log_weights: ArrayLike
+    conditional_steps: tuple
+    log_weights: ArrayLike = field(init=False)
+    log_evidence: float = field(init=False)
+
+    def __post_init__(self):
+        rho = checks.finite_vector(self.rho_values, 'rho_values')
+        if np.any(rho <= 0.0):
+            raise ValueError('rho_values must be strictly positive.')
+        prior = checks.log_probability_mass(self.prior_log_weights, 'prior_log_weights')
+        steps = tuple(self.conditional_steps)
+        if len(steps) != rho.size or prior.size != rho.size:
+            raise ValueError('One weight and conditional step are required per rho hypothesis.')
+        if any(not isinstance(step, BM1FVFilterStep) for step in steps):
+            raise TypeError('conditional_steps must contain BM1FVFilterStep results.')
+        first = steps[0]
+        for step in steps[1:]:
+            if (step.time != first.time or step.observed != first.observed
+                    or not np.array_equal(step.x_edges, first.x_edges)
+                    or not np.array_equal(step.x_grid, first.x_grid)):
+                raise ValueError('Conditional steps must share time, observation mask and FV grid.')
+        if first.observed:
+            update = bayes_update(prior, [step.log_evidence for step in steps])
+            posterior, evidence = update.log_mass, update.log_evidence
+        else:
+            posterior, evidence = prior.copy(), np.nan
+        for array in (rho, prior, posterior):
+            array.setflags(write=False)
+        object.__setattr__(self, 'rho_values', rho)
+        object.__setattr__(self, 'prior_log_weights', prior)
+        object.__setattr__(self, 'conditional_steps', steps)
+        object.__setattr__(self, 'log_weights', posterior)
+        object.__setattr__(self, 'log_evidence', evidence)
+
+    @property
+    def time(self):
+        return self.conditional_steps[0].time
+
+    @property
+    def observed(self):
+        return self.conditional_steps[0].observed
+
+    @property
+    def weights(self):
+        return np.exp(self.log_weights)
+
+    @property
+    def conditional_predicted_mass(self):
+        return np.stack([step.predicted_mass for step in self.conditional_steps])
+
+    @property
+    def conditional_posterior_mass(self):
+        return np.stack([step.posterior_mass for step in self.conditional_steps])
+
+    @property
+    def predicted_mass(self):
+        return np.exp(self.prior_log_weights) @ self.conditional_predicted_mass
+
+    @property
+    def posterior_mass(self):
+        return self.weights @ self.conditional_posterior_mass
+
+
+def fv_rho_bank_step(model, parameters, sigma_x, sigma_y, rho_values,
+                     prior_log_weights, conditional_mass, previous_time,
+                     observation_time, observation_value, *, observed=True,
+                     price_side='right', breakpoints=None, max_step=np.inf,
+                     likelihood_quadrature_order=1):
+    """One online FV update, preserving each hypothesis's conditional state."""
+    rho = checks.finite_vector(rho_values, 'rho_values')
+    if np.any(rho <= 0.0):
+        raise ValueError('rho_values must be strictly positive.')
+    logs = checks.log_probability_mass(prior_log_weights, 'prior_log_weights')
+    masses = checks.probability_rows(conditional_mass, 'conditional_mass')
+    if logs.size != rho.size or masses.shape[0] != rho.size:
+        raise ValueError('One conditional state and log weight are required per rho hypothesis.')
+    base = list(parameters)
+    if len(base) != 6:
+        raise ValueError('BM1 parameters must be [U, f, g, C, k, Xi].')
+    steps = []
+    for value, mass in zip(rho, masses):
+        candidate = base.copy()
+        candidate[3] = 1.0 / value
+        steps.append(fv_filter_step(
+            model, candidate, sigma_x, sigma_y, mass, previous_time,
+            observation_time, observation_value, observed=observed,
+            price_side=price_side, breakpoints=breakpoints, max_step=max_step,
+            likelihood_quadrature_order=likelihood_quadrature_order,
+        ))
+    return BM1FVRhoBankStep(rho, logs, tuple(steps))
+
+
+@dataclass(frozen=True)
+class BM1FVRhoBankResult:
+    """A bank history, including conditional states needed for continuation."""
+
+    initial_time: float
+    initial_mass: ArrayLike
+    rho_values: ArrayLike
+    initial_log_weights: ArrayLike
+    steps: tuple
+
+    def __post_init__(self):
+        time = checks.finite_scalar(self.initial_time, 'initial_time')
+        mass = checks.probability_mass(self.initial_mass, 'initial_mass')
+        rho = checks.finite_vector(self.rho_values, 'rho_values')
+        logs = checks.log_probability_mass(self.initial_log_weights, 'initial_log_weights')
+        steps = tuple(self.steps)
+        if np.any(rho <= 0.0) or logs.size != rho.size or not steps:
+            raise ValueError('A bank requires positive rho values, matching weights and nonempty steps.')
+        current = logs
+        for step in steps:
+            if not isinstance(step, BM1FVRhoBankStep):
+                raise TypeError('steps must contain BM1FVRhoBankStep results.')
+            if (step.time <= time or not np.array_equal(step.rho_values, rho)
+                    or not np.array_equal(step.prior_log_weights, current)
+                    or step.conditional_posterior_mass.shape[1] != mass.size
+                    or not np.array_equal(step.conditional_steps[0].x_edges,
+                                          steps[0].conditional_steps[0].x_edges)):
+                raise ValueError('Bank steps must form an ordered history with carried log weights and fixed grid.')
+            current, time = step.log_weights, step.time
+        for array in (mass, rho, logs):
+            array.setflags(write=False)
+        object.__setattr__(self, 'initial_time', float(self.initial_time))
+        object.__setattr__(self, 'initial_mass', mass)
+        object.__setattr__(self, 'rho_values', rho)
+        object.__setattr__(self, 'initial_log_weights', logs)
+        object.__setattr__(self, 'steps', steps)
+
+    @property
+    def log_weights(self):
+        return np.stack([step.log_weights for step in self.steps])
+
+    @property
+    def log_evidence(self):
+        return np.array([step.log_evidence for step in self.steps])
+
+    @property
+    def conditional_log_evidence(self):
+        return np.array([[item.log_evidence for item in step.conditional_steps]
+                         for step in self.steps])
+
+    @property
+    def total_log_likelihood(self):
+        return float(sum(step.log_evidence for step in self.steps if step.observed))
+
+
+def run_fv_rho_bank(model, parameters, sigma_x, sigma_y, initial_mass, initial_time,
+                    observations, *, rho_values, initial_log_weights,
+                    breakpoints=None, max_step=np.inf, likelihood_quadrature_order=1):
+    """Serial online replay; the public step API also supports continuation."""
+    if not isinstance(observations, BM1ObservationSeries):
+        raise TypeError('observations must be a BM1ObservationSeries.')
+    rho = checks.finite_vector(rho_values, 'rho_values')
+    logs = checks.log_probability_mass(initial_log_weights, 'initial_log_weights')
+    mass = checks.probability_mass(initial_mass, 'initial_mass')
+    current = np.tile(mass, (rho.size, 1))
+    time = checks.finite_scalar(initial_time, 'initial_time')
+    steps = []
+    for when, value, observed in zip(observations.times, observations.values, observations.observed):
+        step = fv_rho_bank_step(
+            model, parameters, sigma_x, sigma_y, rho, logs, current, time,
+            float(when), float(value), observed=bool(observed),
+            price_side=observations.price_side, breakpoints=breakpoints,
+            max_step=max_step, likelihood_quadrature_order=likelihood_quadrature_order,
+        )
+        steps.append(step)
+        current, logs, time = step.conditional_posterior_mass, step.log_weights, step.time
+    return BM1FVRhoBankResult(initial_time, mass, rho, initial_log_weights, tuple(steps))

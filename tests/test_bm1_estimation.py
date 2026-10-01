@@ -18,6 +18,7 @@ from src.params.bm_1 import (
     gaussian_log_likelihood, mass_to_log,
 )
 from src.method.bm_1_estimation import (
+    BM1FVFilterStep, BM1FVRhoBankStep, fv_rho_bank_step, run_fv_rho_bank,
     bm1_observation_update, fv_filter_step, mixture_filter_step,
     run_fv_filter, run_mixture_filter,
 )
@@ -1869,6 +1870,163 @@ class F4EPairSurfaceTests(unittest.TestCase):
             for name, item in self.serial['pair_results'].items():
                 np.testing.assert_array_equal(saved['pair_results'][name]['aggregate_surface']['total_log_likelihood'],
                                               item['aggregate_surface']['total_log_likelihood'])
+
+
+class F4FRhoBankTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.case = synthetic.build_f4_b_case()
+        cls.model, cls.parameters = cls.case.build_model()
+        cls.initial = synthetic.beta_initial_mass(cls.case, cls.model, 31)
+        cls.observations = synthetic.generate_synthetic_sequence(
+            cls.case, sequence_id=0).observations.prefix(4/24)
+        cls.rho = np.array([.6, 1., 1.4])
+        cls.logs = np.log([.2, .5, .3])
+        cls.bank = cls.replay(cls.rho, cls.logs)
+
+    @classmethod
+    def replay(cls, rho, logs, observations=None):
+        return run_fv_rho_bank(
+            cls.model, cls.parameters, cls.case.sigma_x, cls.case.sigma_y,
+            cls.initial, 0., cls.observations if observations is None else observations,
+            rho_values=rho, initial_log_weights=logs, breakpoints=cls.case.breakpoints,
+            max_step=1/96, likelihood_quadrature_order=3,
+        )
+
+    def test_all_prefixes_match_independent_candidates_and_correct_marginal_weights(self):
+        offline = []
+        for rho in self.rho:
+            parameters = list(self.parameters)
+            parameters[3] = 1/rho
+            offline.append(run_fv_filter(
+                self.model, parameters, self.case.sigma_x, self.case.sigma_y,
+                self.initial, 0., self.observations, max_step=1/96,
+                likelihood_quadrature_order=3,
+            ))
+        scores = np.stack([item.log_evidence for item in offline], axis=1)
+        cumulative = np.cumsum(scores, axis=0)
+        evidence = logsumexp(self.logs + cumulative, axis=1)
+        np.testing.assert_allclose(self.bank.log_weights, self.logs + cumulative - evidence[:, None], atol=1e-13)
+        np.testing.assert_allclose(np.cumsum(self.bank.log_evidence), evidence, atol=1e-13)
+        for k, step in enumerate(self.bank.steps):
+            predictions = np.stack([item.predicted_mass[k] for item in offline])
+            posteriors = np.stack([item.posterior_mass[k] for item in offline])
+            np.testing.assert_allclose(step.conditional_predicted_mass, predictions, atol=1e-14)
+            np.testing.assert_allclose(step.conditional_posterior_mass, posteriors, atol=1e-14)
+            np.testing.assert_allclose(step.predicted_mass, np.exp(step.prior_log_weights) @ predictions, atol=1e-14)
+            np.testing.assert_allclose(step.posterior_mass, step.weights @ posteriors, atol=1e-14)
+        self.assertGreater(np.max(np.ptp(self.bank.steps[-1].conditional_posterior_mass, axis=0)), 1e-5)
+
+    def test_permutation_and_repeated_calls_do_not_mix_candidate_states(self):
+        order = [2, 0, 1]
+        permuted = self.replay(self.rho[order], self.logs[order])
+        np.testing.assert_allclose(permuted.log_weights, self.bank.log_weights[:, order], atol=1e-14)
+        for left, right in zip(permuted.steps, self.bank.steps):
+            np.testing.assert_allclose(left.conditional_posterior_mass, right.conditional_posterior_mass[order], atol=1e-14)
+            np.testing.assert_allclose(left.posterior_mass, right.posterior_mass, atol=1e-14)
+        np.testing.assert_array_equal(self.replay(self.rho, self.logs).log_weights, self.bank.log_weights)
+
+    def test_identical_hypotheses_preserve_nonuniform_prior(self):
+        bank = self.replay([1., 1.], np.log([.6, .4]))
+        np.testing.assert_allclose(bank.log_weights, np.tile(np.log([.6, .4]), (4, 1)), atol=1e-14)
+        for step in bank.steps:
+            np.testing.assert_array_equal(step.conditional_posterior_mass[0], step.conditional_posterior_mass[1])
+
+    def test_missing_measurement_only_propagates_and_does_not_update_weights(self):
+        mask = np.array([True, False, True, False])
+        values = self.observations.values.copy()
+        values[~mask] = np.nan
+        observations = BM1ObservationSeries(self.observations.times, values, 'day', mask)
+        bank = self.replay(self.rho, self.logs, observations)
+        for k in [1, 3]:
+            step = bank.steps[k]
+            self.assertTrue(np.isnan(step.log_evidence))
+            np.testing.assert_array_equal(step.log_weights, bank.steps[k-1].log_weights)
+            np.testing.assert_array_equal(step.conditional_predicted_mass, step.conditional_posterior_mass)
+            self.assertGreater(np.max(np.abs(step.conditional_posterior_mass - bank.steps[k-1].conditional_posterior_mass)), 1e-5)
+        scores = np.cumsum(np.where(mask[:, None], bank.conditional_log_evidence, 0.), axis=0)
+        expected = self.logs + scores
+        np.testing.assert_allclose(bank.log_weights, expected - logsumexp(expected, axis=1)[:, None], atol=1e-13)
+        self.assertAlmostEqual(bank.total_log_likelihood, logsumexp(expected[-1]), places=13)
+        missing = self.replay(self.rho, self.logs, synthetic.missing_copy(self.observations))
+        np.testing.assert_array_equal(missing.log_weights, np.tile(self.logs, (4, 1)))
+        self.assertEqual(missing.total_log_likelihood, 0.)
+
+    def test_future_data_cannot_change_earlier_weights_or_states(self):
+        values = self.observations.values.copy()
+        values[-1] += 2.
+        changed = self.replay(self.rho, self.logs, BM1ObservationSeries(self.observations.times, values, 'day'))
+        np.testing.assert_array_equal(changed.log_weights[:-1], self.bank.log_weights[:-1])
+        for left, right in zip(changed.steps[:-1], self.bank.steps[:-1]):
+            np.testing.assert_array_equal(left.conditional_posterior_mass, right.conditional_posterior_mass)
+
+    def test_step_api_continues_from_conditional_states_and_log_weights(self):
+        prior = self.bank.steps[-2]
+        step = fv_rho_bank_step(
+            self.model, self.parameters, self.case.sigma_x, self.case.sigma_y,
+            self.rho, prior.log_weights, prior.conditional_posterior_mass,
+            prior.time, self.observations.times[-1], self.observations.values[-1],
+            breakpoints=self.case.breakpoints, max_step=1/96, likelihood_quadrature_order=3,
+        )
+        np.testing.assert_array_equal(step.log_weights, self.bank.steps[-1].log_weights)
+        np.testing.assert_array_equal(step.conditional_posterior_mass, self.bank.steps[-1].conditional_posterior_mass)
+
+    @staticmethod
+    def given_steps(scores, time):
+        return tuple(BM1FVFilterStep(time, [0., .5, 1.], [.25, .75], [.5, .5],
+                                   [.5, .5], True, score, {}) for score in scores)
+
+    def test_underflowed_ordinary_weight_recovers_but_prior_zero_stays_zero(self):
+        first = BM1FVRhoBankStep([.5, 1.5], np.log([.5, .5]), self.given_steps([-1000., 0.], 1.))
+        self.assertEqual(first.weights[0], 0.)
+        self.assertTrue(np.isfinite(first.log_weights[0]))
+        second = BM1FVRhoBankStep([.5, 1.5], first.log_weights, self.given_steps([1001., 0.], 2.))
+        self.assertAlmostEqual(second.weights[0], 1/(1+np.exp(-1.)), places=13)
+        zero = BM1FVRhoBankStep([.5, 1.5], [-np.inf, 0.], self.given_steps([1001., 0.], 1.))
+        self.assertEqual(zero.weights[0], 0.)
+        self.assertTrue(np.isneginf(zero.log_weights[0]))
+
+    def test_invalid_bank_inputs_are_rejected_and_weights_are_owned(self):
+        for rho, logs in [([0., 1.], np.log([.5, .5])), ([1., np.nan], np.log([.5, .5])),
+                          ([1., 2.], [0., 0.]), ([1., 2.], [0.])]:
+            with self.assertRaises(ValueError):
+                BM1FVRhoBankStep(rho, logs, self.given_steps([0., 0.], 1.))
+        with self.assertRaises(ValueError):
+            BM1FVRhoBankStep([1., 2.], np.log([.5, .5]),
+                            self.given_steps([0.], 1.) + self.given_steps([0.], 2.))
+        rho, logs = np.array([1., 2.]), np.log([.5, .5])
+        step = BM1FVRhoBankStep(rho, logs, self.given_steps([0., 0.], 1.))
+        rho[0], logs[0] = 99., 99.
+        self.assertEqual(step.rho_values[0], 1.)
+        for array in (step.rho_values, step.prior_log_weights, step.log_weights):
+            self.assertFalse(array.flags.writeable)
+
+    def test_diagnostic_serial_matches_real_spawn_pool(self):
+        kwargs = dict(sequence_id=0, rho_values=(.6, 1.4), x_steps=21,
+                      max_step=1/24, likelihood_quadrature_order=1)
+        serial = synthetic.run_f4_f_bank_identity(**kwargs, workers=1)
+        parallel = synthetic.run_f4_f_bank_identity(**kwargs, workers=2)
+        self.assertFalse(serial['registered_design'])
+        self.assertTrue(serial['passes_f0'])
+        self.assertTrue(parallel['passes_f0'])
+        for key in ('online_log_weights', 'online_conditional_log_evidence',
+                    'online_bank_log_evidence', 'final_conditional_posterior_mass'):
+            np.testing.assert_array_equal(serial[key], parallel[key])
+        self.assertEqual(serial['settings']['workers'], 1)
+        self.assertEqual(parallel['settings']['workers'], 2)
+        json.dumps(parallel, allow_nan=False)
+
+    def test_cli_locks_design_and_rejects_existing_output_before_work(self):
+        from src.exe.run_model.bm_1 import estimate
+        self.assertEqual(estimate.build_parser().parse_args(['bank-identity']).workers, 7)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'existing.json'
+            output.write_text('keep', encoding='utf-8')
+            with patch.object(synthetic, 'run_f4_f_bank_identity') as run:
+                with self.assertRaises(FileExistsError):
+                    estimate.main(['bank-identity', '--output', str(output)])
+                run.assert_not_called()
+            self.assertEqual(output.read_text(encoding='utf-8'), 'keep')
 
 
 if __name__ == '__main__':

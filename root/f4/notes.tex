@@ -632,7 +632,56 @@ Som regneeksempel giver prior \((0.6,0.4)\) og evidence \((0.2,0.8)\) de unormal
 \]
 Begge hypotesers state-filter skal være kørt med deres egne parametre. Det er ikke tilstrækkeligt at evaluere to parameterværdier ved én fælles filtreret state.
 
+\subsection*{F0: registreret FV-kontrol af rho-banken}
+E4 vælger de oprindelige 41 hypoteser \(\rho_j=0.5+0.025j\),
+\(j=0,\ldots,40\), med diskrete priorvægte \(1/41\).
+I F0 er \(\Xi=1\), \(k=2\), \(\sigma_x=0.5\),
+\(\sigma_y=0.03\) samt \(f,g\) kendte. ID1262 er en ny, på forhånd valgt
+sekvens med de samme RNG-rødder og observationskontrakt som F4-B.
+Alle hypoteser starter med Beta(20,20); FV bruger 401 celler,
+\(h\leq1/768\) dag og observationernes cellekvadratur af orden 3.
+
+Sæt \(a_{k,j}=\log w_{k,j}\). Ved en tilstedeværende måling beregnes
+\begin{align}
+ b_k&=\operatorname{LSE}_j(a_{k-1,j}+\log z_{k,j}),\\
+ a_{k,j}&=a_{k-1,j}+\log z_{k,j}-b_k.
+ \label{eq:f0logweights}
+\end{align}
+\(b_k\) er bankens predictive log-evidence. Predictionens marginale state-masse
+bruger \(w_{k-1,j}\), mens posteriorens marginal bruger \(w_{k,j}\).
+En manglende måling propagerer hver betinget state, lader parameterens log-vægte
+stå uændrede og registrerer NaN som manglende score; dens bidrag til summer er nul.
+Der er ingen permanent pruning: en endelig log-vægt kan stadig repræsentere en
+hypotese, selv når dens almindelige floating-point-vægt underflower til nul.
+En erklæret priorvægt på nul forbliver derimod nul.
+
+For hver af de 24 prefixes sammenlignes den løbende bank med selvstændige
+fixed-parameter FV-replays fra den fælles initialprior. Med
+\(L_{k,j}=\sum_{i\leq k,\,i\text{ observeret}}\log z_{i,j}\) kræves
+\begin{align}
+ a_{k,j}=\log w_{0,j}+L_{k,j}
+ -\operatorname{LSE}_\ell(\log w_{0,\ell}+L_{k,\ell}),\nonumber\\
+ \sum_{i\leq k}b_i=\operatorname{LSE}_j(\log w_{0,j}+L_{k,j}).
+ \label{eq:f0identity}
+\end{align}
+F0's acceptmål er maksimal absolut fejl højst \(10^{-10}\) i log-vægte,
+betinget log-evidence, kumuleret bank-log-evidence og betingede state-masser ved alle prefixes,
+samt massefejl højst \(10^{-10}\) og ingen negative masser eller fejlede hypoteser.
+Disse mål er en metodeidentitet, ikke en ny konvergens- eller recovery-garanti.
+Randvægt, rho-middel, alle MAP-noder og effektivt hypotesetal rapporteres som
+diagnostik uden et recovery-passmål. Population, mixture, støtte/grid-refinement
+og forecast er senere leverancer.
+
+De uafhængige FV-predictions/updates for hypoteserne kan køres i parallel ved et
+fast observationstidspunkt. Før næste tidspunkt bæres hver hypoteses egen
+posterior videre. Én vedvarende process-pool bruges i den registrerede CLI-kørsel;
+worker-count ændrer kun afviklingen. En lille serial/spawn-sammenligning kontrollerer
+samme state-masser, evidence og log-vægte. Andre små metodekontroller dækker
+prefix-kausalitet, permutation, ens hypoteser, missing data, priorens nulvægte
+og genvinding af en vægt, der kun er underflowet i almindelig masseform.
+
 \subsection{Prior under reparameterisering}
+
 Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved
 \begin{equation}
  \pi_\rho(\rho)=\pi_C(1/\rho)\left|\frac{\dd (1/\rho)}{\dd\rho}\right|

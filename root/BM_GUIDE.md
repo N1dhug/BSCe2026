@@ -37,6 +37,7 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | F4-E E1 likelihood-refinement | `likelihood-refine` |
 | F4-E E2 en-parameter screening | `parameter-screen --e1-report <E1-JSON>` |
 | F4-E E3 diagnostiske parflader | `pair-surfaces --e2-report <E2-JSON>` |
+| F4-F F0 rekursiv FV-rho-bank og prefix-identiteter | `bank-identity` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -103,6 +104,24 @@ Batchgenerering bruger samme pr.-ID RNG-strømme og samme EM-grid som enkeltgene
 Caches indeholder kun target-uafhængig geometri eller eksplicitte, validerede startgæt;
 FV-referenceprojektioner starter aldrig mixture-filteret. Den registrerede D3d-protokol
 er uændret; rapporten markerer, om en kørsels settings faktisk matcher den.
+
+F0 bruger nyt ID1262, 41 rho-noder i 0.5..1.5 med prior 1/41, 401 celler,
+h<=1/768 dag og q=3. De øvrige parametre holdes kendte. Kommandoen kræver
+ingen E2/E3-genkørsel og har ingen CLI-overrides af det registrerede design:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate bank-identity `
+  --workers 7 `
+  --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f0_rho_bank_identity.json
+```
+
+Der køres en online bank og 41 uafhængige offline-replays; alle 24 prefixes
+kontrolleres. Poolen består gennem hele kørslen og fordeler hypoteser ved samme
+tidspunkt, ikke observationstidspunkter. JSON indeholder alle scores/log-vægte,
+prefix-fejl, diagnostik, kildecommit og endelige betingede state-masser. Eksisterende
+output afvises før beregningen; en fejlet gate gemmes og giver derefter en fejl.
+F0 tester metoden, ikke parameter-recovery, mixture eller ugeforecast.
 
 ## Hvor kode hører hjemme
 
