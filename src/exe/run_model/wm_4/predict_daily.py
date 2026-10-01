@@ -80,18 +80,18 @@ def historical_prediction_state(fit, warmup_hours, steps_per_hour):
     return init
 
 
-def optimized_prediction_state(frame, start, model, r, steps_per_hour, output_model):
+def optimized_prediction_state(frame, start, model, r, steps_per_hour, output_model, zero_intercept=False):
     data, fine_index, _, _ = model_input(frame, start, steps_per_hour, 0, output_model)
     helper = qp_params(model)
     data = helper._prepare_data(data)
-    base = helper._state_from_parameters(data, np.array([0.0, 0.0]), r)
-    f_unit = helper._state_from_parameters(data, np.array([1.0, 0.0]), r)
-    r_unit = helper._state_from_parameters(data, np.array([0.0, 1.0]), r)
+    base = helper._state_from_parameters(data, np.array([0.0, 0.0]), r, enforce_equilibrium=not zero_intercept)
+    f_unit = helper._state_from_parameters(data, np.array([1.0, 0.0]), r, enforce_equilibrium=not zero_intercept)
+    r_unit = helper._state_from_parameters(data, np.array([0.0, 1.0]), r, enforce_equilibrium=not zero_intercept)
     obs = np.asarray(data["observation_mask"], dtype=bool)
     X = np.column_stack(((f_unit["I"] - base["I"])[obs], (r_unit["I"] - base["I"])[obs]))
     y = data["I"][obs] - base["I"][obs]
     init = model._least_squares_qp(X, y, lb=np.array([0.0, -1.0]), ub=np.array([1.0, 1.0]), ridge=model._FIT_RIDGE)
-    state = helper._state_from_parameters(data, init, r, full=True)
+    state = helper._state_from_parameters(data, init, r, full=True, enforce_equilibrium=not zero_intercept)
     loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
     return np.asarray(init, dtype=float), state, fine_index, loss
 
@@ -146,23 +146,28 @@ def main():
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--deterministic", action="store_true", help="Skip diffusion parameter estimation.")
     parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic only: fit prediction-day [F0,R0] from that day's observed I instead of using historical fitted states.")
+    parser.add_argument("--zero-intercept", action="store_true", help="Fit WM4 with r_0 fixed to zero; equilibrium-range constraints are disabled so r_U remains identifiable.")
     args = parser.parse_args()
 
     frame, _ = aligned_data("MED")
     predict_start = day_start(args.day)
     output_model, output_fit, fit, _, _, _ = fit_history(
         frame, predict_start, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
-        fit_diffusion=not args.deterministic,
+        fit_diffusion=not args.deterministic, zero_intercept=args.zero_intercept,
     )
     predict_end, actual, U, Time, predict_model, fine_index = prediction_setup(frame, predict_start, output_model, args.steps_per_hour)
 
     if args.optimize_prediction_state:
         init, state, fine_index, init_fit_mse = optimized_prediction_state(
             frame, predict_start, predict_model, fit["r"], args.steps_per_hour, output_model,
+            zero_intercept=args.zero_intercept,
         )
     else:
         init = historical_prediction_state(fit, args.warmup_hours, args.steps_per_hour)
-        state = predict_model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+        state = predict_model.deterministic_solver(init, {
+            "U": U, "PE": U, "Time": Time, "r": fit["r"],
+            "enforce_equilibrium": not args.zero_intercept,
+        })
         init_fit_mse = np.nan
 
     hourly = np.arange(DAY_HOURS) * args.steps_per_hour
