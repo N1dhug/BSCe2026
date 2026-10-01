@@ -52,6 +52,14 @@ D3B_TIME_STEPS = (1.0 / 384.0, 1.0 / 768.0, 1.0 / 1536.0)
 D3B_SPATIAL_CELLS = (51, 101, 151)
 D3B_SPATIAL_MAX_STEP = 1.0 / 1536.0
 D3B_STABILITY_RATIO = 0.10
+D3C_TIME_STEPS = (1.0 / 768.0, 1.0 / 1536.0, 1.0 / 3072.0)
+D3C_SPATIAL_CELLS = (101, 151, 201)
+D3C_SPATIAL_MAX_STEP = 1.0 / 3072.0
+D3C_LIMIT_RATIO = 0.10
+D3C_PREDICTION_REL_TOL = 0.20
+D3C_SPATIAL_REL_TOL = 0.10
+D3C_POPULATION_X_STEPS = 151
+D3C_POPULATION_MAX_STEP = 1.0 / 3072.0
 
 _INNER_MEANS = np.arange(1, 20, dtype=float) / 20.0
 _BOUNDARY_MEANS = np.array([0.01, 0.025, 0.975, 0.99], dtype=float)
@@ -1073,4 +1081,184 @@ def run_f4_d_recursive_refinement(
         },
         "unique_configurations": tuple(cache),
         "stability_ratio": D3B_STABILITY_RATIO,
+    }
+
+
+
+def _d3c_first_order_summary(rows, metric):
+    """Check the preregistered first-order Richardson prediction on three halvings."""
+    if len(rows) != 3:
+        raise ValueError("D3c temporal Richardson summary requires exactly three levels.")
+    h0, h1, h2 = (float(row["requested_max_step"]) for row in rows)
+    if not (
+        np.isclose(h0, 2.0 * h1, atol=1e-15, rtol=1e-12)
+        and np.isclose(h1, 2.0 * h2, atol=1e-15, rtol=1e-12)
+    ):
+        raise ValueError("D3c temporal levels must halve exactly.")
+    e0_obs, e1_obs, e2_obs = (float(row[metric]) for row in rows)
+    extrapolated_limit = 2.0 * e1_obs - e0_obs
+    predicted_fine = extrapolated_limit + 0.5 * (e1_obs - extrapolated_limit)
+    prediction_scale = max(abs(predicted_fine), 1e-14)
+    relative_prediction_error = abs(e2_obs - predicted_fine) / prediction_scale
+    middle_scale = max(abs(e1_obs), 1e-14)
+    limit_to_middle_ratio = abs(extrapolated_limit) / middle_scale
+    monotone_decrease = bool(e0_obs > e1_obs > e2_obs >= 0.0)
+    step_limit_binding = all(
+        np.isclose(
+            float(row["actual_max_step"]),
+            float(row["requested_max_step"]),
+            atol=1e-14,
+            rtol=1e-10,
+        )
+        for row in rows
+    )
+    passes = bool(
+        monotone_decrease
+        and step_limit_binding
+        and limit_to_middle_ratio <= D3C_LIMIT_RATIO
+        and relative_prediction_error <= D3C_PREDICTION_REL_TOL
+    )
+    return {
+        "metric": metric,
+        "extrapolated_limit": extrapolated_limit,
+        "predicted_fine": predicted_fine,
+        "observed_fine": e2_obs,
+        "relative_prediction_error": relative_prediction_error,
+        "limit_to_middle_ratio": limit_to_middle_ratio,
+        "monotone_decrease": monotone_decrease,
+        "step_limit_binding": step_limit_binding,
+        "passes": passes,
+    }
+
+
+def _d3c_spatial_summary(rows, metric):
+    """Check two successive relative spatial changes at common requested max-step."""
+    if len(rows) != 3:
+        raise ValueError("D3c spatial summary requires exactly three levels.")
+    changes = []
+    for left, right in zip(rows[:-1], rows[1:]):
+        left_value = float(left[metric])
+        right_value = float(right[metric])
+        scale = max(abs(right_value), 1e-14)
+        changes.append(abs(right_value - left_value) / scale)
+    step_limit_binding = all(
+        np.isclose(
+            float(row["actual_max_step"]),
+            float(row["requested_max_step"]),
+            atol=1e-14,
+            rtol=1e-10,
+        )
+        for row in rows
+    )
+    maximum_change = max(changes)
+    return {
+        "metric": metric,
+        "successive_relative_changes": tuple(changes),
+        "maximum_relative_change": maximum_change,
+        "step_limit_binding": step_limit_binding,
+        "passes": bool(
+            step_limit_binding and maximum_change <= D3C_SPATIAL_REL_TOL
+        ),
+    }
+
+
+def run_f4_d_recursive_convergence(
+    sequence_id=D3A_SEQUENCE_ID,
+    *,
+    time_steps=D3C_TIME_STEPS,
+    spatial_cells=D3C_SPATIAL_CELLS,
+    spatial_max_step=D3C_SPATIAL_MAX_STEP,
+    cfl=D3A_CFL,
+    likelihood_quadrature_order=D3A_QUADRATURE_ORDER,
+):
+    """Run preregistered D3c Richardson/time and successive-spatial convergence checks."""
+    sequence_id = checks.positive_integer(sequence_id, "sequence_id", minimum=0)
+    time_steps = tuple(checks.finite_scalar(v, "time step", positive=True) for v in time_steps)
+    spatial_cells = tuple(
+        checks.positive_integer(v, "spatial cell count", minimum=21)
+        for v in spatial_cells
+    )
+    spatial_max_step = checks.finite_scalar(
+        spatial_max_step, "spatial_max_step", positive=True,
+    )
+    cfl = checks.finite_scalar(cfl, "cfl", positive=True)
+    order = checks.positive_integer(
+        likelihood_quadrature_order, "likelihood_quadrature_order", minimum=1,
+    )
+    if len(time_steps) != 3 or len(spatial_cells) != 3:
+        raise ValueError("D3c requires exactly three temporal and three spatial levels.")
+    if tuple(sorted(set(time_steps), reverse=True)) != time_steps:
+        raise ValueError("D3c time_steps must be unique and decreasing.")
+    if tuple(sorted(set(spatial_cells))) != spatial_cells:
+        raise ValueError("D3c spatial_cells must be unique and increasing.")
+
+    cache = {}
+    def run_config(x_steps, max_step):
+        key = (int(x_steps), float(max_step))
+        if key not in cache:
+            cache[key] = run_f4_d_recursive_sanity(
+                sequence_id=sequence_id,
+                x_steps=x_steps,
+                max_step=max_step,
+                cfl=cfl,
+                likelihood_quadrature_order=order,
+            )
+        return cache[key]
+
+    time_rows = [
+        _d3_refinement_row(
+            run_config(D3A_X_STEPS, h), axis="time", level=h,
+        )
+        for h in time_steps
+    ]
+    spatial_rows = [
+        _d3_refinement_row(
+            run_config(n, spatial_max_step), axis="space", level=n,
+        )
+        for n in spatial_cells
+    ]
+
+    time_posterior = _d3c_first_order_summary(time_rows, "total_posterior_l1")
+    time_evidence = _d3c_first_order_summary(time_rows, "evidence_mean_abs")
+    spatial_posterior = _d3c_spatial_summary(spatial_rows, "total_posterior_l1")
+    spatial_evidence = _d3c_spatial_summary(spatial_rows, "evidence_mean_abs")
+    time_passes = bool(time_posterior["passes"] and time_evidence["passes"])
+    spatial_passes = bool(spatial_posterior["passes"] and spatial_evidence["passes"])
+    passes = bool(time_passes and spatial_passes)
+
+    return {
+        "stage": "D3c",
+        "sequence_id": sequence_id,
+        "cfl": cfl,
+        "likelihood_quadrature_order": order,
+        "time": time_rows,
+        "spatial": spatial_rows,
+        "summary": {
+            "time": {
+                "posterior_l1": time_posterior,
+                "evidence_mean_abs": time_evidence,
+                "passes": time_passes,
+            },
+            "spatial": {
+                "posterior_l1": spatial_posterior,
+                "evidence_mean_abs": spatial_evidence,
+                "passes": spatial_passes,
+            },
+            "passes_convergence": passes,
+            "population_setting": (
+                {
+                    "x_steps": D3C_POPULATION_X_STEPS,
+                    "max_step": D3C_POPULATION_MAX_STEP,
+                    "cfl": D3A_CFL,
+                    "likelihood_quadrature_order": D3A_QUADRATURE_ORDER,
+                }
+                if passes else None
+            ),
+        },
+        "unique_configurations": tuple(cache),
+        "criteria": {
+            "limit_to_middle_ratio": D3C_LIMIT_RATIO,
+            "fine_prediction_relative_error": D3C_PREDICTION_REL_TOL,
+            "spatial_successive_relative_change": D3C_SPATIAL_REL_TOL,
+        },
     }
