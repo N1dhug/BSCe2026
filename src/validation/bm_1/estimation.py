@@ -31,6 +31,9 @@ INITIAL_SEED_ROOT = 4101
 BROWNIAN_SEED_ROOT = 4102
 MEASUREMENT_SEED_ROOT = 4103
 F4_C_BOOTSTRAP_SEED = 4201
+F4_E_NUMERICAL_SEQUENCE_ID = 1211
+F4_E_SCREEN_SEQUENCE_START = 1212
+F4_E_SCREEN_SEQUENCE_COUNT = 50
 
 
 def _readonly_vector(values: ArrayLike, name: str, *, minimum_size: int = 1) -> NDArray[np.float64]:
@@ -1170,6 +1173,172 @@ def run_f4_c_truth_refinement(
             'maximum_abs_observation': float(np.max(measurement_differences)),
         },
     }
+
+
+
+@dataclass(frozen=True)
+class F4ELikelihoodCandidate:
+    """One fixed BM1 parameter candidate for F4-E likelihood replay.
+
+    F4-E keeps f and g fixed.  rho=1/C is used instead of C so the candidate
+    coordinates match the preregistered identifiability study.
+    """
+
+    rho: float
+    Xi: float
+    k: float
+    sigma_x: float
+    sigma_y: float
+
+    def __post_init__(self):
+        rho = checks.finite_scalar(self.rho, 'rho', positive=True)
+        Xi = checks.finite_scalar(self.Xi, 'Xi')
+        k = checks.finite_scalar(self.k, 'k', positive=True)
+        sigma_x = checks.finite_scalar(self.sigma_x, 'sigma_x')
+        sigma_y = checks.finite_scalar(self.sigma_y, 'sigma_y', positive=True)
+        if not 0.0 <= Xi <= 1.0:
+            raise ValueError('Xi must lie in [0, 1].')
+        if sigma_x < 0.0:
+            raise ValueError('sigma_x must be non-negative.')
+        object.__setattr__(self, 'rho', rho)
+        object.__setattr__(self, 'Xi', Xi)
+        object.__setattr__(self, 'k', k)
+        object.__setattr__(self, 'sigma_x', sigma_x)
+        object.__setattr__(self, 'sigma_y', sigma_y)
+
+    @property
+    def C(self):
+        return 1.0 / self.rho
+
+    def as_tuple(self):
+        return (self.rho, self.Xi, self.k, self.sigma_x, self.sigma_y)
+
+
+def f4_e_truth_candidate(case=None):
+    """Return the fixed-parameter candidate that generated the declared case."""
+    case = build_f4_b_case() if case is None else case
+    if not isinstance(case, BM1SyntheticCase):
+        raise TypeError('case must be a BM1SyntheticCase.')
+    return F4ELikelihoodCandidate(
+        rho=1.0 / case.C,
+        Xi=case.Xi,
+        k=case.k,
+        sigma_x=case.sigma_x,
+        sigma_y=case.sigma_y,
+    )
+
+
+def _f4_e_parameters(base_parameters, candidate):
+    """Replace only F4-E's physical candidate coordinates; keep U, f and g fixed."""
+    if not isinstance(candidate, F4ELikelihoodCandidate):
+        raise TypeError('candidate must be an F4ELikelihoodCandidate.')
+    parameters = list(base_parameters)
+    if len(parameters) != 6:
+        raise ValueError('BM1 parameter vector must be [U, f, g, C, k, Xi].')
+    parameters[3] = candidate.C
+    parameters[4] = candidate.k
+    parameters[5] = candidate.Xi
+    return parameters
+
+
+def evaluate_f4_e_candidate(
+    case,
+    observations,
+    candidate,
+    *,
+    x_steps=201,
+    max_step=1.0 / 192.0,
+    likelihood_quadrature_order=1,
+):
+    """Replay one fixed candidate from the common prior and return predictive evidence.
+
+    No synthetic truth enters this API.  Every call rebuilds the initial law and
+    starts run_fv_filter from case.horizon[0]; callers must not carry a posterior
+    from another candidate into this evaluation.
+    """
+    if not isinstance(case, BM1SyntheticCase):
+        raise TypeError('case must be a BM1SyntheticCase.')
+    if not isinstance(observations, BM1ObservationSeries):
+        raise TypeError('observations must be a BM1ObservationSeries.')
+    if not isinstance(candidate, F4ELikelihoodCandidate):
+        raise TypeError('candidate must be an F4ELikelihoodCandidate.')
+    x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
+    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
+    order = checks.positive_integer(
+        likelihood_quadrature_order, 'likelihood_quadrature_order', minimum=1,
+    )
+
+    model, base_parameters = case.build_model()
+    parameters = _f4_e_parameters(base_parameters, candidate)
+    initial_mass = beta_initial_mass(case, model, x_steps)
+    filtered = run_fv_filter(
+        model,
+        parameters,
+        candidate.sigma_x,
+        candidate.sigma_y,
+        initial_mass,
+        case.horizon[0],
+        observations,
+        breakpoints=case.breakpoints,
+        max_step=max_step,
+        likelihood_quadrature_order=order,
+    )
+    log_evidence = filtered.log_evidence[filtered.observed].copy()
+    log_evidence.setflags(write=False)
+    return {
+        'candidate': candidate,
+        'total_log_likelihood': float(np.sum(log_evidence)),
+        'log_evidence': log_evidence,
+        'maximum_abs_mass_error': filtered.maximum_abs_mass_error,
+        'minimum_cell_mass': filtered.minimum_cell_mass,
+        'x_steps': x_steps,
+        'max_step': max_step,
+        'likelihood_quadrature_order': order,
+    }
+
+
+def evaluate_f4_e_candidates(
+    case,
+    observations,
+    candidates,
+    *,
+    x_steps=201,
+    max_step=1.0 / 192.0,
+    likelihood_quadrature_order=1,
+):
+    """Evaluate candidates independently, preserving caller order and duplicates."""
+    candidates = tuple(candidates)
+    if not candidates:
+        raise ValueError('candidates must be non-empty.')
+    for candidate in candidates:
+        if not isinstance(candidate, F4ELikelihoodCandidate):
+            raise TypeError('Every candidate must be an F4ELikelihoodCandidate.')
+    return tuple(
+        evaluate_f4_e_candidate(
+            case,
+            observations,
+            candidate,
+            x_steps=x_steps,
+            max_step=max_step,
+            likelihood_quadrature_order=likelihood_quadrature_order,
+        )
+        for candidate in candidates
+    )
+
+
+def f4_e_centered_log_likelihood(evaluations):
+    """Return candidate values and centered log-likelihood without changing order."""
+    evaluations = tuple(evaluations)
+    if not evaluations:
+        raise ValueError('evaluations must be non-empty.')
+    values = np.asarray(
+        [item['total_log_likelihood'] for item in evaluations], dtype=float,
+    )
+    if values.ndim != 1 or not np.all(np.isfinite(values)):
+        raise ValueError('All F4-E total log-likelihoods must be finite.')
+    centered = values - float(np.max(values))
+    centered.setflags(write=False)
+    return centered
 
 
 def run_f4_preparation_checks() -> dict:
