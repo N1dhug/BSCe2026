@@ -5,8 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_3.fit_weekly import aligned_data
-from src.exe.run_model.wm_4.fit_daily import INIT_F
+from src.exe.run_model.wm_4.fit_daily import INIT_F, aligned_wm4_data
 from src.exe.run_model.wm_4.output_model import output_callable, statistical_output
 from src.model.wm_4 import wm_4
 from src.params.wm_4 import qp_params
@@ -135,7 +134,7 @@ def main():
     parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
     args = parser.parse_args()
 
-    frame, _ = aligned_data("MED")
+    frame, _ = aligned_wm4_data("MED")
     fit_start = week_start(args.week)
     fit_end = fit_start + pd.Timedelta(hours=WEEK_HOURS)
     output_model = statistical_output().fit(frame, fit_end)
@@ -163,7 +162,7 @@ def main():
     print(f"prediction week={predict_start} -> {predict_end}")
     print(f"O training={output_model.metadata['fit_start']} -> {output_model.metadata['fit_end']}, samples={output_model.metadata['samples']}, MSE={output_model.metadata['mse']:.8f}")
     r = fit["r"]
-    print(f"coefficients: r_0={r[0]:.8f}, r_F={r[1]:.8f}, r_U={r[2]:.8f}, r_R={r[3]:.8f}")
+    print(f"coefficients: r_F={r[0]:.8f}, r_U={r[1]:.8f}, r_R={r[2]:.8f}")
     print(f"damping: branch={fit['damping_branch']}, zeta={fit['damping_ratio']:.8f}")
     if not args.deterministic: print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"forecast initial [F,R]={np.array2string(init, precision=8)}")
