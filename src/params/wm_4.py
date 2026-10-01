@@ -254,3 +254,139 @@ class qp_params:
         if verbose: print(f"[qp] trajectories={len(datasets)} transitions={sum(np.count_nonzero(data['transition_mask']) for data in datasets)} loss={qp_loss:.8g} free_run_mse={deterministic_loss:.8g} solve={qp_solve_time:.4f}s")
         return result
 
+
+
+
+class optimized_qp_params(qp_params):
+    """Alternating constrained-QP wm_4 fitter with optimized trajectory states.
+
+    The structural coefficients still fit the observed flexibility-rate dynamics
+
+        dR/dt = r_0 + r_F F + r_U U + r_R R,
+
+    with R = I - O. Unlike qp_params, each fitting trajectory receives its own
+    [F0, R0], optimized only against the same dR transition residual used for
+    parameter estimation. No free-running I objective is introduced.
+    """
+
+    def _state_loss(self, data, init_cond, r):
+        observed = self._observed_state(data, init_cond)
+        mask = observed["transition_mask"]
+        residual = (observed["X"] @ np.asarray(r, dtype=float) - observed["y"])[mask]
+        return float(np.mean(residual ** 2)) if residual.size else np.inf
+
+    def _optimize_initial_state(self, data, r, seed, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0)):
+        seed = wm_4_validation.initial_condition(seed)
+        r = wm_4_validation.r_coefficients(r)
+
+        def residual(init):
+            observed = self._observed_state(data, init)
+            mask = observed["transition_mask"]
+            return (observed["X"] @ r - observed["y"])[mask]
+
+        base = residual(np.array([0.0, 0.0]))
+        f_unit = residual(np.array([1.0, 0.0])) - base
+        r_unit = residual(np.array([0.0, 1.0])) - base
+        X = np.column_stack((f_unit, r_unit))
+        y = -base
+        lb = np.array([float(f_bounds[0]), float(r_bounds[0])], dtype=float)
+        ub = np.array([float(f_bounds[1]), float(r_bounds[1])], dtype=float)
+        init = self.model._least_squares_qp(X, y, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE, x0=np.clip(seed, lb, ub))
+        return wm_4_validation.initial_condition(init)
+
+    def _alternating_fit(self, datasets, init_conds, stabilize=True, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0), verbose=False):
+        init_conds = [wm_4_validation.initial_condition(init).copy() for init in init_conds]
+        history, total_qp_time = [], 0.0
+        previous_loss = np.inf
+
+        for iteration in range(1, int(max_state_iter) + 1):
+            r, _, _, solve_time = self._solve_qp(datasets, init_conds, stabilize=stabilize)
+            total_qp_time += solve_time
+            optimized = [self._optimize_initial_state(data, r, init, f_bounds=f_bounds, r_bounds=r_bounds) for data, init in zip(datasets, init_conds)]
+            r, observed, qp_loss, solve_time = self._solve_qp(datasets, optimized, stabilize=stabilize)
+            total_qp_time += solve_time
+            max_state_change = max(float(np.max(np.abs(new - old))) for new, old in zip(optimized, init_conds))
+            loss_change = abs(previous_loss - qp_loss) if np.isfinite(previous_loss) else np.inf
+            history.append({
+                "iteration": iteration, "qp_loss": float(qp_loss),
+                "max_state_change": max_state_change, "loss_change": float(loss_change),
+            })
+            init_conds = optimized
+            if verbose: print(f"[optimized_qp] iteration={iteration} loss={qp_loss:.8g} state_change={max_state_change:.3g}")
+            if max_state_change <= state_tol and loss_change <= state_tol: break
+            previous_loss = qp_loss
+
+        return r, observed, init_conds, float(qp_loss), float(total_qp_time), history
+
+    def fit(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0), **_legacy_kwargs):
+        fit_start = perf_counter()
+        data = self._prepare_data(input_data)
+        seed = wm_4_validation.initial_condition(initial_conditions)
+        if not fit_initial_state:
+            return super().fit(input_data, initial_conditions, fit_initial_state=False, fit_diffusion=fit_diffusion, stabilize=stabilize, verbose=verbose)
+
+        r, observed, init_conds, qp_loss, qp_solve_time, history = self._alternating_fit(
+            [data], [seed], stabilize=stabilize, max_state_iter=max_state_iter, state_tol=state_tol,
+            f_bounds=f_bounds, r_bounds=r_bounds, verbose=verbose,
+        )
+        init = init_conds[0]
+        state = self._state_from_parameters(data, init, r, full=True)
+        obs = np.asarray(data["observation_mask"], dtype=bool)
+        deterministic_loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
+        result = {
+            "init_cond": init.copy(), "initial_condition_seed": seed.copy(),
+            "U": data["U"].copy(), "PE": data["PE"].copy(), "Time": data["Time"].copy(),
+            "O": data["O"].copy(), "observation_mask": obs.copy(), "transition_mask": data["transition_mask"].copy(),
+            "r": r.copy(), "deterministic_state": state, "observed_state": observed[0],
+            "recovered_model_loss": deterministic_loss, "deterministic_loss": deterministic_loss,
+            "structural_viable": True, "initial_rate_mismatch": observed[0]["initial_rate_mismatch"],
+            "state_optimization_history": history, "state_iterations": len(history),
+        }
+        result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
+        result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
+        result["fit_method"] = "optimized_qp"
+        result["fit_initial_state"] = True
+        if verbose: print(f"[optimized_qp] transitions={np.count_nonzero(data['transition_mask'])} loss={qp_loss:.8g} iterations={len(history)}")
+        return result
+
+    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0), **_legacy_kwargs):
+        if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
+        if not fit_initial_state:
+            return super().fit_many(input_data, initial_conditions, fit_initial_state=False, fit_diffusion=fit_diffusion, stabilize=stabilize, verbose=verbose)
+
+        fit_start = perf_counter()
+        datasets = [self._prepare_data(data) for data in input_data]
+        raw_init = np.asarray(initial_conditions, dtype=float)
+        if raw_init.shape == (2,): seeds = [wm_4_validation.initial_condition(raw_init) for _ in datasets]
+        elif raw_init.shape == (len(datasets), 2): seeds = [wm_4_validation.initial_condition(row) for row in raw_init]
+        else: raise ValueError("initial_conditions must be [F0,R0] or one [F0,R0] row per fitting trajectory.")
+
+        r, observed, init_conds, qp_loss, qp_solve_time, history = self._alternating_fit(
+            datasets, seeds, stabilize=stabilize, max_state_iter=max_state_iter, state_tol=state_tol,
+            f_bounds=f_bounds, r_bounds=r_bounds, verbose=verbose,
+        )
+        states = [self._state_from_parameters(data, init, r, full=True) for data, init in zip(datasets, init_conds)]
+        losses = []
+        for data, state in zip(datasets, states):
+            obs = np.asarray(data["observation_mask"], dtype=bool)
+            losses.append(float(np.mean((data["I"][obs] - state["I"][obs]) ** 2)))
+        residual = np.concatenate([
+            data["I"][np.asarray(data["observation_mask"], dtype=bool)] - state["I"][np.asarray(data["observation_mask"], dtype=bool)]
+            for data, state in zip(datasets, states)
+        ])
+        deterministic_loss = float(np.mean(residual ** 2))
+        result = {
+            "init_cond": np.vstack(init_conds), "initial_condition_seed": raw_init.copy(),
+            "r": r.copy(), "deterministic_state": states[0], "deterministic_states": states,
+            "observed_states": observed, "per_trajectory_loss": np.asarray(losses, dtype=float),
+            "recovered_model_loss": deterministic_loss, "deterministic_loss": deterministic_loss,
+            "structural_viable": True, "fit_trajectories": len(datasets),
+            "initial_rate_mismatch": np.asarray([state["initial_rate_mismatch"] for state in observed], dtype=float),
+            "state_optimization_history": history, "state_iterations": len(history),
+        }
+        result = self._fit_uncertainty_params_many(result, datasets, init_conds) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
+        result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
+        result["fit_method"] = "optimized_qp_many"
+        result["fit_initial_state"] = True
+        if verbose: print(f"[optimized_qp] trajectories={len(datasets)} transitions={sum(np.count_nonzero(data['transition_mask']) for data in datasets)} loss={qp_loss:.8g} iterations={len(history)}")
+        return result
