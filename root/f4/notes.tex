@@ -680,6 +680,29 @@ samme state-masser, evidence og log-vægte. Andre små metodekontroller dækker
 prefix-kausalitet, permutation, ens hypoteser, missing data, priorens nulvægte
 og genvinding af en vægt, der kun er underflowet i almindelig masseform.
 
+\paragraph{Registreret resultat.}
+Windows-kørslen på ID1262 fra \texttt{652b871}, ren working tree, bestod
+med 7 workers og én BLAS-tråd. Alle 133 fokuserede tests og alle 377
+regressionstests bestod også lokalt. Online-bankens 24 trin tog ca. 5.9 s;
+inklusive 41 offline-replays tog beregningen ca. 10.9 s, og rapportens
+samlede elapsed var 11.2207 s.
+Maksimal log-vægtfejl var \(1.68754\cdot10^{-14}\), maksimal fejl i
+kumuleret marginal log-evidence \(7.10543\cdot10^{-15}\), mens conditional
+evidence og conditional state-masser matchede præcis. Massefejlen var
+\(5.99520\cdot10^{-15}\) og minimum cellemasse \(4.76745\cdot10^{-209}\).
+Rå-artifactets source, design og inputkontrakt er kontrolleret, og alle
+prefix-identiteter og parameterdiagnostikker er genberegnet. Den særskilte
+udviklingskørsels observationer, scores, log-vægte og slutmasser matcher
+Windows-artifactet inden for \(10^{-10}\); artifact-digest står i F4-statusfilen.
+
+Rho-middel efter ét døgn var 1.040542, MAP-node 1.375 og effektivt hypotesetal
+40.5642 af 41. Maksimal nodevægt var 2.7954\% mod priorens 2.4390\%; samlet
+vægt på de to endpoint-noder var 4.4655\%. Posterioren er fortsat bred:
+MAP-noden alene dokumenterer ikke parameter-recovery. F0's metodeidentiteter
+bestod; bankens numeriske-, støtte- og priorfølsomhed samt population/mixture
+er fortsat senere leverancer. Den målte runtime er for denne dagskontrol,
+ikke et målt 168-timers forecast eller månedsfit.
+
 \subsection{Prior under reparameterisering}
 
 Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved
