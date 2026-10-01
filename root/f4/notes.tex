@@ -642,6 +642,57 @@ ellers kan spatial- og tidsfejl ikke betragtes som adskilt. Kun hvis både
 temporal og spatial D3c består, låses numerikken til et efterfølgende
 populationsdesign.
 
+
+\paragraph{D3c-resultat og D3d populationstest.}
+D3c bekræftede den forventede tidskonvergens. På 101 celler gav
+\(h_{\max}=1/768,1/1536,1/3072\) total posterior-\(L^1\)
+\[
+ 1.091\times10^{-2},\quad5.459\times10^{-3},\quad2.732\times10^{-3},
+\]
+mens mean absolute log-evidence-error gav
+\[
+ 2.749\times10^{-3},\quad1.379\times10^{-3},\quad6.905\times10^{-4}.
+\]
+Richardson-ekstrapolationens \(|\widehat E_0|/E(h/2)\) var 0.0008 for
+posterior-\(L^1\) og 0.0058 for evidence; det nye fine niveau matchede den
+førsteordens prediktion med relativ fejl under \(10^{-4}\) og 0.0041.
+Ved fælles \(h_{\max}=1/3072\) var successive spatialændringer fra
+101\(\to\)151\(\to\)201 celler 1.89/0.46 procent for posterior-\(L^1\) og
+0.91/0.67 procent for evidence. Det requested tidsloft var bindende på alle grids.
+Populationens numerical baseline fryses derfor til
+\[
+ N_x=151,\qquad h_{\max}=1/3072\ {m\ day},\qquad
+ \mathrm{cfl}=0.4,\qquad q=1.
+\]
+
+D3d er F4-D's sidste preregistrerede populationstest. Den bruger 200 nye
+synthetic sekvenser, ID 1011--1210. Hver sekvens køres paired gennem det
+selvstændige shape-D mixture-filter og en matched-grid FV-reference; FV må aldrig
+restart mixture-kæden. Whole sequences er bootstrap-enheden, med 5000 paired
+replikater og seed 4301.
+
+Mixture skal demonstrere praktisk equivalence til FV, ikke forbedring. For både
+predictive og posterior state-RMSE kræves, at hele bootstrap-95 procent intervallet
+for ratio
+\[
+ \frac{\mathrm{RMSE}_{M}}{\mathrm{RMSE}_{FV}}
+\]
+ligger i \([0.95,1.05]\). For predictive log-evidence kræves upper bootstrap-95
+bound for mean absolute per-observation difference højst 0.002, og 95-procent-
+quantilen af absolut dagssum-difference højst 0.1.
+
+For hver sekvens beregnes maksimum over de 24 tider af cell-mass \(L^1\) og
+\(W_1\), separat for predictions og posteriors. For begge snapshot-typer kræves
+95-procent-quantil af sequence-max \(L^1\) højst 0.02, global maximum højst
+0.05 og global maximum \(W_1\) højst 0.01. Massefejl skal være højst
+\(10^{-10}\), og ingen invalid truth eller failed filtersekvens må droppes.
+En fallback, der allerede har bestået solverens feasibility/optimality-check,
+er tilladt men rapporteres. Parallel worker-count er kun runtime-konfiguration og
+må ikke ændre estimater eller rækkefølge-uafhængige summaries.
+
+Hvis D3d består, er F4-D's videnskabelige testkæde afsluttet. Derefter mangler kun
+code/math/claims review, focused/full regression, PDF/CI og normal PR/branch closure.
+
 \subsection{Hvorfor D1 kommer før det rekursive filter}
 Referencearbejdet skelner mellem projection error fra det endelige mixture-rum
 og temporal/dynamisk discretization error \cite{nielsen}. Det samme princip
