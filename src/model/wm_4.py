@@ -61,7 +61,7 @@ class wm_4(wm):
 
     @staticmethod
     def drift(F, R, U, r):
-        F = wm_4_validation.signal_value(F, "F")
+        F = wm_4_validation._finite_scalar(F, "F")
         R = wm_4_validation._finite_scalar(R, "R")
         U = wm_4_validation.signal_value(U, "U")
         r = wm_4_validation.r_coefficients(r)
@@ -103,7 +103,7 @@ class wm_4(wm):
             Q[k] = q @ np.array([F[k], U[k]], dtype=float)
             I[k] = O[k] + R[k]
             if gamma is not None:
-                P_A[k] = np.array([-U[k], I[k], -F[k], -PE[k]], dtype=float)
+                P_A[k] = np.array([1.0 - U[k], I[k], F[k], 1.0 - PE[k]], dtype=float)
                 A[k] = gamma @ P_A[k]
             if k < self.t_steps - 1:
                 F[k + 1] = F[k] + self.dt * R[k]
