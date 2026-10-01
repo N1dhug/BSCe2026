@@ -595,6 +595,80 @@ def run_mixture_filter_convergence(args):
     return result
 
 
+
+def run_mixture_filter_population(args):
+    """Run the final preregistered F4-D D3d paired population study."""
+    print(
+        f"F4-D D3d population: sequences {args.start}.."
+        f"{args.start + args.sequences - 1}; cells={args.cells}; "
+        f"hmax={args.max_step:.6e}; workers={args.workers}"
+    )
+    print("  This is the final heavy F4-D population run; no progress rows are emitted.")
+    result = mixture_validation.run_f4_d_recursive_population(
+        n_sequences=args.sequences,
+        sequence_start=args.start,
+        x_steps=args.cells,
+        max_step=args.max_step,
+        cfl=args.cfl,
+        likelihood_quadrature_order=args.quadrature_order,
+        bootstrap_replicates=args.bootstrap_replicates,
+        workers=args.workers,
+    )
+    if result.get('successful_sequences', 0) == 0:
+        print(
+            f"  no successful sequences; invalid={result['invalid_truth_sequences']}; "
+            f"failed={result['failed_sequences']}"
+        )
+        return result
+    print(
+        f"  successful={result['successful_sequences']}/{args.sequences}; "
+        f"invalid truth={len(result['invalid_truth_sequences'])}; "
+        f"failed={len(result['failed_sequences'])}"
+    )
+    for label in ('predictive', 'posterior'):
+        item = result['rmse'][label]
+        ci = item['ratio_bootstrap95']
+        dci = item['difference_bootstrap95']
+        print(
+            f"  {label} RMSE: FV={item['fv']:.6e}; mixture={item['mixture']:.6e}; "
+            f"ratio={item['ratio']:.6f} [bootstrap95 {ci[0]:.6f}, {ci[1]:.6f}]; "
+            f"diff={item['difference']:.6e} "
+            f"[bootstrap95 {dci[0]:.6e}, {dci[1]:.6e}]; "
+            f"equivalent={item['passes_equivalence']}"
+        )
+    score = result['log_evidence_difference']
+    print(
+        f"  log-evidence: mean abs/obs={score['mean_absolute_per_observation']:.6e} "
+        f"[bootstrap95 {score['mean_absolute_bootstrap95'][0]:.6e}, "
+        f"{score['mean_absolute_bootstrap95'][1]:.6e}]; "
+        f"max abs/obs={score['maximum_absolute_per_observation']:.6e}"
+    )
+    print(
+        f"    mean signed/obs={score['mean_signed_per_observation']:.6e} "
+        f"[bootstrap95 {score['mean_signed_bootstrap95'][0]:.6e}, "
+        f"{score['mean_signed_bootstrap95'][1]:.6e}]; "
+        f"daily abs mean={score['daily_absolute_mean']:.6e}; "
+        f"q95={score['daily_absolute_q95']:.6e}; "
+        f"max={score['daily_absolute_maximum']:.6e}; passes={score['passes']}"
+    )
+    for name, item in result['distribution_gap'].items():
+        print(
+            f"  {name}: mean={item['mean']:.6e}; q95={item['q95']:.6e}; "
+            f"max={item['maximum']:.6e}; passes={item['passes']}"
+        )
+    num = result['numerical']
+    print(
+        f"  numerics: internal steps={num['total_internal_steps']}; "
+        f"prediction fallbacks={num['prediction_fallbacks']}; "
+        f"posterior fallbacks={num['posterior_fallbacks']}; "
+        f"max mass error={num['maximum_mass_error']:.3e}; passes={num['passes']}"
+    )
+    if result['failed_sequences']:
+        print(f"  failed sequences={result['failed_sequences']}")
+    print(f"  passes population={result['passes_population']}")
+    return result
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -713,6 +787,23 @@ def build_parser():
     )
     mixture_filter_converge.add_argument('--sequence-id', type=int, default=0)
     mixture_filter_converge.set_defaults(handler=run_mixture_filter_convergence)
+
+    mixture_filter_population = subparsers.add_parser(
+        'mixture-filter-population',
+        help='Run the final preregistered F4-D D3d paired population study.',
+    )
+    mixture_filter_population.add_argument('--start', type=int, default=1011)
+    mixture_filter_population.add_argument('--sequences', type=int, default=200)
+    mixture_filter_population.add_argument('--cells', type=int, default=151)
+    mixture_filter_population.add_argument('--max-step', type=float, default=1.0 / 3072.0)
+    mixture_filter_population.add_argument('--cfl', type=float, default=0.4)
+    mixture_filter_population.add_argument('--quadrature-order', type=int, default=1)
+    mixture_filter_population.add_argument('--bootstrap-replicates', type=int, default=5000)
+    mixture_filter_population.add_argument(
+        '--workers', type=int, default=1,
+        help='Independent process workers; changes runtime only, not the scientific design.',
+    )
+    mixture_filter_population.set_defaults(handler=run_mixture_filter_population)
     return parser
 
 
