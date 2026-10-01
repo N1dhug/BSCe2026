@@ -29,7 +29,7 @@ class qp_params:
 
     @staticmethod
     def _equivalent_q(r):
-        r = wm_4_validation.r_coefficients(r)
+        r = wm_4_validation.r_coefficients(r, enforce_equilibrium=False)
         kappa_R = -r[3]
         return r[:3] / kappa_R, kappa_R
 
@@ -59,14 +59,14 @@ class qp_params:
             "initial_rate_mismatch": float(R_observed[0] - init_cond[1]),
         }
 
-    def _qp_constraints(self, stabilize=True):
+    def _qp_constraints(self, stabilize=True, zero_intercept=False):
         eps, dt = self.model._FIT_EPS, self.model.dt
-        rows = [
+        rows = [] if zero_intercept else [
             np.array([1.0, 1.0, 0.0, 0.0]),
             np.array([-1.0, 0.0, -1.0, 0.0]),
             np.array([1.0, 1.0, 1.0, 0.0]),
         ]
-        rhs = [0.0, 0.0, 0.0]
+        rhs = [] if zero_intercept else [0.0, 0.0, 0.0]
         if stabilize:
             rows.extend([
                 np.array([0.0, dt * dt, 0.0, -2.0 * dt]),
@@ -75,27 +75,36 @@ class qp_params:
             rhs.extend([4.0 - eps, -eps])
         lb = np.array([0.0, -np.inf, -np.inf, -np.inf], dtype=float)
         ub = np.array([np.inf, -eps, 0.0, -eps], dtype=float)
-        return np.vstack(rows), np.asarray(rhs, dtype=float), lb, ub
+        A_ub = np.vstack(rows) if rows else np.empty((0, 4), dtype=float)
+        return A_ub, np.asarray(rhs, dtype=float), lb, ub
 
-    def _solve_qp(self, datasets, init_conds, stabilize=True):
+    def _solve_qp(self, datasets, init_conds, stabilize=True, zero_intercept=False):
         observed = [self._observed_state(data, init) for data, init in zip(datasets, init_conds)]
         X = np.vstack([state["X"][state["transition_mask"]] for state in observed])
         y = np.concatenate([state["y"][state["transition_mask"]] for state in observed])
         if X.shape[0] < 1: raise ValueError("At least one wm_4 state transition is required for fitting.")
-        A_ub, b_ub, lb, ub = self._qp_constraints(stabilize=stabilize)
+        A_ub, b_ub, lb, ub = self._qp_constraints(stabilize=stabilize, zero_intercept=zero_intercept)
+        A_eq = np.array([[1.0, 0.0, 0.0, 0.0]], dtype=float) if zero_intercept else None
+        b_eq = np.array([0.0], dtype=float) if zero_intercept else None
         start = perf_counter()
-        r = self.model._least_squares_qp(X, y, A_ub=A_ub, b_ub=b_ub, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
+        r = self.model._least_squares_qp(
+            X, y, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq,
+            lb=lb, ub=ub, ridge=self.model._FIT_RIDGE,
+        )
         solve_time = perf_counter() - start
-        r = wm_4_validation.recovered_structural_coefficients(r)
+        r = wm_4_validation.recovered_structural_coefficients(r, enforce_equilibrium=not zero_intercept)
         residual = X @ r - y
         return r, observed, float(np.mean(residual ** 2)), solve_time
 
-    def _state_from_parameters(self, data, init_cond, coefficients, kappa_r=None, full=False):
+    def _state_from_parameters(self, data, init_cond, coefficients, kappa_r=None, full=False, enforce_equilibrium=True):
         if kappa_r is None:
-            r = wm_4_validation.r_coefficients(coefficients)
+            r = wm_4_validation.r_coefficients(coefficients, enforce_equilibrium=enforce_equilibrium)
         else:
             r = wm_4_validation.legacy_r(coefficients, kappa_r)
-        state = self.model._solve_deterministic(init_cond, data["U"], data["PE"], data["Time"], data["O"], r)
+        state = self.model._solve_deterministic(
+            init_cond, data["U"], data["PE"], data["Time"], data["O"], r,
+            enforce_equilibrium=enforce_equilibrium,
+        )
         if full: return state
         return {key: value for key, value in state.items() if key not in ("P_R", "P_A")}
 
@@ -200,13 +209,13 @@ class qp_params:
         })
         return result
 
-    def fit(self, input_data, initial_conditions, *, fit_initial_state=False, fit_diffusion=True, stabilize=True, verbose=False, **_legacy_kwargs):
+    def fit(self, input_data, initial_conditions, *, fit_initial_state=False, fit_diffusion=True, stabilize=True, zero_intercept=False, verbose=False, **_legacy_kwargs):
         if fit_initial_state: raise ValueError("wm_4 QP fitting requires fixed initial [F0, R0]; fit_initial_state is no longer supported.")
         fit_start = perf_counter()
         data = self._prepare_data(input_data)
         init_cond = wm_4_validation.initial_condition(initial_conditions)
-        r, observed, qp_loss, qp_solve_time = self._solve_qp([data], [init_cond], stabilize=stabilize)
-        state = self._state_from_parameters(data, init_cond, r, full=True)
+        r, observed, qp_loss, qp_solve_time = self._solve_qp([data], [init_cond], stabilize=stabilize, zero_intercept=zero_intercept)
+        state = self._state_from_parameters(data, init_cond, r, full=True, enforce_equilibrium=not zero_intercept)
         obs = np.asarray(data["observation_mask"], dtype=bool)
         deterministic_loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
         result = {
@@ -219,10 +228,11 @@ class qp_params:
         }
         result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
+        result["zero_intercept"] = bool(zero_intercept)
         if verbose: print(f"[qp] transitions={np.count_nonzero(data['transition_mask'])} loss={qp_loss:.8g} free_run_mse={deterministic_loss:.8g} solve={qp_solve_time:.4f}s")
         return result
 
-    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=False, fit_diffusion=True, stabilize=True, verbose=False, **_legacy_kwargs):
+    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=False, fit_diffusion=True, stabilize=True, zero_intercept=False, verbose=False, **_legacy_kwargs):
         if fit_initial_state: raise ValueError("wm_4 QP fitting requires fixed initial [F0, R0]; fit_initial_state is no longer supported.")
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         fit_start = perf_counter()
@@ -232,8 +242,8 @@ class qp_params:
         elif raw_init.shape == (len(datasets), 2): init_conds = [wm_4_validation.initial_condition(row) for row in raw_init]
         else: raise ValueError("initial_conditions must be [F0,R0] or one [F0,R0] row per fitting trajectory.")
 
-        r, observed, qp_loss, qp_solve_time = self._solve_qp(datasets, init_conds, stabilize=stabilize)
-        states = [self._state_from_parameters(data, init, r, full=True) for data, init in zip(datasets, init_conds)]
+        r, observed, qp_loss, qp_solve_time = self._solve_qp(datasets, init_conds, stabilize=stabilize, zero_intercept=zero_intercept)
+        states = [self._state_from_parameters(data, init, r, full=True, enforce_equilibrium=not zero_intercept) for data, init in zip(datasets, init_conds)]
         losses = []
         for data, state in zip(datasets, states):
             obs = np.asarray(data["observation_mask"], dtype=bool)
@@ -251,6 +261,7 @@ class qp_params:
         result = self._fit_uncertainty_params_many(result, datasets, init_conds) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         result["fit_method"] = "qp_many"
+        result["zero_intercept"] = bool(zero_intercept)
         if verbose: print(f"[qp] trajectories={len(datasets)} transitions={sum(np.count_nonzero(data['transition_mask']) for data in datasets)} loss={qp_loss:.8g} free_run_mse={deterministic_loss:.8g} solve={qp_solve_time:.4f}s")
         return result
 
@@ -275,9 +286,9 @@ class optimized_qp_params(qp_params):
         residual = (observed["X"] @ np.asarray(r, dtype=float) - observed["y"])[mask]
         return float(np.mean(residual ** 2)) if residual.size else np.inf
 
-    def _optimize_initial_state(self, data, r, seed, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf)):
+    def _optimize_initial_state(self, data, r, seed, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), zero_intercept=False):
         seed = wm_4_validation.initial_condition(seed)
-        r = wm_4_validation.r_coefficients(r)
+        r = wm_4_validation.r_coefficients(r, enforce_equilibrium=not zero_intercept)
 
         def residual(init):
             observed = self._observed_state(data, init)
@@ -294,7 +305,7 @@ class optimized_qp_params(qp_params):
         init = self.model._least_squares_qp(X, y, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE, x0=np.clip(seed, lb, ub))
         return wm_4_validation.initial_condition(init)
 
-    def optimize_prediction_initial_state(self, input_data, r, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0)):
+    def optimize_prediction_initial_state(self, input_data, r, f_bounds=(0.0, 1.0), r_bounds=(-1.0, 1.0), zero_intercept=False):
         """Oracle/diagnostic initial-state fit for a fixed parameter vector.
 
         Fits [F0,R0] directly to observed I over the supplied trajectory while
@@ -302,30 +313,33 @@ class optimized_qp_params(qp_params):
         comparisons, not deployable forecasting, because it uses target-period I.
         """
         data = self._prepare_data(input_data)
-        r = wm_4_validation.r_coefficients(r)
-        base = self._state_from_parameters(data, np.array([0.0, 0.0]), r)
-        f_unit = self._state_from_parameters(data, np.array([1.0, 0.0]), r)
-        r_unit = self._state_from_parameters(data, np.array([0.0, 1.0]), r)
+        r = wm_4_validation.r_coefficients(r, enforce_equilibrium=not zero_intercept)
+        base = self._state_from_parameters(data, np.array([0.0, 0.0]), r, enforce_equilibrium=not zero_intercept)
+        f_unit = self._state_from_parameters(data, np.array([1.0, 0.0]), r, enforce_equilibrium=not zero_intercept)
+        r_unit = self._state_from_parameters(data, np.array([0.0, 1.0]), r, enforce_equilibrium=not zero_intercept)
         obs = np.asarray(data["observation_mask"], dtype=bool)
         X = np.column_stack(((f_unit["I"] - base["I"])[obs], (r_unit["I"] - base["I"])[obs]))
         y = data["I"][obs] - base["I"][obs]
         lb = np.array([float(f_bounds[0]), float(r_bounds[0])], dtype=float)
         ub = np.array([float(f_bounds[1]), float(r_bounds[1])], dtype=float)
         init = self.model._least_squares_qp(X, y, lb=lb, ub=ub, ridge=self.model._FIT_RIDGE)
-        state = self._state_from_parameters(data, init, r, full=True)
+        state = self._state_from_parameters(data, init, r, full=True, enforce_equilibrium=not zero_intercept)
         loss = float(np.mean((state["I"][obs] - data["I"][obs]) ** 2))
         return {"init_cond": np.asarray(init, dtype=float), "deterministic_state": state, "loss": loss, "observation_mask": obs.copy()}
 
-    def _alternating_fit(self, datasets, init_conds, stabilize=True, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), verbose=False):
+    def _alternating_fit(self, datasets, init_conds, stabilize=True, zero_intercept=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), verbose=False):
         init_conds = [wm_4_validation.initial_condition(init).copy() for init in init_conds]
         history, total_qp_time = [], 0.0
         previous_loss = np.inf
 
         for iteration in range(1, int(max_state_iter) + 1):
-            r, _, _, solve_time = self._solve_qp(datasets, init_conds, stabilize=stabilize)
+            r, _, _, solve_time = self._solve_qp(datasets, init_conds, stabilize=stabilize, zero_intercept=zero_intercept)
             total_qp_time += solve_time
-            optimized = [self._optimize_initial_state(data, r, init, f_bounds=f_bounds, r_bounds=r_bounds) for data, init in zip(datasets, init_conds)]
-            r, observed, qp_loss, solve_time = self._solve_qp(datasets, optimized, stabilize=stabilize)
+            optimized = [
+                self._optimize_initial_state(data, r, init, f_bounds=f_bounds, r_bounds=r_bounds, zero_intercept=zero_intercept)
+                for data, init in zip(datasets, init_conds)
+            ]
+            r, observed, qp_loss, solve_time = self._solve_qp(datasets, optimized, stabilize=stabilize, zero_intercept=zero_intercept)
             total_qp_time += solve_time
             max_state_change = max(float(np.max(np.abs(new - old))) for new, old in zip(optimized, init_conds))
             loss_change = abs(previous_loss - qp_loss) if np.isfinite(previous_loss) else np.inf
@@ -340,7 +354,7 @@ class optimized_qp_params(qp_params):
 
         return r, observed, init_conds, float(qp_loss), float(total_qp_time), history
 
-    def fit(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, deterministic=False, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), **_legacy_kwargs):
+    def fit(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, deterministic=False, stabilize=True, zero_intercept=False, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), **_legacy_kwargs):
         fit_start = perf_counter()
         if deterministic: fit_diffusion = False
         data = self._prepare_data(input_data)
@@ -348,16 +362,17 @@ class optimized_qp_params(qp_params):
 
         if fit_initial_state:
             r, observed, init_conds, qp_loss, qp_solve_time, history = self._alternating_fit(
-                [data], [seed], stabilize=stabilize, max_state_iter=max_state_iter, state_tol=state_tol,
+                [data], [seed], stabilize=stabilize, zero_intercept=zero_intercept,
+                max_state_iter=max_state_iter, state_tol=state_tol,
                 f_bounds=f_bounds, r_bounds=r_bounds, verbose=verbose,
             )
             init = init_conds[0]
         else:
             init = seed
-            r, observed, qp_loss, qp_solve_time = self._solve_qp([data], [init], stabilize=stabilize)
+            r, observed, qp_loss, qp_solve_time = self._solve_qp([data], [init], stabilize=stabilize, zero_intercept=zero_intercept)
             history = []
 
-        state = self._state_from_parameters(data, init, r, full=True)
+        state = self._state_from_parameters(data, init, r, full=True, enforce_equilibrium=not zero_intercept)
         obs = np.asarray(data["observation_mask"], dtype=bool)
         deterministic_loss = float(np.mean((data["I"][obs] - state["I"][obs]) ** 2))
         result = {
@@ -374,10 +389,11 @@ class optimized_qp_params(qp_params):
         result["fit_method"] = "optimized_qp" if fit_initial_state else "qp"
         result["fit_initial_state"] = bool(fit_initial_state)
         result["deterministic_fit"] = bool(deterministic)
+        result["zero_intercept"] = bool(zero_intercept)
         if verbose: print(f"[optimized_qp] transitions={np.count_nonzero(data['transition_mask'])} loss={qp_loss:.8g} iterations={len(history)}")
         return result
 
-    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, deterministic=False, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), **_legacy_kwargs):
+    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, deterministic=False, stabilize=True, zero_intercept=False, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(0.0, 1.0), r_bounds=(-np.inf, np.inf), **_legacy_kwargs):
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         fit_start = perf_counter()
         if deterministic: fit_diffusion = False
@@ -389,15 +405,16 @@ class optimized_qp_params(qp_params):
 
         if fit_initial_state:
             r, observed, init_conds, qp_loss, qp_solve_time, history = self._alternating_fit(
-                datasets, seeds, stabilize=stabilize, max_state_iter=max_state_iter, state_tol=state_tol,
+                datasets, seeds, stabilize=stabilize, zero_intercept=zero_intercept,
+                max_state_iter=max_state_iter, state_tol=state_tol,
                 f_bounds=f_bounds, r_bounds=r_bounds, verbose=verbose,
             )
         else:
             init_conds = seeds
-            r, observed, qp_loss, qp_solve_time = self._solve_qp(datasets, init_conds, stabilize=stabilize)
+            r, observed, qp_loss, qp_solve_time = self._solve_qp(datasets, init_conds, stabilize=stabilize, zero_intercept=zero_intercept)
             history = []
 
-        states = [self._state_from_parameters(data, init, r, full=True) for data, init in zip(datasets, init_conds)]
+        states = [self._state_from_parameters(data, init, r, full=True, enforce_equilibrium=not zero_intercept) for data, init in zip(datasets, init_conds)]
         losses = []
         for data, state in zip(datasets, states):
             obs = np.asarray(data["observation_mask"], dtype=bool)
@@ -421,5 +438,6 @@ class optimized_qp_params(qp_params):
         result["fit_method"] = "optimized_qp_many" if fit_initial_state else "qp_many"
         result["fit_initial_state"] = bool(fit_initial_state)
         result["deterministic_fit"] = bool(deterministic)
+        result["zero_intercept"] = bool(zero_intercept)
         if verbose: print(f"[optimized_qp] trajectories={len(datasets)} transitions={sum(np.count_nonzero(data['transition_mask']) for data in datasets)} loss={qp_loss:.8g} iterations={len(history)}")
         return result
