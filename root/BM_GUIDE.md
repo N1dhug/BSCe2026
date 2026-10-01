@@ -35,6 +35,7 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | D3a / D3b / D3c | `mixture-filter`, `mixture-filter-refine`, `mixture-filter-converge` |
 | D3d population | `mixture-filter-population` |
 | F4-E E1 likelihood-refinement | `likelihood-refine` |
+| F4-E E2 en-parameter screening | `parameter-screen --e1-report <E1-JSON>` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -58,6 +59,22 @@ Windows-miljøet, tolerancer, seeds eller worker-fordelingen af sekvenser. Det u
 mange processer hver starter mange BLAS-tråde. Flere workers er ikke automatisk hurtigere;
 mål på egen maskine. Uden flaget beholdes bibliotekernes eksisterende thread-indstillinger.
 I en allerede startet notebook kræver threadkontrol en runtime-mekanisme som threadpoolctl.
+
+E2 bruger den låste population 1212..1261 og alle fem 41-node-grids; de officielle
+settings kan ikke ændres gennem CLI. E1-filen skal være den beståede registrerede
+rho-refinement på ID1211. Eksempel efter E1:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate parameter-screen `
+  --e1-report files/output/bm_1/runs/estimation/f4_e_e1_rho_refinement.json `
+  --workers 7 `
+  --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_e_e2_parameter_screening.json
+```
+
+Der udføres 50 x 5 x 41 = 10250 selvstændige kandidat-replays, med løbende progress.
+Output må ikke overskrives. LR-mængder er shape-diagnostik, og de øvrige parametre
+holdes på truth i hvert snit; parameterudvælgelse kræver stadig E3/E4.
 
 Batchgenerering bruger samme pr.-ID RNG-strømme og samme EM-grid som enkeltgenerering.
 Caches indeholder kun target-uafhængig geometri eller eksplicitte, validerede startgæt;

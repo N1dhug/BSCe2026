@@ -350,6 +350,20 @@ hvor \(\mathcal R\) er unionen af gridpunkter, der ligger højst fem log-enheder
 et af de to maxima. Fejler dette kriterium, raffineres numerikken igen i stedet for at
 vælge den resolution, der giver den ønskede parameterkonklusion.
 
+Den registrerede E1-kørsel på sequence-id 1211 (kildecommit
+\texttt{881247f}, verificeret på Windows den 1. oktober 2026) gav maximale
+fine/middle-ændringer på henholdsvis \(0.001864524\) for tid,
+\(0.003230894\) for rum og \(1.634248\cdot10^{-13}\) for quadrature.
+Alle tre sammenligninger havde samme entydige maximizer på de to fineste niveauer
+og bestod \eqref{eq:f4e-numerical-gate}. Ved 201 celler var rho-gridets MLE
+\(1.30\), mens både 401 og 801 celler gav \(1.275\).
+Til screening låses derfor \(N_x=401\), \(h_{\max}=1/768\) dag og \(q=3\):
+det accepterede middle-rumgrid, det fineste testede tidsskridt og det accepterede
+middle-quadrature. Dette valg er baseret på stabilitet, ikke afstanden til truth
+\(\rho^\star=1\). E1 på én rho-slice er ikke en konvergensgaranti for alle
+parametre eller alle sekvenser; en anden parameter skal have sin egen
+likelihood-refinement, før den vælges til F4-F.
+
 Den efterfølgende en-parameter-screening bruger 50 hidtil ubrugte sekvenser,
 ID 1212--1261, med følgende grids:
 \[
@@ -375,6 +389,33 @@ Mængden bruges kun som en sammenlignelig shape-diagnostik. Med kort record, dis
 grid og især \(\Xi^\star=1\) på den fysiske rand er Wilks-approksimationens antagelser
 ikke verificeret, så \(\mathcal I_{\rm LR}\) betegnes ikke som et kalibreret
 95-procents konfidensinterval.
+
+Hvis flere gridnoder deler maksimum inden for den deklarerede numeriske
+tolerance \(10^{-12}\) i log-likelihood, bevares alle maximizers; der vælges
+ikke vilkårligt den første. Fordelingen af entydige grid-MLE'er opsummeres med
+median og empiriske 5/95-procents quantiler, ledsaget af antallet af bundne
+maksima. Disse quantiler beskriver variation mellem sekvenser, ikke et
+konfidensinterval for en parameter. Randfrekvensen tæller sekvenser med mindst
+én maximizer på støtteranden.
+
+For \(\mathcal I_{\rm LR}\) rapporteres de konkrete noder, antallet af
+sammenhængende gridkomponenter og kontakt med støtteranden. Bredden
+\(\max\mathcal I_{\rm LR}-\min\mathcal I_{\rm LR}\) er mængdens spændvidde i
+parameterens egen enhed, også hvis mængden er usammenhængende. En randkontakt
+kan betyde, at gridstøtten trunkerer en bred likelihood; lav randfrekvens er
+ikke alene bevis på tilstrækkelig støtte.
+
+For uafhængige sekvenser \(s=1,\ldots,50\), med samme erklærede parameter,
+vises desuden den samlede centered slice
+\[
+ A(\theta_j)=\sum_{s=1}^{50}\Delta\ell_s(\theta_j),\qquad
+ \Delta\ell_{\rm samlet}(\theta_j)=A(\theta_j)-\max_i A(\theta_i).
+\]
+Per-sekvens-centeringsleddene er kandidat-uafhængige konstanter, så denne kurve
+har samme maximizer og likelihood-ratioer som summen af de rå log-likelihoods.
+Det er en fælles-parameter-slice over flere uafhængige records; alle fire andre
+parametre holdes stadig på truth. Den skelnes derfor fra både en profil og et
+joint fit. E2 indfører ikke et nyt recovery-passmål.
 
 Tre analytisk relevante 2D-diagnoser reserveres efter singles:
 \[

@@ -8,6 +8,7 @@ predictive likelihoods before any recursive parameter bank is introduced.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -724,6 +725,35 @@ def run_mixture_filter_population(args):
 
 
 
+def _write_likelihood_report(args, result, started):
+    """Write E1/E2 evidence with common source metadata, never overwrite a run."""
+    if args.output is None:
+        return
+    try:
+        revision = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True,
+            capture_output=True, check=True,
+        ).stdout.strip()
+        dirty = bool(subprocess.run(
+            ['git', 'status', '--porcelain'], cwd=ROOT, text=True,
+            capture_output=True, check=True,
+        ).stdout)
+    except (OSError, subprocess.SubprocessError):
+        revision, dirty = None, None
+    payload = {
+        **result,
+        'source_commit': revision,
+        'working_tree_dirty': dirty,
+        'elapsed_seconds': perf_counter() - started,
+        'blas_threads_requested': args.blas_threads,
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open('x', encoding='utf-8') as handle:
+        json.dump(payload, handle, indent=2, allow_nan=False)
+        handle.write('\n')
+    print(f"Saved {args.output}")
+
+
 def run_likelihood_refinement(args):
     """Run preregistered F4-E E1 rho-likelihood numerical refinement."""
     if args.output is not None and args.output.exists():
@@ -781,30 +811,54 @@ def run_likelihood_refinement(args):
         f"passes E1={result['passes_numerical_refinement']}"
     )
 
-    if args.output is not None:
-        try:
-            revision = subprocess.run(
-                ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True,
-                capture_output=True, check=True,
-            ).stdout.strip()
-            dirty = bool(subprocess.run(
-                ['git', 'status', '--porcelain'], cwd=ROOT, text=True,
-                capture_output=True, check=True,
-            ).stdout)
-        except (OSError, subprocess.SubprocessError):
-            revision, dirty = None, None
-        payload = {
-            **result,
-            'source_commit': revision,
-            'working_tree_dirty': dirty,
-            'elapsed_seconds': perf_counter() - started,
-            'blas_threads_requested': args.blas_threads,
-        }
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        with args.output.open('x', encoding='utf-8') as handle:
-            json.dump(payload, handle, indent=2, allow_nan=False)
-            handle.write('\n')
-        print(f"Saved {args.output}")
+    _write_likelihood_report(args, result, started)
+    return result
+
+
+def run_parameter_screening(args):
+    """Run locked E2 after rechecking the supplied registered E1 artifact."""
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(f"Refusing to overwrite {args.output}; choose a new result path.")
+    raw = args.e1_report.read_bytes()
+    e1 = json.loads(raw.decode('utf-8'))
+    settings = synthetic.f4_e_screen_numerics_from_refinement(e1)
+    print(
+        f"F4-E E2 parameter screening: sequences=1212..1261; "
+        f"5 parameters x 41 nodes; cells={settings['x_steps']}; "
+        f"hmax={settings['max_step']:.6e}; q={settings['likelihood_quadrature_order']}; "
+        f"workers={args.workers}"
+    )
+    started = perf_counter()
+
+    def progress(completed, total, sequence_id, row):
+        if not args.quiet:
+            elapsed = perf_counter() - started
+            remaining = elapsed * (total - completed) / completed
+            mles = ', '.join(f"{name}={s['grid_mle']}" for name, s in row['slices'].items())
+            print(f"  completed {completed}/{total}; sequence={sequence_id}; {mles}; "
+                  f"elapsed={elapsed:.1f}s; ETA~{remaining:.1f}s", flush=True)
+
+    result = synthetic.run_f4_e_parameter_screening(
+        e1_refinement=e1, workers=args.workers, progress=progress,
+    )
+    result['e1_report_path'] = str(args.e1_report)
+    result['e1_report_sha256'] = hashlib.sha256(raw).hexdigest()
+    for name, item in result['summary'].items():
+        print(
+            f"  {name}: median MLE={item['unique_mle_median']}; "
+            f"q05/q95={item['unique_mle_q05_q95']}; "
+            f"boundary={item['boundary_mle_frequency']:.1%}; "
+            f"ties={item['nonunique_mle_count']}; "
+            f"median truth loss={item['median_log_likelihood_loss_at_truth']:.6f}; "
+            f"median LR span={item['median_lr_span_width']:.6f}; "
+            f"aggregate MLE={item['aggregate_slice']['grid_mle']}"
+        )
+    print(f"  mass err={result['maximum_abs_mass_error']:.3e}; "
+          f"min mass={result['minimum_cell_mass']:.3e}; "
+          f"registered={result['matches_registered_design']}")
+    print('  LR sets are shape diagnostics; nuisance parameters held at truth. '
+          'E3/E4 and parameter-specific refinement still required before F4-F.')
+    _write_likelihood_report(args, result, started)
     return result
 
 
@@ -909,6 +963,21 @@ def build_parser():
         help='Suppress per-configuration progress, not the final summary.',
     )
     likelihood_refinement.set_defaults(handler=run_likelihood_refinement)
+
+    parameter_screening = subparsers.add_parser(
+        'parameter-screen', help='Run locked F4-E E2 one-parameter screening on IDs 1212..1261.',
+    )
+    parameter_screening.add_argument(
+        '--e1-report', type=Path, required=True,
+        help='Passing registered E1 JSON; curves and numerical settings are rechecked.',
+    )
+    parameter_screening.add_argument('--workers', type=int, default=1,
+                                    help='Independent sequence workers; runtime only.')
+    parameter_screening.add_argument('--output', type=Path,
+                                    help='Optional new JSON with every curve, sequence and source revision.')
+    parameter_screening.add_argument('--quiet', action='store_true',
+                                    help='Suppress per-sequence progress, not the final summary.')
+    parameter_screening.set_defaults(handler=run_parameter_screening)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',

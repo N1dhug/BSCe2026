@@ -1,7 +1,10 @@
 """F4 estimation primitives, synthetic generator and known-parameter FV filter."""
 
 import ast
+import copy
+import json
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -1512,6 +1515,165 @@ class F4ELikelihoodRefinementTests(unittest.TestCase):
         right.pop('workers')
         self.assertEqual(left, right)
 
+
+
+class F4EParameterScreeningTests(unittest.TestCase):
+    @staticmethod
+    def passing_e1():
+        # Cheap analytic curve fixture; run the real E1 assembly/gate rather
+        # than constructing a report containing only hand-set passing flags.
+        def curve(sequence_id, rho_values, x_steps, max_step, quadrature_order):
+            total = tuple(-10 * (x - 1.0) ** 2 for x in rho_values)
+            return dict(rho_values=rho_values, total_log_likelihood=total,
+                        centered_log_likelihood=total, maximizer_indices=(20,),
+                        maximizer_rho=1.0, x_steps=x_steps, requested_max_step=max_step,
+                        actual_max_step=max_step, n_steps=24,
+                        likelihood_quadrature_order=quadrature_order,
+                        maximum_abs_mass_error=0.0, minimum_cell_mass=0.0)
+        with patch.object(synthetic, '_f4_e_rho_curve', side_effect=curve):
+            return synthetic.run_f4_e_likelihood_refinement()
+
+    @staticmethod
+    def small_grids():
+        return dict(rho=(.8, 1., 1.2), Xi=(0., .5, 1.), k=(1., 2., 3.),
+                    sigma_x=(.25, .5, 1.), sigma_y=(.015, .03, .06))
+
+    def test_registered_grids_and_e1_numerical_lock(self):
+        grids = synthetic.F4_E_PARAMETER_GRIDS
+        truth = synthetic.f4_e_truth_candidate()
+        for name, grid in grids.items():
+            self.assertEqual(len(grid), 41)
+            self.assertIn(getattr(truth, name), grid)
+            self.assertTrue(np.all(np.diff(grid) > 0))
+        np.testing.assert_allclose(grids['sigma_x'][::10], [.125, .25, .5, 1., 2.])
+        self.assertEqual(grids['Xi'][-1], 1.)
+        locked = synthetic.f4_e_screen_numerics_from_refinement(self.passing_e1())
+        self.assertEqual((locked['x_steps'], locked['max_step'],
+                          locked['likelihood_quadrature_order']), (401, 1/768, 3))
+
+    def test_e2_rechecks_raw_e1_curves_and_rejects_unregistered_or_forged_flags(self):
+        good = self.passing_e1()
+        bad_reports = []
+        for key, value in [('passes_numerical_refinement', False), ('sequence_id', 0),
+                           ('matches_registered_design', False)]:
+            bad = copy.deepcopy(good)
+            bad[key] = value
+            bad_reports.append(bad)
+        bad = copy.deepcopy(good)
+        row = bad['spatial'][-1]
+        curve = np.asarray(row['total_log_likelihood']).copy()
+        curve[20] = -.2
+        row['total_log_likelihood'] = row['centered_log_likelihood'] = tuple(curve)
+        row['maximizer_indices'] = (19, 21)
+        bad_reports.append(bad)
+        bad = copy.deepcopy(good)
+        row = bad['time'][-1]
+        curve = np.asarray(row['total_log_likelihood']).copy()
+        curve[0] -= .2  # still centered at the same maximum, but fails 0.10 gate
+        row['total_log_likelihood'] = row['centered_log_likelihood'] = tuple(curve)
+        bad_reports.append(bad)
+        bad = copy.deepcopy(good)
+        bad['quadrature'][-1]['centered_log_likelihood'] = (0.,) * 41
+        bad_reports.append(bad)
+        for bad in bad_reports:
+            with self.subTest(report=bad), patch.object(
+                    synthetic, '_f4_e_screen_sequence_task') as run, self.assertRaises(ValueError):
+                synthetic.run_f4_e_parameter_screening(e1_refinement=bad)
+            run.assert_not_called()
+
+    def test_lr_sets_keep_ties_disconnected_regions_and_support_truncation(self):
+        result = synthetic._f4_e_slice_summary((0., 1., 2., 3., 4.), (0., -4., -.5, -4., 0.), 2.)
+        self.assertIsNone(result['grid_mle'])
+        self.assertEqual(result['maximizer_indices'], (0, 4))
+        self.assertTrue(result['mle_on_boundary'])
+        self.assertEqual(result['log_likelihood_loss_at_truth'], .5)
+        self.assertEqual(result['lr_indices'], (0, 2, 4))
+        self.assertEqual(result['lr_connected_components'], 3)
+        self.assertEqual(result['lr_span_width'], 4.)
+        self.assertTrue(result['lr_touches_boundary'])
+
+    def test_small_screen_parallel_matches_serial_and_direct_replay_for_each_coordinate(self):
+        kwargs = dict(e1_refinement=self.passing_e1(), n_sequences=2, sequence_start=0,
+                      parameter_grids=self.small_grids(), x_steps=21, max_step=1/24,
+                      likelihood_quadrature_order=1)
+        events = []
+        serial = synthetic.run_f4_e_parameter_screening(
+            **kwargs, workers=1, progress=lambda completed, total, seq, row:
+            events.append((completed, total, seq)))
+        parallel = synthetic.run_f4_e_parameter_screening(**kwargs, workers=2)
+        self.assertEqual(events, [(1, 2, 0), (2, 2, 1)])
+        self.assertFalse(serial['matches_registered_design'])
+        left, right = dict(serial), dict(parallel)
+        left.pop('workers')
+        right.pop('workers')
+        self.assertEqual(left, right)
+        case = synthetic.build_f4_b_case()
+        obs = synthetic.generate_synthetic_sequence(case, sequence_id=0).observations
+        truth = synthetic.f4_e_truth_candidate(case)
+        for name, grid in self.small_grids().items():
+            from dataclasses import replace
+            direct = synthetic.evaluate_f4_e_candidate(
+                case, obs, replace(truth, **{name: grid[0]}), x_steps=21, max_step=1/24)
+            row = serial['sequence_results'][0]['slices'][name]
+            np.testing.assert_array_equal(row['log_evidence'][0], direct['log_evidence'])
+            np.testing.assert_allclose(np.sum(row['log_evidence'], axis=1),
+                                       row['total_log_likelihood'], atol=1e-12, rtol=0)
+            summed = np.sum([r['slices'][name]['centered_log_likelihood']
+                             for r in serial['sequence_results']], axis=0)
+            np.testing.assert_allclose(serial['summary'][name]['aggregate_slice']['centered_log_likelihood'],
+                                       summed - np.max(summed), atol=1e-12, rtol=0)
+        # JSON serialization must retain every row; no dataclass/ndarray leaks.
+        self.assertEqual(len(json.loads(json.dumps(serial, allow_nan=False))['sequence_results']), 2)
+
+    def test_invalid_grids_fail_before_screening_work(self):
+        for grids in [dict(rho=(1., 2.)), {**self.small_grids(), 'rho': (.5, .8)},
+                      {**self.small_grids(), 'Xi': (0., 1., 1.5)}]:
+            with patch.object(synthetic, '_f4_e_screen_sequence_task') as run, self.assertRaises(ValueError):
+                synthetic.run_f4_e_parameter_screening(e1_refinement=self.passing_e1(),
+                                                      parameter_grids=grids)
+            run.assert_not_called()
+
+    def test_official_population_preserves_all_locked_ids_and_grids(self):
+        seen = []
+        def task(task):
+            seq, grids, cells, step, order = task
+            seen.append((seq, grids, cells, step, order))
+            truth = synthetic.f4_e_truth_candidate()
+            slices = {}
+            for name, grid in grids.items():
+                scores = -(np.asarray(grid) - getattr(truth, name)) ** 2
+                slices[name] = synthetic._f4_e_slice_summary(grid, scores, getattr(truth, name))
+                slices[name].update(maximum_abs_mass_error=0., minimum_cell_mass=0.)
+            return dict(sequence_id=seq, slices=slices)
+        with patch.object(synthetic, '_f4_e_screen_sequence_task', side_effect=task):
+            result = synthetic.run_f4_e_parameter_screening(e1_refinement=self.passing_e1())
+        self.assertTrue(result['matches_registered_design'])
+        self.assertEqual(tuple(s[0] for s in seen), tuple(range(1212, 1262)))
+        self.assertEqual(len(result['sequence_results']), 50)
+        for seq, grids, cells, step, order in seen:
+            self.assertEqual(grids, synthetic.F4_E_PARAMETER_GRIDS)
+            self.assertEqual((cells, step, order), (401, 1/768, 3))
+
+    def test_invalid_truth_is_not_dropped(self):
+        with patch.object(synthetic, 'generate_synthetic_sequence') as generate:
+            generate.return_value.truth.valid = False
+            with self.assertRaisesRegex(RuntimeError, 'boundary violations'):
+                synthetic._f4_e_screen_sequence_task((1212, self.small_grids(), 21, 1/24, 1))
+
+    def test_screen_cli_requires_e1_and_refuses_existing_output_before_running(self):
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'existing.json'
+            output.write_text('keep me', encoding='utf-8')
+            args = estimate.build_parser().parse_args(
+                ['parameter-screen', '--e1-report', 'missing.json', '--output', str(output),
+                 '--workers', '7', '--blas-threads', '1'])
+            self.assertEqual(args.workers, 7)
+            with patch.object(synthetic, 'run_f4_e_parameter_screening') as run:
+                with self.assertRaises(FileExistsError):
+                    estimate.run_parameter_screening(args)
+            run.assert_not_called()
+            self.assertEqual(output.read_text(encoding='utf-8'), 'keep me')
 
 
 if __name__ == '__main__':

@@ -8,7 +8,7 @@ solver or expose synthetic truth through the estimator input contract.
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import operator
 
 import numpy as np
@@ -47,6 +47,17 @@ F4_E_QUADRATURE_X_STEPS = 401
 F4_E_QUADRATURE_MAX_STEP = 1.0 / 768.0
 F4_E_LIKELIHOOD_WINDOW = 5.0
 F4_E_CENTERED_LIKELIHOOD_TOL = 0.10
+F4_E_PARAMETER_GRIDS = {
+    'rho': F4_E_RHO_GRID,
+    'Xi': tuple(0.025 * j for j in range(41)),
+    'k': tuple(0.5 + 0.075 * j for j in range(41)),
+    'sigma_x': tuple(0.5 * 2.0 ** ((j - 20) / 10.0) for j in range(41)),
+    'sigma_y': tuple(0.03 * 2.0 ** ((j - 20) / 10.0) for j in range(41)),
+}
+F4_E_SCREEN_X_STEPS = 401
+F4_E_SCREEN_MAX_STEP = 1.0 / 768.0
+F4_E_SCREEN_QUADRATURE_ORDER = 3
+F4_E_LR_THRESHOLD = 3.841
 
 
 def _readonly_vector(values: ArrayLike, name: str, *, minimum_size: int = 1) -> NDArray[np.float64]:
@@ -1651,6 +1662,245 @@ def run_f4_e_likelihood_refinement(
             'requires_unique_same_grid_maximizer': True,
         },
     }
+
+def f4_e_screen_numerics_from_refinement(report):
+    """Require the registered E1 evidence and recheck its curves, not just flags.
+
+    Lock N=401, h<=1/768, q=3 after all three E1 comparisons pass. This is
+    rho-specific evidence for screening, not a five-parameter convergence claim.
+    """
+    if not isinstance(report, dict):
+        raise TypeError('e1_refinement must be an E1 report dictionary.')
+    if (report.get('stage') != 'E1'
+            or report.get('sequence_id') != F4_E_NUMERICAL_SEQUENCE_ID
+            or report.get('matches_registered_design') is not True
+            or report.get('passes_numerical_refinement') is not True
+            or tuple(report.get('rho_values', ())) != F4_E_RHO_GRID):
+        raise ValueError('E2 requires a passing, registered E1 report on sequence 1211.')
+    expected = {
+        'time': tuple((201, h, 3) for h in F4_E_TIME_STEPS),
+        'spatial': tuple((n, 1.0 / 768.0, 3) for n in F4_E_SPATIAL_CELLS),
+        'quadrature': tuple((401, 1.0 / 768.0, q) for q in F4_E_QUADRATURE_ORDERS),
+    }
+    summaries = {}
+    for axis, configurations in expected.items():
+        rows = report.get(axis, ())
+        if len(rows) != len(configurations):
+            raise ValueError(f'E1 {axis} evidence is incomplete.')
+        for row, config in zip(rows, configurations):
+            actual = (row['x_steps'], row['requested_max_step'],
+                      row['likelihood_quadrature_order'])
+            if actual != config or tuple(row['rho_values']) != F4_E_RHO_GRID:
+                raise ValueError(f'E1 {axis} settings do not match the registered design.')
+            total = checks.finite_vector(row['total_log_likelihood'], 'E1 log likelihood')
+            centered = checks.finite_vector(row['centered_log_likelihood'], 'E1 centered curve')
+            if (total.shape != (41,) or centered.shape != total.shape
+                    or not np.allclose(centered, total - np.max(total), atol=1e-12, rtol=0)):
+                raise ValueError('E1 centered curve does not match its raw likelihood.')
+            maxima = tuple(int(i) for i in np.flatnonzero(
+                np.isclose(total, np.max(total), atol=1e-12, rtol=0)))
+            if tuple(row['maximizer_indices']) != maxima:
+                raise ValueError('E1 grid maximizers do not match its likelihood.')
+            error = checks.finite_scalar(row['maximum_abs_mass_error'], 'E1 mass error')
+            minimum = checks.finite_scalar(row['minimum_cell_mass'], 'E1 minimum mass')
+            if error < 0 or error > 1e-10 or minimum < -1e-14:
+                raise ValueError('E1 has invalid probability diagnostics.')
+        summaries[axis] = _f4_e_likelihood_stability(rows[-2], rows[-1])
+        if not summaries[axis]['passes']:
+            raise ValueError(f'E1 {axis} likelihood stability gate failed on recheck.')
+    return {
+        'x_steps': F4_E_SCREEN_X_STEPS,
+        'max_step': F4_E_SCREEN_MAX_STEP,
+        'likelihood_quadrature_order': F4_E_SCREEN_QUADRATURE_ORDER,
+        'e1_sequence_id': F4_E_NUMERICAL_SEQUENCE_ID,
+        'e1_source_commit': report.get('source_commit'),
+        'e1_summary': summaries,
+        'refinement_scope': 'rho slice on sequence 1211; other parameters are screening only',
+    }
+
+
+def _f4_e_slice_summary(values, total_log_likelihood, truth_value):
+    """Discrete maxima and LR-set span; ties and disconnected sets stay visible."""
+    grid = checks.finite_vector(values, 'parameter grid', minimum_size=2)
+    total = checks.finite_vector(total_log_likelihood, 'slice log likelihood', minimum_size=2)
+    truth_value = checks.finite_scalar(truth_value, 'truth value')
+    if total.shape != grid.shape or np.any(np.diff(grid) <= 0):
+        raise ValueError('Likelihood must match a strictly increasing parameter grid.')
+    truth_indices = np.flatnonzero(grid == truth_value)
+    if truth_indices.size != 1:
+        raise ValueError('The parameter grid must contain exactly one truth node.')
+    maximum = float(np.max(total))
+    centered = total - maximum
+    indices = tuple(int(i) for i in np.flatnonzero(
+        np.isclose(total, maximum, atol=1e-12, rtol=0)))
+    lr_indices = np.flatnonzero(-2.0 * centered <= F4_E_LR_THRESHOLD)
+    return {
+        'parameter_values': tuple(float(x) for x in grid),
+        'total_log_likelihood': tuple(float(x) for x in total),
+        'centered_log_likelihood': tuple(float(x) for x in centered),
+        'truth_value': truth_value,
+        'truth_index': int(truth_indices[0]),
+        'maximizer_indices': indices,
+        'maximizer_values': tuple(float(grid[i]) for i in indices),
+        'unique_mle': len(indices) == 1,
+        'grid_mle': float(grid[indices[0]]) if len(indices) == 1 else None,
+        'mle_on_boundary': 0 in indices or grid.size - 1 in indices,
+        'mle_on_lower_boundary': 0 in indices,
+        'mle_on_upper_boundary': grid.size - 1 in indices,
+        'log_likelihood_loss_at_truth': float(-centered[truth_indices[0]]),
+        'lr_indices': tuple(int(i) for i in lr_indices),
+        'lr_values': tuple(float(grid[i]) for i in lr_indices),
+        'lr_span': (float(grid[lr_indices[0]]), float(grid[lr_indices[-1]])),
+        'lr_span_width': float(grid[lr_indices[-1]] - grid[lr_indices[0]]),
+        'lr_connected_components': int(1 + np.sum(np.diff(lr_indices) > 1)),
+        'lr_touches_boundary': bool(lr_indices[0] == 0 or lr_indices[-1] == grid.size - 1),
+        'truth_in_lr_set': bool(truth_indices[0] in lr_indices),
+    }
+
+
+def _f4_e_screen_sequence_task(task):
+    sequence_id, parameter_grids, x_steps, max_step, order = task
+    case = build_f4_b_case()
+    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+    if not sequence.truth.valid:
+        raise RuntimeError(f'F4-E sequence {sequence_id} has raw EM boundary violations; '
+                           'do not repair or drop it silently.')
+    truth = f4_e_truth_candidate(case)
+    slices = {}
+    for name, grid in parameter_grids.items():
+        candidates = tuple(replace(truth, **{name: value}) for value in grid)
+        evaluations = evaluate_f4_e_candidates(
+            case, sequence.observations, candidates, x_steps=x_steps,
+            max_step=max_step, likelihood_quadrature_order=order,
+        )
+        summary = _f4_e_slice_summary(
+            grid, [item['total_log_likelihood'] for item in evaluations], getattr(truth, name),
+        )
+        summary.update({
+            'log_evidence': tuple(tuple(float(x) for x in item['log_evidence'])
+                                  for item in evaluations),
+            'maximum_abs_mass_error': max(item['maximum_abs_mass_error'] for item in evaluations),
+            'minimum_cell_mass': min(item['minimum_cell_mass'] for item in evaluations),
+            'actual_max_step': max(item['actual_max_step'] for item in evaluations),
+            'n_steps': max(item['n_steps'] for item in evaluations),
+        })
+        if summary['maximum_abs_mass_error'] > 1e-10 or summary['minimum_cell_mass'] < -1e-14:
+            raise RuntimeError(f'E2 sequence {sequence_id}, parameter {name} failed probability checks.')
+        slices[name] = summary
+    return {
+        'sequence_id': sequence_id,
+        'observation_times': tuple(float(x) for x in sequence.observations.times),
+        'observations': tuple(float(x) for x in sequence.observations.values),
+        'truth_boundary_violations': int(sequence.truth.diagnostics['total_violations']),
+        'slices': slices,
+    }
+
+
+def run_f4_e_parameter_screening(
+    *, e1_refinement, n_sequences=F4_E_SCREEN_SEQUENCE_COUNT,
+    sequence_start=F4_E_SCREEN_SEQUENCE_START, parameter_grids=None,
+    x_steps=None, max_step=None, likelihood_quadrature_order=None, workers=1, progress=None,
+):
+    """E2 one-parameter slices, each with all four nuisance parameters at truth.
+
+    Every candidate replays its own filter. Parallelism is over sequences only;
+    result order is always sequence-ID order. Nonregistered small diagnostics are
+    allowed in the validation API and labelled; the CLI exposes the locked design.
+    """
+    locked = f4_e_screen_numerics_from_refinement(e1_refinement)
+    n_sequences = checks.positive_integer(n_sequences, 'n_sequences', minimum=1)
+    sequence_start = _nonnegative_integer(sequence_start, 'sequence_start')
+    workers = checks.positive_integer(workers, 'workers', minimum=1)
+    x_steps = checks.positive_integer(locked['x_steps'] if x_steps is None else x_steps,
+                                      'x_steps', minimum=3)
+    max_step = checks.finite_scalar(locked['max_step'] if max_step is None else max_step,
+                                    'max_step', positive=True)
+    order = checks.positive_integer(locked['likelihood_quadrature_order']
+                                    if likelihood_quadrature_order is None else likelihood_quadrature_order,
+                                    'likelihood_quadrature_order', minimum=1)
+    if progress is not None and not callable(progress):
+        raise TypeError('progress must be callable or None.')
+    grids = F4_E_PARAMETER_GRIDS if parameter_grids is None else dict(parameter_grids)
+    if set(grids) != set(F4_E_PARAMETER_GRIDS):
+        raise ValueError('E2 requires grids for rho, Xi, k, sigma_x and sigma_y.')
+    truth = f4_e_truth_candidate()
+    validated = {}
+    for name in F4_E_PARAMETER_GRIDS:
+        grid = checks.finite_vector(grids[name], f'{name} grid', minimum_size=2)
+        if np.any(np.diff(grid) <= 0) or np.count_nonzero(grid == getattr(truth, name)) != 1:
+            raise ValueError(f'{name} grid must strictly increase and contain the truth node.')
+        for value in grid:
+            replace(truth, **{name: float(value)})
+        validated[name] = tuple(float(x) for x in grid)
+    ids = tuple(range(sequence_start, sequence_start + n_sequences))
+    tasks = tuple((i, validated, x_steps, max_step, order) for i in ids)
+    results = {}
+    if workers == 1:
+        for completed, task in enumerate(tasks, start=1):
+            row = _f4_e_screen_sequence_task(task)
+            results[row['sequence_id']] = row
+            if progress is not None:
+                progress(completed, n_sequences, row['sequence_id'], row)
+    else:
+        with ProcessPoolExecutor(max_workers=min(workers, n_sequences)) as executor:
+            futures = [executor.submit(_f4_e_screen_sequence_task, task) for task in tasks]
+            for completed, future in enumerate(as_completed(futures), start=1):
+                row = future.result()  # failures abort; no selected subset is summarized
+                results[row['sequence_id']] = row
+                if progress is not None:
+                    progress(completed, n_sequences, row['sequence_id'], row)
+    rows = tuple(results[i] for i in ids)
+    summary = {}
+    for name, grid in validated.items():
+        slices = tuple(row['slices'][name] for row in rows)
+        mles = np.asarray([s['grid_mle'] for s in slices if s['unique_mle']], dtype=float)
+        # Raw sums retain the absolute evidence as well as the centered shape;
+        # summing centered slices differs only by a candidate-free constant.
+        summed = np.sum([s['total_log_likelihood'] for s in slices], axis=0)
+        summary[name] = {
+            'unique_mle_count': int(mles.size),
+            'nonunique_mle_count': int(n_sequences - mles.size),
+            'unique_mle_median': float(np.median(mles)) if mles.size else None,
+            'unique_mle_q05_q95': tuple(float(x) for x in np.quantile(mles, [.05, .95]))
+                                    if mles.size else None,
+            'unique_mle_range': (float(np.min(mles)), float(np.max(mles))) if mles.size else None,
+            'boundary_mle_frequency': float(np.mean([s['mle_on_boundary'] for s in slices])),
+            'lower_boundary_mle_frequency': float(np.mean([s['mle_on_lower_boundary'] for s in slices])),
+            'upper_boundary_mle_frequency': float(np.mean([s['mle_on_upper_boundary'] for s in slices])),
+            'median_log_likelihood_loss_at_truth': float(np.median(
+                [s['log_likelihood_loss_at_truth'] for s in slices])),
+            'median_lr_span_width': float(np.median([s['lr_span_width'] for s in slices])),
+            'lr_boundary_frequency': float(np.mean([s['lr_touches_boundary'] for s in slices])),
+            'disconnected_lr_set_count': sum(s['lr_connected_components'] > 1 for s in slices),
+            'aggregate_slice': _f4_e_slice_summary(grid, summed, getattr(truth, name)),
+        }
+    registered = bool(
+        n_sequences == F4_E_SCREEN_SEQUENCE_COUNT and sequence_start == F4_E_SCREEN_SEQUENCE_START
+        and validated == F4_E_PARAMETER_GRIDS and x_steps == locked['x_steps']
+        and max_step == locked['max_step'] and order == locked['likelihood_quadrature_order'])
+    return {
+        'stage': 'E2', 'sequence_ids': ids, 'n_sequences': n_sequences, 'workers': workers,
+        'parameter_grids': validated,
+        'settings': {'x_steps': x_steps, 'max_step': max_step, 'likelihood_quadrature_order': order,
+                     'truth_max_step': build_f4_b_case().truth_max_step,
+                     'rng_seed_roots': (INITIAL_SEED_ROOT, BROWNIAN_SEED_ROOT, MEASUREMENT_SEED_ROOT)},
+        'e1_numerical_lock': locked,
+        'matches_registered_design': registered,
+        'sequence_results': rows, 'summary': summary,
+        'maximum_abs_mass_error': max(s['maximum_abs_mass_error'] for row in rows
+                                     for s in row['slices'].values()),
+        'minimum_cell_mass': min(s['minimum_cell_mass'] for row in rows
+                                 for s in row['slices'].values()),
+        'interpretation': {
+            'nuisance_parameters': 'held at truth; these are slices, not profiles or joint fits',
+            'lr_threshold': F4_E_LR_THRESHOLD,
+            'lr_set': 'discrete shape diagnostic; span may be disconnected or support-truncated',
+            'lr_is_calibrated_confidence_interval': False,
+            'Xi_truth_on_physical_boundary': True,
+            'parameter_selection_for_F4_F': 'deferred until E3/E4 and parameter-specific refinement',
+        },
+    }
+
 
 def run_f4_preparation_checks() -> dict:
     """Independent F4-0 quadrature checks; not a fitted or recursive model.
