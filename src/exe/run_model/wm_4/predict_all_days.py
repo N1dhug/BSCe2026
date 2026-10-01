@@ -13,6 +13,8 @@ from src.exe.run_model.wm_4.predict_daily import deviation_metrics, fit_history,
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days"
 TOP_END_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_top_end"
+ZERO_INTERCEPT_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_r0_zero"
+ZERO_INTERCEPT_TOP_END_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_top_end_r0_zero"
 START_DAY = "2022-02-28"
 END_DAY = "2022-08-22"
 
@@ -24,11 +26,18 @@ def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deter
     )
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
 
+    zero_intercept = bool(fit.get("zero_intercept", False))
     if optimize_prediction_state:
-        init, state, fine_index, init_fit_mse = optimized_prediction_state(frame, start, model, fit["r"], steps_per_hour, output_model)
+        init, state, fine_index, init_fit_mse = optimized_prediction_state(
+            frame, start, model, fit["r"], steps_per_hour, output_model,
+            zero_intercept=zero_intercept,
+        )
     else:
         init = historical_prediction_state(fit, warmup_hours, steps_per_hour)
-        state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+        state = model.deterministic_solver(init, {
+            "U": U, "PE": U, "Time": Time, "r": fit["r"],
+            "enforce_equilibrium": not zero_intercept,
+        })
         init_fit_mse = np.nan
 
     hourly_index = np.arange(DAY_HOURS) * steps_per_hour
@@ -40,7 +49,7 @@ def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deter
 
     daily = {
         "day": start, "weekday": start.day_name(), "optimized": bool(optimize_prediction_state),
-        "prediction_state_fit_mse": init_fit_mse,
+        "zero_intercept": zero_intercept, "prediction_state_fit_mse": init_fit_mse,
         "r_0": r[0], "r_F": r[1], "r_U": r[2], "r_R": r[3],
         "F_0": init[0], "R_0": init[1],
         "sigma_0": np.nan if deterministic else fit["sigma_0"],
@@ -133,16 +142,21 @@ def main():
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
     parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic only: fit each prediction-day initial state from its observed I.")
+    parser.add_argument("--zero-intercept", action="store_true", help="Fit WM4 with r_0 fixed to zero while retaining r_U.")
     parser.add_argument("--save-daily-plots", action="store_true", help="Also save one prediction plot per fitted day.")
     parser.add_argument("--fail-fast", action="store_true", help="Stop immediately instead of skipping a day that cannot be fitted.")
     args = parser.parse_args()
 
     frame, _ = aligned_data("MED")
-    output_root = TOP_END_OUTPUT if args.optimize_prediction_state else OUTPUT
+    if args.zero_intercept:
+        output_root = ZERO_INTERCEPT_TOP_END_OUTPUT if args.optimize_prediction_state else ZERO_INTERCEPT_OUTPUT
+    else:
+        output_root = TOP_END_OUTPUT if args.optimize_prediction_state else OUTPUT
     daily, hourly, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
         deterministic=args.deterministic, optimize_prediction_state=args.optimize_prediction_state,
         save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast, output_root=output_root,
+        zero_intercept=args.zero_intercept,
     )
     output_root.mkdir(parents=True, exist_ok=True)
     daily.to_csv(output_root / "daily_metrics.csv", index=False)
