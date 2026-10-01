@@ -101,7 +101,10 @@ class wm_4_validation(wm_1_validation):
     def finite_feature_input(cls, value, name): return cls._finite_scalar(value, name)
 
     @classmethod
-    def feature_value(cls, value, name): return cls._finite_scalar(value, name)
+    def feature_value(cls, value, name):
+        scalar = cls._finite_scalar(value, name)
+        if not 0.0 <= scalar <= 1.0: raise ValueError(f"{name} must lie in [0, 1].")
+        return scalar
 
     @classmethod
     def recovered_structural_coefficients(cls, r, tol=1e-8):
