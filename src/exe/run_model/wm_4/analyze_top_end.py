@@ -9,6 +9,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[4]
 WARMUP = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_top_end"
 OPTIMIZED = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end"
+WARMUP_R0_ZERO = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_top_end_r0_zero"
+OPTIMIZED_R0_ZERO = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end_r0_zero"
 OUTPUT = OPTIMIZED / "top_end_analysis"
 PARAMETERS = ("r_0", "r_F", "r_U", "r_R")
 
@@ -335,10 +337,13 @@ def main():
     parser.add_argument("--warmup", default=str(WARMUP))
     parser.add_argument("--optimized", default=str(OPTIMIZED))
     parser.add_argument("--output", default=str(OUTPUT))
+    parser.add_argument("--zero-intercept", action="store_true", help="Compare the r_0=0 top-end runs.")
     args = parser.parse_args()
 
-    warmup = load_daily(args.warmup)
-    optimized = load_daily(args.optimized)
+    warmup_root = WARMUP_R0_ZERO if args.zero_intercept and args.warmup == str(WARMUP) else Path(args.warmup)
+    optimized_root = OPTIMIZED_R0_ZERO if args.zero_intercept and args.optimized == str(OPTIMIZED) else Path(args.optimized)
+    warmup = load_daily(warmup_root)
+    optimized = load_daily(optimized_root)
     paired = paired_results(warmup, optimized)
     summary = summary_table(paired)
     states = state_summary(paired)
