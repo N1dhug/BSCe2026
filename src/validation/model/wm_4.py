@@ -4,7 +4,7 @@ from src.validation.model.wm_1 import wm_1_validation
 
 
 class wm_4_validation(wm_1_validation):
-    """Validation rules for Water Model 4."""
+    """Validation rules for signed-domain Water Model 4."""
 
     @classmethod
     def constructor(cls, T, t_steps, O):
@@ -13,25 +13,28 @@ class wm_4_validation(wm_1_validation):
         return T, t_steps, O
 
     @classmethod
-    def r_coefficients(cls, r, tol=1e-10, enforce_equilibrium=True):
-        r = cls.vector(r, 4, "r")
-        if r[1] >= -tol: raise ValueError("wm_4 requires r_F < 0 so the flexibility equilibrium is stable.")
-        if r[2] > tol: raise ValueError("wm_4 requires r_U <= 0 so higher prices cannot increase the equilibrium flexibility state.")
-        if r[3] >= -tol: raise ValueError("wm_4 requires r_R < 0 so the rate state is damped.")
-        if enforce_equilibrium:
-            for U in (0.0, 1.0):
-                base = r[0] + r[2] * U
-                if base < -tol or base > -r[1] + tol: raise ValueError("r must satisfy 0 <= r_0 + r_U U <= -r_F on U in [0, 1].")
+    def signal_value(cls, value, name):
+        scalar = cls._finite_scalar(value, name)
+        if not -1.0 <= scalar <= 1.0: raise ValueError(f"{name} must lie in [-1, 1].")
+        return scalar
+
+    @classmethod
+    def r_coefficients(cls, r, tol=1e-10):
+        r = cls.vector(r, 3, "r")
+        r_F, r_U, r_R = map(float, r)
+        if r_F >= -tol: raise ValueError("wm_4 requires r_F < 0 so the flexibility dynamics are restoring.")
+        if r_U > tol: raise ValueError("wm_4 requires r_U <= 0 so higher signed prices reduce flexibility flow.")
+        if r_R >= -tol: raise ValueError("wm_4 requires r_R < 0 so the rate state is damped.")
+        if r_U < r_F - tol: raise ValueError("wm_4 requires r_F <= r_U so F*(U) remains in [-1, 1] for U in [-1, 1].")
         return r
 
     @classmethod
     def q_coefficients(cls, q, tol=1e-10):
-        q = cls.vector(q, 3, "q")
-        if q[1] >= -tol: raise ValueError("wm_4 requires q_F < 0.")
-        if q[2] > tol: raise ValueError("wm_4 requires q_U <= 0.")
-        for U in (0.0, 1.0):
-            base = q[0] + q[2] * U
-            if base < -tol or base > -q[1] + tol: raise ValueError("q must satisfy 0 <= q_0 + q_U U <= -q_F on U in [0, 1].")
+        q = cls.vector(q, 2, "q")
+        q_F, q_U = map(float, q)
+        if q_F >= -tol: raise ValueError("wm_4 requires q_F < 0.")
+        if q_U > tol: raise ValueError("wm_4 requires q_U <= 0.")
+        if q_U < q_F - tol: raise ValueError("wm_4 requires q_F <= q_U so F*(U) remains in [-1, 1].")
         return q
 
     @classmethod
@@ -39,7 +42,7 @@ class wm_4_validation(wm_1_validation):
         q = cls.q_coefficients(q)
         kappa_R = cls._finite_scalar(kappa_R, "kappa_R")
         if kappa_R <= 0.0: raise ValueError("kappa_R must be positive.")
-        return cls.r_coefficients(np.array([kappa_R * q[0], kappa_R * q[1], kappa_R * q[2], -kappa_R], dtype=float))
+        return cls.r_coefficients(np.array([kappa_R * q[0], kappa_R * q[1], -kappa_R], dtype=float))
 
     @classmethod
     def coefficients(cls, r, gamma=None):
@@ -61,14 +64,12 @@ class wm_4_validation(wm_1_validation):
         if "PE" in validated and not callable(validated["PE"]): raise TypeError("parameters['PE'] must be callable.")
         validated.setdefault("PE", lambda _t: 0.0)
 
-        enforce_equilibrium = bool(validated.get("enforce_equilibrium", True))
-        r = cls.r_coefficients(validated["r"], enforce_equilibrium=enforce_equilibrium) if "r" in validated else cls.legacy_r(validated["q"], validated["kappa_R"])
-        r = cls.r_coefficients(r, enforce_equilibrium=enforce_equilibrium)
-        gamma = None if validated.get("gamma") is None else cls.simplex(validated["gamma"], 4, "gamma")
+        r = cls.r_coefficients(validated["r"]) if "r" in validated else cls.legacy_r(validated["q"], validated["kappa_R"])
+        r, gamma = cls.coefficients(r, validated.get("gamma"))
         validated["r"], validated["gamma"] = r, gamma
-        kappa_R = -r[3]
+        kappa_R = -r[2]
         validated["kappa_R"] = float(kappa_R)
-        validated["q"] = r[:3] / kappa_R
+        validated["q"] = r[:2] / kappa_R
         return validated
 
     @classmethod
@@ -87,7 +88,7 @@ class wm_4_validation(wm_1_validation):
         values = np.asarray(init_cond, dtype=float).reshape(-1)
         if values.size != 2: raise ValueError("wm_4 init_cond must contain exactly [F0, R0].")
         if not np.all(np.isfinite(values)): raise ValueError("init_cond must contain finite values.")
-        if not 0.0 <= values[0] <= 1.0: raise ValueError("Initial flexibility state F0 must lie in [0, 1].")
+        if not -1.0 <= values[0] <= 1.0: raise ValueError("Initial flexibility state F0 must lie in [-1, 1].")
         return values
 
     @classmethod
@@ -100,13 +101,13 @@ class wm_4_validation(wm_1_validation):
     def finite_feature_input(cls, value, name): return cls._finite_scalar(value, name)
 
     @classmethod
-    def feature_value(cls, value, name): return cls.signal_value(value, name)
+    def feature_value(cls, value, name): return cls._finite_scalar(value, name)
 
     @classmethod
-    def recovered_structural_coefficients(cls, r, tol=1e-8, enforce_equilibrium=True):
+    def recovered_structural_coefficients(cls, r, tol=1e-8):
         tol = cls._finite_scalar(tol, "tol")
         if tol <= 0.0: raise ValueError("tol must be positive.")
-        return cls.r_coefficients(r, tol=tol, enforce_equilibrium=enforce_equilibrium)
+        return cls.r_coefficients(r, tol=tol)
 
     @classmethod
     def fit_data(cls, input_data, t_steps):
@@ -134,5 +135,5 @@ class wm_4_validation(wm_1_validation):
         if np.count_nonzero(observation_mask) < 2: raise ValueError("input_data['observation_mask'] must select at least two observations.")
         if np.count_nonzero(transition_mask) < 1: raise ValueError("input_data['transition_mask'] must select at least one state transition.")
         for vector, name in ((U, "U"), (PE, "PE")):
-            if np.any(vector < 0.0) or np.any(vector > 1.0): raise ValueError(f"Normalized {name} data must lie in [0, 1].")
+            if np.any(vector < -1.0) or np.any(vector > 1.0): raise ValueError(f"Signed normalized {name} data must lie in [-1, 1].")
         return {"I": I, "U": U, "PE": PE, "Time": Time, "observation_mask": observation_mask, "transition_mask": transition_mask}
