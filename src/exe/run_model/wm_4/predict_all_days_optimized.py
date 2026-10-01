@@ -15,6 +15,8 @@ from src.params.wm_4 import optimized_qp_params
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized"
 TOP_END_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end"
+ZERO_INTERCEPT_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_r0_zero"
+ZERO_INTERCEPT_TOP_END_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end_r0_zero"
 START_DAY = "2022-02-28"
 END_DAY = "2022-08-22"
 
@@ -59,11 +61,11 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
     if optimize_initial_state:
         prediction_data, fine_index, _, _ = model_input(frame, start, steps_per_hour, 0, output_model)
-        oracle = optimized_qp_params(model).optimize_prediction_initial_state(prediction_data, fit["r"])
+        oracle = optimized_qp_params(model).optimize_prediction_initial_state(prediction_data, fit["r"], zero_intercept=bool(fit.get("zero_intercept", False)))
         init, state, init_fit_mse = oracle["init_cond"], oracle["deterministic_state"], oracle["loss"]
     else:
         init = historical_optimized_state(fit)
-        state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+        state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"], "enforce_equilibrium": not bool(fit.get("zero_intercept", False))})
         init_fit_mse = np.nan
 
     hourly_index = np.arange(DAY_HOURS) * steps_per_hour
@@ -75,7 +77,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
     training_states = np.asarray(fit["init_cond"], dtype=float)
 
     daily = {
-        "day": start, "weekday": start.day_name(), "fit_method": fit["fit_method"],
+        "day": start, "weekday": start.day_name(), "fit_method": fit["fit_method"], "zero_intercept": bool(fit.get("zero_intercept", False)),
         "optimized_prediction_state": bool(optimize_initial_state), "prediction_state_fit_mse": init_fit_mse,
         "r_0": r[0], "r_F": r[1], "r_U": r[2], "r_R": r[3],
         "F_0": init[0], "R_0": init[1],
@@ -193,12 +195,15 @@ def main():
     args = parser.parse_args()
 
     frame, _ = aligned_data("MED")
-    output_root = TOP_END_OUTPUT if args.optimize_initial_state else OUTPUT
+    if args.zero_intercept:
+        output_root = ZERO_INTERCEPT_TOP_END_OUTPUT if args.optimize_initial_state else ZERO_INTERCEPT_OUTPUT
+    else:
+        output_root = TOP_END_OUTPUT if args.optimize_initial_state else OUTPUT
     daily, hourly, training, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.steps_per_hour,
         deterministic=args.deterministic, optimize_initial_state=args.optimize_initial_state,
         save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast, output_root=output_root,
-        max_state_iter=args.max_state_iter, state_tol=args.state_tol,
+        max_state_iter=args.max_state_iter, state_tol=args.state_tol, zero_intercept=args.zero_intercept,
     )
     output_root.mkdir(parents=True, exist_ok=True)
     daily.to_csv(output_root / "daily_metrics.csv", index=False)
