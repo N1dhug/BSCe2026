@@ -14,6 +14,7 @@ from src.params.wm_4 import optimized_qp_params
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized"
+TOP_END_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end"
 START_DAY = "2022-02-28"
 END_DAY = "2022-08-22"
 
@@ -50,14 +51,20 @@ def historical_optimized_state(fit):
     return init
 
 
-def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False, save_daily_plots=False, **fit_kwargs):
+def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False, optimize_initial_state=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
     output_model, output_fit, fit, _ = fit_history_optimized(
         frame, start, baseline_weeks, steps_per_hour,
         deterministic=deterministic, **fit_kwargs,
     )
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
-    init = historical_optimized_state(fit)
-    state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+    if optimize_initial_state:
+        prediction_data, fine_index, _, _ = model_input(frame, start, steps_per_hour, 0, output_model)
+        oracle = optimized_qp_params(model).optimize_prediction_initial_state(prediction_data, fit["r"])
+        init, state, init_fit_mse = oracle["init_cond"], oracle["deterministic_state"], oracle["loss"]
+    else:
+        init = historical_optimized_state(fit)
+        state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+        init_fit_mse = np.nan
 
     hourly_index = np.arange(DAY_HOURS) * steps_per_hour
     observed = actual["I"].to_numpy(dtype=float)
@@ -69,6 +76,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
 
     daily = {
         "day": start, "weekday": start.day_name(), "fit_method": fit["fit_method"],
+        "optimized_prediction_state": bool(optimize_initial_state), "prediction_state_fit_mse": init_fit_mse,
         "r_0": r[0], "r_F": r[1], "r_U": r[2], "r_R": r[3],
         "F_0": init[0], "R_0": init[1],
         "training_F0_mean": float(np.mean(training_states[:, 0])),
@@ -101,7 +109,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
     })
 
     if save_daily_plots:
-        path = OUTPUT / "daily" / f"daily_prediction_{start:%Y-%m-%d}.png"
+        path = Path(output_root) / "daily" / f"daily_prediction_{start:%Y-%m-%d}.png"
         save_plot(start, end, actual, fine_index, state, path, baseline_weeks)
 
     return daily, hourly, training
@@ -143,7 +151,7 @@ def print_summary(hourly, daily, skipped):
         for day, reason in skipped: print(f"{day:%Y-%m-%d}: {reason}")
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, deterministic=False, save_daily_plots=False, fail_fast=False, **fit_kwargs):
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, deterministic=False, optimize_initial_state=False, save_daily_plots=False, fail_fast=False, output_root=OUTPUT, **fit_kwargs):
     start, end = day_start(start), day_start(end)
     if end < start: raise ValueError("end must be on or after start.")
     daily_rows, hourly_frames, training_frames, skipped = [], [], [], []
@@ -152,7 +160,8 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
         try:
             daily, hourly, training = day_result(
                 frame, day, baseline_weeks, steps_per_hour,
-                deterministic=deterministic, save_daily_plots=save_daily_plots, **fit_kwargs,
+                deterministic=deterministic, optimize_initial_state=optimize_initial_state,
+                save_daily_plots=save_daily_plots, output_root=output_root, **fit_kwargs,
             )
             daily_rows.append(daily); hourly_frames.append(hourly); training_frames.append(training)
             print(f"{day:%Y-%m-%d} | r=[{daily['r_0']:.6f}, {daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}] | initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | state_iters={daily['state_iterations']} | WM4 MSE={daily['wm4_mse']:.8f} | O MSE={daily['O_mse']:.8f}")
@@ -176,6 +185,7 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
+    parser.add_argument("--optimize-initial-state", action="store_true", help="Oracle diagnostic: fit prediction-day [F0,R0] from that day's observed I for top-end parameterization comparison.")
     parser.add_argument("--save-daily-plots", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--max-state-iter", type=int, default=50)
@@ -183,17 +193,19 @@ def main():
     args = parser.parse_args()
 
     frame, _ = aligned_data("MED")
+    output_root = TOP_END_OUTPUT if args.optimize_initial_state else OUTPUT
     daily, hourly, training, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.steps_per_hour,
-        deterministic=args.deterministic, save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast,
+        deterministic=args.deterministic, optimize_initial_state=args.optimize_initial_state,
+        save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast, output_root=output_root,
         max_state_iter=args.max_state_iter, state_tol=args.state_tol,
     )
-    OUTPUT.mkdir(parents=True, exist_ok=True)
-    daily.to_csv(OUTPUT / "daily_metrics.csv", index=False)
-    hourly.to_csv(OUTPUT / "hourly_predictions.csv")
-    training.to_csv(OUTPUT / "optimized_training_states.csv", index=False)
-    if skipped: pd.DataFrame([{"day": day, "reason": reason} for day, reason in skipped]).to_csv(OUTPUT / "skipped_days.csv", index=False)
-    save_performance_plot(hourly, daily, OUTPUT / "all_days_performance.png")
+    output_root.mkdir(parents=True, exist_ok=True)
+    daily.to_csv(output_root / "daily_metrics.csv", index=False)
+    hourly.to_csv(output_root / "hourly_predictions.csv")
+    training.to_csv(output_root / "optimized_training_states.csv", index=False)
+    if skipped: pd.DataFrame([{"day": day, "reason": reason} for day, reason in skipped]).to_csv(output_root / "skipped_days.csv", index=False)
+    save_performance_plot(hourly, daily, output_root / "all_days_performance.png")
     print(); print_summary(hourly, daily, skipped)
 
 
