@@ -9,11 +9,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[4]
 WARMUP = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_top_end"
 OPTIMIZED = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end"
-WARMUP_R0_ZERO = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_top_end_r0_zero"
-OPTIMIZED_R0_ZERO = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end_r0_zero"
 OUTPUT = OPTIMIZED / "top_end_analysis"
-OUTPUT_R0_ZERO = OPTIMIZED_R0_ZERO / "top_end_analysis"
-PARAMETERS = ("r_0", "r_F", "r_U", "r_R")
+PARAMETERS = ("r_F", "r_U", "r_R")
 
 
 def load_daily(root):
@@ -158,17 +155,11 @@ def parameter_summary(frame):
     return pd.DataFrame(rows)
 
 
-def parameter_stability(frame, f_reference=0.5):
+def parameter_stability(frame):
     rows = []
     for method in ("warmup", "optimized"):
         values = {parameter: frame[f"{parameter}_{method}"].to_numpy(dtype=float) for parameter in PARAMETERS}
-        centered = values["r_0"] + float(f_reference) * values["r_F"]
-        kappa = -values["r_R"]
-        derived = {
-            **values,
-            f"r_0+{float(f_reference):g}r_F": centered,
-            "kappa_R": kappa,
-        }
+        derived = {**values, "kappa_R": -values["r_R"], "equilibrium_gain": -values["r_U"] / values["r_F"]}
         for parameter, series in derived.items():
             mean = float(np.mean(series))
             std = float(np.std(series, ddof=1))
@@ -214,28 +205,6 @@ def same_weekday_parameter_stability(frame):
                 "weekly_change_std": float(np.std(changes, ddof=1)) if changes.size > 1 else np.nan,
                 "level_std": float(np.std(levels, ddof=1)) if levels.size > 1 else np.nan,
             })
-    return pd.DataFrame(rows)
-
-
-def r0_rf_identifiability(frame, f_reference=0.5):
-    rows = []
-    for method in ("warmup", "optimized"):
-        r0 = frame[f"r_0_{method}"].to_numpy(dtype=float)
-        rF = frame[f"r_F_{method}"].to_numpy(dtype=float)
-        centered = r0 + float(f_reference) * rF
-        r0_std = float(np.std(r0, ddof=1))
-        rF_std = float(np.std(rF, ddof=1))
-        correlation = float(np.corrcoef(r0, rF)[0, 1]) if r0_std > 1e-12 and rF_std > 1e-12 else np.nan
-        rows.append({
-            "method": method,
-            "r0_rF_correlation": correlation,
-            "r0_variance": float(np.var(r0, ddof=1)),
-            "rF_variance": float(np.var(rF, ddof=1)),
-            "centered_drift_reference_F": float(f_reference),
-            "centered_drift_mean": float(np.mean(centered)),
-            "centered_drift_variance": float(np.var(centered, ddof=1)),
-            "centered_drift_std": float(np.std(centered, ddof=1)),
-        })
     return pd.DataFrame(rows)
 
 
@@ -315,7 +284,7 @@ def save_plots(frame, output):
     plt.close(fig)
 
 
-def print_summary(summary, states, margins, error_levels, stability, weekly_stability, identifiability):
+def print_summary(summary, states, margins, error_levels, stability, weekly_stability):
     row = summary.iloc[0]
     print(f"days={int(row['days'])}")
     print(f"optimized parameter fit better with oracle state on {int(row['optimized_better_days'])}/{int(row['days'])} days ({row['optimized_better_pct']:.2f}%)")
@@ -337,9 +306,6 @@ def print_summary(summary, states, margins, error_levels, stability, weekly_stab
     print()
     print("same-weekday week-to-week parameter changes")
     print(weekly_stability.to_string(index=False))
-    print()
-    print("r0/rF identifiability around F=0.5")
-    print(identifiability.to_string(index=False))
 
 
 def main():
@@ -347,13 +313,10 @@ def main():
     parser.add_argument("--warmup", default=str(WARMUP))
     parser.add_argument("--optimized", default=str(OPTIMIZED))
     parser.add_argument("--output", default=str(OUTPUT))
-    parser.add_argument("--zero-intercept", action="store_true", help="Compare the r_0=0 top-end runs.")
     args = parser.parse_args()
 
-    warmup_root = WARMUP_R0_ZERO if args.zero_intercept and args.warmup == str(WARMUP) else Path(args.warmup)
-    optimized_root = OPTIMIZED_R0_ZERO if args.zero_intercept and args.optimized == str(OPTIMIZED) else Path(args.optimized)
-    warmup = load_daily(warmup_root)
-    optimized = load_daily(optimized_root)
+    warmup = load_daily(args.warmup)
+    optimized = load_daily(args.optimized)
     print(f"warmup rows={len(warmup)}, optimized rows={len(optimized)}, overlapping days={len(set(warmup['day']).intersection(set(optimized['day'])))}")
     paired = paired_results(warmup, optimized)
     summary = summary_table(paired)
@@ -363,10 +326,8 @@ def main():
     parameters = parameter_summary(paired)
     stability = parameter_stability(paired)
     weekly_stability = same_weekday_parameter_stability(paired)
-    identifiability = r0_rf_identifiability(paired)
     weekdays = weekday_summary(paired)
-    output = OUTPUT_R0_ZERO if args.zero_intercept and args.output == str(OUTPUT) else Path(args.output)
-    output.mkdir(parents=True, exist_ok=True)
+    output = Path(args.output); output.mkdir(parents=True, exist_ok=True)
 
     paired.to_csv(output / "paired_top_end_comparison.csv", index=False)
     summary.to_csv(output / "summary.csv", index=False)
@@ -376,12 +337,11 @@ def main():
     parameters.to_csv(output / "parameter_comparison.csv", index=False)
     stability.to_csv(output / "parameter_stability.csv", index=False)
     weekly_stability.to_csv(output / "same_weekday_parameter_stability.csv", index=False)
-    identifiability.to_csv(output / "r0_rF_identifiability.csv", index=False)
     weekdays.to_csv(output / "weekday_comparison.csv", index=False)
     paired.sort_values("mse_gain", ascending=False).head(20).to_csv(output / "largest_optimized_improvements.csv", index=False)
     paired.sort_values("mse_gain").head(20).to_csv(output / "largest_optimized_regressions.csv", index=False)
     save_plots(paired, output)
-    print_summary(summary, states, margins, error_levels, stability, weekly_stability, identifiability)
+    print_summary(summary, states, margins, error_levels, stability, weekly_stability)
 
 
 if __name__ == "__main__": main()
