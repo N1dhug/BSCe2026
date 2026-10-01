@@ -21,11 +21,13 @@ MIN_L_SLOPE = 1e-12
 WEEK_HOURS = 168
 
 
-def normalize(values, lo=None, hi=None):
+def normalize(values, lo=None, hi=None, domain=(0.0, 1.0)):
     values = pd.Series(values, index=getattr(values, "index", None), dtype=float)
     lo, hi = (values.min() if lo is None else float(lo)), (values.max() if hi is None else float(hi))
+    d_lo, d_hi = map(float, domain)
     if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo: raise ValueError("Cannot normalize a constant or empty series.")
-    return (values - lo) / (hi - lo)
+    if not np.isfinite(d_lo) or not np.isfinite(d_hi) or d_hi <= d_lo: raise ValueError("domain must satisfy lower < upper.")
+    return d_lo + (d_hi - d_lo) * (values - lo) / (hi - lo)
 
 
 def tagged_measurement_columns(data, tag=None):
@@ -63,7 +65,7 @@ def temperature_series(data, start, end):
     return values.groupby(level=0).mean().sort_index().rename("Temp")
 
 
-def aligned_data(tag=None):
+def aligned_data(tag=None, price_domain=(0.0, 1.0), price_year=None):
     consumption_data = input_data(DATA / "input.xlsx")
     consumption = consumption_series(consumption_data, tag)
     measurements = raw_measurements(consumption_data, tag)
@@ -79,9 +81,17 @@ def aligned_data(tag=None):
     if season.empty: raise ValueError("No aligned Jan-Oct data is available for seasonal fitting.")
 
     i_lo, i_hi = float(season["I"].min()), float(season["I"].max())
-    u_lo, u_hi = float(season["U"].min()), float(season["U"].max())
+    if price_year is None:
+        price_reference = season["U"]
+    else:
+        year_start, year_end = pd.Timestamp(f"{int(price_year)}-01-01"), pd.Timestamp(f"{int(price_year) + 1}-01-01")
+        price_reference = prices.loc[(prices.index >= year_start) & (prices.index < year_end)]
+        if price_reference.empty: raise ValueError(f"No spot prices available for price calibration year {price_year}.")
+    u_lo, u_hi = float(price_reference.min()), float(price_reference.max())
     frame["I"] = normalize(frame["I"], i_lo, i_hi)
-    frame["U"] = normalize(frame["U"], u_lo, u_hi)
+    frame["U"] = normalize(frame["U"], u_lo, u_hi, domain=price_domain)
+    frame.attrs["price_min"], frame.attrs["price_max"] = u_lo, u_hi
+    frame.attrs["price_domain"], frame.attrs["price_year"] = tuple(map(float, price_domain)), price_year
     return frame, measurements
 
 
