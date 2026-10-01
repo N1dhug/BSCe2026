@@ -341,11 +341,11 @@ Tidsrefinement køres ved \(N_x=201,q=3\) med
 \(h_{\max}=1/768,q=3\) med \(N_x\in\{201,401,801\}\); observation-quadrature ved
 \(N_x=401,h_{\max}=1/768\) med \(q\in\{1,3,5\}\). De to fineste niveauer
 betragtes som stabile til screening, hvis rho-gridets maximizer er samme node, og
-\[
+\begin{equation}
  \max_{\rho\in\mathcal R}
  |\Delta\ell_{\rm fine}(\rho)-\Delta\ell_{\rm mid}(\rho)|\le0.10,
  \label{eq:f4e-numerical-gate}
-\]
+\end{equation}
 hvor \(\mathcal R\) er unionen af gridpunkter, der ligger højst fem log-enheder under
 et af de to maxima. Fejler dette kriterium, raffineres numerikken igen i stedet for at
 vælge den resolution, der giver den ønskede parameterkonklusion.
