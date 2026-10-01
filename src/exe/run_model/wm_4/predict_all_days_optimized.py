@@ -18,7 +18,7 @@ START_DAY = "2022-02-28"
 END_DAY = "2022-08-22"
 
 
-def fit_history_optimized(frame, predict_start, parameter_weeks, steps_per_hour, fit_diffusion=True, **kwargs):
+def fit_history_optimized(frame, predict_start, parameter_weeks, steps_per_hour, deterministic=False, **kwargs):
     predict_start, parameter_weeks = day_start(predict_start), int(parameter_weeks)
     if parameter_weeks < 1: raise ValueError("parameter_weeks must be at least 1.")
     output_model, output_fit = fit_expected_output(frame, predict_start)
@@ -35,7 +35,7 @@ def fit_history_optimized(frame, predict_start, parameter_weeks, steps_per_hour,
     model = wm_4(model_T, len(indices[0]), model_output(datasets[0], indices[0]))
     fit = optimized_qp_params(model).fit_many(
         datasets, np.vstack(seeds), fit_initial_state=True,
-        fit_diffusion=fit_diffusion, verbose=False, **kwargs,
+        deterministic=deterministic, verbose=False, **kwargs,
     )
     fit["training_days"] = fit_days
     fit["fit_trajectories"] = len(datasets)
@@ -53,7 +53,7 @@ def historical_optimized_state(fit):
 def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False, save_daily_plots=False, **fit_kwargs):
     output_model, output_fit, fit, _ = fit_history_optimized(
         frame, start, baseline_weeks, steps_per_hour,
-        fit_diffusion=not deterministic, **fit_kwargs,
+        deterministic=deterministic, **fit_kwargs,
     )
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
     init = historical_optimized_state(fit)
