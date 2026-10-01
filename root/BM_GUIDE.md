@@ -149,6 +149,9 @@ alle rå kurver genvalideres, ikke blot `passes`-flaget.
 
 Efter F1-review kan disse kommandoer bruges; de er ikke en instruktion om at starte
 alle kørsler før review. Planen må tilpasses dokumenteret efter resultaterne.
+F1/F2 og F3 version 2 er nu gennemgået. Næste lokale kørsel er alene
+`bank-population` med de to gemte dependencies; ingen af de tidligere studier
+skal gentages. Den oprindelige fejlede F3-rapport bevares også.
 
 ```powershell
 python -B -m src.exe.run_model.bm_1.estimate bank-sensitivity `
@@ -173,13 +176,17 @@ if ($LASTEXITCODE -ne 0) { throw "F3 refinement fejlede; behold begge rapporter 
 python -B -m src.exe.run_model.bm_1.estimate bank-population `
   --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
   --mixture-report files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_spatial_refinement.json.gz `
-  --workers 7 --blas-threads 1 `
+  --workers 8 --blas-threads 1 `
   --output files/output/bm_1/runs/estimation/f4_f_f4_bank_population.json.gz
 if ($LASTEXITCODE -ne 0) { throw "F4 population fejlede; behold rapporten til review." }
 ```
 
 Mixture-piloten undersøger rho med frossen `shape_D`, ikke en ny sigma_x-mixture-bank.
-F4-populationen omfatter også sigma_x, men med den separate FV-reference. Lange
+F4-populationen omfatter også sigma_x, men med den separate FV-reference. Den har
+60 banks / 2460 replays på 20 nye, uafhængige dage, hver med ny Beta(20,20)-state.
+Mixture-numerik læses og valideres fra den beståede version 2-rapport. Et groft
+runtime-skøn fra de registrerede replaytider er 60--90 minutter med 8 workers;
+faktisk tid afhænger af belastning og de nye records. Lange
 uafhængige hypotesereplays fordeles over en vedvarende Windows-compatible spawn-pool;
 hver replay følger observationsrækkefølgen og sin egen state-posterior. Priorvariationer
 genbruger kun conditional replays med uændrede hypoteser, observationsmodel og state-prior.

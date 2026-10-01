@@ -857,11 +857,44 @@ Udviklingskontroller viste identiske faktiske steps ved ønsket
 En efterfølgende probe med ni spredte rho-noder på begge records bestod
 alle otte valgte sammenligninger med state-L1 højst 0.012465.
 Fine mixture401/801 brugte begge faktisk \(h=1/32768\), middle401
-\(h=1/16384\). Den registrerede 41-node-kørsel afventes stadig.
+\(h=1/16384\). Den efterfølgende registrerede 41-node-kørsel er gennemgået nedenfor.
 Faktisk step-refinement og ens spatialt step kontrolleres separat.
 Dette er en tilpasning på samme pilotdata; den nye
-held-out population følger først efter rent registreret resultat og rå review.
+held-out population følger efter rent registreret resultat og rå review.
 Den fejlede artifact bevares med digest i F4-statusfilen.
+
+\paragraph{F3 version 2: registreret accept og afgrænsning.}
+Windows-kørslen på ren kilde \texttt{386c9b2} fuldførte 18 banks og
+738 replays på 1191.00 s, med 8 workers og BLAS=1. Alle otte valgte
+sammenligninger på begge records bestod. Maksima over begge records er:
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Kontrol & Log-odds & TV & Log-evidence & State-L1\\
+\midrule
+Mixture401 tid & 0.00008026 & 0.00001025 & 0.00024314 & 0.00012333\\
+Matched FV401 & 0.00016001 & 0.00002045 & 0.00048800 & 0.00024766\\
+FV401-reference & 0.00342474 & 0.00043725 & 0.01040772 & 0.00523957\\
+Mixture401 mod 801 & 0.02146063 & 0.00268552 & 0.02193103 & 0.01256638\\
+\bottomrule
+\end{tabular}
+\end{center}
+State-L1 er maksimum over prediction/posterior og alle prefixer.
+Tidskontrollen brugte faktisk \(1/16384\) mod \(1/32768\); begge fine
+mixture-grids brugte faktisk \(1/32768\). Mass error var højst
+\(5.5512\cdot10^{-14}\), minimum cellemasse 0 og ingen fallbacks.
+
+Alle 18 bankrækker, rå scores, Bayes-vægte, evidences, parameterstatistik,
+state-/demand-midler og 14 sammenligninger er kontrolleret.
+Genberegningsafvigelser var højst \(4.13\cdot10^{-13}\).
+De oprindelige ti bankrækker reproducerede scores, vægte, evidences og
+marginalmasser bit-identisk; de to gamle reference-fejl er bevaret som
+ikke-valgt diagnostik. Begge artifact-digests står i F4-statusfilen.
+Vi accepterer mixture401 ved \(h_{\max}=1/32768,q=3\) til den nye
+rho-population. FV- og sigma_x-numerik fra F1, støtte og prior er uændrede.
+Dette dokumenterer pilotens numeriske kontroller; population, parameter-recovery
+og operationel ugeprognose er stadig separate spørgsmål.
 
 F4-populationen bruger nye ID1328--1347: parret FV/mixture for rho og et
 separat FV-støjforsøg. Parameter-middel, SD, MAP-ties, randvægt, effektivt
