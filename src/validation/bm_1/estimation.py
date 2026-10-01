@@ -2796,30 +2796,70 @@ def _f4_f_paired_bank_comparison(left, right):
     return result
 
 
-def run_f4_f_bank_mixture_check(refinement, *, workers=7, progress=None):
-    """F3 pilot: original 41-node priors, two new paired records, no FV restarts."""
-    base = f4_f_validated_refinement(refinement)
-    configurations = [('fv_reference', None), ('fv_matched', _f4_f_numerics(151, 1/3072)),
+def _f4_f_mixture_design(version=1):
+    """Locked F3 designs; version 2 retains the failed 151-cell controls."""
+    if type(version) is not int or version not in (1, 2):
+        raise ValueError('Unknown F3 design version.')
+    configurations = [('fv_reference', _f4_f_selected_numerics()['rho']),
+                      ('fv_matched', _f4_f_numerics(151, 1/3072)),
                       ('mixture_coarse', _f4_f_numerics(151, 1/768, backend='mixture')),
                       ('mixture_middle', _f4_f_numerics(151, 1/1536, backend='mixture')),
                       ('mixture_fine', _f4_f_numerics(151, 1/3072, backend='mixture'))]
+    comparisons = [('mixture_time', 'mixture_middle', 'mixture_fine', version == 1),
+                   ('matched_fv', 'fv_matched', 'mixture_fine', version == 1),
+                   ('reference_fv', 'fv_reference', 'mixture_fine', version == 1)]
+    candidate = configurations[-1][1]
+    if version == 2:
+        configurations += [('fv401_fine', _f4_f_numerics(401, 1/32768)),
+                           ('mixture401_middle', _f4_f_numerics(401, 1/16384, backend='mixture')),
+                           ('mixture401_fine', _f4_f_numerics(401, 1/32768, backend='mixture')),
+                           ('mixture801_fine', _f4_f_numerics(801, 1/32768, backend='mixture'))]
+        comparisons += [('mixture_time_refined', 'mixture401_middle', 'mixture401_fine', True),
+                        ('matched_fv_refined', 'fv401_fine', 'mixture401_fine', True),
+                        ('reference_fv_refined', 'fv_reference', 'mixture401_fine', True),
+                        ('mixture_spatial_refined', 'mixture401_fine', 'mixture801_fine', True)]
+        candidate = dict(configurations)['mixture401_fine']
+    return configurations, comparisons, candidate
+
+
+def run_f4_f_bank_mixture_check(refinement, *, workers=7, progress=None, spatial_refine=False):
+    """F3: original pilot or explicit spatial refinement, with unchanged gates."""
+    if not isinstance(spatial_refine, (bool, np.bool_)):
+        raise TypeError('spatial_refine must be boolean.')
+    f4_f_validated_refinement(refinement)
+    version = 2 if spatial_refine else 1
+    configurations, design_comparisons, candidate = _f4_f_mixture_design(version)
     groups = [_f4_f_group(c, sid, 1. if c == 'rho' else .5, F4_E_PARAMETER_GRIDS[c],
-                          base[c] if config is None else config, label)
+                          config, label)
               for c in ('rho',) for sid in (1326, 1327) for label, config in configurations]
     rows = _f4_f_execute_groups(groups, workers, progress, keep_mass=True)
     comparisons = []
     for c in ('rho',):
         for sid in (1326, 1327):
             selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
-            for label, left, right in [('mixture_time', 'mixture_middle', 'mixture_fine'),
-                                        ('matched_fv', 'fv_matched', 'mixture_fine'),
-                                        ('reference_fv', 'fv_reference', 'mixture_fine')]:
-                comparisons.append(dict(coordinate=c, sequence_id=sid, comparison=label,
-                                         **_f4_f_paired_bank_comparison(selected[left], selected[right])))
+            for label, left, right, active in design_comparisons:
+                comparison = dict(coordinate=c, sequence_id=sid, comparison=label, selected=active,
+                                  **_f4_f_paired_bank_comparison(selected[left], selected[right]))
+                if version == 2 and label == 'mixture_time_refined':
+                    comparison.update(actual_max_step_left=selected[left]['actual_max_step'],
+                                      actual_max_step_right=selected[right]['actual_max_step'])
+                    comparison['actual_step_refined'] = bool(selected[right]['actual_max_step']
+                                                              < selected[left]['actual_max_step'])
+                    comparison['passes'] = bool(comparison['passes'] and comparison['actual_step_refined'])
+                if version == 2 and label == 'mixture_spatial_refined':
+                    comparison.update(actual_max_step_left=selected[left]['actual_max_step'],
+                                      actual_max_step_right=selected[right]['actual_max_step'])
+                    comparison['actual_steps_matched'] = bool(np.isclose(selected[left]['actual_max_step'],
+                        selected[right]['actual_max_step'], atol=1e-14, rtol=0))
+                    comparison['passes'] = bool(comparison['passes'] and comparison['actual_steps_matched'])
+                comparisons.append(comparison)
     return dict(**_f4_f_report_header('F3', workers), rows=rows, comparisons=comparisons,
-                passes=bool(_f4_f_probability_gate(rows) and all(r['passes'] for r in comparisons)),
+                design_version=version, selected_mixture_numerics=candidate,
+                passes=bool(_f4_f_probability_gate(rows) and all(r['passes'] for r in comparisons if r['selected'])),
                 mixture_basis='shape_D', mixture_cfl=.4,
-                interpretation='Pilot acceptance supports this bank design only. If any gate fails, review numerical/basis errors before population.')
+                interpretation=('Version 2 tests 401 cells against 801 and retains original 151-cell failures as diagnostics. '
+                                if spatial_refine else '') +
+                               'Pilot acceptance supports this bank design only. If any selected gate fails, review numerical/basis errors before population.')
 
 
 def f4_f_validated_mixture_check(report, *, require_source=False):
@@ -2830,21 +2870,26 @@ def f4_f_validated_mixture_check(report, *, require_source=False):
     _f4_f_validate_header(report)
     if report.get('mixture_basis') != 'shape_D' or report.get('mixture_cfl') != .4:
         raise ValueError('F3 basis or CFL was changed.')
+    version = report.get('design_version', 1)
+    configurations, comparisons, candidate = _f4_f_mixture_design(version)
+    settings = dict(configurations)
+    if ((version == 2 or 'selected_mixture_numerics' in report)
+            and report.get('selected_mixture_numerics') != candidate):
+        raise ValueError('F3 selected mixture settings were changed.')
     rows = report.get('rows', [])
-    if len(rows) != 10 or not _f4_f_probability_gate(rows):
-        raise ValueError('F3 requires all 10 valid rho bank rows.')
-    settings = {'fv_reference': None, 'fv_matched': _f4_f_numerics(151, 1/3072),
-                'mixture_coarse': _f4_f_numerics(151, 1/768, backend='mixture'),
-                'mixture_middle': _f4_f_numerics(151, 1/1536, backend='mixture'),
-                'mixture_fine': _f4_f_numerics(151, 1/3072, backend='mixture')}
+    if len(rows) != 2*len(settings) or not _f4_f_probability_gate(rows):
+        raise ValueError('F3 requires all valid rho bank rows for its design version.')
     expected = {(c, sid, label) for c in ('rho',) for sid in (1326, 1327) for label in settings}
     if {(r['coordinate'], r['sequence_id'], r['label']) for r in rows} != expected:
         raise ValueError('F3 identifiers were changed.')
     for r in rows:
-        expected_settings = (_f4_f_selected_numerics()[r['coordinate']] if r['label'] == 'fv_reference'
-                             else settings[r['label']])
+        expected_settings = settings[r['label']]
         if r['settings'] != expected_settings or not np.array_equal(r['values'], F4_E_PARAMETER_GRIDS[r['coordinate']]):
             raise ValueError('F3 settings or nodes were changed.')
+        if version == 2:
+            actual = checks.finite_scalar(r.get('actual_max_step'), 'F3 actual step', positive=True)
+            if actual > expected_settings['max_step']*(1+1e-12):
+                raise ValueError('F3 actual step exceeds its configured maximum.')
         if (not np.array_equal(r['observation_times'], CORE_OBSERVATION_TIMES)
                 or r['truth'] != (1. if r['coordinate'] == 'rho' else .5)):
             raise ValueError('F3 truth or observation times were changed.')
@@ -2859,6 +2904,10 @@ def f4_f_validated_mixture_check(report, *, require_source=False):
                 or not np.allclose(r['log_weights'], reduced['log_weights'], atol=1e-10, rtol=0)
                 or not np.allclose(r['cumulative_log_evidence'], np.cumsum(reduced['log_evidence']), atol=1e-10, rtol=0)):
             raise ValueError('F3 bank evidence/weights do not match conditional scores.')
+        edges = np.asarray(r.get('x_edges'))
+        expected_edges = np.linspace(0., 1., r['settings']['x_steps']+1)
+        if edges.shape != expected_edges.shape or not np.allclose(edges, expected_edges, atol=1e-14, rtol=0):
+            raise ValueError('F3 state cell edges were changed.')
         for phase in ('predicted', 'posterior'):
             mass = checks.probability_rows(r[f'marginal_{phase}_mass'], 'F3 marginal mass')
             if mass.shape != (24, r['settings']['x_steps']):
@@ -2866,10 +2915,16 @@ def f4_f_validated_mixture_check(report, *, require_source=False):
     for c in ('rho',):
         for sid in (1326, 1327):
             selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
-            for left in ('mixture_middle', 'fv_matched', 'fv_reference'):
-                if not _f4_f_paired_bank_comparison(selected[left], selected['mixture_fine'])['passes']:
+            if version == 2 and not (selected['mixture401_fine']['actual_max_step']
+                                     < selected['mixture401_middle']['actual_max_step']):
+                raise ValueError('F3 time control did not change the actual step.')
+            if version == 2 and not np.isclose(selected['mixture401_fine']['actual_max_step'],
+                                               selected['mixture801_fine']['actual_max_step'], atol=1e-14, rtol=0):
+                raise ValueError('F3 spatial control changed the actual time step.')
+            for _, left, right, active in comparisons:
+                if active and not _f4_f_paired_bank_comparison(selected[left], selected[right])['passes']:
                     raise ValueError('F3 pilot gates failed; adapt before population.')
-    return settings['mixture_fine']
+    return candidate
 
 
 def run_f4_f_bank_population(refinement, mixture_check, *, workers=7, progress=None):

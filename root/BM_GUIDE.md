@@ -128,7 +128,8 @@ output afvises før beregningen; en fejlet gate gemmes og giver derefter en fejl
 F0 tester metoden, ikke parameter-recovery, mixture eller ugeforecast.
 
 De resterende F-studier køres og gennemgås i rækkefølge. F1 er bestået og F2's
-rå rapport gennemgået; næste kørsel er F3 med den gemte F1-rapport. Alle har
+rå rapport gennemgået; første F3 fejlede state-L1. Næste kørsel er F3 med
+`--spatial-refine`, den gemte F1-rapport og en ny outputfil. Alle har
 default 7 workers, fast videnskabeligt design og løbende progress.
 F1 genundersøger begge enparametergrids; sigma_x får finere state-numerik efter
 det første udviklingsforsøgs fejl. Forsøgsdefinition og tilpasning står i `F4.md`.
@@ -162,9 +163,16 @@ python -B -m src.exe.run_model.bm_1.estimate bank-mixture-check `
   --output files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_check.json.gz
 if ($LASTEXITCODE -ne 0) { throw "F3 mixture-kontrol fejlede; behold rapporten til review." }
 
+python -B -m src.exe.run_model.bm_1.estimate bank-mixture-check `
+  --spatial-refine `
+  --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
+  --workers 8 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_spatial_refinement.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F3 refinement fejlede; behold begge rapporter til review." }
+
 python -B -m src.exe.run_model.bm_1.estimate bank-population `
   --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
-  --mixture-report files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_check.json.gz `
+  --mixture-report files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_spatial_refinement.json.gz `
   --workers 7 --blas-threads 1 `
   --output files/output/bm_1/runs/estimation/f4_f_f4_bank_population.json.gz
 if ($LASTEXITCODE -ne 0) { throw "F4 population fejlede; behold rapporten til review." }

@@ -2224,6 +2224,7 @@ class OneParameterBankTests(unittest.TestCase):
                     initial_log_weights=[-np.log(41)]*41, log_weights=np.full((24,41),-np.log(41)).tolist(),
                     cumulative_log_evidence=[0.]*24, parameter_mean=[1.]*24,
                     maximum_abs_mass_error=0., minimum_cell_mass=0., fallbacks=0,
+                    actual_max_step=config['max_step'],
                     x_edges=np.linspace(0,1,cells+1).tolist(),
                     marginal_predicted_mass=np.full((24,cells),1/cells).tolist(),
                     marginal_posterior_mass=np.full((24,cells),1/cells).tolist()))
@@ -2245,6 +2246,106 @@ class OneParameterBankTests(unittest.TestCase):
                 bad['rows'].pop()
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):
                 synthetic.f4_f_validated_mixture_check(bad)
+
+    @staticmethod
+    def refined_mixture_fixture():
+        # A coarse representation can fail against the reference while the
+        # explicitly refined candidate and its controls agree exactly.
+        configs = [('fv_reference', 401, 1/768, 'fv'),
+                   ('fv_matched', 151, 1/3072, 'fv'),
+                   ('mixture_coarse', 151, 1/768, 'mixture'),
+                   ('mixture_middle', 151, 1/1536, 'mixture'),
+                   ('mixture_fine', 151, 1/3072, 'mixture'),
+                   ('fv401_fine', 401, 1/32768, 'fv'),
+                   ('mixture401_middle', 401, 1/16384, 'mixture'),
+                   ('mixture401_fine', 401, 1/32768, 'mixture'),
+                   ('mixture801_fine', 801, 1/32768, 'mixture')]
+        rows = []
+        for sid in (1326, 1327):
+            obs = synthetic.generate_synthetic_sequence(sequence_id=sid).observations
+            for label, cells, step, backend in configs:
+                mass = np.full((24, cells), 1/cells)
+                if cells == 151:
+                    mass[:] = 0.
+                    mass[:, cells//2] = 1.
+                rows.append(dict(coordinate='rho', truth=1., sequence_id=sid, label=label,
+                    settings=synthetic._f4_f_numerics(cells, step, backend=backend),
+                    actual_max_step=step,
+                    values=list(synthetic.F4_E_RHO_GRID),
+                    observation_times=obs.times.tolist(), observations=obs.values.tolist(),
+                    conditional_log_evidence=np.zeros((24,41)).tolist(),
+                    initial_log_weights=[-np.log(41)]*41, log_weights=np.full((24,41),-np.log(41)).tolist(),
+                    cumulative_log_evidence=[0.]*24, parameter_mean=[1.]*24,
+                    maximum_abs_mass_error=0., minimum_cell_mass=0., fallbacks=0,
+                    x_edges=np.linspace(0,1,cells+1).tolist(),
+                    marginal_predicted_mass=mass.tolist(), marginal_posterior_mass=mass.tolist()))
+        return dict(**synthetic._f4_f_report_header('F3', 7), rows=rows,
+                    source_commit='abc', working_tree_dirty=False, design_version=2,
+                    selected_mixture_numerics=synthetic._f4_f_numerics(401, 1/32768, backend='mixture'),
+                    mixture_basis='shape_D', mixture_cfl=.4, passes=False)
+
+    def test_refined_pilot_retains_failed_controls_and_checks_selected_raw_curves(self):
+        report = self.refined_mixture_fixture()
+        lookup = {(r['sequence_id'],r['label']):r for r in report['rows']}
+        self.assertFalse(synthetic._f4_f_paired_bank_comparison(
+            lookup[1326,'fv_reference'], lookup[1326,'mixture_fine'])['passes'])
+        self.assertEqual(synthetic.f4_f_validated_mixture_check(report, require_source=True),
+                         synthetic._f4_f_numerics(401, 1/32768, backend='mixture'))
+        for mutation in ('state', 'missing_old_control', 'selected_settings', 'version', 'edges', 'inactive_time', 'spatial_time'):
+            bad = copy.deepcopy(report)
+            bad['passes'] = True
+            bad['comparisons'] = [{'passes':True, 'selected':False}]
+            if mutation == 'state':
+                target = next(r for r in bad['rows'] if r['label']=='mixture401_fine')
+                target['marginal_posterior_mass'][0] = [1.] + [0.]*400
+            elif mutation == 'missing_old_control':
+                bad['rows'].pop(1)
+            elif mutation == 'selected_settings':
+                bad['selected_mixture_numerics']['max_step'] = 1/1536
+            elif mutation == 'version':
+                bad['design_version'] = 1
+            elif mutation == 'inactive_time':
+                for r in bad['rows']:
+                    if r['label'] in ('mixture401_middle','mixture401_fine'):
+                        r['actual_max_step'] = 1/40000
+            elif mutation == 'spatial_time':
+                bad['rows'][-1]['actual_max_step'] *= .5
+            else:
+                bad['rows'][-1]['x_edges'][1] += .0001
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                synthetic.f4_f_validated_mixture_check(bad)
+
+    def test_refined_study_reports_old_failures_without_loosening_selected_gates(self):
+        report = self.refined_mixture_fixture()
+        with patch.object(synthetic, '_f4_f_execute_groups', return_value=report['rows']) as execute:
+            result = synthetic.run_f4_f_bank_mixture_check(self.refinement_fixture(), spatial_refine=True)
+        self.assertEqual(len(execute.call_args.args[0]), 18)
+        self.assertEqual(result['design_version'], 2)
+        self.assertTrue(result['passes'])
+        self.assertEqual(sum(c['selected'] for c in result['comparisons']), 8)
+        old = [c for c in result['comparisons'] if c['comparison']=='reference_fv']
+        self.assertEqual(len(old), 2)
+        self.assertTrue(all(not c['passes'] and not c['selected'] for c in old))
+        self.assertEqual(result['criteria']['maximum_state_l1'], .02)
+
+    def test_cli_spatial_refinement_flag_and_state_error_are_visible(self):
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as directory:
+            args = estimate.build_parser().parse_args(['bank-mixture-check', '--spatial-refine',
+                '--refinement-report','f1.json.gz', '--output',str(Path(directory)/'f3.json.gz')])
+            report = dict(stage='F3', rows=[], registered_design=True, passes=False,
+                criteria={'maximum_state_l1':.02}, comparisons=[dict(coordinate='rho',sequence_id=1326,
+                    comparison='reference_fv', maximum_log_odds_error=.01, maximum_weight_tv=.001,
+                    maximum_cumulative_evidence_error=.01, predicted_maximum_l1=.03,
+                    posterior_maximum_l1=.04, passes=False,selected=True)])
+            with patch.object(estimate,'_read_bank_dependency',return_value=({'source_commit':'abc'},'digest')), \
+                    patch.object(synthetic,'run_f4_f_bank_mixture_check',return_value=report) as run, \
+                    patch.object(estimate,'_write_likelihood_report'), patch('builtins.print') as printed:
+                with self.assertRaises(RuntimeError):
+                    estimate.run_bank_study(args)
+            self.assertTrue(run.call_args.kwargs['spatial_refine'])
+            output = '\n'.join(str(call.args[0]) for call in printed.call_args_list)
+            self.assertIn('state L1 pred/post=0.03/0.04; limit=0.02', output)
 
     def test_likelihood_window_does_not_remove_hypotheses_from_bayes_update(self):
         a = dict(values=[.5,1.,1.5], observations=[.2],

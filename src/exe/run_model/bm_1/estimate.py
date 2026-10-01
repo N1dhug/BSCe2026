@@ -1058,17 +1058,23 @@ def run_bank_study(args):
     elif args.study == 'sensitivity':
         result = synthetic.run_f4_f_bank_sensitivity(refinement, workers=args.workers, progress=progress)
     elif args.study == 'mixture-check':
-        result = synthetic.run_f4_f_bank_mixture_check(refinement, workers=args.workers, progress=progress)
+        result = synthetic.run_f4_f_bank_mixture_check(
+            refinement, workers=args.workers, progress=progress, spatial_refine=args.spatial_refine)
     else:
         result = synthetic.run_f4_f_bank_population(refinement, mixture_check, workers=args.workers, progress=progress)
     result['dependencies'] = dependencies
     print(f"  stage={result['stage']}; banks={len(result['rows'])}; registered={result['registered_design']}; "
           f"passes={result['passes']}")
     for row in result.get('comparisons', []):
+        state_error = (f"; state L1 pred/post={row['predicted_maximum_l1']:.4g}/"
+                       f"{row['posterior_maximum_l1']:.4g}; limit={result['criteria']['maximum_state_l1']:g}"
+                       if 'predicted_maximum_l1' in row else '')
+        step_error = (f"; actual h={row['actual_max_step_left']:.6g}/{row['actual_max_step_right']:.6g}"
+                      if 'actual_max_step_left' in row else '')
         print(f"  {row['coordinate']} ID{row['sequence_id']} {row.get('axis', row.get('comparison', 'paired'))}: "
               f"log-odds={row['maximum_log_odds_error']:.4g}; TV={row['maximum_weight_tv']:.4g}; "
               f"evidence={row['maximum_cumulative_evidence_error']:.4g}; passes={row['passes']}; "
-              f"selected={row.get('selected', True)}")
+              f"selected={row.get('selected', True)}{state_error}{step_error}")
     _write_likelihood_report(args, result, started)
     if not result['passes']:
         raise RuntimeError('F4-F study gates failed; report retained for review before adapting the next experiment.')
@@ -1232,6 +1238,9 @@ def build_parser():
             bank.add_argument('--refinement-report', type=Path, required=True)
         if study == 'population':
             bank.add_argument('--mixture-report', type=Path, required=True)
+        if study == 'mixture-check':
+            bank.add_argument('--spatial-refine', action='store_true',
+                              help='F3 version 2: 401-cell mixture candidate, 801-cell control; retain original 151-cell diagnostics.')
         bank.set_defaults(handler=run_bank_study, study=study)
 
     mixture_static = subparsers.add_parser(

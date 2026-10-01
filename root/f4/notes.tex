@@ -824,13 +824,44 @@ mixture med FV. F2's outside-støjresultater kræver egen numerisk refinement
 før stærke konvergenspåstande. Ingen posthoc indsnævring eller MAP-substitution
 erstatter den brede parameterposterior. Artifact-digest står i F4-statusfilen.
 
-F3-piloten bruger rho ID1326--1327, frossen \texttt{shape\_D}, 151 celler,
+Den oprindelige F3-pilot bruger rho ID1326--1327, frossen \texttt{shape\_D}, 151 celler,
 CFL 0.4, \(q=3\), og \(h=1/768,1/1536,1/3072\). Den fineste mixture-bank
 sammenlignes både med FV på samme grid og med den finere rho-reference.
 Marginal prediction/posterior-L1 må højst være 0.02 ved alle observationer,
 med konservativ massetransport mellem grids. Mixture-koefficienter bæres
 videre uden FV-genstart. En fejl kræver undersøgelse af tid, rum eller basis
 før populationen, ikke blot en god samlet state-RMSE.
+
+\paragraph{F3: fejlet pilot og spatialt refinement.}
+Den rene Windows-kørsel på \texttt{c321705} fuldførte 410 replays på
+138.20 s med 8 workers og BLAS=1. Rå scores, vægte, marginale masser og
+alle seks sammenligninger er kontrolleret. Mixture-tid og FV/mixture på
+151 celler bestod. Mod FV401 bestod odds, TV og evidence, men prediction/
+posterior-L1 var 0.031281/0.039047 på ID1326 og 0.038918/0.049311 på ID1327,
+over grænsen 0.02. FV151 mod FV401 gav næsten samme fejl:
+0.030609/0.038892 og 0.038245/0.047945. Mixture151 mod FV151 gav højst
+0.002651. Grid-repræsentationen er derfor hovedmistanken; vi ændrer ikke gaten.
+Rapporten blev gemt før det tilsigtede stop. Den er ikke en gyldig F4-dependency.
+
+Version 2 beholder de oprindelige kontroller som diagnostik og tilføjer
+mixture401 ved \(h_{\max}=1/16384,1/32768\), FV401 ved \(1/32768\) og
+mixture801 ved \(1/32768\). Kandidaten er mixture401 ved \(1/32768\).
+De 184 basisparametre, CFL 0.4, quadrature 3, parameterprior og observationer
+er uændrede. Rumkontrollen kræver samme faktiske fine tidsskridt.
+Tidskontrol, matched FV, den oprindelige FV401-reference og 401-mod-801
+skal alle bestå de eksisterende grænser. Alle 18 bankrækker gemmes.
+
+Udviklingskontroller viste identiske faktiske steps ved ønsket
+\(h_{\max}=1/1536,1/3072\) på 401 celler og CFL-begrænsning ved
+\(1/16384\) på 801 celler. Det isolerer ikke henholdsvis tid og rum.
+En efterfølgende probe med ni spredte rho-noder på begge records bestod
+alle otte valgte sammenligninger med state-L1 højst 0.012465.
+Fine mixture401/801 brugte begge faktisk \(h=1/32768\), middle401
+\(h=1/16384\). Den registrerede 41-node-kørsel afventes stadig.
+Faktisk step-refinement og ens spatialt step kontrolleres separat.
+Dette er en tilpasning på samme pilotdata; den nye
+held-out population følger først efter rent registreret resultat og rå review.
+Den fejlede artifact bevares med digest i F4-statusfilen.
 
 F4-populationen bruger nye ID1328--1347: parret FV/mixture for rho og et
 separat FV-støjforsøg. Parameter-middel, SD, MAP-ties, randvægt, effektivt
