@@ -144,8 +144,8 @@ def save_plots(paired, optimized, output):
     ax.scatter(paired["wm4_mse_current"], paired["wm4_mse_optimized"], alpha=0.7)
     limit = max(float(paired["wm4_mse_current"].max()), float(paired["wm4_mse_optimized"].max()))
     ax.plot([0.0, limit], [0.0, limit], linestyle="--")
-    ax.set_xlabel("Current QP daily MSE"); ax.set_ylabel("Optimized-state QP daily MSE")
-    ax.set_title("WM4 parameter-fit comparison"); ax.grid(True, alpha=0.25)
+    ax.set_xlabel("Current rate-QP daily MSE"); ax.set_ylabel("Optimized-input daily MSE")
+    ax.set_title("WM4 rate-fit versus optimized input-fit comparison"); ax.grid(True, alpha=0.25)
     fig.tight_layout(); fig.savefig(output / "mse_current_vs_optimized.png", dpi=300, bbox_inches="tight"); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(16, 6))
@@ -173,7 +173,7 @@ def save_plots(paired, optimized, output):
         ax.plot(paired["day"], paired[f"{parameter}_current"], label="Current")
         ax.plot(paired["day"], paired[f"{parameter}_optimized"], label="Optimized-state")
         ax.set_title(parameter); ax.grid(True, alpha=0.25)
-    axes[0, 0].legend(); fig.suptitle("Rolling five-week WM4 parameter estimates")
+    axes[0, 0].legend(); fig.suptitle("Rolling five-week WM4 parameter estimates: rate-QP vs input-fit")
     fig.tight_layout(); fig.savefig(output / "parameter_comparison.png", dpi=300, bbox_inches="tight"); plt.close(fig)
 
 
@@ -195,7 +195,7 @@ def print_summary(summary, weekday, parameter, state):
 
 
 def main():
-    parser = ArgumentParser(description="Complete paired analysis of current and optimized-state wm_4 QP parameter fits.")
+    parser = ArgumentParser(description="Complete paired analysis of current rate-QP and optimized-state input-fitted wm_4 parameters.")
     parser.add_argument("--current", default=str(CURRENT))
     parser.add_argument("--optimized", default=str(OPTIMIZED))
     parser.add_argument("--output", default=str(OUTPUT))
