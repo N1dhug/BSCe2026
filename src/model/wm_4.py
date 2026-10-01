@@ -8,14 +8,16 @@ from src.validation.model.wm_4 import wm_4_validation
 
 
 class wm_4(wm):
-    """Water Model 4.
+    """Water Model 4 with signed flexibility and price domains.
 
-    P_R = [1, F, U, R], dR/dt = r @ P_R
+    P_R = [F, U, R], dR/dt = r @ P_R
     O = O(Time)
 
     dF = R dt
-    dR = (r_0 + r_F F + r_U U + r_R R) dt + (sigma_0 + sigma_I I) dW
+    dR = (r_F F + r_U U + r_R R) dt + (sigma_0 + sigma_I I) dW
     I = O + R
+
+    F, U in [-1, 1], with F = U = 0 as the neutral point.
     """
 
     _FIT_EPS = 1e-8
@@ -31,7 +33,7 @@ class wm_4(wm):
         self.fp = wm_fokker_planc()
 
     def dR(self, P_R, r):
-        P_R = wm_4_validation.vector(P_R, 4, "P_R")
+        P_R = wm_4_validation.vector(P_R, 3, "P_R")
         r = wm_4_validation.r_coefficients(r)
         return r @ P_R
 
@@ -47,23 +49,23 @@ class wm_4(wm):
 
     @staticmethod
     def equivalent_q(r):
-        r = wm_4_validation.r_coefficients(r, enforce_equilibrium=False)
-        kappa_R = -r[3]
-        return r[:3] / kappa_R, kappa_R
+        r = wm_4_validation.r_coefficients(r)
+        kappa_R = -r[2]
+        return r[:2] / kappa_R, kappa_R
 
     @classmethod
     def expected_equilibrium(cls, U, r):
         U = wm_4_validation.signal_value(U, "U")
         r = wm_4_validation.r_coefficients(r)
-        return -(r[0] + r[2] * U) / r[1]
+        return -(r[1] * U) / r[0]
 
     @staticmethod
     def drift(F, R, U, r):
-        F = wm_4_validation._finite_scalar(F, "F")
+        F = wm_4_validation.signal_value(F, "F")
         R = wm_4_validation._finite_scalar(R, "R")
         U = wm_4_validation.signal_value(U, "U")
         r = wm_4_validation.r_coefficients(r)
-        return np.array([R, r @ np.array([1.0, F, U, R], dtype=float)], dtype=float)
+        return np.array([R, r @ np.array([F, U, R], dtype=float)], dtype=float)
 
     @staticmethod
     def diffusion(I, sigma_0, sigma_I):
@@ -85,23 +87,23 @@ class wm_4(wm):
             O[k] = wm_4_validation.feature_value(self.O(Time[k]), "O(Time(t))")
         return U, PE, Time, O
 
-    def _solve_deterministic(self, init_cond, U, PE, Time, O, r, gamma=None, enforce_equilibrium=True):
+    def _solve_deterministic(self, init_cond, U, PE, Time, O, r, gamma=None):
         F, R, R_dot = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
         I, Q = np.empty(self.t_steps), np.empty(self.t_steps)
         A = np.full(self.t_steps, np.nan)
-        P_R = np.empty((self.t_steps, 4))
+        P_R = np.empty((self.t_steps, 3))
         P_A = np.full((self.t_steps, 4), np.nan)
-        r = wm_4_validation.r_coefficients(r, enforce_equilibrium=enforce_equilibrium)
+        r = wm_4_validation.r_coefficients(r)
         q, kappa_R = self.equivalent_q(r)
         F[0], R[0] = init_cond
 
         for k in range(self.t_steps):
-            P_R[k] = np.array([1.0, F[k], U[k], R[k]], dtype=float)
+            P_R[k] = np.array([F[k], U[k], R[k]], dtype=float)
             R_dot[k] = r @ P_R[k]
-            Q[k] = q @ np.array([1.0, F[k], U[k]], dtype=float)
+            Q[k] = q @ np.array([F[k], U[k]], dtype=float)
             I[k] = O[k] + R[k]
             if gamma is not None:
-                P_A[k] = np.array([1.0 - U[k], I[k], F[k], 1.0 - PE[k]], dtype=float)
+                P_A[k] = np.array([-U[k], I[k], -F[k], -PE[k]], dtype=float)
                 A[k] = gamma @ P_A[k]
             if k < self.t_steps - 1:
                 F[k + 1] = F[k] + self.dt * R[k]
@@ -118,12 +120,9 @@ class wm_4(wm):
     def deterministic_solver(self, init_cond, parameters):
         init_cond, parameters = wm_4_validation.deterministic_inputs(init_cond, parameters)
         U, PE, Time, O = self._sample_signals(parameters)
-        return self._solve_deterministic(
-            init_cond, U, PE, Time, O, parameters["r"], gamma=parameters["gamma"],
-            enforce_equilibrium=bool(parameters.get("enforce_equilibrium", True)),
-        )
+        return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["r"], gamma=parameters["gamma"])
 
-    def fokker_planc_solver(self, init_cond, parameters, initial_density, f_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
+    def fokker_planc_solver(self, init_cond, parameters, initial_density, f_bounds=(-1.0, 1.0), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
         _, parameters = wm_4_validation.fokker_planc_inputs(init_cond, parameters)
         r = parameters["r"]
         sigma_0, sigma_I = parameters["sigma_0"], parameters["sigma_I"]
@@ -137,7 +136,7 @@ class wm_4(wm):
 
         def drift_r(time, F, R):
             U, _ = fields(time)
-            return r[0] + r[1] * F + r[2] * U + r[3] * R
+            return r[0] * F + r[1] * U + r[2] * R
 
         def diffusion_r(time, F, R):
             _, O = fields(time)
