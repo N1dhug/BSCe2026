@@ -1293,6 +1293,62 @@ class F4DRepresentationTests(unittest.TestCase):
         self.assertTrue(result['summary']['passes_convergence'])
         self.assertEqual(result['summary']['population_setting']['x_steps'], 151)
 
+    def test_d3d_population_constants_lock_unseen_sequences_and_numerics(self):
+        self.assertEqual(mixture_f4.D3D_SEQUENCE_START, 1011)
+        self.assertEqual(mixture_f4.D3D_SEQUENCE_COUNT, 200)
+        self.assertEqual(mixture_f4.D3C_POPULATION_X_STEPS, 151)
+        self.assertEqual(mixture_f4.D3C_POPULATION_MAX_STEP, 1/3072)
+        self.assertEqual(mixture_f4.D3D_BOOTSTRAP_REPLICATES, 5000)
+        self.assertEqual(mixture_f4.D3D_BOOTSTRAP_SEED, 4301)
+
+    def test_d3d_equivalence_and_gap_summaries_apply_declared_gates(self):
+        mixture_mse = np.array([1.00, 1.02, 0.98]) * 0.04
+        fv_mse = np.full(3, 0.04)
+        rmse = mixture_f4._d3d_rmse_summary(
+            mixture_mse, fv_mse, replicates=100, seed=7,
+        )
+        self.assertTrue(rmse['passes_equivalence'])
+        good_l1 = mixture_f4._d3d_gap_summary(
+            np.array([0.005, 0.01, 0.015]), l1=True,
+        )
+        self.assertTrue(good_l1['passes'])
+        bad_l1 = mixture_f4._d3d_gap_summary(
+            np.array([0.005, 0.01, 0.06]), l1=True,
+        )
+        self.assertFalse(bad_l1['passes'])
+        self.assertTrue(
+            mixture_f4._d3d_gap_summary(
+                np.array([1e-4, 2e-4, 3e-4]), l1=False,
+            )['passes']
+        )
+
+    def test_small_d3d_population_runs_paired_without_dropping_sequences(self):
+        result = mixture_f4.run_f4_d_recursive_population(
+            n_sequences=2,
+            sequence_start=0,
+            x_steps=31,
+            max_step=1/24,
+            cfl=.4,
+            likelihood_quadrature_order=1,
+            bootstrap_replicates=100,
+            bootstrap_seed=11,
+            workers=1,
+        )
+        self.assertEqual(result['stage'], 'D3d')
+        self.assertEqual(result['sequence_ids'], (0, 1))
+        self.assertEqual(result['successful_sequences'], 2)
+        self.assertEqual(result['invalid_truth_sequences'], ())
+        self.assertEqual(result['failed_sequences'], ())
+        self.assertEqual(result['workers'], 1)
+        self.assertIn('predictive', result['rmse'])
+        self.assertIn('posterior', result['rmse'])
+        self.assertIn('prediction_l1', result['distribution_gap'])
+        self.assertIn('posterior_l1', result['distribution_gap'])
+        self.assertTrue(np.isfinite(
+            result['log_evidence_difference']['mean_absolute_per_observation']
+        ))
+        self.assertLessEqual(result['numerical']['maximum_mass_error'], 1e-10)
+
     def test_d1_selection_never_selects_legacy_comparison(self):
         result = mixture_f4.run_f4_d_representation_study(x_steps=61)
         self.assertNotIn(result['selected_dictionary'], ('legacy_degree_30', 'legacy_degree_38'))
