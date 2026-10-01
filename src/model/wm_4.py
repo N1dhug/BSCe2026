@@ -47,7 +47,7 @@ class wm_4(wm):
 
     @staticmethod
     def equivalent_q(r):
-        r = wm_4_validation.r_coefficients(r)
+        r = wm_4_validation.r_coefficients(r, enforce_equilibrium=False)
         kappa_R = -r[3]
         return r[:3] / kappa_R, kappa_R
 
@@ -85,13 +85,13 @@ class wm_4(wm):
             O[k] = wm_4_validation.feature_value(self.O(Time[k]), "O(Time(t))")
         return U, PE, Time, O
 
-    def _solve_deterministic(self, init_cond, U, PE, Time, O, r, gamma=None):
+    def _solve_deterministic(self, init_cond, U, PE, Time, O, r, gamma=None, enforce_equilibrium=True):
         F, R, R_dot = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
         I, Q = np.empty(self.t_steps), np.empty(self.t_steps)
         A = np.full(self.t_steps, np.nan)
         P_R = np.empty((self.t_steps, 4))
         P_A = np.full((self.t_steps, 4), np.nan)
-        r = wm_4_validation.r_coefficients(r)
+        r = wm_4_validation.r_coefficients(r, enforce_equilibrium=enforce_equilibrium)
         q, kappa_R = self.equivalent_q(r)
         F[0], R[0] = init_cond
 
@@ -118,7 +118,10 @@ class wm_4(wm):
     def deterministic_solver(self, init_cond, parameters):
         init_cond, parameters = wm_4_validation.deterministic_inputs(init_cond, parameters)
         U, PE, Time, O = self._sample_signals(parameters)
-        return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["r"], gamma=parameters["gamma"])
+        return self._solve_deterministic(
+            init_cond, U, PE, Time, O, parameters["r"], gamma=parameters["gamma"],
+            enforce_equilibrium=bool(parameters.get("enforce_equilibrium", True)),
+        )
 
     def fokker_planc_solver(self, init_cond, parameters, initial_density, f_bounds=(-0.5, 1.5), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
         _, parameters = wm_4_validation.fokker_planc_inputs(init_cond, parameters)
