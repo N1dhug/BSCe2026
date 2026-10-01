@@ -420,7 +420,7 @@ joint fit. E2 indfører ikke et nyt recovery-passmål.
 Den registrerede E2-kørsel (kildecommit \texttt{2022d95}, brugerens Windows-kørsel
 den 1. oktober 2026) fuldførte alle 50 sekvenser på ca. 1014 s med syv
 worker-processer og én BLAS-tråd. Terminalresuméet gav nedenstående resultater;
-de individuelle rå kurver er endnu ikke gennemgået her.
+de individuelle rå kurver blev efterfølgende gennemgået i E4 nedenfor.
 Maksimal massefejl var \(3.775\cdot10^{-14}\), mindste masse nul og alle
 grid-MLE'er entydige.
 \begin{center}
@@ -503,7 +503,7 @@ Par & Samlet grid-MLE (10 records) & Randfrekvenser pr. sekvens \\
 \end{tabular}
 \end{center}
 Kun \(\Xi\) lå på støtteranden i de samlede maxima. De rå flader og profiler
-er endnu ikke gennemgået her. På de samme records ses allerede en væsentlig
+blev efterfølgende gennemgået i E4 nedenfor. På de samme records ses en væsentlig
 afhængighed af, om \(\Xi\) holdes fast: ID1213 og ID1219 havde E2-k-MLE
 \(2.15\) ved \(\Xi=1\), mens E3-par-MLE var \((3.5,0.65)\); ID1217 gik
 fra \(1.85\) til \((3.2,0.65)\). E3's grovere k-grid, med spacing 0.15 mod
@@ -516,11 +516,71 @@ maximizerens placering alene fastlægger ikke likelihoodens skarphed.
 E2's samlede 50-records resumé og E3's 10-records resumé må ikke sammenlignes
 som effekten af en ekstra fri parameter uden samme records og grids.
 
-Valget af første F-parameter fastlåses først efter E. \(\rho\) er arbejdshypotesen:
-sandheden ligger interiørt i den allerede foreslåede støtte, og driftens afhængighed
-af \(\rho\) er enkel. Det er ikke et acceptkriterium; hvis slice og numerisk refinement
-viser svag information, dokumenteres den svage identifikation i stedet for at tvinge
-banken til at recovere sandheden.
+\paragraph{E4: rå-artifactreview og første bankvalg.}
+De uploadede E2/E3-artifacts blev gennemgået den 1. oktober 2026. E3's E2-digest
+matcher den modtagne E2-fil. Alle E2-rækker og E3-fladers predictive evidence,
+centerering, maximizers, truth-snit, profiler, ridges og rå summer er kontrolleret;
+source-commits og artifact-digests står i \texttt{root/F4.md}.
+
+46 af 50 rho-slices har alle 41 noder i \(\mathcal I_{\rm LR}\), og alle 50 har
+randkontakt. Summen over de 50 uafhængige records har derimod MLE 0.825,
+LR-span \([0.60,1.05]\) og log-likelihood-tab 0.926186 ved truth. Den samlede
+kurve viser information under de kendte nuisance-parametre, men dens niveau
+må ikke forveksles med et kalibreret konfidensinterval eller med likelihooden
+af ét sammenhængende 50-døgns-forløb, hvor state-posterioren bæres videre.
+
+For den på forhånd foreslåede uniforme diskrete prior kan de enkelte døgns
+offline-likelihoods omsættes algebraisk til
+\[
+ w_{s,j}=\frac{\exp(\ell_s(\rho_j))}{\sum_i\exp(\ell_s(\rho_i))},\qquad
+ H_{{\rm eff},s}=\exp\!\left(-\sum_jw_{s,j}\log w_{s,j}\right).
+\]
+Medianen er \(H_{\rm eff}=40.2459\) mod priorens 41; median maksimal nodevægt
+er 3.094 procent mod priorens 2.439 procent. Vægtene er beregnet fra offline-scores;
+dette er ikke en allerede implementeret online-bank. Resultatet gør den svage
+én-døgns-information konkret og kræver, at en senere bank bevarer en bred posterior.
+
+Ved sammenligning af præcis de samme ti records på de samme 21-node-grids fås:
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+Parameter / par & Betinget LR-span & Par-profils LR-span \\
+\midrule
+\(\rho/\Xi\) & \([0.60,1.50]\) & \([0.60,1.50]\) \\
+\(k/\Xi\) & \([2.00,2.15]\) & \([2.00,2.90]\) \\
+\(\sigma_Y/\sigma_X\) & \([0.03000,0.03446]\) & \([0.03000,0.03446]\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+Profilerne maksimerer kun over den anden parameter på E3-griddet. Tallene er
+diskrete spændvidder ved niveau \(2\,\mathrm{loss}\le3.841\), ikke kalibrerede
+konfidensintervaller. K/Xi-ridgen viser, at et skarpt k-snit ved kendt Xi ikke
+giver tilsvarende skarp bestemmelse af det frie par. Sigma-y-profilen ændres
+mindre ved at frigive sigma-x på disse ti records; sigma-x-profilens span er
+ca. \([0.37893,0.57435]\). Rho-profilen berører stadig øvre støtte.
+Dette er afgrænset evidens om de viste par, ikke en generel joint-recovery-garanti.
+
+Første F-bank fastlåses til \(\rho\), med den oprindeligt deklarerede støtte
+\[
+ \rho_j=0.5+0.025j,\quad j=0,\ldots,40,\qquad w_{0,j}=1/41.
+\]
+Xi=1, k=2, sigma-x=0.5, sigma-y=0.03 og f/g holdes kendte. Rho er en fysisk
+relevant én-parametercase med E1-numerik og målbar fælles-record-information;
+valget er ikke en konkurrence om den MLE, der ligger nærmest truth. Den svage
+døgnsinformation er et resultat, som banken skal bevare. Support og prior
+indsnævres ikke efter de observerede MLE'er; prioren er diskret i rho og er ikke
+uniform i C. Randmasse samt support-/priorfølsomhed undersøges særskilt i F.
+Den aktuelle støtte er ikke dokumenteret globalt tilstrækkelig. En senere bank
+i k, Xi eller sigma-y kræver egen likelihood-refinement.
+
+Den første FV-metodekontrol bruger et hidtil ubrugt ID1262, 401 celler,
+\(h_{\max}=1/768\) dag og q=3. Online-logvægtene skal ved hvert
+observationsprefix matche \(\log(1/41)+\ell_{1:k}(\rho_j)\), normaliseret med
+log-sum-exp; den marginale log-evidence skal matche samme log-sum-exp på tværs
+af hypoteserne. Hver hypotese starter fra Beta(20,20) og bærer derefter sin egen
+conditional state-posterior. Population, mixture og ugeforecast er senere særskilte
+studier. Den matematiske bankkontrakt følger i næste afsnit.
 
 
 \subsection{Likelihood-snit, profil og batch-replay}
