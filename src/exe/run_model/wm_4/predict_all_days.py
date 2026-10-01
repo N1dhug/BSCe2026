@@ -25,10 +25,11 @@ def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deter
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
 
     if optimize_prediction_state:
-        init, state, fine_index, _ = optimized_prediction_state(frame, start, model, fit["r"], steps_per_hour, output_model)
+        init, state, fine_index, init_fit_mse = optimized_prediction_state(frame, start, model, fit["r"], steps_per_hour, output_model)
     else:
         init = historical_prediction_state(fit, warmup_hours, steps_per_hour)
         state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+        init_fit_mse = np.nan
 
     hourly_index = np.arange(DAY_HOURS) * steps_per_hour
     observed = actual["I"].to_numpy(dtype=float)
@@ -39,6 +40,7 @@ def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deter
 
     daily = {
         "day": start, "weekday": start.day_name(), "optimized": bool(optimize_prediction_state),
+        "prediction_state_fit_mse": init_fit_mse,
         "r_0": r[0], "r_F": r[1], "r_U": r[2], "r_R": r[3],
         "F_0": init[0], "R_0": init[1],
         "sigma_0": np.nan if deterministic else fit["sigma_0"],
