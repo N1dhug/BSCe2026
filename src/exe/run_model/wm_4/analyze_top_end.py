@@ -16,7 +16,9 @@ PARAMETERS = ("r_F", "r_U", "r_R")
 def load_daily(root):
     path = Path(root) / "daily_metrics.csv"
     if not path.exists(): raise FileNotFoundError(f"Missing {path}. Run the corresponding top-end predictor first.")
-    return pd.read_csv(path, parse_dates=["day"])
+    frame = pd.read_csv(path, parse_dates=["day"])
+    if "r_0" in frame.columns: raise RuntimeError(f"{path} contains legacy WM4 results with r_0; rerun that predictor with the current signed WM4.")
+    return frame
 
 
 def paired_results(warmup, optimized):
@@ -159,7 +161,7 @@ def parameter_stability(frame):
     rows = []
     for method in ("warmup", "optimized"):
         values = {parameter: frame[f"{parameter}_{method}"].to_numpy(dtype=float) for parameter in PARAMETERS}
-        derived = {**values, "kappa_R": -values["r_R"], "equilibrium_gain": -values["r_U"] / values["r_F"]}
+        derived = {**values, "equilibrium_gain": -values["r_U"] / values["r_F"]}
         for parameter, series in derived.items():
             mean = float(np.mean(series))
             std = float(np.std(series, ddof=1))
