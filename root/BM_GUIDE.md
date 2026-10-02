@@ -538,22 +538,34 @@ Send den nye rå gzip og terminalresumé med stopwatch, også ved gatefejl.
 Output overskrives aldrig. En bestået pilot certificerer kun kandidatgridet på
 to records; større population, G2 og praktisk uge-/månedsbenchmark følger særskilt.
 
-## Næste lokale kørsel: F4-G1b3 v4
+## Næste lokale kørsel: samlet F4-G1b3 og G1c0
 
-Den samlede kontrol bruger **5/9/17/33/65 noder**, kandidat 33x33 mod 65x65,
-**33.800 replays / 40 banker og 26 aktive gates**. Den genskaber også G1b1/G1b2's
-5/9/17/33-banker og bevarer de grovere fejl som diagnostik. G1b0's rå Windows-fil
-valideres og de 16 fælles banker reproduceres til 1e-10. **Du skal ikke først
-køre G1b1 eller G1b2**, og ingen G0/G1a/G1b0-genkørsel er nødvendig.
+Kør på clean **feature/f4-g-grid-refinement før merge**. Brugeren merger selv
+efter Windows-kørsel og rå review. **Ingen genkørsel af G0/G1a/G1b0/G1b1/G1b2**
+er nødvendig; den eksisterende originale Windows-G1b0 er input.
 
-Opt-in LAPACK løser samme FV-system med uændret numerik. Den løbende reduktion
-bevarer hver hypoteses egen state og bruger de korrekte gamle/nye Bayes-vægte.
-Windows bruger fortsat **8 workers / BLAS=1**, nu med begrænset kø/hukommelse.
-Design, fejlbevaring og udviklingsevidens står i F4-status/noter.
+G1b3 udfører **33.800 replays / 40 banker** på 5/9/17/33/65-gridene og bevarer
+alle grove fejl. Samme FV-scheme, opt-in LAPACK og løbende Bayes-reduktion.
+**8 workers / BLAS=1** på Windows. G1c0 læser derefter rårapporten og udfører
+**ingen nye replays**; alle FV-kontroller og reproduktion mod originalen skal bestå.
 
-Fra projektmappen, før merge (brugeren merger selv efter rå review):
+Udviklingskørslen: G1b3 **40.57 min** før lagring; G1c0
+**10.65 s** før lagring. Windows-tid er endnu ikke målt.
+461 tests og PDF-build består. G1b3's oprindelige dualcelle-TV fejler fortsat;
+G1c0's særskilte positive hat-lov består 33→65 på to records. Samme prior,
+støtte, scores, evidence og integreret state-mixture; ændret kontinuert
+rekonstruktion, eksplicit dokumenteret i F4-status/noter. Dette er ikke recovery.
+
+**En G1b3-gatefejl med gemt komplet rapport er forventet ud fra Linux-resultatet.**
+Kommandoerne nedenfor fortsætter til G1c0, som genvaliderer hele rapporten og
+stopper ved manglende data, FV- eller reproduktionsfejl. Begge originale
+resultater bevares, og output overskrives aldrig.
 
 ```powershell
+$gStatus = git status --porcelain
+if ($LASTEXITCODE -ne 0) { throw "Git status fejlede." }
+if ($gStatus) { throw "Working tree er ikke ren." }
+
 git fetch --prune origin
 if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
 git switch feature/f4-g-grid-refinement
@@ -561,25 +573,47 @@ if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
 git pull --ff-only origin feature/f4-g-grid-refinement
 if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
 git log -1 --oneline
-if (git status --porcelain) { throw "Working tree er ikke ren." }
+if ($LASTEXITCODE -ne 0) { throw "Git log fejlede." }
+$gStatus = git status --porcelain
+if ($LASTEXITCODE -ne 0) { throw "Git status fejlede." }
+if ($gStatus) { throw "Working tree er ikke ren." }
+
+$gOriginal = "files/output/bm_1/runs/estimation/f4_g_g1b0_joint_parameter_grid.json.gz"
+$gDense = "files/output/bm_1/runs/estimation/f4_g_g1b3_joint_parameter_grid_dense_v4.json.gz"
+$gHat = "files/output/bm_1/runs/estimation/f4_g_g1c0_joint_hat_reconstruction_v1.json.gz"
+if (-not (Test-Path -LiteralPath $gOriginal -PathType Leaf)) { throw "Den oprindelige G1b0-rapport mangler." }
+foreach ($gFile in @($gDense, $gHat)) {
+    if (Test-Path -LiteralPath $gFile) { throw "Output findes allerede; behold filen til review: $gFile" }
+}
 
 python -B -m unittest discover -s tests -q
 if ($LASTEXITCODE -ne 0) { throw "Tests fejlede." }
 
-$g1b3Timer = [System.Diagnostics.Stopwatch]::StartNew()
+$gTimer = [System.Diagnostics.Stopwatch]::StartNew()
 python -B -m src.exe.run_model.bm_1.estimate joint-bank-grid-dense `
-  --g1b0-report files/output/bm_1/runs/estimation/f4_g_g1b0_joint_parameter_grid.json.gz `
-  --workers 8 --blas-threads 1 `
-  --output files/output/bm_1/runs/estimation/f4_g_g1b3_joint_parameter_grid_dense_v4.json.gz
-$g1b3Exit = $LASTEXITCODE
-$g1b3Timer.Stop()
-Write-Host ("G1b3 wall time inkl. opstart/output: {0:N2} s" -f $g1b3Timer.Elapsed.TotalSeconds)
-if ($g1b3Exit -ne 0) { throw "G1b3 fejlede; behold rå rapport og terminalresumé til review." }
+  --g1b0-report $gOriginal --workers 8 --blas-threads 1 --output $gDense
+$gDenseExit = $LASTEXITCODE
+$gTimer.Stop()
+Write-Host ("G1b3 wall time inkl. opstart/output: {0:N2} s; exit={1}" -f $gTimer.Elapsed.TotalSeconds, $gDenseExit)
+if (-not (Test-Path -LiteralPath $gDense -PathType Leaf)) { throw "G1b3 gav ingen rapport; stop her og send terminaloutput." }
+if ($gDenseExit -ne 0) {
+    Write-Host "G1b3 er ikke accepteret. G1c0 validerer nu hele rapporten; FV- eller reproduktionsfejl stopper."
+}
+
+$gTimer.Restart()
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-reconstruct `
+  --grid-report $gDense --g1b0-report $gOriginal --blas-threads 1 --output $gHat
+$gHatExit = $LASTEXITCODE
+$gTimer.Stop()
+Write-Host ("G1c0 wall time inkl. validering/output: {0:N2} s; exit={1}" -f $gTimer.Elapsed.TotalSeconds, $gHatExit)
+if ($gHatExit -ne 0) { throw "G1c0 fejlede; behold begge rapporter og terminaloutput til review." }
+Write-Host "Kontrollerne er afsluttet. Send begge nye .json.gz-filer og terminaloutput til raw review foer merge."
 ```
 
-Send den nye rå gzip og terminalresumé med stopwatch, også ved gatefejl.
-Output overskrives aldrig. En bestået pilot certificerer kun kandidatgridet på
-to records; større population, G2 og praktisk uge-/månedsbenchmark følger særskilt.
+Send **begge nye `.json.gz`-filer** og terminaloutput med testantal/stopwatch,
+også hvis en gate fejler. Behold den gamle G1b0-fil uændret. Et bestået G1c0
+gælder alene 33x33-hat-loven på de to records; original dualcelle-accept,
+held-out population, G2 og uge-/månedsruntime følger ikke automatisk.
 
 ## Kodeplacering
 
@@ -611,19 +645,3 @@ Lokale resultater hører i ignoreret `files/output/bm_1/runs/`, PDF-build i
 `root/f4/build/`. Bevar inputworkbooks og afsluttet evidens i
 `files/output/bm_1/f3_b/` og `files/output/bm_1/real_data/`. Slet ikke brugerens
 lokale arbejde, stashes eller miljøer for at opnå en ren status.
-
-
-## G1c0: særskilt rekonstruktion efter den komplette G1b3-rapport
-
-G1c0 er preregistreret i `F4.md` efter G1b2-diagnostik og før G1b3-resultatet.
-Det er en data-informeret pilot på samme records. Den originale dualcelle-TV
-og afvisninger ændres ikke. En positiv bilineær parameterdensitet på de samme
-noder integrerer til præcis den eksisterende state-mixture og evidence.
-33x33 sammenlignes med 65x65 med de samme tolerancer, analytiske unit-momenter
-og en særskilt 8/16/32-kvadraturkontrol af joint-TV.
-
-CLI `joint-bank-reconstruct` genvaliderer hele G1b3 og den originale G1b0-fil;
-FV- og reproduktionsfejl stopper. En komplet G1b3-rapport med parameter-TV-fejl
-må bruges uden at omfortolke fejlen som original G1b-accept. Ingen nye replays.
-Samlet Windows-handoff færdiggøres efter udviklingskørslen og rå review.
-G2, held-out recovery og praktisk uge-/månedsruntime er fortsat uafklarede.

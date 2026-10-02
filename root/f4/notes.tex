@@ -1477,6 +1477,16 @@ auditerer stadig resultatet. Ingen automatisk grid-/toleranceændring.
 Et bestået G1b3 accepterer alene 33x33 på de to pilotrecords. G2, population
 og uge-/månedsruntime er fortsat særskilte, betingede leverancer.
 
+\paragraph{G1b3's afsluttede udviklingsreview.}
+Clean \texttt{0f4bc3b}: alle 33800 replays/40 banker på 2434.1873 s
+før lagring, otte workers og BLAS=1. Alle 24 FV-kontroller består;
+shared-reproduktion afviger højst \( 4.121\cdot10^{-13} \).
+33x33 mod 65x65 fejler alene oprindelig joint dualcelle-TV:
+0.0428366 / 0.0525257 mod 0.02.
+Alle øvrige parameter-gates består. Separat råaudit af alle banker og 32
+sammenligninger afviger højst \( 2.797\cdot10^{-11} \).
+Afvisninger og digests bevares i F4-status; dette er Linux, ikke Windows-evidens.
+
 \subsection{G1c0 v1: særskilt kontinuert tensor-hat-pilot}
 Fastlagt efter G1b2-diagnostik, før G1b3-rapporten foreligger. Dette er
 samme-record, data-informeret udvikling; ikke held-out bekræftelse.
@@ -1515,6 +1525,24 @@ Manglende banker, FV-fejl eller reproduktionsfejl stopper piloten.
 Originale dualcelle-fejl gemmes også i den særskilte G1c0-rapport.
 Et bestået resultat gælder alene 33x33-hat-loven på de to records;
 ikke original G1b-accept, 65x65, recovery, G2 eller uge-/månedsruntime.
+
+\paragraph{G1c0's afsluttede udviklingsreview.}
+Clean \texttt{2a0c7cc}, defineret før G1b3-resultatet: nul nye replays,
+10.6529 s før lagring. Begge særskilte 33x33-hat-love består mod
+65x65 ved alle 24 prefixer. Max joint-TV er
+0.0053803 / 0.0063510;
+max successive kvadraturafvigelser er
+\( 8.674\cdot10^{-19} \) /
+\( 4.186\cdot10^{-11} \).
+Alle moment-, evidence- og state-gates består. 17x17 mod 33x33 fejler
+fortsat TV (0.02068813/0.02433758); grovere fejl skjules ikke.
+
+Separat primal-Gauss3 kontrollerer masser/momenter, og adaptiv QUADPACK
+kontrollerer alle 192 par/prefix-TV-værdier. Max TV-afvigelse er
+\( 6.829\cdot10^{-11} \).
+461 tests og PDF-build består på identisk CI-tree. Original G1b3-afvisning
+står uændret. Windows-reproduktion/raw review, held-out recovery, G2 og
+konkret 168-timers forecast/månedsbenchmark afventer stadig.
 
 \subsection{Prior under reparameterisering}
 
