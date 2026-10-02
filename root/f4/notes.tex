@@ -1581,6 +1581,41 @@ Linux- og Windows-piloterne er nu rå-reviewet. PR \#54 afventer grøn CI
 for resultatdokumentationen og brugerens merge; G2/population og ugeforecast
 er fortsat særskilte leverancer.
 
+\subsection{G2a v1: nye fortsatte records før robusthedspopulation}
+Preregistreret 3. oktober 2026 før recordgenerering: ID1358 for rho/Xi med
+truth \(\Xi=0.75\), ID1359 for støjparret med \(\Xi=1\); øvrig truth,
+parameterstøtte og prior er uændrede. Horisonten er \([0,7]\) dage,
+med timevise right-continuous punktmålinger og dagligt gentaget
+pris 0.65/0.35/0.65 ved 0/8/16 timer. Baseline er fortsat 0.5.
+En registreret 1- eller 3-døgnsdelkontrol bruger samme per-ID RNG-strømme
+og samme prefix af observationsrecorden. Den certificerer kun sin egen længde.
+
+Hver kandidat initialiseres fra Beta(20,20) én gang. Dens conditional
+state og statiske parameterlikelihood fortsættes over midnat uden reset.
+Ved checkpoint \(d\in\{1,3,7\}\) bruges det allerede beregnede prefix
+\(Y_{1:24d}\); dage er ikke uafhængige populationsrecords.
+Koblet EM med \(h=1/1152\) og \(1/2304\) deler initialdraw, fine Wiener-path
+og målingsstøj. Det fine medlem leverer observationerne. Begge paths skal
+være uden rå randoverskridelser; RMS demand-difference divideret med
+\(\sigma_Y\) skal være højst 0.10 og maksimum højst 0.50.
+Dette er empirisk truth-refinement, ikke en rigorøs discretiseringsfejlgrænse.
+
+33x33-hat-kandidaten sammenlignes med 65x65. Begge grids har særskilte
+tids-, rum- og quadraturekontroller med G1a's uændrede gates ved alle prefixer.
+Kandidat-FV er 401/3201 celler, \(h\le1/1536\), q=3;
+kontroller er \(h\le1/3072\), 801/6401 celler og q=5 én faktor ad gangen.
+Det kræver 33800 conditional replays og 16 nested bankreduktioner:
+12 FV-kontroller og to aktive 33\(\to\)65-hat-kontroller.
+G1c0's TV-, moment-, evidence-, state- og quadraturegates bevares.
+Oprindelig dualcelle-TV gemmes særskilt uden at omfortolkes til hat-TV.
+Rå coarse/fine truth, scores, vægte, evidence og marginale states bevares.
+Fejlede gates lagres; ingen gridtilpasning, toleranceændring eller frasortering.
+
+Dette er en numerisk pilot på to nye records. G2-population samt
+1/2/4-timers sampling og moderat baseline-/initialprior-mismatch følger
+egen preregistrering efter rå review. Parameter-recovery og ugeforecast
+uden nye målinger er ikke accepteret af G2a.
+
 \subsection{Prior under reparameterisering}
 
 Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved
