@@ -72,9 +72,8 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
         state_mode = "zero"
     elif equilibrium_initial_state:
         r = np.asarray(fit["r"], dtype=float)
-        if abs(r[0]) <= model._FIT_EPS: raise ValueError("Cannot initialize F0 from equilibrium when r_F is numerically zero.")
-        equilibrium_gain = -r[1] / r[0]
-        init = np.array([np.clip(equilibrium_gain * float(U[0]), -1.0, 1.0), 0.0], dtype=float)
+        U0 = float(U(model.t[0]))
+        init = np.array([np.clip(model.expected_equilibrium(U0, r), -1.0, 1.0), 0.0], dtype=float)
         state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
         init_fit_mse = np.nan
         state_mode = "equilibrium_F0_zero_R0"
@@ -98,7 +97,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
         "optimized_prediction_state": bool(optimize_initial_state), "zero_prediction_state": bool(zero_initial_state),
         "equilibrium_prediction_state": bool(equilibrium_initial_state), "prediction_state_fit_mse": init_fit_mse,
         "r_F": r[0], "r_U": r[1], "r_R": r[2],
-        "U_0": float(U[0]), "equilibrium_gain": float(-r[1] / r[0]),
+        "U_0": float(U(model.t[0])), "equilibrium_gain": float(-r[1] / r[0]),
         "F_0": init[0], "R_0": init[1],
         "training_F0_mean": float(np.mean(training_states[:, 0])),
         "training_F0_std": float(np.std(training_states[:, 0])),
