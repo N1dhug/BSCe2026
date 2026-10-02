@@ -1,4 +1,4 @@
-"""Synthetic BM1 estimation cases and truth generation for F4-B.
+"""Synthetic BM1 estimation cases and F4-B/C/E/F validation studies.
 
 This module is an experiment/validation layer.  It reuses the existing BM1
 Euler--Maruyama solver and input builders; it does not implement a second SDE
@@ -8,6 +8,7 @@ solver or expose synthetic truth through the estimator input contract.
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from contextlib import nullcontext
 from multiprocessing import get_context
@@ -710,6 +711,11 @@ def _piecewise_constant_quantile(edges, mass, probability):
         return float(edges[-1])
     cumulative = np.cumsum(mass)
     cell = int(np.searchsorted(cumulative, probability, side='left'))
+    if cell == mass.size:
+        # Validated unit mass can accumulate to just below one. Use the
+        # occupied support's upper edge in that roundoff-sized tail; do not
+        # change the masses or place a quantile inside trailing empty cells.
+        return float(edges[np.flatnonzero(mass > 0.0)[-1] + 1])
     before = 0.0 if cell == 0 else float(cumulative[cell - 1])
     cell_mass = float(mass[cell])
     if cell_mass <= 0.0:
@@ -1368,6 +1374,8 @@ def evaluate_f4_e_candidates(
         raise TypeError('case must be a BM1SyntheticCase.')
     if not isinstance(observations, BM1ObservationSeries):
         raise TypeError('observations must be a BM1ObservationSeries.')
+    if observations.time_unit != 'day':
+        raise ValueError('Synthetic F4 likelihood observations must use time_unit=day.')
     candidates = tuple(candidates)
     if not candidates:
         raise ValueError('candidates must be non-empty.')
@@ -1622,7 +1630,8 @@ def run_f4_e_likelihood_refinement(
             if progress is not None:
                 progress(completed, len(tasks), key, dict(curve))
     else:
-        with ProcessPoolExecutor(max_workers=min(workers, len(tasks))) as executor:
+        with ProcessPoolExecutor(max_workers=min(workers, len(tasks)),
+                                 mp_context=get_context('spawn')) as executor:
             futures = {
                 executor.submit(_f4_e_rho_curve_task, task): (
                     int(task[2]), float(task[3]), int(task[4])
@@ -1856,15 +1865,16 @@ def run_f4_e_parameter_screening(
             row = _f4_e_screen_sequence_task(task)
             results[row['sequence_id']] = row
             if progress is not None:
-                progress(completed, n_sequences, row['sequence_id'], row)
+                progress(completed, n_sequences, row['sequence_id'], deepcopy(row))
     else:
-        with ProcessPoolExecutor(max_workers=min(workers, n_sequences)) as executor:
+        with ProcessPoolExecutor(max_workers=min(workers, n_sequences),
+                                 mp_context=get_context('spawn')) as executor:
             futures = [executor.submit(_f4_e_screen_sequence_task, task) for task in tasks]
             for completed, future in enumerate(as_completed(futures), start=1):
                 row = future.result()  # failures abort; no selected subset is summarized
                 results[row['sequence_id']] = row
                 if progress is not None:
-                    progress(completed, n_sequences, row['sequence_id'], row)
+                    progress(completed, n_sequences, row['sequence_id'], deepcopy(row))
     rows = tuple(results[i] for i in ids)
     summary = {}
     for name, grid in validated.items():
@@ -2118,15 +2128,16 @@ def run_f4_e_pair_surfaces(
             key, surface = _f4_e_pair_surface_task(task)
             surfaces[key] = surface
             if progress is not None:
-                progress(completed, len(tasks), key, surface)
+                progress(completed, len(tasks), key, deepcopy(surface))
     else:
-        with ProcessPoolExecutor(max_workers=min(workers, len(tasks))) as executor:
+        with ProcessPoolExecutor(max_workers=min(workers, len(tasks)),
+                                 mp_context=get_context('spawn')) as executor:
             futures = [executor.submit(_f4_e_pair_surface_task, task) for task in tasks]
             for completed, future in enumerate(as_completed(futures), start=1):
                 key, surface = future.result()
                 surfaces[key] = surface
                 if progress is not None:
-                    progress(completed, len(tasks), key, surface)
+                    progress(completed, len(tasks), key, deepcopy(surface))
     pair_results = {}
     for pair in F4_E_PAIRS:
         values = tuple(surfaces[(row['sequence_id'], pair)] for row in rows)
@@ -2622,8 +2633,26 @@ def _f4_f_weight_comparison(middle, fine):
 
 
 def _f4_f_probability_gate(rows):
-    return bool(rows) and all(r['maximum_abs_mass_error'] <= 1e-10 and r['minimum_cell_mass'] >= 0
-               and r['fallbacks'] == 0 for r in rows)
+    return bool(rows) and all(
+        np.isfinite(r['maximum_abs_mass_error']) and 0 <= r['maximum_abs_mass_error'] <= 1e-10
+        and np.isfinite(r['minimum_cell_mass']) and r['minimum_cell_mass'] >= 0
+        and r['fallbacks'] == 0 for r in rows)
+
+
+def _f4_f_validate_bank_summary(row, stage):
+    """Check stored prefix summaries without NumPy's scalar broadcasting."""
+    scores = np.asarray(row['conditional_log_evidence'])
+    if scores.shape != (24, 41) or not np.all(np.isfinite(scores)):
+        raise ValueError(f'{stage} raw scores must include all 24x41 entries.')
+    prior = np.full(41, -np.log(41))
+    reduced = parameter_bank_weights(scores, prior, np.ones(24, dtype=bool))
+    expected = dict(initial_log_weights=prior, log_weights=reduced['log_weights'],
+                    cumulative_log_evidence=np.cumsum(reduced['log_evidence']),
+                    parameter_mean=np.exp(reduced['log_weights']) @ np.asarray(row['values']))
+    for name, value in expected.items():
+        stored = np.asarray(row[name])
+        if stored.shape != value.shape or not np.allclose(stored, value, atol=1e-10, rtol=0):
+            raise ValueError(f'{stage} {name} does not match raw conditional scores.')
 
 
 def _f4_f_report_header(stage, workers):
@@ -2698,6 +2727,8 @@ def f4_f_validated_refinement(report, *, require_source=False):
                 for i in range(len(_f4_f_refinement_configs(c)))}
     if {(r['coordinate'], r['sequence_id'], r['label']) for r in rows} != expected:
         raise ValueError('F1 row identifiers do not match the registered design.')
+    observations = {sid: generate_synthetic_sequence(sequence_id=sid).observations
+                    for sid in F4_F_REFINEMENT_IDS}
     for r in rows:
         values = F4_E_PARAMETER_GRIDS[r['coordinate']]
         config = _f4_f_refinement_configs(r['coordinate'])
@@ -2707,17 +2738,10 @@ def f4_f_validated_refinement(report, *, require_source=False):
             raise ValueError('F1 observation times were changed.')
         if r['truth'] != (1. if r['coordinate'] == 'rho' else .5):
             raise ValueError('F1 true parameters were changed.')
-        generated = generate_synthetic_sequence(sequence_id=r['sequence_id']).observations
+        generated = observations[r['sequence_id']]
         if not np.allclose(r['observations'], generated.values, atol=1e-12, rtol=0):
             raise ValueError('F1 observations do not match the registered seed and inputs.')
-        scores = np.asarray(r['conditional_log_evidence'])
-        if scores.shape != (24, 41) or not np.all(np.isfinite(scores)):
-            raise ValueError('F1 raw scores must include all prefixes and hypotheses.')
-        reduced = parameter_bank_weights(scores, np.full(41, -np.log(41)), np.ones(24, dtype=bool))
-        if (not np.allclose(r['initial_log_weights'], np.full(41, -np.log(41)), atol=1e-10, rtol=0)
-                or not np.allclose(r['log_weights'], reduced['log_weights'], atol=1e-10, rtol=0)
-                or not np.allclose(r['cumulative_log_evidence'], np.cumsum(reduced['log_evidence']), atol=1e-10, rtol=0)):
-            raise ValueError('F1 summaries do not match raw conditional scores.')
+        _f4_f_validate_bank_summary(r, 'F1')
     for c in ('rho', 'sigma_x'):
         for sid in F4_F_REFINEMENT_IDS:
             selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
@@ -2882,6 +2906,8 @@ def f4_f_validated_mixture_check(report, *, require_source=False):
     expected = {(c, sid, label) for c in ('rho',) for sid in (1326, 1327) for label in settings}
     if {(r['coordinate'], r['sequence_id'], r['label']) for r in rows} != expected:
         raise ValueError('F3 identifiers were changed.')
+    observations = {sid: generate_synthetic_sequence(sequence_id=sid).observations
+                    for sid in (1326, 1327)}
     for r in rows:
         expected_settings = settings[r['label']]
         if r['settings'] != expected_settings or not np.array_equal(r['values'], F4_E_PARAMETER_GRIDS[r['coordinate']]):
@@ -2893,17 +2919,10 @@ def f4_f_validated_mixture_check(report, *, require_source=False):
         if (not np.array_equal(r['observation_times'], CORE_OBSERVATION_TIMES)
                 or r['truth'] != (1. if r['coordinate'] == 'rho' else .5)):
             raise ValueError('F3 truth or observation times were changed.')
-        obs = generate_synthetic_sequence(sequence_id=r['sequence_id']).observations
+        obs = observations[r['sequence_id']]
         if not np.allclose(r['observations'], obs.values, atol=1e-12, rtol=0):
             raise ValueError('F3 observations were changed.')
-        scores = np.asarray(r['conditional_log_evidence'])
-        if scores.shape != (24, 41) or not np.all(np.isfinite(scores)):
-            raise ValueError('F3 scores must contain all 24x41 entries.')
-        reduced = parameter_bank_weights(scores, np.full(41, -np.log(41)), np.ones(24, dtype=bool))
-        if (not np.allclose(r['initial_log_weights'], np.full(41, -np.log(41)), atol=1e-10, rtol=0)
-                or not np.allclose(r['log_weights'], reduced['log_weights'], atol=1e-10, rtol=0)
-                or not np.allclose(r['cumulative_log_evidence'], np.cumsum(reduced['log_evidence']), atol=1e-10, rtol=0)):
-            raise ValueError('F3 bank evidence/weights do not match conditional scores.')
+        _f4_f_validate_bank_summary(r, 'F3')
         edges = np.asarray(r.get('x_edges'))
         expected_edges = np.linspace(0., 1., r['settings']['x_steps']+1)
         if edges.shape != expected_edges.shape or not np.allclose(edges, expected_edges, atol=1e-14, rtol=0):

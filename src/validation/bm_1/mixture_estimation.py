@@ -8,6 +8,7 @@ mixture defaults.
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import get_context
 
 import numpy as np
 
@@ -1440,6 +1441,7 @@ def run_f4_d_recursive_population(
     else:
         with ProcessPoolExecutor(
             max_workers=min(workers, n_sequences),
+            mp_context=get_context('spawn'),
             initializer=_init_d3d_worker, initargs=initargs,
         ) as executor:
             rows = collect(executor.map(_run_d3d_sequence, sequences, chunksize=1))

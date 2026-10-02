@@ -4,6 +4,8 @@ from __future__ import annotations
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import json
+import copy
+import gzip
 import multiprocessing
 import os
 from pathlib import Path
@@ -243,6 +245,165 @@ class F4ExecutionRegressionTests(unittest.TestCase):
             # Accept conventional CRLF files, but not isolated CR from a broken \rm escape.
             data = data.replace(b'\r\n', b'\n')
             self.assertFalse(any(value < 32 and value not in (9, 10) for value in data), str(path))
+
+
+class F4MidDevelopmentRegressionTests(unittest.TestCase):
+    """Behavioral regressions for the current A--F implementation."""
+
+    def test_quantile_near_one_handles_cumulative_roundoff_and_zero_tail(self):
+        probability = np.nextafter(1., 0.)
+        for empty_tail in (0, 3):
+            mass = np.r_[np.full(7, 1/7), np.zeros(empty_tail)]
+            original = mass.copy()
+            edges = np.linspace(0., 1., mass.size + 1)
+            # Uniform density over the first seven cells has this exact quantile.
+            expected = probability * edges[7]
+            actual = synthetic._piecewise_constant_quantile(edges, mass, probability)
+            self.assertAlmostEqual(actual, expected, places=14)
+            np.testing.assert_array_equal(mass, original)
+
+    def test_fv_and_observation_updates_reject_out_of_horizon_times(self):
+        from src.method.bm_1_estimation import fv_filter_step, bm1_observation_update
+        case = synthetic.build_f4_b_case()
+        model, parameters = case.build_model()
+        initial = synthetic.beta_initial_mass(case, model, 21)
+        for start, end in ((-.01, .01), (.99, 1.01)):
+            with self.subTest(start=start, end=end):
+                with self.assertRaisesRegex(ValueError, 'horizon'):
+                    fv_filter_step(model, parameters, .5, .03, initial, start, end, .5)
+                with self.assertRaisesRegex(ValueError, 'horizon'):
+                    bm1_observation_update(model, parameters, .03, initial, start, end, .5)
+        # The closed model endpoints are valid, including an observation at T[1].
+        result = fv_filter_step(model, parameters, .5, .03, initial, .99, 1., .5)
+        self.assertAlmostEqual(result.posterior_mass.sum(), 1.)
+
+    def test_synthetic_likelihood_rejects_wrong_declared_time_unit(self):
+        from src.params.bm_1 import BM1ObservationSeries
+        case = synthetic.build_f4_b_case()
+        for unit in ('hour', 'second'):
+            observations = BM1ObservationSeries([1/24], [.5], unit)
+            with self.subTest(unit=unit), self.assertRaisesRegex(ValueError, 'day'):
+                synthetic.evaluate_f4_e_candidate(case, observations,
+                    synthetic.f4_e_truth_candidate(case), x_steps=21)
+
+    def test_parameter_scores_reject_complex_arrays_without_discarding_imaginary_part(self):
+        from src.method.bm_1_estimation import parameter_bank_weights
+        with self.assertRaises(ValueError):
+            parameter_bank_weights(np.array([[1.+2j, 0.]]), np.log([.5, .5]), [True])
+
+    def test_f_bank_probability_gate_rejects_impossible_diagnostics(self):
+        good = dict(maximum_abs_mass_error=0., minimum_cell_mass=0., fallbacks=0)
+        self.assertTrue(synthetic._f4_f_probability_gate([good]))
+        for key, value in (('maximum_abs_mass_error', -1.),
+                           ('maximum_abs_mass_error', -np.inf),
+                           ('maximum_abs_mass_error', np.nan),
+                           ('minimum_cell_mass', np.inf),
+                           ('minimum_cell_mass', -.01), ('fallbacks', -1)):
+            with self.subTest(key=key, value=value):
+                self.assertFalse(synthetic._f4_f_probability_gate([dict(good, **{key: value})]))
+
+    def test_f1_f3_reject_broadcast_summaries_and_stale_parameter_means(self):
+        from tests import test_bm1_estimation as fixtures
+        reports = ((fixtures.OneParameterBankTests.refinement_fixture(),
+                    synthetic.f4_f_validated_refinement),
+                   (fixtures.OneParameterBankTests.refined_mixture_fixture(),
+                    synthetic.f4_f_validated_mixture_check))
+        for original, validate in reports:
+            validate(original)
+            for field in ('initial_log_weights', 'log_weights', 'cumulative_log_evidence',
+                          'parameter_mean'):
+                report = copy.deepcopy(original)
+                if field == 'parameter_mean':
+                    report['rows'][0][field][0] += .5
+                else:
+                    report['rows'][0][field] = -np.log(41) if 'weights' in field else 0.
+                with self.subTest(stage=report['stage'], field=field), self.assertRaises(ValueError):
+                    validate(report)
+
+    def test_e_progress_callbacks_cannot_change_scientific_results(self):
+        from tests import test_bm1_estimation as fixtures
+        options = dict(e1_refinement=fixtures.F4EParameterScreeningTests.passing_e1(),
+                       n_sequences=1, sequence_start=0, x_steps=21, max_step=1/24,
+                       likelihood_quadrature_order=1,
+                       parameter_grids=fixtures.F4EParameterScreeningTests.small_grids())
+        reference = synthetic.run_f4_e_parameter_screening(**options)
+
+        def corrupt_screen(completed, total, key, row):
+            row['slices']['rho']['total_log_likelihood'] = (999., 999., 999.)
+
+        result = synthetic.run_f4_e_parameter_screening(**options, progress=corrupt_screen)
+        self.assertTrue(result == reference, 'Progress callback changed the screening result.')
+
+    def test_e_surface_progress_callbacks_cannot_change_scientific_results(self):
+        from tests import test_bm1_estimation as fixtures
+        source = fixtures.F4EPairSurfaceTests.registered_e2()
+        # Reuse an existing coherent E2 fixture, but replace the expensive
+        # surface computation with a real, deterministic surface summary.
+        def surface(task):
+            row, pair, a, b, *_ = task
+            total = np.zeros((len(a), len(b)))
+            item = synthetic._f4_e_surface_summary(pair, a, b, total)
+            item.update(maximum_abs_mass_error=0., minimum_cell_mass=0.,
+                        e2_truth_cut_maximum_abs_differences=(0., 0.))
+            return (row['sequence_id'], pair), item
+
+        def corrupt_surface(completed, total, key, row):
+            row['total_log_likelihood'] = np.ones_like(row['total_log_likelihood']).tolist()
+
+        with patch.object(synthetic, '_f4_e_pair_surface_task', side_effect=surface):
+            reference = synthetic.run_f4_e_pair_surfaces(e2_screening=source, n_sequences=1)
+            result = synthetic.run_f4_e_pair_surfaces(e2_screening=source, n_sequences=1,
+                                                     progress=corrupt_surface)
+        self.assertTrue(result == reference, 'Progress callback changed the surface result.')
+
+    def test_compressed_e_dependencies_reach_the_next_study(self):
+        from tests import test_bm1_estimation as fixtures
+        from src.exe.run_model.bm_1 import estimate
+        from time import perf_counter
+        reports = ((fixtures.F4EParameterScreeningTests.passing_e1(),
+                    'parameter-screen', '--e1-report', 'run_f4_e_parameter_screening'),
+                   (fixtures.F4EPairSurfaceTests.registered_e2(),
+                    'pair-surfaces', '--e2-report', 'run_f4_e_pair_surfaces'))
+        with tempfile.TemporaryDirectory() as directory, patch('builtins.print'):
+            for report, command, flag, runner in reports:
+                path = Path(directory) / (report['stage'] + '.json.gz')
+                output_args = estimate.build_parser().parse_args(['bank-refine', '--output', str(path)])
+                estimate._write_likelihood_report(output_args, report, perf_counter())
+                args = estimate.build_parser().parse_args([command, flag, str(path), '--quiet'])
+                with self.subTest(command=command), patch.object(synthetic, runner,
+                        side_effect=RuntimeError('replay reached')) as run:
+                    with self.assertRaisesRegex(RuntimeError, 'replay reached'):
+                        args.handler(args)
+                    self.assertEqual(run.call_count, 1)
+
+    def test_synthetic_save_refuses_existing_file_before_generation(self):
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            path = output / 'f4_b_sequence_0000.json'
+            path.write_text('existing evidence', encoding='utf-8')
+            args = estimate.build_parser().parse_args(['synthetic', '--save'])
+            with patch.object(estimate, 'OUTPUT_DIR', output), \
+                    patch.object(synthetic, 'generate_synthetic_sequence',
+                                 wraps=synthetic.generate_synthetic_sequence) as generate:
+                with self.assertRaises(FileExistsError):
+                    estimate.run_synthetic(args)
+                generate.assert_not_called()
+            self.assertEqual(path.read_text(), 'existing evidence')
+
+    def test_d3d_compressed_output_is_actually_gzip(self):
+        from src.exe.run_model.bm_1 import estimate
+        report = dict(successful_sequences=0, invalid_truth_sequences=[],
+                      failed_sequences=[dict(sequence_id=0)], passes_population=False)
+        with tempfile.TemporaryDirectory() as directory, patch('builtins.print'):
+            path = Path(directory) / 'failed.json.gz'
+            args = estimate.build_parser().parse_args(['mixture-filter-population', '--output', str(path)])
+            with patch.object(mixture_f4, 'run_f4_d_recursive_population', return_value=report):
+                estimate.run_mixture_filter_population(args)
+            with gzip.open(path, 'rt', encoding='utf-8') as stream:
+                stored = json.load(stream)
+            self.assertFalse(stored['passes_population'])
+            self.assertEqual(stored['failed_sequences'], report['failed_sequences'])
 
 
 if __name__ == '__main__':

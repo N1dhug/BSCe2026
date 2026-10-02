@@ -54,7 +54,10 @@ BM1 entrypoint-mappe. F3-data, WM-kode og `environment.yml` er bevaret.
 Populationen viser nu løbende antal færdige sekvenser, elapsed og grov ETA.
 `--quiet` skjuler kun progress, ikke slutresultatet. `--output` gemmer hele rapporten,
 alle sekvensrækker, settings, source-commit og dirty-flag i en **ny** JSON-fil;
-eksisterende output overskrives ikke. Uden eksplicit output skrives ingen resultatfiler.
+eksisterende output overskrives ikke. En `.gz`-endelse vælger tabsfri gzip;
+E- og F-dependencies kan læses i begge formater, og SHA256 identificerer de gemte
+inputbytes. `synthetic --save` afviser også eksisterende filer før beregning.
+Uden eksplicit output skrives ingen resultatfiler.
 
 ```powershell
 python -B -m src.exe.run_model.bm_1.estimate mixture-filter-population --workers 8 --blas-threads 1 --output files/output/bm_1/runs/f4_population.json
@@ -66,6 +69,8 @@ Windows-miljøet, tolerancer, seeds eller worker-fordelingen af sekvenser. Det u
 mange processer hver starter mange BLAS-tråde. Flere workers er ikke automatisk hurtigere;
 mål på egen maskine. Uden flaget beholdes bibliotekernes eksisterende thread-indstillinger.
 I en allerede startet notebook kræver threadkontrol en runtime-mekanisme som threadpoolctl.
+D3d/E/F bruger eksplicit spawn. Egne scripts, der starter flere workers, skal
+derfor kalde runneren under `if __name__ == '__main__':`, ligesom projektets CLI.
 
 E2 bruger den låste population 1212..1261 og alle fem 41-node-grids; de officielle
 settings kan ikke ændres gennem CLI. E1-filen skal være den beståede registrerede
@@ -156,8 +161,8 @@ er nu gennemgået. Tidsopfølgningen løste de to state-fejl med finere FV-refer
 alle 40 valgte kontroller består. Den tog 406.30 s med 8 workers og BLAS=1,
 og alle 396 regressionstests bestod lokalt. De gemte F1/F3/F4-filer er dependencies;
 mixture- og sigma_x-beregningerne blev genbrugt. Bevar også den fejlede F3-pilot.
-Næste lokale handling er merge af PR #49 og synkronisering af main. Ingen F-studier
-skal gentages; næste udvikling er F4-G's udvalgte parameterpar og robusthed.
+PR #49 er merged på main `59b6cf3`. Mid-development cleanup og dens kontroller
+står i F4-statusfilen; næste udvikling er F4-G's udvalgte parameterpar og robusthed.
 
 ```powershell
 python -B -m src.exe.run_model.bm_1.estimate bank-sensitivity `
