@@ -1099,11 +1099,80 @@ Parret sampling skal bruge delmængder af samme timevise observationspath.
 Syv daglige state-resets er ikke én fortsat syvdages-record. Den fulde
 preregistrering og nye data fastlægges inden disse senere kørsler.
 
-G0 er afsluttet som metodekontrol; G1's par-numerik og G2's robusthed afventer.
+G0 er afsluttet som metodekontrol; G1a's registrerede evidens og G2's robusthed afventer.
 Ugeforecast uden nye observationer er fortsat en særskilt I-leverance med
 erklærede fremtidige inputs. Fit, 168-timers forward-prediction og evaluering
 af alle ugers origins i en erklæret måned skal benchmarkes separat på samme
 Windows-maskine. G0's dags-runtime kan ikke certificere dette praktiske mål.
+
+\subsection{F4-G1a: FV-numerik på et fast fælles parametergrid}
+Forsøgsdesign låst 2. oktober 2026, før numeriske kørsler. Nye ID1350--1352
+bruges til rho/Xi med truth \((1,0.75)\); ID1353--1355 til støjparret med
+truth \((0.5,0.03)\) og kendt Xi=1. Øvrige parametre/inputs, \(\Beta(20,20)\),
+EM-step, RNG-rødder og 24 timevise punktmålinger er som G0. Alle konfigurationer
+per record bruger de samme observationer. G0's fem noder per parameterakse og
+diskrete joint-prior \(1/25\) fastholdes; ingen parametergrid-konvergens påstås.
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Par & FV-celler grov/mellem/fin & \(h_{\max}\) grov/mellem/fin & \(q\)\\
+\midrule
+\(\rho/\Xi\) & 201/401/801 & 1/768, 1/1536, 1/3072 & 1/3/5\\
+\(\sigma_X/\sigma_Y\) & 1601/3201/6401 & 1/768, 1/1536, 1/3072 & 1/3/5\\
+\bottomrule
+\end{tabular}
+\end{center}
+Én akse ændres ad gangen omkring mellemkonfigurationen: syv unikke
+konfigurationer per record, 42 banker og 1050 komplette fixed-parameter replays.
+G0's metodeidentitet tillader reduktion af friske conditional scores/states med
+fælles prior og korrekt prefix-vægt. Hver hypotese følger egen state og egen
+\(\sigma_Y\); prediction bruger gamle joint-vægte, posterior nye.
+Én vedvarende spawn-pool med otte workers og BLAS=1 dækker hele studiet.
+
+Ved prefix \(k\) og resolution \(r\) er \(L_{k,h}^{r}=\sum_{n\le k}\log z_{n,h}^{r}\).
+Sæt \(\delta_{k,h}=L_{k,h}^{\rm fin}-L_{k,h}^{\rm mellem}\) og
+\[
+ R_k=\{h:L_{k,h}^{\rm mellem}\ge\max_j L_{k,j}^{\rm mellem}-5\}
+ \cup\{h:L_{k,h}^{\rm fin}\ge\max_j L_{k,j}^{\rm fin}-5\}.
+\]
+Log-oddsfejlen er \(\max_{h\in R_k}\delta_{k,h}-\min_{h\in R_k}\delta_{k,h}\).
+Alle-node-versionen gemmes også. Vinduet fjerner ingen hypoteser fra Bayes;
+vægt-TV og evidence omfatter hele joint-banken. Ved alle prefixer kræves
+\[
+ \varepsilon_{\rm odds}\le0.10,\qquad
+ \tfrac12\sum_h|w_{k,h}^{\rm fin}-w_{k,h}^{\rm mellem}|\le0.01,\qquad
+ |A_k^{\rm fin}-A_k^{\rm mellem}|\le0.10.
+\]
+For både prediction og posterior kræves marginal state-\(L^1\) højst 0.02.
+Fin cell-masse remappes konservativt til mellemgridet alene til sammenligning;
+remappet bruges aldrig som ny conditional starttilstand. Massefejl højst
+\(10^{-10}\) og ikke-negative celler kræves for alle 42 banker. Tidsrefinement
+skal mindske hver hypoteses faktiske maximale interne step; en relativ
+\(10^{-12}\)-margin udelukker rent afrundingsbetingede forskelle.
+
+Samtlige 18 mellem-mod-fin-kontroller skal bestå; grov-mod-mellem gemmes som
+diagnostik. Ingen record eller hypotese frasorteres. Fejlet gate gemmes før
+nonzero exit, mens et fejlet replay afbryder uden et resumé af overlevende forløb.
+CLI kræver et rent, kildeforbundet G0-artifact, kontrollerer rå design/algebra/masser
+og gemmer dets digest som dependency. Andre API-IDs/grids/numerik er uregistreret.
+Resultat og rå review afventer den registrerede lokale kørsel.
+
+Udviklingskontrollen fra \texttt{e2529b0} plus G1a-ændringer gennemførte alle
+1050 replays på 632.1196 s før lagring, med otte workers og BLAS=1.
+Alle 18 aktive kontroller består. Max aktive log-oddsfejl er 0.073060 og
+0.092862 for de to par; max state-\(L^1\) er 0.007604 og 0.006529.
+Max massefejl er \(3.2228\cdot10^{-12}\); alle celler er ikke-negative.
+Uafhængig rå genberegning, inklusive CDF-kontrol af remap, afviger højst
+\(1.7054\cdot10^{-13}\). Alle 425 regressionstests består. Grove fejl beholdes
+som diagnostik; dette er udviklingsevidens, ikke registreret Windows-evidens.
+
+Et bestået G1a accepterer mellem-FV-numerikken alene på det erklærede diskrete
+parametermål og disse records. G1b undersøger efterfølgende parametergrid under
+fast støtte og erklæret prior-mål. Uniform vægt på forskellige diskrete nodegrids
+er ikke automatisk samme mål; kontinuerte priorer kræver erklærede kvadraturvægte.
+Nytilkomne hypoteser skal også numerisk kontrolleres. G0/G1a er ikke held-out
+recovery-data, og ugeforecast/måneds-runtime certificeres fortsat særskilt.
 
 \subsection{Prior under reparameterisering}
 

@@ -44,6 +44,7 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | F4-F F4 rho FV/mixture og separat sigma_x FV-population | `bank-population` |
 | F4-F F4 FV-rho-reference med finere tid, genbrug af gemt population | `bank-population-time-refine` |
 | F4-G G0 fælles rho/Xi- og sigma_x/sigma_y-bank, prefix-identiteter | `joint-bank-identity` |
+| F4-G G1a FV-tid, state-grid og quadrature for de to frie par | `joint-bank-refine --g0-report <G0-JSON>` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -276,7 +277,50 @@ En fejlet gate gemmes og giver nonzero exit; fejlende replays frasorteres ikke.
 Progress/ETA er grov, fordi støjparret koster mere end rho/Xi-parret.
 Terminalresumé og rå `.json.gz` fra den registrerede kørsel er gennemgået.
 Runtime er målt på denne dagskontrol, uden et løfte om ugeforecast eller måneds-throughput.
-G1's par-numerik og G2's længere records/sampling/mismatch er endnu ikke implementeret.
+G1a's par-numerik er næste lokale kørsel nedenfor; G1b's parametergrid og G2's
+længere records/sampling/mismatch er endnu ikke implementeret.
+
+## Næste lokale kørsel: F4-G1a
+
+Separat branch `feature/f4-g-joint-refinement` bygger på det rå-reviewede G0.
+G0-rapporten ovenfor genbruges som valideret dependency; den skal ikke genkøres.
+Så længe PR #51 er åben, har G1-PR'en den som base; brugeren merger G0 først,
+og G1 retargetes til main. Den lokale G1-kørsel kan gennemføres på branchen.
+
+G1a fastholder G0's 25 hypoteser per par og joint-prior og låser seks nye records,
+syv FV-konfigurationer per record og **1.050** selvstændige replays. Alle scores,
+vægte, state-historier og prefix-fejl gemmes; en fejlet numerisk gate giver en
+rapport og nonzero exit. Send både rå gzip og terminalresumé, også ved fejlet gate.
+Runtime/ETA måles på dette studie; uge- og månedsbenchmark følger særskilt.
+Rapportens `elapsed_seconds` måles før JSON/gzip-lagring. Stopwatch nedenfor
+måler hele Python-kørslen inklusive opstart, dependency-review og output;
+behold også dette terminaltal ved runtime-review.
+
+Fra projektmappen:
+
+```powershell
+git fetch --prune origin
+if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
+git switch feature/f4-g-joint-refinement
+if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+git pull --ff-only origin feature/f4-g-joint-refinement
+if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
+git log -1 --oneline
+if (git status --porcelain) { throw "Working tree er ikke ren." }
+
+python -B -m unittest discover -s tests -q
+if ($LASTEXITCODE -ne 0) { throw "Tests fejlede." }
+
+$g1aTimer = [System.Diagnostics.Stopwatch]::StartNew()
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-refine `
+  --g0-report files/output/bm_1/runs/estimation/f4_g_g0_joint_bank_identity.json.gz `
+  --workers 8 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_g_g1a_joint_bank_refinement.json.gz
+$g1aExit = $LASTEXITCODE
+$g1aTimer.Stop()
+Write-Host ("G1a wall time inkl. opstart/output: {0:N2} s" -f $g1aTimer.Elapsed.TotalSeconds)
+if ($g1aExit -ne 0) { throw "G1a fejlede; behold rapporten til review." }
+```
 
 ## Kodeplacering
 

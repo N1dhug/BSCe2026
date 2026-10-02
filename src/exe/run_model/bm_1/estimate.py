@@ -42,6 +42,7 @@ import numpy as np
 
 from src.validation.bm_1 import estimation as synthetic
 from src.validation.bm_1 import mixture_estimation as mixture_validation
+from src.validation.bm_1 import joint_estimation as joint_validation
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -1116,6 +1117,39 @@ def run_joint_bank_identity(args):
         raise RuntimeError('G0 joint-bank identity/probability gates failed; report retained for review.')
 
 
+def run_joint_bank_refinement(args):
+    """G1a numerical refinement, dependent on source-linked passing G0 raw data."""
+    if args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    dependency,digest = _read_bank_dependency(args.g0_report,joint_validation.validated_g0)
+    started = last_printed = perf_counter()
+    print(f'F4-G G1a: fixed 25-node joint measures; 42 banks / 1050 replays; workers={args.workers}',flush=True)
+
+    def progress(row):
+        nonlocal last_printed
+        now = perf_counter()
+        if not args.quiet and (row['completed'] in (1,row['total']) or now-last_printed>=10):
+            last_printed = now
+            elapsed = now-started
+            eta = elapsed*(row['total']-row['completed'])/row['completed']
+            print(f"  replays {row['completed']}/{row['total']}; ID{row['sequence_id']} "
+                  f"{'/'.join(row['pair'])}; {row['label']}; elapsed={elapsed:.1f}s; rough ETA={eta:.1f}s",flush=True)
+
+    result = joint_validation.run_joint_bank_refinement(workers=args.workers,progress=progress)
+    result['dependencies'] = dict(g0=dict(sha256=digest,source_commit=dependency['source_commit']))
+    for row in result['comparisons']:
+        step = '' if row['axis']!='time' else f"; actual step refined={row['actual_step_refined']}"
+        print(f"  {'/'.join(row['coordinates'])} ID{row['sequence_id']} {row['axis']} "
+              f"{row['left']}->{row['right']}: odds={row['maximum_log_odds_error']:.4g}; "
+              f"TV={row['maximum_weight_tv']:.4g}; evidence={row['maximum_cumulative_evidence_error']:.4g}; "
+              f"state L1 pred/post={row['maximum_predicted_l1']:.4g}/{row['maximum_posterior_l1']:.4g}; "
+              f"passes={row['passes']}; selected={row['selected']}{step}")
+    print(f"  registered={result['registered_design']}; passes G1a={result['passes']}")
+    _write_likelihood_report(args,result,started)
+    if not result['passes']:
+        raise RuntimeError('G1a joint-bank numerical/probability gates failed; report retained for review.')
+
+
 def run_preparation(args):
     """Reproduce independent F4-0 quadrature through the common entry point."""
     if args.output is not None and args.output.exists():
@@ -1290,6 +1324,14 @@ def build_parser():
                                 help='New JSON/gzip report with both pairs, all prefix scores and source revision.')
     joint_identity.add_argument('--quiet', action='store_true', help='Suppress progress, not the summary.')
     joint_identity.set_defaults(handler=run_joint_bank_identity)
+
+    joint_refinement = subparsers.add_parser(
+        'joint-bank-refine',help='G1a: refine time, FV cells and likelihood quadrature for both joint banks.')
+    joint_refinement.add_argument('--g0-report',type=Path,required=True,help='Passing registered clean-source G0 JSON/gzip.')
+    joint_refinement.add_argument('--workers',type=int,default=8,help='Independent spawn workers; scientific design stays fixed.')
+    joint_refinement.add_argument('--output',type=Path,required=True,help='New JSON/gzip report; never overwritten.')
+    joint_refinement.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
+    joint_refinement.set_defaults(handler=run_joint_bank_refinement)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',
