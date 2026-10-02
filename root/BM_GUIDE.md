@@ -128,9 +128,9 @@ prefix-fejl, diagnostik, kildecommit og endelige betingede state-masser. Eksiste
 output afvises før beregningen; en fejlet gate gemmes og giver derefter en fejl.
 F0 tester metoden, ikke parameter-recovery, mixture eller ugeforecast.
 
-De resterende F-studier køres og gennemgås i rækkefølge. F1 er bestået og F2's
-rå rapport gennemgået; første F3 fejlede state-L1. Næste kørsel er F3 med
-`--spatial-refine`, den gemte F1-rapport og en ny outputfil. Alle har
+De resterende F-studier køres og gennemgås i rækkefølge. F1/F2 og F3 version 2
+er gennemgået; første F3 og den oprindelige F4-population har bevarede state-L1-fejl.
+Næste kørsel er alene F4's `bank-population-time-refine`, beskrevet nedenfor. Alle har
 default 7 workers, fast videnskabeligt design og løbende progress.
 F1 genundersøger begge enparametergrids; sigma_x får finere state-numerik efter
 det første udviklingsforsøgs fejl. Forsøgsdefinition og tilpasning står i `F4.md`.
