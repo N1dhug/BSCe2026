@@ -9,10 +9,10 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[4]
 PREDICTION = ROOT / "files" / "output" / "wm_4" / "prediction"
-WARMUP = PREDICTION / "all_days"
-OPTIMIZED = PREDICTION / "all_days_optimized"
-BRUTE_FORCE = PREDICTION / "all_days_brute_force"
-OUTPUT = PREDICTION / "fitter_analysis"
+WARMUP = PREDICTION / "all_days_top_end"
+OPTIMIZED = PREDICTION / "all_days_optimized_top_end"
+BRUTE_FORCE = PREDICTION / "all_days_brute_force_top_end"
+OUTPUT = PREDICTION / "fitter_top_end_analysis"
 METHODS = ("warmup", "optimized", "brute_force")
 PARAMETERS = ("r_F", "r_U", "r_R")
 REQUIRED = {"day", "weekday", "wm4_mse", "wm4_rmse", "wm4_mae", "wm4_bias", "O_mse", "F_0", "R_0", *PARAMETERS}
@@ -58,6 +58,7 @@ def method_summary(frames):
             "better_than_O_days": int(better.sum()), "better_than_O_pct": 100.0 * float(better.mean()),
             "F0_mean": frame["F_0"].mean(), "F0_std": frame["F_0"].std(),
             "R0_mean": frame["R_0"].mean(), "R0_std": frame["R_0"].std(),
+            "prediction_state_fit_mse_mean": frame["prediction_state_fit_mse"].mean() if "prediction_state_fit_mse" in frame.columns else np.nan,
         })
     return pd.DataFrame(rows)
 
@@ -92,7 +93,7 @@ def daily_comparison(frames):
     base = frames["warmup"][["day", "weekday", "O_mse"]].copy()
     for method in METHODS:
         frame = frames[method]
-        for column in ("wm4_mse", "wm4_rmse", "wm4_mae", "wm4_bias", "F_0", "R_0", *PARAMETERS):
+        for column in ("wm4_mse", "wm4_rmse", "wm4_mae", "wm4_bias", "F_0", "R_0", "prediction_state_fit_mse", *PARAMETERS):
             base[f"{column}_{method}"] = frame[column].to_numpy()
     mse_columns = [f"wm4_mse_{method}" for method in METHODS]
     mse = base[mse_columns].to_numpy(dtype=float)
@@ -155,7 +156,7 @@ def print_summary(methods, pairwise, wins):
 
 
 def main():
-    parser = ArgumentParser(description="Compare warmup, optimized-state and brute-force-F0 WM4 fitters on their common prediction days.")
+    parser = ArgumentParser(description="Compare warmup, optimized-state and brute-force-F0 WM4 parameter fits using the same oracle prediction-day initial-state top end.")
     parser.add_argument("--warmup", default=str(WARMUP))
     parser.add_argument("--optimized", default=str(OPTIMIZED))
     parser.add_argument("--brute-force", default=str(BRUTE_FORCE))
