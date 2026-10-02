@@ -1067,6 +1067,31 @@ global prior eller marginal. Hvert replay følger sin egen serielle kronologi.
 Slutconditional-states og log-vægte tillader fortsættelse; en marginal state-law
 bruges aldrig til at genstarte alle hypoteser. Metoden deler kerne med F's bank.
 
+\paragraph{Registreret resultat og rå review, 2. oktober 2026.}
+Fra ren kildecommit \texttt{6670969} gennemførte brugerens Windows-kørsel
+alle 100 conditional forløb på 86.6074 s med otte workers og BLAS=1.
+Alle 416 lokale regressionstests bestod på 189.840 s. Begge par består
+metodeidentiteten ved alle 24 prefixer; maksimal identitetsfejl er
+\(5.6844\cdot10^{-14}\) for rho/Xi og \(2.8422\cdot10^{-14}\) for støjparret.
+Maksimale massefejl er henholdsvis \(7.3275\cdot10^{-15}\) og
+\(3.7947\cdot10^{-13}\), med ikke-negative celler.
+
+Kilde, forsøgsdesign, seed-observationer og Beta-startmasser er kontrolleret.
+Vægte/evidence er genberegnet fra rå offline-scores; joint-momenter, marginaler,
+områder, randmasser, MAP-ties og effektivt hypotesetal er genberegnet særskilt.
+Desuden kontrollerer 50 friske fixed-parameter replays på rapportens observationer
+scores og marginale prediction/posterior-masser ved alle prefixer samt alle
+slutconditional-masser. Max scoreafvigelse er \(3.1087\cdot10^{-14}\),
+max state-masseafvigelse \(6.5920\cdot10^{-17}\).
+Hele conditional-state-historien er ikke gemt i artifactet; dens prefix-identitet
+er den registrerede kørselskontrol. Digest står i F4-statusfilen.
+
+Slutmiddel og SD er \((0.95468,0.77676)\) og \((0.34526,0.07730)\)
+for rho/Xi; for støjparret \((0.24058,0.029884)\) og \((0.14108,0.002501)\).
+Effektivt hypotesetal er 6.963 og 2.908. Rho er fortsat bredt bestemt, og
+støjparrets sigma-X-middel er under truth 0.5. Disse grove diskrete posteriorer
+certificerer hverken par-numerik eller fælles recovery; støtter og gates ændres ikke.
+
 Efter G0 og rå review følger par-specifik tids-, rum-, likelihood-quadrature-
 og parametergrid-kontrol. Robusthed undersøger derefter 1/3/7 sammenhængende
 døgn, 1/2/4-timers sampling og moderat baseline-/initialprior-mismatch.
@@ -1074,7 +1099,7 @@ Parret sampling skal bruge delmængder af samme timevise observationspath.
 Syv daglige state-resets er ikke én fortsat syvdages-record. Den fulde
 preregistrering og nye data fastlægges inden disse senere kørsler.
 
-G0 er implementeret, men registreret lokal kørsel og rå review afventer.
+G0 er afsluttet som metodekontrol; G1's par-numerik og G2's robusthed afventer.
 Ugeforecast uden nye observationer er fortsat en særskilt I-leverance med
 erklærede fremtidige inputs. Fit, 168-timers forward-prediction og evaluering
 af alle ugers origins i en erklæret måned skal benchmarkes separat på samme

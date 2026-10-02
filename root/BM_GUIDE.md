@@ -226,16 +226,22 @@ F1's tidligere rho-reference ved hmax=1/768 bevares til reproduktion af F1 og
 den oprindelige F4. Numeriske kontroller er bestået; rho er fortsat svagt bestemt
 over ét døgn. F4-F-resultater og artifact-digests står i `F4.md`.
 
-## Næste lokale kørsel: F4-G0
+## F4-G0: registreret kørsel afsluttet
 
 F4-F er afsluttet, og cleanup fra PR #50 er merged. Ingen F-studier skal
-gentages. G0 er implementeret, men kræver ren lokal kilde og rå review før G1.
-Det kontrollerer begge valgte par på nye ID1348/1349 med 25 joint-hypoteser hver,
+gentages. G0 på ren `6670969` er gennemført og rå-reviewet: 416 tests består,
+alle 100 conditional forløb gennemfører på 86.6074 s med 8 workers og BLAS=1,
+og begge par består metodeidentiteten. Artifact-digest og kvantitative resultater
+står i F4-statusfilen. Ingen G0-genkørsel er nødvendig; PR #51 afventer brugerens
+merge. G1's par-numerik er næste leverance, ikke endnu en identitetskørsel.
+
+G0 kontrollerer begge valgte par på ID1348/1349 med 25 joint-hypoteser hver,
 50 conditional online-forløb og 50 friske offline-replays. Designet er fast i CLI;
 default er **8 workers**, og `--blas-threads 1` skal angives ved denne kørsel.
 En pool fordeler uafhængige hypoteser; der er ingen nested workers.
 
-Fra projektmappen på feature-branchen (PR'en merger brugeren selv):
+Hent det dokumenterede review fra projektmappen på feature-branchen
+(PR'en merger brugeren selv):
 
 ```powershell
 git fetch --prune origin
@@ -246,8 +252,14 @@ git pull --ff-only origin feature/f4-g-joint-bank-identity
 if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
 git status
 git log -1 --oneline
-if (git status --porcelain) { throw "Working tree er ikke ren; stop før G0." }
+if (git status --porcelain) { throw "Working tree er ikke ren." }
+```
 
+Den allerede gennemførte kørsel brugte nedenstående kommandoer. De skal ikke
+gentages for at hente dokumentationsopdateringen. En diagnostisk genkørsel kræver
+ren kilde og et nyt outputnavn; originalrapporten må ikke overskrives.
+
+```powershell
 python -B -m unittest discover -s tests -q
 if ($LASTEXITCODE -ne 0) { throw "Tests fejlede." }
 
@@ -262,8 +274,8 @@ Eksisterende output afvises uden beregning. JSON/gzip er tabsfri og bevarer
 source-commit, dirty-flag, alle prefix-scores/log-vægte, inputs og state-masser.
 En fejlet gate gemmes og giver nonzero exit; fejlende replays frasorteres ikke.
 Progress/ETA er grov, fordi støjparret koster mere end rho/Xi-parret.
-Send terminalresumé og rå `.json.gz` til review efter kørslen. Første runtime
-måles på denne dagskontrol, uden et løfte om ugeforecast eller måneds-throughput.
+Terminalresumé og rå `.json.gz` fra den registrerede kørsel er gennemgået.
+Runtime er målt på denne dagskontrol, uden et løfte om ugeforecast eller måneds-throughput.
 G1's par-numerik og G2's længere records/sampling/mismatch er endnu ikke implementeret.
 
 ## Kodeplacering
