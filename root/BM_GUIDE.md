@@ -43,6 +43,7 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | F4-F F3 rekursiv rho-mixture-pilot | `bank-mixture-check` |
 | F4-F F4 rho FV/mixture og separat sigma_x FV-population | `bank-population` |
 | F4-F F4 FV-rho-reference med finere tid, genbrug af gemt population | `bank-population-time-refine` |
+| F4-G G0 fælles rho/Xi- og sigma_x/sigma_y-bank, prefix-identiteter | `joint-bank-identity` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -225,7 +226,47 @@ F1's tidligere rho-reference ved hmax=1/768 bevares til reproduktion af F1 og
 den oprindelige F4. Numeriske kontroller er bestået; rho er fortsat svagt bestemt
 over ét døgn. F4-F-resultater og artifact-digests står i `F4.md`.
 
-## Hvor kode hører hjemme
+## Næste lokale kørsel: F4-G0
+
+F4-F er afsluttet, og cleanup fra PR #50 er merged. Ingen F-studier skal
+gentages. G0 er implementeret, men kræver ren lokal kilde og rå review før G1.
+Det kontrollerer begge valgte par på nye ID1348/1349 med 25 joint-hypoteser hver,
+50 conditional online-forløb og 50 friske offline-replays. Designet er fast i CLI;
+default er **8 workers**, og `--blas-threads 1` skal angives ved denne kørsel.
+En pool fordeler uafhængige hypoteser; der er ingen nested workers.
+
+Fra projektmappen på feature-branchen (PR'en merger brugeren selv):
+
+```powershell
+git fetch --prune origin
+if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
+git switch feature/f4-g-joint-bank-identity
+if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+git pull --ff-only origin feature/f4-g-joint-bank-identity
+if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
+git status
+git log -1 --oneline
+if (git status --porcelain) { throw "Working tree er ikke ren; stop før G0." }
+
+python -B -m unittest discover -s tests -q
+if ($LASTEXITCODE -ne 0) { throw "Tests fejlede." }
+
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-identity `
+  --workers 8 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_g_g0_joint_bank_identity.json.gz
+if ($LASTEXITCODE -ne 0) { throw "G0 fejlede; behold rapporten til review." }
+```
+
+Working tree skal være ren før G0; output ligger under ignoreret run-mappe.
+Eksisterende output afvises uden beregning. JSON/gzip er tabsfri og bevarer
+source-commit, dirty-flag, alle prefix-scores/log-vægte, inputs og state-masser.
+En fejlet gate gemmes og giver nonzero exit; fejlende replays frasorteres ikke.
+Progress/ETA er grov, fordi støjparret koster mere end rho/Xi-parret.
+Send terminalresumé og rå `.json.gz` til review efter kørslen. Første runtime
+måles på denne dagskontrol, uden et løfte om ugeforecast eller måneds-throughput.
+G1's par-numerik og G2's længere records/sampling/mismatch er endnu ikke implementeret.
+
+## Kodeplacering
 
 | Placering | Ansvar |
 |---|---|

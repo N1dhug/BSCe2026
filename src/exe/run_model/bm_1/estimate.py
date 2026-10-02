@@ -1085,6 +1085,37 @@ def run_bank_study(args):
         raise RuntimeError('F4-F study gates failed; report retained for review before adapting the next experiment.')
 
 
+def run_joint_bank_identity(args):
+    """G0 joint-bank method check; scientific design is fixed by the runner."""
+    if args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    started = last_printed = perf_counter()
+    print(f'F4-G G0: joint rho/Xi and sigma_x/sigma_y; workers={args.workers}', flush=True)
+
+    def progress(row):
+        nonlocal last_printed
+        now = perf_counter()
+        if not args.quiet and (row['completed'] in (1, row['total']) or now-last_printed >= 10):
+            last_printed = now
+            elapsed = now-started
+            eta = elapsed*(row['total']-row['completed'])/row['completed']
+            print(f"  conditional runs {row['completed']}/{row['total']}; {row['phase']}; "
+                  f"ID{row['sequence_id']} {'/'.join(row['pair'])}; "
+                  f"elapsed={elapsed:.1f}s; rough ETA={eta:.1f}s", flush=True)
+
+    result = synthetic.run_f4_g_joint_identity(workers=args.workers, progress=progress)
+    for row in result['rows']:
+        print(f"  {'/'.join(row['coordinates'])} ID{row['sequence_id']}: "
+              f"H={len(row['hypotheses'])}; max identity error={max(row['maximum_errors'].values()):.3e}; "
+              f"mass error={row['maximum_abs_mass_error']:.3e}; passes={row['passes']}")
+        print(f"    final means={row['parameter_mean'][-1]}; "
+              f"SD={row['parameter_sd'][-1]}; effective H={row['effective_hypotheses'][-1]:.4g}")
+    print(f"  registered={result['registered_design']}; passes G0={result['passes']}")
+    _write_likelihood_report(args, result, started)
+    if not result['passes']:
+        raise RuntimeError('G0 joint-bank identity/probability gates failed; report retained for review.')
+
+
 def run_preparation(args):
     """Reproduce independent F4-0 quadrature through the common entry point."""
     if args.output is not None and args.output.exists():
@@ -1250,6 +1281,15 @@ def build_parser():
             bank.add_argument('--spatial-refine', action='store_true',
                               help='F3 version 2: 401-cell mixture candidate, 801-cell control; retain original 151-cell diagnostics.')
         bank.set_defaults(handler=run_bank_study, study=study)
+
+    joint_identity = subparsers.add_parser(
+        'joint-bank-identity', help='G0: selected joint FV banks versus independent fixed-parameter replays.')
+    joint_identity.add_argument('--workers', type=int, default=8,
+                                help='Persistent spawn workers over independent hypotheses; no nested pool.')
+    joint_identity.add_argument('--output', type=Path, required=True,
+                                help='New JSON/gzip report with both pairs, all prefix scores and source revision.')
+    joint_identity.add_argument('--quiet', action='store_true', help='Suppress progress, not the summary.')
+    joint_identity.set_defaults(handler=run_joint_bank_identity)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',

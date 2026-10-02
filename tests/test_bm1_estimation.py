@@ -2484,5 +2484,199 @@ class PopulationReferenceRefinementTests(unittest.TestCase):
             run.assert_not_called()
 
 
+class JointParameterBankTests(unittest.TestCase):
+    """Behavioral tests for both selected pairs and the joint state recursion."""
+
+    @staticmethod
+    def prepared():
+        case = synthetic.build_f4_b_case(Xi=.75)
+        model, parameters = case.build_model()
+        initial = synthetic.beta_initial_mass(case, model, 21)
+        observations = synthetic.generate_synthetic_sequence(case, sequence_id=0).observations.prefix(3/24)
+        return case, model, parameters, initial, observations
+
+    def bank(self, pair, hypotheses, *, prior=None, observations=None, **options):
+        from src.method.bm_1_estimation import run_joint_parameter_bank
+        case, model, parameters, initial, default_obs = self.prepared()
+        return run_joint_parameter_bank(
+            model, parameters, case.sigma_x, case.sigma_y, initial, 0,
+            default_obs if observations is None else observations, coordinates=pair,
+            hypotheses=hypotheses, initial_log_weights=mass_to_log(
+                np.full(len(hypotheses), 1/len(hypotheses)) if prior is None else prior),
+            breakpoints=case.breakpoints, max_step=1/48, likelihood_quadrature_order=3, **options)
+
+    def test_both_pairs_match_independent_replays_and_arbitrary_joint_prior(self):
+        for pair, nodes in ((('rho', 'Xi'), [[.6, .5], [.6, 1], [1.4, .5], [1.4, 1]]),
+                            (('sigma_x', 'sigma_y'), [[.2, .02], [.2, .08], [.8, .02], [.8, .08]])):
+            prior = np.array([.45, .05, .1, .4])  # deliberately non-product
+            bank = self.bank(pair, nodes, prior=prior, keep_conditionals=True)
+            case, model, base, initial, obs = self.prepared()
+            offline = []
+            for values in nodes:
+                candidate = synthetic.replace(synthetic.f4_e_truth_candidate(case), **dict(zip(pair, values)))
+                offline.append(run_fv_filter(model, synthetic._f4_e_parameters(base, candidate),
+                    candidate.sigma_x, candidate.sigma_y, initial, 0, obs,
+                    max_step=1/48, breakpoints=case.breakpoints, likelihood_quadrature_order=3))
+            scores = np.column_stack([r.log_evidence for r in offline])
+            raw = np.log(prior)+np.cumsum(scores, axis=0)
+            evidence = logsumexp(raw, axis=1)
+            expected = raw-evidence[:, None]
+            with self.subTest(pair=pair):
+                np.testing.assert_allclose(bank['conditional_log_evidence'], scores, atol=1e-12, rtol=0)
+                np.testing.assert_allclose(bank['log_weights'], expected, atol=1e-12, rtol=0)
+                np.testing.assert_allclose(np.cumsum(bank['log_evidence']), evidence, atol=1e-12, rtol=0)
+                for k, step in enumerate(bank['steps']):
+                    old = prior if k == 0 else np.exp(expected[k-1])
+                    np.testing.assert_allclose(step['predicted_mass'], old @ np.array(
+                        [r.predicted_mass[k] for r in offline]), atol=1e-12, rtol=0)
+                    np.testing.assert_allclose(step['posterior_mass'], np.exp(expected[k]) @ np.array(
+                        [r.posterior_mass[k] for r in offline]), atol=1e-12, rtol=0)
+                    for j, conditional in enumerate(step['conditional_steps']):
+                        np.testing.assert_array_equal(conditional.posterior_mass, offline[j].posterior_mass[k])
+
+    def test_pair_and_hypothesis_order_duplicates_and_repeat_are_invariant(self):
+        nodes = np.array([[.5, .5], [1.5, .75], [.5, .5]])
+        first = self.bank(('rho', 'Xi'), nodes)
+        repeated = self.bank(('rho', 'Xi'), nodes)
+        order = [2, 0, 1]
+        changed = self.bank(('Xi', 'rho'), nodes[order, ::-1])
+        for name in ('conditional_log_evidence', 'log_weights', 'final_conditional_mass'):
+            np.testing.assert_array_equal(first[name], repeated[name])
+            np.testing.assert_allclose(changed[name], first[name][:, order] if name != 'final_conditional_mass'
+                                       else first[name][order], atol=1e-12, rtol=0)
+        np.testing.assert_array_equal(first['conditional_log_evidence'][:, 0], first['conditional_log_evidence'][:, 2])
+        np.testing.assert_allclose(changed['predicted_mass'], first['predicted_mass'], atol=1e-12, rtol=0)
+
+    def test_missing_continuation_and_prefix_causality_preserve_conditional_states(self):
+        from src.method.bm_1_estimation import run_joint_parameter_bank
+        case, model, base, initial, obs = self.prepared()
+        missing = BM1ObservationSeries(obs.times, [obs.values[0], np.nan, obs.values[2]],
+                                       'day', [True, False, True])
+        nodes = [[.2, .02], [.8, .06]]
+        whole = self.bank(('sigma_x', 'sigma_y'), nodes, observations=missing)
+        prefix = self.bank(('sigma_x', 'sigma_y'), nodes, observations=missing.prefix(1/24))
+        continuation = run_joint_parameter_bank(model, base, case.sigma_x, case.sigma_y, initial,
+            1/24, BM1ObservationSeries(missing.times[1:], missing.values[1:], 'day', missing.observed[1:]),
+            coordinates=('sigma_x', 'sigma_y'), hypotheses=nodes,
+            initial_log_weights=prefix['log_weights'][-1], initial_conditional_mass=prefix['final_conditional_mass'],
+            max_step=1/48, likelihood_quadrature_order=3, breakpoints=case.breakpoints)
+        for name in ('log_weights', 'conditional_log_evidence', 'predicted_mass', 'posterior_mass'):
+            np.testing.assert_allclose(continuation[name], whole[name][1:], atol=1e-12, rtol=0, equal_nan=True)
+        np.testing.assert_array_equal(whole['log_weights'][1], whole['log_weights'][0])
+        np.testing.assert_array_equal(whole['predicted_mass'][1], whole['posterior_mass'][1])
+        changed = BM1ObservationSeries(obs.times, [obs.values[0], 99, -99], 'day')
+        future_changed = self.bank(('sigma_x', 'sigma_y'), nodes, observations=changed)
+        np.testing.assert_array_equal(prefix['log_weights'][0], future_changed['log_weights'][0])
+        np.testing.assert_array_equal(prefix['final_conditional_mass'], np.array(
+            [s.posterior_mass for s in self.bank(('sigma_x', 'sigma_y'), nodes,
+              observations=changed, keep_conditionals=True)['steps'][0]['conditional_steps']]))
+
+    def test_zero_prior_remains_zero_and_xi_zero_is_negative_control(self):
+        bank = self.bank(('rho', 'Xi'), [[.5, 0], [1.5, 0]], prior=[1, 0])
+        self.assertTrue(np.isneginf(bank['log_weights'][:, 1]).all())
+        np.testing.assert_allclose(bank['conditional_log_evidence'][:, 0],
+                                   bank['conditional_log_evidence'][:, 1], atol=1e-12, rtol=0)
+
+    def test_joint_mixture_matches_one_parameter_bank_when_other_coordinate_is_fixed(self):
+        from src.method.bm_1_estimation import run_parameter_bank
+        case, model, base, initial, obs = self.prepared()
+        projector = synthetic._f4_f_projector(21, model)
+        options = dict(backend='mixture', projector=projector)
+        joint = self.bank(('rho', 'Xi'), [[.5, .75], [1.5, .75]], **options)
+        single = run_parameter_bank(model, base, case.sigma_x, case.sigma_y, initial, 0, obs,
+            coordinate='rho', values=[.5, 1.5], initial_log_weights=np.log([.5, .5]),
+            max_step=1/48, likelihood_quadrature_order=3, breakpoints=case.breakpoints, **options)
+        for name in ('log_weights', 'conditional_log_evidence', 'final_conditional_mass',
+                     'final_conditional_coefficients', 'predicted_mass', 'posterior_mass'):
+            np.testing.assert_array_equal(joint[name], single[name])
+        with self.assertRaises(ValueError):
+            self.bank(('rho', 'Xi'), [[.5, .75], [1.5, .75]],
+                      initial_conditional_coefficients=np.full((2, 3), 1/3))
+
+    def test_invalid_pairs_nodes_and_shapes_are_rejected_before_propagation(self):
+        from src.method.bm_1_estimation import parameter_bank_pair_candidate
+        _, _, base, _, _ = self.prepared()
+        # Both physically valid zero endpoints are accepted explicitly.
+        self.assertEqual(parameter_bank_pair_candidate(base, .5, .03, ('rho', 'Xi'), [1, 0])[0][5], 0)
+        self.assertEqual(parameter_bank_pair_candidate(base, .5, .03, ('sigma_y', 'sigma_x'), [.03, 0])[1], 0)
+        for pair, values in ((('rho', 'rho'), [[1, 1]]), (('rho', 'k'), [[1, 2]]),
+                             (('rho', 'Xi'), [[0, .5]]), (('rho', 'Xi'), [[1, 1.1]]),
+                             (('sigma_x', 'sigma_y'), [[-.1, .03]]),
+                             (('sigma_x', 'sigma_y'), [[.5, 0]]),
+                             (('rho', 'Xi'), [[np.nan, .5]]), (('rho', 'Xi'), [[1+1j, .5]]),
+                             (('rho', 'Xi'), [1, .5]), (('rho', 'Xi'), [[[1, .5]]])):
+            with self.subTest(pair=pair, values=values), patch(
+                    'src.method.bm_1_estimation.fv_filter_step') as propagate:
+                with self.assertRaises((ValueError, TypeError)):
+                    self.bank(pair, values)
+                propagate.assert_not_called()
+        with self.assertRaises(ValueError):
+            self.bank(('rho', 'Xi'), [[1, .75]], initial_conditional_mass=np.full((2, 21), 1/21))
+
+    def test_g0_real_spawn_matches_serial_and_callbacks_do_not_change_results(self):
+        options = dict(sequence_ids=(0, 1), grid_stride=40, x_steps=21,
+                       max_step=1/24, likelihood_quadrature_order=1)
+        serial = synthetic.run_f4_g_joint_identity(workers=1, **options)
+        parallel = synthetic.run_f4_g_joint_identity(workers=2, **options)
+        self.assertEqual(serial['rows'], parallel['rows'])
+        self.assertTrue(serial['passes'])
+        self.assertFalse(serial['registered_design'])
+        self.assertEqual(serial['conditional_runs'], 16)
+        def corrupt(row):
+            row.update(completed=-1, pair=('wrong', 'pair'))
+        changed = synthetic.run_f4_g_joint_identity(workers=1, progress=corrupt, **options)
+        self.assertEqual(serial, changed)
+        for row in serial['rows']:
+            hypotheses = np.asarray(row['hypotheses'])
+            logs = np.asarray(row['online_log_weights'])
+            np.testing.assert_allclose(row['parameter_mean'], np.exp(logs) @ hypotheses, atol=1e-12, rtol=0)
+            final = np.asarray(row['final_conditional_posterior_mass'])
+            np.testing.assert_allclose(row['marginal_posterior_mass'][-1], np.exp(logs[-1]) @ final,
+                                       atol=1e-12, rtol=0)
+
+    def test_g0_failures_are_not_dropped_or_reported_as_passes(self):
+        original = synthetic._f4_g_identity_task
+        def mismatch(task):
+            result = original(task)
+            if result['phase'] == 'offline':
+                result['scores'] = result['scores'].copy()
+                result['scores'][0, 0] += .1
+            return result
+        with patch.object(synthetic, '_f4_g_identity_task', side_effect=mismatch):
+            report = synthetic.run_f4_g_joint_identity(workers=1, sequence_ids=(0, 1), grid_stride=40, x_steps=21,
+                                                       max_step=1/24, likelihood_quadrature_order=1)
+        self.assertFalse(report['passes'])
+        self.assertEqual(len(report['rows']), 2)
+        with patch.object(synthetic, '_f4_g_identity_task', side_effect=RuntimeError('candidate failed')):
+            with self.assertRaisesRegex(RuntimeError, 'candidate failed'):
+                synthetic.run_f4_g_joint_identity(workers=1, sequence_ids=(0, 1), grid_stride=40, x_steps=21)
+
+    def test_g0_cli_retains_failed_gzip_report_and_refuses_overwrite(self):
+        from src.exe.run_model.bm_1 import estimate
+        import gzip
+        result = dict(stage='G0', rows=[], registered_design=True, passes=False)
+        with tempfile.TemporaryDirectory() as directory, patch('builtins.print'):
+            path = Path(directory) / 'g0.json.gz'
+            args = estimate.build_parser().parse_args(['joint-bank-identity', '--output', str(path), '--blas-threads', '1'])
+            self.assertEqual(args.workers, 8)
+            with patch.object(synthetic, 'run_f4_g_joint_identity', return_value=result) as run:
+                with self.assertRaisesRegex(RuntimeError, 'report retained'):
+                    estimate.run_joint_bank_identity(args)
+                run.assert_called_once()
+                self.assertEqual(run.call_args.kwargs['workers'], 8)
+            with gzip.open(path, 'rt', encoding='utf-8') as stream:
+                saved = json.load(stream)
+            self.assertFalse(saved['passes'])
+            self.assertEqual(saved['stage'], 'G0')
+            self.assertEqual(saved['blas_threads_requested'], 1)
+            self.assertIn('source_commit', saved)
+            raw = path.read_bytes()
+            with patch.object(synthetic, 'run_f4_g_joint_identity') as run:
+                with self.assertRaises(FileExistsError):
+                    estimate.run_joint_bank_identity(args)
+                run.assert_not_called()
+            self.assertEqual(raw, path.read_bytes())
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,4 +1,4 @@
-"""Synthetic BM1 estimation cases and F4-B/C/E/F validation studies.
+"""Synthetic BM1 estimation cases and F4-B/C/E/F/G validation studies.
 
 This module is an experiment/validation layer.  It reuses the existing BM1
 Euler--Maruyama solver and input builders; it does not implement a second SDE
@@ -24,6 +24,7 @@ from src.method.bm_1_estimation import (
     BM1FVFilterResult, BM1FVRhoBankStep, BM1FVRhoBankResult,
     bm1_observation_update, fv_filter_step, fv_rho_bank_step, run_fv_filter,
     parameter_bank_candidate, parameter_bank_weights, run_mixture_filter,
+    run_joint_parameter_bank,
 )
 from src.params.bm_1 import BM1ObservationSeries, conservative_mass_transfer, mass_to_log
 from src.tools.input_generator.input_builder import input_builder
@@ -75,6 +76,9 @@ F4_F_LOG_ODDS_TOL = 0.10
 F4_F_WEIGHT_TV_TOL = 0.01
 F4_F_EVIDENCE_TOL = 0.10
 F4_F_STATE_L1_TOL = 0.02
+F4_G_PAIRS = (('rho', 'Xi'), ('sigma_x', 'sigma_y'))
+F4_G_METHOD_IDS = (1348, 1349)
+F4_G_METHOD_GRID_STRIDE = 10
 
 
 def _readonly_vector(values: ArrayLike, name: str, *, minimum_size: int = 1) -> NDArray[np.float64]:
@@ -3104,6 +3108,221 @@ def run_f4_f_population_time_refinement(refinement, mixture_check, population, *
                                                    if c['comparison'] == 'original_fv_mixture')),
                 passes=bool(_f4_f_probability_gate(rows) and all(c['passes'] for c in comparisons if c['selected'])),
                 interpretation='Reference-time adaptation on the same 20 records, not a new holdout. Original failures retained; gates unchanged.')
+
+
+def _f4_g_identity_task(task):
+    """Independent online hypothesis group or fresh fixed-parameter replay.
+
+    Only data/case scalars cross spawn boundaries; each worker builds callables.
+    Group-local parameter weights never feed back into conditional states.
+    """
+    phase, pair, indices, hypotheses, case, observations, settings = task
+    model, base = case.build_model()
+    initial = beta_initial_mass(case, model, settings['x_steps'])
+    options = dict(breakpoints=case.breakpoints, max_step=settings['max_step'],
+                   likelihood_quadrature_order=settings['likelihood_quadrature_order'])
+    if phase == 'online':
+        bank = run_joint_parameter_bank(
+            model, base, case.sigma_x, case.sigma_y, initial, case.horizon[0], observations,
+            coordinates=pair, hypotheses=hypotheses,
+            initial_log_weights=np.full(len(indices), -np.log(len(indices))),
+            keep_conditionals=True, **options)
+        steps = [s['conditional_steps'] for s in bank['steps']]
+        scores = bank['conditional_log_evidence']
+        predicted = np.array([[s.predicted_mass for s in row] for row in steps])
+        posterior = np.array([[s.posterior_mass for s in row] for row in steps])
+        diagnostics = [s.diagnostics for row in steps for s in row]
+        mass_error = max(d['maximum_abs_mass_error'] for d in diagnostics)
+        minimum = min(d['minimum_cell_mass'] for d in diagnostics)
+        actual_step = max(d['actual_max_step'] for d in diagnostics)
+    else:
+        # Deliberately independent of the joint-bank candidate adapter/reducer.
+        # Every candidate restarts at the declared state prior, never the bank.
+        candidate = replace(f4_e_truth_candidate(case), **dict(zip(pair, hypotheses[0])))
+        filtered = run_fv_filter(
+            model, _f4_e_parameters(base, candidate), candidate.sigma_x, candidate.sigma_y,
+            initial, case.horizon[0], observations, **options)
+        scores = filtered.log_evidence[:, None]
+        predicted = filtered.predicted_mass[:, None, :]
+        posterior = filtered.posterior_mass[:, None, :]
+        mass_error, minimum = filtered.maximum_abs_mass_error, filtered.minimum_cell_mass
+        actual_step = float(np.max(np.diff(filtered.integration_t)))
+    return dict(phase=phase, pair=pair, indices=indices, scores=scores,
+                predicted_mass=predicted, posterior_mass=posterior,
+                maximum_abs_mass_error=mass_error, minimum_cell_mass=minimum,
+                actual_max_step=actual_step)
+
+
+def _f4_g_joint_summary(hypotheses, log_weights, pair):
+    """Marginals and joint dependence, keeping all MAP ties and boundary weights."""
+    weights = np.exp(log_weights)
+    mean = weights @ hypotheses
+    centered = hypotheses[None, :, :] - mean[:, None, :]
+    covariance = np.einsum('kh,khi,khj->kij', weights, centered, centered)
+    marginals = {}
+    for axis, name in enumerate(pair):
+        nodes = np.unique(hypotheses[:, axis])
+        mass = np.column_stack([weights[:, hypotheses[:, axis] == v].sum(axis=1) for v in nodes])
+        cdf = np.cumsum(mass, axis=1)
+        intervals = [[float(nodes[min(np.searchsorted(row, q), len(nodes)-1)])
+                      for q in (.025, .975)] for row in cdf]
+        marginals[name] = dict(values=nodes.tolist(), weights=mass.tolist(),
+                               equal_tail_95=intervals,
+                               endpoint_weight=(mass[:, 0]+mass[:, -1]).tolist())
+    on_boundary = np.any((hypotheses == hypotheses.min(axis=0))
+                         | (hypotheses == hypotheses.max(axis=0)), axis=1)
+    return dict(parameter_mean=mean.tolist(), parameter_covariance=covariance.tolist(),
+                parameter_sd=np.sqrt(np.diagonal(covariance, axis1=1, axis2=2)).tolist(),
+                marginal_parameters=marginals,
+                boundary_union_weight=weights[:, on_boundary].sum(axis=1).tolist(),
+                effective_hypotheses=np.exp(-np.sum(weights*log_weights, axis=1)).tolist(),
+                map_hypotheses=[hypotheses[np.abs(row-row.max()) <= 1e-12].tolist()
+                                for row in log_weights])
+
+
+def run_f4_g_joint_identity(*, workers=8, progress=None, sequence_ids=F4_G_METHOD_IDS,
+                             grid_stride=F4_G_METHOD_GRID_STRIDE, x_steps=None,
+                             max_step=1/1536, likelihood_quadrature_order=3):
+    """G0: two joint FV banks versus fresh fixed-candidate replays at all prefixes.
+
+    Five nodes per axis cover E's full supports; this is a method check, not a
+    numerically certified 2D posterior or joint-recovery result. API overrides
+    are diagnostic; the CLI exposes only execution/output options. One persistent
+    spawn pool covers both pairs and phases, with no nested parallelism.
+    """
+    workers = checks.positive_integer(workers, 'workers')
+    ids = tuple(_nonnegative_integer(s, 'sequence_id') for s in sequence_ids)
+    if len(ids) != 2 or len(set(ids)) != 2:
+        raise ValueError('G0 requires two distinct sequence IDs, one per pair.')
+    stride = checks.positive_integer(grid_stride, 'grid_stride')
+    if 40 % stride:
+        raise ValueError('grid_stride must divide 40 to retain both support endpoints.')
+    step = checks.finite_scalar(max_step, 'max_step', positive=True)
+    order = checks.positive_integer(likelihood_quadrature_order, 'likelihood_quadrature_order')
+    cells_override = None if x_steps is None else checks.positive_integer(x_steps, 'x_steps', minimum=3)
+    groups, tasks = [], []
+    for pair, sid, cells, Xi in zip(F4_G_PAIRS, ids, (401, 3201), (.75, 1.)):
+        case = build_f4_b_case(Xi=Xi)
+        sequence = generate_synthetic_sequence(case, sequence_id=sid)
+        if not sequence.truth.valid:
+            raise RuntimeError(f'G0 truth failed at ID{sid}; no repair or dropped sequence.')
+        axes = [np.asarray(F4_E_PARAMETER_GRIDS[name])[::stride] for name in pair]
+        hypotheses = np.array([(a, b) for a in axes[0] for b in axes[1]])
+        settings = dict(x_steps=cells if cells_override is None else cells_override,
+                        max_step=step, likelihood_quadrature_order=order)
+        group = dict(pair=pair, sequence_id=sid, hypotheses=hypotheses, case=case,
+                     observations=sequence.observations, settings=settings)
+        groups.append(group)
+        # Balanced groups avoid serial online work. Global weights/marginals are
+        # reduced from raw conditional histories; local priors cannot affect them.
+        for indices in np.array_split(np.arange(len(hypotheses)), min(workers, len(hypotheses))):
+            tasks.append(('online', pair, indices, hypotheses[indices], case,
+                          sequence.observations, settings))
+        for index in range(len(hypotheses)):
+            indices = np.array([index])
+            tasks.append(('offline', pair, indices, hypotheses[indices], case,
+                          sequence.observations, settings))
+    pending = {}
+    for group in groups:
+        shape = (len(group['observations'].times), len(group['hypotheses']))
+        for phase in ('online', 'offline'):
+            pending[phase, group['pair']] = dict(
+                scores=np.empty(shape), predicted_mass=np.empty((*shape, group['settings']['x_steps'])),
+                posterior_mass=np.empty((*shape, group['settings']['x_steps'])),
+                seen=set(), diagnostics=[])
+    total = 2*sum(len(g['hypotheses']) for g in groups)
+    completed = 0
+    manager = (ProcessPoolExecutor(max_workers=min(workers, len(tasks)),
+                                  mp_context=get_context('spawn')) if workers > 1 else nullcontext(None))
+    with manager as pool:
+        if pool is None:
+            results = map(_f4_g_identity_task, tasks)
+        else:
+            futures = [pool.submit(_f4_g_identity_task, task) for task in tasks]
+            results = (future.result() for future in as_completed(futures))
+        for result in results:
+            entry = pending[result['phase'], result['pair']]
+            indices = result['indices']
+            if entry['seen'].intersection(indices):
+                raise RuntimeError('G0 received a duplicate hypothesis result.')
+            entry['seen'].update(indices)
+            for name in ('scores', 'predicted_mass', 'posterior_mass'):
+                entry[name][:, indices] = result[name]
+            entry['diagnostics'].append({name: result[name] for name in (
+                'maximum_abs_mass_error', 'minimum_cell_mass', 'actual_max_step')})
+            completed += len(indices)
+            if progress is not None:
+                sid = next(g['sequence_id'] for g in groups if g['pair'] == result['pair'])
+                progress(dict(completed=completed, total=total, phase=result['phase'],
+                              pair=result['pair'], sequence_id=sid))
+    rows = []
+    for group in groups:
+        pair, hypotheses = group['pair'], group['hypotheses']
+        online, offline = [pending[phase, pair] for phase in ('online', 'offline')]
+        if any(e['seen'] != set(range(len(hypotheses))) for e in (online, offline)):
+            raise RuntimeError('G0 did not complete every hypothesis; no subset is reported.')
+        prior = np.full(len(hypotheses), -np.log(len(hypotheses)))
+        reduced = parameter_bank_weights(online['scores'], prior, group['observations'].observed)
+        joint = prior + np.cumsum(offline['scores'], axis=0)
+        evidence = logsumexp(joint, axis=1)
+        expected_logs = joint-evidence[:, None]
+        predicted = np.einsum('kh,khi->ki', np.exp(reduced['prior_log_weights']), online['predicted_mass'])
+        posterior = np.einsum('kh,khi->ki', np.exp(reduced['log_weights']), online['posterior_mass'])
+        expected_predicted = np.einsum('kh,khi->ki', np.exp(np.vstack((prior, expected_logs[:-1]))),
+                                       offline['predicted_mass'])
+        expected_posterior = np.einsum('kh,khi->ki', np.exp(expected_logs), offline['posterior_mass'])
+        prefix = dict(
+            log_weights=np.max(np.abs(reduced['log_weights']-expected_logs), axis=1),
+            conditional_log_evidence=np.max(np.abs(online['scores']-offline['scores']), axis=1),
+            cumulative_log_evidence=np.abs(np.cumsum(reduced['log_evidence'])-evidence),
+            conditional_state_mass=np.maximum(
+                np.max(np.abs(online['predicted_mass']-offline['predicted_mass']), axis=(1, 2)),
+                np.max(np.abs(online['posterior_mass']-offline['posterior_mass']), axis=(1, 2))),
+            marginal_state_mass=np.maximum(np.max(np.abs(predicted-expected_predicted), axis=1),
+                                            np.max(np.abs(posterior-expected_posterior), axis=1)))
+        maxima = {name: float(value.max()) for name, value in prefix.items()}
+        diagnostics = online['diagnostics']+offline['diagnostics']
+        mass_error = max(max(d['maximum_abs_mass_error'] for d in diagnostics),
+                         float(np.max(np.abs(predicted.sum(axis=1)-1))),
+                         float(np.max(np.abs(posterior.sum(axis=1)-1))))
+        minimum = min(d['minimum_cell_mass'] for d in diagnostics)
+        passes = (all(np.isfinite(v) and 0 <= v <= F4_F_IDENTITY_TOL for v in maxima.values())
+                  and np.isfinite(mass_error) and 0 <= mass_error <= 1e-10
+                  and np.isfinite(minimum) and minimum >= 0)
+        case, obs = group['case'], group['observations']
+        truth = f4_e_truth_candidate(case)
+        rows.append(dict(
+            coordinates=pair, sequence_id=group['sequence_id'], hypotheses=hypotheses.tolist(),
+            initial_log_weights=prior.tolist(), settings=group['settings'],
+            truth=[getattr(truth, name) for name in pair],
+            fixed_parameters={name: getattr(truth, name)
+                              for name in ('rho', 'Xi', 'k', 'sigma_x', 'sigma_y') if name not in pair},
+            initial_beta=(case.initial_alpha, case.initial_beta), initial_mass=beta_initial_mass(
+                case, case.build_model()[0], group['settings']['x_steps']).tolist(),
+            truth_max_step=case.truth_max_step,
+            seed_roots=(case.initial_seed_root, case.brownian_seed_root, case.measurement_seed_root),
+            inputs=dict(baseline=case.baseline, price_edges=case.price_edges.tolist(),
+                        price_values=case.price_values.tolist(), state_response='1-2*x', price_response='1-2*u'),
+            observation_contract=dict(time_unit=obs.time_unit, observation_kind=obs.observation_kind,
+                                      price_side=obs.price_side),
+            observation_times=obs.times.tolist(), observations=obs.values.tolist(), observed=obs.observed.tolist(),
+            online_conditional_log_evidence=online['scores'].tolist(),
+            offline_conditional_log_evidence=offline['scores'].tolist(),
+            online_log_weights=reduced['log_weights'].tolist(),
+            online_bank_log_evidence=reduced['log_evidence'].tolist(),
+            offline_cumulative_bank_log_evidence=evidence.tolist(),
+            prefix_errors={name: value.tolist() for name, value in prefix.items()}, maximum_errors=maxima,
+            maximum_abs_mass_error=float(mass_error), minimum_cell_mass=float(minimum),
+            actual_max_step=max(d['actual_max_step'] for d in diagnostics),
+            marginal_predicted_mass=predicted.tolist(), marginal_posterior_mass=posterior.tolist(),
+            final_conditional_posterior_mass=online['posterior_mass'][-1].tolist(),
+            x_edges=np.linspace(0, 1, group['settings']['x_steps']+1).tolist(),
+            passes=bool(passes), **_f4_g_joint_summary(hypotheses, reduced['log_weights'], pair)))
+    return dict(stage='G0', registered_design=(ids == F4_G_METHOD_IDS
+                and stride == F4_G_METHOD_GRID_STRIDE and cells_override is None
+                and step == 1/1536 and order == 3), workers=workers,
+                grid_stride=stride, identity_tolerance=F4_F_IDENTITY_TOL,
+                conditional_runs=total, rows=rows, passes=all(r['passes'] for r in rows))
 
 
 def run_f4_preparation_checks() -> dict:

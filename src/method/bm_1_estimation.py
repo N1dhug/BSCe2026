@@ -887,21 +887,109 @@ def run_parameter_bank(model, parameters, sigma_x, sigma_y, initial_mass, initia
     final conditional masses/coefficients and log weights permit continuation.
     Chronology is serial; experiment runners may parallelize independent replays.
     """
+    nodes = checks.finite_vector(values, 'values')
+    if np.any(nodes <= 0.0):
+        raise ValueError('Parameter nodes must be positive.')
+    candidates = [(*parameter_bank_candidate(parameters, sigma_x, coordinate, v), sigma_y)
+                  for v in nodes]
+    result = _run_parameter_bank(
+        model, candidates, initial_mass, initial_time, observations,
+        initial_log_weights=initial_log_weights, backend=backend, projector=projector,
+        breakpoints=breakpoints, max_step=max_step, cfl=cfl,
+        likelihood_quadrature_order=likelihood_quadrature_order,
+        initial_conditional_mass=initial_conditional_mass,
+        initial_conditional_coefficients=initial_conditional_coefficients)
+    return dict(coordinate=coordinate, values=nodes, **result)
+
+
+def parameter_bank_pair_candidate(parameters, sigma_x, sigma_y, coordinates, values):
+    """One complete hypothesis for the two selected F4-G pairs, in either order.
+
+    Xi=0 and sigma_x=0 are valid; rho and sigma_y must be positive.
+    Both coordinates are replaced together before any state propagation.
+    """
+    pair = tuple(coordinates)
+    if len(pair) != 2 or frozenset(pair) not in (frozenset(('rho', 'Xi')),
+                                               frozenset(('sigma_x', 'sigma_y'))):
+        raise ValueError('Joint banks support rho/Xi or sigma_x/sigma_y, with distinct coordinates.')
+    values = checks.finite_vector(values, 'hypothesis values')
+    if values.shape != (2,):
+        raise ValueError('Each joint hypothesis must contain two coordinate values.')
+    candidate = list(bm_validation.parameters(parameters))
+    sigma_x = checks.finite_scalar(sigma_x, 'sigma_x')
+    sigma_y = checks.finite_scalar(sigma_y, 'sigma_y', positive=True)
+    if sigma_x < 0:
+        raise ValueError('sigma_x must be non-negative.')
+    for name, value in zip(pair, values):
+        if name == 'Xi':
+            if not 0 <= value <= 1:
+                raise ValueError('Xi must lie in [0, 1].')
+            candidate[5] = float(value)
+        elif name == 'sigma_x':
+            if value < 0:
+                raise ValueError('sigma_x must be non-negative.')
+            sigma_x = float(value)
+        elif name == 'sigma_y':
+            sigma_y = checks.finite_scalar(value, 'sigma_y', positive=True)
+        else:
+            candidate[3] = 1 / checks.finite_scalar(value, 'rho', positive=True)
+            checks.finite_scalar(candidate[3], 'capacity', positive=True)
+    return candidate, sigma_x, sigma_y
+
+
+def run_joint_parameter_bank(model, parameters, sigma_x, sigma_y, initial_mass,
+                             initial_time, observations, *, coordinates, hypotheses,
+                             initial_log_weights, backend='fv', projector=None,
+                             breakpoints=None, max_step=np.inf, cfl=0.4,
+                             likelihood_quadrature_order=1, initial_conditional_mass=None,
+                             initial_conditional_coefficients=None, keep_conditionals=False):
+    """Recursive bank over explicit joint hypotheses; no product-posterior assumption.
+
+    Row j owns its complete parameter pair, state, observation noise and log
+    weight. An arbitrary normalized joint prior, including exact zeros, is
+    accepted. Final conditional states and weights permit causal continuation.
+    Histories of conditional steps are opt-in to bound normal forecast memory.
+    Independent hypothesis groups may be executed in parallel by study runners.
+    """
+    if np.iscomplexobj(hypotheses):
+        raise ValueError('hypotheses must be real.')
+    nodes = np.asarray(hypotheses, dtype=float)
+    if nodes.ndim != 2 or nodes.shape[0] < 1 or nodes.shape[1] != 2:
+        raise ValueError('hypotheses must have shape (number of hypotheses, 2).')
+    nodes = nodes.copy()
+    pair = tuple(coordinates)
+    candidates = [parameter_bank_pair_candidate(parameters, sigma_x, sigma_y, pair, row)
+                  for row in nodes]
+    if not isinstance(keep_conditionals, (bool, np.bool_)):
+        raise TypeError('keep_conditionals must be boolean.')
+    result = _run_parameter_bank(
+        model, candidates, initial_mass, initial_time, observations,
+        initial_log_weights=initial_log_weights, backend=backend, projector=projector,
+        breakpoints=breakpoints, max_step=max_step, cfl=cfl,
+        likelihood_quadrature_order=likelihood_quadrature_order,
+        initial_conditional_mass=initial_conditional_mass,
+        initial_conditional_coefficients=initial_conditional_coefficients,
+        keep_conditionals=keep_conditionals)
+    return dict(coordinates=pair, hypotheses=nodes, **result)
+
+
+def _run_parameter_bank(model, candidates, initial_mass, initial_time, observations, *,
+                        initial_log_weights, backend, projector, breakpoints, max_step,
+                        cfl, likelihood_quadrature_order, initial_conditional_mass,
+                        initial_conditional_coefficients, keep_conditionals=False):
+    """Shared one/joint-parameter chronology and conditional state recursion."""
     if not isinstance(observations, BM1ObservationSeries):
         raise TypeError('observations must be a BM1ObservationSeries.')
     if backend not in ('fv', 'mixture'):
         raise ValueError('backend must be fv or mixture.')
-    nodes = checks.finite_vector(values, 'values')
-    if np.any(nodes <= 0.0):
-        raise ValueError('Parameter nodes must be positive.')
-    candidates = [parameter_bank_candidate(parameters, sigma_x, coordinate, v) for v in nodes]
+    size = len(candidates)
     logs = checks.log_probability_mass(initial_log_weights, 'initial_log_weights')
     initial = checks.probability_mass(initial_mass, 'initial_mass')
-    if logs.size != nodes.size:
+    if logs.size != size:
         raise ValueError('One initial weight is required per hypothesis.')
-    current = (np.tile(initial, (nodes.size, 1)) if initial_conditional_mass is None
+    current = (np.tile(initial, (size, 1)) if initial_conditional_mass is None
                else checks.probability_rows(initial_conditional_mass, 'initial_conditional_mass'))
-    if current.shape != (nodes.size, initial.size):
+    if current.shape != (size, initial.size):
         raise ValueError('Conditional initial states must match hypotheses and cells.')
     time = checks.finite_scalar(initial_time, 'initial_time')
     if observations.times[0] <= time:
@@ -916,7 +1004,7 @@ def run_parameter_bank(model, parameters, sigma_x, sigma_y, initial_mass, initia
         else:
             coefficients = checks.probability_rows(
                 initial_conditional_coefficients, 'initial_conditional_coefficients', atol=1e-9)
-            if (coefficients.shape != (nodes.size, projector.basis.shape[0])
+            if (coefficients.shape != (size, projector.basis.shape[0])
                     or not np.allclose(current, coefficients @ projector.basis * projector.dx,
                                        atol=1e-10, rtol=0.0)):
                 raise ValueError('Continuation masses must match the conditional mixture coefficients.')
@@ -924,25 +1012,27 @@ def run_parameter_bank(model, parameters, sigma_x, sigma_y, initial_mass, initia
         raise ValueError('FV banks do not carry mixture coefficients.')
     steps = []
     for when, value, present in zip(observations.times, observations.values, observations.observed):
-        predicted, posterior, scores, next_coefficients = [], [], [], []
-        for j, (candidate, noise) in enumerate(candidates):
+        predicted, posterior, scores, next_coefficients, conditionals = [], [], [], [], []
+        for j, (candidate, noise, observation_noise) in enumerate(candidates):
             options = dict(observed=bool(present), price_side=observations.price_side,
                            breakpoints=breakpoints, max_step=max_step,
                            likelihood_quadrature_order=likelihood_quadrature_order)
             if backend == 'fv':
-                conditional = fv_filter_step(model, candidate, noise, sigma_y, current[j],
+                conditional = fv_filter_step(model, candidate, noise, observation_noise, current[j],
                                              time, float(when), float(value), **options)
                 predicted.append(conditional.predicted_mass)
                 posterior.append(conditional.posterior_mass)
                 scores.append(conditional.log_evidence)
             else:
-                conditional = mixture_filter_step(model, candidate, noise, sigma_y, coefficients[j],
+                conditional = mixture_filter_step(model, candidate, noise, observation_noise, coefficients[j],
                                                   time, float(when), float(value), projector=projector,
                                                   cfl=cfl, **options)
                 predicted.append(conditional['predicted_mass'])
                 posterior.append(conditional['posterior_mass'])
                 scores.append(conditional['log_evidence'])
                 next_coefficients.append(conditional['posterior_coefficients'])
+            if keep_conditionals:
+                conditionals.append(conditional)
         predicted, current = np.stack(predicted), np.stack(posterior)
         update = parameter_bank_weights([scores], logs, np.array([present], dtype=bool))
         old_logs, logs = logs, update['log_weights'][0]
@@ -952,8 +1042,10 @@ def run_parameter_bank(model, parameters, sigma_x, sigma_y, initial_mass, initia
                           log_evidence=float(update['log_evidence'][0]),
                           predicted_mass=np.exp(old_logs) @ predicted,
                           posterior_mass=np.exp(logs) @ current))
+        if keep_conditionals:
+            steps[-1]['conditional_steps'] = tuple(conditionals)
         time = float(when)
-    return dict(coordinate=coordinate, values=nodes, backend=backend, steps=tuple(steps),
+    return dict(backend=backend, steps=tuple(steps),
                 log_weights=np.stack([s['log_weights'] for s in steps]),
                 conditional_log_evidence=np.stack([s['conditional_log_evidence'] for s in steps]),
                 log_evidence=np.array([s['log_evidence'] for s in steps]),

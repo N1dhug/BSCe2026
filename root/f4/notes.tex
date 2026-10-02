@@ -1,7 +1,7 @@
 \section{Formål og læsevej}
 Projektet skal levere rekursiv state- og parameterestimation baseret på en
 approksimeret Fokker--Planck-løsning, herunder mixture-metoden \cite{project}.
-Disse noter samler F4-0--E's matematik, forsøgsdesign og validerede synthetic evidens. Aktuel status og
+Disse noter samler F4-0--G0's matematik, forsøgsdesign og validerede synthetic evidens. Aktuel status og
 resterende opgaver står kun i \texttt{root/F4.md}; kommandoer i \texttt{root/BM\_GUIDE.md}.
 Modellen videreføres fra F1--F3 \cite{repo,junker}. Et beskrevet filter/forecast er
 ikke dermed et implementeret eller valideret resultat.
@@ -998,6 +998,87 @@ Dette etablerer ikke fælles parameteridentifikation, generel kalibrering,
 historisk prisrespons eller en operationel ugeprognose. F4-G undersøger
 udvalgte par og robusthed; støtte og prior indsnævres ikke efter dette resultat.
 Begge populationsrapporter og deres digests bevares i F4-statusfilen.
+
+\subsection{F4-G0: to fælles parametre og metodeidentitet}
+E3/E4's parflader og F's enparameterresultater begrunder to næste par:
+\((\rho,\Xi)\) og \((\sigma_X,\sigma_Y)\). Et skarpt betinget snit og bestået
+enparameter-numerik er ikke en accept af et frit par. G starter derfor med
+metodeidentitet; par-numerik og robusthed følger som særskilte leverancer.
+
+Lad \(\theta_{ij}=(a_i,b_j)\) være en komplet hypotese på et erklæret diskret
+produktgrid. De øvrige parametre holdes faste. Vi beholder den \emph{fælles}
+prior \(w_{0,ij}\) og hver hypoteses egen state-law:
+\begin{align}
+ p_k^{-,ij}&=\mathcal P^{ij}_{t_{k-1}\to t_k}p_{k-1}^{+,ij},\\
+ z_{k,ij}&=\int L_k(x;\theta_{ij})p_k^{-,ij}(x)\dd x,\\
+ p_k^{+,ij}&=L_k(x;\theta_{ij})p_k^{-,ij}(x)/z_{k,ij},\\
+ w_{k,ij}&=\frac{w_{k-1,ij}z_{k,ij}}
+ {\sum_{r,s}w_{k-1,rs}z_{k,rs}}.
+ \label{eq:g0-joint-update}
+\end{align}
+Det er samme rekursion som \eqref{eq:bank}, med et fælles hypoteseindeks.
+Ved støjparret indgår \(\sigma_{Y,j}\) i hele Gaussian-likelihooden, inklusive
+normaliseringsfaktoren; \(\sigma_{X,i}\) indgår i FP-predictionen.
+Ingen faktorisation \(w_{k,ij}=w_{k,i}^{a}w_{k,j}^{b}\) antages efter måling.
+Marginaler fås ved summation: \(w_{k,i}^{a}=\sum_jw_{k,ij}\) og omvendt.
+Fælles kovarians beregnes fra \(\sum_{ij}w_{k,ij}(\theta_{ij}-\bar\theta_k)
+(\theta_{ij}-\bar\theta_k)^T\), så parameterafhængighed kan diagnosticeres.
+Lige-halede marginalområder er ikke et fælles 95\%-område for begge parametre.
+
+G0 bruger fem noder per akse, hver tiende node af E2's uændrede støtter:
+\[
+ \rho\in\{0.5,0.75,1,1.25,1.5\},\quad
+ \Xi\in\{0,0.25,0.5,0.75,1\},
+\]
+\[
+ \sigma_X\in\{0.125,0.25,0.5,1,2\},\quad
+ \sigma_Y\in\{0.0075,0.015,0.03,0.06,0.12\}.
+\]
+Den registrerede prior er \(w_{0,ij}=1/25\); det generelle API accepterer også
+en ikke-produktprior og eksakte nulvægte. Ny ID1348 har interior-truth
+\((\rho,\Xi)=(1,0.75)\), mens ID1349 bruger støj-truth \((0.5,0.03)\)
+med kendt Xi=1. Alle øvrige inputs, k, state-prior, måletider og RNG-rødder
+fra A bevares. Metodekontrollens startnumerik er FV401 for rho/Xi og FV3201
+for støjparret, begge \(h_{\max}=1/1536,q=3\). Dette er ikke par-konvergens,
+især ikke ved den smalle målingslikelihood \(\sigma_Y=0.0075\).
+
+Hver hypotese replayes også selvstændigt fra \(\Beta(20,20)\) via E's
+fixed-parameteradapter. Med \(\ell_{k,ij}=\sum_{n=1}^k\log z_{n,ij}\) er
+den uafhængige kontrol ved hvert prefix
+\begin{align}
+ A_k&=\LSE_{ij}\{\log w_{0,ij}+\ell_{k,ij}\},\\
+ \log w_{k,ij}^{\rm offline}&=\log w_{0,ij}+\ell_{k,ij}-A_k,
+ &\sum_{n=1}^k\log\bar z_n&=A_k.
+ \label{eq:g0-offline}
+\end{align}
+G0 kræver maksimal absolut fejl højst \(10^{-10}\) i joint-logvægte,
+conditional scores, kumuleret marginal log-evidence og alle conditional/
+marginale prediction/posterior-cellemasser ved samtlige 24 prefixer.
+Massefejl højst \(10^{-10}\) og ikke-negative masser er separate gates.
+Prediction bruger \(w_{k-1,ij}\), posterior bruger \(w_{k,ij}\).
+Ingen gate siger, at den sande parameter skal ligge nær MAP.
+
+Der udføres 50 conditional online-forløb og 50 friske offline-replays.
+Én vedvarende spawn-pool med otte workers og én BLAS-tråd fordeler uafhængige
+hypotesegrupper/replays. Conditional states afhænger ikke af parameterprioren;
+derfor kan grupper beregnes hver for sig og scores reduceres med den fulde
+joint prior efter hvert prefix. Lokal gruppenormalisering må ikke bruges som
+global prior eller marginal. Hvert replay følger sin egen serielle kronologi.
+Slutconditional-states og log-vægte tillader fortsættelse; en marginal state-law
+bruges aldrig til at genstarte alle hypoteser. Metoden deler kerne med F's bank.
+
+Efter G0 og rå review følger par-specifik tids-, rum-, likelihood-quadrature-
+og parametergrid-kontrol. Robusthed undersøger derefter 1/3/7 sammenhængende
+døgn, 1/2/4-timers sampling og moderat baseline-/initialprior-mismatch.
+Parret sampling skal bruge delmængder af samme timevise observationspath.
+Syv daglige state-resets er ikke én fortsat syvdages-record. Den fulde
+preregistrering og nye data fastlægges inden disse senere kørsler.
+
+G0 er implementeret, men registreret lokal kørsel og rå review afventer.
+Ugeforecast uden nye observationer er fortsat en særskilt I-leverance med
+erklærede fremtidige inputs. Fit, 168-timers forward-prediction og evaluering
+af alle ugers origins i en erklæret måned skal benchmarkes separat på samme
+Windows-maskine. G0's dags-runtime kan ikke certificere dette praktiske mål.
 
 \subsection{Prior under reparameterisering}
 
