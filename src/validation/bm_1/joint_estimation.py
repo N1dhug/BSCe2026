@@ -4,6 +4,7 @@ G1a holds the 25-node joint parameter measure fixed while refining FV time,
 state cells and observation quadrature. Parameter-grid refinement is G1b.
 """
 
+from collections import deque
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from contextlib import nullcontext
 from dataclasses import replace
@@ -179,6 +180,12 @@ def _candidate_replay(task):
     started = perf_counter()
     case,obs,settings = group['case'],group['observations'],group['settings']
     model,base = case.build_model()
+    backend = group.get('backend','reference')
+    if backend=='lapack':
+        from src.solver.finite_volume import finite_volume_1d_lapack
+        model.fokker_planc_reference = finite_volume_1d_lapack()
+    elif backend!='reference':
+        raise ValueError('Unknown conditional FV backend.')
     candidate = replace(core.f4_e_truth_candidate(case),
                         **dict(zip(group['pair'],group['hypotheses'][j])))
     try:
@@ -206,9 +213,19 @@ def _reduce(group, conditionals):
     for j,c in enumerate(conditionals):
         predicted += old[:,j,None]*c['predicted']
         posterior += weights[:,j,None]*c['posterior']
+    diagnostics = dict(maximum_abs_mass_error=max(c['maximum_abs_mass_error'] for c in conditionals),
+                       minimum_cell_mass=min(c['minimum_cell_mass'] for c in conditionals),
+                       conditional_actual_max_steps=[float(c['actual_max_step']) for c in conditionals],
+                       conditional_seconds=sum(c['elapsed_seconds'] for c in conditionals))
+    return _reduced_row(group,scores,prior,reduced,predicted,posterior,diagnostics)
+
+
+def _reduced_row(group, scores, prior, reduced, predicted, posterior, diagnostics):
+    """Describe a completed bank; conditional trajectories remain independent."""
+    h = np.asarray(group['hypotheses'])
     case,obs,cells = group['case'],group['observations'],group['settings']['x_steps']
     truth = core.f4_e_truth_candidate(case)
-    mass_error = max(max(c['maximum_abs_mass_error'] for c in conditionals),
+    mass_error = max(diagnostics['maximum_abs_mass_error'],
                      float(np.max(np.abs(predicted.sum(axis=1)-1))),float(np.max(np.abs(posterior.sum(axis=1)-1))))
     return dict(coordinates=list(group['pair']),sequence_id=group['sequence_id'],label=group['label'],
                 settings=group['settings'],hypotheses=h.tolist(),initial_log_weights=prior.tolist(),
@@ -221,9 +238,9 @@ def _reduce(group, conditionals):
                 cumulative_log_evidence=np.cumsum(reduced['log_evidence']).tolist(),
                 marginal_predicted_mass=predicted.tolist(),marginal_posterior_mass=posterior.tolist(),
                 x_edges=np.linspace(0,1,cells+1).tolist(),maximum_abs_mass_error=mass_error,
-                minimum_cell_mass=min(c['minimum_cell_mass'] for c in conditionals),
-                conditional_actual_max_steps=[float(c['actual_max_step']) for c in conditionals],
-                conditional_seconds=sum(c['elapsed_seconds'] for c in conditionals),
+                minimum_cell_mass=diagnostics['minimum_cell_mass'],
+                conditional_actual_max_steps=diagnostics['conditional_actual_max_steps'],
+                conditional_seconds=diagnostics['conditional_seconds'],
                 **core._f4_g_joint_summary(h,reduced['log_weights'],group['pair']))
 
 
@@ -287,6 +304,46 @@ def _run_groups(groups, workers, progress=None, *, reducer=_reduce):
                               sequence_id=groups[i]['sequence_id'],label=groups[i]['label']))
     if pending or any(row is None for row in rows):
         raise RuntimeError('Joint study did not complete every replay; no subset is reported.')
+    return rows
+
+
+def _run_groups_streaming(groups, workers, progress, accumulator_factory):
+    """Bound in-flight results to 2*workers and consume in hypothesis order.
+
+    A completed conditional is reduced immediately and then released. Ordered
+    consumption makes summation independent of worker completion order; the
+    bounded queue also prevents a slow early task from growing a result cache.
+    No conditional result is shared across different experiments or settings.
+    """
+    tasks = ((i,j,g) for i,g in enumerate(groups) for j in range(len(g['hypotheses'])))
+    total = sum(len(g['hypotheses']) for g in groups)
+    manager = ProcessPoolExecutor(max_workers=workers,mp_context=get_context('spawn')) if workers>1 else nullcontext(None)
+    rows = [];current = None;accumulator = None;expected_j = 0
+    with manager as pool:
+        queue = deque()
+        def enqueue():
+            task = next(tasks,None)
+            if task is not None:
+                queue.append(pool.submit(_candidate_replay,task) if pool is not None else task)
+        for _ in range(2*workers if pool is not None else 1): enqueue()
+        completed = 0
+        while queue:
+            item = queue.popleft()
+            i,j,conditional = item.result() if pool is not None else _candidate_replay(item)
+            enqueue()
+            if i!=current:
+                if accumulator is not None: rows.append(accumulator.finish())
+                if i!=len(rows): raise RuntimeError('Streaming bank order changed.')
+                current=i;expected_j=0;accumulator=accumulator_factory(groups[i])
+            if j!=expected_j: raise RuntimeError('Streaming hypothesis order changed.')
+            accumulator.add(j,conditional);expected_j+=1;completed+=1
+            del conditional,item
+            if progress is not None:
+                progress(dict(completed=completed,total=total,pair=groups[i]['pair'],
+                              sequence_id=groups[i]['sequence_id'],label=groups[i]['label']))
+        if accumulator is not None: rows.append(accumulator.finish())
+    if completed!=total or len(rows)!=len(groups):
+        raise RuntimeError('Streaming study did not complete every replay.')
     return rows
 
 

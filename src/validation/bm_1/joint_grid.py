@@ -18,6 +18,7 @@ from src.params.bm_1 import conservative_mass_transfer
 G1B0_IDS = (1356, 1357)
 G1B0_COUNTS = (3, 5, 9)
 G1B1_COUNTS = (5, 9, 17)
+G1B2_COUNTS = (5, 9, 17, 33)
 G1B0_CRITERIA = dict(maximum_parameter_tv=.02, maximum_unit_mean_error=.01,
                      maximum_unit_sd_error=.02, maximum_cumulative_evidence_error=.10,
                      maximum_state_l1=.02)
@@ -172,6 +173,89 @@ def _reduce_grids(group, conditionals):
     return rows
 
 
+class _StreamingGridReduction:
+    """Stable online sums of independent conditional state laws.
+
+    For prefix k, prediction uses pi_h exp(L_{k-1,h}), posterior pi_h
+    exp(L_{k,h}). Each sum is rescaled by its running largest log weight.
+    Division by the corresponding weight sum is deferred until all hypotheses
+    have arrived. Only the marginal numerators and raw scores are retained.
+    """
+    def __init__(self, group):
+        if group.get('prior_bridge',True) or not np.all(group['observations'].observed):
+            raise ValueError('Streaming grids require quadrature-only fully observed records.')
+        self.group = group
+        self.seen = 0
+        self.banks = []
+        finest = group['counts'][-1]
+        count = len(group['observations'].times)
+        cells = group['settings']['x_steps']
+        for n in group['counts']:
+            step = (finest-1)//(n-1)
+            indices = np.arange(finest*finest).reshape(finest,finest)[::step,::step].ravel()
+            h,unit,edges,prior = _parameter_grid(group['pair'],n,finest)
+            bank = dict(n=n,indices={int(j):local for local,j in enumerate(indices)},
+                        h=h,unit=unit,edges=edges,prior=prior,scores=np.empty((count,n*n)),
+                        scale=np.full((2,count),-np.inf),denominator=np.zeros((2,count)),
+                        numerator=np.zeros((2,count,cells)),steps=np.empty(n*n),
+                        seconds=0.,mass_error=0.,minimum=np.inf,seen=0)
+            self.banks.append(bank)
+
+    def add(self, j, conditional):
+        if j!=self.seen: raise RuntimeError('Streaming reduction requires every hypothesis in order.')
+        self.seen+=1
+        count = len(self.group['observations'].times)
+        cells = self.group['settings']['x_steps']
+        for name in ('maximum_abs_mass_error','minimum_cell_mass','actual_max_step','elapsed_seconds'):
+            value = checks.finite_scalar(conditional[name],name)
+            if name!='minimum_cell_mass' and value<0:
+                raise ValueError('Streaming replay diagnostics must be nonnegative.')
+        scores = fv._array(conditional['scores'],(count,),'streaming scores')
+        states = np.stack([fv._mass(conditional[p],count,cells,'streaming '+p) for p in ('predicted','posterior')])
+        cumulative = np.cumsum(scores)
+        log_likelihood = np.stack([np.r_[0.,cumulative[:-1]],cumulative])
+        for bank in self.banks:
+            local = bank['indices'].get(j)
+            if local is None: continue
+            log_weight = bank['prior'][local]+log_likelihood
+            scale = np.maximum(bank['scale'],log_weight)
+            old_factor = np.exp(bank['scale']-scale)
+            factor = np.exp(log_weight-scale)
+            bank['numerator'] *= old_factor[:,:,None]
+            bank['numerator'] += factor[:,:,None]*states
+            bank['denominator'] *= old_factor
+            bank['denominator'] += factor
+            bank['scale'] = scale
+            bank['scores'][:,local] = scores
+            bank['steps'][local] = conditional['actual_max_step']
+            bank['seconds'] += conditional['elapsed_seconds']
+            bank['mass_error'] = max(bank['mass_error'],conditional['maximum_abs_mass_error'])
+            bank['minimum'] = min(bank['minimum'],conditional['minimum_cell_mass'])
+            bank['seen']+=1
+
+    def finish(self):
+        if self.seen!=len(self.group['hypotheses']):
+            raise RuntimeError('Incomplete streaming parameter grid.')
+        rows = []
+        for bank in self.banks:
+            n = bank['n']
+            if bank['seen']!=n*n: raise RuntimeError('Incomplete nested streaming grid.')
+            reduced = fv.parameter_bank_weights(bank['scores'],bank['prior'],self.group['observations'].observed)
+            # Independent normalizers provide an algebraic guard on old/new weights.
+            evidence = np.cumsum(reduced['log_evidence'])
+            normalizers = bank['scale']+np.log(bank['denominator'])
+            fv._equal_array(normalizers,np.stack([np.r_[0.,evidence[:-1]],evidence]),'streaming normalizers')
+            marginal = bank['numerator']/bank['denominator'][:,:,None]
+            diagnostics = dict(maximum_abs_mass_error=bank['mass_error'],minimum_cell_mass=bank['minimum'],
+                               conditional_actual_max_steps=bank['steps'].tolist(),conditional_seconds=bank['seconds'])
+            group = dict(self.group,hypotheses=bank['h'],label=f'{n}/{self.group["label"]}/quadrature')
+            row = fv._reduced_row(group,bank['scores'],bank['prior'],reduced,marginal[0],marginal[1],diagnostics)
+            row.update(parameter_nodes_per_axis=n,prior_kind='quadrature',parameter_unit_nodes=bank['unit'].tolist(),
+                       parameter_dual_edges=bank['edges'].tolist(),fv_label=self.group['label'])
+            rows.append(row)
+        return rows
+
+
 def compare_parameter_banks(left, right, *, allow_prior_change=False):
     """TV of joint dual-cell laws on their common refinement, at all prefixes.
 
@@ -244,6 +328,17 @@ def run_joint_parameter_grid_refinement(*, workers=8, progress=None, sequence_id
                            registered_counts=G1B1_COUNTS,prior_bridge=False)
 
 
+def run_joint_parameter_grid_fine(*, workers=8, progress=None, sequence_ids=G1B0_IDS,
+                                  counts=G1B2_COUNTS, numerics=None):
+    """G1b2 v3: 17x17 vs 33x33; 5/9 banks reproduce G1b0 without a G1b1 rerun."""
+    result = _run_joint_grid(workers=workers,progress=progress,sequence_ids=sequence_ids,
+                            counts=counts,numerics=numerics,stage='G1b2',design_version=3,
+                            registered_counts=G1B2_COUNTS,prior_bridge=False,streaming=True)
+    result['conditional_backend'] = 'lapack-tridiagonal; unchanged FV scheme'
+    result['reduction'] = 'ordered streaming log-scaled sums; at most 2*workers in flight'
+    return result
+
+
 def _grid_configurations(levels):
     if set(levels)!=set(fv.G1A_NUMERICS): raise ValueError('Joint grids require FV controls for both pairs.')
     return {k:[v for v in fv._configurations(values)
@@ -252,13 +347,13 @@ def _grid_configurations(levels):
 
 
 def _run_joint_grid(*, workers, progress, sequence_ids, counts, numerics, stage,
-                    design_version, registered_counts, prior_bridge):
+                    design_version, registered_counts, prior_bridge, streaming=False):
     workers = checks.positive_integer(workers,'workers')
     ids = tuple(core._nonnegative_integer(v,'sequence ID') for v in sequence_ids)
     sizes = tuple(checks.positive_integer(v,'parameter nodes',minimum=2) for v in counts)
-    if (len(ids)!=2 or len(set(ids))!=2 or len(sizes)!=3 or not sizes[0]<sizes[1]<sizes[2]
+    if (len(ids)!=2 or len(set(ids))!=2 or len(sizes)!=len(registered_counts) or any(a>=b for a,b in zip(sizes,sizes[1:]))
             or any((sizes[-1]-1)%(n-1) for n in sizes)):
-        raise ValueError('Joint grids require two distinct IDs and three nested increasing parameter grids.')
+        raise ValueError('Joint grids require two distinct IDs and the declared nested increasing parameter grids.')
     levels = fv.G1A_NUMERICS if numerics is None else numerics
     configurations = _grid_configurations(levels)
     groups = []
@@ -268,8 +363,13 @@ def _run_joint_grid(*, workers, progress, sequence_ids, counts, numerics, stage,
         h = _parameter_grid(pair,sizes[-1],sizes[-1])[0]
         for label,settings in configurations['__'.join(pair)]:
             groups.append(dict(stage=stage,pair=pair,sequence_id=sid,case=case,observations=seq.observations,
-                               hypotheses=h,counts=sizes,label=label,settings=settings,prior_bridge=prior_bridge))
-    rows = [r for bank in fv._run_groups(groups,workers,progress,reducer=_reduce_grids) for r in bank]
+                               hypotheses=h,counts=sizes,label=label,settings=settings,prior_bridge=prior_bridge,
+                               backend='lapack' if streaming else 'reference'))
+    if streaming:
+        banks = fv._run_groups_streaming(groups,workers,progress,_StreamingGridReduction)
+    else:
+        banks = fv._run_groups(groups,workers,progress,reducer=_reduce_grids)
+    rows = [r for bank in banks for r in bank]
     comparisons = _grid_comparisons(rows,ids,sizes,prior_bridge=prior_bridge)
     return dict(stage=stage,design_version=design_version,
                 registered_design=bool(ids==G1B0_IDS and sizes==registered_counts and numerics is None),
@@ -285,10 +385,11 @@ def _run_joint_grid(*, workers, progress, sequence_ids, counts, numerics, stage,
                 observation_contract=dict(time_unit='day',observation_kind='point',price_side='right'),
                 inputs=dict(baseline=.5,price_edges=[0.,1/3,2/3,1.],price_values=[.65,.35,.65],state_response='1-2*x',price_response='1-2*u'),
                 truth_settings=dict(initial_beta=[20.,20.],truth_max_step=1/1152,seed_roots=[4101,4102,4103]),
-                candidate_parameter_nodes_per_axis=sizes[1],rows=rows,comparisons=comparisons,
+                candidate_parameter_nodes_per_axis=sizes[-2],rows=rows,comparisons=comparisons,
                 passes=bool(fv._probability_gate(rows) and all(c['passes'] for c in comparisons if c['selected'])),
                 interpretation=('New-record grid/prior pilot; a larger held-out population and G2 remain separate.'
-                                if stage=='G1b0' else 'Paired refinement of rejected G1b0; same records, not held-out recovery.'))
+                                if stage=='G1b0' else ('Paired refinement of rejected G1b0; same records, not held-out recovery.'
+                                if stage=='G1b1' else 'Consolidated refinement after rejected grids; same records, not held-out recovery.')))
 
 
 def _grid_comparisons(rows, ids, sizes, *, prior_bridge):
@@ -308,7 +409,8 @@ def _grid_comparisons(rows, ids, sizes, *, prior_bridge):
                     result['passes'] = bool(result['passes'] and refined)
                 comparisons.append(dict(coordinates=list(pair),sequence_id=sid,kind='FV_'+axis,
                                         parameter_nodes_per_axis=n,left=a['label'],right=b['label'],selected=True,**result))
-        for n,m,selected in ((sizes[0],sizes[1],False),(sizes[1],sizes[2],True)):
+        for n,m in zip(sizes,sizes[1:]):
+            selected = m==sizes[-1]
             a,b = [lookup[f'{v}/middle/quadrature'] for v in (n,m)]
             comparisons.append(dict(coordinates=list(pair),sequence_id=sid,kind='parameter_grid',
                                     left=a['label'],right=b['label'],selected=selected,**compare_parameter_banks(a,b)))
@@ -439,7 +541,7 @@ def validated_g1b0(report, *, require_source=False):
     return True
 
 
-def compare_grid_overlap(previous, current):
+def compare_grid_overlap(previous, current, *, counts=(5,9)):
     """Reproduction gate for all 16 shared quadrature banks, without new fits."""
     fields = ('conditional_log_evidence','log_weights','bank_log_evidence','cumulative_log_evidence',
               'marginal_predicted_mass','marginal_posterior_mass','conditional_actual_max_steps')
@@ -447,7 +549,7 @@ def compare_grid_overlap(previous, current):
                     'observation_times','observations','observed','truth','fixed_parameters','x_edges',
                     'parameter_unit_nodes','parameter_dual_edges','prior_kind')
     def shared_rows(report):
-        rows = [r for r in report['rows'] if r['prior_kind']=='quadrature' and r['parameter_nodes_per_axis'] in (5,9)]
+        rows = [r for r in report['rows'] if r['prior_kind']=='quadrature' and r['parameter_nodes_per_axis'] in counts]
         keyed = {(tuple(r['coordinates']),r['sequence_id'],r['label']):r for r in rows}
         if len(rows)!=16 or len(keyed)!=16: raise ValueError('Grid replay check requires all 16 shared banks.')
         return keyed

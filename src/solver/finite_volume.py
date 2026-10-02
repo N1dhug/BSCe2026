@@ -244,6 +244,27 @@ class finite_volume_1d:
         }
 
 
+class finite_volume_1d_lapack(finite_volume_1d):
+    """Opt-in LAPACK linear solve for the identical conservative FV scheme.
+
+    Grid, coefficients, internal times and all probability diagnostics are
+    inherited unchanged. The independent Python/Thomas reference is retained.
+    """
+    @staticmethod
+    def _solve_tridiagonal(lower, diagonal, upper, rhs):
+        from scipy.linalg.lapack import dgtsv
+        _, _, _, solved, info = dgtsv(
+            np.array(lower,dtype=float,copy=True),
+            np.array(diagonal,dtype=float,copy=True),
+            np.array(upper,dtype=float,copy=True),
+            np.array(rhs,dtype=float,copy=True)[:,None],
+            overwrite_dl=1,overwrite_d=1,overwrite_du=1,overwrite_b=1,
+        )
+        if info != 0:
+            raise RuntimeError(f'LAPACK FV tridiagonal solve failed (info={info}).')
+        return solved[:,0]
+
+
 class finite_volume_2d:
     """Generic two-dimensional finite-volume PDE solver.
 

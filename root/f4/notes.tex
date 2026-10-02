@@ -1375,6 +1375,63 @@ Ved fejl bevares begge artifacts før et særskilt nyt design, uden ændring
 af støtte, prior eller tolerancer efter truth. Større population på nye
 records og praktisk uge-/månedsbenchmark følger senere.
 
+\subsection{F4-G1b2 v3: samlet finere grid og praktisk afvikling}
+Design låst før sin fulde kørsel. Samme ID1356/1357, inputs/truth, prior,
+støtte og tolerancer som G1b0/G1b1. Nested akser har 5/9/17/33 noder;
+kandidat 17x17 mod kontrol 33x33. Alle 1089 hypoteser per par får fire
+friske FV-konfigurationer: 8712 replays, 32 banker og 24 sammenligninger.
+Alle 20 aktive kontroller kræves bestået på alle prefixer: tre FV-akser
+på hvert af 9x9/17x17/33x33 per par og to 17x17 mod 33x33-parameterkontroller.
+5x5 mod 9x9 og 9x9 mod 17x17 bevares som fire diagnostikker.
+Ingen pruning, automatisk refinement eller støtteændring.
+
+Den rå-reviewede Windows-G1b0 genvalideres som dependency, inklusive
+G1a/G0-kæden. Alle 16 fælles 5-/9-grid-banker skal reproducere originalen
+til \(10^{-10}\) i G1b1's score-, vægt-, evidence-, state- og step-felter.
+Der kræves ingen separat Windows-G1b1: dette samlede studie beregner selv
+5/9/17-bankerne igen og bevarer deres grid-fejl. Den selvstændige
+G1b1-udviklingsrapport bevares særskilt og bliver ikke Windows-evidens.
+CLI er \texttt{joint-bank-grid-fine}; PowerShell står i BM-guiden.
+
+\paragraph{Samme FV-ligninger.}
+En opt-in LAPACK-solver ændrer alene løsningen af det tridiagonale system
+\((I-hQ)m_{n+1}=m_n\). Generator, grænsebetingelser, grid, interne tider,
+observationsquadrature og massediagnostikker arves uændret fra referencen.
+Den selvstændige Python/Thomas-reference og de tidligere designs bevares.
+Ingen state eller faktorisering genbruges mellem hypoteser, og solverfejl
+repareres ikke. Tre fulde enkeltreplays ved rho401 og støj3201/6401 gav
+identiske scores/state-arrays. Deres wall-ratio 3.24/11.98/15.74 blev målt
+under samtidig belastning og er ikke et isoleret Windows-benchmark.
+
+\paragraph{Løbende reduktion uden sammenblanding af conditional states.}
+Sæt \(a_{k,h}^{-}=\log\pi_h+L_{k-1,h}\) og
+\(a_{k,h}^{+}=\log\pi_h+L_{k,h}\). For hver fase og prefix akkumuleres
+\[
+ m=\max_h a_{k,h},\qquad
+ N=\sum_h e^{a_{k,h}-m}p_{k,h},\qquad
+ Z=\sum_h e^{a_{k,h}-m},\qquad \bar p_k=N/Z.
+\]
+Når et nyt led øger \(m\), skaleres de hidtidige \(N,Z\) med
+\(e^{m_{\rm gammel}-m_{\rm ny}}\). Det er den samme Bayes-mixture som
+batchreduktionen. Conditional states normaliseres/repareres ikke; deres
+massefejl bevares i gaten. \(m+\log Z\) kontrolleres mod rå score-evidence,
+med henholdsvis \(L_{k-1}\) og \(L_k\). Rå scores og steps gemmes.
+
+En vedvarende spawn-pool har højst \(2\cdot\mathrm{workers}\) opgaver
+i kø; for Windows bruges otte workers og BLAS=1. Resultater konsumeres
+i fast hypoteseorden, uafhængigt af completion-rækkefølgen. En conditional
+historie frigives efter reduktion, uden at nogen efterfølgende hypotese
+starter fra den marginale state. For 1089 hypoteser, 6401 celler og 24
+prefixer kræver de to fulde conditional historier alene ca. 2.49 GiB.
+Fire nested bankers marginale tællere bruger ca. 9.38 MiB, plus bounded
+in-flight resultater og rapportdata. Det er beregnede array-størrelser,
+ikke målt total-RAM. Test dækker ekstreme scores, forskellige conditional
+states, seriel/spawn-identitet, køgrænse og fejlpropagering.
+
+Nyt outputnavn bevarer originalerne; gatefejl gemmes før nonzero exit.
+Et bestået G1b2 accepterer kun 17x17 på disse to pilotrecords. Ingen
+automatisk accept af 33x33, recovery, G2 eller uge-/månedsruntime.
+
 \subsection{Prior under reparameterisering}
 
 Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved
