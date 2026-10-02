@@ -19,6 +19,7 @@ G1B0_IDS = (1356, 1357)
 G1B0_COUNTS = (3, 5, 9)
 G1B1_COUNTS = (5, 9, 17)
 G1B2_COUNTS = (5, 9, 17, 33)
+G1B3_COUNTS = (5, 9, 17, 33, 65)
 G1B0_CRITERIA = dict(maximum_parameter_tv=.02, maximum_unit_mean_error=.01,
                      maximum_unit_sd_error=.02, maximum_cumulative_evidence_error=.10,
                      maximum_state_l1=.02)
@@ -291,7 +292,7 @@ def compare_parameter_banks(left, right, *, allow_prior_change=False):
         mean = weights@coordinates
         means.append(mean);sds.append(np.sqrt(np.sum(weights[:,:,None]*(coordinates[None,:,:]-mean[:,None,:])**2,axis=1)))
         transfer = np.column_stack([conservative_mass_transfer(dual,v,edges) for v in np.eye(n)])
-        laws.append(np.einsum('ai,kij,bj->kab',transfer,weights.reshape(count,n,n),transfer))
+        laws.append(np.einsum('ai,kij,bj->kab',transfer,weights.reshape(count,n,n),transfer,optimize=True))
     delta = np.abs(laws[1]-laws[0])
     prefix = dict(parameter_tv=.5*delta.sum(axis=(1,2)),
                   unit_mean_error=np.max(abs(means[1]-means[0]),axis=1),
@@ -334,6 +335,17 @@ def run_joint_parameter_grid_fine(*, workers=8, progress=None, sequence_ids=G1B0
     result = _run_joint_grid(workers=workers,progress=progress,sequence_ids=sequence_ids,
                             counts=counts,numerics=numerics,stage='G1b2',design_version=3,
                             registered_counts=G1B2_COUNTS,prior_bridge=False,streaming=True)
+    result['conditional_backend'] = 'lapack-tridiagonal; unchanged FV scheme'
+    result['reduction'] = 'ordered streaming log-scaled sums; at most 2*workers in flight'
+    return result
+
+
+def run_joint_parameter_grid_dense(*, workers=8, progress=None, sequence_ids=G1B0_IDS,
+                                   counts=G1B3_COUNTS, numerics=None):
+    """G1b3 v4: 33x33 vs 65x65, retaining all coarser comparisons."""
+    result = _run_joint_grid(workers=workers,progress=progress,sequence_ids=sequence_ids,
+                            counts=counts,numerics=numerics,stage='G1b3',design_version=4,
+                            registered_counts=G1B3_COUNTS,prior_bridge=False,streaming=True)
     result['conditional_backend'] = 'lapack-tridiagonal; unchanged FV scheme'
     result['reduction'] = 'ordered streaming log-scaled sums; at most 2*workers in flight'
     return result

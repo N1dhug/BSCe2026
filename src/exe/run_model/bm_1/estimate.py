@@ -1166,17 +1166,23 @@ def run_joint_parameter_grid_fine(args):
     return _run_joint_parameter_study(args,refinement=True,fine=True)
 
 
-def _run_joint_parameter_study(args, *, refinement, fine=False):
+def run_joint_parameter_grid_dense(args):
+    """G1b3: consolidated 33x33-to-65x65 refinement from reviewed G1b0."""
+    return _run_joint_parameter_study(args,refinement=True,dense=True)
+
+
+def _run_joint_parameter_study(args, *, refinement, fine=False, dense=False):
     if args.output.exists():
         raise FileExistsError(f'Refusing to overwrite {args.output}.')
     started = last_printed = perf_counter()
-    stage = 'G1b2' if fine else ('G1b1' if refinement else 'G1b0')
-    if fine:
+    stage = 'G1b3' if dense else ('G1b2' if fine else ('G1b1' if refinement else 'G1b0'))
+    if fine or dense:
         dependency,digest = _read_bank_dependency(args.g1b0_report,joint_grid.validated_g1b0)
         provenance = dict(sha256=digest,source_commit=dependency['source_commit'],
                           g1a=dict(dependency['dependencies']['g1a']))
-        runner = joint_grid.run_joint_parameter_grid_fine
-        design = '5/9/17/33 nodes per axis; 8712 replays / 32 reductions; LAPACK + streaming'
+        runner = joint_grid.run_joint_parameter_grid_dense if dense else joint_grid.run_joint_parameter_grid_fine
+        design = ('5/9/17/33/65 nodes per axis; 33800 replays / 40 reductions; LAPACK + streaming' if dense
+                  else '5/9/17/33 nodes per axis; 8712 replays / 32 reductions; LAPACK + streaming')
     elif refinement:
         dependency,digest = _read_bank_dependency(args.g1b0_report,joint_grid.validated_g1b0)
         provenance = dict(sha256=digest,source_commit=dependency['source_commit'],
@@ -1438,14 +1444,16 @@ def build_parser():
     parameter_grid_refinement.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
     parameter_grid_refinement.set_defaults(handler=run_joint_parameter_grid_refinement)
 
-    parameter_grid_fine = subparsers.add_parser(
-        'joint-bank-grid-fine',help='G1b2 v3: consolidated 17x17-to-33x33 refinement from reviewed G1b0.')
-    parameter_grid_fine.add_argument('--g1b0-report',type=Path,required=True,
-        help='Complete clean-source rejected G1b0 JSON/gzip with passing FV controls; no G1b1 rerun.')
-    parameter_grid_fine.add_argument('--workers',type=int,default=8,help='Independent spawn workers; BLAS=1 recommended.')
-    parameter_grid_fine.add_argument('--output',type=Path,required=True,help='New JSON/gzip report; originals are retained.')
-    parameter_grid_fine.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
-    parameter_grid_fine.set_defaults(handler=run_joint_parameter_grid_fine)
+    for command,description,handler in (
+            ('joint-bank-grid-fine','G1b2 v3: consolidated 17x17-to-33x33 refinement.',run_joint_parameter_grid_fine),
+            ('joint-bank-grid-dense','G1b3 v4: consolidated 33x33-to-65x65 refinement.',run_joint_parameter_grid_dense)):
+        parameter_grid_fine = subparsers.add_parser(command,help=description)
+        parameter_grid_fine.add_argument('--g1b0-report',type=Path,required=True,
+            help='Complete clean-source rejected G1b0 JSON/gzip with passing FV controls; no intermediate reruns.')
+        parameter_grid_fine.add_argument('--workers',type=int,default=8,help='Independent spawn workers; BLAS=1 recommended.')
+        parameter_grid_fine.add_argument('--output',type=Path,required=True,help='New JSON/gzip report; originals are retained.')
+        parameter_grid_fine.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
+        parameter_grid_fine.set_defaults(handler=handler)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',

@@ -48,6 +48,7 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | F4-G G1b0 parametergrid/prior-pilot med FV-kontrol af nye noder | `joint-bank-grid --g1a-report <G1a-JSON>` |
 | F4-G G1b1 v2 parret 9x9→17x17-kontrol efter afvist G1b0 | `joint-bank-grid-refine --g1b0-report <G1b0-JSON>` |
 | F4-G G1b2 v3 samlet 17x17→33x33-kontrol, LAPACK og løbende reduktion | `joint-bank-grid-fine --g1b0-report <G1b0-JSON>` |
+| F4-G G1b3 v4 samlet 33x33→65x65-kontrol | `joint-bank-grid-dense --g1b0-report <G1b0-JSON>` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -434,7 +435,7 @@ Development API-overrides er eksplicit uregistrerede.
 ## F4-G1b1 v2: selvstændig reproduktion
 
 Kommandoen bevares til reproduktion. Den næste samlede Windows-kørsel er
-G1b2 nedenfor; G1b1 skal ikke køres først.
+G1b3 nedenfor; G1b1 skal ikke køres først.
 
 Branch **feature/f4-g-grid-refinement** bygger på main `aa98beb`.
 Samme ID1356/1357, inputs/truth, prior-mål, støtter og tolerancer som G1b0.
@@ -489,7 +490,11 @@ Behold G1b0-artifactet. Der loves ingen grid-accept; større population og
 recovery kræver senere nye records. En bestået pilot accepterer kandidatens
 9x9-bank på disse to records, ikke automatisk 17x17 eller ugeforecast.
 
-## Næste lokale kørsel: F4-G1b2 v3
+## F4-G1b2 v3: selvstændig reproduktion
+
+Udviklingskørslen er rå-reviewet: FV/reproduktion består, begge parameter-TV-gates
+fejler. Denne kommando bevares; næste samlede Windows-handoff er G1b3 nedenfor.
+Du skal ikke først køre G1b2.
 
 Den samlede kontrol bruger **5/9/17/33 noder**, kandidat 17x17 mod 33x33,
 **8.712 replays / 32 banker og 20 aktive gates**. Den genskaber også G1b1's
@@ -526,6 +531,49 @@ $g1b2Exit = $LASTEXITCODE
 $g1b2Timer.Stop()
 Write-Host ("G1b2 wall time inkl. opstart/output: {0:N2} s" -f $g1b2Timer.Elapsed.TotalSeconds)
 if ($g1b2Exit -ne 0) { throw "G1b2 fejlede; behold rå rapport og terminalresumé til review." }
+```
+
+Send den nye rå gzip og terminalresumé med stopwatch, også ved gatefejl.
+Output overskrives aldrig. En bestået pilot certificerer kun kandidatgridet på
+to records; større population, G2 og praktisk uge-/månedsbenchmark følger særskilt.
+
+## Næste lokale kørsel: F4-G1b3 v4
+
+Den samlede kontrol bruger **5/9/17/33/65 noder**, kandidat 33x33 mod 65x65,
+**33.800 replays / 40 banker og 26 aktive gates**. Den genskaber også G1b1/G1b2's
+5/9/17/33-banker og bevarer de grovere fejl som diagnostik. G1b0's rå Windows-fil
+valideres og de 16 fælles banker reproduceres til 1e-10. **Du skal ikke først
+køre G1b1 eller G1b2**, og ingen G0/G1a/G1b0-genkørsel er nødvendig.
+
+Opt-in LAPACK løser samme FV-system med uændret numerik. Den løbende reduktion
+bevarer hver hypoteses egen state og bruger de korrekte gamle/nye Bayes-vægte.
+Windows bruger fortsat **8 workers / BLAS=1**, nu med begrænset kø/hukommelse.
+Design, fejlbevaring og udviklingsevidens står i F4-status/noter.
+
+Fra projektmappen, før merge (brugeren merger selv efter rå review):
+
+```powershell
+git fetch --prune origin
+if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
+git switch feature/f4-g-grid-refinement
+if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+git pull --ff-only origin feature/f4-g-grid-refinement
+if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
+git log -1 --oneline
+if (git status --porcelain) { throw "Working tree er ikke ren." }
+
+python -B -m unittest discover -s tests -q
+if ($LASTEXITCODE -ne 0) { throw "Tests fejlede." }
+
+$g1b3Timer = [System.Diagnostics.Stopwatch]::StartNew()
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-grid-dense `
+  --g1b0-report files/output/bm_1/runs/estimation/f4_g_g1b0_joint_parameter_grid.json.gz `
+  --workers 8 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_g_g1b3_joint_parameter_grid_dense_v4.json.gz
+$g1b3Exit = $LASTEXITCODE
+$g1b3Timer.Stop()
+Write-Host ("G1b3 wall time inkl. opstart/output: {0:N2} s" -f $g1b3Timer.Elapsed.TotalSeconds)
+if ($g1b3Exit -ne 0) { throw "G1b3 fejlede; behold rå rapport og terminalresumé til review." }
 ```
 
 Send den nye rå gzip og terminalresumé med stopwatch, også ved gatefejl.

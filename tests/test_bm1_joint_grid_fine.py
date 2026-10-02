@@ -80,6 +80,26 @@ class JointFineGridTests(unittest.TestCase):
             self.assertFalse(saved['passes'])
             self.assertEqual(saved['replay_reproduction']['validation_error'],'metadata mismatch')
 
+    def test_dense_five_level_reduction_retains_each_comparison_and_prefix(self):
+        numerics={k:dict(time_steps=(1/12,1/24,1/48),spatial_cells=(7,11,15),quadrature_orders=(1,3,5))
+                  for k in fv.G1A_NUMERICS}
+        with patch.object(fv,'_candidate_replay',side_effect=constant_replay):
+            r=grid.run_joint_parameter_grid_dense(workers=1,counts=(2,3,5,9,17),numerics=numerics)
+        self.assertEqual((r['stage'],r['design_version']),('G1b3',4))
+        self.assertFalse(r['registered_design'])
+        self.assertEqual((len(r['rows']),len(r['comparisons'])),(40,32))
+        self.assertEqual(sum(c['selected'] for c in r['comparisons']),26)
+        self.assertEqual(r['candidate_parameter_nodes_per_axis'],9)
+        # The deliberately tiny FV fixture fails spatial remapping even though
+        # constant parameter likelihoods pass: no grid gate may hide that failure.
+        self.assertTrue(all(c['passes'] for c in r['comparisons'] if c['kind']=='parameter_grid' and c['selected']))
+        self.assertTrue(any(not c['passes'] for c in r['comparisons'] if c['kind']=='FV_spatial'))
+        self.assertFalse(r['passes'])
+        from src.exe.run_model.bm_1 import estimate
+        args=estimate.build_parser().parse_args(['joint-bank-grid-dense','--g1b0-report','old.gz','--output','new.gz'])
+        self.assertIs(args.handler,estimate.run_joint_parameter_grid_dense)
+        self.assertEqual(args.workers,8)
+
     def test_diagnostic_overrides_are_not_registered(self):
         numerics={k:dict(time_steps=(1/12,1/24,1/48),spatial_cells=(7,11,15),quadrature_orders=(1,3,5))
                   for k in fv.G1A_NUMERICS}

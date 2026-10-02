@@ -1437,6 +1437,46 @@ Nyt outputnavn bevarer originalerne; gatefejl gemmes før nonzero exit.
 Et bestået G1b2 accepterer kun 17x17 på disse to pilotrecords. Ingen
 automatisk accept af 33x33, recovery, G2 eller uge-/månedsruntime.
 
+\paragraph{Fuld udviklingskørsel og rå review.}
+Clean \texttt{b76df35} gennemførte 8712 replays og 32 banker på
+640.2642 s før lagring med otte workers og BLAS=1. Alle 18 FV-kontroller
+og 16 shared reproduktionskontroller består; max reproduktionsafvigelse er
+\(4.1212\cdot10^{-13}\). Det er Linux-udvikling, ikke Windows-certificering.
+Begge 17x17 mod 33x33-kontroller fejler alene på joint dualcelle-TV:
+0.085124/0.104448 mod 0.02. Unit-middelfejl er 0.000307/0.000535,
+unit-SD 0.000844/0.000727, evidence 0.001421/0.001140 og
+prediction/posterior-state-\(L^1\) højst 0.001429/0.000890.
+TV fejler ved 23/24 og 22/24 prefixer; alle øvrige parameter-gates består.
+9x9 mod 17x17 fejler også alene på TV, 0.165706/0.203067.
+Afvisningen og de grovere fejl bevares; der udledes ingen komplet parameteraccept.
+
+Alle 32 banker og 24 sammenligninger er råauditeret, inklusive score-algebra,
+prior/noder, nested data, source/dependencies og separate tætheds-/CDF-remaps.
+Max auditafvigelse er \(5.7981\cdot10^{-12}\), max massefejl
+\(2.4061\cdot10^{-12}\); ingen negative masser. Digest står i F4-status.
+Samme kilde har grøn CI med 452 tests og PDF-build. Den oprindelige G1b1's
+slutkontrolfejl er rettet; G1b2 gemmer det komplette negative resultat korrekt.
+G1b3 raffinerer den resterende TV-fejl uden at ændre definition eller tolerance.
+
+\subsection{F4-G1b3 v4: samlet 33x33 mod 65x65}
+Design låst før kørsel efter G1b2-review. Samme ID1356/1357, model/data,
+støtte/prior og alle tolerancer. Nested akser har 5/9/17/33/65 noder;
+kandidat 33x33 mod kontrol 65x65. Alle 4225 hypoteser per par får fire
+friske LAPACK-FV-konfigurationer: 33800 replays, 40 banker, 32 sammenligninger.
+Alle 26 aktive kontroller skal bestå ved alle prefixer: tre FV-akser på hvert
+af 9/17/33/65-gridene per par samt to 33x33 mod 65x65-kontroller.
+De seks grovere parameterkontroller bevares som diagnostik.
+
+CLI \texttt{joint-bank-grid-dense} bruger den validerede Windows-G1b0 direkte,
+med samme G1a/G0-kæde og reproduktionsgate på 16 fælles 5-/9-grid-banker.
+Ingen separat Windows-G1b1/G1b2 kræves; alle deres nested reduktioner genskabes.
+Samme LAPACK-solver, ordnede løbende reduktion, otte workers og BLAS=1.
+Tensoroverførslen til fælles parameterceller faktoriseres i to matrixprodukter;
+kanter, masser og TV-definition ændres ikke. Separat tæthedsintegration
+auditerer stadig resultatet. Ingen automatisk grid-/toleranceændring.
+Et bestået G1b3 accepterer alene 33x33 på de to pilotrecords. G2, population
+og uge-/månedsruntime er fortsat særskilte, betingede leverancer.
+
 \subsection{Prior under reparameterisering}
 
 Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved
