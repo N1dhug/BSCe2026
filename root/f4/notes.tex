@@ -957,8 +957,47 @@ ikke et nyt uafhængigt holdout.
 Udviklingskørslen på alle 20 dage bestod på 320.91 sekunder.
 Posterior-\(L^1\) var højst 0.005552 mellem de to nye FV-tidssteps og
 0.011673 mellem den valgte FV og mixture. Resultatet er udviklingsevidens;
-registreret kørsel fra ren commit og efterfølgende rå review mangler,
-før F4-F kan afsluttes.
+den registrerede kørsel og dens særskilte rå review følger nedenfor.
+
+\paragraph{Registreret tidsopfølgning og afslutning af F4-F.}
+Fra ren kildecommit \texttt{e2d8ace} gennemførte Windows-kørslen alle
+40 nye FV-banks og 1640 replays på 406.30 sekunder med otte workers og
+én BLAS-tråd. Alle 396 regressionstests bestod lokalt. De 40 nye og
+60 originale bankrækker, 80 sammenligninger, tre populationssummer,
+design og dependency-digests er kontrolleret. Bayes-statistik, scores,
+midler, state-masser og gates blev genberegnet; største afvigelse var
+\(4.264\cdot10^{-13}\). De nye rå scores, vægte og marginalmasser
+matcher udviklingskørslen inden for \(1.333\cdot10^{-14}\).
+
+\begin{center}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Valgt kontrol & Log-odds & Vægt-TV & Log-evidence & Max state-\(L^1\)\\
+\midrule
+FV, \(1/1536\) mod \(1/3072\) & 0.004143 & 0.000512 & 0.006926 & 0.005552\\
+FV mod gemt mixture & 0.008788 & 0.001086 & 0.014666 & 0.011673\\
+\bottomrule
+\end{tabular}
+\end{center}
+Alle 40 valgte sammenligninger består de uændrede gates.
+Faktiske FV-max-steps er \(1/1536\) og \(1/3072\). Max massefejl er
+\(9.993\cdot10^{-15}\) i de nye banks og \(5.718\cdot10^{-13}\)
+for alle 60 valgte banks inklusive genbrug. Ingen negative masser eller
+fallbacks; originalens ID1337/1347-fejl er bevaret som ikke-valgt diagnostik.
+Den valgte rho-FV bruger nu 401 celler, \(h_{\max}=1/1536,q=3\).
+Mixture401 ved \(1/32768\) og \(\sigma_x\)-FV3201 ved \(1/1536\)
+er uændrede, begge \(q=3\).
+
+Rho-FV's parameter-RMSE er 0.070397, median posterior-SD 0.285911
+og state-posterior-RMSE 0.022428; de genbrugte mixture- og
+\(\sigma_x\)-resultater er uændrede. Den numeriske referenceændring
+ændrer altså ikke konklusionen om svag rho-læring over ét døgn.
+F4-F er afsluttet med en kontrolleret rekursiv enparameterbank, eksplicit
+prior-/støttefølsomhed og bestået rho-mixture-sammenligning.
+Dette etablerer ikke fælles parameteridentifikation, generel kalibrering,
+historisk prisrespons eller en operationel ugeprognose. F4-G undersøger
+udvalgte par og robusthed; støtte og prior indsnævres ikke efter dette resultat.
+Begge populationsrapporter og deres digests bevares i F4-statusfilen.
 
 \subsection{Prior under reparameterisering}
 
