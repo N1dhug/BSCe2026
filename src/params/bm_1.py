@@ -21,9 +21,10 @@ from src.validation import estimation as checks
 class BM1ObservationSeries:
     """Owned point observations; times use the explicitly declared time unit.
 
-    price_side records whether an observation at an input jump sees its left
-    or right limit. A future filter must honor it; this container samples no
-    signals. Interval averages/energies require a different observation model.
+    price_side selects the price's left or right limit at an input jump;
+    baseline is evaluated at the observation time. Filters honor this contract;
+    the container samples no signals. Times must share the model's unit, with
+    no implicit conversion. Interval data require a different observation model.
     Missing measurements require an explicit False mask. No truth or control
     target is stored, and no unobserved value is inferred from a future sample.
     """

@@ -1,8 +1,8 @@
 """F4 estimation entry point.
 
-F4-B exposes the reproducible synthetic generator. F4-C adds the known-parameter
-finite-volume state filter. F4-D validates the recursive mixture representation. F4-E screens fixed-parameter
-predictive likelihoods. F4-F adds a recursive FV rho bank and prefix identities.
+F4-B exposes the reproducible synthetic generator; F4-C/D validate FV/mixture
+state filters. F4-E screens fixed-parameter predictive likelihoods. F4-F studies
+recursive one-parameter banks, numerical accuracy and prior/support sensitivity.
 """
 
 from __future__ import annotations
@@ -98,6 +98,10 @@ def _print_sequence(result, label='base'):
 
 
 def run_synthetic(args):
+    suffix = 'refinement' if args.refine else 'sequence'
+    path = OUTPUT_DIR / f'f4_b_{suffix}_{args.sequence_id:04d}.json'
+    if args.save and path.exists():
+        raise FileExistsError(f'Refusing to overwrite {path}; choose a new sequence id.')
     case = synthetic.build_f4_b_case()
     if args.refine:
         result = synthetic.generate_coupled_refinement(case, sequence_id=args.sequence_id)
@@ -114,16 +118,15 @@ def run_synthetic(args):
                 'maximum_abs_demand_difference': result.maximum_abs_demand_difference,
             },
         }
-        suffix = 'refinement'
     else:
         result = synthetic.generate_synthetic_sequence(case, sequence_id=args.sequence_id)
         _print_sequence(result)
         payload = {'case': 'F4-A locked core', 'sequence': _sequence_record(result)}
-        suffix = 'sequence'
     if args.save:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        path = OUTPUT_DIR / f'f4_b_{suffix}_{args.sequence_id:04d}.json'
-        path.write_text(json.dumps(payload, indent=2, allow_nan=False) + '\n', encoding='utf-8')
+        with path.open('x', encoding='utf-8') as handle:
+            json.dump(payload, handle, indent=2, allow_nan=False)
+            handle.write('\n')
         print(f'Saved {path}')
     return result
 
@@ -653,22 +656,7 @@ def run_mixture_filter_population(args):
         workers=args.workers,
         progress=progress,
     )
-    if args.output is not None:
-        try:
-            revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT,
-                                      text=True, capture_output=True, check=True).stdout.strip()
-            dirty = bool(subprocess.run(['git', 'status', '--porcelain'], cwd=ROOT,
-                                        text=True, capture_output=True, check=True).stdout)
-        except (OSError, subprocess.SubprocessError):
-            revision, dirty = None, None
-        payload = {**result, 'source_commit': revision, 'working_tree_dirty': dirty,
-                   'elapsed_seconds': perf_counter() - started,
-                   'blas_threads_requested': args.blas_threads}
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        with args.output.open('x', encoding='utf-8') as handle:
-            json.dump(payload, handle, indent=2, allow_nan=False)
-            handle.write('\n')
-        print(f'Saved {args.output}')
+    _write_likelihood_report(args, result, started)
     if result.get('successful_sequences', 0) == 0:
         print(
             f"  no successful sequences; invalid={result['invalid_truth_sequences']}; "
@@ -759,6 +747,14 @@ def _write_likelihood_report(args, result, started):
     print(f"Saved {args.output}")
 
 
+def _read_likelihood_report(path):
+    """Read plain/gzip evidence and identify the exact stored bytes."""
+    import gzip
+    raw = path.read_bytes()
+    decoded = gzip.decompress(raw) if path.suffix == '.gz' else raw
+    return json.loads(decoded.decode('utf-8')), hashlib.sha256(raw).hexdigest()
+
+
 def run_likelihood_refinement(args):
     """Run preregistered F4-E E1 rho-likelihood numerical refinement."""
     if args.output is not None and args.output.exists():
@@ -824,8 +820,7 @@ def run_parameter_screening(args):
     """Run locked E2 after rechecking the supplied registered E1 artifact."""
     if args.output is not None and args.output.exists():
         raise FileExistsError(f"Refusing to overwrite {args.output}; choose a new result path.")
-    raw = args.e1_report.read_bytes()
-    e1 = json.loads(raw.decode('utf-8'))
+    e1, digest = _read_likelihood_report(args.e1_report)
     settings = synthetic.f4_e_screen_numerics_from_refinement(e1)
     print(
         f"F4-E E2 parameter screening: sequences=1212..1261; "
@@ -847,7 +842,7 @@ def run_parameter_screening(args):
         e1_refinement=e1, workers=args.workers, progress=progress,
     )
     result['e1_report_path'] = str(args.e1_report)
-    result['e1_report_sha256'] = hashlib.sha256(raw).hexdigest()
+    result['e1_report_sha256'] = digest
     for name, item in result['summary'].items():
         print(
             f"  {name}: median MLE={item['unique_mle_median']}; "
@@ -944,8 +939,7 @@ def run_pair_surfaces(args):
     for path in targets:
         if path.exists():
             raise FileExistsError(f"Refusing to overwrite {path}; choose a new result path.")
-    raw = args.e2_report.read_bytes()
-    e2 = json.loads(raw.decode('utf-8'))
+    e2, digest = _read_likelihood_report(args.e2_report)
     settings = synthetic.f4_e_screening_inputs(e2)
     print(f"F4-E E3 pair surfaces: sequences=1212..1221; 3 pairs x 21x21 nodes; "
           f"cells={settings['x_steps']}; hmax={settings['max_step']:.6e}; "
@@ -963,7 +957,7 @@ def run_pair_surfaces(args):
 
     result = synthetic.run_f4_e_pair_surfaces(e2_screening=e2, workers=args.workers, progress=progress)
     result['e2_report_path'] = str(args.e2_report)
-    result['e2_report_sha256'] = hashlib.sha256(raw).hexdigest()
+    result['e2_report_sha256'] = digest
     result['figure_paths'] = tuple(str(path) for path in figures)
     for pair in synthetic.F4_E_PAIRS:
         item = result['pair_results']['__'.join(pair)]
@@ -1013,12 +1007,9 @@ def run_bank_identity(args):
 
 
 def _read_bank_dependency(path, validator):
-    import gzip
-    raw = path.read_bytes()
-    decoded = gzip.decompress(raw) if path.suffix == '.gz' else raw
-    report = json.loads(decoded.decode('utf-8'))
+    report, digest = _read_likelihood_report(path)
     validator(report, require_source=True)
-    return report, hashlib.sha256(raw).hexdigest()
+    return report, digest
 
 
 def run_bank_study(args):

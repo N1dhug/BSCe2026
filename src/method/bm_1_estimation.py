@@ -1,4 +1,4 @@
-"""Recursive BM1 state estimation and a static discrete FV rho bank.
+"""Recursive BM1 FV/mixture state filters and discrete one-parameter banks.
 
 This module composes the existing conservative FV/Fokker--Planck solver with
 the generic F4 observation/Bayes primitives. It contains estimator mechanics,
@@ -277,10 +277,7 @@ def mixture_filter_step(
     """One recursive fixed-basis mixture prediction/update with no FV restart."""
     if not isinstance(projector, PreparedBetaProjector):
         raise TypeError('projector must be a PreparedBetaProjector.')
-    previous_time = checks.finite_scalar(previous_time, 'previous_time')
-    observation_time = checks.finite_scalar(observation_time, 'observation_time')
-    if observation_time <= previous_time:
-        raise ValueError('observation_time must be strictly after previous_time.')
+    previous_time, observation_time = _filter_interval(model, previous_time, observation_time)
     sigma_y = checks.finite_scalar(sigma_y, 'sigma_y', positive=True)
     max_step = _positive_filter_step(max_step, 'max_step')
     cfl = checks.finite_scalar(cfl, 'cfl', positive=True)
@@ -299,9 +296,6 @@ def mixture_filter_step(
     sigma_x = checks.finite_scalar(sigma_x, 'sigma_x')
     if sigma_x < 0.0:
         raise ValueError('sigma_x must be non-negative.')
-    if previous_time < model.T[0] or observation_time > model.T[1]:
-        raise ValueError('Mixture filter interval must lie inside the model horizon.')
-
     edges, x_grid, dx = model.fokker_planc_reference.grid(
         projector.basis.shape[1], bounds=(0.0, 1.0),
     )
@@ -519,6 +513,16 @@ def _cell_log_likelihood(model, parameters, time, previous_time, edges, observat
     return logsumexp(logs + np.log(0.5 * weights)[None, :], axis=1)
 
 
+def _filter_interval(model, previous_time, observation_time):
+    previous_time = checks.finite_scalar(previous_time, 'previous_time')
+    observation_time = checks.finite_scalar(observation_time, 'observation_time')
+    if observation_time <= previous_time:
+        raise ValueError('observation_time must be strictly after previous_time.')
+    if previous_time < model.T[0] or observation_time > model.T[1]:
+        raise ValueError('Filter interval must lie inside the model horizon.')
+    return previous_time, observation_time
+
+
 def bm1_observation_update(model, parameters, sigma_y, state_mass, previous_time,
                            observation_time, observation_value, *, price_side='right',
                            likelihood_quadrature_order=1):
@@ -529,10 +533,7 @@ def bm1_observation_update(model, parameters, sigma_y, state_mass, previous_time
     scored against an observation without carrying the resulting posterior
     forward. No state propagation occurs here.
     """
-    previous_time = checks.finite_scalar(previous_time, 'previous_time')
-    observation_time = checks.finite_scalar(observation_time, 'observation_time')
-    if observation_time <= previous_time:
-        raise ValueError('observation_time must be strictly after previous_time.')
+    previous_time, observation_time = _filter_interval(model, previous_time, observation_time)
     state_mass = checks.probability_mass(state_mass, 'state_mass')
     sigma_y = checks.finite_scalar(sigma_y, 'sigma_y', positive=True)
     if price_side not in ('left', 'right'):
@@ -565,10 +566,7 @@ def fv_filter_step(model, parameters, sigma_x, sigma_y, prior_mass, previous_tim
     observations perform prediction only. No prediction mass is clipped or
     renormalized; Bayes normalization is the only intentional normalization.
     """
-    previous_time = checks.finite_scalar(previous_time, 'previous_time')
-    observation_time = checks.finite_scalar(observation_time, 'observation_time')
-    if observation_time <= previous_time:
-        raise ValueError('observation_time must be strictly after previous_time.')
+    previous_time, observation_time = _filter_interval(model, previous_time, observation_time)
     prior_mass = checks.probability_mass(prior_mass, 'prior_mass')
     sigma_y = checks.finite_scalar(sigma_y, 'sigma_y', positive=True)
     max_step = _positive_filter_step(max_step, 'max_step')
@@ -854,6 +852,8 @@ def parameter_bank_weights(conditional_log_evidence, initial_log_weights, observ
     therefore also combine independent complete replays, or examine a new
     parameter prior without recomputing the unchanged conditional filters.
     """
+    if np.iscomplexobj(conditional_log_evidence):
+        raise ValueError('Conditional log-evidence must be real.')
     scores = np.asarray(conditional_log_evidence, dtype=float)
     logs = checks.log_probability_mass(initial_log_weights, 'initial_log_weights')
     mask = np.asarray(observed)

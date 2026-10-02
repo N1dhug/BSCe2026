@@ -2156,7 +2156,8 @@ class OneParameterBankTests(unittest.TestCase):
                         observation_times=obs.times.tolist(), observations=obs.values.tolist(),
                         conditional_log_evidence=np.zeros((24,41)).tolist(),
                         log_weights=np.full((24,41), -np.log(41)).tolist(), cumulative_log_evidence=[0.]*24,
-                        parameter_mean=[1.]*24, maximum_abs_mass_error=0., minimum_cell_mass=0., fallbacks=0))
+                        parameter_mean=[float(np.mean(synthetic.F4_E_PARAMETER_GRIDS[coordinate]))]*24,
+                        maximum_abs_mass_error=0., minimum_cell_mass=0., fallbacks=0))
         return dict(**synthetic._f4_f_report_header('F1', 7), rows=rows,
                     source_commit='abc', working_tree_dirty=False)
 
