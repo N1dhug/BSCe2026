@@ -1101,7 +1101,7 @@ preregistrering og nye data fastlægges inden disse senere kørsler.
 
 G0 er afsluttet som metodekontrol; G1a's FV-numerik er rå-reviewet nedenfor.
 G1b0's pilot er rå-reviewet: FV består, 5x5-parametergridet er afvist.
-Finere parametergrid, større population og G2 afventer.
+G1b1's finere parametergrid er preregistreret nedenfor; større population og G2 afventer.
 Ugeforecast uden nye observationer er fortsat en særskilt I-leverance med
 erklærede fremtidige inputs. Fit, 168-timers forward-prediction og evaluering
 af alle ugers origins i en erklæret måned skal benchmarkes separat på samme
@@ -1319,6 +1319,61 @@ to records med uændrede støtter, prior-mål og tolerancer, friske FV-kontrolle
 af nye noder, ny designversion og eget outputnavn. Accept ved 17 noder loves ikke.
 G1b0 bevares som negativt resultat; ingen G0/G1a/G1b0-genkørsel er nødvendig nu.
 Nye populationsrecords følger først efter numerisk accept.
+
+\subsection{F4-G1b1 v2: parret parametergrid-refinement}
+Design låst 2. oktober 2026 efter rå review af G1b0, før ny registreret kørsel.
+De samme ID1356/1357, truth, inputs, state-prior, RNG og 24 målinger bruges.
+Det er numerisk opfølgning på fejlede records, ikke nye recovery-data.
+Støtter, kontinuerte produkt-uniform/log-uniform prior-mål, tensor-trapezvægte,
+unit-momenter, dualcelle-TV og samtlige tolerancer fra G1b0 fastholdes.
+Stage er \texttt{G1b1}, designversion 2.
+
+Begge akser har 5/9/17 nested noder, altså 25/81/289 hypoteser.
+Kandidat er 9x9 mod kontrol 17x17. Alle 289 hypoteser per par replayes frisk
+ved fire uændrede FV-konfigurationer fra G1a: mellem, time-fine, spatial-fine
+og quadrature-fine. Det giver 2312 replays i én spawn-pool med otte workers
+og BLAS=1. Nested reduktioner giver 24 banker; hver hypotese bevarer sin egen
+state og sigma-Y. Prediction bruger gamle weights, posterior nye.
+De to tidligere 5x5 mod 9x9-fejl bevares som diagnostik; G1b0's prior bridges
+bevares i originalartifactet og gentages ikke.
+
+Ved alle 24 prefixer kræves alle 14 aktive kontroller bestået:
+tre FV-akser på både 9x9- og 17x17-gridet per par, samt én 9x9 mod 17x17-
+parameterkontrol per par. FV-gates er G1a's likelihood-vindue 5,
+log-oddsfejl 0.10, whole-bank-vægt-TV 0.01, absolut kumuleret evidencefejl
+0.10 og begge marginale state-\(L^1\)-fejl 0.02. Faktisk time-step skal
+mindskes for alle hypoteser med relativ margin \(10^{-12}\).
+Parameter-gates er joint dualcelle-TV 0.02, max unit-middelforskel 0.01,
+max unit-SD-forskel 0.02, evidence 0.10 og begge state-\(L^1\)-fejl 0.02.
+Massefejl højst \(10^{-10}\) og ikke-negative masser kræves for alle 24
+banker og deres conditional replays. Ingen record eller hypotese frasorteres.
+
+CLI \texttt{joint-bank-grid-refine} kræver den komplette clean-source
+G1b0-artifact med \texttt{passes=False}, begge parameterkontroller fejlet og
+alle 12 FV-kontroller bestået. Dens 26 banker, 18 prefix-kontroller,
+seed-data, prior/noder/dualceller, nested scores/steps og G1a/G0-digest/source
+genvalideres uden dependency-replays. Digest/source-kæden bevares i G1b1.
+
+En separat reproduktionsgate sammenligner alle 16 fælles 5-/9-grid-
+quadraturebanker med originalen. Ved alle prefixer kræves maksimal absolut
+fejl \(10^{-10}\) i scores, log-vægte, bank-evidence-increments, kumuleret
+evidence, begge marginale state-historier og actual max-steps.
+Experiment/prior/noder skal stemme; fysiske noder tillader højst
+\(10^{-12}\) afrunding. Denne gate er yderligere til grid-konvergens og
+ændrer ingen Bayes-opdatering. Friske shared replays er nødvendige,
+da originalen ikke gemmer fulde conditional state-historier.
+
+Rapporten gemmer rå scores/priorer/vægte, noder/dualceller, marginale states,
+actual steps, 16 sammenligningers prefix-fejl og reproduktionsgate/provenance.
+Fejlet gate gemmes før nonzero exit; replayfejl afbryder uden delpopulation.
+Nyt outputnavn og PowerShell-kommandoer står i BM-guiden.
+Ingen G0/G1a/G1b0-genkørsel kræves. API-overrides er uregistrerede.
+
+Registreret G1b1-accept afventer. Et bestået design accepterer alene
+9x9-trapezbanken på de to pilotrecords; 17x17 accepteres ikke automatisk.
+Ved fejl bevares begge artifacts før et særskilt nyt design, uden ændring
+af støtte, prior eller tolerancer efter truth. Større population på nye
+records og praktisk uge-/månedsbenchmark følger senere.
 
 \subsection{Prior under reparameterisering}
 

@@ -1,4 +1,4 @@
-"""G1b0: a registered grid/prior pilot before a larger joint population.
+"""G1b0 pilot and G1b1 paired grid refinement before a larger population.
 
 Conditional trajectories are shared only across quadratures of the same
 experiment. Each hypothesis retains its own state; every FV control is fresh.
@@ -17,6 +17,7 @@ from src.params.bm_1 import conservative_mass_transfer
 
 G1B0_IDS = (1356, 1357)
 G1B0_COUNTS = (3, 5, 9)
+G1B1_COUNTS = (5, 9, 17)
 G1B0_CRITERIA = dict(maximum_parameter_tv=.02, maximum_unit_mean_error=.01,
                      maximum_unit_sd_error=.02, maximum_cumulative_evidence_error=.10,
                      maximum_state_l1=.02)
@@ -160,7 +161,8 @@ def _reduce_grids(group, conditionals):
         step = (finest-1)//(n-1)
         indices = np.arange(finest**2).reshape(finest,finest)[::step,::step].ravel()
         h,unit,edges,prior = _parameter_grid(group['pair'],n,finest)
-        for kind in ('quadrature','discrete_uniform') if n==group['counts'][1] and group['label']=='middle' else ('quadrature',):
+        bridge = group.get('prior_bridge',True) and n==group['counts'][1] and group['label']=='middle'
+        for kind in ('quadrature','discrete_uniform') if bridge else ('quadrature',):
             g = dict(group,hypotheses=h,initial_log_weights=prior if kind=='quadrature' else np.full(n*n,-np.log(n*n)),
                      label=f'{n}/{group["label"]}/{kind}')
             row = fv._reduce(g,[conditionals[j] for j in indices])
@@ -224,25 +226,72 @@ def compare_parameter_banks(left, right, *, allow_prior_change=False):
 def run_joint_parameter_grid(*, workers=8, progress=None, sequence_ids=G1B0_IDS,
                              counts=G1B0_COUNTS, numerics=None):
     """G1b0 pilot: 648 fresh replays, 26 reductions, 14 active comparisons."""
+    return _run_joint_grid(workers=workers,progress=progress,sequence_ids=sequence_ids,
+                           counts=counts,numerics=numerics,stage='G1b0',design_version=1,
+                           registered_counts=G1B0_COUNTS,prior_bridge=True)
+
+
+def run_joint_parameter_grid_refinement(*, workers=8, progress=None, sequence_ids=G1B0_IDS,
+                                        counts=G1B1_COUNTS, numerics=None):
+    """G1b1 v2: 2312 fresh replays, 24 reductions, 14 active comparisons.
+
+    The same records, support, continuous prior and gates are retained. No
+    parameter prior bridge is repeated; the original G1b0 artifact retains it.
+    The CLI additionally checks reproducibility against its raw G1b0 dependency.
+    """
+    return _run_joint_grid(workers=workers,progress=progress,sequence_ids=sequence_ids,
+                           counts=counts,numerics=numerics,stage='G1b1',design_version=2,
+                           registered_counts=G1B1_COUNTS,prior_bridge=False)
+
+
+def _grid_configurations(levels):
+    if set(levels)!=set(fv.G1A_NUMERICS): raise ValueError('Joint grids require FV controls for both pairs.')
+    return {k:[v for v in fv._configurations(values)
+               if v[0] in ('middle','time_fine','spatial_fine','quadrature_fine')]
+            for k,values in levels.items()}
+
+
+def _run_joint_grid(*, workers, progress, sequence_ids, counts, numerics, stage,
+                    design_version, registered_counts, prior_bridge):
     workers = checks.positive_integer(workers,'workers')
     ids = tuple(core._nonnegative_integer(v,'sequence ID') for v in sequence_ids)
     sizes = tuple(checks.positive_integer(v,'parameter nodes',minimum=2) for v in counts)
     if (len(ids)!=2 or len(set(ids))!=2 or len(sizes)!=3 or not sizes[0]<sizes[1]<sizes[2]
             or any((sizes[-1]-1)%(n-1) for n in sizes)):
-        raise ValueError('G1b0 requires two distinct IDs and three nested increasing parameter grids.')
+        raise ValueError('Joint grids require two distinct IDs and three nested increasing parameter grids.')
     levels = fv.G1A_NUMERICS if numerics is None else numerics
-    if set(levels)!=set(fv.G1A_NUMERICS): raise ValueError('G1b0 requires FV controls for both pairs.')
-    configurations = {k:[v for v in fv._configurations(values) if v[0] in ('middle','time_fine','spatial_fine','quadrature_fine')]
-                      for k,values in levels.items()}
+    configurations = _grid_configurations(levels)
     groups = []
     for pair,sid,Xi in zip(core.F4_G_PAIRS,ids,(.75,1.)):
         case = core.build_f4_b_case(Xi=Xi);seq = core.generate_synthetic_sequence(case,sequence_id=sid)
-        if not seq.truth.valid: raise RuntimeError(f'G1b0 truth failed at ID{sid}; no dropped record.')
+        if not seq.truth.valid: raise RuntimeError(f'{stage} truth failed at ID{sid}; no dropped record.')
         h = _parameter_grid(pair,sizes[-1],sizes[-1])[0]
         for label,settings in configurations['__'.join(pair)]:
-            groups.append(dict(stage='G1b0',pair=pair,sequence_id=sid,case=case,observations=seq.observations,
-                               hypotheses=h,counts=sizes,label=label,settings=settings))
+            groups.append(dict(stage=stage,pair=pair,sequence_id=sid,case=case,observations=seq.observations,
+                               hypotheses=h,counts=sizes,label=label,settings=settings,prior_bridge=prior_bridge))
     rows = [r for bank in fv._run_groups(groups,workers,progress,reducer=_reduce_grids) for r in bank]
+    comparisons = _grid_comparisons(rows,ids,sizes,prior_bridge=prior_bridge)
+    return dict(stage=stage,design_version=design_version,
+                registered_design=bool(ids==G1B0_IDS and sizes==registered_counts and numerics is None),
+                sequence_ids=list(ids),parameter_grid_counts=list(sizes),workers=workers,
+                conditional_runs=sum(len(g['hypotheses']) for g in groups),bank_reductions=len(rows),
+                prior_measure=dict(rho__Xi='product uniform in rho and Xi',sigma_x__sigma_y='product uniform in log(sigma_x) and log(sigma_y)',
+                                   quadrature='tensor trapezoid in normalized prior coordinates',
+                                   comparison='piecewise constant dual-cell laws; comparison only'),
+                candidate_fv_numerics={k:dict(v[0][1]) for k,v in configurations.items()},
+                fv_controls={k:{label:dict(s) for label,s in values} for k,values in configurations.items()},
+                parameter_criteria=dict(G1B0_CRITERIA),fv_criteria=dict(log_odds=.10,weight_tv=.01,evidence=.10,state_l1=.02,
+                                                                     mass_error=1e-10,actual_step_relative_margin=1e-12),
+                observation_contract=dict(time_unit='day',observation_kind='point',price_side='right'),
+                inputs=dict(baseline=.5,price_edges=[0.,1/3,2/3,1.],price_values=[.65,.35,.65],state_response='1-2*x',price_response='1-2*u'),
+                truth_settings=dict(initial_beta=[20.,20.],truth_max_step=1/1152,seed_roots=[4101,4102,4103]),
+                candidate_parameter_nodes_per_axis=sizes[1],rows=rows,comparisons=comparisons,
+                passes=bool(fv._probability_gate(rows) and all(c['passes'] for c in comparisons if c['selected'])),
+                interpretation=('New-record grid/prior pilot; a larger held-out population and G2 remain separate.'
+                                if stage=='G1b0' else 'Paired refinement of rejected G1b0; same records, not held-out recovery.'))
+
+
+def _grid_comparisons(rows, ids, sizes, *, prior_bridge):
     comparisons = []
     for pair,sid in zip(core.F4_G_PAIRS,ids):
         lookup = {r['label']:r for r in rows if tuple(r['coordinates'])==pair and r['sequence_id']==sid}
@@ -263,23 +312,156 @@ def run_joint_parameter_grid(*, workers=8, progress=None, sequence_ids=G1B0_IDS,
             a,b = [lookup[f'{v}/middle/quadrature'] for v in (n,m)]
             comparisons.append(dict(coordinates=list(pair),sequence_id=sid,kind='parameter_grid',
                                     left=a['label'],right=b['label'],selected=selected,**compare_parameter_banks(a,b)))
-        a,b = [lookup[f'{sizes[1]}/middle/{kind}'] for kind in ('discrete_uniform','quadrature')]
-        comparisons.append(dict(coordinates=list(pair),sequence_id=sid,kind='prior_bridge',
-                                left=a['label'],right=b['label'],selected=False,
-                                **compare_parameter_banks(a,b,allow_prior_change=True)))
-    return dict(stage='G1b0',design_version=1,registered_design=bool(ids==G1B0_IDS and sizes==G1B0_COUNTS and numerics is None),
-                sequence_ids=list(ids),parameter_grid_counts=list(sizes),workers=workers,
-                conditional_runs=sum(len(g['hypotheses']) for g in groups),bank_reductions=len(rows),
-                prior_measure=dict(rho__Xi='product uniform in rho and Xi',sigma_x__sigma_y='product uniform in log(sigma_x) and log(sigma_y)',
-                                   quadrature='tensor trapezoid in normalized prior coordinates',
-                                   comparison='piecewise constant dual-cell laws; comparison only'),
-                candidate_fv_numerics={k:dict(v[0][1]) for k,v in configurations.items()},
-                fv_controls={k:{label:dict(s) for label,s in values} for k,values in configurations.items()},
-                parameter_criteria=dict(G1B0_CRITERIA),fv_criteria=dict(log_odds=.10,weight_tv=.01,evidence=.10,state_l1=.02,
-                                                                     mass_error=1e-10,actual_step_relative_margin=1e-12),
-                observation_contract=dict(time_unit='day',observation_kind='point',price_side='right'),
-                inputs=dict(baseline=.5,price_edges=[0.,1/3,2/3,1.],price_values=[.65,.35,.65],state_response='1-2*x',price_response='1-2*u'),
-                truth_settings=dict(initial_beta=[20.,20.],truth_max_step=1/1152,seed_roots=[4101,4102,4103]),
-                candidate_parameter_nodes_per_axis=sizes[1],rows=rows,comparisons=comparisons,
-                passes=bool(fv._probability_gate(rows) and all(c['passes'] for c in comparisons if c['selected'])),
-                interpretation='New-record grid/prior pilot; a larger held-out population and G2 remain separate.')
+        if prior_bridge:
+            a,b = [lookup[f'{sizes[1]}/middle/{kind}'] for kind in ('discrete_uniform','quadrature')]
+            comparisons.append(dict(coordinates=list(pair),sequence_id=sid,kind='prior_bridge',
+                                    left=a['label'],right=b['label'],selected=False,
+                                    **compare_parameter_banks(a,b,allow_prior_change=True)))
+    return comparisons
+
+
+def validated_g1b0(report, *, require_source=False):
+    """Require the complete rejected G1b0 pilot, with passing FV controls.
+
+    Recompute raw summaries and gates; a failure is preserved as a dependency,
+    rather than changed into an acceptance or an automatically selected grid.
+    Conditional state histories are not stored; marginal masses are checked.
+    """
+    configurations = _grid_configurations(fv.G1A_NUMERICS)
+    header = dict(stage='G1b0',design_version=1,registered_design=True,
+                  sequence_ids=list(G1B0_IDS),parameter_grid_counts=list(G1B0_COUNTS),
+                  candidate_parameter_nodes_per_axis=5,conditional_runs=648,bank_reductions=26,
+                  passes=False,parameter_criteria=dict(G1B0_CRITERIA),
+                  fv_criteria=dict(log_odds=.10,weight_tv=.01,evidence=.10,state_l1=.02,
+                                   mass_error=1e-10,actual_step_relative_margin=1e-12),
+                  prior_measure=dict(rho__Xi='product uniform in rho and Xi',
+                                     sigma_x__sigma_y='product uniform in log(sigma_x) and log(sigma_y)',
+                                     quadrature='tensor trapezoid in normalized prior coordinates',
+                                     comparison='piecewise constant dual-cell laws; comparison only'),
+                  candidate_fv_numerics={k:v[0][1] for k,v in configurations.items()},
+                  fv_controls={k:{label:s for label,s in values} for k,values in configurations.items()},
+                  observation_contract=dict(time_unit='day',observation_kind='point',price_side='right'),
+                  inputs=dict(baseline=.5,price_edges=[0.,1/3,2/3,1.],price_values=[.65,.35,.65],
+                              state_response='1-2*x',price_response='1-2*u'),
+                  truth_settings=dict(initial_beta=[20.,20.],truth_max_step=1/1152,seed_roots=[4101,4102,4103]))
+    if (any(report.get(k)!=v for k,v in header.items())
+            or report.get('registered_design') is not True or report.get('passes') is not False):
+        raise ValueError('A complete rejected registered G1b0 report is required.')
+    if require_source and (report.get('working_tree_dirty') is not False
+                           or not re.fullmatch('[0-9a-f]{40}',str(report.get('source_commit')))):
+        raise ValueError('G1b0 requires a clean recorded source commit.')
+    dependency = report.get('dependencies',{}).get('g1a',{})
+    for source in (dependency,dependency.get('g0',{})):
+        if (not re.fullmatch('[0-9a-f]{64}',str(source.get('sha256')))
+                or not re.fullmatch('[0-9a-f]{40}',str(source.get('source_commit')))):
+            raise ValueError('G1b0 requires its recorded G1a/G0 dependency chain.')
+    rows = report.get('rows',[])
+    if len(rows)!=26: raise ValueError('G1b0 requires all 26 banks.')
+    expected = {}
+    for pair,sid,Xi in zip(core.F4_G_PAIRS,G1B0_IDS,(.75,1.)):
+        case = core.build_f4_b_case(Xi=Xi)
+        seq = core.generate_synthetic_sequence(case,sequence_id=sid)
+        for n in G1B0_COUNTS:
+            for label,settings in configurations['__'.join(pair)]:
+                expected[(pair,sid,f'{n}/{label}/quadrature')] = (case,seq,n,label,'quadrature',settings)
+        expected[(pair,sid,'5/middle/discrete_uniform')] = (case,seq,5,'middle','discrete_uniform',configurations['__'.join(pair)][0][1])
+    seen = {}
+    for row in rows:
+        key = (tuple(row['coordinates']),row['sequence_id'],row['label'])
+        if key not in expected or key in seen: raise ValueError('G1b0 banks are missing, duplicate or unregistered.')
+        seen[key] = row
+        case,seq,n,label,kind,settings = expected[key]
+        truth = core.f4_e_truth_candidate(case)
+        if (row['parameter_nodes_per_axis']!=n or row['prior_kind']!=kind or row['fv_label']!=label
+                or row['settings']!=settings or row['observed']!=[True]*24
+                or row['truth']!=[getattr(truth,name) for name in key[0]]
+                or row['fixed_parameters']!={name:getattr(truth,name) for name in ('rho','Xi','k','sigma_x','sigma_y') if name not in key[0]}):
+            raise ValueError('G1b0 experiment, grid or FV numerics changed.')
+        h,unit,dual,prior = _parameter_grid(key[0],n,9)
+        if kind=='discrete_uniform': prior = np.full(n*n,-np.log(n*n))
+        for name,value,tolerance in [('hypotheses',h,1e-12),('parameter_unit_nodes',unit,0.),
+                                     ('parameter_dual_edges',dual,0.),('initial_log_weights',prior,1e-12),
+                                     ('observation_times',seq.observations.times,1e-12),
+                                     ('observations',seq.observations.values,1e-12),
+                                     ('x_edges',np.linspace(0,1,settings['x_steps']+1),0.),
+                                     ('initial_mass',core.beta_initial_mass(case,case.build_model()[0],settings['x_steps']),1e-10)]:
+            fv._equal_array(row[name],value,'G1b0 '+name,tolerance)
+        scores = fv._array(row['conditional_log_evidence'],(24,n*n),'G1b0 scores')
+        raw = prior+np.cumsum(scores,axis=0);evidence = logsumexp(raw,axis=1);logs = raw-evidence[:,None]
+        fv._equal_array(row['log_weights'],logs,'G1b0 weights')
+        fv._equal_array(row['cumulative_log_evidence'],evidence,'G1b0 evidence')
+        bank = fv._array(row['bank_log_evidence'],(24,),'G1b0 increments')
+        fv._equal_array(np.cumsum(bank),evidence,'G1b0 bank evidence')
+        summary = core._f4_g_joint_summary(h,logs,key[0])
+        for name,value in summary.items():
+            if name=='map_hypotheses':
+                if row[name]!=value: raise ValueError('G1b0 MAP ties disagree.')
+            elif name=='marginal_parameters':
+                if set(row[name])!=set(value): raise ValueError('G1b0 marginal coordinates disagree.')
+                for coordinate,marginal in value.items():
+                    if set(row[name][coordinate])!=set(marginal): raise ValueError('G1b0 marginal fields disagree.')
+                    for field,want in marginal.items():
+                        fv._equal_array(row[name][coordinate][field],want,'G1b0 marginal '+field)
+            else: fv._equal_array(row[name],value,'G1b0 '+name)
+        for phase in ('predicted','posterior'):
+            fv._mass(row['marginal_'+phase+'_mass'],24,settings['x_steps'],'G1b0 '+phase)
+        steps = fv._array(row['conditional_actual_max_steps'],(n*n,),'G1b0 actual steps')
+        if np.any((steps<=0)|(steps>settings['max_step']+1e-14)): raise ValueError('G1b0 actual steps are invalid.')
+    fv._probability_gate(rows,raise_error=True)
+    for key,row in seen.items():
+        n = row['parameter_nodes_per_axis'];fine = seen[(key[0],key[1],f"9/{row['fv_label']}/quadrature")]
+        indices = np.arange(81).reshape(9,9)[::8//(n-1),::8//(n-1)].ravel()
+        fv._equal_array(row['conditional_log_evidence'],np.array(fine['conditional_log_evidence'])[:,indices],'G1b0 nested scores',0.)
+        fv._equal_array(row['conditional_actual_max_steps'],np.array(fine['conditional_actual_max_steps'])[indices],'G1b0 nested steps',0.)
+    calculated = _grid_comparisons(rows,G1B0_IDS,G1B0_COUNTS,prior_bridge=True)
+    comparisons = report.get('comparisons',[])
+    def comparison_key(c):
+        return tuple(c['coordinates']),c['sequence_id'],c['kind'],c['left'],c['right']
+    actual = {comparison_key(c):c for c in comparisons}
+    if len(comparisons)!=18 or len(actual)!=18: raise ValueError('G1b0 requires all 18 unique comparisons.')
+    for want in calculated:
+        key = comparison_key(want)
+        if key not in actual: raise ValueError('G1b0 comparison is missing or unregistered.')
+        got = actual[key]
+        if set(got)!=set(want): raise ValueError('G1b0 comparison fields changed.')
+        for name,value in want.items():
+            if name=='prefix_errors':
+                if set(got[name])!=set(value): raise ValueError('G1b0 prefix criteria changed.')
+                for field,v in value.items(): fv._equal_array(got[name][field],v,'G1b0 prefix '+field)
+            elif isinstance(value,bool):
+                if got[name] is not value: raise ValueError('G1b0 selection or gate disagrees.')
+            elif name.startswith('maximum_'): fv._equal_array(got[name],value,'G1b0 '+name)
+            elif got[name]!=value: raise ValueError('G1b0 comparison design changed.')
+        if want['selected'] and want['kind'].startswith('FV_') and not want['passes']:
+            raise ValueError('G1b0 FV controls must pass before parameter-only refinement.')
+        if want['selected'] and want['kind']=='parameter_grid' and want['passes']:
+            raise ValueError('G1b1 follows the rejected parameter grids for both pairs.')
+    return True
+
+
+def compare_grid_overlap(previous, current):
+    """Reproduction gate for all 16 shared quadrature banks, without new fits."""
+    fields = ('conditional_log_evidence','log_weights','bank_log_evidence','cumulative_log_evidence',
+              'marginal_predicted_mass','marginal_posterior_mass','conditional_actual_max_steps')
+    equal_fields = ('coordinates','sequence_id','settings','hypotheses','initial_log_weights',
+                    'observation_times','observations','observed','truth','fixed_parameters','x_edges',
+                    'parameter_unit_nodes','parameter_dual_edges','prior_kind')
+    def shared_rows(report):
+        rows = [r for r in report['rows'] if r['prior_kind']=='quadrature' and r['parameter_nodes_per_axis'] in (5,9)]
+        keyed = {(tuple(r['coordinates']),r['sequence_id'],r['label']):r for r in rows}
+        if len(rows)!=16 or len(keyed)!=16: raise ValueError('Grid replay check requires all 16 shared banks.')
+        return keyed
+    a,b = shared_rows(previous),shared_rows(current)
+    if set(a)!=set(b): raise ValueError('Grid replay check requires identical shared bank keys.')
+    maxima = {field:0. for field in fields}
+    for key,left in a.items():
+        right = b[key]
+        for field in equal_fields:
+            if field=='hypotheses': fv._equal_array(right[field],left[field],'Shared hypotheses',1e-12)
+            elif right[field]!=left[field]: raise ValueError('Grid replay check experiment/prior changed.')
+        for field in fields:
+            l = np.asarray(left[field]);r = fv._array(right[field],l.shape,'Shared '+field)
+            if not np.all(np.isfinite(l)): raise ValueError('Previous grid values must be finite.')
+            maxima[field] = max(maxima[field],float(np.max(np.abs(r-l))))
+    return dict(tolerance=1e-10,bank_comparisons=16,maximum_errors=maxima,
+                passes=bool(all(value<=1e-10 for value in maxima.values())))

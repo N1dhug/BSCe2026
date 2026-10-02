@@ -1153,14 +1153,33 @@ def run_joint_bank_refinement(args):
 
 def run_joint_parameter_grid(args):
     """G1b0 grid/prior pilot, with a raw-validated clean G1a dependency."""
+    return _run_joint_parameter_study(args,refinement=False)
+
+
+def run_joint_parameter_grid_refinement(args):
+    """G1b1 paired grid refinement, preserving the rejected G1b0 dependency."""
+    return _run_joint_parameter_study(args,refinement=True)
+
+
+def _run_joint_parameter_study(args, *, refinement):
     if args.output.exists():
         raise FileExistsError(f'Refusing to overwrite {args.output}.')
     started = last_printed = perf_counter()
-    dependency,digest = _read_bank_dependency(args.g1a_report,joint_grid.validated_g1a)
-    provenance = dict(sha256=digest,source_commit=dependency['source_commit'],
-                      g0=dict(dependency['dependencies']['g0']))
-    del dependency
-    print(f'F4-G G1b0: 3/5/9 nodes per axis; 648 fresh replays / 26 reductions; workers={args.workers}',flush=True)
+    stage = 'G1b1' if refinement else 'G1b0'
+    if refinement:
+        dependency,digest = _read_bank_dependency(args.g1b0_report,joint_grid.validated_g1b0)
+        provenance = dict(sha256=digest,source_commit=dependency['source_commit'],
+                          g1a=dict(dependency['dependencies']['g1a']))
+        runner = joint_grid.run_joint_parameter_grid_refinement
+        design = '5/9/17 nodes per axis; 2312 fresh replays / 24 reductions'
+    else:
+        dependency,digest = _read_bank_dependency(args.g1a_report,joint_grid.validated_g1a)
+        provenance = dict(sha256=digest,source_commit=dependency['source_commit'],
+                          g0=dict(dependency['dependencies']['g0']))
+        del dependency
+        runner = joint_grid.run_joint_parameter_grid
+        design = '3/5/9 nodes per axis; 648 fresh replays / 26 reductions'
+    print(f'F4-G {stage}: {design}; workers={args.workers}',flush=True)
 
     def progress(row):
         nonlocal last_printed
@@ -1172,8 +1191,15 @@ def run_joint_parameter_grid(args):
             print(f"  replays {row['completed']}/{row['total']}; ID{row['sequence_id']} "
                   f"{'/'.join(row['pair'])}; {row['label']}; elapsed={elapsed:.1f}s; rough ETA={eta:.1f}s",flush=True)
 
-    result = joint_grid.run_joint_parameter_grid(workers=args.workers,progress=progress)
-    result['dependencies'] = dict(g1a=provenance)
+    result = runner(workers=args.workers,progress=progress)
+    result['dependencies'] = {('g1b0' if refinement else 'g1a'):provenance}
+    if refinement:
+        replay = joint_grid.compare_grid_overlap(dependency,result)
+        result['replay_reproduction'] = replay
+        result['passes'] = bool(result['passes'] and replay['passes'])
+        print(f"  shared replay banks={replay['bank_comparisons']}; "
+              f"maximum error={max(replay['maximum_errors'].values()):.3e}; passes={replay['passes']}")
+        del dependency
     for row in result['comparisons']:
         if row['kind'].startswith('FV_'):
             detail = f"odds={row['maximum_log_odds_error']:.4g}; TV={row['maximum_weight_tv']:.4g}"
@@ -1185,10 +1211,11 @@ def run_joint_parameter_grid(args):
               f"evidence={row['maximum_cumulative_evidence_error']:.4g}; "
               f"state L1 pred/post={row['maximum_predicted_l1']:.4g}/{row['maximum_posterior_l1']:.4g}; "
               f"passes={row['passes']}; selected={row['selected']}")
-    print(f"  registered={result['registered_design']}; passes G1b0={result['passes']}")
+    print(f"  registered={result['registered_design']}; passes {stage}={result['passes']}")
     _write_likelihood_report(args,result,started)
     if not result['passes']:
-        raise RuntimeError('G1b0 grid/numerical/probability gates failed; report retained for review.')
+        raise RuntimeError(f'{stage} grid/numerical/probability/replay gates failed; report retained for review.'
+                           if refinement else 'G1b0 grid/numerical/probability gates failed; report retained for review.')
 
 
 def run_preparation(args):
@@ -1381,6 +1408,15 @@ def build_parser():
     parameter_grid.add_argument('--output',type=Path,required=True,help='New JSON/gzip report; never overwritten.')
     parameter_grid.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
     parameter_grid.set_defaults(handler=run_joint_parameter_grid)
+
+    parameter_grid_refinement = subparsers.add_parser(
+        'joint-bank-grid-refine',help='G1b1 v2: paired 9x9-to-17x17 refinement after rejected G1b0.')
+    parameter_grid_refinement.add_argument('--g1b0-report',type=Path,required=True,
+        help='Complete clean-source rejected G1b0 JSON/gzip with passing FV controls.')
+    parameter_grid_refinement.add_argument('--workers',type=int,default=8,help='Independent spawn workers; locked paired design.')
+    parameter_grid_refinement.add_argument('--output',type=Path,required=True,help='New JSON/gzip report; original G1b0 is retained.')
+    parameter_grid_refinement.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
+    parameter_grid_refinement.set_defaults(handler=run_joint_parameter_grid_refinement)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',

@@ -46,6 +46,7 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | F4-G G0 fælles rho/Xi- og sigma_x/sigma_y-bank, prefix-identiteter | `joint-bank-identity` |
 | F4-G G1a FV-tid, state-grid og quadrature for de to frie par | `joint-bank-refine --g0-report <G0-JSON>` |
 | F4-G G1b0 parametergrid/prior-pilot med FV-kontrol af nye noder | `joint-bank-grid --g1a-report <G1a-JSON>` |
+| F4-G G1b1 v2 parret 9x9→17x17-kontrol efter afvist G1b0 | `joint-bank-grid-refine --g1b0-report <G1b0-JSON>` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -278,7 +279,8 @@ Progress/ETA er grov, fordi støjparret koster mere end rho/Xi-parret.
 Terminalresumé og rå `.json.gz` fra den registrerede kørsel er gennemgået.
 Runtime er målt på denne dagskontrol, uden et løfte om ugeforecast eller måneds-throughput.
 G1a's par-numerik og G1b0's parametergrid-pilot er afsluttet og rå-reviewet
-nedenfor. Finere parametergrid, en større population og G2 er endnu ikke implementeret.
+nedenfor. G1b1's finere parametergrid er preregistreret nedenfor; en større population
+og G2 er endnu ikke implementeret.
 
 ## F4-G1a: registreret kørsel afsluttet
 
@@ -375,10 +377,8 @@ git log -1 --oneline
 if (git status --porcelain) { throw "Working tree er ikke ren." }
 ```
 
-Brugeren merger selv. Næste trin er en særskilt preregistreret 9x9→17x17-kontrol
-på de samme pilotrecords med uændrede prior-mål/støtter/tolerancer og friske
-FV-kontroller af nye noder. Ny CLI/designversion og nyt outputnavn leveres før
-lokal kørsel; der er endnu ingen registreret kommando til denne opfølgning.
+PR #53 er korrekt merged på main `aa98beb`; kode og resultatdokumentation er med.
+Den særskilt preregistrerede G1b1-opfølgning og dens nye CLI står nedenfor.
 Større population og uge-/månedsbenchmark følger efter den nødvendige grid-accept.
 
 ### G1b0-design og allerede gennemførte kommandoer
@@ -429,6 +429,61 @@ Rå gzip og terminalresumé er gennemgået, inklusive de fejlede gates. Output o
 Originale fejl beholdes før en ny designversion; ingen automatisk tilpasning af
 grid, støtte, numerik eller records. Brugeren merger selv efter review.
 Development API-overrides er eksplicit uregistrerede.
+
+## Næste lokale kørsel: F4-G1b1 v2
+
+Branch **feature/f4-g-grid-refinement** bygger på main `aa98beb`.
+Samme ID1356/1357, inputs/truth, prior-mål, støtter og tolerancer som G1b0.
+**5/9/17 noder per akse**, kandidat 9x9 mod kontrol 17x17. Alle 289 hypoteser
+per par får fire friske FV-konfigurationer: **2.312 replays / 24 banker**.
+Tre FV-kontroller på både 9x9 og 17x17 samt to parameterkontroller giver
+**14 aktive gates**, alle på samtlige 24 prefixer. Tidligere 5x5→9x9-fejl
+gemmes som to diagnostikker; prior bridges bevares i originalrapporten.
+
+Genbrug **den fejlede, rå-reviewede G1b0-fil**. CLI genvaliderer dens 26 banker /
+18 kontroller og G1a/G0-dependency-kæde; **ingen G0/G1a/G1b0-genkørsel**.
+En separat reproduktionsgate sammenligner alle 16 fælles 5-/9-grid-banker med
+originalens scores, vægte/evidence, marginale states og actual steps, tolerance
+1e-10. Fejlede gates gemmes før nonzero exit; output overskrives aldrig.
+
+Kør fra projektmappen på clean feature-branch **før merge**; brugeren merger
+selv efter registreret kørsel og rå review. Default **8 workers, BLAS=1**.
+Rapportens tid inkluderer dependency-review og reproduktionsgate, men slutter
+før lagring. Stopwatch inkluderer også opstart/output. ETA er grov; flere
+replays er ikke dokumentation for praktisk uge-/månedsruntime.
+
+```powershell
+git fetch --prune origin
+if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
+
+git switch feature/f4-g-grid-refinement
+if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+
+git pull --ff-only origin feature/f4-g-grid-refinement
+if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
+
+git log -1 --oneline
+if (git status --porcelain) { throw "Working tree er ikke ren." }
+
+python -B -m unittest discover -s tests -q
+if ($LASTEXITCODE -ne 0) { throw "Tests fejlede." }
+
+$g1b1Timer = [System.Diagnostics.Stopwatch]::StartNew()
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-grid-refine `
+  --g1b0-report files/output/bm_1/runs/estimation/f4_g_g1b0_joint_parameter_grid.json.gz `
+  --workers 8 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_g_g1b1_joint_parameter_grid_refinement_v2.json.gz
+$g1b1Exit = $LASTEXITCODE
+$g1b1Timer.Stop()
+Write-Host ("G1b1 wall time inkl. opstart/output: {0:N2} s" -f $g1b1Timer.Elapsed.TotalSeconds)
+
+if ($g1b1Exit -ne 0) { throw "G1b1 fejlede; behold begge rapporter til review." }
+```
+
+Send den nye rå gzip og terminalresumé inklusive stopwatch, også ved fejl.
+Behold G1b0-artifactet. Der loves ingen grid-accept; større population og
+recovery kræver senere nye records. En bestået pilot accepterer kandidatens
+9x9-bank på disse to records, ikke automatisk 17x17 eller ugeforecast.
 
 ## Kodeplacering
 
