@@ -2029,5 +2029,459 @@ class F4FRhoBankTests(unittest.TestCase):
             self.assertEqual(output.read_text(encoding='utf-8'), 'keep')
 
 
+class OneParameterBankTests(unittest.TestCase):
+    def setUp(self):
+        from src.method.bm_1_estimation import run_parameter_bank, parameter_bank_weights
+        self.run_bank, self.reduce = run_parameter_bank, parameter_bank_weights
+        self.case = synthetic.build_f4_b_case(observation_times=np.arange(1, 4)/24.)
+        self.model, self.parameters = self.case.build_model()
+        self.observations = synthetic.generate_synthetic_sequence(self.case, sequence_id=80).observations
+        self.initial = synthetic.beta_initial_mass(self.case, self.model, 21)
+        self.values = np.array([.75, 1.25])
+        self.prior = np.log([.3, .7])
+
+    def bank(self, **overrides):
+        options = dict(coordinate='rho', values=self.values, initial_log_weights=self.prior,
+                       max_step=1/96, likelihood_quadrature_order=3)
+        options.update(overrides)
+        return self.run_bank(self.model, self.parameters, .5, .03, self.initial, 0,
+                             self.observations, **options)
+
+    def projector(self):
+        edges, _, dx = self.model.fokker_planc_reference.grid(21, bounds=(0., 1.))
+        return PreparedBetaProjector(beta_cell_average_basis(edges, [4., 8., 12.], [12., 8., 4.]), dx)
+
+    def test_general_fv_bank_matches_original_rho_bank(self):
+        generic = self.bank()
+        old = run_fv_rho_bank(self.model, self.parameters, .5, .03, self.initial, 0,
+                             self.observations, rho_values=self.values,
+                             initial_log_weights=self.prior, max_step=1/96,
+                             likelihood_quadrature_order=3)
+        np.testing.assert_array_equal(generic['log_weights'], old.log_weights)
+        np.testing.assert_array_equal(generic['posterior_mass'], np.stack([s.posterior_mass for s in old.steps]))
+
+    def test_sigma_bank_and_mixture_match_independent_conditional_prefixes(self):
+        for coordinate in ('rho', 'sigma_x'):
+            for backend in ('fv', 'mixture'):
+                projector = self.projector() if backend == 'mixture' else None
+                bank = self.bank(coordinate=coordinate, backend=backend, projector=projector)
+                results = []
+                for value in self.values:
+                    parameters, noise = synthetic.parameter_bank_candidate(self.parameters, .5, coordinate, value)
+                    options = dict(max_step=1/96, likelihood_quadrature_order=3)
+                    runner = run_fv_filter if backend == 'fv' else run_mixture_filter
+                    if projector is not None:
+                        options['projector'] = projector
+                    results.append(runner(self.model, parameters, noise, .03, self.initial, 0,
+                                          self.observations, **options))
+                scores = np.stack([r.log_evidence for r in results], axis=1)
+                prefix = self.prior + np.cumsum(scores, axis=0)
+                np.testing.assert_allclose(bank['log_weights'], prefix-logsumexp(prefix, axis=1)[:, None], atol=1e-12)
+                np.testing.assert_allclose(bank['final_conditional_mass'], np.stack([r.posterior_mass[-1] for r in results]), atol=1e-12)
+                prediction = np.stack([r.predicted_mass for r in results], axis=1)
+                previous = np.vstack((self.prior, bank['log_weights'][:-1]))
+                np.testing.assert_allclose(bank['predicted_mass'], np.einsum('kh,khx->kx', np.exp(previous), prediction), atol=1e-12)
+
+    def test_mixture_continuation_keeps_conditional_coefficients_and_weights(self):
+        projector = self.projector()
+        full = self.bank(backend='mixture', projector=projector)
+        prefix_obs = BM1ObservationSeries(self.observations.times[:2], self.observations.values[:2], 'day')
+        prefix = self.run_bank(self.model, self.parameters, .5, .03, self.initial, 0, prefix_obs,
+                              coordinate='rho', values=self.values, initial_log_weights=self.prior,
+                              backend='mixture', projector=projector, max_step=1/96, likelihood_quadrature_order=3)
+        tail_obs = BM1ObservationSeries(self.observations.times[2:], self.observations.values[2:], 'day')
+        tail = self.run_bank(self.model, self.parameters, .5, .03, self.initial, self.observations.times[1], tail_obs,
+                            coordinate='rho', values=self.values, initial_log_weights=prefix['log_weights'][-1],
+                            initial_conditional_mass=prefix['final_conditional_mass'],
+                            initial_conditional_coefficients=prefix['final_conditional_coefficients'],
+                            backend='mixture', projector=projector, max_step=1/96, likelihood_quadrature_order=3)
+        np.testing.assert_array_equal(tail['log_weights'][-1], full['log_weights'][-1])
+        np.testing.assert_array_equal(tail['final_conditional_coefficients'], full['final_conditional_coefficients'])
+
+    def test_mixture_permutation_duplicate_prior_and_future_causality(self):
+        projector = self.projector()
+        full = self.bank(backend='mixture', projector=projector)
+        permuted = self.bank(backend='mixture', projector=projector, values=self.values[::-1], initial_log_weights=self.prior[::-1])
+        np.testing.assert_allclose(full['log_weights'], permuted['log_weights'][:, ::-1], atol=1e-12)
+        duplicate = self.bank(values=[1., 1.], backend='mixture', projector=projector)
+        np.testing.assert_allclose(duplicate['log_weights'], np.tile(self.prior, (3, 1)), atol=1e-12)
+        altered = BM1ObservationSeries(self.observations.times, [*self.observations.values[:2], 99.], 'day')
+        changed = self.run_bank(self.model, self.parameters, .5, .03, self.initial, 0, altered,
+                                coordinate='rho', values=self.values, initial_log_weights=self.prior,
+                                backend='mixture', projector=projector, max_step=1/96, likelihood_quadrature_order=3)
+        np.testing.assert_array_equal(full['log_weights'][:2], changed['log_weights'][:2])
+
+    def test_missing_scores_underflow_recovery_and_true_prior_zero(self):
+        scores = [[-1000., 0.], [np.nan, np.nan], [2000., 0.]]
+        reduced = self.reduce(scores, np.log([.5, .5]), np.array([True, False, True]))
+        self.assertEqual(np.exp(reduced['log_weights'][0, 0]), 0.)
+        self.assertEqual(np.exp(reduced['log_weights'][-1, 0]), 1.)
+        np.testing.assert_array_equal(reduced['log_weights'][0], reduced['log_weights'][1])
+        zero = self.reduce(scores, [-np.inf, 0.], np.array([True, False, True]))
+        self.assertTrue(np.all(np.isneginf(zero['log_weights'][:, 0])))
+        with self.assertRaises(ValueError):
+            self.reduce([[0., np.nan]], self.prior, np.array([True]))
+
+    def test_prior_bin_masses_preserve_measure_under_refinement(self):
+        nodes = np.array([.5, 1., 1.5])
+        uniform = synthetic.f4_f_parameter_prior(nodes, 'uniform_parameter', 'rho')
+        capacity = synthetic.f4_f_parameter_prior(nodes, 'uniform_capacity', 'rho')
+        np.testing.assert_allclose(uniform, [.25, .5, .25])
+        edges = np.array([.5, .75, 1.25, 1.5])
+        np.testing.assert_allclose(capacity, -np.diff(1/edges)/(2-2/3))
+        self.assertGreater(capacity[0], capacity[-1])
+        self.assertTrue(np.all(synthetic.f4_f_parameter_prior(nodes, 'wrong_concentrated', 'rho') > 0))
+        with self.assertRaises(ValueError):
+            synthetic.f4_f_parameter_prior(nodes, 'uniform_log', 'rho')
+
+    def test_real_spawn_matches_serial_replay_reduction(self):
+        group = synthetic._f4_f_group('sigma_x', 1263, .5, [.3, .7],
+                                      synthetic._f4_f_numerics(21, 1/24, 1), 'diagnostic')
+        serial = synthetic._f4_f_execute_groups([group], 1, keep_mass=True)
+        parallel = synthetic._f4_f_execute_groups([group], 2, keep_mass=True)
+        for rows in (serial, parallel):
+            rows[0].pop('conditional_seconds')
+        self.assertEqual(serial, parallel)
+
+    @staticmethod
+    def refinement_fixture():
+        rows = []
+        for coordinate in ('rho', 'sigma_x'):
+            for sid in synthetic.F4_F_REFINEMENT_IDS:
+                obs = synthetic.generate_synthetic_sequence(sequence_id=sid).observations
+                for i, settings in enumerate(synthetic._f4_f_refinement_configs(coordinate)):
+                    rows.append(dict(coordinate=coordinate, sequence_id=sid, label=str(i), settings=settings,
+                        truth=1. if coordinate == 'rho' else .5, initial_log_weights=[-np.log(41)]*41,
+                        values=list(synthetic.F4_E_PARAMETER_GRIDS[coordinate]),
+                        observation_times=obs.times.tolist(), observations=obs.values.tolist(),
+                        conditional_log_evidence=np.zeros((24,41)).tolist(),
+                        log_weights=np.full((24,41), -np.log(41)).tolist(), cumulative_log_evidence=[0.]*24,
+                        parameter_mean=[1.]*24, maximum_abs_mass_error=0., minimum_cell_mass=0., fallbacks=0))
+        return dict(**synthetic._f4_f_report_header('F1', 7), rows=rows,
+                    source_commit='abc', working_tree_dirty=False)
+
+    def test_refinement_gate_recomputes_raw_scores_and_ignores_pass_boolean(self):
+        good = self.refinement_fixture()
+        self.assertEqual(synthetic.f4_f_validated_refinement(good), synthetic._f4_f_selected_numerics())
+        for mutation in ('scores', 'settings', 'observations', 'dirty', 'missing'):
+            bad = copy.deepcopy(good)
+            bad['passes'] = True
+            if mutation == 'scores':
+                bad['rows'][-1]['conditional_log_evidence'][0][0] = 2.
+            elif mutation == 'settings':
+                bad['rows'][-1]['settings']['x_steps'] = 101
+            elif mutation == 'observations':
+                bad['rows'][-1]['observations'][-1] += .1
+            elif mutation == 'dirty':
+                bad['working_tree_dirty'] = True
+            else:
+                bad['rows'].pop()
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                synthetic.f4_f_validated_refinement(bad, require_source=True)
+
+    def test_cli_no_overwrite_compressed_reports_and_failed_gates_are_retained(self):
+        import gzip
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'f1.json.gz'
+            args = estimate.build_parser().parse_args(['bank-refine','--output',str(path),'--quiet'])
+            self.assertEqual(args.workers, 7)
+            report = dict(stage='F1', rows=[], comparisons=[], registered_design=True, passes=False)
+            with patch.object(synthetic, 'run_f4_f_bank_refinement', return_value=report):
+                with self.assertRaises(RuntimeError):
+                    estimate.run_bank_study(args)
+            with gzip.open(path, 'rt') as stream:
+                self.assertFalse(json.load(stream)['passes'])
+            with patch.object(synthetic, 'run_f4_f_bank_refinement') as run:
+                with self.assertRaises(FileExistsError):
+                    estimate.run_bank_study(args)
+                run.assert_not_called()
+
+    def test_rejects_unknown_coordinate_and_bad_mixture_continuation(self):
+        with self.assertRaises(ValueError):
+            self.bank(coordinate='k')
+        with self.assertRaises(ValueError):
+            self.bank(values=[0., 1.])
+        with self.assertRaises(ValueError):
+            self.bank(backend='mixture', projector=self.projector(),
+                      initial_conditional_coefficients=np.full((2, 3), 1/3))
+
+    def test_mixture_gate_checks_raw_weights_inputs_mass_and_all_pilot_rows(self):
+        rows = []
+        settings = [('fv_reference', synthetic._f4_f_selected_numerics()['rho']),
+                    ('fv_matched', synthetic._f4_f_numerics(151, 1/3072)),
+                    ('mixture_coarse', synthetic._f4_f_numerics(151, 1/768, backend='mixture')),
+                    ('mixture_middle', synthetic._f4_f_numerics(151, 1/1536, backend='mixture')),
+                    ('mixture_fine', synthetic._f4_f_numerics(151, 1/3072, backend='mixture'))]
+        for sid in (1326, 1327):
+            obs = synthetic.generate_synthetic_sequence(sequence_id=sid).observations
+            for label, config in settings:
+                cells = config['x_steps']
+                rows.append(dict(coordinate='rho', truth=1., sequence_id=sid, label=label,
+                    settings=config, values=list(synthetic.F4_E_RHO_GRID),
+                    observation_times=obs.times.tolist(), observations=obs.values.tolist(),
+                    conditional_log_evidence=np.zeros((24,41)).tolist(),
+                    initial_log_weights=[-np.log(41)]*41, log_weights=np.full((24,41),-np.log(41)).tolist(),
+                    cumulative_log_evidence=[0.]*24, parameter_mean=[1.]*24,
+                    maximum_abs_mass_error=0., minimum_cell_mass=0., fallbacks=0,
+                    actual_max_step=config['max_step'],
+                    x_edges=np.linspace(0,1,cells+1).tolist(),
+                    marginal_predicted_mass=np.full((24,cells),1/cells).tolist(),
+                    marginal_posterior_mass=np.full((24,cells),1/cells).tolist()))
+        report = dict(**synthetic._f4_f_report_header('F3', 7), rows=rows,
+                      source_commit='abc', working_tree_dirty=False,
+                      mixture_basis='shape_D', mixture_cfl=.4)
+        self.assertEqual(synthetic.f4_f_validated_mixture_check(report), settings[-1][1])
+        for mutation in ('scores', 'mass', 'observations', 'basis', 'missing'):
+            bad = copy.deepcopy(report)
+            if mutation == 'scores':
+                bad['rows'][-1]['conditional_log_evidence'][0][0] = 1.
+            elif mutation == 'mass':
+                bad['rows'][-1]['marginal_posterior_mass'][0][0] = -1.
+            elif mutation == 'observations':
+                bad['rows'][-1]['observations'][0] += .1
+            elif mutation == 'basis':
+                bad['mixture_basis'] = 'changed'
+            else:
+                bad['rows'].pop()
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                synthetic.f4_f_validated_mixture_check(bad)
+
+    @staticmethod
+    def refined_mixture_fixture():
+        # A coarse representation can fail against the reference while the
+        # explicitly refined candidate and its controls agree exactly.
+        configs = [('fv_reference', 401, 1/768, 'fv'),
+                   ('fv_matched', 151, 1/3072, 'fv'),
+                   ('mixture_coarse', 151, 1/768, 'mixture'),
+                   ('mixture_middle', 151, 1/1536, 'mixture'),
+                   ('mixture_fine', 151, 1/3072, 'mixture'),
+                   ('fv401_fine', 401, 1/32768, 'fv'),
+                   ('mixture401_middle', 401, 1/16384, 'mixture'),
+                   ('mixture401_fine', 401, 1/32768, 'mixture'),
+                   ('mixture801_fine', 801, 1/32768, 'mixture')]
+        rows = []
+        for sid in (1326, 1327):
+            obs = synthetic.generate_synthetic_sequence(sequence_id=sid).observations
+            for label, cells, step, backend in configs:
+                mass = np.full((24, cells), 1/cells)
+                if cells == 151:
+                    mass[:] = 0.
+                    mass[:, cells//2] = 1.
+                rows.append(dict(coordinate='rho', truth=1., sequence_id=sid, label=label,
+                    settings=synthetic._f4_f_numerics(cells, step, backend=backend),
+                    actual_max_step=step,
+                    values=list(synthetic.F4_E_RHO_GRID),
+                    observation_times=obs.times.tolist(), observations=obs.values.tolist(),
+                    conditional_log_evidence=np.zeros((24,41)).tolist(),
+                    initial_log_weights=[-np.log(41)]*41, log_weights=np.full((24,41),-np.log(41)).tolist(),
+                    cumulative_log_evidence=[0.]*24, parameter_mean=[1.]*24,
+                    maximum_abs_mass_error=0., minimum_cell_mass=0., fallbacks=0,
+                    x_edges=np.linspace(0,1,cells+1).tolist(),
+                    marginal_predicted_mass=mass.tolist(), marginal_posterior_mass=mass.tolist()))
+        return dict(**synthetic._f4_f_report_header('F3', 7), rows=rows,
+                    source_commit='abc', working_tree_dirty=False, design_version=2,
+                    selected_mixture_numerics=synthetic._f4_f_numerics(401, 1/32768, backend='mixture'),
+                    mixture_basis='shape_D', mixture_cfl=.4, passes=False)
+
+    def test_refined_pilot_retains_failed_controls_and_checks_selected_raw_curves(self):
+        report = self.refined_mixture_fixture()
+        lookup = {(r['sequence_id'],r['label']):r for r in report['rows']}
+        self.assertFalse(synthetic._f4_f_paired_bank_comparison(
+            lookup[1326,'fv_reference'], lookup[1326,'mixture_fine'])['passes'])
+        self.assertEqual(synthetic.f4_f_validated_mixture_check(report, require_source=True),
+                         synthetic._f4_f_numerics(401, 1/32768, backend='mixture'))
+        for mutation in ('state', 'missing_old_control', 'selected_settings', 'version', 'edges', 'inactive_time', 'spatial_time'):
+            bad = copy.deepcopy(report)
+            bad['passes'] = True
+            bad['comparisons'] = [{'passes':True, 'selected':False}]
+            if mutation == 'state':
+                target = next(r for r in bad['rows'] if r['label']=='mixture401_fine')
+                target['marginal_posterior_mass'][0] = [1.] + [0.]*400
+            elif mutation == 'missing_old_control':
+                bad['rows'].pop(1)
+            elif mutation == 'selected_settings':
+                bad['selected_mixture_numerics']['max_step'] = 1/1536
+            elif mutation == 'version':
+                bad['design_version'] = 1
+            elif mutation == 'inactive_time':
+                for r in bad['rows']:
+                    if r['label'] in ('mixture401_middle','mixture401_fine'):
+                        r['actual_max_step'] = 1/40000
+            elif mutation == 'spatial_time':
+                bad['rows'][-1]['actual_max_step'] *= .5
+            else:
+                bad['rows'][-1]['x_edges'][1] += .0001
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                synthetic.f4_f_validated_mixture_check(bad)
+
+    def test_refined_study_reports_old_failures_without_loosening_selected_gates(self):
+        report = self.refined_mixture_fixture()
+        with patch.object(synthetic, '_f4_f_execute_groups', return_value=report['rows']) as execute:
+            result = synthetic.run_f4_f_bank_mixture_check(self.refinement_fixture(), spatial_refine=True)
+        self.assertEqual(len(execute.call_args.args[0]), 18)
+        self.assertEqual(result['design_version'], 2)
+        self.assertTrue(result['passes'])
+        self.assertEqual(sum(c['selected'] for c in result['comparisons']), 8)
+        old = [c for c in result['comparisons'] if c['comparison']=='reference_fv']
+        self.assertEqual(len(old), 2)
+        self.assertTrue(all(not c['passes'] and not c['selected'] for c in old))
+        self.assertEqual(result['criteria']['maximum_state_l1'], .02)
+
+    def test_cli_spatial_refinement_flag_and_state_error_are_visible(self):
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as directory:
+            args = estimate.build_parser().parse_args(['bank-mixture-check', '--spatial-refine',
+                '--refinement-report','f1.json.gz', '--output',str(Path(directory)/'f3.json.gz')])
+            report = dict(stage='F3', rows=[], registered_design=True, passes=False,
+                criteria={'maximum_state_l1':.02}, comparisons=[dict(coordinate='rho',sequence_id=1326,
+                    comparison='reference_fv', maximum_log_odds_error=.01, maximum_weight_tv=.001,
+                    maximum_cumulative_evidence_error=.01, predicted_maximum_l1=.03,
+                    posterior_maximum_l1=.04, passes=False,selected=True)])
+            with patch.object(estimate,'_read_bank_dependency',return_value=({'source_commit':'abc'},'digest')), \
+                    patch.object(synthetic,'run_f4_f_bank_mixture_check',return_value=report) as run, \
+                    patch.object(estimate,'_write_likelihood_report'), patch('builtins.print') as printed:
+                with self.assertRaises(RuntimeError):
+                    estimate.run_bank_study(args)
+            self.assertTrue(run.call_args.kwargs['spatial_refine'])
+            output = '\n'.join(str(call.args[0]) for call in printed.call_args_list)
+            self.assertIn('state L1 pred/post=0.03/0.04; limit=0.02', output)
+
+    def test_likelihood_window_does_not_remove_hypotheses_from_bayes_update(self):
+        a = dict(values=[.5,1.,1.5], observations=[.2],
+                 conditional_log_evidence=[[-100.,0.,0.]], log_weights=[[-101.,-np.log(2),-np.log(2)]],
+                 cumulative_log_evidence=[0.], parameter_mean=[1.25])
+        b = copy.deepcopy(a)
+        b['conditional_log_evidence'][0][0] = -90.
+        result = synthetic._f4_f_weight_comparison(a,b)
+        self.assertEqual(result['maximum_log_odds_error'], 0.)
+        self.assertEqual(result['maximum_all_node_log_odds_error'], 10.)
+        self.assertEqual(len(a['values']),3)
+        updated = self.reduce(b['conditional_log_evidence'], np.log([1/3]*3), np.array([True]))
+        self.assertTrue(np.isfinite(updated['log_weights'][0,0]))
+
+    def test_grid_reuse_requires_exact_candidate_case_observations_and_numerics(self):
+        settings = synthetic._f4_f_numerics(21,1/24,1)
+        a = synthetic._f4_f_group('rho',1263,1.,[.75,1.],settings,'first')
+        b = synthetic._f4_f_group('rho',1263,1.,[1.,1.25],settings,'second')
+        original = synthetic._f4_f_candidate_replay
+        with patch.object(synthetic,'_f4_f_candidate_replay',wraps=original) as run:
+            rows = synthetic._f4_f_execute_groups([a,b],1)
+            self.assertEqual(run.call_count,3)
+        standalone = synthetic._f4_f_execute_groups([b],1)[0]
+        np.testing.assert_array_equal(rows[1]['conditional_log_evidence'],standalone['conditional_log_evidence'])
+        for change in ('observations','numerics','node'):
+            changed = copy.deepcopy(b)
+            if change == 'observations':
+                obs=changed['observations']
+                changed['observations']=BM1ObservationSeries(obs.times,obs.values+.001,'day')
+            elif change == 'numerics':
+                changed['settings']['likelihood_quadrature_order']=3
+            else:
+                changed['values']=(np.nextafter(1.,2.),1.25)
+            with self.subTest(change=change), patch.object(synthetic,'_f4_f_candidate_replay',wraps=original) as run:
+                synthetic._f4_f_execute_groups([a,changed],1)
+                self.assertEqual(run.call_count,4)
+
+
+class PopulationReferenceRefinementTests(unittest.TestCase):
+    @staticmethod
+    def population_fixture():
+        rows = []
+        for sid in range(1328, 1348):
+            sequence = synthetic.generate_synthetic_sequence(sequence_id=sid)
+            for coordinate, label in (('rho','fv'), ('rho','mixture'), ('sigma_x','fv')):
+                cells, step = (3201,1/1536) if coordinate=='sigma_x' else (401,1/768 if label=='fv' else 1/32768)
+                nodes = np.array(synthetic.F4_E_PARAMETER_GRIDS[coordinate])
+                mass = np.full((24,cells),1/cells)
+                if coordinate=='rho' and label=='fv':
+                    mass[:]=0.; mass[:,cells//2]=1.
+                rows.append(dict(coordinate=coordinate,label=label,sequence_id=sid,
+                    truth=1. if coordinate=='rho' else .5, prior_name='discrete_uniform',
+                    values=nodes.tolist(), settings=synthetic._f4_f_numerics(cells,step,backend=label),
+                    actual_max_step=step, maximum_abs_mass_error=0.,minimum_cell_mass=0.,fallbacks=0,
+                    observation_times=sequence.observations.times.tolist(), observations=sequence.observations.values.tolist(),
+                    truth_state=sequence.truth.state[1:].tolist(), initial_log_weights=[-np.log(41)]*41,
+                    conditional_log_evidence=np.zeros((24,41)),log_weights=np.full((24,41),-np.log(41)),
+                    bank_log_evidence=[0.]*24,cumulative_log_evidence=[0.]*24,
+                    parameter_mean=[float(nodes.mean())]*24,parameter_sd=[float(nodes.std())]*24,
+                    equal_tail_95=[[float(nodes[1]),float(nodes[-2])]]*24,
+                    x_edges=np.linspace(0,1,cells+1), marginal_predicted_mass=mass,marginal_posterior_mass=mass,
+                    predicted_mean=[.5]*24,posterior_mean=[.5]*24))
+        return dict(**synthetic._f4_f_report_header('F4',8),rows=rows,passes=True,comparisons=[],summary=[],
+                    source_commit='abc',working_tree_dirty=False,
+                    dependencies={k:dict(source_commit='abc',sha256=k) for k in ('refinement','mixture')})
+
+    def test_population_reuse_validates_raw_data_even_when_original_comparisons_fail(self):
+        report=self.population_fixture()
+        validated=synthetic.f4_f_validated_population(report,require_source=True)
+        self.assertFalse(synthetic._f4_f_paired_bank_comparison(validated['rho',1328,'fv'],validated['rho',1328,'mixture'])['passes'])
+        for mutation in ('missing','scores','mean','mass','edges','observations','truth','settings','dirty'):
+            bad=copy.deepcopy(report);row=bad['rows'][0]
+            if mutation=='missing':bad['rows'].pop()
+            elif mutation=='scores':row['conditional_log_evidence'][0,0]=1.
+            elif mutation=='mean':row['parameter_mean'][0]+=.1
+            elif mutation=='mass':row['marginal_posterior_mass'][0,0]=-.1
+            elif mutation=='edges':row['x_edges'][1]+=.0001
+            elif mutation=='observations':row['observations'][0]+=.1
+            elif mutation=='truth':row['truth_state'][0]+=.1
+            elif mutation=='settings':row['settings']['max_step']/=2
+            else:bad['working_tree_dirty']=True
+            with self.subTest(mutation=mutation),self.assertRaises(ValueError):
+                synthetic.f4_f_validated_population(bad,require_source=True)
+
+    def test_population_time_refinement_reuses_inputs_and_exposes_original_failures(self):
+        report=self.population_fixture()
+        # A platform-level seed-rounding difference is allowed in validation;
+        # the actual new replays must use the stored measurements exactly.
+        for row in report['rows']:
+            if row['sequence_id']==1328:row['observations'][0]=np.nextafter(row['observations'][0],np.inf)
+        replayed=[]
+        def execute(groups,workers,progress,keep_mass):
+            self.assertEqual(workers,8);self.assertTrue(keep_mass);self.assertEqual(len(groups),40)
+            for group in groups:
+                source=next(r for r in report['rows'] if r['coordinate']=='rho' and r['label']=='fv' and r['sequence_id']==group['sequence_id'])
+                np.testing.assert_array_equal(group['observations'].values,source['observations'])
+                self.assertEqual(group['settings']['backend'],'fv')
+                mass=np.full((24,401),1/401)
+                replayed.append(dict(source,label=group['label'],settings=group['settings'],actual_max_step=group['settings']['max_step'],
+                    marginal_predicted_mass=mass,marginal_posterior_mass=mass))
+            return replayed
+        with patch.object(synthetic,'_f4_f_execute_groups',side_effect=execute):
+            result=synthetic.run_f4_f_population_time_refinement(OneParameterBankTests.refinement_fixture(),
+                OneParameterBankTests.refined_mixture_fixture(),report,workers=8)
+        self.assertTrue(result['passes']);self.assertFalse(result['original_population_passes'])
+        self.assertEqual(result['new_replays'],1640);self.assertEqual(result['reused_selected_banks'],40)
+        self.assertEqual(sum(x['selected'] for x in result['comparisons']),40)
+        self.assertTrue(all(not x['selected'] and not x['passes'] for x in result['comparisons'] if x['comparison']=='original_fv_mixture'))
+        self.assertEqual([s['count'] for s in result['summary']],[20,20,20])
+        self.assertEqual(report['rows'][0]['settings']['max_step'],1/768)
+        replayed[-1]=dict(replayed[-1],marginal_posterior_mass=report['rows'][0]['marginal_posterior_mass'])
+        with patch.object(synthetic,'_f4_f_execute_groups',return_value=replayed):
+            failed=synthetic.run_f4_f_population_time_refinement(OneParameterBankTests.refinement_fixture(),
+                OneParameterBankTests.refined_mixture_fixture(),report,workers=8)
+        self.assertFalse(failed['passes'])
+
+    def test_population_time_cli_checks_dependency_digests_before_replay_and_retains_failure(self):
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as directory:
+            args=estimate.build_parser().parse_args(['bank-population-time-refine','--refinement-report','f1.gz',
+                '--mixture-report','f3.gz','--population-report','f4.gz','--workers','8','--output',str(Path(directory)/'next.gz')])
+            population=dict(source_commit='population',dependencies={k:dict(source_commit='abc',sha256=k) for k in ('refinement','mixture')})
+            result=dict(stage='F4-time-refinement',rows=[],comparisons=[],registered_design=True,passes=False)
+            deps=[({'source_commit':'abc'},'refinement'),({'source_commit':'abc'},'mixture'),(population,'population')]
+            with patch.object(estimate,'_read_bank_dependency',side_effect=deps),patch('builtins.print'), \
+                    patch.object(synthetic,'run_f4_f_population_time_refinement',return_value=result) as run, \
+                    patch.object(estimate,'_write_likelihood_report') as write:
+                with self.assertRaises(RuntimeError):estimate.run_bank_study(args)
+            self.assertEqual(run.call_args.kwargs['workers'],8);write.assert_called_once()
+            self.assertEqual(result['dependencies']['population']['sha256'],'population')
+            population['dependencies']['mixture']['sha256']='wrong'
+            with patch.object(estimate,'_read_bank_dependency',side_effect=deps), \
+                    patch.object(synthetic,'run_f4_f_population_time_refinement') as run:
+                with self.assertRaises(ValueError):estimate.run_bank_study(args)
+            run.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

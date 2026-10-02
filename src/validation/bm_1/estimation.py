@@ -22,8 +22,9 @@ from src.method.beta_mixture import beta_cell_average_basis
 from src.method.bm_1_estimation import (
     BM1FVFilterResult, BM1FVRhoBankStep, BM1FVRhoBankResult,
     bm1_observation_update, fv_filter_step, fv_rho_bank_step, run_fv_filter,
+    parameter_bank_candidate, parameter_bank_weights, run_mixture_filter,
 )
-from src.params.bm_1 import BM1ObservationSeries
+from src.params.bm_1 import BM1ObservationSeries, conservative_mass_transfer, mass_to_log
 from src.tools.input_generator.input_builder import input_builder
 from src.validation import estimation as checks
 from src.validation.bm_1 import cases
@@ -67,6 +68,12 @@ F4_E_PAIR_SEQUENCE_COUNT = 10
 F4_E_PAIR_GRID_STRIDE = 2
 F4_F_METHOD_SEQUENCE_ID = 1262
 F4_F_IDENTITY_TOL = 1e-10
+F4_F_REFINEMENT_IDS = (1263, 1264, 1265)
+F4_F_POPULATION_IDS = tuple(range(1328, 1348))
+F4_F_LOG_ODDS_TOL = 0.10
+F4_F_WEIGHT_TV_TOL = 0.01
+F4_F_EVIDENCE_TOL = 0.10
+F4_F_STATE_L1_TOL = 0.02
 
 
 def _readonly_vector(values: ArrayLike, name: str, *, minimum_size: int = 1) -> NDArray[np.float64]:
@@ -2334,6 +2341,750 @@ def run_f4_f_bank_identity(*, sequence_id=F4_F_METHOD_SEQUENCE_ID,
         'final_conditional_posterior_mass': steps[-1].conditional_posterior_mass.tolist(),
         'x_edges': steps[-1].conditional_steps[0].x_edges.tolist(),
     }
+
+
+def f4_f_parameter_prior(values, name, coordinate):
+    """Declared discrete prior, or exact bin masses of a continuous prior.
+
+    Midpoint bins have support exactly [first node, last node]. Refinements of
+    continuous priors preserve that measure, including half-width end bins.
+    The original F0 uniform discrete prior remains a separate primary prior.
+    """
+    values = checks.increasing_grid(values, 'parameter values')
+    if np.any(values <= 0.0) or coordinate not in ('rho', 'sigma_x'):
+        raise ValueError('Prior nodes must be positive rho or sigma_x values.')
+    edges = np.r_[values[0], .5 * (values[:-1] + values[1:]), values[-1]]
+    if name == 'discrete_uniform':
+        mass = np.ones(values.size)
+    elif name == 'uniform_parameter':
+        mass = np.diff(edges)
+    elif name == 'uniform_capacity' and coordinate == 'rho':
+        mass = -np.diff(1.0 / edges)
+    elif name == 'uniform_log' and coordinate == 'sigma_x':
+        mass = np.diff(np.log(edges))
+    elif name == 'wrong_concentrated':
+        # Deliberately wrong but positive everywhere; a zero-prior experiment
+        # would permanently exclude hypotheses and is already covered by F0.
+        center = .6 if coordinate == 'rho' else .25
+        scaled = (np.log(values) - np.log(center)) / .20
+        logs = -.5 * scaled**2
+        return np.exp(logs - logsumexp(logs))
+    else:
+        raise ValueError('Unknown prior family for this coordinate.')
+    return mass / np.sum(mass)
+
+
+def _f4_f_numerics(cells=401, step=1/768, order=3, backend='fv'):
+    return dict(x_steps=checks.positive_integer(cells, 'cells', minimum=3),
+                max_step=checks.finite_scalar(step, 'max_step', positive=True),
+                likelihood_quadrature_order=checks.positive_integer(order, 'quadrature order'),
+                backend=backend)
+
+
+def _f4_f_case(coordinate, truth):
+    if coordinate not in ('rho', 'sigma_x'):
+        raise ValueError('Unknown bank coordinate.')
+    return build_f4_b_case(**({'C': 1.0 / truth} if coordinate == 'rho' else {'sigma_x': truth}))
+
+
+_F4_F_PROJECTORS = {}
+
+
+def _f4_f_projector(cells, model):
+    """Process-local fixed geometry only; no observation or candidate result cache."""
+    from src.method.beta_mixture import PreparedBetaProjector
+    from src.validation.bm_1.mixture_estimation import _shape_aware_dictionary
+    if cells not in _F4_F_PROJECTORS:
+        edges, _, dx = model.fokker_planc_reference.grid(cells, bounds=(0.0, 1.0))
+        basis = _shape_aware_dictionary(edges, .0125)['basis']
+        _F4_F_PROJECTORS[cells] = PreparedBetaProjector(basis, dx)
+    return _F4_F_PROJECTORS[cells]
+
+
+def _f4_f_candidate_replay(task):
+    """Fresh complete conditional replay; truth is never an estimator input."""
+    from time import perf_counter
+    from src.method.bm_1_estimation import _observation_demand
+    group_index, node_index, coordinate, node, case, observations, settings = task
+    started = perf_counter()
+    model, base = case.build_model()
+    parameters, noise = parameter_bank_candidate(base, case.sigma_x, coordinate, node)
+    initial = beta_initial_mass(case, model, settings['x_steps'])
+    options = dict(breakpoints=case.breakpoints, max_step=settings['max_step'],
+                   likelihood_quadrature_order=settings['likelihood_quadrature_order'])
+    if settings['backend'] == 'fv':
+        filtered = run_fv_filter(model, parameters, noise, case.sigma_y, initial,
+                                 case.horizon[0], observations, **options)
+        mass_error = filtered.maximum_abs_mass_error
+        minimum = filtered.minimum_cell_mass
+        actual_step = max(d['actual_max_step'] for d in filtered.prediction_diagnostics)
+        fallbacks = 0
+    elif settings['backend'] == 'mixture':
+        filtered = run_mixture_filter(model, parameters, noise, case.sigma_y, initial,
+                                     case.horizon[0], observations,
+                                     projector=_f4_f_projector(settings['x_steps'], model),
+                                     cfl=.4, **options)
+        diagnostics = filtered.prediction_diagnostics
+        projections = (filtered.initial_projection_diagnostics,) + filtered.posterior_projection_diagnostics
+        mass_error = max(max(d['maximum_abs_raw_prediction_mass_error'],
+                             d['maximum_abs_projected_mass_error']) for d in diagnostics)
+        mass_error = max(mass_error, max(d['mass_error'] for d in projections))
+        minimum = min(min(d['minimum_raw_prediction'] for d in diagnostics),
+                      float(np.min(filtered.posterior_mass)))
+        actual_step = max(d['maximum_internal_step'] for d in diagnostics)
+        fallbacks = sum(d['projection_fallback_count'] for d in diagnostics)
+        fallbacks += sum(int(d['used_fallback']) for d in projections)
+    else:
+        raise ValueError('Unknown bank backend.')
+    centers = filtered.x_grid
+    # Mid-cell demand means are diagnostics; evidence uses the declared cell
+    # quadrature in bm1_observation_update, never this mean approximation.
+    demands = np.stack([_observation_demand(model, parameters, float(t), centers,
+                                          observations.price_side, case.horizon[0])
+                        for t in observations.times])
+    return group_index, node_index, dict(
+        conditional_log_evidence=filtered.log_evidence,
+        predicted_mass=filtered.predicted_mass, posterior_mass=filtered.posterior_mass,
+        x_edges=filtered.x_edges, x_grid=centers,
+        predicted_demand_mean=np.sum(demands * filtered.predicted_mass, axis=1),
+        maximum_abs_mass_error=float(mass_error), minimum_cell_mass=float(minimum),
+        actual_max_step=float(actual_step), fallbacks=int(fallbacks),
+        elapsed_seconds=perf_counter() - started)
+
+
+def _f4_f_reduce_conditionals(group, conditionals, prior_name='discrete_uniform'):
+    """Reduce independent replays with previous weights for predictive quantities."""
+    values = np.asarray(group['values'])
+    observed = group['observations'].observed
+    scores = np.stack([c['conditional_log_evidence'] for c in conditionals], axis=1)
+    initial = mass_to_log(f4_f_parameter_prior(values, prior_name, group['coordinate']))
+    reduced = parameter_bank_weights(scores, initial, observed)
+    weights, old_weights = np.exp(reduced['log_weights']), np.exp(reduced['prior_log_weights'])
+    pred = np.stack([c['predicted_mass'] for c in conditionals], axis=1)
+    post = np.stack([c['posterior_mass'] for c in conditionals], axis=1)
+    predicted = np.einsum('kh,khx->kx', old_weights, pred)
+    posterior = np.einsum('kh,khx->kx', weights, post)
+    checks.probability_rows(predicted, 'bank predicted mass')
+    checks.probability_rows(posterior, 'bank posterior mass')
+    mean = weights @ values
+    variance = np.sum(weights * (values[None, :] - mean[:, None])**2, axis=1)
+    cdf = np.cumsum(weights, axis=1)
+    intervals = [[float(values[min(np.searchsorted(row, p), values.size-1)])
+                  for p in (.025, .975)] for row in cdf]
+    conditional_predicted_mean = np.einsum('khx,x->kh', pred, conditionals[0]['x_grid'])
+    conditional_posterior_mean = np.einsum('khx,x->kh', post, conditionals[0]['x_grid'])
+    evidence_prefix = np.cumsum(np.where(observed, reduced['log_evidence'], 0.0))
+    return dict(
+        coordinate=group['coordinate'], values=values.tolist(), prior_name=prior_name,
+        initial_log_weights=initial.tolist(), log_weights=reduced['log_weights'].tolist(),
+        conditional_log_evidence=scores.tolist(), bank_log_evidence=reduced['log_evidence'].tolist(),
+        cumulative_log_evidence=evidence_prefix.tolist(), parameter_mean=mean.tolist(),
+        parameter_sd=np.sqrt(variance).tolist(), equal_tail_95=intervals,
+        effective_hypotheses=np.exp(-np.sum(np.where(weights > 0, weights * reduced['log_weights'], 0), axis=1)).tolist(),
+        endpoint_weight=(weights[:, 0] + weights[:, -1]).tolist(),
+        map_values=[values[row == np.max(row)].tolist() for row in reduced['log_weights']],
+        capacity_mean=(weights @ (1.0 / values)).tolist() if group['coordinate'] == 'rho' else None,
+        conditional_predicted_mean=conditional_predicted_mean.tolist(),
+        conditional_posterior_mean=conditional_posterior_mean.tolist(),
+        predicted_mean=(predicted @ conditionals[0]['x_grid']).tolist(),
+        posterior_mean=(posterior @ conditionals[0]['x_grid']).tolist(),
+        predictive_demand_mean=np.sum(old_weights * np.stack(
+            [c['predicted_demand_mean'] for c in conditionals], axis=1), axis=1).tolist(),
+        maximum_abs_mass_error=max(c['maximum_abs_mass_error'] for c in conditionals),
+        minimum_cell_mass=min(c['minimum_cell_mass'] for c in conditionals),
+        actual_max_step=max(c['actual_max_step'] for c in conditionals),
+        fallbacks=sum(c['fallbacks'] for c in conditionals),
+        conditional_seconds=sum(c['elapsed_seconds'] for c in conditionals),
+        # Kept in memory for paired comparisons, omitted from sensitivity JSON.
+        _predicted_mass=predicted, _posterior_mass=posterior,
+        _x_edges=conditionals[0]['x_edges'])
+
+
+def _f4_f_group(coordinate, sequence_id, truth, values, settings, label):
+    case = _f4_f_case(coordinate, truth)
+    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
+    if not sequence.truth.valid:
+        raise RuntimeError(f'F4-F truth failed at ID{sequence_id}; no repair or dropped sequence.')
+    return dict(coordinate=coordinate, sequence_id=int(sequence_id), truth=float(truth),
+                values=tuple(values), settings=settings, label=label,
+                case=case, observations=sequence.observations,
+                truth_state=sequence.truth.state[1:].tolist())
+
+
+def _f4_f_public_row(group, reduced, *, keep_mass=False):
+    row = {k: v for k, v in reduced.items() if not k.startswith('_')}
+    row.update(sequence_id=group['sequence_id'], truth=group['truth'],
+               settings=group['settings'], label=group['label'],
+               observation_times=group['observations'].times.tolist(),
+               observations=group['observations'].values.tolist(),
+               truth_state=group['truth_state'])
+    if keep_mass:
+        row.update(x_edges=reduced['_x_edges'].tolist(),
+                   marginal_predicted_mass=reduced['_predicted_mass'].tolist(),
+                   marginal_posterior_mass=reduced['_posterior_mass'].tolist())
+    return row
+
+
+def _f4_f_execute_groups(groups, workers, progress=None, *, priors=False, keep_mass=False):
+    """A persistent Windows-compatible spawn pool over complete hypotheses.
+
+    Results are placed by group/node index, not completion order. Each replay
+    carries its own conditional posterior through the observation chronology.
+    """
+    workers = checks.positive_integer(workers, 'workers')
+    tasks, exact_replays, consumers = [], {}, {}
+    for i, g in enumerate(groups):
+        case_key = tuple((name, np.asarray(getattr(g['case'], name)).dtype.str,
+                          np.asarray(getattr(g['case'], name)).shape,
+                          np.asarray(getattr(g['case'], name)).tobytes())
+                         for name in g['case'].__dataclass_fields__)
+        obs = g['observations']
+        observation_key = (obs.time_unit, obs.observation_kind, obs.price_side,
+                           obs.times.tobytes(), obs.values.tobytes(), obs.observed.tobytes())
+        for j, value in enumerate(g['values']):
+            # No rounding or approximate match. Only the same fixed-candidate
+            # replay may be shared across grids/priors; never another candidate's
+            # conditional posterior. Neither parameter grid nor prior enters it.
+            key = (g['coordinate'], float(value), case_key, observation_key,
+                   tuple(sorted(g['settings'].items())))
+            if key not in exact_replays:
+                exact_replays[key] = (i, j)
+                consumers[(i, j)] = []
+                tasks.append((i, j, g['coordinate'], float(value), g['case'], obs, g['settings']))
+            consumers[exact_replays[key]].append((i, j))
+    pending = {i: [None] * len(g['values']) for i, g in enumerate(groups)}
+    rows = [None] * len(groups)
+    manager = (ProcessPoolExecutor(max_workers=workers, mp_context=get_context('spawn'))
+               if workers > 1 else nullcontext(None))
+    with manager as pool:
+        if pool is None:
+            results = map(_f4_f_candidate_replay, tasks)
+        else:
+            futures = {pool.submit(_f4_f_candidate_replay, t): (t[0], t[1]) for t in tasks}
+
+            def completed_results():
+                for future in as_completed(futures):
+                    group_index, node_index = futures.pop(future)
+                    try:
+                        result = future.result()
+                    except (RuntimeError, ValueError, FloatingPointError) as exc:
+                        g = groups[group_index]
+                        raise RuntimeError(f"Conditional replay failed: ID{g['sequence_id']}, "
+                                           f"{g['coordinate']}={g['values'][node_index]}, {g['label']}: {exc}") from exc
+                    yield result
+
+            results = completed_results()
+        for completed, (i, j, conditional) in enumerate(results, 1):
+            for destination, node_index in consumers[(i, j)]:
+                pending[destination][node_index] = conditional
+                if all(c is not None for c in pending[destination]):
+                    group = groups[destination]
+                    reduced = _f4_f_reduce_conditionals(group, pending[destination])
+                    row = _f4_f_public_row(group, reduced, keep_mass=keep_mass)
+                    if priors:
+                        names = ['uniform_parameter', 'wrong_concentrated']
+                        names.append('uniform_capacity' if group['coordinate'] == 'rho' else 'uniform_log')
+                        row['prior_sensitivity'] = {name: _f4_f_public_row(
+                            group, _f4_f_reduce_conditionals(group, pending[destination], name)) for name in names}
+                    rows[destination] = row
+                    del pending[destination]
+            if progress is not None:
+                progress(dict(completed=completed, total=len(tasks), sequence_id=groups[i]['sequence_id'],
+                              coordinate=groups[i]['coordinate'], label=groups[i]['label']))
+    return rows
+
+
+def _f4_f_weight_comparison(middle, fine):
+    """Probability and log-odds errors at *every* observation prefix."""
+    if middle['values'] != fine['values'] or middle['observations'] != fine['observations']:
+        raise ValueError('Numerical comparisons require identical nodes and observations.')
+    a = np.cumsum(np.asarray(middle['conditional_log_evidence']), axis=0)
+    b = np.cumsum(np.asarray(fine['conditional_log_evidence']), axis=0)
+    errors = b - a
+    # max pairwise log-odds error = range of the per-node cumulative errors.
+    all_odds = float(np.max(np.ptp(errors, axis=1)))
+    # E1's existing five-log-unit likelihood window, now at every prefix and
+    # taking the union of both resolutions. All nodes remain in Bayes updates,
+    # the TV/evidence gates, saved curves, and the all-node diagnostic.
+    relevant = ((a >= np.max(a, axis=1)[:, None] - F4_E_LIKELIHOOD_WINDOW)
+                | (b >= np.max(b, axis=1)[:, None] - F4_E_LIKELIHOOD_WINDOW))
+    odds = max(float(np.ptp(errors[k, keep])) for k, keep in enumerate(relevant))
+    tv = float(np.max(.5 * np.sum(np.abs(np.exp(middle['log_weights']) - np.exp(fine['log_weights'])), axis=1)))
+    evidence = float(np.max(np.abs(np.asarray(middle['cumulative_log_evidence'])
+                                  - np.asarray(fine['cumulative_log_evidence']))))
+    mean = float(np.max(np.abs(np.asarray(middle['parameter_mean']) - np.asarray(fine['parameter_mean']))))
+    passes = (odds <= F4_F_LOG_ODDS_TOL and tv <= F4_F_WEIGHT_TV_TOL
+              and evidence <= F4_F_EVIDENCE_TOL)
+    return dict(maximum_log_odds_error=odds, maximum_weight_tv=tv,
+                maximum_all_node_log_odds_error=all_odds,
+                maximum_cumulative_evidence_error=evidence, maximum_parameter_mean_change=mean,
+                passes=bool(passes))
+
+
+def _f4_f_probability_gate(rows):
+    return bool(rows) and all(r['maximum_abs_mass_error'] <= 1e-10 and r['minimum_cell_mass'] >= 0
+               and r['fallbacks'] == 0 for r in rows)
+
+
+def _f4_f_report_header(stage, workers):
+    case = build_f4_b_case()
+    return dict(stage=stage, registered_design=True, workers=workers,
+                observation_contract=dict(time_unit='day', observation_kind='point', price_side='right'),
+                inputs=dict(baseline=case.baseline, price_edges=case.price_edges.tolist(),
+                            price_values=case.price_values.tolist(), state_response='1-2*x', price_response='1-2*u'),
+                truth_settings=dict(initial_beta=[20., 20.], truth_max_step=case.truth_max_step,
+                                    seed_roots=[INITIAL_SEED_ROOT, BROWNIAN_SEED_ROOT, MEASUREMENT_SEED_ROOT]),
+                fixed_parameters=dict(k=2., Xi=1., sigma_y=.03),
+                criteria=dict(maximum_log_odds_error=F4_F_LOG_ODDS_TOL,
+                              log_likelihood_window=F4_E_LIKELIHOOD_WINDOW,
+                              maximum_weight_tv=F4_F_WEIGHT_TV_TOL,
+                              maximum_cumulative_evidence_error=F4_F_EVIDENCE_TOL,
+                              maximum_state_l1=F4_F_STATE_L1_TOL,
+                              maximum_abs_mass_error=1e-10, no_fallbacks=True))
+
+
+def _f4_f_refinement_configs(coordinate):
+    settings = [_f4_f_numerics(), _f4_f_numerics(step=1/384), _f4_f_numerics(step=1/1536),
+                _f4_f_numerics(cells=201), _f4_f_numerics(cells=801),
+                _f4_f_numerics(order=1), _f4_f_numerics(order=5)]
+    if coordinate == 'sigma_x':
+        # Development attempt A failed for low-noise hypotheses. Keep those
+        # original controls and add a declared finer candidate, not a relaxed gate.
+        settings += [_f4_f_numerics(3201, 1/1536), _f4_f_numerics(3201, 1/3072),
+                     _f4_f_numerics(1601, 1/1536), _f4_f_numerics(6401, 1/1536),
+                     _f4_f_numerics(3201, 1/1536, 5)]
+    return settings
+
+
+def _f4_f_selected_numerics():
+    return dict(rho=_f4_f_numerics(), sigma_x=_f4_f_numerics(3201, 1/1536))
+
+
+def run_f4_f_bank_refinement(*, workers=7, progress=None):
+    """F1: independently refine both rho and sigma_x banks on new fixed records."""
+    groups = [_f4_f_group(coordinate, sid, 1. if coordinate == 'rho' else .5,
+                          F4_E_PARAMETER_GRIDS[coordinate], config, str(index))
+              for coordinate in ('rho', 'sigma_x') for sid in F4_F_REFINEMENT_IDS
+              for index, config in enumerate(_f4_f_refinement_configs(coordinate))]
+    rows = _f4_f_execute_groups(groups, workers, progress)
+    comparisons = []
+    for coordinate in ('rho', 'sigma_x'):
+        for sid in F4_F_REFINEMENT_IDS:
+            selected = {r['label']: r for r in rows if r['coordinate'] == coordinate and r['sequence_id'] == sid}
+            for axis, middle, fine in (('time', '0', '2'), ('spatial', '0', '4'), ('quadrature', '0', '6')):
+                comparisons.append(dict(coordinate=coordinate, sequence_id=sid, axis=axis,
+                                        selected=coordinate == 'rho',
+                                        **_f4_f_weight_comparison(selected[middle], selected[fine])))
+            if coordinate == 'sigma_x':
+                for axis, fine in (('time_refined', '8'), ('spatial_refined', '10'), ('quadrature_refined', '11')):
+                    comparisons.append(dict(coordinate=coordinate, sequence_id=sid, axis=axis, selected=True,
+                                            **_f4_f_weight_comparison(selected['7'], selected[fine])))
+    passes = _f4_f_probability_gate(rows) and all(c['passes'] for c in comparisons if c['selected'])
+    return dict(**_f4_f_report_header('F1', workers), rows=rows, comparisons=comparisons,
+                selected_fv_numerics=_f4_f_selected_numerics(), passes=bool(passes))
+
+
+def f4_f_validated_refinement(report, *, require_source=False):
+    """Recompute F1 gates from raw curves before any larger dependent experiment."""
+    if report.get('stage') != 'F1' or report.get('registered_design') is not True:
+        raise ValueError('A registered F1 report is required.')
+    if require_source and (not report.get('source_commit') or report.get('working_tree_dirty') is not False):
+        raise ValueError('F1 must come from a recorded commit with a clean working tree.')
+    _f4_f_validate_header(report)
+    rows = report.get('rows', [])
+    if len(rows) != 57 or not _f4_f_probability_gate(rows):
+        raise ValueError('F1 requires all 57 valid configuration rows.')
+    expected = {(c, sid, str(i)) for c in ('rho', 'sigma_x') for sid in F4_F_REFINEMENT_IDS
+                for i in range(len(_f4_f_refinement_configs(c)))}
+    if {(r['coordinate'], r['sequence_id'], r['label']) for r in rows} != expected:
+        raise ValueError('F1 row identifiers do not match the registered design.')
+    for r in rows:
+        values = F4_E_PARAMETER_GRIDS[r['coordinate']]
+        config = _f4_f_refinement_configs(r['coordinate'])
+        if r['settings'] != config[int(r['label'])] or not np.array_equal(r['values'], values):
+            raise ValueError('F1 numerical settings or parameter nodes were changed.')
+        if not np.array_equal(r['observation_times'], CORE_OBSERVATION_TIMES):
+            raise ValueError('F1 observation times were changed.')
+        if r['truth'] != (1. if r['coordinate'] == 'rho' else .5):
+            raise ValueError('F1 true parameters were changed.')
+        generated = generate_synthetic_sequence(sequence_id=r['sequence_id']).observations
+        if not np.allclose(r['observations'], generated.values, atol=1e-12, rtol=0):
+            raise ValueError('F1 observations do not match the registered seed and inputs.')
+        scores = np.asarray(r['conditional_log_evidence'])
+        if scores.shape != (24, 41) or not np.all(np.isfinite(scores)):
+            raise ValueError('F1 raw scores must include all prefixes and hypotheses.')
+        reduced = parameter_bank_weights(scores, np.full(41, -np.log(41)), np.ones(24, dtype=bool))
+        if (not np.allclose(r['initial_log_weights'], np.full(41, -np.log(41)), atol=1e-10, rtol=0)
+                or not np.allclose(r['log_weights'], reduced['log_weights'], atol=1e-10, rtol=0)
+                or not np.allclose(r['cumulative_log_evidence'], np.cumsum(reduced['log_evidence']), atol=1e-10, rtol=0)):
+            raise ValueError('F1 summaries do not match raw conditional scores.')
+    for c in ('rho', 'sigma_x'):
+        for sid in F4_F_REFINEMENT_IDS:
+            selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
+            middle, fine = ('0', ('2', '4', '6')) if c == 'rho' else ('7', ('8', '10', '11'))
+            if not all(_f4_f_weight_comparison(selected[middle], selected[f])['passes'] for f in fine):
+                raise ValueError('F1 numerical gates failed; adapt the design before proceeding.')
+    return _f4_f_selected_numerics()
+
+
+def _f4_f_validate_header(report):
+    expected = _f4_f_report_header(report.get('stage'), report.get('workers', 7))
+    for name in ('inputs', 'truth_settings', 'fixed_parameters', 'observation_contract', 'criteria'):
+        if report.get(name) != expected[name]:
+            raise ValueError(f'F4-F registered {name} were changed.')
+
+
+def run_f4_f_bank_sensitivity(refinement, *, workers=7, progress=None):
+    """F2: support, discretization and prior on 30 independent records per parameter."""
+    settings = f4_f_validated_refinement(refinement)
+    groups = []
+    for coordinate, start in (('rho', 1266), ('sigma_x', 1296)):
+        values = np.asarray(F4_E_PARAMETER_GRIDS[coordinate])
+        refined = (np.linspace(.5, 1.5, 81) if coordinate == 'rho'
+                   else .5 * 2.**((np.arange(81)-40)/20.))
+        wider = (np.arange(71) * .025 + .25 if coordinate == 'rho'
+                 else .5 * 2.**((np.arange(51)-20)/10.))
+        truths = (1., 1.0125, 1.7) if coordinate == 'rho' else (.5, .5*2.**.05, 2.5)
+        for scenario, truth in enumerate(truths):
+            for offset in range(10):
+                sid = start + scenario*10 + offset
+                for label, nodes in (('base', values), ('grid_refined', refined), ('support_widened', wider)):
+                    groups.append(_f4_f_group(coordinate, sid, truth, nodes, settings[coordinate], label))
+    rows = _f4_f_execute_groups(groups, workers, progress, priors=True)
+    summaries = []
+    for coordinate in ('rho', 'sigma_x'):
+        truths = sorted({r['truth'] for r in rows if r['coordinate'] == coordinate})
+        for truth in truths:
+            for label in ('base', 'grid_refined', 'support_widened'):
+                selected = [r for r in rows if r['coordinate'] == coordinate and r['truth'] == truth and r['label'] == label]
+                for prior in ('discrete_uniform', 'uniform_parameter', 'wrong_concentrated',
+                              'uniform_capacity' if coordinate == 'rho' else 'uniform_log'):
+                    variants = [r if prior == 'discrete_uniform' else r['prior_sensitivity'][prior] for r in selected]
+                    final_mean = np.array([r['parameter_mean'][-1] for r in variants])
+                    hits = sum(r['equal_tail_95'][-1][0] <= truth <= r['equal_tail_95'][-1][1] for r in variants)
+                    # A shared-parameter batch of independent daily resets; this
+                    # is not a continuous multi-day trajectory or forecast.
+                    total = np.sum([np.sum(r['conditional_log_evidence'], axis=0) for r in variants], axis=0)
+                    pooled = np.asarray(variants[0]['initial_log_weights']) + total
+                    pooled -= logsumexp(pooled)
+                    summaries.append(dict(coordinate=coordinate, truth=truth, label=label, prior=prior,
+                        count=len(selected), parameter_mean_bias=float(np.mean(final_mean-truth)),
+                        parameter_mean_rmse=float(np.sqrt(np.mean((final_mean-truth)**2))),
+                        median_posterior_sd=float(np.median([r['parameter_sd'][-1] for r in variants])),
+                        median_endpoint_weight=float(np.median([r['endpoint_weight'][-1] for r in variants])),
+                        credible_set_hit_fraction=hits/len(selected),
+                        credible_set_wilson=_wilson_interval(hits, len(selected)),
+                        pooled_log_weights=pooled.tolist(),
+                        pooled_parameter_mean=float(np.exp(pooled) @ np.asarray(variants[0]['values']))))
+    return dict(**_f4_f_report_header('F2', workers), rows=rows, summary=summaries,
+                passes=bool(_f4_f_probability_gate(rows)),
+                interpretation='No recovery gate. Equal-tail sets and their hit rates are diagnostics, not calibrated confidence guarantees.')
+
+
+def _f4_f_paired_bank_comparison(left, right):
+    result = _f4_f_weight_comparison(left, right)
+    if 'marginal_posterior_mass' not in left or 'marginal_posterior_mass' not in right:
+        raise ValueError('Paired comparisons require the marginal state histories.')
+    maxima = {}
+    for phase in ('predicted', 'posterior'):
+        other = np.array([conservative_mass_transfer(right['x_edges'], m, left['x_edges'])
+                          for m in right[f'marginal_{phase}_mass']])
+        reference = np.asarray(left[f'marginal_{phase}_mass'])
+        maxima[phase + '_maximum_l1'] = float(np.max(np.sum(np.abs(other-reference), axis=1)))
+    result.update(maxima)
+    result['passes'] = bool(result['passes'] and max(maxima.values()) <= F4_F_STATE_L1_TOL)
+    return result
+
+
+def _f4_f_mixture_design(version=1):
+    """Locked F3 designs; version 2 retains the failed 151-cell controls."""
+    if type(version) is not int or version not in (1, 2):
+        raise ValueError('Unknown F3 design version.')
+    configurations = [('fv_reference', _f4_f_selected_numerics()['rho']),
+                      ('fv_matched', _f4_f_numerics(151, 1/3072)),
+                      ('mixture_coarse', _f4_f_numerics(151, 1/768, backend='mixture')),
+                      ('mixture_middle', _f4_f_numerics(151, 1/1536, backend='mixture')),
+                      ('mixture_fine', _f4_f_numerics(151, 1/3072, backend='mixture'))]
+    comparisons = [('mixture_time', 'mixture_middle', 'mixture_fine', version == 1),
+                   ('matched_fv', 'fv_matched', 'mixture_fine', version == 1),
+                   ('reference_fv', 'fv_reference', 'mixture_fine', version == 1)]
+    candidate = configurations[-1][1]
+    if version == 2:
+        configurations += [('fv401_fine', _f4_f_numerics(401, 1/32768)),
+                           ('mixture401_middle', _f4_f_numerics(401, 1/16384, backend='mixture')),
+                           ('mixture401_fine', _f4_f_numerics(401, 1/32768, backend='mixture')),
+                           ('mixture801_fine', _f4_f_numerics(801, 1/32768, backend='mixture'))]
+        comparisons += [('mixture_time_refined', 'mixture401_middle', 'mixture401_fine', True),
+                        ('matched_fv_refined', 'fv401_fine', 'mixture401_fine', True),
+                        ('reference_fv_refined', 'fv_reference', 'mixture401_fine', True),
+                        ('mixture_spatial_refined', 'mixture401_fine', 'mixture801_fine', True)]
+        candidate = dict(configurations)['mixture401_fine']
+    return configurations, comparisons, candidate
+
+
+def run_f4_f_bank_mixture_check(refinement, *, workers=7, progress=None, spatial_refine=False):
+    """F3: original pilot or explicit spatial refinement, with unchanged gates."""
+    if not isinstance(spatial_refine, (bool, np.bool_)):
+        raise TypeError('spatial_refine must be boolean.')
+    f4_f_validated_refinement(refinement)
+    version = 2 if spatial_refine else 1
+    configurations, design_comparisons, candidate = _f4_f_mixture_design(version)
+    groups = [_f4_f_group(c, sid, 1. if c == 'rho' else .5, F4_E_PARAMETER_GRIDS[c],
+                          config, label)
+              for c in ('rho',) for sid in (1326, 1327) for label, config in configurations]
+    rows = _f4_f_execute_groups(groups, workers, progress, keep_mass=True)
+    comparisons = []
+    for c in ('rho',):
+        for sid in (1326, 1327):
+            selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
+            for label, left, right, active in design_comparisons:
+                comparison = dict(coordinate=c, sequence_id=sid, comparison=label, selected=active,
+                                  **_f4_f_paired_bank_comparison(selected[left], selected[right]))
+                if version == 2 and label == 'mixture_time_refined':
+                    comparison.update(actual_max_step_left=selected[left]['actual_max_step'],
+                                      actual_max_step_right=selected[right]['actual_max_step'])
+                    comparison['actual_step_refined'] = bool(selected[right]['actual_max_step']
+                                                              < selected[left]['actual_max_step'])
+                    comparison['passes'] = bool(comparison['passes'] and comparison['actual_step_refined'])
+                if version == 2 and label == 'mixture_spatial_refined':
+                    comparison.update(actual_max_step_left=selected[left]['actual_max_step'],
+                                      actual_max_step_right=selected[right]['actual_max_step'])
+                    comparison['actual_steps_matched'] = bool(np.isclose(selected[left]['actual_max_step'],
+                        selected[right]['actual_max_step'], atol=1e-14, rtol=0))
+                    comparison['passes'] = bool(comparison['passes'] and comparison['actual_steps_matched'])
+                comparisons.append(comparison)
+    return dict(**_f4_f_report_header('F3', workers), rows=rows, comparisons=comparisons,
+                design_version=version, selected_mixture_numerics=candidate,
+                passes=bool(_f4_f_probability_gate(rows) and all(r['passes'] for r in comparisons if r['selected'])),
+                mixture_basis='shape_D', mixture_cfl=.4,
+                interpretation=('Version 2 tests 401 cells against 801 and retains original 151-cell failures as diagnostics. '
+                                if spatial_refine else '') +
+                               'Pilot acceptance supports this bank design only. If any selected gate fails, review numerical/basis errors before population.')
+
+
+def f4_f_validated_mixture_check(report, *, require_source=False):
+    if report.get('stage') != 'F3' or report.get('registered_design') is not True:
+        raise ValueError('A registered F3 pilot is required.')
+    if require_source and (not report.get('source_commit') or report.get('working_tree_dirty') is not False):
+        raise ValueError('F3 must have a source commit and clean working tree.')
+    _f4_f_validate_header(report)
+    if report.get('mixture_basis') != 'shape_D' or report.get('mixture_cfl') != .4:
+        raise ValueError('F3 basis or CFL was changed.')
+    version = report.get('design_version', 1)
+    configurations, comparisons, candidate = _f4_f_mixture_design(version)
+    settings = dict(configurations)
+    if ((version == 2 or 'selected_mixture_numerics' in report)
+            and report.get('selected_mixture_numerics') != candidate):
+        raise ValueError('F3 selected mixture settings were changed.')
+    rows = report.get('rows', [])
+    if len(rows) != 2*len(settings) or not _f4_f_probability_gate(rows):
+        raise ValueError('F3 requires all valid rho bank rows for its design version.')
+    expected = {(c, sid, label) for c in ('rho',) for sid in (1326, 1327) for label in settings}
+    if {(r['coordinate'], r['sequence_id'], r['label']) for r in rows} != expected:
+        raise ValueError('F3 identifiers were changed.')
+    for r in rows:
+        expected_settings = settings[r['label']]
+        if r['settings'] != expected_settings or not np.array_equal(r['values'], F4_E_PARAMETER_GRIDS[r['coordinate']]):
+            raise ValueError('F3 settings or nodes were changed.')
+        if version == 2:
+            actual = checks.finite_scalar(r.get('actual_max_step'), 'F3 actual step', positive=True)
+            if actual > expected_settings['max_step']*(1+1e-12):
+                raise ValueError('F3 actual step exceeds its configured maximum.')
+        if (not np.array_equal(r['observation_times'], CORE_OBSERVATION_TIMES)
+                or r['truth'] != (1. if r['coordinate'] == 'rho' else .5)):
+            raise ValueError('F3 truth or observation times were changed.')
+        obs = generate_synthetic_sequence(sequence_id=r['sequence_id']).observations
+        if not np.allclose(r['observations'], obs.values, atol=1e-12, rtol=0):
+            raise ValueError('F3 observations were changed.')
+        scores = np.asarray(r['conditional_log_evidence'])
+        if scores.shape != (24, 41) or not np.all(np.isfinite(scores)):
+            raise ValueError('F3 scores must contain all 24x41 entries.')
+        reduced = parameter_bank_weights(scores, np.full(41, -np.log(41)), np.ones(24, dtype=bool))
+        if (not np.allclose(r['initial_log_weights'], np.full(41, -np.log(41)), atol=1e-10, rtol=0)
+                or not np.allclose(r['log_weights'], reduced['log_weights'], atol=1e-10, rtol=0)
+                or not np.allclose(r['cumulative_log_evidence'], np.cumsum(reduced['log_evidence']), atol=1e-10, rtol=0)):
+            raise ValueError('F3 bank evidence/weights do not match conditional scores.')
+        edges = np.asarray(r.get('x_edges'))
+        expected_edges = np.linspace(0., 1., r['settings']['x_steps']+1)
+        if edges.shape != expected_edges.shape or not np.allclose(edges, expected_edges, atol=1e-14, rtol=0):
+            raise ValueError('F3 state cell edges were changed.')
+        for phase in ('predicted', 'posterior'):
+            mass = checks.probability_rows(r[f'marginal_{phase}_mass'], 'F3 marginal mass')
+            if mass.shape != (24, r['settings']['x_steps']):
+                raise ValueError('F3 marginal state history has the wrong shape.')
+    for c in ('rho',):
+        for sid in (1326, 1327):
+            selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
+            if version == 2 and not (selected['mixture401_fine']['actual_max_step']
+                                     < selected['mixture401_middle']['actual_max_step']):
+                raise ValueError('F3 time control did not change the actual step.')
+            if version == 2 and not np.isclose(selected['mixture401_fine']['actual_max_step'],
+                                               selected['mixture801_fine']['actual_max_step'], atol=1e-14, rtol=0):
+                raise ValueError('F3 spatial control changed the actual time step.')
+            for _, left, right, active in comparisons:
+                if active and not _f4_f_paired_bank_comparison(selected[left], selected[right])['passes']:
+                    raise ValueError('F3 pilot gates failed; adapt before population.')
+    return candidate
+
+
+def run_f4_f_bank_population(refinement, mixture_check, *, workers=7, progress=None):
+    """F4 population: paired conditional FV/mixture learning on 20 held-out days."""
+    base = f4_f_validated_refinement(refinement)
+    mixture = f4_f_validated_mixture_check(mixture_check)
+    groups = [_f4_f_group(c, sid, 1. if c == 'rho' else .5, F4_E_PARAMETER_GRIDS[c], config, label)
+              for c in ('rho', 'sigma_x') for sid in F4_F_POPULATION_IDS
+              for label, config in ((('fv', base[c]), ('mixture', mixture)) if c == 'rho'
+                                    else (('fv', base[c]),))]
+    rows = _f4_f_execute_groups(groups, workers, progress, keep_mass=True)
+    comparisons = []
+    for c in ('rho',):
+        for sid in F4_F_POPULATION_IDS:
+            selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
+            comparisons.append(dict(coordinate=c, sequence_id=sid,
+                                     **_f4_f_paired_bank_comparison(selected['fv'], selected['mixture'])))
+    return dict(**_f4_f_report_header('F4', workers), rows=rows, comparisons=comparisons,
+                summary=_f4_f_population_summary(rows),
+                passes=bool(_f4_f_probability_gate(rows) and all(r['passes'] for r in comparisons)),
+                interpretation='Paired approximation gates, not a parameter-recovery gate. Independent daily resets, not a 20-day continuous run.')
+
+
+def _f4_f_population_summary(rows):
+    summary = []
+    for c in ('rho', 'sigma_x'):
+        for backend in (('fv', 'mixture') if c == 'rho' else ('fv',)):
+            selected = [r for r in rows if r['coordinate'] == c and r['label'] == backend]
+            truth = 1. if c == 'rho' else .5
+            estimates = np.array([r['parameter_mean'][-1] for r in selected])
+            hits = sum(r['equal_tail_95'][-1][0] <= truth <= r['equal_tail_95'][-1][1] for r in selected)
+            mse = [np.mean((np.array(r['posterior_mean'])-r['truth_state'])**2) for r in selected]
+            summary.append(dict(coordinate=c, backend=backend, count=len(selected),
+                                posterior_parameter_bias=float(np.mean(estimates-truth)),
+                                posterior_parameter_rmse=float(np.sqrt(np.mean((estimates-truth)**2))),
+                                state_posterior_rmse=float(np.sqrt(np.mean(mse))),
+                                mean_daily_log_evidence=float(np.mean([r['cumulative_log_evidence'][-1] for r in selected])),
+                                median_posterior_sd=float(np.median([r['parameter_sd'][-1] for r in selected])),
+                                credible_set_hit_fraction=hits/len(selected),
+                                credible_set_wilson=_wilson_interval(hits, len(selected))))
+    return summary
+
+
+def f4_f_validated_population(report, *, require_source=False):
+    """Validate the original 60-bank F4 data for reuse, including failed gates.
+
+    Saved pass flags, comparisons and population summaries do not authorize reuse.
+    The original rows are checked against the fixed design and raw scores/masses.
+    """
+    if report.get('stage') != 'F4' or report.get('registered_design') is not True:
+        raise ValueError('The original registered F4 population is required.')
+    if require_source and (not report.get('source_commit') or report.get('working_tree_dirty') is not False):
+        raise ValueError('F4 must have a source commit and clean working tree.')
+    _f4_f_validate_header(report)
+    rows = report.get('rows', [])
+    expected = {(c, sid, label) for sid in F4_F_POPULATION_IDS
+                for c, labels in (('rho', ('fv', 'mixture')), ('sigma_x', ('fv',))) for label in labels}
+    if (len(rows) != 60 or {(r['coordinate'], r['sequence_id'], r['label']) for r in rows} != expected
+            or not _f4_f_probability_gate(rows)):
+        raise ValueError('F4 reuse requires all 60 valid original bank rows.')
+    truth_sequences = {sid: generate_synthetic_sequence(sequence_id=sid) for sid in F4_F_POPULATION_IDS}
+    indexed = {}
+    for r in rows:
+        c, sid, label = r['coordinate'], r['sequence_id'], r['label']
+        settings = (_f4_f_selected_numerics()[c] if label == 'fv'
+                    else _f4_f_numerics(401, 1/32768, backend='mixture'))
+        values = np.asarray(F4_E_PARAMETER_GRIDS[c])
+        if (r['settings'] != settings or not np.array_equal(r['values'], values)
+                or r['truth'] != (1. if c == 'rho' else .5)
+                or r['prior_name'] != 'discrete_uniform'):
+            raise ValueError('F4 nodes, prior, truth or settings were changed.')
+        actual = checks.finite_scalar(r['actual_max_step'], 'F4 actual step', positive=True)
+        if actual > settings['max_step']*(1+1e-12) or r['maximum_abs_mass_error'] < 0:
+            raise ValueError('F4 numerical diagnostics are invalid.')
+        sequence = truth_sequences[sid]
+        if (not np.array_equal(r['observation_times'], CORE_OBSERVATION_TIMES)
+                or not np.allclose(r['observations'], sequence.observations.values, atol=1e-12, rtol=0)
+                or not np.allclose(r['truth_state'], sequence.truth.state[1:], atol=1e-12, rtol=0)):
+            raise ValueError('F4 seed observations or truth were changed.')
+        scores = np.asarray(r['conditional_log_evidence'])
+        if scores.shape != (24, 41) or not np.all(np.isfinite(scores)):
+            raise ValueError('F4 raw scores must include all 24x41 entries.')
+        reduced = parameter_bank_weights(scores, np.full(41, -np.log(41)), np.ones(24, dtype=bool))
+        w = np.exp(reduced['log_weights'])
+        mean = w @ values
+        derived = dict(initial_log_weights=np.full(41, -np.log(41)), log_weights=reduced['log_weights'],
+                       bank_log_evidence=reduced['log_evidence'],
+                       cumulative_log_evidence=np.cumsum(reduced['log_evidence']), parameter_mean=mean,
+                       parameter_sd=np.sqrt(np.sum(w*(values[None, :]-mean[:, None])**2, axis=1)))
+        cdf = np.cumsum(w, axis=1)
+        derived['equal_tail_95'] = [[values[min(np.searchsorted(row, p), 40)] for p in (.025, .975)] for row in cdf]
+        for key, expected_value in derived.items():
+            stored = np.asarray(r[key])
+            if stored.shape != np.shape(expected_value) or not np.allclose(stored, expected_value, atol=1e-10, rtol=0):
+                raise ValueError(f'F4 {key} does not match its raw scores.')
+        edges = np.asarray(r['x_edges'])
+        if (edges.shape != (settings['x_steps']+1,)
+                or not np.allclose(edges, np.linspace(0., 1., settings['x_steps']+1), atol=1e-14, rtol=0)):
+            raise ValueError('F4 state cell edges were changed.')
+        centers = .5*(edges[:-1]+edges[1:])
+        for phase in ('predicted', 'posterior'):
+            mass = checks.probability_rows(r[f'marginal_{phase}_mass'], 'F4 marginal state mass')
+            if mass.shape != (24, settings['x_steps']):
+                raise ValueError('F4 state history has the wrong shape.')
+            if (np.shape(r[f'{phase}_mean']) != (24,)
+                    or not np.allclose(r[f'{phase}_mean'], mass @ centers, atol=1e-10, rtol=0)):
+                raise ValueError('F4 state mean does not match its marginal mass.')
+        indexed[c, sid, label] = r
+    return indexed
+
+
+def run_f4_f_population_time_refinement(refinement, mixture_check, population, *, workers=7, progress=None):
+    """Refine only the FV rho reference; preserve the original failed population.
+
+    Forty new banks use the original observations verbatim. Mixture and sigma_x
+    rows are reused from the source-linked report, never rerun or silently repaired.
+    """
+    f4_f_validated_refinement(refinement)
+    candidate = f4_f_validated_mixture_check(mixture_check)
+    if candidate != _f4_f_numerics(401, 1/32768, backend='mixture'):
+        raise ValueError('Population time refinement requires the F3 version 2 candidate.')
+    old = f4_f_validated_population(population)
+    for key, dependency in (('refinement', refinement), ('mixture', mixture_check)):
+        if population.get('dependencies', {}).get(key, {}).get('source_commit') != dependency.get('source_commit'):
+            raise ValueError('F4 dependency source does not match the supplied report.')
+    groups = []
+    for sid in F4_F_POPULATION_IDS:
+        source = old['rho', sid, 'fv']
+        observations = BM1ObservationSeries(source['observation_times'], source['observations'], 'day')
+        for label, step in (('fv_time_middle', 1/1536), ('fv_time_fine', 1/3072)):
+            groups.append(dict(coordinate='rho', sequence_id=sid, truth=1.,
+                               values=tuple(source['values']), settings=_f4_f_numerics(401, step), label=label,
+                               case=_f4_f_case('rho', 1.), observations=observations, truth_state=source['truth_state']))
+    rows = _f4_f_execute_groups(groups, workers, progress, keep_mass=True)
+    comparisons, selected = [], []
+    for sid in F4_F_POPULATION_IDS:
+        original, mixture = old['rho', sid, 'fv'], old['rho', sid, 'mixture']
+        middle = next(r for r in rows if r['sequence_id'] == sid and r['label'] == 'fv_time_middle')
+        fine = next(r for r in rows if r['sequence_id'] == sid and r['label'] == 'fv_time_fine')
+        for name, left, right, active in (
+                ('original_fv_mixture', original, mixture, False),
+                ('reference_time_coarse', original, middle, False),
+                ('reference_time_fine', middle, fine, True),
+                ('refined_fv_mixture', middle, mixture, True)):
+            comparison = dict(coordinate='rho', sequence_id=sid, comparison=name, selected=active,
+                              **_f4_f_paired_bank_comparison(left, right))
+            if name.startswith('reference_time_'):
+                comparison.update(actual_max_step_left=left['actual_max_step'], actual_max_step_right=right['actual_max_step'])
+                comparison['actual_step_refined'] = bool(right['actual_max_step'] < left['actual_max_step'])
+                comparison['passes'] = bool(comparison['passes'] and comparison['actual_step_refined'])
+            comparisons.append(comparison)
+        selected.extend((dict(middle, label='fv'), mixture, old['sigma_x', sid, 'fv']))
+    return dict(**_f4_f_report_header('F4-time-refinement', workers), rows=rows, comparisons=comparisons,
+                selected_fv_rho_numerics=_f4_f_numerics(401, 1/1536),
+                reused_population_rows=60, reused_selected_banks=40, new_replays=40*41,
+                summary=_f4_f_population_summary(selected),
+                original_population_passes=bool(all(c['passes'] for c in comparisons
+                                                   if c['comparison'] == 'original_fv_mixture')),
+                passes=bool(_f4_f_probability_gate(rows) and all(c['passes'] for c in comparisons if c['selected'])),
+                interpretation='Reference-time adaptation on the same 20 records, not a new holdout. Original failures retained; gates unchanged.')
 
 
 def run_f4_preparation_checks() -> dict:

@@ -748,7 +748,12 @@ def _write_likelihood_report(args, result, started):
         'blas_threads_requested': args.blas_threads,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    with args.output.open('x', encoding='utf-8') as handle:
+    if args.output.suffix == '.gz':
+        import gzip
+        handle = gzip.open(args.output, 'xt', encoding='utf-8')
+    else:
+        handle = args.output.open('x', encoding='utf-8')
+    with handle:
         json.dump(payload, handle, indent=2, allow_nan=False)
         handle.write('\n')
     print(f"Saved {args.output}")
@@ -1007,6 +1012,88 @@ def run_bank_identity(args):
         raise RuntimeError('F0 bank identity/probability gates failed; report retained.')
 
 
+def _read_bank_dependency(path, validator):
+    import gzip
+    raw = path.read_bytes()
+    decoded = gzip.decompress(raw) if path.suffix == '.gz' else raw
+    report = json.loads(decoded.decode('utf-8'))
+    validator(report, require_source=True)
+    return report, hashlib.sha256(raw).hexdigest()
+
+
+def run_bank_study(args):
+    """Staged remaining F4-F studies; source-linked reports and bounded progress."""
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    started = perf_counter()
+    dependencies = {}
+    refinement = mixture_check = population = None
+    if args.study != 'refine':
+        refinement, digest = _read_bank_dependency(args.refinement_report, synthetic.f4_f_validated_refinement)
+        dependencies['refinement'] = dict(path=str(args.refinement_report), sha256=digest,
+                                          source_commit=refinement['source_commit'])
+    if args.study in ('population', 'population-time-refine'):
+        mixture_check, digest = _read_bank_dependency(args.mixture_report, synthetic.f4_f_validated_mixture_check)
+        dependencies['mixture'] = dict(path=str(args.mixture_report), sha256=digest,
+                                       source_commit=mixture_check['source_commit'])
+    if args.study == 'population-time-refine':
+        population, digest = _read_bank_dependency(args.population_report, synthetic.f4_f_validated_population)
+        for key in ('refinement', 'mixture'):
+            declared = population.get('dependencies', {}).get(key, {})
+            if (declared.get('sha256') != dependencies[key]['sha256']
+                    or declared.get('source_commit') != dependencies[key]['source_commit']):
+                raise ValueError(f'F4 population {key} dependency differs from the supplied report.')
+        dependencies['population'] = dict(path=str(args.population_report), sha256=digest,
+                                          source_commit=population['source_commit'])
+    label = ('rho-mixture, sigma_x and sigma_y known' if args.study == 'mixture-check'
+             else 'rho and sigma_x separately, sigma_y known')
+    if args.study == 'population-time-refine':
+        label = 'rho FV time refinement; saved mixture and sigma_x banks reused'
+    print(f'F4-F bank-{args.study}: workers={args.workers}; {label}', flush=True)
+    last_printed = started
+
+    def progress(row):
+        nonlocal last_printed
+        now = perf_counter()
+        if not args.quiet and (row['completed'] in (1, row['total']) or now-last_printed >= 10.):
+            last_printed = now
+            elapsed = now-started
+            # Startup and unequal candidate costs make this an approximate ETA.
+            eta = (f"~{elapsed * (row['total']-row['completed']) / row['completed']:.1f}s"
+                   if row['completed'] >= args.workers else 'startup')
+            print(f"  candidates {row['completed']}/{row['total']}; ID{row['sequence_id']}; "
+                  f"{row['coordinate']}; {row['label']}; elapsed={elapsed:.1f}s; ETA={eta}", flush=True)
+
+    if args.study == 'refine':
+        result = synthetic.run_f4_f_bank_refinement(workers=args.workers, progress=progress)
+    elif args.study == 'sensitivity':
+        result = synthetic.run_f4_f_bank_sensitivity(refinement, workers=args.workers, progress=progress)
+    elif args.study == 'mixture-check':
+        result = synthetic.run_f4_f_bank_mixture_check(
+            refinement, workers=args.workers, progress=progress, spatial_refine=args.spatial_refine)
+    elif args.study == 'population-time-refine':
+        result = synthetic.run_f4_f_population_time_refinement(
+            refinement, mixture_check, population, workers=args.workers, progress=progress)
+    else:
+        result = synthetic.run_f4_f_bank_population(refinement, mixture_check, workers=args.workers, progress=progress)
+    result['dependencies'] = dependencies
+    print(f"  stage={result['stage']}; banks={len(result['rows'])}; registered={result['registered_design']}; "
+          f"passes={result['passes']}")
+    for row in result.get('comparisons', []):
+        state_error = (f"; state L1 pred/post={row['predicted_maximum_l1']:.4g}/"
+                       f"{row['posterior_maximum_l1']:.4g}; limit={result['criteria']['maximum_state_l1']:g}"
+                       if 'predicted_maximum_l1' in row else '')
+        step_error = (f"; actual h={row['actual_max_step_left']:.6g}/{row['actual_max_step_right']:.6g}"
+                      if 'actual_max_step_left' in row else '')
+        print(f"  {row['coordinate']} ID{row['sequence_id']} {row.get('axis', row.get('comparison', 'paired'))}: "
+              f"log-odds={row['maximum_log_odds_error']:.4g}; TV={row['maximum_weight_tv']:.4g}; "
+              f"evidence={row['maximum_cumulative_evidence_error']:.4g}; passes={row['passes']}; "
+              f"selected={row.get('selected', True)}{state_error}{step_error}")
+    _write_likelihood_report(args, result, started)
+    if not result['passes']:
+        raise RuntimeError('F4-F study gates failed; report retained for review before adapting the next experiment.')
+
+
 def run_preparation(args):
     """Reproduce independent F4-0 quadrature through the common entry point."""
     if args.output is not None and args.output.exists():
@@ -1149,6 +1236,29 @@ def build_parser():
     bank_identity.add_argument('--quiet', action='store_true',
                                help='Suppress progress, not the final summary.')
     bank_identity.set_defaults(handler=run_bank_identity)
+
+    for command, study, description in (
+            ('bank-refine', 'refine', 'F1: independent rho/sigma_x FV bank numerical refinement.'),
+            ('bank-sensitivity', 'sensitivity', 'F2: parameter grid, support and prior on new data.'),
+            ('bank-mixture-check', 'mixture-check', 'F3: paired recursive mixture-bank pilot and time refinement.'),
+            ('bank-population', 'population', 'F4: paired one-parameter FV/mixture population.'),
+            ('bank-population-time-refine', 'population-time-refine', 'F4 follow-up: refine only the FV rho reference using saved population evidence.')):
+        bank = subparsers.add_parser(command, help=description)
+        bank.add_argument('--workers', type=int, default=7,
+                          help='Persistent spawn-process workers over independent conditional replays.')
+        bank.add_argument('--output', type=Path, required=True,
+                          help='New evidence file; use .json.gz for large losslessly compressed reports.')
+        bank.add_argument('--quiet', action='store_true')
+        if study != 'refine':
+            bank.add_argument('--refinement-report', type=Path, required=True)
+        if study in ('population', 'population-time-refine'):
+            bank.add_argument('--mixture-report', type=Path, required=True)
+        if study == 'population-time-refine':
+            bank.add_argument('--population-report', type=Path, required=True)
+        if study == 'mixture-check':
+            bank.add_argument('--spatial-refine', action='store_true',
+                              help='F3 version 2: 401-cell mixture candidate, 801-cell control; retain original 151-cell diagnostics.')
+        bank.set_defaults(handler=run_bank_study, study=study)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',

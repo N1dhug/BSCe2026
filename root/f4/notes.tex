@@ -703,6 +703,263 @@ bestod; bankens numeriske-, støtte- og priorfølsomhed samt population/mixture
 er fortsat senere leverancer. Den målte runtime er for denne dagskontrol,
 ikke et målt 168-timers forecast eller månedsfit.
 
+\subsection*{Resterende F: separate numerik- og læringsforsøg}
+Vi holder først én parameter ukendt. Rho er den primære bank; det særskilte
+støjforsøg har ukendt \(\sigma_X\) og kendt \(\sigma_Y=0.03\). Et komplet
+conditional replay for hver hypotese er fortsat rekursivt: state-posterioren
+ved \(t_{k-1}\) er kun beregnet under denne hypoteses egne parametre.
+De uafhængige replays kan køres samtidigt og reduceres ved hvert prefix.
+Dette er matematisk samme parameteropdatering som den online bank, uden
+at observationstidspunkter eller hypotese-states blandes.
+
+Lad \(\ell_k^{(j)}=\sum_{r=1}^k\log z_r^{(j)}\). For to resolutions
+\(a,b\) er \(e_k^{(j)}=\ell_{k,b}^{(j)}-\ell_{k,a}^{(j)}\). Det største
+log-odds-skift i en nodemængde \(V_k\) er
+\begin{equation}
+ \max_{j,m\in V_k}|e_k^{(j)}-e_k^{(m)}|
+ =\max_{j\in V_k}e_k^{(j)}-\min_{j\in V_k}e_k^{(j)}.
+\end{equation}
+Vi genbruger E1's vindue på fem log-enheder, nu ved alle observationer:
+\begin{equation}
+ V_k=\{j:\ell_{k,a}^{(j)}\geq\max_m\ell_{k,a}^{(m)}-5\}
+ \cup\{j:\ell_{k,b}^{(j)}\geq\max_m\ell_{k,b}^{(m)}-5\}.
+\end{equation}
+Gate er højst 0.10 i dette vindue, højst 0.01 i total variation mellem
+\emph{hele} parameterposteriors og højst 0.10 i kumuleret marginal
+log-evidence-forskel. Fejl over alle noder gemmes også. Vinduesgrænsen
+pruner ingen hypotese: alle log-vægte og conditional states bevares.
+Et bestået resultat giver ikke en global fejlgrænse for hale-likelihoods.
+
+Udviklingskontrollen viste, at rho og støj ikke kan dele numerik ukritisk.
+401 mod 801 celler gav op til 0.02589 i støjbankens TV; den første
+kontrol fejlede. En kontrol med 1601 mod 3201 celler viste fortsat
+likelihood-følsomhed. Kandidaten er derfor 3201 celler, \(h\leq1/1536\),
+\(q=3\) for støj; rho beholder 401, \(h\leq1/768\), \(q=3\).
+Den registrerede F1-kontrol af disse kandidater er nu gennemgået nedenfor.
+De oprindelige kontroller beholdes som diagnostik; udviklingsfund er ikke
+registreret recovery-evidens. Den opdaterede vinduesdefinition ovenfor
+erstatter en indledende streng all-node-odds-gate og dokumenteres eksplicit.
+
+\paragraph{Registreret F1-resultat.}
+Windows-kørslen på \texttt{2f518b3} med ren working tree, 8 workers og BLAS=1
+fuldførte 57 banks og 2337 conditional replays på 1294.94 s.
+Alle 18 valgte kontroller bestod ved alle 24 observationsprefixer.
+For rho var maksimal relevant log-odds-fejl 0.044674, whole-bank TV 0.005048
+og kumuleret marginal log-evidence-fejl 0.029078. For støj var de tilsvarende
+tal 0.067406, 0.003355 og 0.005306. Vi accepterer derfor FV401,
+\(h\leq1/768,q=3\) for rho og FV3201, \(h\leq1/1536,q=3\) for støj
+på dette registrerede design.
+
+Max mass error over alle banks var \(2.9130\cdot10^{-12}\), minimum
+cellemasse 0 og ingen fallbacks. Rå scores, Bayes-opdateringer og alle
+27 sammenligninger blev genberegnet; de gennemgåede statistikker stemte
+inden for \(3.84\cdot10^{-13}\). Windows- og identiske udviklingskurver
+stemte inden for \(4.20\cdot10^{-13}\). Artifact-digest står i F4-statusfilen.
+De tre oprindelige 401-mod-801-støjkontroller fejler fortsat og beholdes.
+All-node-odds-fejlen i de valgte støjkontroller er op til 0.224096;
+det beståede vindue giver derfor ikke global hale-konvergens.
+F1 fastlægger numerik, ikke recovery. Rho's endelige effektive hypotesetal
+var 35.53--40.98 af 41. Det efterfølgende F2-resultat er gennemgået nedenfor.
+
+F1 bruger nye ID1263--1265 og de oprindelige 41 noder for hver parameter.
+Rum, tid og observationsquadrature ændres hver for sig. F2 bruger ti
+uafhængige records for hver af tre truths: rho \(1,1.0125,1.7\) og
+støj \(0.5,0.5\,2^{0.05},2.5\). De ligger på, mellem og uden for
+den oprindelige støtte. Det finere parametergrid har 81 noder på samme
+støtte. Udvidelsen er rho \([0.25,2]\) med afstand 0.025 og støj
+\([0.125,4]\) med samme log-gridafstand som før. Nye støtter kræver
+komplette replays og ny erklæret prior; F1 garanterer ikke numerikken
+for de udvidede tilfælde.
+
+Ved sammenligning af samme kontinuerte prior på to parametergrids bruges
+binmasser. For stigende noder \(\theta_j\) sættes endpoint-bin-kanterne
+til støtteenderne og indre kanter til nabonodernes midtpunkter. Så er
+\begin{equation}
+ w_0^{(j)}=\int_{b_{j-1}}^{b_j}\pi(\theta)\dd\theta.
+\end{equation}
+Uniform parameterprior giver binbredder; uniform C-prior giver forskelle
+i \(1/\rho\); uniform log-støjprior giver forskelle i \(\log\sigma_X\).
+Det er særskilte forsøg ved siden af den oprindelige uniformt diskrete
+prior. En positiv men forkert koncentreret diskret prior undersøges også.
+Kun ændret \emph{parameterprior} tillader genbrug af samme conditional
+scores/states: deres rekursion afhænger ikke af bankvægtene.
+
+\paragraph{Registreret F2-resultat og fortolkning.}
+Windows-kørslen på \texttt{4437436}, ren working tree, brugte 8 workers og
+BLAS=1. Alle 180 banks fuldførtes; rapportens elapsed var 3202.29 s før
+komprimeret skrivning. Eksakt genbrug reducerede 10980 replays til 6270.
+Alle 720 prior-varianter og 72 resuméer blev genberegnet fra rå scores;
+største statistikafvigelse var \(1.21\cdot10^{-12}\). De 60 seed-records
+og F1-digest blev kontrolleret. Max mass error var
+\(1.8194\cdot10^{-12}\), minimum cellemasse 0 og ingen fallbacks.
+Sandsynlighedsgaten bestod; den er ikke en recovery- eller konvergensgate.
+
+For rho-truth 1 gav primærprioren daglig middel-RMSE 0.0730, men median
+posterior-SD var 0.2886 og effektivt hypotesetal 40.59 af 41.
+Den forkerte koncentrerede prior gav bias \(-0.3326\); ti uafhængige
+daglige likelihoods gav pooled middel 0.7293 mod 1.0889 med primærprioren.
+Lille RMSE nær priorens centrum kan derfor ikke fortolkes som stærk læring.
+For støj-truth 0.5 var daglig RMSE 0.1572, median SD 0.1852 og effektivt
+hypotesetal 20.28. Pooled middel var 0.5042, men 0.4197 med forkert prior.
+
+Med samme kontinuerte uniform-parameterprior gav 41 mod 81 noder på
+in-support-records højst 0.000193 i rho-middel og 0.000466 i støjmiddel
+ved alle prefixer. Primærpriorens tilsvarende ændringer var 0.004406 og
+0.010337; dens diskrete mål ændres også, når antallet af noder ændres.
+
+Finere grid på samme støtte kan ikke rumme en outside-truth.
+Ved \(\sigma_X=2.5\) lå alle ti oprindelige MAPs på den øvre grænse;
+pooled middel var 1.9973, mod 2.3788 på udvidet støtte. Daglig RMSE
+faldt fra 0.6668 til 0.3888. For rho-truth 1.7 var de tilsvarende pooled
+midler 1.3972 og 1.8115, og daglig RMSE 0.6081 og 0.3861.
+Rho's randvægt kan forblive lille under forkert støtte; endpoint-MAPs ses
+også med truth inde i støtten. Ingen af målene er en selvstændig støttetest.
+De udvidede posteriorområder ramte begge outside-truths på 10 af 10 dage;
+Wilson-intervallet er \([0.7225,1]\), ikke et kalibreret 95\%-løfte.
+Udvidelsen ændrer også prioren; den gør ikke alle in-support-resultater bedre.
+Ti pooled dage har separate Beta(20,20)-initialiseringer, ikke én lang state.
+
+Vi beholder den oprindelige rho-prior og støtte i F3 og sammenligner
+mixture med FV. F2's outside-støjresultater kræver egen numerisk refinement
+før stærke konvergenspåstande. Ingen posthoc indsnævring eller MAP-substitution
+erstatter den brede parameterposterior. Artifact-digest står i F4-statusfilen.
+
+Den oprindelige F3-pilot bruger rho ID1326--1327, frossen \texttt{shape\_D}, 151 celler,
+CFL 0.4, \(q=3\), og \(h=1/768,1/1536,1/3072\). Den fineste mixture-bank
+sammenlignes både med FV på samme grid og med den finere rho-reference.
+Marginal prediction/posterior-L1 må højst være 0.02 ved alle observationer,
+med konservativ massetransport mellem grids. Mixture-koefficienter bæres
+videre uden FV-genstart. En fejl kræver undersøgelse af tid, rum eller basis
+før populationen, ikke blot en god samlet state-RMSE.
+
+\paragraph{F3: fejlet pilot og spatialt refinement.}
+Den rene Windows-kørsel på \texttt{c321705} fuldførte 410 replays på
+138.20 s med 8 workers og BLAS=1. Rå scores, vægte, marginale masser og
+alle seks sammenligninger er kontrolleret. Mixture-tid og FV/mixture på
+151 celler bestod. Mod FV401 bestod odds, TV og evidence, men prediction/
+posterior-L1 var 0.031281/0.039047 på ID1326 og 0.038918/0.049311 på ID1327,
+over grænsen 0.02. FV151 mod FV401 gav næsten samme fejl:
+0.030609/0.038892 og 0.038245/0.047945. Mixture151 mod FV151 gav højst
+0.002651. Grid-repræsentationen er derfor hovedmistanken; vi ændrer ikke gaten.
+Rapporten blev gemt før det tilsigtede stop. Den er ikke en gyldig F4-dependency.
+
+Version 2 beholder de oprindelige kontroller som diagnostik og tilføjer
+mixture401 ved \(h_{\max}=1/16384,1/32768\), FV401 ved \(1/32768\) og
+mixture801 ved \(1/32768\). Kandidaten er mixture401 ved \(1/32768\).
+De 184 basisparametre, CFL 0.4, quadrature 3, parameterprior og observationer
+er uændrede. Rumkontrollen kræver samme faktiske fine tidsskridt.
+Tidskontrol, matched FV, den oprindelige FV401-reference og 401-mod-801
+skal alle bestå de eksisterende grænser. Alle 18 bankrækker gemmes.
+
+Udviklingskontroller viste identiske faktiske steps ved ønsket
+\(h_{\max}=1/1536,1/3072\) på 401 celler og CFL-begrænsning ved
+\(1/16384\) på 801 celler. Det isolerer ikke henholdsvis tid og rum.
+En efterfølgende probe med ni spredte rho-noder på begge records bestod
+alle otte valgte sammenligninger med state-L1 højst 0.012465.
+Fine mixture401/801 brugte begge faktisk \(h=1/32768\), middle401
+\(h=1/16384\). Den efterfølgende registrerede 41-node-kørsel er gennemgået nedenfor.
+Faktisk step-refinement og ens spatialt step kontrolleres separat.
+Dette er en tilpasning på samme pilotdata; den nye
+held-out population følger efter rent registreret resultat og rå review.
+Den fejlede artifact bevares med digest i F4-statusfilen.
+
+\paragraph{F3 version 2: registreret accept og afgrænsning.}
+Windows-kørslen på ren kilde \texttt{386c9b2} fuldførte 18 banks og
+738 replays på 1191.00 s, med 8 workers og BLAS=1. Alle otte valgte
+sammenligninger på begge records bestod. Maksima over begge records er:
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Kontrol & Log-odds & TV & Log-evidence & State-L1\\
+\midrule
+Mixture401 tid & 0.00008026 & 0.00001025 & 0.00024314 & 0.00012333\\
+Matched FV401 & 0.00016001 & 0.00002045 & 0.00048800 & 0.00024766\\
+FV401-reference & 0.00342474 & 0.00043725 & 0.01040772 & 0.00523957\\
+Mixture401 mod 801 & 0.02146063 & 0.00268552 & 0.02193103 & 0.01256638\\
+\bottomrule
+\end{tabular}
+\end{center}
+State-L1 er maksimum over prediction/posterior og alle prefixer.
+Tidskontrollen brugte faktisk \(1/16384\) mod \(1/32768\); begge fine
+mixture-grids brugte faktisk \(1/32768\). Mass error var højst
+\(5.5512\cdot10^{-14}\), minimum cellemasse 0 og ingen fallbacks.
+
+Alle 18 bankrækker, rå scores, Bayes-vægte, evidences, parameterstatistik,
+state-/demand-midler og 14 sammenligninger er kontrolleret.
+Genberegningsafvigelser var højst \(4.13\cdot10^{-13}\).
+De oprindelige ti bankrækker reproducerede scores, vægte, evidences og
+marginalmasser bit-identisk; de to gamle reference-fejl er bevaret som
+ikke-valgt diagnostik. Begge artifact-digests står i F4-statusfilen.
+Vi accepterer mixture401 ved \(h_{\max}=1/32768,q=3\) til den nye
+rho-population. FV- og \(\sigma_x\)-numerik fra F1, støtte og prior er uændrede.
+Dette dokumenterer pilotens numeriske kontroller; population, parameter-recovery
+og operationel ugeprognose er stadig separate spørgsmål.
+
+F4-populationen bruger nye ID1328--1347: parret FV/mixture for rho og et
+separat FV-støjforsøg. Parameter-middel, SD, MAP-ties, randvægt, effektivt
+hypotesetal og posteriorområder rapporteres. Empiriske hit-rates med
+Wilson-intervaller er diagnostik, ikke et kalibreret 95\%-løfte. Når
+likelihoods summeres over uafhængige dage, har hver dag ny Beta(20,20)
+state-initialisering; det er ikke en fortsat 20-dages-trajectory.
+Predictive scores og demand-middel bruger de tidligere parametervægte,
+posterior-middel de opdaterede. Demand-middel bruger cellemidtpunkter som
+diagnostisk approksimation; likelihooden bruger den erklærede quadrature.
+Rå review og fortolkning af registrerede artifacts afslutter F4-F,
+ikke tilstedeværelsen af en CLI eller et bestået recovery-passmål.
+
+\paragraph{Populationens første resultat og referencekontrol, 2. oktober.}
+Det registrerede forsøg gennemførte alle 60 banks på 4428.73 sekunder med
+otte workers og én BLAS-tråd. Alle parameterkontroller bestod, men posterior-
+\(L^1\) overskred grænsen 0.02 for ID1337 ved time 6 (0.022650) og ID1347
+ved time 17 (0.021046). Maksimal predictive-\(L^1\) var 0.014534.
+Massefejlen var højst \(5.718\cdot10^{-13}\), uden fallback.
+De 60 rå bankrækker, 20 sammenligninger og tre populationssummer er
+genberegnet; den største afvigelse var \(4.27\cdot10^{-13}\).
+Den oprindelige rapport forbliver fejlet.
+
+\begin{center}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Bank & Parameter-RMSE & Median posterior-SD & State-RMSE\\
+\midrule
+\(\rho\), FV & 0.070315 & 0.285927 & 0.022430\\
+\(\rho\), mixture & 0.070485 & 0.285894 & 0.022426\\
+\(\sigma_x\), FV & 0.138054 & 0.181641 & 0.023692\\
+\bottomrule
+\end{tabular}
+\end{center}
+Rho-priorens SD er 0.295804, og median effektivt hypotesetal er cirka
+40.16 af 41. Ét døgn giver altså fortsat svag information om rho;
+den lille parameter-RMSE skyldes også, at sand rho ligger ved priorens middel.
+Støjforsøget viser tydeligere læring fra en prior-SD på 0.529692.
+Posteriorområderne ramte sandheden 20/20 gange for rho og 19/20 for
+\(\sigma_x\); dette lille forsøg ved én sand parameterværdi dokumenterer
+ikke generel kalibrering.
+
+En udviklingskontrol med ni rho-noder på de to fejlede dage isolerede
+FV-referencens tidsfejl: FV401 ved \(h_{\max}=1/32768\) mod den tilsvarende
+mixture, genkørt på de samme ni noder, gav posterior-\(L^1\) omkring 0.001,
+mens FV401 ved \(1/768\)
+mod den fine FV gav op til 0.02162. F1's vægt- og likelihood-kontrol
+certificerede dermed ikke automatisk populationens nye state-\(L^1\)-krav.
+
+Den målrettede opfølgning genbruger de samme 20 dages observationer,
+mixture-banks og \(\sigma_x\)-banks. Kun rho-FV genberegnes på 401 celler
+ved \(h_{\max}=1/1536\) og \(1/3072\), stadig \(q=3\) og alle 41 noder:
+40 nye banks, 1640 replays. Den halve tidsstep-reference skal både stemme
+med den kvarte tidsstep-reference og med den gemte mixture efter de
+uændrede gates. De oprindelige fejl bevares som diagnostik. Kildedigest,
+rene kildecommits, numerik, observationer og rå Bayes-reduktion kontrolleres
+før genbrug; dette er en tilpasset referencekontrol på samme population,
+ikke et nyt uafhængigt holdout.
+
+Udviklingskørslen på alle 20 dage bestod på 320.91 sekunder.
+Posterior-\(L^1\) var højst 0.005552 mellem de to nye FV-tidssteps og
+0.011673 mellem den valgte FV og mixture. Resultatet er udviklingsevidens;
+registreret kørsel fra ren commit og efterfølgende rå review mangler,
+før F4-F kan afsluttes.
+
 \subsection{Prior under reparameterisering}
 
 Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved

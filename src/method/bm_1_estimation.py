@@ -832,3 +832,132 @@ def run_fv_rho_bank(model, parameters, sigma_x, sigma_y, initial_mass, initial_t
         steps.append(step)
         current, logs, time = step.conditional_posterior_mass, step.log_weights, step.time
     return BM1FVRhoBankResult(initial_time, mass, rho, initial_log_weights, tuple(steps))
+
+
+def parameter_bank_candidate(parameters, sigma_x, coordinate, value):
+    """Change exactly one unknown; observation noise and response functions stay fixed."""
+    if coordinate not in ('rho', 'sigma_x'):
+        raise ValueError('One-parameter banks support rho or sigma_x.')
+    value = checks.finite_scalar(value, coordinate, positive=True)
+    candidate = list(bm_validation.parameters(parameters))
+    if coordinate == 'rho':
+        candidate[3] = 1.0 / value
+    else:
+        sigma_x = value
+    return candidate, sigma_x
+
+
+def parameter_bank_weights(conditional_log_evidence, initial_log_weights, observed):
+    """Sequential Bayes from independent conditional scores, including missing data.
+
+    No conditional state depends on parameter-prior weights. This reduction can
+    therefore also combine independent complete replays, or examine a new
+    parameter prior without recomputing the unchanged conditional filters.
+    """
+    scores = np.asarray(conditional_log_evidence, dtype=float)
+    logs = checks.log_probability_mass(initial_log_weights, 'initial_log_weights')
+    mask = np.asarray(observed)
+    if (scores.ndim != 2 or scores.shape[1] != logs.size or scores.shape[0] < 1
+            or mask.shape != (scores.shape[0],) or mask.dtype.kind != 'b'
+            or np.any(~np.isfinite(scores[mask]))
+            or np.any(~np.isnan(scores[~mask]))):
+        raise ValueError('Conditional scores must be finite for observed rows and NaN for missing rows.')
+    previous, posterior, evidence = [], [], []
+    for row, present in zip(scores, mask):
+        previous.append(logs.copy())
+        if present:
+            update = bayes_update(logs, row)
+            logs, log_z = update.log_mass, update.log_evidence
+        else:
+            log_z = np.nan
+        posterior.append(logs.copy())
+        evidence.append(log_z)
+    return dict(prior_log_weights=np.stack(previous), log_weights=np.stack(posterior),
+                log_evidence=np.asarray(evidence))
+
+
+def run_parameter_bank(model, parameters, sigma_x, sigma_y, initial_mass, initial_time,
+                       observations, *, coordinate, values, initial_log_weights,
+                       backend='fv', projector=None, breakpoints=None,
+                       max_step=np.inf, cfl=0.4, likelihood_quadrature_order=1,
+                       initial_conditional_mass=None, initial_conditional_coefficients=None):
+    """Online one-parameter FV/mixture replay, with each hypothesis's own state.
+
+    Mixture coefficients evolve recursively and never restart from FV. Returned
+    final conditional masses/coefficients and log weights permit continuation.
+    Chronology is serial; experiment runners may parallelize independent replays.
+    """
+    if not isinstance(observations, BM1ObservationSeries):
+        raise TypeError('observations must be a BM1ObservationSeries.')
+    if backend not in ('fv', 'mixture'):
+        raise ValueError('backend must be fv or mixture.')
+    nodes = checks.finite_vector(values, 'values')
+    if np.any(nodes <= 0.0):
+        raise ValueError('Parameter nodes must be positive.')
+    candidates = [parameter_bank_candidate(parameters, sigma_x, coordinate, v) for v in nodes]
+    logs = checks.log_probability_mass(initial_log_weights, 'initial_log_weights')
+    initial = checks.probability_mass(initial_mass, 'initial_mass')
+    if logs.size != nodes.size:
+        raise ValueError('One initial weight is required per hypothesis.')
+    current = (np.tile(initial, (nodes.size, 1)) if initial_conditional_mass is None
+               else checks.probability_rows(initial_conditional_mass, 'initial_conditional_mass'))
+    if current.shape != (nodes.size, initial.size):
+        raise ValueError('Conditional initial states must match hypotheses and cells.')
+    time = checks.finite_scalar(initial_time, 'initial_time')
+    if observations.times[0] <= time:
+        raise ValueError('Observation times must follow initial_time.')
+    coefficients = None
+    if backend == 'mixture':
+        if not isinstance(projector, PreparedBetaProjector) or projector.basis.shape[1] != initial.size:
+            raise ValueError('Mixture banks need a projector matching their state grid.')
+        if initial_conditional_coefficients is None:
+            coefficients = np.stack([projector.project(m / projector.dx)['coefficients'] for m in current])
+            current = coefficients @ projector.basis * projector.dx
+        else:
+            coefficients = checks.probability_rows(
+                initial_conditional_coefficients, 'initial_conditional_coefficients', atol=1e-9)
+            if (coefficients.shape != (nodes.size, projector.basis.shape[0])
+                    or not np.allclose(current, coefficients @ projector.basis * projector.dx,
+                                       atol=1e-10, rtol=0.0)):
+                raise ValueError('Continuation masses must match the conditional mixture coefficients.')
+    elif initial_conditional_coefficients is not None:
+        raise ValueError('FV banks do not carry mixture coefficients.')
+    steps = []
+    for when, value, present in zip(observations.times, observations.values, observations.observed):
+        predicted, posterior, scores, next_coefficients = [], [], [], []
+        for j, (candidate, noise) in enumerate(candidates):
+            options = dict(observed=bool(present), price_side=observations.price_side,
+                           breakpoints=breakpoints, max_step=max_step,
+                           likelihood_quadrature_order=likelihood_quadrature_order)
+            if backend == 'fv':
+                conditional = fv_filter_step(model, candidate, noise, sigma_y, current[j],
+                                             time, float(when), float(value), **options)
+                predicted.append(conditional.predicted_mass)
+                posterior.append(conditional.posterior_mass)
+                scores.append(conditional.log_evidence)
+            else:
+                conditional = mixture_filter_step(model, candidate, noise, sigma_y, coefficients[j],
+                                                  time, float(when), float(value), projector=projector,
+                                                  cfl=cfl, **options)
+                predicted.append(conditional['predicted_mass'])
+                posterior.append(conditional['posterior_mass'])
+                scores.append(conditional['log_evidence'])
+                next_coefficients.append(conditional['posterior_coefficients'])
+        predicted, current = np.stack(predicted), np.stack(posterior)
+        update = parameter_bank_weights([scores], logs, np.array([present], dtype=bool))
+        old_logs, logs = logs, update['log_weights'][0]
+        coefficients = np.stack(next_coefficients) if backend == 'mixture' else None
+        steps.append(dict(time=float(when), log_weights=logs.copy(),
+                          conditional_log_evidence=np.array(scores),
+                          log_evidence=float(update['log_evidence'][0]),
+                          predicted_mass=np.exp(old_logs) @ predicted,
+                          posterior_mass=np.exp(logs) @ current))
+        time = float(when)
+    return dict(coordinate=coordinate, values=nodes, backend=backend, steps=tuple(steps),
+                log_weights=np.stack([s['log_weights'] for s in steps]),
+                conditional_log_evidence=np.stack([s['conditional_log_evidence'] for s in steps]),
+                log_evidence=np.array([s['log_evidence'] for s in steps]),
+                predicted_mass=np.stack([s['predicted_mass'] for s in steps]),
+                posterior_mass=np.stack([s['posterior_mass'] for s in steps]),
+                final_conditional_mass=current.copy(),
+                final_conditional_coefficients=None if coefficients is None else coefficients.copy())

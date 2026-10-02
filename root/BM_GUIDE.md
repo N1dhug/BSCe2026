@@ -38,6 +38,11 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | F4-E E2 en-parameter screening | `parameter-screen --e1-report <E1-JSON>` |
 | F4-E E3 diagnostiske parflader | `pair-surfaces --e2-report <E2-JSON>` |
 | F4-F F0 rekursiv FV-rho-bank og prefix-identiteter | `bank-identity` |
+| F4-F F1 FV-bank numerik for rho og sigma_x | `bank-refine` |
+| F4-F F2 grid, støtte og parameterprior | `bank-sensitivity` |
+| F4-F F3 rekursiv rho-mixture-pilot | `bank-mixture-check` |
+| F4-F F4 rho FV/mixture og separat sigma_x FV-population | `bank-population` |
+| F4-F F4 FV-rho-reference med finere tid, genbrug af gemt population | `bank-population-time-refine` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -122,6 +127,88 @@ tidspunkt, ikke observationstidspunkter. JSON indeholder alle scores/log-vægte,
 prefix-fejl, diagnostik, kildecommit og endelige betingede state-masser. Eksisterende
 output afvises før beregningen; en fejlet gate gemmes og giver derefter en fejl.
 F0 tester metoden, ikke parameter-recovery, mixture eller ugeforecast.
+
+De resterende F-studier køres og gennemgås i rækkefølge. F1/F2 og F3 version 2
+er gennemgået; første F3 og den oprindelige F4-population har bevarede state-L1-fejl.
+Næste kørsel er alene F4's `bank-population-time-refine`, beskrevet nedenfor. Alle har
+default 7 workers, fast videnskabeligt design og løbende progress.
+F1 genundersøger begge enparametergrids; sigma_x får finere state-numerik efter
+det første udviklingsforsøgs fejl. Forsøgsdefinition og tilpasning står i `F4.md`.
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate bank-refine `
+  --workers 7 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F1 numerik fejlede; behold rapporten til review." }
+```
+
+Send F1-resumé og rå `.json.gz` til review før længere studier. Gzip-kompression er
+tabsfri og holder rapporterne håndterlige; ingen scores afrundes. Et fejlresultat
+gemmes og giver nonzero exit. Eksisterende output afvises før læsning/beregning.
+F1-input til senere studier skal have source-commit og ren working tree; input og
+alle rå kurver genvalideres, ikke blot `passes`-flaget.
+
+Efter F1-review kan disse kommandoer bruges; de er ikke en instruktion om at starte
+alle kørsler før review. Planen må tilpasses dokumenteret efter resultaterne.
+F1/F2, F3 version 2 og den oprindelige F4-population er nu gennemgået. Næste
+lokale kørsel er alene `bank-population-time-refine`: to state-fejl peger på for
+groft FV-tidsskridt i referencen. De gemte F1/F3/F4-filer bruges som dependencies;
+mixture- og sigma_x-beregningerne gentages ikke. Bevar også den fejlede F3-pilot.
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate bank-sensitivity `
+  --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
+  --workers 7 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f2_bank_sensitivity.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F2 fejlede; behold rapporten til review." }
+
+python -B -m src.exe.run_model.bm_1.estimate bank-mixture-check `
+  --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
+  --workers 7 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_check.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F3 mixture-kontrol fejlede; behold rapporten til review." }
+
+python -B -m src.exe.run_model.bm_1.estimate bank-mixture-check `
+  --spatial-refine `
+  --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
+  --workers 8 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_spatial_refinement.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F3 refinement fejlede; behold begge rapporter til review." }
+
+python -B -m src.exe.run_model.bm_1.estimate bank-population `
+  --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
+  --mixture-report files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_spatial_refinement.json.gz `
+  --workers 8 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f4_bank_population.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F4 population fejlede; behold rapporten til review." }
+
+python -B -m src.exe.run_model.bm_1.estimate bank-population-time-refine `
+  --refinement-report files/output/bm_1/runs/estimation/f4_f_f1_bank_refinement.json.gz `
+  --mixture-report files/output/bm_1/runs/estimation/f4_f_f3_rho_mixture_spatial_refinement.json.gz `
+  --population-report files/output/bm_1/runs/estimation/f4_f_f4_bank_population.json.gz `
+  --workers 8 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_f_f4_population_time_refinement.json.gz
+if ($LASTEXITCODE -ne 0) { throw "F4 tidsrefinement fejlede; behold begge populationsrapporter til review." }
+```
+
+Mixture-piloten undersøger rho med frossen `shape_D`, ikke en ny sigma_x-mixture-bank.
+F4-populationen omfatter også sigma_x, men med den separate FV-reference. Den har
+60 banks / 2460 replays på 20 nye, uafhængige dage, hver med ny Beta(20,20)-state.
+Mixture-numerik læses og valideres fra den beståede version 2-rapport. Et groft
+runtime-skøn fra de registrerede replaytider er 60--90 minutter med 8 workers;
+faktisk tid afhænger af belastning og de nye records. Lange
+uafhængige hypotesereplays fordeles over en vedvarende Windows-compatible spawn-pool;
+hver replay følger observationsrækkefølgen og sin egen state-posterior. Priorvariationer
+genbruger kun conditional replays med uændrede hypoteser, observationsmodel og state-prior.
+Ingen nye filer eller studier påbegyndes ved import. Ugeforecast hører stadig til I.
+
+Den målrettede tidsopfølgning laver 40 nye FV-rho-banks / 1640 replays ved
+hmax=1/1536 og 1/3072, med samme 401 celler og q=3. Den genvaliderer alle 60
+oprindelige banks fra rå data og kontrollerer dependency-digests før beregningen.
+40 gemte mixture-/sigma_x-banks genbruges i resuméet; gamle FV-rækker bruges som
+diagnostik. Den nye rapport linker den gamle i stedet for at kopiere den store
+sigma_x-statehistorik. Upload derfor også originalen ved senere review, hvis den
+ikke allerede er tilgængelig. Populationens oprindelige fejl bevares.
 
 ## Hvor kode hører hjemme
 
