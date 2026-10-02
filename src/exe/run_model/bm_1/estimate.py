@@ -1245,22 +1245,28 @@ def _run_joint_parameter_study(args, *, refinement, fine=False, dense=False):
 
 
 
-def run_joint_parameter_reconstruction(args):
-    """Audit saved G1b3 and reconstruct the separate G1c0 continuous law."""
-    if args.output.exists(): raise FileExistsError(f'Refusing to overwrite {args.output}.')
-    started = perf_counter()
+def _read_joint_grid_inputs(args):
+    """Exact G1b3/G1b0 chain and shared replay check, without new fits."""
     previous,previous_digest = _read_bank_dependency(args.g1b0_report,joint_grid.validated_g1b0)
     report,digest = _read_likelihood_report(args.grid_report)
     dependency = report.get('dependencies',{}).get('g1b0',{})
     if (dependency.get('sha256')!=previous_digest or dependency.get('source_commit')!=previous['source_commit']
             or dependency.get('g1a')!=previous['dependencies']['g1a']):
         raise ValueError('G1c0 requires the exact G1b0 dependency used by G1b3.')
-    result = joint_grid.run_joint_parameter_reconstruction(report,require_source=True)
     replay = joint_grid.compare_grid_overlap(previous,report)
     joint_grid._validate_recorded_reproduction(replay)
     recorded = report['replay_reproduction']['maximum_errors']
     for field,value in replay['maximum_errors'].items():
         joint_grid.fv._equal_array(recorded[field],value,'G1c0 reproduction '+field,1e-12)
+    return report,digest,dependency,replay
+
+
+def run_joint_parameter_reconstruction(args):
+    """Audit saved G1b3 and reconstruct the separate G1c0 continuous law."""
+    if args.output.exists(): raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    started = perf_counter()
+    report,digest,dependency,replay = _read_joint_grid_inputs(args)
+    result = joint_grid.run_joint_parameter_reconstruction(report,require_source=True)
     result['replay_reproduction'] = replay
     result['dependencies'] = dict(g1b3=dict(sha256=digest,source_commit=report['source_commit'],g1b0=dependency))
     print('F4-G G1c0: continuous tensor-hat reconstruction; no new replays; original G1b gates retained')
@@ -1271,6 +1277,50 @@ def run_joint_parameter_reconstruction(args):
     print(f"  original dual-cell passes={result['original_dual_cell_passes']}; G1c0 pilot passes={result['passes']}")
     _write_likelihood_report(args,result,started)
     if not result['passes']: raise RuntimeError('G1c0 reconstruction gates failed; report retained for review.')
+
+
+def run_joint_continued_pilot(args):
+    """G2a: validated hat dependency, new continued records, complete raw output."""
+    if args.output.exists(): raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    started = last_printed = perf_counter()
+    dense,digest,original,replay = _read_joint_grid_inputs(args)
+    hat,hat_digest = _read_likelihood_report(args.hat_report)
+    expected = dict(sha256=digest,source_commit=dense['source_commit'],g1b0=original)
+    if hat.get('dependencies',{}).get('g1b3')!=expected:
+        raise ValueError('G2a requires the exact G1b3/G1b0 files used by G1c0.')
+    joint_grid.validated_g1c0(hat,dense,require_source=True)
+    joint_grid._check_recorded(hat.get('replay_reproduction'),replay,'G2a G1c0 reproduction')
+    dependency = dict(sha256=hat_digest,source_commit=hat['source_commit'],g1b3=expected)
+    del dense,hat
+    print(f'F4-G G2a: {args.days} continued days; new ID1358/1359; 33800 replays / 16 banks; '
+          f'33/65 hats and all FV controls; workers={args.workers}',flush=True)
+    def progress(row):
+        nonlocal last_printed
+        now = perf_counter()
+        if not args.quiet and (row['completed'] in (1,row['total']) or now-last_printed>=10):
+            last_printed = now
+            elapsed = now-started;eta=elapsed*(row['total']-row['completed'])/row['completed']
+            print(f"  replays {row['completed']}/{row['total']}; ID{row['sequence_id']} "
+                  f"{'/'.join(row['pair'])}; {row['label']}; elapsed={elapsed:.1f}s; rough ETA={eta:.1f}s",flush=True)
+    result = joint_grid.run_joint_continued_pilot(record_days=args.days,workers=args.workers,progress=progress)
+    result['dependencies'] = dict(g1c0=dependency)
+    # Final format/algebra errors must also preserve expensive completed replays.
+    try:
+        joint_grid.validated_g2a(result)
+        result['raw_validation'] = dict(passes=True)
+    except (ValueError,KeyError,TypeError) as exc:
+        result['raw_validation'] = dict(passes=False,error=str(exc))
+        result['passes'] = False
+    for r in result['truth_records']:
+        print(f"  ID{r['sequence_id']} truth RMS/max over sigma_y="
+              f"{r['rms_demand_over_sigma_y']:.4g}/{r['maximum_abs_demand_over_sigma_y']:.4g}; passes={r['passes']}")
+    for c in result['comparisons']:
+        value = c['maximum_parameter_tv'] if c['kind']=='parameter_hat' else c['maximum_weight_tv']
+        print(f"  ID{c['sequence_id']} {c['kind']} {c['left']}->{c['right']}: TV={value:.6g}; passes={c['passes']}")
+    print(f"  completed={result['completed']}; truth={result['truth_passes']}; passes G2a={result['passes']}")
+    _write_likelihood_report(args,result,started)
+    if not result['passes']:
+        raise RuntimeError('G2a truth/numerical/raw gates failed; complete available report retained for review.')
 
 
 def run_preparation(args):
@@ -1490,6 +1540,18 @@ def build_parser():
     reconstruction.add_argument('--g1b0-report',type=Path,required=True,help='Exact original dependency, independently rechecked.')
     reconstruction.add_argument('--output',type=Path,required=True,help='New G1c0 JSON/gzip; never overwrite G1b evidence.')
     reconstruction.set_defaults(handler=run_joint_parameter_reconstruction)
+
+    continued = subparsers.add_parser('joint-bank-continued-pilot',
+        help='G2a: new 1/3/7-day records with 33/65 hats and all FV controls.')
+    continued.add_argument('--grid-report',type=Path,required=True,help='Exact complete G1b3 JSON/gzip used by G1c0.')
+    continued.add_argument('--hat-report',type=Path,required=True,help='Passing clean-source G1c0 JSON/gzip.')
+    continued.add_argument('--g1b0-report',type=Path,required=True,help='Exact original G1b0 dependency.')
+    continued.add_argument('--days',type=int,choices=joint_grid.G2A_DAYS,default=7,
+        help='Registered horizon; seven days supplies day 1/3/7 prefixes without shorter reruns.')
+    continued.add_argument('--workers',type=int,default=8,help='Spawn workers; BLAS=1 recommended.')
+    continued.add_argument('--output',type=Path,required=True,help='New G2a JSON/gzip; existing reports are never overwritten.')
+    continued.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
+    continued.set_defaults(handler=run_joint_continued_pilot)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',

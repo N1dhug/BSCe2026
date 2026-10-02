@@ -5,6 +5,7 @@ experiment. Each hypothesis retains its own state; every FV control is fresh.
 """
 
 import re
+from copy import deepcopy
 
 import numpy as np
 from scipy.special import logsumexp
@@ -404,13 +405,13 @@ def _run_joint_grid(*, workers, progress, sequence_ids, counts, numerics, stage,
                                 if stage=='G1b1' else 'Consolidated refinement after rejected grids; same records, not held-out recovery.')))
 
 
-def _grid_comparisons(rows, ids, sizes, *, prior_bridge):
+def _grid_comparisons(rows, ids, sizes, *, prior_bridge, include_first_fv=False):
     comparisons = []
     for pair,sid in zip(core.F4_G_PAIRS,ids):
         lookup = {r['label']:r for r in rows if tuple(r['coordinates'])==pair and r['sequence_id']==sid}
         # Certify both the candidate measure and the control containing new nodes.
         # These reductions already exist: no extra conditional replay is needed.
-        for n in sizes[1:]:
+        for n in (sizes if include_first_fv else sizes[1:]):
             for axis in ('time','spatial','quadrature'):
                 a,b = [lookup[f'{n}/{label}/quadrature'] for label in ('middle',axis+'_fine')]
                 result = fv.compare_banks(a,b)
@@ -753,11 +754,11 @@ def run_joint_parameter_reconstruction(report, *, require_source=True):
         lookup = {r['parameter_nodes_per_axis']:r for r in rows if tuple(r['coordinates'])==pair and r['sequence_id']==sid}
         for a,b in zip(G1B3_COUNTS[:-1],G1B3_COUNTS[1:]):
             comparisons.append(dict(coordinates=list(pair),sequence_id=sid,left=lookup[a]['label'],right=lookup[b]['label'],
-                selected=(a==33 and b==65),**compare_hat_laws(lookup[a],lookup[b])))
+                selected=(a==G1B3_COUNTS[-2] and b==G1B3_COUNTS[-1]),**compare_hat_laws(lookup[a],lookup[b])))
     selected = [c for c in comparisons if c['selected']]
     return dict(stage='G1c0',design_version=1,registered_design=True,sequence_ids=list(G1B0_IDS),
-        candidate_parameter_nodes_per_axis=33,control_parameter_nodes_per_axis=65,
-        conditional_runs=0,source_conditional_runs=33800,parameter_grid_counts=list(G1B3_COUNTS),
+        candidate_parameter_nodes_per_axis=G1B3_COUNTS[-2],control_parameter_nodes_per_axis=G1B3_COUNTS[-1],
+        conditional_runs=0,source_conditional_runs=report['conditional_runs'],parameter_grid_counts=list(G1B3_COUNTS),
         representation='positive tensor-linear hats in unit prior coordinates; joint extension retains node-conditional states',
         prior_measure=dict(report['prior_measure'],comparison='continuous tensor-hat density in unit prior coordinates'),
         parameter_criteria=dict(G1B0_CRITERIA),
@@ -767,3 +768,278 @@ def run_joint_parameter_reconstruction(report, *, require_source=True):
         certifies_original_dual_cell_law=False,rows=summaries,comparisons=comparisons,
         passes=bool(len(selected)==2 and all(c['passes'] for c in selected)),
         interpretation='Data-informed same-record reconstruction pilot only; original G1b failures retained; no G2 or held-out recovery certification.')
+
+
+def _check_recorded(got, want, name, *, tolerance=1e-10):
+    """Check nested scientific evidence; execution metadata is handled separately."""
+    if isinstance(want, dict):
+        if not isinstance(got, dict) or set(got)!=set(want):
+            raise ValueError(f'{name} fields disagree.')
+        for key,value in want.items():
+            _check_recorded(got[key],value,name+'/'+key,tolerance=tolerance)
+    elif isinstance(want, (bool, str)) or want is None:
+        if type(got) is not type(want) or got!=want:
+            raise ValueError(f'{name} disagrees.')
+    elif isinstance(want, list):
+        try:
+            numeric = np.issubdtype(np.asarray(want).dtype,np.number)
+        except ValueError:
+            numeric = False
+        if numeric:
+            fv._equal_array(got,want,name,tolerance)
+        else:
+            if not isinstance(got,list) or len(got)!=len(want):
+                raise ValueError(f'{name} rows disagree.')
+            for i,value in enumerate(want):
+                _check_recorded(got[i],value,f'{name}/{i}',tolerance=tolerance)
+    else:
+        fv._equal_array(got,want,name,tolerance)
+
+
+def validated_g1c0(report, dense, *, require_source=False):
+    """Reconstruct the complete G1c0 result from its raw G1b3 dependency."""
+    if require_source and (report.get('working_tree_dirty') is not False
+            or not re.fullmatch('[0-9a-f]{40}',str(report.get('source_commit')))):
+        raise ValueError('G1c0 requires a clean recorded source commit.')
+    expected = run_joint_parameter_reconstruction(dense,require_source=require_source)
+    for name,value in expected.items():
+        _check_recorded(report.get(name),value,'G1c0 '+name)
+    if report.get('passes') is not True:
+        raise ValueError('G2a requires a passing G1c0 pilot.')
+    return True
+
+
+G2A_IDS = (1358, 1359)
+G2A_COUNTS = (33, 65)
+G2A_DAYS = (1, 3, 7)
+G2A_TRUTH_CRITERIA = dict(maximum_rms_demand_over_sigma_y=.10,
+                          maximum_abs_demand_over_sigma_y=.50,
+                          no_raw_boundary_violations=True)
+
+
+def g2a_case(pair, record_days):
+    """Same BM1 case with a repeated daily input and one continuous horizon."""
+    pair = tuple(pair)
+    if pair not in core.F4_G_PAIRS:
+        raise ValueError('G2a requires one of the two registered parameter pairs.')
+    days = checks.positive_integer(record_days,'record days')
+    if days not in G2A_DAYS:
+        raise ValueError('G2a record days must be 1, 3 or 7.')
+    return core.build_f4_b_case(horizon=(0.,float(days)),
+        price_edges=np.arange(3*days+1,dtype=float)/3,
+        price_values=np.tile(core.CORE_PRICE_VALUES,days),
+        observation_times=np.arange(1,24*days+1,dtype=float)/24,
+        Xi=.75 if pair[0]=='rho' else 1.)
+
+
+def _g2a_truth_record(pair, sid, days):
+    case = g2a_case(pair,days)
+    coupled = core.generate_coupled_refinement(case,sequence_id=sid)
+    coarse,fine = coupled.coarse,coupled.fine
+    delta = fine.truth.demand[1:]-coarse.truth.demand[1:]
+    rms = float(np.sqrt(np.mean(delta**2))/case.sigma_y)
+    maximum = float(np.max(abs(delta))/case.sigma_y)
+    valid = bool(coarse.truth.valid and fine.truth.valid)
+    def member(sequence):
+        d = sequence.truth.diagnostics
+        return dict(state=sequence.truth.state.tolist(),demand=sequence.truth.demand.tolist(),
+            observations=sequence.observations.values.tolist(),valid=bool(sequence.truth.valid),
+            integration_steps=int(d['n_steps']),minimum_raw_proposal=float(d['minimum_raw_proposal']),
+            maximum_raw_proposal=float(d['maximum_raw_proposal']),
+            raw_boundary_violations=int(d['total_violations']),boundary_corrections=int(d['boundary_corrections']))
+    record = dict(coordinates=list(pair),sequence_id=sid,record_days=days,
+        observation_times=fine.observations.times.tolist(),initial_state=fine.truth.initial_state,
+        measurement_noise=fine.measurement_noise.tolist(),price_edges=case.price_edges.tolist(),
+        price_values=case.price_values.tolist(),baseline=case.baseline,initial_beta=[20.,20.],
+        coarse_max_step=case.truth_max_step,fine_max_step=case.truth_fine_max_step,
+        seed_roots=[4101,4102,4103],coarse=member(coarse),fine=member(fine),
+        rms_demand_over_sigma_y=rms,maximum_abs_demand_over_sigma_y=maximum,
+        passes=bool(valid and rms<=G2A_TRUTH_CRITERIA['maximum_rms_demand_over_sigma_y']
+                    and maximum<=G2A_TRUTH_CRITERIA['maximum_abs_demand_over_sigma_y']))
+    return case,fine,record
+
+
+def _g2a_header(days, ids, counts, levels, *, registered):
+    return dict(stage='G2a',design_version=1,registered_design=registered,
+        sequence_ids=list(ids),record_days=days,checkpoint_days=[d for d in G2A_DAYS if d<=days],
+        parameter_grid_counts=list(counts),candidate_parameter_nodes_per_axis=counts[0],
+        control_parameter_nodes_per_axis=counts[1],numerical_levels=deepcopy(levels),
+        truth_criteria=dict(G2A_TRUTH_CRITERIA),
+        observation_contract=dict(time_unit='day',observation_kind='point',price_side='right',sampling_hours=1),
+        representation='positive tensor-linear hats in unit prior coordinates; conditional states continue without daily resets',
+        prior_measure=dict(rho__Xi='product uniform in rho and Xi',
+            sigma_x__sigma_y='product uniform in log(sigma_x) and log(sigma_y)',
+            quadrature='tensor trapezoid in normalized prior coordinates'),
+        fv_criteria=dict(log_likelihood_window=5.,maximum_log_odds_error=.10,maximum_weight_tv=.01,
+            maximum_cumulative_evidence_error=.10,maximum_state_l1=.02,maximum_abs_mass_error=1e-10,
+            nonnegative_mass=True,actual_time_refinement=True,actual_step_relative_margin=1e-12),
+        parameter_criteria=dict(G1B0_CRITERIA),
+        tv_quadrature=dict(orders=list(G1C0_TV_ORDERS),maximum_successive_difference=G1C0_QUADRATURE_TOLERANCE,
+            acceptance_margin=G1C0_QUADRATURE_TOLERANCE,rigorous_error_bound=False),
+        conditional_backend='lapack-tridiagonal; unchanged FV scheme',
+        reduction='ordered streaming log-scaled sums; at most 2*workers in flight',
+        certifies_original_dual_cell_law=False,
+        interpretation='New-record numerical pilot only at the recorded horizon; no population, sampling/mismatch robustness, recovery or forecast certification.')
+
+
+def _g2a_comparisons(rows, ids, counts):
+    original = _grid_comparisons(rows,ids,counts,prior_bridge=False,include_first_fv=True)
+    fv_controls = [c for c in original if c['kind'].startswith('FV_')]
+    dual = [dict(c,selected=False) for c in original if c['kind']=='parameter_grid']
+    hat = []
+    for pair,sid in zip(core.F4_G_PAIRS,ids):
+        lookup = {r['parameter_nodes_per_axis']:r for r in rows
+                  if tuple(r['coordinates'])==pair and r['sequence_id']==sid and r['fv_label']=='middle'}
+        a,b = [lookup[n] for n in counts]
+        hat.append(dict(coordinates=list(pair),sequence_id=sid,kind='parameter_hat',
+                        left=a['label'],right=b['label'],selected=True,**compare_hat_laws(a,b)))
+    return fv_controls+hat,dual
+
+
+def _g2a_checkpoints(rows, records, days, candidate_count):
+    summaries = []
+    for r in rows:
+        if r['fv_label']!='middle' or r['parameter_nodes_per_axis']!=candidate_count:
+            continue
+        law = _hat_law(r)
+        truth = next(s for s in records if s['sequence_id']==r['sequence_id'])
+        state = np.asarray(truth['fine']['state'])[1:]
+        edges = np.asarray(r['x_edges']);centers=(edges[:-1]+edges[1:])/2
+        means = {phase:np.asarray(r['marginal_'+phase+'_mass'])@centers for phase in ('predicted','posterior')}
+        for d in G2A_DAYS:
+            if d>days: continue
+            k = 24*d;index=k-1
+            summaries.append(dict(coordinates=r['coordinates'],sequence_id=r['sequence_id'],days=d,
+                observation_count=k,cumulative_log_evidence=r['cumulative_log_evidence'][index],
+                mean_predictive_y_log_score=r['cumulative_log_evidence'][index]/k,
+                hat_unit_mean=law['mean'][index].tolist(),hat_unit_sd=law['sd'][index].tolist(),
+                hat_unit_covariance=float(law['covariance'][index]),
+                **{phase+'_state_rmse':float(np.sqrt(np.mean((values[:k]-state[:k])**2)))
+                   for phase,values in means.items()}))
+    return summaries
+
+
+def run_joint_continued_pilot(*, record_days=7, workers=8, progress=None,
+                             sequence_ids=G2A_IDS, counts=G2A_COUNTS, numerics=None):
+    """G2a: nested 33/65 grids, every FV control, and no daily state resets.
+
+    API overrides support small diagnostics/tests, never registered evidence.
+    Seven-day rows supply day 1/3/7 prefixes without shorter filter reruns.
+    """
+    workers = checks.positive_integer(workers,'workers')
+    days = checks.positive_integer(record_days,'record days')
+    if days not in G2A_DAYS: raise ValueError('G2a record days must be 1, 3 or 7.')
+    ids = tuple(core._nonnegative_integer(v,'sequence ID') for v in sequence_ids)
+    sizes = tuple(checks.positive_integer(v,'parameter nodes',minimum=2) for v in counts)
+    if len(ids)!=2 or len(set(ids))!=2 or len(sizes)!=2 or sizes[0]>=sizes[1] or (sizes[1]-1)%(sizes[0]-1):
+        raise ValueError('G2a requires two distinct IDs and two nested increasing grids.')
+    levels = fv.G1A_NUMERICS if numerics is None else numerics
+    configs = _grid_configurations(levels)
+    # Normalize and own metadata; caller mutations cannot alter the design.
+    levels = {key:{name:list(values) for name,values in lv.items()} for key,lv in levels.items()}
+    header = _g2a_header(days,ids,sizes,levels,
+        registered=bool(ids==G2A_IDS and sizes==G2A_COUNTS and numerics is None))
+    sequences = [_g2a_truth_record(pair,sid,days) for pair,sid in zip(core.F4_G_PAIRS,ids)]
+    records = [v[2] for v in sequences]
+    truth_pass = all(r['passes'] for r in records)
+    result = dict(header,workers=workers,truth_records=records,truth_passes=bool(truth_pass),
+        completed=False,conditional_runs=0,bank_reductions=0,rows=[],comparisons=[],
+        original_dual_cell_comparisons=[],checkpoints=[],passes=False)
+    if not truth_pass:
+        return result
+    groups = []
+    for pair,sid,(case,sequence,_) in zip(core.F4_G_PAIRS,ids,sequences):
+        h = _parameter_grid(pair,sizes[-1],sizes[-1])[0]
+        for label,settings in configs['__'.join(pair)]:
+            groups.append(dict(stage='G2a',pair=pair,sequence_id=sid,case=case,
+                observations=sequence.observations,hypotheses=h,counts=sizes,label=label,
+                settings=settings,prior_bridge=False,backend='lapack'))
+    banks = fv._run_groups_streaming(groups,workers,progress,_StreamingGridReduction)
+    rows = [r for bank in banks for r in bank]
+    comparisons,dual = _g2a_comparisons(rows,ids,sizes)
+    result.update(completed=True,conditional_runs=sum(len(g['hypotheses']) for g in groups),
+        bank_reductions=len(rows),rows=rows,comparisons=comparisons,
+        original_dual_cell_comparisons=dual,
+        checkpoints=_g2a_checkpoints(rows,records,days,sizes[0]),
+        passes=bool(fv._probability_gate(rows) and all(c['passes'] for c in comparisons)))
+    return result
+
+
+def validated_g2a(report, *, require_source=False):
+    """Raw algebra, seed data and every comparison; no new conditional replay.
+
+    Complete negative reports remain valid review evidence. Callers advancing
+    to a dependent population must additionally require passes=True and 7 days.
+    """
+    if require_source and (report.get('working_tree_dirty') is not False
+            or not re.fullmatch('[0-9a-f]{40}',str(report.get('source_commit')))):
+        raise ValueError('G2a requires a clean recorded source commit.')
+    if require_source:
+        dependency = report.get('dependencies',{})
+        for stage in ('g1c0','g1b3','g1b0','g1a','g0'):
+            dependency = dependency.get(stage,{})
+            if (not re.fullmatch('[0-9a-f]{64}',str(dependency.get('sha256')))
+                    or not re.fullmatch('[0-9a-f]{40}',str(dependency.get('source_commit')))):
+                raise ValueError('G2a requires its complete recorded G1c0 dependency chain.')
+    if 'raw_validation' in report and report['raw_validation']!={'passes':True}:
+        raise ValueError('G2a final raw validation failed; report remains diagnostic evidence.')
+    days = checks.positive_integer(report.get('record_days'),'record days')
+    if days not in G2A_DAYS: raise ValueError('G2a requires 1, 3 or 7 days.')
+    levels = {key:{name:list(v) for name,v in lv.items()} for key,lv in fv.G1A_NUMERICS.items()}
+    header = _g2a_header(days,G2A_IDS,G2A_COUNTS,levels,registered=True)
+    for name,value in header.items(): _check_recorded(report.get(name),value,'G2a '+name)
+    sequences = [_g2a_truth_record(pair,sid,days) for pair,sid in zip(core.F4_G_PAIRS,G2A_IDS)]
+    records = [v[2] for v in sequences]
+    _check_recorded(report.get('truth_records'),records,'G2a truth')
+    truth_pass = bool(all(r['passes'] for r in records))
+    if report.get('truth_passes') is not truth_pass: raise ValueError('G2a truth gate disagrees.')
+    if not truth_pass:
+        for name,want in dict(completed=False,conditional_runs=0,bank_reductions=0,
+            rows=[],comparisons=[],original_dual_cell_comparisons=[],checkpoints=[],passes=False).items():
+            _check_recorded(report.get(name),want,'G2a stopped '+name)
+        return True
+    configs = _grid_configurations(levels)
+    expected = {}
+    for pair,sid,(case,seq,_) in zip(core.F4_G_PAIRS,G2A_IDS,sequences):
+        for label,settings in configs['__'.join(pair)]:
+            for n in G2A_COUNTS: expected[(pair,sid,n,label)] = (case,seq,settings)
+    rows = report.get('rows',[]);seen={}
+    if len(rows)!=len(expected): raise ValueError('G2a requires all 16 complete banks.')
+    for r in rows:
+        key = (tuple(r['coordinates']),r['sequence_id'],r['parameter_nodes_per_axis'],r['fv_label'])
+        if key not in expected or key in seen: raise ValueError('G2a banks are duplicate or unregistered.')
+        seen[key]=r;case,seq,settings=expected[key];pair,sid,n,label=key
+        h,unit,edges,prior = _parameter_grid(pair,n,G2A_COUNTS[-1])
+        truth=core.f4_e_truth_candidate(case);k=len(seq.observations.times);cells=settings['x_steps']
+        metadata = dict(coordinates=list(pair),sequence_id=sid,label=f'{n}/{label}/quadrature',
+            settings=settings,truth=[getattr(truth,p) for p in pair],
+            fixed_parameters={p:getattr(truth,p) for p in ('rho','Xi','k','sigma_x','sigma_y') if p not in pair},
+            observed=[True]*k,prior_kind='quadrature',fv_label=label)
+        for name,value in metadata.items(): _check_recorded(r.get(name),value,'G2a bank '+name)
+        for name,value in dict(hypotheses=h,parameter_unit_nodes=unit,parameter_dual_edges=edges,
+            initial_log_weights=prior,observation_times=seq.observations.times,observations=seq.observations.values,
+            initial_mass=core.beta_initial_mass(case,case.build_model()[0],cells),
+            x_edges=np.linspace(0,1,cells+1)).items(): fv._equal_array(r.get(name),value,'G2a bank '+name)
+        scores=fv._array(r['conditional_log_evidence'],(k,n*n),'G2a scores')
+        raw=prior+np.cumsum(scores,axis=0);evidence=logsumexp(raw,axis=1);logs=raw-evidence[:,None]
+        fv._equal_array(r['log_weights'],logs,'G2a weights')
+        fv._equal_array(r['cumulative_log_evidence'],evidence,'G2a evidence')
+        fv._equal_array(r['bank_log_evidence'],np.diff(np.r_[0.,evidence]),'G2a evidence increments')
+        summary=core._f4_g_joint_summary(h,logs,pair)
+        for name,value in summary.items(): _check_recorded(r.get(name),value,'G2a summary '+name)
+        for phase in ('predicted','posterior'):
+            fv._mass(r['marginal_'+phase+'_mass'],k,cells,'G2a '+phase)
+        steps=fv._array(r['conditional_actual_max_steps'],(n*n,),'G2a steps')
+        if np.any((steps<=0)|(steps>settings['max_step']+1e-14)):
+            raise ValueError('G2a actual steps are invalid.')
+        if checks.finite_scalar(r['conditional_seconds'],'conditional seconds')<0:
+            raise ValueError('G2a conditional seconds must be nonnegative.')
+    comparisons,dual=_g2a_comparisons(rows,G2A_IDS,G2A_COUNTS)
+    _check_recorded(report.get('comparisons'),comparisons,'G2a comparisons')
+    _check_recorded(report.get('original_dual_cell_comparisons'),dual,'G2a original dual-cell diagnostics')
+    _check_recorded(report.get('checkpoints'),_g2a_checkpoints(rows,records,days,G2A_COUNTS[0]),'G2a checkpoints')
+    probability=fv._probability_gate(rows)
+    for name,want in dict(completed=True,conditional_runs=8*G2A_COUNTS[-1]**2,
+        bank_reductions=len(expected),passes=bool(probability and all(c['passes'] for c in comparisons))).items():
+        _check_recorded(report.get(name),want,'G2a '+name)
+    return True

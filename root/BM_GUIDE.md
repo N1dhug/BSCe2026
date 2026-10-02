@@ -630,6 +630,68 @@ også hvis en gate fejler. Behold den gamle G1b0-fil uændret. Et bestået G1c0
 gælder alene 33x33-hat-loven på de to records; original dualcelle-accept,
 held-out population, G2 og uge-/månedsruntime følger ikke automatisk.
 
+## Næste lokale kørsel: G2a fortsatte records
+
+PR #54 er merged på `main` som `014446c`. G2a udvikles separat på
+**feature/f4-g-robustness-pilot** / PR #55; brugeren merger efter Windows-kørsel
+og rå review. Designet er preregistreret før recordgenerering i `e058299`.
+Læs [F4.md](F4.md) for de låste IDs, truth-/FV-/hat-gates og afgrænsning.
+
+Kørslen bruger de **tre eksisterende** G1b0/G1b3/G1c0-rapporter som validerede
+dependencies, uden at gentage deres replays. Nye ID1358/1359 køres med
+**33.800 replays / 16 banker**, 8 workers og BLAS=1. Hver hypotese fortsætter
+egen state gennem midnat. Syv døgn leverer dag 1/3/7 som prefixer.
+
+**Syv døgn estimeres til 6–9 timer på brugerens Windows-maskine.**
+Det er G1b3's målte tid skaleret med længden, ikke et målt G2-resultat.
+En valgfri éndagskontrol (`--days 1`, eget nyt outputnavn) estimeres til
+45–90 minutter og certificerer kun ét døgn. Den er ikke påkrævet før en
+direkte syvdageskørsel; særskilte kortere kørsler giver ekstra arbejde.
+
+```powershell
+$g2Status = git status --porcelain
+if ($LASTEXITCODE -ne 0) { throw "Git status fejlede." }
+if ($g2Status) { throw "Working tree er ikke ren." }
+git fetch --prune origin
+if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
+git switch feature/f4-g-robustness-pilot
+if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+git pull --ff-only origin feature/f4-g-robustness-pilot
+if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
+git log -1 --oneline
+if ($LASTEXITCODE -ne 0) { throw "Git log fejlede." }
+$g2Status = git status --porcelain
+if ($LASTEXITCODE -ne 0) { throw "Git status fejlede." }
+if ($g2Status) { throw "Working tree er ikke ren." }
+
+$g2Original = "files/output/bm_1/runs/estimation/f4_g_g1b0_joint_parameter_grid.json.gz"
+$g2Dense = "files/output/bm_1/runs/estimation/f4_g_g1b3_joint_parameter_grid_dense_v4.json.gz"
+$g2Hat = "files/output/bm_1/runs/estimation/f4_g_g1c0_joint_hat_reconstruction_v1.json.gz"
+$g2Output = "files/output/bm_1/runs/estimation/f4_g_g2a_continued_7d_v1.json.gz"
+foreach ($g2File in @($g2Original, $g2Dense, $g2Hat)) {
+    if (-not (Test-Path -LiteralPath $g2File -PathType Leaf)) { throw "Input mangler: $g2File" }
+}
+if (Test-Path -LiteralPath $g2Output) { throw "Output findes allerede; behold filen til review." }
+python -B -m unittest discover -s tests -q
+if ($LASTEXITCODE -ne 0) { throw "Tests fejlede." }
+
+$g2Timer = [System.Diagnostics.Stopwatch]::StartNew()
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-continued-pilot `
+  --g1b0-report $g2Original --grid-report $g2Dense --hat-report $g2Hat `
+  --days 7 --workers 8 --blas-threads 1 --output $g2Output
+$g2Exit = $LASTEXITCODE
+$g2Timer.Stop()
+Write-Host ("G2a samlet tid: {0:N2} s; exit={1}" -f $g2Timer.Elapsed.TotalSeconds, $g2Exit)
+if (-not (Test-Path -LiteralPath $g2Output -PathType Leaf)) { throw "Ingen rapport; send terminaloutput til review." }
+Write-Host "Send den nye G2a-rapport og terminaloutput til raw review før merge, også ved fejlet gate."
+```
+
+En fejlet truth-gate gemmes før replays, og komplette numeriske afvisninger
+gemmes før nonzero exit. Et replay, der fejler midt i afviklingen, afbryder;
+ingen overlevende delpopulation kaldes komplet. Originale dependencies
+og deres afvisninger bevares. G2a er en numerisk pilot på to nye records;
+sampling/mismatch, population, recovery og ugeforecast følger særskilt.
+
 ## Kodeplacering
 
 | Placering | Ansvar |
