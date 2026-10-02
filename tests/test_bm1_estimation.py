@@ -2384,5 +2384,104 @@ class OneParameterBankTests(unittest.TestCase):
                 self.assertEqual(run.call_count,4)
 
 
+class PopulationReferenceRefinementTests(unittest.TestCase):
+    @staticmethod
+    def population_fixture():
+        rows = []
+        for sid in range(1328, 1348):
+            sequence = synthetic.generate_synthetic_sequence(sequence_id=sid)
+            for coordinate, label in (('rho','fv'), ('rho','mixture'), ('sigma_x','fv')):
+                cells, step = (3201,1/1536) if coordinate=='sigma_x' else (401,1/768 if label=='fv' else 1/32768)
+                nodes = np.array(synthetic.F4_E_PARAMETER_GRIDS[coordinate])
+                mass = np.full((24,cells),1/cells)
+                if coordinate=='rho' and label=='fv':
+                    mass[:]=0.; mass[:,cells//2]=1.
+                rows.append(dict(coordinate=coordinate,label=label,sequence_id=sid,
+                    truth=1. if coordinate=='rho' else .5, prior_name='discrete_uniform',
+                    values=nodes.tolist(), settings=synthetic._f4_f_numerics(cells,step,backend=label),
+                    actual_max_step=step, maximum_abs_mass_error=0.,minimum_cell_mass=0.,fallbacks=0,
+                    observation_times=sequence.observations.times.tolist(), observations=sequence.observations.values.tolist(),
+                    truth_state=sequence.truth.state[1:].tolist(), initial_log_weights=[-np.log(41)]*41,
+                    conditional_log_evidence=np.zeros((24,41)),log_weights=np.full((24,41),-np.log(41)),
+                    bank_log_evidence=[0.]*24,cumulative_log_evidence=[0.]*24,
+                    parameter_mean=[float(nodes.mean())]*24,parameter_sd=[float(nodes.std())]*24,
+                    equal_tail_95=[[float(nodes[1]),float(nodes[-2])]]*24,
+                    x_edges=np.linspace(0,1,cells+1), marginal_predicted_mass=mass,marginal_posterior_mass=mass,
+                    predicted_mean=[.5]*24,posterior_mean=[.5]*24))
+        return dict(**synthetic._f4_f_report_header('F4',8),rows=rows,passes=True,comparisons=[],summary=[],
+                    source_commit='abc',working_tree_dirty=False,
+                    dependencies={k:dict(source_commit='abc',sha256=k) for k in ('refinement','mixture')})
+
+    def test_population_reuse_validates_raw_data_even_when_original_comparisons_fail(self):
+        report=self.population_fixture()
+        validated=synthetic.f4_f_validated_population(report,require_source=True)
+        self.assertFalse(synthetic._f4_f_paired_bank_comparison(validated['rho',1328,'fv'],validated['rho',1328,'mixture'])['passes'])
+        for mutation in ('missing','scores','mean','mass','edges','observations','truth','settings','dirty'):
+            bad=copy.deepcopy(report);row=bad['rows'][0]
+            if mutation=='missing':bad['rows'].pop()
+            elif mutation=='scores':row['conditional_log_evidence'][0,0]=1.
+            elif mutation=='mean':row['parameter_mean'][0]+=.1
+            elif mutation=='mass':row['marginal_posterior_mass'][0,0]=-.1
+            elif mutation=='edges':row['x_edges'][1]+=.0001
+            elif mutation=='observations':row['observations'][0]+=.1
+            elif mutation=='truth':row['truth_state'][0]+=.1
+            elif mutation=='settings':row['settings']['max_step']/=2
+            else:bad['working_tree_dirty']=True
+            with self.subTest(mutation=mutation),self.assertRaises(ValueError):
+                synthetic.f4_f_validated_population(bad,require_source=True)
+
+    def test_population_time_refinement_reuses_inputs_and_exposes_original_failures(self):
+        report=self.population_fixture()
+        # A platform-level seed-rounding difference is allowed in validation;
+        # the actual new replays must use the stored measurements exactly.
+        for row in report['rows']:
+            if row['sequence_id']==1328:row['observations'][0]=np.nextafter(row['observations'][0],np.inf)
+        replayed=[]
+        def execute(groups,workers,progress,keep_mass):
+            self.assertEqual(workers,8);self.assertTrue(keep_mass);self.assertEqual(len(groups),40)
+            for group in groups:
+                source=next(r for r in report['rows'] if r['coordinate']=='rho' and r['label']=='fv' and r['sequence_id']==group['sequence_id'])
+                np.testing.assert_array_equal(group['observations'].values,source['observations'])
+                self.assertEqual(group['settings']['backend'],'fv')
+                mass=np.full((24,401),1/401)
+                replayed.append(dict(source,label=group['label'],settings=group['settings'],actual_max_step=group['settings']['max_step'],
+                    marginal_predicted_mass=mass,marginal_posterior_mass=mass))
+            return replayed
+        with patch.object(synthetic,'_f4_f_execute_groups',side_effect=execute):
+            result=synthetic.run_f4_f_population_time_refinement(OneParameterBankTests.refinement_fixture(),
+                OneParameterBankTests.refined_mixture_fixture(),report,workers=8)
+        self.assertTrue(result['passes']);self.assertFalse(result['original_population_passes'])
+        self.assertEqual(result['new_replays'],1640);self.assertEqual(result['reused_selected_banks'],40)
+        self.assertEqual(sum(x['selected'] for x in result['comparisons']),40)
+        self.assertTrue(all(not x['selected'] and not x['passes'] for x in result['comparisons'] if x['comparison']=='original_fv_mixture'))
+        self.assertEqual([s['count'] for s in result['summary']],[20,20,20])
+        self.assertEqual(report['rows'][0]['settings']['max_step'],1/768)
+        replayed[-1]=dict(replayed[-1],marginal_posterior_mass=report['rows'][0]['marginal_posterior_mass'])
+        with patch.object(synthetic,'_f4_f_execute_groups',return_value=replayed):
+            failed=synthetic.run_f4_f_population_time_refinement(OneParameterBankTests.refinement_fixture(),
+                OneParameterBankTests.refined_mixture_fixture(),report,workers=8)
+        self.assertFalse(failed['passes'])
+
+    def test_population_time_cli_checks_dependency_digests_before_replay_and_retains_failure(self):
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as directory:
+            args=estimate.build_parser().parse_args(['bank-population-time-refine','--refinement-report','f1.gz',
+                '--mixture-report','f3.gz','--population-report','f4.gz','--workers','8','--output',str(Path(directory)/'next.gz')])
+            population=dict(source_commit='population',dependencies={k:dict(source_commit='abc',sha256=k) for k in ('refinement','mixture')})
+            result=dict(stage='F4-time-refinement',rows=[],comparisons=[],registered_design=True,passes=False)
+            deps=[({'source_commit':'abc'},'refinement'),({'source_commit':'abc'},'mixture'),(population,'population')]
+            with patch.object(estimate,'_read_bank_dependency',side_effect=deps),patch('builtins.print'), \
+                    patch.object(synthetic,'run_f4_f_population_time_refinement',return_value=result) as run, \
+                    patch.object(estimate,'_write_likelihood_report') as write:
+                with self.assertRaises(RuntimeError):estimate.run_bank_study(args)
+            self.assertEqual(run.call_args.kwargs['workers'],8);write.assert_called_once()
+            self.assertEqual(result['dependencies']['population']['sha256'],'population')
+            population['dependencies']['mixture']['sha256']='wrong'
+            with patch.object(estimate,'_read_bank_dependency',side_effect=deps), \
+                    patch.object(synthetic,'run_f4_f_population_time_refinement') as run:
+                with self.assertRaises(ValueError):estimate.run_bank_study(args)
+            run.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

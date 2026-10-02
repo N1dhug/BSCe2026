@@ -1027,17 +1027,28 @@ def run_bank_study(args):
         raise FileExistsError(f'Refusing to overwrite {args.output}.')
     started = perf_counter()
     dependencies = {}
-    refinement = mixture_check = None
+    refinement = mixture_check = population = None
     if args.study != 'refine':
         refinement, digest = _read_bank_dependency(args.refinement_report, synthetic.f4_f_validated_refinement)
         dependencies['refinement'] = dict(path=str(args.refinement_report), sha256=digest,
                                           source_commit=refinement['source_commit'])
-    if args.study == 'population':
+    if args.study in ('population', 'population-time-refine'):
         mixture_check, digest = _read_bank_dependency(args.mixture_report, synthetic.f4_f_validated_mixture_check)
         dependencies['mixture'] = dict(path=str(args.mixture_report), sha256=digest,
                                        source_commit=mixture_check['source_commit'])
+    if args.study == 'population-time-refine':
+        population, digest = _read_bank_dependency(args.population_report, synthetic.f4_f_validated_population)
+        for key in ('refinement', 'mixture'):
+            declared = population.get('dependencies', {}).get(key, {})
+            if (declared.get('sha256') != dependencies[key]['sha256']
+                    or declared.get('source_commit') != dependencies[key]['source_commit']):
+                raise ValueError(f'F4 population {key} dependency differs from the supplied report.')
+        dependencies['population'] = dict(path=str(args.population_report), sha256=digest,
+                                          source_commit=population['source_commit'])
     label = ('rho-mixture, sigma_x and sigma_y known' if args.study == 'mixture-check'
              else 'rho and sigma_x separately, sigma_y known')
+    if args.study == 'population-time-refine':
+        label = 'rho FV time refinement; saved mixture and sigma_x banks reused'
     print(f'F4-F bank-{args.study}: workers={args.workers}; {label}', flush=True)
     last_printed = started
 
@@ -1060,6 +1071,9 @@ def run_bank_study(args):
     elif args.study == 'mixture-check':
         result = synthetic.run_f4_f_bank_mixture_check(
             refinement, workers=args.workers, progress=progress, spatial_refine=args.spatial_refine)
+    elif args.study == 'population-time-refine':
+        result = synthetic.run_f4_f_population_time_refinement(
+            refinement, mixture_check, population, workers=args.workers, progress=progress)
     else:
         result = synthetic.run_f4_f_bank_population(refinement, mixture_check, workers=args.workers, progress=progress)
     result['dependencies'] = dependencies
@@ -1227,7 +1241,8 @@ def build_parser():
             ('bank-refine', 'refine', 'F1: independent rho/sigma_x FV bank numerical refinement.'),
             ('bank-sensitivity', 'sensitivity', 'F2: parameter grid, support and prior on new data.'),
             ('bank-mixture-check', 'mixture-check', 'F3: paired recursive mixture-bank pilot and time refinement.'),
-            ('bank-population', 'population', 'F4: paired one-parameter FV/mixture population.')):
+            ('bank-population', 'population', 'F4: paired one-parameter FV/mixture population.'),
+            ('bank-population-time-refine', 'population-time-refine', 'F4 follow-up: refine only the FV rho reference using saved population evidence.')):
         bank = subparsers.add_parser(command, help=description)
         bank.add_argument('--workers', type=int, default=7,
                           help='Persistent spawn-process workers over independent conditional replays.')
@@ -1236,8 +1251,10 @@ def build_parser():
         bank.add_argument('--quiet', action='store_true')
         if study != 'refine':
             bank.add_argument('--refinement-report', type=Path, required=True)
-        if study == 'population':
+        if study in ('population', 'population-time-refine'):
             bank.add_argument('--mixture-report', type=Path, required=True)
+        if study == 'population-time-refine':
+            bank.add_argument('--population-report', type=Path, required=True)
         if study == 'mixture-check':
             bank.add_argument('--spatial-refine', action='store_true',
                               help='F3 version 2: 401-cell mixture candidate, 801-cell control; retain original 151-cell diagnostics.')

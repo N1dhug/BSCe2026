@@ -908,6 +908,57 @@ diagnostisk approksimation; likelihooden bruger den erklærede quadrature.
 Rå review og fortolkning af registrerede artifacts afslutter F4-F,
 ikke tilstedeværelsen af en CLI eller et bestået recovery-passmål.
 
+\paragraph{Populationens første resultat og referencekontrol, 2. oktober.}
+Det registrerede forsøg gennemførte alle 60 banks på 4428.73 sekunder med
+otte workers og én BLAS-tråd. Alle parameterkontroller bestod, men posterior-
+\(L^1\) overskred grænsen 0.02 for ID1337 ved time 6 (0.022650) og ID1347
+ved time 17 (0.021046). Maksimal predictive-\(L^1\) var 0.014534.
+Massefejlen var højst \(5.718\cdot10^{-13}\), uden fallback.
+De 60 rå bankrækker, 20 sammenligninger og tre populationssummer er
+genberegnet; den største afvigelse var \(4.27\cdot10^{-13}\).
+Den oprindelige rapport forbliver fejlet.
+
+\begin{center}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Bank & Parameter-RMSE & Median posterior-SD & State-RMSE\\
+\midrule
+\(\rho\), FV & 0.070315 & 0.285927 & 0.022430\\
+\(\rho\), mixture & 0.070485 & 0.285894 & 0.022426\\
+\(\sigma_x\), FV & 0.138054 & 0.181641 & 0.023692\\
+\bottomrule
+\end{tabular}
+\end{center}
+Rho-priorens SD er 0.295804, og median effektivt hypotesetal er cirka
+40.16 af 41. Ét døgn giver altså fortsat svag information om rho;
+den lille parameter-RMSE skyldes også, at sand rho ligger ved priorens middel.
+Støjforsøget viser tydeligere læring fra en prior-SD på 0.529692.
+Posteriorområderne ramte sandheden 20/20 gange for rho og 19/20 for
+\(\sigma_x\); dette lille forsøg ved én sand parameterværdi dokumenterer
+ikke generel kalibrering.
+
+En udviklingskontrol med ni rho-noder på de to fejlede dage isolerede
+FV-referencens tidsfejl: FV401 ved \(h_{\max}=1/32768\) mod den gemte
+mixture gav posterior-\(L^1\) omkring 0.001, mens FV401 ved \(1/768\)
+mod den fine FV gav op til 0.02162. F1's vægt- og likelihood-kontrol
+certificerede dermed ikke automatisk populationens nye state-\(L^1\)-krav.
+
+Den målrettede opfølgning genbruger de samme 20 dages observationer,
+mixture-banks og \(\sigma_x\)-banks. Kun rho-FV genberegnes på 401 celler
+ved \(h_{\max}=1/1536\) og \(1/3072\), stadig \(q=3\) og alle 41 noder:
+40 nye banks, 1640 replays. Den halve tidsstep-reference skal både stemme
+med den kvarte tidsstep-reference og med den gemte mixture efter de
+uændrede gates. De oprindelige fejl bevares som diagnostik. Kildedigest,
+rene kildecommits, numerik, observationer og rå Bayes-reduktion kontrolleres
+før genbrug; dette er en tilpasset referencekontrol på samme population,
+ikke et nyt uafhængigt holdout.
+
+Udviklingskørslen på alle 20 dage bestod på 320.91 sekunder.
+Posterior-\(L^1\) var højst 0.005552 mellem de to nye FV-tidssteps og
+0.011673 mellem den valgte FV og mixture. Resultatet er udviklingsevidens;
+registreret kørsel fra ren commit og efterfølgende rå review mangler,
+før F4-F kan afsluttes.
+
 \subsection{Prior under reparameterisering}
 
 Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved

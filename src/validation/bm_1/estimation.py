@@ -2942,6 +2942,13 @@ def run_f4_f_bank_population(refinement, mixture_check, *, workers=7, progress=N
             selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
             comparisons.append(dict(coordinate=c, sequence_id=sid,
                                      **_f4_f_paired_bank_comparison(selected['fv'], selected['mixture'])))
+    return dict(**_f4_f_report_header('F4', workers), rows=rows, comparisons=comparisons,
+                summary=_f4_f_population_summary(rows),
+                passes=bool(_f4_f_probability_gate(rows) and all(r['passes'] for r in comparisons)),
+                interpretation='Paired approximation gates, not a parameter-recovery gate. Independent daily resets, not a 20-day continuous run.')
+
+
+def _f4_f_population_summary(rows):
     summary = []
     for c in ('rho', 'sigma_x'):
         for backend in (('fv', 'mixture') if c == 'rho' else ('fv',)):
@@ -2958,9 +2965,126 @@ def run_f4_f_bank_population(refinement, mixture_check, *, workers=7, progress=N
                                 median_posterior_sd=float(np.median([r['parameter_sd'][-1] for r in selected])),
                                 credible_set_hit_fraction=hits/len(selected),
                                 credible_set_wilson=_wilson_interval(hits, len(selected))))
-    return dict(**_f4_f_report_header('F4', workers), rows=rows, comparisons=comparisons, summary=summary,
-                passes=bool(_f4_f_probability_gate(rows) and all(r['passes'] for r in comparisons)),
-                interpretation='Paired approximation gates, not a parameter-recovery gate. Independent daily resets, not a 20-day continuous run.')
+    return summary
+
+
+def f4_f_validated_population(report, *, require_source=False):
+    """Validate the original 60-bank F4 data for reuse, including failed gates.
+
+    Saved pass flags, comparisons and population summaries do not authorize reuse.
+    The original rows are checked against the fixed design and raw scores/masses.
+    """
+    if report.get('stage') != 'F4' or report.get('registered_design') is not True:
+        raise ValueError('The original registered F4 population is required.')
+    if require_source and (not report.get('source_commit') or report.get('working_tree_dirty') is not False):
+        raise ValueError('F4 must have a source commit and clean working tree.')
+    _f4_f_validate_header(report)
+    rows = report.get('rows', [])
+    expected = {(c, sid, label) for sid in F4_F_POPULATION_IDS
+                for c, labels in (('rho', ('fv', 'mixture')), ('sigma_x', ('fv',))) for label in labels}
+    if (len(rows) != 60 or {(r['coordinate'], r['sequence_id'], r['label']) for r in rows} != expected
+            or not _f4_f_probability_gate(rows)):
+        raise ValueError('F4 reuse requires all 60 valid original bank rows.')
+    truth_sequences = {sid: generate_synthetic_sequence(sequence_id=sid) for sid in F4_F_POPULATION_IDS}
+    indexed = {}
+    for r in rows:
+        c, sid, label = r['coordinate'], r['sequence_id'], r['label']
+        settings = (_f4_f_selected_numerics()[c] if label == 'fv'
+                    else _f4_f_numerics(401, 1/32768, backend='mixture'))
+        values = np.asarray(F4_E_PARAMETER_GRIDS[c])
+        if (r['settings'] != settings or not np.array_equal(r['values'], values)
+                or r['truth'] != (1. if c == 'rho' else .5)
+                or r['prior_name'] != 'discrete_uniform'):
+            raise ValueError('F4 nodes, prior, truth or settings were changed.')
+        actual = checks.finite_scalar(r['actual_max_step'], 'F4 actual step', positive=True)
+        if actual > settings['max_step']*(1+1e-12) or r['maximum_abs_mass_error'] < 0:
+            raise ValueError('F4 numerical diagnostics are invalid.')
+        sequence = truth_sequences[sid]
+        if (not np.array_equal(r['observation_times'], CORE_OBSERVATION_TIMES)
+                or not np.allclose(r['observations'], sequence.observations.values, atol=1e-12, rtol=0)
+                or not np.allclose(r['truth_state'], sequence.truth.state[1:], atol=1e-12, rtol=0)):
+            raise ValueError('F4 seed observations or truth were changed.')
+        scores = np.asarray(r['conditional_log_evidence'])
+        if scores.shape != (24, 41) or not np.all(np.isfinite(scores)):
+            raise ValueError('F4 raw scores must include all 24x41 entries.')
+        reduced = parameter_bank_weights(scores, np.full(41, -np.log(41)), np.ones(24, dtype=bool))
+        w = np.exp(reduced['log_weights'])
+        mean = w @ values
+        derived = dict(initial_log_weights=np.full(41, -np.log(41)), log_weights=reduced['log_weights'],
+                       bank_log_evidence=reduced['log_evidence'],
+                       cumulative_log_evidence=np.cumsum(reduced['log_evidence']), parameter_mean=mean,
+                       parameter_sd=np.sqrt(np.sum(w*(values[None, :]-mean[:, None])**2, axis=1)))
+        cdf = np.cumsum(w, axis=1)
+        derived['equal_tail_95'] = [[values[min(np.searchsorted(row, p), 40)] for p in (.025, .975)] for row in cdf]
+        for key, expected_value in derived.items():
+            stored = np.asarray(r[key])
+            if stored.shape != np.shape(expected_value) or not np.allclose(stored, expected_value, atol=1e-10, rtol=0):
+                raise ValueError(f'F4 {key} does not match its raw scores.')
+        edges = np.asarray(r['x_edges'])
+        if (edges.shape != (settings['x_steps']+1,)
+                or not np.allclose(edges, np.linspace(0., 1., settings['x_steps']+1), atol=1e-14, rtol=0)):
+            raise ValueError('F4 state cell edges were changed.')
+        centers = .5*(edges[:-1]+edges[1:])
+        for phase in ('predicted', 'posterior'):
+            mass = checks.probability_rows(r[f'marginal_{phase}_mass'], 'F4 marginal state mass')
+            if mass.shape != (24, settings['x_steps']):
+                raise ValueError('F4 state history has the wrong shape.')
+            if (np.shape(r[f'{phase}_mean']) != (24,)
+                    or not np.allclose(r[f'{phase}_mean'], mass @ centers, atol=1e-10, rtol=0)):
+                raise ValueError('F4 state mean does not match its marginal mass.')
+        indexed[c, sid, label] = r
+    return indexed
+
+
+def run_f4_f_population_time_refinement(refinement, mixture_check, population, *, workers=7, progress=None):
+    """Refine only the FV rho reference; preserve the original failed population.
+
+    Forty new banks use the original observations verbatim. Mixture and sigma_x
+    rows are reused from the source-linked report, never rerun or silently repaired.
+    """
+    f4_f_validated_refinement(refinement)
+    candidate = f4_f_validated_mixture_check(mixture_check)
+    if candidate != _f4_f_numerics(401, 1/32768, backend='mixture'):
+        raise ValueError('Population time refinement requires the F3 version 2 candidate.')
+    old = f4_f_validated_population(population)
+    for key, dependency in (('refinement', refinement), ('mixture', mixture_check)):
+        if population.get('dependencies', {}).get(key, {}).get('source_commit') != dependency.get('source_commit'):
+            raise ValueError('F4 dependency source does not match the supplied report.')
+    groups = []
+    for sid in F4_F_POPULATION_IDS:
+        source = old['rho', sid, 'fv']
+        observations = BM1ObservationSeries(source['observation_times'], source['observations'], 'day')
+        for label, step in (('fv_time_middle', 1/1536), ('fv_time_fine', 1/3072)):
+            groups.append(dict(coordinate='rho', sequence_id=sid, truth=1.,
+                               values=tuple(source['values']), settings=_f4_f_numerics(401, step), label=label,
+                               case=_f4_f_case('rho', 1.), observations=observations, truth_state=source['truth_state']))
+    rows = _f4_f_execute_groups(groups, workers, progress, keep_mass=True)
+    comparisons, selected = [], []
+    for sid in F4_F_POPULATION_IDS:
+        original, mixture = old['rho', sid, 'fv'], old['rho', sid, 'mixture']
+        middle = next(r for r in rows if r['sequence_id'] == sid and r['label'] == 'fv_time_middle')
+        fine = next(r for r in rows if r['sequence_id'] == sid and r['label'] == 'fv_time_fine')
+        for name, left, right, active in (
+                ('original_fv_mixture', original, mixture, False),
+                ('reference_time_coarse', original, middle, False),
+                ('reference_time_fine', middle, fine, True),
+                ('refined_fv_mixture', middle, mixture, True)):
+            comparison = dict(coordinate='rho', sequence_id=sid, comparison=name, selected=active,
+                              **_f4_f_paired_bank_comparison(left, right))
+            if name.startswith('reference_time_'):
+                comparison.update(actual_max_step_left=left['actual_max_step'], actual_max_step_right=right['actual_max_step'])
+                comparison['actual_step_refined'] = bool(right['actual_max_step'] < left['actual_max_step'])
+                comparison['passes'] = bool(comparison['passes'] and comparison['actual_step_refined'])
+            comparisons.append(comparison)
+        selected.extend((dict(middle, label='fv'), mixture, old['sigma_x', sid, 'fv']))
+    return dict(**_f4_f_report_header('F4-time-refinement', workers), rows=rows, comparisons=comparisons,
+                selected_fv_rho_numerics=_f4_f_numerics(401, 1/1536),
+                reused_population_rows=60, reused_selected_banks=40, new_replays=40*41,
+                summary=_f4_f_population_summary(selected),
+                original_population_passes=bool(all(c['passes'] for c in comparisons
+                                                   if c['comparison'] == 'original_fv_mixture')),
+                passes=bool(_f4_f_probability_gate(rows) and all(c['passes'] for c in comparisons if c['selected'])),
+                interpretation='Reference-time adaptation on the same 20 records, not a new holdout. Original failures retained; gates unchanged.')
 
 
 def run_f4_preparation_checks() -> dict:
