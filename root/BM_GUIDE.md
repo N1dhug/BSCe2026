@@ -277,8 +277,8 @@ En fejlet gate gemmes og giver nonzero exit; fejlende replays frasorteres ikke.
 Progress/ETA er grov, fordi støjparret koster mere end rho/Xi-parret.
 Terminalresumé og rå `.json.gz` fra den registrerede kørsel er gennemgået.
 Runtime er målt på denne dagskontrol, uden et løfte om ugeforecast eller måneds-throughput.
-G1a's par-numerik er afsluttet nedenfor; G1b0's parametergrid-pilot er næste
-lokale kørsel. En større G1b-population og G2 er endnu ikke implementeret.
+G1a's par-numerik og G1b0's parametergrid-pilot er afsluttet og rå-reviewet
+nedenfor. Finere parametergrid, en større population og G2 er endnu ikke implementeret.
 
 ## F4-G1a: registreret kørsel afsluttet
 
@@ -345,7 +345,43 @@ Write-Host ("G1a wall time inkl. opstart/output: {0:N2} s" -f $g1aTimer.Elapsed.
 if ($g1aExit -ne 0) { throw "G1a fejlede; behold rapporten til review." }
 ```
 
-## Næste lokale kørsel: F4-G1b0
+## F4-G1b0: gennemført, parametergrid afvist
+
+Ren `990b050` er gennemført og rå-reviewet: **434 tests** består på **442.790 s**,
+og alle **648 replays / 26 reduktioner** er afsluttet med **8 workers / BLAS=1**.
+De **12 FV-kontroller består**, mens begge aktive **5x5→9x9-parameterkontroller
+fejler**. Joint-TV er 0.325197/0.362580 mod grænsen 0.02; også unit-momenter,
+evidence og begge state-L1-gates overskrides. Max massefejl er 2.4061e-12.
+Uafhængig rå genberegning af alle banker og 18 sammenligninger afviger højst
+1.5632e-13. Digest, samtlige maxima og reviewets omfang står i F4-statusfilen.
+
+Rapporten måler **757.9881 s** før lagring; stopwatch måler **773.05 s** inklusive
+opstart og output. Rapportens **passes=False** og efterfølgende nonzero exit er
+den korrekte afvisning af kandidatgridet. **Behold originalrapporten; genkør ikke
+G0, G1a eller G1b0 nu.** 9x9-gridet er heller ikke accepteret som parameter-
+approksimation; det kræver en separat kontrol mod et finere grid.
+
+PR #53 dokumenterer den afsluttede pilot med negativt resultat. Hent kun
+resultatdokumentationen fra projektmappen; ingen studiekørsel følger denne blok:
+
+```powershell
+git fetch --prune origin
+if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
+git switch feature/f4-g-parameter-grid
+if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+git pull --ff-only origin feature/f4-g-parameter-grid
+if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
+git log -1 --oneline
+if (git status --porcelain) { throw "Working tree er ikke ren." }
+```
+
+Brugeren merger selv. Næste trin er en særskilt preregistreret 9x9→17x17-kontrol
+på de samme pilotrecords med uændrede prior-mål/støtter/tolerancer og friske
+FV-kontroller af nye noder. Ny CLI/designversion og nyt outputnavn leveres før
+lokal kørsel; der er endnu ingen registreret kommando til denne opfølgning.
+Større population og uge-/månedsbenchmark følger efter den nødvendige grid-accept.
+
+### G1b0-design og allerede gennemførte kommandoer
 
 Branch **feature/f4-g-parameter-grid** bygger på merged main `0426b50`.
 Prior-målet er uniformt i rho/Xi og log-uniformt i støjparametrene, med
@@ -361,7 +397,9 @@ Windows-default er **8 workers, BLAS=1**. Rapportens tid inkluderer
 dependency-review, men slutter før JSON/gzip-lagring; stopwatch måler hele
 processen. Replays koster forskelligt, så ETA er grov.
 
-Fra projektmappen, før den registrerede kørsel:
+Den allerede gennemførte kørsel brugte nedenstående kommandoer. De skal ikke
+gentages for at hente dokumentationen. En diagnostisk reproduktion kræver ren
+kilde og et nyt outputnavn, så originalrapporten bevares. Fra projektmappen:
 
 ```powershell
 git fetch --prune origin
@@ -387,7 +425,7 @@ Write-Host ("G1b0 wall time inkl. opstart/output: {0:N2} s" -f $g1bTimer.Elapsed
 if ($g1bExit -ne 0) { throw "G1b0 fejlede; behold rapporten til review." }
 ```
 
-Send rå gzip og terminalresumé, også ved fejlet gate. Output overskrives aldrig.
+Rå gzip og terminalresumé er gennemgået, inklusive de fejlede gates. Output overskrives aldrig.
 Originale fejl beholdes før en ny designversion; ingen automatisk tilpasning af
 grid, støtte, numerik eller records. Brugeren merger selv efter review.
 Development API-overrides er eksplicit uregistrerede.

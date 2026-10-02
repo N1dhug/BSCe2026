@@ -1100,7 +1100,8 @@ Syv daglige state-resets er ikke én fortsat syvdages-record. Den fulde
 preregistrering og nye data fastlægges inden disse senere kørsler.
 
 G0 er afsluttet som metodekontrol; G1a's FV-numerik er rå-reviewet nedenfor.
-G1b0's parametergrid/prior-pilot er preregistreret; større population og G2 afventer.
+G1b0's pilot er rå-reviewet: FV består, 5x5-parametergridet er afvist.
+Finere parametergrid, større population og G2 afventer.
 Ugeforecast uden nye observationer er fortsat en særskilt I-leverance med
 erklærede fremtidige inputs. Fit, 168-timers forward-prediction og evaluering
 af alle ugers origins i en erklæret måned skal benchmarkes separat på samme
@@ -1267,7 +1268,57 @@ Andre API-IDs/grids/numerik er uregistreret.
 Et bestået G1b0 accepterer alene 5x5-trapezbanken på to pilotrecords.
 En større population og G2 følger efter rå review og ny preregistrering.
 Ved fejl bevares originalartifactet, og en ny version låser ændret grid/numerik;
-støtten indsnævres ikke efter truth. Registreret lokal evidens afventer.
+støtten indsnævres ikke efter truth. Den registrerede kørsel er gennemgået nedenfor.
+
+\paragraph{Registreret resultat og rå review.}
+Ren \texttt{990b050} gennemførte alle 648 replays og 26 reduktioner på Windows
+med otte workers og BLAS=1; alle 434 tests bestod på 442.790 s.
+Rapportens tid er 757.9881 s inklusive dependency-review før lagring;
+stopwatch målte 773.05 s inklusive opstart/output. Dette er pilotens runtime,
+ikke evidens for en praktisk ugeprognose eller månedsbenchmark.
+
+Alle 12 aktive FV-kontroller på begge grids består, inklusive faktisk mindre
+max-step for hver hypotese. Begge aktive 5x5 mod 9x9-parameterkontroller fejler:
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Max over alle prefixer & Grænse & rho/Xi & sigma-X/sigma-Y\\
+\midrule
+Joint parameter-TV & 0.02 & 0.325197 & 0.362580\\
+Unit-middelforskel & 0.01 & 0.037199 & 0.044264\\
+Unit-SD-forskel & 0.02 & 0.046908 & 0.020045\\
+Kumuleret evidencefejl & 0.10 & 0.281503 & 0.171359\\
+Prediction-state-\(L^1\) & 0.02 & 0.194624 & 0.075024\\
+Posterior-state-\(L^1\) & 0.02 & 0.279908 & 0.113370\\
+\bottomrule
+\end{tabular}
+\end{center}
+TV fejler ved 24/24 henholdsvis 23/24 prefixer. Posterior-state fejler først
+ved prefix 2/7, og begge par fejler også ved sidste prefix. Afvisningen skyldes
+derfor ikke alene dualcelle-TV eller et enkelt mellem-prefix.
+Alle fire grove/prior-bridge-diagnostikker fejler og bevares.
+Max massefejl er \(2.4061\cdot10^{-12}\), med ikke-negative celler.
+
+Rå review kontrollerede clean source og G1a/G0-dependencies, seeds/data,
+truth/inputs, prior/noder/dualceller, FV-settings, alle bank- og kontrolnøgler
+og faktisk tidsrefinement. Nested scores/max-steps er præcis delmængder af
+9x9-replays. Alle scores til weights/evidence/momenter, marginaler, intervaller,
+randvægte, MAP-ties og effektivt hypotesetal er genberegnet, ligesom samtlige
+18 prefix-sammenligninger. Uafhængig tæthedsintegration på fælles
+parameterrektangler og lineær CDF-integration af state kontrollerer begge remaps.
+Max auditafvigelse er \(1.5632\cdot10^{-13}\). Marginale states gemmes;
+fulde conditional historier støttes af G0 og direkte rekursions-/spawn-tests.
+Ingen ny fuld studiekørsel blev brugt til reviewet. Artifact-digest og størrelse
+står i F4-statusfilen.
+
+Rapportens \texttt{passes=False} gemmes korrekt før nonzero exit.
+5x5-trapezbanken er afvist under det erklærede kontinuerte prior-mål.
+9x9 består FV-kontrollen på disse records, men er ikke certificeret som
+parametergrid. Næste implementation skal preregistrere 9x9 mod 17x17 på de samme
+to records med uændrede støtter, prior-mål og tolerancer, friske FV-kontroller
+af nye noder, ny designversion og eget outputnavn. Accept ved 17 noder loves ikke.
+G1b0 bevares som negativt resultat; ingen G0/G1a/G1b0-genkørsel er nødvendig nu.
+Nye populationsrecords følger først efter numerisk accept.
 
 \subsection{Prior under reparameterisering}
 
