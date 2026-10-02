@@ -538,7 +538,21 @@ Send den nye rå gzip og terminalresumé med stopwatch, også ved gatefejl.
 Output overskrives aldrig. En bestået pilot certificerer kun kandidatgridet på
 to records; større population, G2 og praktisk uge-/månedsbenchmark følger særskilt.
 
-## Næste lokale kørsel: samlet F4-G1b3 og G1c0
+## F4-G1b3 og G1c0: afsluttet Windows-kørsel og reproduktion
+
+Windows-kørslen og rå review er afsluttet på clean `1336e35`:
+461 tests består; G1b3 udførte 33.800 replays / 40 banker på **3643.67 s**
+inklusive opstart/output, og G1c0 **15.73 s** med nul nye replays.
+Alle 24 FV-kontroller består. Original dualcelle-TV er afvist;
+den særskilte 33x33-hat-lov består på de to records. Digests, råreview og
+fulde resultater er registreret i [F4.md](F4.md).
+
+**Næste handling er at hente resultatdokumentationen og merge PR #54 selv,
+når dens nye CI er grøn. Ingen flere lokale studiekørsler er nødvendige nu.**
+Efter merge synkroniseres `main`; G2's nye forsøgsdesign følger særskilt.
+
+**Kommandoerne nedenfor bevares alene til reproduktion.** De afviser eksisterende
+output, så de allerede gennemgåede rapporter ikke overskrives.
 
 Kør på clean **feature/f4-g-grid-refinement før merge**. Brugeren merger selv
 efter Windows-kørsel og rå review. **Ingen genkørsel af G0/G1a/G1b0/G1b1/G1b2**
@@ -549,8 +563,9 @@ alle grove fejl. Samme FV-scheme, opt-in LAPACK og løbende Bayes-reduktion.
 **8 workers / BLAS=1** på Windows. G1c0 læser derefter rårapporten og udfører
 **ingen nye replays**; alle FV-kontroller og reproduktion mod originalen skal bestå.
 
-Udviklingskørslen: G1b3 **40.57 min** før lagring; G1c0
-**10.65 s** før lagring. Windows-tid er endnu ikke målt.
+Udviklingskørslen: G1b3 **40.57 min** før lagring; G1c0 **10.65 s** før lagring.
+Windows-rapporterne: G1b3 **3609.6909 s** og G1c0 **12.4247 s** før lagring;
+stopwatch-tiderne inklusive opstart/output er angivet ovenfor.
 461 tests og PDF-build består. G1b3's oprindelige dualcelle-TV fejler fortsat;
 G1c0's særskilte positive hat-lov består 33→65 på to records. Samme prior,
 støtte, scores, evidence og integreret state-mixture; ændret kontinuert

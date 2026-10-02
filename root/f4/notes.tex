@@ -1541,8 +1541,45 @@ Separat primal-Gauss3 kontrollerer masser/momenter, og adaptiv QUADPACK
 kontrollerer alle 192 par/prefix-TV-værdier. Max TV-afvigelse er
 \( 6.829\cdot10^{-11} \).
 461 tests og PDF-build består på identisk CI-tree. Original G1b3-afvisning
-står uændret. Windows-reproduktion/raw review, held-out recovery, G2 og
-konkret 168-timers forecast/månedsbenchmark afventer stadig.
+står uændret. Windows-verifikationen er registreret nedenfor; held-out recovery,
+G2 og konkret 168-timers forecast/månedsbenchmark afventer stadig.
+
+\paragraph{Registreret Windows-verifikation og rå review.}
+Clean \texttt{1336e35}: alle 461 tests består på 510.876 s.
+G1b3 udfører 33800 replays/40 banker med otte workers og BLAS=1:
+3609.6909 s før lagring, 3643.67 s inklusive opstart/output.
+Alle 24 FV-kontroller består ved alle prefixer. Begge aktive 33\(\to\)65-
+kontroller afvises alene på oprindelig dualcelle-TV:
+0.0428366096432 / 0.0525256931447. Den komplette negative rapport er gemt;
+CLI-exit 1 er forventet. Alle seks grove parameterafvisninger bevares.
+
+G1c0 udfører nul nye replays: 12.4247 s før lagring, 15.73 s inklusive
+validering/output, exit 0. Begge særskilte 33\(\to\)65-hat-kontroller
+består ved alle 24 prefixer. Max TV er 0.00538029549612 / 0.00635098249882;
+max unit-middelfejl er 0.000113187719 / 0.000123119885, og max unit-SD-fejl
+0.000739596931 / 0.000464353890. Evidence og begge state-gates består uændret.
+De seks grove hat-kontroller og alle 32 originale sammenligninger bevares.
+
+Separat råreview kontrollerer alle 40 banker og 32 originale sammenligninger
+med Bayes-algebra fra råscores i udvidet præcision, uafhængig CDF-remap og
+direkte dualcelle-tæthedsintegration. Primal-Gauss3 kontrollerer alle ti
+hat-loves masser/momenter; adaptiv QUADPACK med modsat ydre integrationsakse
+kontrollerer alle 192 par/prefix-TV-værdier. Max TV-afvigelse er
+\(6.830\cdot10^{-11}\), og \(3.295\cdot10^{-15}\) for aktive 33\(\to\)65;
+max hat-momentafvigelse er \(2.555\cdot10^{-14}\).
+Alle 16 fælles banker reproducerer selve den originale Windows-G1b0-fil:
+scores/vægte/evidence nøjagtigt, state-masser højst \(4.857\cdot10^{-17}\).
+Max registreret conditional massefejl er \(2.406\cdot10^{-12}\), minimum 0.
+Input-/output-digests er registreret i F4-status. Ingen ny fuld filterkørsel
+er udført under review; alle conditional state-historier er ikke gemt,
+og mixture-konstruktionen understøttes af G0 og recursion-/spawn-tests.
+
+På den endelige 33-hat-lov er rho-SD fortsat 98.91\% af prior-SD og
+95\%-intervallet \([0.531049,1.478171]\); støjparrets unit-korrelation er
+\(-0.643535\). Numerisk accept er ikke præcis parameteridentifikation.
+Linux- og Windows-piloterne er nu rå-reviewet. PR \#54 afventer grøn CI
+for resultatdokumentationen og brugerens merge; G2/population og ugeforecast
+er fortsat særskilte leverancer.
 
 \subsection{Prior under reparameterisering}
 
