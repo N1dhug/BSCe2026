@@ -1099,7 +1099,8 @@ Parret sampling skal bruge delmængder af samme timevise observationspath.
 Syv daglige state-resets er ikke én fortsat syvdages-record. Den fulde
 preregistrering og nye data fastlægges inden disse senere kørsler.
 
-G0 er afsluttet som metodekontrol; G1a's registrerede evidens og G2's robusthed afventer.
+G0 er afsluttet som metodekontrol; G1a's FV-numerik er rå-reviewet nedenfor.
+G1b's parametergrid og G2's robusthed afventer.
 Ugeforecast uden nye observationer er fortsat en særskilt I-leverance med
 erklærede fremtidige inputs. Fit, 168-timers forward-prediction og evaluering
 af alle ugers origins i en erklæret måned skal benchmarkes separat på samme
@@ -1156,7 +1157,7 @@ diagnostik. Ingen record eller hypotese frasorteres. Fejlet gate gemmes før
 nonzero exit, mens et fejlet replay afbryder uden et resumé af overlevende forløb.
 CLI kræver et rent, kildeforbundet G0-artifact, kontrollerer rå design/algebra/masser
 og gemmer dets digest som dependency. Andre API-IDs/grids/numerik er uregistreret.
-Resultat og rå review afventer den registrerede lokale kørsel.
+Registreret resultat og rå review følger nedenfor.
 
 Udviklingskontrollen fra \texttt{e2529b0} plus G1a-ændringer gennemførte alle
 1050 replays på 632.1196 s før lagring, med otte workers og BLAS=1.
@@ -1166,6 +1167,37 @@ Max massefejl er \(3.2228\cdot10^{-12}\); alle celler er ikke-negative.
 Uafhængig rå genberegning, inklusive CDF-kontrol af remap, afviger højst
 \(1.7054\cdot10^{-13}\). Alle 425 regressionstests består. Grove fejl beholdes
 som diagnostik; dette er udviklingsevidens, ikke registreret Windows-evidens.
+
+\paragraph{Registreret resultat og rå review, 2. oktober 2026.}
+Fra ren kildecommit \texttt{de6fcd5} gennemførte brugerens Windows-kørsel alle
+42 banker og 1050 replays med otte workers og BLAS=1. Alle 425 regressionstests
+bestod på 212.081 s. Rapportens tid er 990.9608 s før JSON/gzip-lagring;
+PowerShell-stopwatch målte 1007.74 s inklusive opstart, dependency-review og output.
+Samtlige 18 aktive kontroller består ved alle 24 prefixer. Maxima er:
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+Par & Odds & Vægt-TV & Evidence & Pred.-\(L^1\) & Post.-\(L^1\)\\
+\midrule
+\(\rho/\Xi\) & 0.073060 & 0.006701 & 0.026529 & 0.007604 & 0.007563\\
+\(\sigma_X/\sigma_Y\) & 0.092862 & 0.005564 & 0.008185 & 0.006529 & 0.006423\\
+\bottomrule
+\end{tabular}
+\end{center}
+Max massefejl over alle banker er \(3.2206\cdot10^{-12}\), med ikke-negative
+celler. Fire grove kontroller fejler og bevares: rho/Xi ID1352 spatial,
+støjpar ID1354 time/spatial og ID1355 spatial. Ingen aktive gates er ændret.
+
+Ren kilde, G0-dependency, seed-observationer, inputs, joint-prior, numerik og
+faktiske conditional max-steps er kontrolleret. Rå scores giver uafhængig
+genberegning af weights/evidence, joint-momenter, marginaler, områder, randvægte,
+MAP-ties og effektivt hypotesetal. Alle 36 sammenligninger og prefix-fejl er
+genberegnet; separat lineær CDF-integration kontrollerer state-remap.
+Max auditafvigelse er \(1.7054\cdot10^{-13}\). Sammenligning med udviklingskørslen
+afviger højst \(2.9310\cdot10^{-14}\) i scores, \(1.6343\cdot10^{-13}\) i log-vægte
+og \(2.3593\cdot10^{-16}\) i marginale state-masser. Conditional historier er ikke
+gemt; reduktionen støttes af G0 og direkte rekursions-/spawn-tests.
+Artifact-digest står i F4-statusfilen. Review krævede ingen ny fuld studiekørsel.
 
 Et bestået G1a accepterer mellem-FV-numerikken alene på det erklærede diskrete
 parametermål og disse records. G1b undersøger efterfølgende parametergrid under

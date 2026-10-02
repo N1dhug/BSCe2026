@@ -234,7 +234,7 @@ gentages. G0 på ren `6670969` er gennemført og rå-reviewet: 416 tests består
 alle 100 conditional forløb gennemfører på 86.6074 s med 8 workers og BLAS=1,
 og begge par består metodeidentiteten. Artifact-digest og kvantitative resultater
 står i F4-statusfilen. Ingen G0-genkørsel er nødvendig; PR #51 afventer brugerens
-merge. G1's par-numerik er næste leverance, ikke endnu en identitetskørsel.
+merge. G1a's par-numerik er også gennemført og rå-reviewet nedenfor.
 
 G0 kontrollerer begge valgte par på ID1348/1349 med 25 joint-hypoteser hver,
 50 conditional online-forløb og 50 friske offline-replays. Designet er fast i CLI;
@@ -277,26 +277,50 @@ En fejlet gate gemmes og giver nonzero exit; fejlende replays frasorteres ikke.
 Progress/ETA er grov, fordi støjparret koster mere end rho/Xi-parret.
 Terminalresumé og rå `.json.gz` fra den registrerede kørsel er gennemgået.
 Runtime er målt på denne dagskontrol, uden et løfte om ugeforecast eller måneds-throughput.
-G1a's par-numerik er næste lokale kørsel nedenfor; G1b's parametergrid og G2's
-længere records/sampling/mismatch er endnu ikke implementeret.
+G1a's par-numerik er afsluttet nedenfor; G1b's parametergrid og G2's længere
+records/sampling/mismatch er endnu ikke implementeret.
 
-## Næste lokale kørsel: F4-G1a
+## F4-G1a: registreret kørsel afsluttet
 
 Separat branch `feature/f4-g-joint-refinement` bygger på det rå-reviewede G0.
 G0-rapporten ovenfor genbruges som valideret dependency; den skal ikke genkøres.
 Så længe PR #51 er åben, har G1-PR'en den som base; brugeren merger G0 først,
-og G1 retargetes til main. Den lokale G1-kørsel kan gennemføres på branchen.
+og PR #52 retargetes til main, før G1a merges.
+
+Ren `de6fcd5` er gennemført og rå-reviewet: **425 tests** består på 212.081 s,
+alle **42 banker / 1.050 replays og 18 aktive kontroller** består med
+**8 workers / BLAS=1**. Rapporten måler **990.9608 s** før lagring, mens den
+komplette PowerShell-stopwatch måler **1007.74 s** inklusive opstart og output.
+Max auditafvigelse er 1.7054e-13; fire grove fejl bevares som diagnostik.
+G1a accepterer rho/Xi FV401 og støjpar FV3201, hmax=1/1536, q=3 alene på
+G0's faste 25-node-parametermål og disse records. Digest og rå review står i
+F4-statusfilen. **Ingen G0/G1a-genkørsel er nødvendig.**
+
+Hent resultatdokumentationen fra projektmappen:
+
+```powershell
+git fetch --prune origin
+if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
+git switch feature/f4-g-joint-refinement
+if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+git pull --ff-only origin feature/f4-g-joint-refinement
+if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
+git log -1 --oneline
+if (git status --porcelain) { throw "Working tree er ikke ren." }
+```
 
 G1a fastholder G0's 25 hypoteser per par og joint-prior og låser seks nye records,
 syv FV-konfigurationer per record og **1.050** selvstændige replays. Alle scores,
 vægte, state-historier og prefix-fejl gemmes; en fejlet numerisk gate giver en
-rapport og nonzero exit. Send både rå gzip og terminalresumé, også ved fejlet gate.
+rapport og nonzero exit. Rå gzip og terminalresumé er gennemgået.
 Runtime/ETA måles på dette studie; uge- og månedsbenchmark følger særskilt.
 Rapportens `elapsed_seconds` måles før JSON/gzip-lagring. Stopwatch nedenfor
 måler hele Python-kørslen inklusive opstart, dependency-review og output;
 behold også dette terminaltal ved runtime-review.
 
-Fra projektmappen:
+Den allerede gennemførte kørsel brugte nedenstående kommandoer. De skal ikke
+gentages for at hente dokumentationen; en diagnostisk reproduktion kræver ren
+kilde og et nyt outputnavn, så originalrapporten bevares. Fra projektmappen:
 
 ```powershell
 git fetch --prune origin
