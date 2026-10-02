@@ -49,6 +49,7 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | F4-G G1b1 v2 parret 9x9→17x17-kontrol efter afvist G1b0 | `joint-bank-grid-refine --g1b0-report <G1b0-JSON>` |
 | F4-G G1b2 v3 samlet 17x17→33x33-kontrol, LAPACK og løbende reduktion | `joint-bank-grid-fine --g1b0-report <G1b0-JSON>` |
 | F4-G G1b3 v4 samlet 33x33→65x65-kontrol | `joint-bank-grid-dense --g1b0-report <G1b0-JSON>` |
+| F4-G G1c0 særskilt kontinuert hat-pilot | `joint-bank-reconstruct --grid-report <G1b3> --g1b0-report <G1b0>` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -610,3 +611,19 @@ Lokale resultater hører i ignoreret `files/output/bm_1/runs/`, PDF-build i
 `root/f4/build/`. Bevar inputworkbooks og afsluttet evidens i
 `files/output/bm_1/f3_b/` og `files/output/bm_1/real_data/`. Slet ikke brugerens
 lokale arbejde, stashes eller miljøer for at opnå en ren status.
+
+
+## G1c0: særskilt rekonstruktion efter den komplette G1b3-rapport
+
+G1c0 er preregistreret i `F4.md` efter G1b2-diagnostik og før G1b3-resultatet.
+Det er en data-informeret pilot på samme records. Den originale dualcelle-TV
+og afvisninger ændres ikke. En positiv bilineær parameterdensitet på de samme
+noder integrerer til præcis den eksisterende state-mixture og evidence.
+33x33 sammenlignes med 65x65 med de samme tolerancer, analytiske unit-momenter
+og en særskilt 8/16/32-kvadraturkontrol af joint-TV.
+
+CLI `joint-bank-reconstruct` genvaliderer hele G1b3 og den originale G1b0-fil;
+FV- og reproduktionsfejl stopper. En komplet G1b3-rapport med parameter-TV-fejl
+må bruges uden at omfortolke fejlen som original G1b-accept. Ingen nye replays.
+Samlet Windows-handoff færdiggøres efter udviklingskørslen og rå review.
+G2, held-out recovery og praktisk uge-/månedsruntime er fortsat uafklarede.

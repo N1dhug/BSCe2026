@@ -435,17 +435,39 @@ def _grid_comparisons(rows, ids, sizes, *, prior_bridge):
 
 
 def validated_g1b0(report, *, require_source=False):
-    """Require the complete rejected G1b0 pilot, with passing FV controls.
+    """Recompute the complete rejected G1b0 pilot and its passing FV controls."""
+    return _validated_grid_report(report,require_source=require_source,stage='G1b0',
+                                  version=1,counts=G1B0_COUNTS,prior_bridge=True)
 
-    Recompute raw summaries and gates; a failure is preserved as a dependency,
-    rather than changed into an acceptance or an automatically selected grid.
-    Conditional state histories are not stored; marginal masses are checked.
+
+def validated_g1b3(report, *, require_source=False):
+    """Validate every dense bank, original gate and recorded reproduction.
+
+    The G1c CLI also reads the original G1b0 file and recomputes reproduction;
+    a digest or a previously recorded passing flag alone is insufficient.
     """
+    return _validated_grid_report(report,require_source=require_source,stage='G1b3',
+                                  version=4,counts=G1B3_COUNTS,prior_bridge=False)
+
+
+def _validate_recorded_reproduction(value):
+    fields = {'conditional_log_evidence','log_weights','bank_log_evidence','cumulative_log_evidence',
+              'marginal_predicted_mass','marginal_posterior_mass','conditional_actual_max_steps'}
+    if (value.get('tolerance')!=1e-10 or value.get('bank_comparisons')!=16
+            or value.get('passes') is not True or set(value.get('maximum_errors',{}))!=fields
+            or 'validation_error' in value):
+        raise ValueError('Passing complete shared-replay reproduction is required.')
+    errors = fv._array(list(value['maximum_errors'].values()),(7,),'reproduction errors')
+    if np.any((errors<0)|(errors>1e-10)):
+        raise ValueError('Shared-replay reproduction errors failed.')
+
+
+def _validated_grid_report(report, *, require_source, stage, version, counts, prior_bridge):
     configurations = _grid_configurations(fv.G1A_NUMERICS)
-    header = dict(stage='G1b0',design_version=1,registered_design=True,
-                  sequence_ids=list(G1B0_IDS),parameter_grid_counts=list(G1B0_COUNTS),
-                  candidate_parameter_nodes_per_axis=5,conditional_runs=648,bank_reductions=26,
-                  passes=False,parameter_criteria=dict(G1B0_CRITERIA),
+    header = dict(stage=stage,design_version=version,registered_design=True,
+                  sequence_ids=list(G1B0_IDS),parameter_grid_counts=list(counts),
+                  candidate_parameter_nodes_per_axis=counts[-2],conditional_runs=8*counts[-1]**2,bank_reductions=8*len(counts)+(2 if prior_bridge else 0),
+                  parameter_criteria=dict(G1B0_CRITERIA),
                   fv_criteria=dict(log_odds=.10,weight_tv=.01,evidence=.10,state_l1=.02,
                                    mass_error=1e-10,actual_step_relative_margin=1e-12),
                   prior_measure=dict(rho__Xi='product uniform in rho and Xi',
@@ -459,30 +481,42 @@ def validated_g1b0(report, *, require_source=False):
                               state_response='1-2*x',price_response='1-2*u'),
                   truth_settings=dict(initial_beta=[20.,20.],truth_max_step=1/1152,seed_roots=[4101,4102,4103]))
     if (any(report.get(k)!=v for k,v in header.items())
-            or report.get('registered_design') is not True or report.get('passes') is not False):
-        raise ValueError('A complete rejected registered G1b0 report is required.')
+            or report.get('registered_design') is not True or not isinstance(report.get('passes'),bool)
+            or (prior_bridge and report['passes'])):
+        raise ValueError('A complete rejected registered Joint grid report is required.')
     if require_source and (report.get('working_tree_dirty') is not False
                            or not re.fullmatch('[0-9a-f]{40}',str(report.get('source_commit')))):
-        raise ValueError('G1b0 requires a clean recorded source commit.')
-    dependency = report.get('dependencies',{}).get('g1a',{})
-    for source in (dependency,dependency.get('g0',{})):
+        raise ValueError('Joint grid requires a clean recorded source commit.')
+    dependency = report.get('dependencies',{})
+    chain = []
+    if not prior_bridge:
+        parent = dependency.get('g1b0',{})
+        chain.append(parent)
+        dependency = parent
+        _validate_recorded_reproduction(report.get('replay_reproduction',{}))
+        if (report.get('conditional_backend')!='lapack-tridiagonal; unchanged FV scheme'
+                or report.get('reduction')!='ordered streaming log-scaled sums; at most 2*workers in flight'):
+            raise ValueError('Dense grid backend/reduction changed.')
+    dependency = dependency.get('g1a',{})
+    chain.extend((dependency,dependency.get('g0',{})))
+    for source in chain:
         if (not re.fullmatch('[0-9a-f]{64}',str(source.get('sha256')))
                 or not re.fullmatch('[0-9a-f]{40}',str(source.get('source_commit')))):
-            raise ValueError('G1b0 requires its recorded G1a/G0 dependency chain.')
+            raise ValueError('Joint grid requires its recorded G1a/G0 dependency chain.')
     rows = report.get('rows',[])
-    if len(rows)!=26: raise ValueError('G1b0 requires all 26 banks.')
+    if len(rows)!=header['bank_reductions']: raise ValueError('Grid report requires every bank.')
     expected = {}
     for pair,sid,Xi in zip(core.F4_G_PAIRS,G1B0_IDS,(.75,1.)):
         case = core.build_f4_b_case(Xi=Xi)
         seq = core.generate_synthetic_sequence(case,sequence_id=sid)
-        for n in G1B0_COUNTS:
+        for n in counts:
             for label,settings in configurations['__'.join(pair)]:
                 expected[(pair,sid,f'{n}/{label}/quadrature')] = (case,seq,n,label,'quadrature',settings)
-        expected[(pair,sid,'5/middle/discrete_uniform')] = (case,seq,5,'middle','discrete_uniform',configurations['__'.join(pair)][0][1])
+        if prior_bridge: expected[(pair,sid,'5/middle/discrete_uniform')] = (case,seq,5,'middle','discrete_uniform',configurations['__'.join(pair)][0][1])
     seen = {}
     for row in rows:
         key = (tuple(row['coordinates']),row['sequence_id'],row['label'])
-        if key not in expected or key in seen: raise ValueError('G1b0 banks are missing, duplicate or unregistered.')
+        if key not in expected or key in seen: raise ValueError('Joint grid banks are missing, duplicate or unregistered.')
         seen[key] = row
         case,seq,n,label,kind,settings = expected[key]
         truth = core.f4_e_truth_candidate(case)
@@ -490,8 +524,8 @@ def validated_g1b0(report, *, require_source=False):
                 or row['settings']!=settings or row['observed']!=[True]*24
                 or row['truth']!=[getattr(truth,name) for name in key[0]]
                 or row['fixed_parameters']!={name:getattr(truth,name) for name in ('rho','Xi','k','sigma_x','sigma_y') if name not in key[0]}):
-            raise ValueError('G1b0 experiment, grid or FV numerics changed.')
-        h,unit,dual,prior = _parameter_grid(key[0],n,9)
+            raise ValueError('Joint grid experiment, grid or FV numerics changed.')
+        h,unit,dual,prior = _parameter_grid(key[0],n,counts[-1])
         if kind=='discrete_uniform': prior = np.full(n*n,-np.log(n*n))
         for name,value,tolerance in [('hypotheses',h,1e-12),('parameter_unit_nodes',unit,0.),
                                      ('parameter_dual_edges',dual,0.),('initial_log_weights',prior,1e-12),
@@ -499,57 +533,61 @@ def validated_g1b0(report, *, require_source=False):
                                      ('observations',seq.observations.values,1e-12),
                                      ('x_edges',np.linspace(0,1,settings['x_steps']+1),0.),
                                      ('initial_mass',core.beta_initial_mass(case,case.build_model()[0],settings['x_steps']),1e-10)]:
-            fv._equal_array(row[name],value,'G1b0 '+name,tolerance)
-        scores = fv._array(row['conditional_log_evidence'],(24,n*n),'G1b0 scores')
+            fv._equal_array(row[name],value,'Joint grid '+name,tolerance)
+        scores = fv._array(row['conditional_log_evidence'],(24,n*n),'Joint grid scores')
         raw = prior+np.cumsum(scores,axis=0);evidence = logsumexp(raw,axis=1);logs = raw-evidence[:,None]
-        fv._equal_array(row['log_weights'],logs,'G1b0 weights')
-        fv._equal_array(row['cumulative_log_evidence'],evidence,'G1b0 evidence')
-        bank = fv._array(row['bank_log_evidence'],(24,),'G1b0 increments')
-        fv._equal_array(np.cumsum(bank),evidence,'G1b0 bank evidence')
+        fv._equal_array(row['log_weights'],logs,'Joint grid weights')
+        fv._equal_array(row['cumulative_log_evidence'],evidence,'Joint grid evidence')
+        bank = fv._array(row['bank_log_evidence'],(24,),'Joint grid increments')
+        fv._equal_array(np.cumsum(bank),evidence,'Joint grid bank evidence')
         summary = core._f4_g_joint_summary(h,logs,key[0])
         for name,value in summary.items():
             if name=='map_hypotheses':
-                if row[name]!=value: raise ValueError('G1b0 MAP ties disagree.')
+                if row[name]!=value: raise ValueError('Joint grid MAP ties disagree.')
             elif name=='marginal_parameters':
-                if set(row[name])!=set(value): raise ValueError('G1b0 marginal coordinates disagree.')
+                if set(row[name])!=set(value): raise ValueError('Joint grid marginal coordinates disagree.')
                 for coordinate,marginal in value.items():
-                    if set(row[name][coordinate])!=set(marginal): raise ValueError('G1b0 marginal fields disagree.')
+                    if set(row[name][coordinate])!=set(marginal): raise ValueError('Joint grid marginal fields disagree.')
                     for field,want in marginal.items():
-                        fv._equal_array(row[name][coordinate][field],want,'G1b0 marginal '+field)
-            else: fv._equal_array(row[name],value,'G1b0 '+name)
+                        fv._equal_array(row[name][coordinate][field],want,'Joint grid marginal '+field)
+            else: fv._equal_array(row[name],value,'Joint grid '+name)
         for phase in ('predicted','posterior'):
-            fv._mass(row['marginal_'+phase+'_mass'],24,settings['x_steps'],'G1b0 '+phase)
-        steps = fv._array(row['conditional_actual_max_steps'],(n*n,),'G1b0 actual steps')
-        if np.any((steps<=0)|(steps>settings['max_step']+1e-14)): raise ValueError('G1b0 actual steps are invalid.')
+            fv._mass(row['marginal_'+phase+'_mass'],24,settings['x_steps'],'Joint grid '+phase)
+        steps = fv._array(row['conditional_actual_max_steps'],(n*n,),'Joint grid actual steps')
+        if np.any((steps<=0)|(steps>settings['max_step']+1e-14)): raise ValueError('Joint grid actual steps are invalid.')
     fv._probability_gate(rows,raise_error=True)
     for key,row in seen.items():
-        n = row['parameter_nodes_per_axis'];fine = seen[(key[0],key[1],f"9/{row['fv_label']}/quadrature")]
-        indices = np.arange(81).reshape(9,9)[::8//(n-1),::8//(n-1)].ravel()
-        fv._equal_array(row['conditional_log_evidence'],np.array(fine['conditional_log_evidence'])[:,indices],'G1b0 nested scores',0.)
-        fv._equal_array(row['conditional_actual_max_steps'],np.array(fine['conditional_actual_max_steps'])[indices],'G1b0 nested steps',0.)
-    calculated = _grid_comparisons(rows,G1B0_IDS,G1B0_COUNTS,prior_bridge=True)
+        n = row['parameter_nodes_per_axis'];fine = seen[(key[0],key[1],f"{counts[-1]}/{row['fv_label']}/quadrature")]
+        indices = np.arange(counts[-1]**2).reshape(counts[-1],counts[-1])[::(counts[-1]-1)//(n-1),::(counts[-1]-1)//(n-1)].ravel()
+        fv._equal_array(row['conditional_log_evidence'],np.array(fine['conditional_log_evidence'])[:,indices],'Joint grid nested scores',0.)
+        fv._equal_array(row['conditional_actual_max_steps'],np.array(fine['conditional_actual_max_steps'])[indices],'Joint grid nested steps',0.)
+    calculated = _grid_comparisons(rows,G1B0_IDS,counts,prior_bridge=prior_bridge)
     comparisons = report.get('comparisons',[])
     def comparison_key(c):
         return tuple(c['coordinates']),c['sequence_id'],c['kind'],c['left'],c['right']
     actual = {comparison_key(c):c for c in comparisons}
-    if len(comparisons)!=18 or len(actual)!=18: raise ValueError('G1b0 requires all 18 unique comparisons.')
+    if len(comparisons)!=len(calculated) or len(actual)!=len(calculated):
+        raise ValueError('Grid report requires every unique comparison.')
     for want in calculated:
         key = comparison_key(want)
-        if key not in actual: raise ValueError('G1b0 comparison is missing or unregistered.')
+        if key not in actual: raise ValueError('Joint grid comparison is missing or unregistered.')
         got = actual[key]
-        if set(got)!=set(want): raise ValueError('G1b0 comparison fields changed.')
+        if set(got)!=set(want): raise ValueError('Joint grid comparison fields changed.')
         for name,value in want.items():
             if name=='prefix_errors':
-                if set(got[name])!=set(value): raise ValueError('G1b0 prefix criteria changed.')
-                for field,v in value.items(): fv._equal_array(got[name][field],v,'G1b0 prefix '+field)
+                if set(got[name])!=set(value): raise ValueError('Joint grid prefix criteria changed.')
+                for field,v in value.items(): fv._equal_array(got[name][field],v,'Joint grid prefix '+field)
             elif isinstance(value,bool):
-                if got[name] is not value: raise ValueError('G1b0 selection or gate disagrees.')
-            elif name.startswith('maximum_'): fv._equal_array(got[name],value,'G1b0 '+name)
-            elif got[name]!=value: raise ValueError('G1b0 comparison design changed.')
+                if got[name] is not value: raise ValueError('Joint grid selection or gate disagrees.')
+            elif name.startswith('maximum_'): fv._equal_array(got[name],value,'Joint grid '+name)
+            elif got[name]!=value: raise ValueError('Joint grid comparison design changed.')
         if want['selected'] and want['kind'].startswith('FV_') and not want['passes']:
-            raise ValueError('G1b0 FV controls must pass before parameter-only refinement.')
-        if want['selected'] and want['kind']=='parameter_grid' and want['passes']:
-            raise ValueError('G1b1 follows the rejected parameter grids for both pairs.')
+            raise ValueError('Joint grid FV controls must pass before parameter-only refinement.')
+        if prior_bridge and want['selected'] and want['kind']=='parameter_grid' and want['passes']:
+            raise ValueError('Refinement requires both original parameter grids rejected.')
+    expected_pass = all(c['passes'] for c in calculated if c['selected'])
+    if report['passes'] is not bool(expected_pass):
+        raise ValueError('Grid report overall gate disagrees with raw comparisons.')
     return True
 
 
@@ -581,3 +619,151 @@ def compare_grid_overlap(previous, current, *, counts=(5,9)):
             maxima[field] = max(maxima[field],float(np.max(np.abs(r-l))))
     return dict(tolerance=1e-10,bank_comparisons=16,maximum_errors=maxima,
                 passes=bool(all(value<=1e-10 for value in maxima.values())))
+
+
+# G1c0 is a different continuous law, never an override of G1b dual-cell TV.
+G1C0_TV_ORDERS = (8, 16, 32)
+G1C0_QUADRATURE_TOLERANCE = 1e-8
+
+
+def _hat_law(row):
+    """Positive tensor-hat density in normalized prior coordinates.
+
+    q_i = integral H_i. Nodal density exp(log(w_ij)-log(q_i*q_j))
+    integrates to one. Its joint state extension uses each node's own
+    conditional state; integration gives the existing Bayes mixture exactly.
+    """
+    n = checks.positive_integer(row['parameter_nodes_per_axis'],'hat nodes',minimum=2)
+    unit = np.linspace(0,1,n)
+    fv._equal_array(row['parameter_unit_nodes'],unit,'hat unit nodes',0.)
+    if row['prior_kind']!='quadrature': raise ValueError('Hat law requires the continuous quadrature prior.')
+    q = np.full(n,1/(n-1));q[[0,-1]] *= .5
+    prior = np.log(np.outer(q,q).ravel())
+    fv._equal_array(row['initial_log_weights'],prior,'hat prior',1e-12)
+    count = len(row['observation_times'])
+    logs = fv._array(row['log_weights'],(count,n*n),'hat weights')
+    weights = np.exp(logs).reshape(count,n,n)
+    density = np.exp(logs-prior).reshape(count,n,n)
+    mass = np.einsum('kij,i,j->k',density,q,q,optimize=True)
+    if not np.all(np.isfinite(density)) or np.any(density<0) or np.max(abs(mass-1))>1e-10:
+        raise ValueError('Hat law must be finite, nonnegative and normalized.')
+    # Exact first and second moments of each normalized one-dimensional hat.
+    step = 1/(n-1)
+    center = unit.copy();center[0] = step/3;center[-1] = 1-step/3
+    second = unit**2+step**2/6
+    second[0] = step**2/6;second[-1] = 1-2*step/3+step**2/6
+    mean = np.column_stack([weights.sum(axis=2)@center,weights.sum(axis=1)@center])
+    e2 = np.column_stack([weights.sum(axis=2)@second,weights.sum(axis=1)@second])
+    variance = e2-mean**2
+    if np.min(variance)<-1e-12: raise ValueError('Hat variance is negative.')
+    cross = np.einsum('kij,i,j->k',weights,center,center,optimize=True)
+    return dict(unit=unit,density=density,mass=mass,mean=mean,
+                sd=np.sqrt(np.maximum(variance,0.)),covariance=cross-mean[:,0]*mean[:,1])
+
+
+def _hat_interpolate(density, source, target):
+    """Evaluate a tensor-linear field on the union of primal node grids."""
+    j = np.clip(np.searchsorted(source,target,side='right')-1,0,len(source)-2)
+    t = (target-source[j])/(source[j+1]-source[j])
+    first = density[j,:]*(1-t[:,None])+density[j+1,:]*t[:,None]
+    return first[:,j]*(1-t[None,:])+first[:,j+1]*t[None,:]
+
+
+def _bilinear_abs_integral(corners, order):
+    """Integral of |bilinear| on each unit cell; exact inner integration.
+
+    Split the outer axis at both boundary zero crossings. On each resulting
+    interval the exact inner integral is smooth (linear or rational). Gauss
+    refinement is checked independently by the caller; it is not a proof of
+    a rigorous error bound.
+    """
+    a0,a1,b0,b1 = corners  # y=0 and y=1 endpoint lines in x
+    cuts = [np.zeros_like(a0),np.ones_like(a0)]
+    for start,end in ((a0,a1),(b0,b1)):
+        root = np.divide(-start,end-start,out=np.ones_like(start),where=end!=start)
+        cuts.append(np.where((root>0)&(root<1),root,1.))
+    cuts = np.sort(np.stack(cuts),axis=0)
+    nodes,weights = np.polynomial.legendre.leggauss(order)
+    nodes = (nodes+1)/2;weights = weights/2
+    total = np.zeros_like(a0)
+    for left,right in zip(cuts[:-1],cuts[1:]):
+        x = left[...,None]+(right-left)[...,None]*nodes
+        a = a0[...,None]+(a1-a0)[...,None]*x
+        b = b0[...,None]+(b1-b0)[...,None]*x
+        denominator = 2*abs(a-b)
+        crossing = np.divide(a*a+b*b,denominator,out=np.zeros_like(a),where=denominator>0)
+        inner = np.where(a*b>=0,(abs(a)+abs(b))/2,crossing)
+        total += (right-left)*(inner@weights)
+    return total
+
+
+def compare_hat_laws(left, right):
+    """G1c0 comparison, keeping the original dual-cell comparison intact."""
+    if (left['coordinates']!=right['coordinates'] or left['sequence_id']!=right['sequence_id']
+            or left['observation_times']!=right['observation_times'] or left['observations']!=right['observations']
+            or left['x_edges']!=right['x_edges']):
+        raise ValueError('Hat comparison requires the same experiment and state grid.')
+    laws = [_hat_law(row) for row in (left,right)]
+    union = np.unique(np.r_[laws[0]['unit'],laws[1]['unit']])
+    areas = np.outer(np.diff(union),np.diff(union))
+    tv = []
+    for d0,d1 in zip(laws[0]['density'],laws[1]['density']):
+        delta = (_hat_interpolate(d1,laws[1]['unit'],union)
+                 -_hat_interpolate(d0,laws[0]['unit'],union))
+        corners = (delta[:-1,:-1],delta[1:,:-1],delta[:-1,1:],delta[1:,1:])
+        tv.append([.5*float(np.sum(areas*_bilinear_abs_integral(corners,order)))
+                   for order in G1C0_TV_ORDERS])
+    tv = np.array(tv)
+    refinement = np.max(abs(np.diff(tv,axis=1)),axis=1)
+    prefix = dict(parameter_tv=tv[:,-1],tv_quadrature_refinement=refinement,
+                  unit_mean_error=np.max(abs(laws[1]['mean']-laws[0]['mean']),axis=1),
+                  unit_sd_error=np.max(abs(laws[1]['sd']-laws[0]['sd']),axis=1),
+                  cumulative_evidence_error=abs(np.array(right['cumulative_log_evidence'])-left['cumulative_log_evidence']))
+    for phase in ('predicted','posterior'):
+        mass = [fv._mass(r['marginal_'+phase+'_mass'],len(tv),len(r['x_edges'])-1,'hat '+phase) for r in (left,right)]
+        prefix[phase+'_l1'] = abs(mass[1]-mass[0]).sum(axis=1)
+    maxima = {'maximum_'+k:float(v.max()) for k,v in prefix.items()}
+    tol = G1C0_QUADRATURE_TOLERANCE
+    passes = (maxima['maximum_tv_quadrature_refinement']<=tol
+              and maxima['maximum_parameter_tv']+tol<=G1B0_CRITERIA['maximum_parameter_tv']
+              and all(maxima[k]<=v for k,v in G1B0_CRITERIA.items()
+                      if k not in ('maximum_parameter_tv','maximum_state_l1'))
+              and max(maxima['maximum_predicted_l1'],maxima['maximum_posterior_l1'])<=G1B0_CRITERIA['maximum_state_l1'])
+    return dict(**maxima,prefix_errors={k:v.tolist() for k,v in prefix.items()},
+                tv_by_quadrature_order=tv.tolist(),passes=bool(passes))
+
+
+def run_joint_parameter_reconstruction(report, *, require_source=True):
+    """G1c0 same-record reconstruction pilot; no new conditional replay.
+
+    Raw input is fully revalidated. This is data-informed development, not a
+    held-out study and not acceptance of the original G1b dual-cell law.
+    """
+    validated_g1b3(report,require_source=require_source)
+    rows = [r for r in report['rows'] if r['fv_label']=='middle']
+    summaries = []
+    for row in rows:
+        law = _hat_law(row)
+        summaries.append(dict(coordinates=row['coordinates'],sequence_id=row['sequence_id'],label=row['label'],
+            parameter_nodes_per_axis=row['parameter_nodes_per_axis'],parameter_unit_nodes=law['unit'].tolist(),
+            nodal_density=law['density'].tolist(),total_mass=law['mass'].tolist(),unit_mean=law['mean'].tolist(),
+            unit_sd=law['sd'].tolist(),unit_covariance=law['covariance'].tolist()))
+    comparisons = []
+    for pair,sid in zip(core.F4_G_PAIRS,G1B0_IDS):
+        lookup = {r['parameter_nodes_per_axis']:r for r in rows if tuple(r['coordinates'])==pair and r['sequence_id']==sid}
+        for a,b in zip(G1B3_COUNTS[:-1],G1B3_COUNTS[1:]):
+            comparisons.append(dict(coordinates=list(pair),sequence_id=sid,left=lookup[a]['label'],right=lookup[b]['label'],
+                selected=(a==33 and b==65),**compare_hat_laws(lookup[a],lookup[b])))
+    selected = [c for c in comparisons if c['selected']]
+    return dict(stage='G1c0',design_version=1,registered_design=True,sequence_ids=list(G1B0_IDS),
+        candidate_parameter_nodes_per_axis=33,control_parameter_nodes_per_axis=65,
+        conditional_runs=0,source_conditional_runs=33800,parameter_grid_counts=list(G1B3_COUNTS),
+        representation='positive tensor-linear hats in unit prior coordinates; joint extension retains node-conditional states',
+        prior_measure=dict(report['prior_measure'],comparison='continuous tensor-hat density in unit prior coordinates'),
+        parameter_criteria=dict(G1B0_CRITERIA),
+        tv_quadrature=dict(orders=list(G1C0_TV_ORDERS),maximum_successive_difference=G1C0_QUADRATURE_TOLERANCE,
+                           acceptance_margin=G1C0_QUADRATURE_TOLERANCE,rigorous_error_bound=False),
+        original_dual_cell_passes=report['passes'],original_comparisons=report['comparisons'],
+        certifies_original_dual_cell_law=False,rows=summaries,comparisons=comparisons,
+        passes=bool(len(selected)==2 and all(c['passes'] for c in selected)),
+        interpretation='Data-informed same-record reconstruction pilot only; original G1b failures retained; no G2 or held-out recovery certification.')

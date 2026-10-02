@@ -1244,6 +1244,35 @@ def _run_joint_parameter_study(args, *, refinement, fine=False, dense=False):
                            if refinement else 'G1b0 grid/numerical/probability gates failed; report retained for review.')
 
 
+
+def run_joint_parameter_reconstruction(args):
+    """Audit saved G1b3 and reconstruct the separate G1c0 continuous law."""
+    if args.output.exists(): raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    started = perf_counter()
+    previous,previous_digest = _read_bank_dependency(args.g1b0_report,joint_grid.validated_g1b0)
+    report,digest = _read_likelihood_report(args.grid_report)
+    dependency = report.get('dependencies',{}).get('g1b0',{})
+    if (dependency.get('sha256')!=previous_digest or dependency.get('source_commit')!=previous['source_commit']
+            or dependency.get('g1a')!=previous['dependencies']['g1a']):
+        raise ValueError('G1c0 requires the exact G1b0 dependency used by G1b3.')
+    result = joint_grid.run_joint_parameter_reconstruction(report,require_source=True)
+    replay = joint_grid.compare_grid_overlap(previous,report)
+    joint_grid._validate_recorded_reproduction(replay)
+    recorded = report['replay_reproduction']['maximum_errors']
+    for field,value in replay['maximum_errors'].items():
+        joint_grid.fv._equal_array(recorded[field],value,'G1c0 reproduction '+field,1e-12)
+    result['replay_reproduction'] = replay
+    result['dependencies'] = dict(g1b3=dict(sha256=digest,source_commit=report['source_commit'],g1b0=dependency))
+    print('F4-G G1c0: continuous tensor-hat reconstruction; no new replays; original G1b gates retained')
+    for c in result['comparisons']:
+        print(f"  {'/'.join(c['coordinates'])} {c['left']}->{c['right']}: "
+              f"TV={c['maximum_parameter_tv']:.6g}; quadrature={c['maximum_tv_quadrature_refinement']:.3e}; "
+              f"passes={c['passes']}; selected={c['selected']}")
+    print(f"  original dual-cell passes={result['original_dual_cell_passes']}; G1c0 pilot passes={result['passes']}")
+    _write_likelihood_report(args,result,started)
+    if not result['passes']: raise RuntimeError('G1c0 reconstruction gates failed; report retained for review.')
+
+
 def run_preparation(args):
     """Reproduce independent F4-0 quadrature through the common entry point."""
     if args.output is not None and args.output.exists():
@@ -1454,6 +1483,13 @@ def build_parser():
         parameter_grid_fine.add_argument('--output',type=Path,required=True,help='New JSON/gzip report; originals are retained.')
         parameter_grid_fine.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
         parameter_grid_fine.set_defaults(handler=handler)
+
+    reconstruction = subparsers.add_parser(
+        'joint-bank-reconstruct',help='G1c0: separate continuous tensor-hat pilot from complete G1b3 evidence.')
+    reconstruction.add_argument('--grid-report',type=Path,required=True,help='Complete clean-source G1b3 JSON/gzip, including original failures.')
+    reconstruction.add_argument('--g1b0-report',type=Path,required=True,help='Exact original dependency, independently rechecked.')
+    reconstruction.add_argument('--output',type=Path,required=True,help='New G1c0 JSON/gzip; never overwrite G1b evidence.')
+    reconstruction.set_defaults(handler=run_joint_parameter_reconstruction)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',

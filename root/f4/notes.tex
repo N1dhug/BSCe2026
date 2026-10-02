@@ -1477,6 +1477,45 @@ auditerer stadig resultatet. Ingen automatisk grid-/toleranceændring.
 Et bestået G1b3 accepterer alene 33x33 på de to pilotrecords. G2, population
 og uge-/månedsruntime er fortsat særskilte, betingede leverancer.
 
+\subsection{G1c0 v1: særskilt kontinuert tensor-hat-pilot}
+Fastlagt efter G1b2-diagnostik, før G1b3-rapporten foreligger. Dette er
+samme-record, data-informeret udvikling; ikke held-out bekræftelse.
+G1b's dualcelle-TV og samtlige afvisninger bliver stående. Med lineære
+hatfunktioner i normaliserede priorkoordinater og \(q_i=\int H_i(u)\dd u\):
+\begin{equation}
+ \widetilde p_k(u,v,x)=\frac{\sum_{ij}H_i(u)H_j(v)
+       \exp(L_{k,ij})p_{k,ij}(x)}{Z_k},\qquad
+ Z_k=\sum_{ij}q_iq_j\exp(L_{k,ij}).
+\end{equation}
+Den positive parameterdensitet har nodalværdi
+\(\exp(\log w_{k,ij}-\log(q_iq_j))\). Integration over \((u,v)\)
+giver præcis den eksisterende Bayes-state-mixture. Hver node beholder sin
+conditional state. Prior, støtte, scores, FV-løsninger og evidence ændres
+ikke. Konstant likelihood giver uniform unit-prior. Rekonstruktionen
+hævdes ikke at være eksakt Bayes-lukket mellem noderne.
+
+Kandidat 33x33 mod 65x65, alle 24 prefixer på ID1356/1357. Samme gates:
+TV 0.02, unit-middel 0.01, unit-SD 0.02, evidence 0.10 og begge state-\(L^1\)
+0.02. Momenter integreres analytisk over hattene: indre varians
+\(\Delta^2/6\); endehatte har middel \(\Delta/3\) eller \(1-\Delta/3\)
+og varians \(\Delta^2/18\). Originale nodalmomenter omfortolkes ikke.
+
+På fælles primalceller er tæthedsdifferensen bilineær. Absolutværdien
+integreres eksakt i én koordinat, og den anden splittes ved randlinjernes
+nulpunkter før Gauss 8/16/32. Begge successive TV-afvigelser skal være
+højst \(10^{-8}\), og \(\mathrm{TV}_{32}+10^{-8}\le0.02\).
+Dette er kvadraturrefinement, ikke en rigorøs fejlgrænse. Alle grovere
+kontroller bevares. Alle 24 G1b3-FV-gates skal bestå. Hat-rekonstruktion
+på samme grid er en positiv massebevarende afbildning af bankvægtene;
+dens TV kan derfor ikke overstige den diskrete weight-TV.
+
+CLI \texttt{joint-bank-reconstruct} validerer hele G1b3 og genberegner
+shared-reproduktion mod den originale G1b0-fil. Ingen nye replays.
+Manglende banker, FV-fejl eller reproduktionsfejl stopper piloten.
+Originale dualcelle-fejl gemmes også i den særskilte G1c0-rapport.
+Et bestået resultat gælder alene 33x33-hat-loven på de to records;
+ikke original G1b-accept, 65x65, recovery, G2 eller uge-/månedsruntime.
+
 \subsection{Prior under reparameterisering}
 
 Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved
