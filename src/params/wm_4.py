@@ -407,3 +407,159 @@ class optimized_qp_params(qp_params):
         result["deterministic_fit"] = bool(deterministic)
         if verbose: print(f"[optimized_qp] trajectories={len(datasets)} transitions={sum(np.count_nonzero(data['transition_mask']) for data in datasets)} loss={qp_loss:.8g} iterations={len(history)}")
         return result
+
+
+
+class brute_force_params(qp_params):
+    """Profile a shared fixed F0 while fitting wm_4 rate dynamics.
+
+    Every trajectory uses the same candidate F0. For each candidate the
+    trajectory-specific R0 values and shared [r_F,r_U,r_R] are alternated to
+    the constrained rate-residual optimum. Candidate selection is based only
+    on the structural dR transition loss.
+    """
+
+    @staticmethod
+    def _f0_grid(f0_grid=None, f0_min=-1.0, f0_max=1.0, f0_steps=81):
+        if f0_grid is None:
+            f0_min, f0_max, f0_steps = float(f0_min), float(f0_max), int(f0_steps)
+            if not np.isfinite(f0_min) or not np.isfinite(f0_max) or f0_max < f0_min: raise ValueError("f0_min and f0_max must be finite with f0_min <= f0_max.")
+            if f0_steps < 2: raise ValueError("f0_steps must be at least 2.")
+            values = np.linspace(f0_min, f0_max, f0_steps)
+        else:
+            values = np.asarray(f0_grid, dtype=float).reshape(-1)
+            if values.size < 1 or not np.all(np.isfinite(values)): raise ValueError("f0_grid must contain at least one finite value.")
+        values = np.unique(values)
+        if np.any(values < -1.0) or np.any(values > 1.0): raise ValueError("Every brute-force F0 candidate must lie in [-1, 1].")
+        return values
+
+    def _optimize_rate_state(self, data, r, f0, seed_r0, r_bounds=(-np.inf, np.inf)):
+        r = wm_4_validation.r_coefficients(r)
+        f0, seed_r0 = float(f0), float(seed_r0)
+
+        def residual(rate):
+            observed = self._observed_state(data, np.array([f0, float(rate)], dtype=float))
+            mask = observed["transition_mask"]
+            return (observed["X"] @ r - observed["y"])[mask]
+
+        base = residual(0.0)
+        unit = residual(1.0) - base
+        lb, ub = float(r_bounds[0]), float(r_bounds[1])
+        if lb > ub: raise ValueError("r_bounds must satisfy lower <= upper.")
+        rate = self.model._least_squares_qp(
+            unit[:, None], -base, lb=np.array([lb]), ub=np.array([ub]),
+            ridge=self.model._FIT_RIDGE, x0=np.array([np.clip(seed_r0, lb, ub)]),
+        )
+        return wm_4_validation.initial_condition(np.array([f0, float(rate[0])], dtype=float))
+
+    def _fit_candidate(self, datasets, seeds, f0, stabilize=True, max_state_iter=25, state_tol=1e-8, r_bounds=(-np.inf, np.inf), verbose=False):
+        init_conds = [wm_4_validation.initial_condition(np.array([f0, seed[1]], dtype=float)) for seed in seeds]
+        history, total_qp_time, previous_loss = [], 0.0, np.inf
+
+        for iteration in range(1, int(max_state_iter) + 1):
+            r, _, _, solve_time = self._solve_qp(datasets, init_conds, stabilize=stabilize)
+            total_qp_time += solve_time
+            optimized = [
+                self._optimize_rate_state(data, r, f0, init[1], r_bounds=r_bounds)
+                for data, init in zip(datasets, init_conds)
+            ]
+            r, observed, qp_loss, solve_time = self._solve_qp(datasets, optimized, stabilize=stabilize)
+            total_qp_time += solve_time
+            max_rate_change = max(abs(float(new[1] - old[1])) for new, old in zip(optimized, init_conds))
+            loss_change = abs(previous_loss - qp_loss) if np.isfinite(previous_loss) else np.inf
+            history.append({
+                "iteration": iteration, "qp_loss": float(qp_loss),
+                "max_R0_change": float(max_rate_change), "loss_change": float(loss_change),
+            })
+            init_conds = optimized
+            if verbose: print(f"[brute_F0] F0={f0:.6f} iteration={iteration} loss={qp_loss:.8g} R0_change={max_rate_change:.3g}")
+            if max_rate_change <= state_tol and loss_change <= state_tol: break
+            previous_loss = qp_loss
+
+        return {
+            "F0": float(f0), "r": r, "observed": observed, "init_conds": init_conds,
+            "qp_loss": float(qp_loss), "qp_solve_time": float(total_qp_time),
+            "history": history, "iterations": len(history),
+        }
+
+    @staticmethod
+    def _profile_row(candidate):
+        r = np.asarray(candidate["r"], dtype=float)
+        rates = np.asarray([init[1] for init in candidate["init_conds"]], dtype=float)
+        return {
+            "F0": candidate["F0"], "success": True, "qp_loss": candidate["qp_loss"],
+            "r_F": r[0], "r_U": r[1], "r_R": r[2],
+            "R0_mean": float(np.mean(rates)), "R0_std": float(np.std(rates)),
+            "iterations": candidate["iterations"], "qp_solve_time": candidate["qp_solve_time"],
+            "reason": "",
+        }
+
+    def fit_many(self, input_data, initial_conditions, *, f0_grid=None, f0_min=-1.0, f0_max=1.0, f0_steps=81, fit_diffusion=True, deterministic=False, stabilize=True, max_state_iter=25, state_tol=1e-8, r_bounds=(-np.inf, np.inf), verbose=False, **_legacy_kwargs):
+        if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
+        fit_start = perf_counter()
+        if deterministic: fit_diffusion = False
+        datasets = [self._prepare_data(data) for data in input_data]
+        raw_init = np.asarray(initial_conditions, dtype=float)
+        if raw_init.shape == (2,): seeds = [wm_4_validation.initial_condition(raw_init) for _ in datasets]
+        elif raw_init.shape == (len(datasets), 2): seeds = [wm_4_validation.initial_condition(row) for row in raw_init]
+        else: raise ValueError("initial_conditions must be [F0,R0] or one [F0,R0] row per fitting trajectory.")
+
+        grid = self._f0_grid(f0_grid=f0_grid, f0_min=f0_min, f0_max=f0_max, f0_steps=f0_steps)
+        candidates, profile, total_qp_time = [], [], 0.0
+        for i, f0 in enumerate(grid, 1):
+            try:
+                candidate = self._fit_candidate(
+                    datasets, seeds, float(f0), stabilize=stabilize,
+                    max_state_iter=max_state_iter, state_tol=state_tol, r_bounds=r_bounds, verbose=False,
+                )
+                candidates.append(candidate); profile.append(self._profile_row(candidate))
+                total_qp_time += candidate["qp_solve_time"]
+                if verbose: print(f"[brute_F0] candidate={i}/{len(grid)} F0={f0:.6f} loss={candidate['qp_loss']:.8g}")
+            except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
+                profile.append({
+                    "F0": float(f0), "success": False, "qp_loss": np.nan,
+                    "r_F": np.nan, "r_U": np.nan, "r_R": np.nan,
+                    "R0_mean": np.nan, "R0_std": np.nan, "iterations": 0,
+                    "qp_solve_time": np.nan, "reason": str(exc),
+                })
+                if verbose: print(f"[brute_F0] candidate={i}/{len(grid)} F0={f0:.6f} failed: {exc}")
+
+        if not candidates: raise RuntimeError("wm_4 brute-force F0 search found no feasible candidate.")
+        best = min(candidates, key=lambda item: item["qp_loss"])
+        init_conds, r = best["init_conds"], np.asarray(best["r"], dtype=float)
+        states = [self._state_from_parameters(data, init, r, full=True) for data, init in zip(datasets, init_conds)]
+        losses, residuals = [], []
+        for data, state in zip(datasets, states):
+            obs = np.asarray(data["observation_mask"], dtype=bool)
+            residual = data["I"][obs] - state["I"][obs]
+            residuals.append(residual); losses.append(float(np.mean(residual ** 2)))
+        deterministic_loss = float(np.mean(np.concatenate(residuals) ** 2))
+        result = {
+            "init_cond": np.vstack(init_conds), "initial_condition_seed": raw_init.copy(),
+            "r": r.copy(), "deterministic_state": states[0], "deterministic_states": states,
+            "observed_states": best["observed"], "per_trajectory_loss": np.asarray(losses, dtype=float),
+            "recovered_model_loss": deterministic_loss, "deterministic_loss": deterministic_loss,
+            "structural_viable": True, "fit_trajectories": len(datasets),
+            "initial_rate_mismatch": np.asarray([state["initial_rate_mismatch"] for state in best["observed"]], dtype=float),
+            "F0": best["F0"], "f0_grid": grid.copy(), "f0_profile": profile,
+            "state_optimization_history": best["history"], "state_iterations": best["iterations"],
+        }
+        result = self._fit_uncertainty_params_many(result, datasets, init_conds) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
+        result = self._finish_result(result, best["qp_loss"], total_qp_time, fit_start, stabilize)
+        result["fit_method"] = "brute_force_many"
+        result["fit_initial_state"] = False
+        result["fit_initial_rate"] = True
+        result["deterministic_fit"] = bool(deterministic)
+        result["brute_force_candidates"] = len(grid)
+        result["brute_force_feasible_candidates"] = len(candidates)
+        if verbose: print(f"[brute_F0] best F0={best['F0']:.6f} loss={best['qp_loss']:.8g} candidates={len(candidates)}/{len(grid)}")
+        return result
+
+    def fit(self, input_data, initial_conditions, **kwargs):
+        result = self.fit_many([input_data], np.asarray(initial_conditions, dtype=float), **kwargs)
+        result["init_cond"] = result["init_cond"][0].copy()
+        result["deterministic_state"] = result["deterministic_states"][0]
+        result["observed_state"] = result["observed_states"][0]
+        result["fit_method"] = "brute_force"
+        result["fit_trajectories"] = 1
+        return result
