@@ -113,6 +113,16 @@ class JointGridRefinementTests(unittest.TestCase):
         changed['rows'][0]['observations'][0]+=.1
         with self.assertRaises(ValueError):grid.compare_grid_overlap(self.previous,changed)
 
+    def test_overlap_tolerates_platform_roundoff_but_not_changed_data(self):
+        for field in ('observations','initial_log_weights'):
+            changed=dict(self.current,rows=list(self.current['rows']))
+            changed['rows'][0]=copy.deepcopy(changed['rows'][0])
+            value=changed['rows'][0][field][0]
+            changed['rows'][0][field][0]=float(np.nextafter(value,np.inf))
+            self.assertTrue(grid.compare_grid_overlap(self.previous,changed)['passes'])
+            changed['rows'][0][field][0]+=1e-8
+            with self.assertRaises(ValueError):grid.compare_grid_overlap(self.previous,changed)
+
     def test_api_overrides_remain_unregistered_and_failed_replay_is_not_dropped(self):
         with patch.object(fv,'_candidate_replay',side_effect=constant_replay):
             result = grid.run_joint_parameter_grid_refinement(workers=1,sequence_ids=(0,1),counts=(2,3,5),

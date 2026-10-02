@@ -1205,11 +1205,20 @@ def _run_joint_parameter_study(args, *, refinement, fine=False):
     result = runner(workers=args.workers,progress=progress)
     result['dependencies'] = {('g1b0' if refinement else 'g1a'):provenance}
     if refinement:
-        replay = joint_grid.compare_grid_overlap(dependency,result)
+        try:
+            replay = joint_grid.compare_grid_overlap(dependency,result)
+        except (ValueError,KeyError,TypeError) as exc:
+            # Keep expensive completed replays even if final structural validation fails.
+            replay = dict(tolerance=1e-10,bank_comparisons=0,maximum_errors={},
+                          passes=False,validation_error=str(exc))
         result['replay_reproduction'] = replay
         result['passes'] = bool(result['passes'] and replay['passes'])
+        maximum = max(replay['maximum_errors'].values(),default=None)
+        error_text = f'{maximum:.3e}' if maximum is not None else 'not evaluated'
         print(f"  shared replay banks={replay['bank_comparisons']}; "
-              f"maximum error={max(replay['maximum_errors'].values()):.3e}; passes={replay['passes']}")
+              f"maximum error={error_text}; passes={replay['passes']}")
+        if 'validation_error' in replay:
+            print(f"  replay validation error: {replay['validation_error']}")
         del dependency
     for row in result['comparisons']:
         if row['kind'].startswith('FV_'):

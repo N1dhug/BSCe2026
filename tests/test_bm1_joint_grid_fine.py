@@ -63,6 +63,23 @@ class JointFineGridTests(unittest.TestCase):
                 output.unlink()
             self.assertEqual(source.read_bytes(),original)
 
+    def test_cli_retains_completed_replays_on_structural_overlap_failure(self):
+        from src.exe.run_model.bm_1 import estimate
+        with tempfile.TemporaryDirectory() as directory,patch('builtins.print'):
+            source=Path(directory)/'previous.json.gz';output=Path(directory)/'result.json.gz'
+            with gzip.open(source,'wt') as f:json.dump(self.previous,f)
+            args=estimate.build_parser().parse_args(['joint-bank-grid-fine','--g1b0-report',str(source),
+                                                     '--output',str(output),'--blas-threads','1'])
+            result=dict(stage='G1b2',registered_design=True,passes=True,comparisons=[],rows=[dict(raw='retained')])
+            with patch.object(grid,'run_joint_parameter_grid_fine',return_value=result),\
+                 patch.object(grid,'compare_grid_overlap',side_effect=ValueError('metadata mismatch')),\
+                 self.assertRaisesRegex(RuntimeError,'report retained'):
+                estimate.run_joint_parameter_grid_fine(args)
+            with gzip.open(output,'rt') as f:saved=json.load(f)
+            self.assertEqual(saved['rows'],result['rows'])
+            self.assertFalse(saved['passes'])
+            self.assertEqual(saved['replay_reproduction']['validation_error'],'metadata mismatch')
+
     def test_diagnostic_overrides_are_not_registered(self):
         numerics={k:dict(time_steps=(1/12,1/24,1/48),spatial_cells=(7,11,15),quadrature_orders=(1,3,5))
                   for k in fv.G1A_NUMERICS}

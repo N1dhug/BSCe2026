@@ -559,7 +559,9 @@ def compare_grid_overlap(previous, current, *, counts=(5,9)):
     for key,left in a.items():
         right = b[key]
         for field in equal_fields:
-            if field=='hypotheses': fv._equal_array(right[field],left[field],'Shared hypotheses',1e-12)
+            if field in ('hypotheses','initial_log_weights','observation_times','observations',
+                         'x_edges','parameter_unit_nodes','parameter_dual_edges'):
+                fv._equal_array(right[field],left[field],'Shared '+field,1e-12)
             elif right[field]!=left[field]: raise ValueError('Grid replay check experiment/prior changed.')
         for field in fields:
             l = np.asarray(left[field]);r = fv._array(right[field],l.shape,'Shared '+field)
