@@ -128,9 +128,10 @@ prefix-fejl, diagnostik, kildecommit og endelige betingede state-masser. Eksiste
 output afvises før beregningen; en fejlet gate gemmes og giver derefter en fejl.
 F0 tester metoden, ikke parameter-recovery, mixture eller ugeforecast.
 
-De resterende F-studier køres og gennemgås i rækkefølge. F1/F2 og F3 version 2
-er gennemgået; første F3 og den oprindelige F4-population har bevarede state-L1-fejl.
-Næste kørsel er alene F4's `bank-population-time-refine`, beskrevet nedenfor. Alle har
+F-studierne er kørt og rå-reviewet i rækkefølge. F1/F2, F3 version 2 og F4's
+FV-tidsopfølgning er gennemgået; første F3 og den oprindelige F4-population har
+bevarede state-L1-fejl. F4-F er afsluttet; kommandoerne nedenfor er reproduktion,
+ikke nye kørsler der skal startes nu. Alle har
 default 7 workers, fast videnskabeligt design og løbende progress.
 F1 genundersøger begge enparametergrids; sigma_x får finere state-numerik efter
 det første udviklingsforsøgs fejl. Forsøgsdefinition og tilpasning står i `F4.md`.
@@ -150,10 +151,13 @@ alle rå kurver genvalideres, ikke blot `passes`-flaget.
 
 Efter F1-review kan disse kommandoer bruges; de er ikke en instruktion om at starte
 alle kørsler før review. Planen må tilpasses dokumenteret efter resultaterne.
-F1/F2, F3 version 2 og den oprindelige F4-population er nu gennemgået. Næste
-lokale kørsel er alene `bank-population-time-refine`: to state-fejl peger på for
-groft FV-tidsskridt i referencen. De gemte F1/F3/F4-filer bruges som dependencies;
-mixture- og sigma_x-beregningerne gentages ikke. Bevar også den fejlede F3-pilot.
+F1/F2, F3 version 2, den oprindelige F4-population og `bank-population-time-refine`
+er nu gennemgået. Tidsopfølgningen løste de to state-fejl med finere FV-reference;
+alle 40 valgte kontroller består. Den tog 406.30 s med 8 workers og BLAS=1,
+og alle 396 regressionstests bestod lokalt. De gemte F1/F3/F4-filer er dependencies;
+mixture- og sigma_x-beregningerne blev genbrugt. Bevar også den fejlede F3-pilot.
+Næste lokale handling er merge af PR #49 og synkronisering af main. Ingen F-studier
+skal gentages; næste udvikling er F4-G's udvalgte parameterpar og robusthed.
 
 ```powershell
 python -B -m src.exe.run_model.bm_1.estimate bank-sensitivity `
@@ -209,6 +213,12 @@ oprindelige banks fra rå data og kontrollerer dependency-digests før beregning
 diagnostik. Den nye rapport linker den gamle i stedet for at kopiere den store
 sigma_x-statehistorik. Upload derfor også originalen ved senere review, hvis den
 ikke allerede er tilgængelig. Populationens oprindelige fejl bevares.
+
+Den rå-reviewede tidsopfølgning vælger FV-rho401/hmax=1/1536/q=3. Gemte rho-mixture
+bruger 401/hmax=1/32768/q=3, og sigma_x-FV bruger 3201/hmax=1/1536/q=3.
+F1's tidligere rho-reference ved hmax=1/768 bevares til reproduktion af F1 og
+den oprindelige F4. Numeriske kontroller er bestået; rho er fortsat svagt bestemt
+over ét døgn. F4-F-resultater og artifact-digests står i `F4.md`.
 
 ## Hvor kode hører hjemme
 
