@@ -6,12 +6,14 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.brute_force_f0 import fit_history_brute_force
-from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, aligned_wm4_data, day_start
+from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, aligned_wm4_data, day_start, model_input
 from src.exe.run_model.wm_4.predict_daily import deviation_metrics, prediction_setup, save_plot
+from src.params.wm_4 import optimized_qp_params
 
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_brute_force"
+TOP_END_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_brute_force_top_end"
 START_DAY = "2022-02-28"
 END_DAY = "2022-08-22"
 
@@ -22,14 +24,20 @@ def historical_brute_force_state(fit):
     return np.array([float(fit["F0"]), float(np.median(states[:, 1]))], dtype=float)
 
 
-def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
+def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False, optimize_initial_state=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
     output_model, output_fit, fit, _ = fit_history_brute_force(
         frame, start, baseline_weeks, steps_per_hour,
         deterministic=deterministic, **fit_kwargs,
     )
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
-    init = historical_brute_force_state(fit)
-    state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+    if optimize_initial_state:
+        prediction_data, fine_index, _, _ = model_input(frame, start, steps_per_hour, 0, output_model)
+        oracle = optimized_qp_params(model).optimize_prediction_initial_state(prediction_data, fit["r"])
+        init, state, init_fit_mse = oracle["init_cond"], oracle["deterministic_state"], oracle["loss"]
+    else:
+        init = historical_brute_force_state(fit)
+        state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+        init_fit_mse = np.nan
 
     hourly_index = np.arange(DAY_HOURS) * steps_per_hour
     observed = actual["I"].to_numpy(dtype=float)
@@ -43,6 +51,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
 
     daily = {
         "day": start, "weekday": start.day_name(), "fit_method": fit["fit_method"],
+        "optimized_prediction_state": bool(optimize_initial_state), "prediction_state_fit_mse": init_fit_mse,
         "F_0": init[0], "R_0": init[1], "best_F0": float(fit["F0"]),
         "r_F": r[0], "r_U": r[1], "r_R": r[2],
         "training_R0_mean": float(np.mean(training_states[:, 1])),
@@ -92,7 +101,8 @@ def save_performance_plot(hourly, daily, path):
     axes[1].plot(daily["day"], daily["O_mse"], label="O daily MSE")
     axes[1].set_ylabel("Daily MSE"); axes[1].legend(); axes[1].grid(True, alpha=0.25)
 
-    axes[2].plot(daily["day"], daily["best_F0"], label="Brute-force shared F0")
+    axes[2].plot(daily["day"], daily["best_F0"], label="Historical brute-force shared F0")
+    axes[2].plot(daily["day"], daily["F_0"], label="Prediction-day F0")
     axes[2].axhline(0.0, linestyle="--", label="Neutral F0=0")
     axes[2].set_ylabel("F0"); axes[2].set_xlabel("Day"); axes[2].legend(); axes[2].grid(True, alpha=0.25)
 
@@ -109,7 +119,10 @@ def print_summary(hourly, daily, skipped):
     print(f"{'':<8}{'MSE':>14}{'RMSE':>14}{'MAE':>14}{'bias':>14}")
     print(f"{'WM4':<8}{wm4['mse']:>14.10f}{wm4['rmse']:>14.10f}{wm4['mae']:>14.10f}{wm4['bias']:>14.10f}")
     print(f"{'O(t)':<8}{output['mse']:>14.10f}{output['rmse']:>14.10f}{output['mae']:>14.10f}{output['bias']:>14.10f}")
-    print(f"mean best F0={daily['best_F0'].mean():.8f}, std={daily['best_F0'].std():.8f}, median={daily['best_F0'].median():.8f}")
+    print(f"mean historical best F0={daily['best_F0'].mean():.8f}, std={daily['best_F0'].std():.8f}, median={daily['best_F0'].median():.8f}")
+    if daily["optimized_prediction_state"].any():
+        print(f"oracle prediction F0 mean={daily['F_0'].mean():.8f}, std={daily['F_0'].std():.8f}")
+        print(f"oracle prediction-state MSE mean={daily['prediction_state_fit_mse'].mean():.10f}")
     print(f"neutral F0 selections={int(np.count_nonzero(np.isclose(daily['best_F0'], 0.0)))}/{len(daily)}")
     print(f"mean feasible candidates={daily['brute_force_feasible_candidates'].mean():.2f}/{daily['brute_force_candidates'].mean():.2f}")
     if skipped:
@@ -117,7 +130,7 @@ def print_summary(hourly, daily, skipped):
         for day, reason in skipped: print(f"{day:%Y-%m-%d}: {reason}")
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, deterministic=False, save_daily_plots=False, fail_fast=False, output_root=OUTPUT, **fit_kwargs):
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, deterministic=False, optimize_initial_state=False, save_daily_plots=False, fail_fast=False, output_root=OUTPUT, **fit_kwargs):
     start, end = day_start(start), day_start(end)
     if end < start: raise ValueError("end must be on or after start.")
     daily_rows, hourly_frames, training_frames, profile_frames, skipped = [], [], [], [], []
@@ -126,7 +139,8 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
         try:
             daily, hourly, training, profile = day_result(
                 frame, day, baseline_weeks, steps_per_hour,
-                deterministic=deterministic, save_daily_plots=save_daily_plots,
+                deterministic=deterministic, optimize_initial_state=optimize_initial_state,
+                save_daily_plots=save_daily_plots,
                 output_root=output_root, **fit_kwargs,
             )
             daily_rows.append(daily); hourly_frames.append(hourly)
@@ -134,7 +148,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
             print(
                 f"{day:%Y-%m-%d} | F0={daily['best_F0']:.6f} | "
                 f"r=[{daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}] | "
-                f"R0={daily['R_0']:.6f} | QP={daily['qp_loss']:.8g} | "
+                f"initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | QP={daily['qp_loss']:.8g} | "
                 f"WM4 MSE={daily['wm4_mse']:.8f} | O MSE={daily['O_mse']:.8f}"
             )
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
@@ -163,26 +177,28 @@ def main():
     parser.add_argument("--max-state-iter", type=int, default=25)
     parser.add_argument("--state-tol", type=float, default=1e-8)
     parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
+    parser.add_argument("--optimize-initial-state", action="store_true", help="Oracle diagnostic: fit prediction-day [F0,R0] from that day's observed I for top-end fitter comparison.")
     parser.add_argument("--save-daily-plots", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
     frame, _ = aligned_wm4_data("MED")
+    output_root = TOP_END_OUTPUT if args.optimize_initial_state else OUTPUT
     daily, hourly, training, profiles, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.steps_per_hour,
-        deterministic=args.deterministic, save_daily_plots=args.save_daily_plots,
-        fail_fast=args.fail_fast, output_root=OUTPUT,
+        deterministic=args.deterministic, optimize_initial_state=args.optimize_initial_state,
+        save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast, output_root=output_root,
         f0_min=args.f0_min, f0_max=args.f0_max, f0_steps=args.f0_steps,
         max_state_iter=args.max_state_iter, state_tol=args.state_tol, verbose=args.verbose,
     )
-    OUTPUT.mkdir(parents=True, exist_ok=True)
-    daily.to_csv(OUTPUT / "daily_metrics.csv", index=False)
-    hourly.to_csv(OUTPUT / "hourly_predictions.csv")
-    training.to_csv(OUTPUT / "brute_force_training_states.csv", index=False)
-    profiles.to_csv(OUTPUT / "f0_profiles.csv", index=False)
-    if skipped: pd.DataFrame([{"day": day, "reason": reason} for day, reason in skipped]).to_csv(OUTPUT / "skipped_days.csv", index=False)
-    save_performance_plot(hourly, daily, OUTPUT / "all_days_performance.png")
+    output_root.mkdir(parents=True, exist_ok=True)
+    daily.to_csv(output_root / "daily_metrics.csv", index=False)
+    hourly.to_csv(output_root / "hourly_predictions.csv")
+    training.to_csv(output_root / "brute_force_training_states.csv", index=False)
+    profiles.to_csv(output_root / "f0_profiles.csv", index=False)
+    if skipped: pd.DataFrame([{"day": day, "reason": reason} for day, reason in skipped]).to_csv(output_root / "skipped_days.csv", index=False)
+    save_performance_plot(hourly, daily, output_root / "all_days_performance.png")
     print(); print_summary(hourly, daily, skipped)
 
 
