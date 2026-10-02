@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized"
 TOP_END_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end"
 ZERO_INIT_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_zero_init"
+EQUILIBRIUM_INIT_OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_equilibrium_init"
 START_DAY = "2022-02-28"
 END_DAY = "2022-08-22"
 
@@ -51,13 +52,14 @@ def historical_optimized_state(fit):
     return init
 
 
-def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False, optimize_initial_state=False, zero_initial_state=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
+def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False, optimize_initial_state=False, zero_initial_state=False, equilibrium_initial_state=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
     output_model, output_fit, fit, _ = fit_history_optimized(
         frame, start, baseline_weeks, steps_per_hour,
         deterministic=deterministic, **fit_kwargs,
     )
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
-    if optimize_initial_state and zero_initial_state: raise ValueError("optimize_initial_state and zero_initial_state are mutually exclusive.")
+    state_flags = (bool(optimize_initial_state), bool(zero_initial_state), bool(equilibrium_initial_state))
+    if sum(state_flags) > 1: raise ValueError("optimize_initial_state, zero_initial_state and equilibrium_initial_state are mutually exclusive.")
     if optimize_initial_state:
         prediction_data, fine_index, _, _ = model_input(frame, start, steps_per_hour, 0, output_model)
         oracle = optimized_qp_params(model).optimize_prediction_initial_state(prediction_data, fit["r"])
@@ -68,6 +70,14 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
         state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
         init_fit_mse = np.nan
         state_mode = "zero"
+    elif equilibrium_initial_state:
+        r = np.asarray(fit["r"], dtype=float)
+        if abs(r[0]) <= model._FIT_EPS: raise ValueError("Cannot initialize F0 from equilibrium when r_F is numerically zero.")
+        equilibrium_gain = -r[1] / r[0]
+        init = np.array([np.clip(equilibrium_gain * float(U[0]), -1.0, 1.0), 0.0], dtype=float)
+        state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+        init_fit_mse = np.nan
+        state_mode = "equilibrium_F0_zero_R0"
     else:
         init = historical_optimized_state(fit)
         state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
@@ -86,8 +96,9 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
         "day": start, "weekday": start.day_name(), "fit_method": fit["fit_method"],
         "prediction_state_mode": state_mode,
         "optimized_prediction_state": bool(optimize_initial_state), "zero_prediction_state": bool(zero_initial_state),
-        "prediction_state_fit_mse": init_fit_mse,
+        "equilibrium_prediction_state": bool(equilibrium_initial_state), "prediction_state_fit_mse": init_fit_mse,
         "r_F": r[0], "r_U": r[1], "r_R": r[2],
+        "U_0": float(U[0]), "equilibrium_gain": float(-r[1] / r[0]),
         "F_0": init[0], "R_0": init[1],
         "training_F0_mean": float(np.mean(training_states[:, 0])),
         "training_F0_std": float(np.std(training_states[:, 0])),
@@ -162,7 +173,7 @@ def print_summary(hourly, daily, skipped):
         for day, reason in skipped: print(f"{day:%Y-%m-%d}: {reason}")
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, deterministic=False, optimize_initial_state=False, zero_initial_state=False, save_daily_plots=False, fail_fast=False, output_root=OUTPUT, **fit_kwargs):
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, deterministic=False, optimize_initial_state=False, zero_initial_state=False, equilibrium_initial_state=False, save_daily_plots=False, fail_fast=False, output_root=OUTPUT, **fit_kwargs):
     start, end = day_start(start), day_start(end)
     if end < start: raise ValueError("end must be on or after start.")
     daily_rows, hourly_frames, training_frames, skipped = [], [], [], []
@@ -172,7 +183,8 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
             daily, hourly, training = day_result(
                 frame, day, baseline_weeks, steps_per_hour,
                 deterministic=deterministic, optimize_initial_state=optimize_initial_state,
-                zero_initial_state=zero_initial_state, save_daily_plots=save_daily_plots,
+                zero_initial_state=zero_initial_state, equilibrium_initial_state=equilibrium_initial_state,
+                save_daily_plots=save_daily_plots,
                 output_root=output_root, **fit_kwargs,
             )
             daily_rows.append(daily); hourly_frames.append(hourly); training_frames.append(training)
@@ -199,19 +211,22 @@ def main():
     parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
     parser.add_argument("--optimize-initial-state", action="store_true", help="Oracle diagnostic: fit prediction-day [F0,R0] from that day's observed I for top-end parameterization comparison.")
     parser.add_argument("--zero-initial-state", action="store_true", help="Predict every day from the fixed neutral initial state [F0,R0]=[0,0].")
+    parser.add_argument("--equilibrium-initial-state", action="store_true", help="Predict every day from F0=-(r_U/r_F)U0 and R0=0 using fitted historical parameters and the known midnight price.")
     parser.add_argument("--save-daily-plots", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
     args = parser.parse_args()
 
-    if args.optimize_initial_state and args.zero_initial_state: parser.error("--optimize-initial-state and --zero-initial-state are mutually exclusive.")
+    if sum((args.optimize_initial_state, args.zero_initial_state, args.equilibrium_initial_state)) > 1:
+        parser.error("--optimize-initial-state, --zero-initial-state and --equilibrium-initial-state are mutually exclusive.")
     frame, _ = aligned_wm4_data("MED")
-    output_root = TOP_END_OUTPUT if args.optimize_initial_state else ZERO_INIT_OUTPUT if args.zero_initial_state else OUTPUT
+    output_root = TOP_END_OUTPUT if args.optimize_initial_state else ZERO_INIT_OUTPUT if args.zero_initial_state else EQUILIBRIUM_INIT_OUTPUT if args.equilibrium_initial_state else OUTPUT
     daily, hourly, training, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.steps_per_hour,
         deterministic=args.deterministic, optimize_initial_state=args.optimize_initial_state,
-        zero_initial_state=args.zero_initial_state, save_daily_plots=args.save_daily_plots,
+        zero_initial_state=args.zero_initial_state, equilibrium_initial_state=args.equilibrium_initial_state,
+        save_daily_plots=args.save_daily_plots,
         fail_fast=args.fail_fast, output_root=output_root,
         max_state_iter=args.max_state_iter, state_tol=args.state_tol,
     )
