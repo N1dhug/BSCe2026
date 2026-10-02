@@ -187,7 +187,7 @@ def _candidate_replay(task):
                               breakpoints=case.breakpoints,max_step=settings['max_step'],
                               likelihood_quadrature_order=settings['likelihood_quadrature_order'])
     except (RuntimeError,ValueError,FloatingPointError) as exc:
-        raise RuntimeError(f"G1a replay failed: ID{group['sequence_id']}, {group['pair']}="
+        raise RuntimeError(f"{group.get('stage','G1a')} replay failed: ID{group['sequence_id']}, {group['pair']}="
                            f"{group['hypotheses'][j].tolist()}, {group['label']}: {exc}") from exc
     return i,j,dict(scores=result.log_evidence,predicted=result.predicted_mass,posterior=result.posterior_mass,
                     maximum_abs_mass_error=result.maximum_abs_mass_error,minimum_cell_mass=result.minimum_cell_mass,
@@ -198,7 +198,7 @@ def _candidate_replay(task):
 def _reduce(group, conditionals):
     h = np.asarray(group['hypotheses'])
     scores = np.column_stack([c['scores'] for c in conditionals])
-    prior = np.full(len(h),-np.log(len(h)))
+    prior = np.asarray(group.get('initial_log_weights',np.full(len(h),-np.log(len(h)))))
     reduced = parameter_bank_weights(scores,prior,group['observations'].observed)
     weights,old = np.exp(reduced['log_weights']),np.exp(reduced['prior_log_weights'])
     predicted = np.zeros_like(conditionals[0]['predicted'])
@@ -267,6 +267,29 @@ def compare_banks(left, right):
     return dict(**maxima,prefix_errors={k:v.tolist() for k,v in prefix.items()},passes=bool(passes))
 
 
+def _run_groups(groups, workers, progress=None, *, reducer=_reduce):
+    """One spawn pool; every conditional completes before a group is reduced."""
+    tasks = [(i,j,g) for i,g in enumerate(groups) for j in range(len(g['hypotheses']))]
+    pending = {i:[None]*len(g['hypotheses']) for i,g in enumerate(groups)}
+    rows = [None]*len(groups)
+    manager = ProcessPoolExecutor(max_workers=workers,mp_context=get_context('spawn')) if workers>1 else nullcontext(None)
+    with manager as pool:
+        results = map(_candidate_replay,tasks) if pool is None else (
+            f.result() for f in as_completed([pool.submit(_candidate_replay,t) for t in tasks]))
+        for completed,(i,j,c) in enumerate(results,1):
+            if i not in pending or pending[i][j] is not None:
+                raise RuntimeError('Joint study received a duplicate replay.')
+            pending[i][j] = c
+            if all(v is not None for v in pending[i]):
+                rows[i] = reducer(groups[i],pending.pop(i))
+            if progress is not None:
+                progress(dict(completed=completed,total=len(tasks),pair=groups[i]['pair'],
+                              sequence_id=groups[i]['sequence_id'],label=groups[i]['label']))
+    if pending or any(row is None for row in rows):
+        raise RuntimeError('Joint study did not complete every replay; no subset is reported.')
+    return rows
+
+
 def run_joint_bank_refinement(*, workers=8, progress=None, sequence_ids=G1A_SEQUENCE_IDS,
                               grid_stride=10, numerics=None):
     """G1a: 42 fixed-measure banks / 1050 complete independent FV replays.
@@ -305,24 +328,7 @@ def run_joint_bank_refinement(*, workers=8, progress=None, sequence_ids=G1A_SEQU
             for label,settings in configs['__'.join(pair)]:
                 groups.append(dict(pair=pair,sequence_id=sid,hypotheses=h,case=case,
                                    observations=sequence.observations,label=label,settings=settings))
-    tasks = [(i,j,g) for i,g in enumerate(groups) for j in range(len(g['hypotheses']))]
-    pending = {i:[None]*len(g['hypotheses']) for i,g in enumerate(groups)}
-    rows = [None]*len(groups)
-    manager = ProcessPoolExecutor(max_workers=workers,mp_context=get_context('spawn')) if workers>1 else nullcontext(None)
-    with manager as pool:
-        results = map(_candidate_replay,tasks) if pool is None else (
-            f.result() for f in as_completed([pool.submit(_candidate_replay,t) for t in tasks]))
-        for completed,(i,j,c) in enumerate(results,1):
-            if i not in pending or pending[i][j] is not None:
-                raise RuntimeError('G1a received a duplicate replay.')
-            pending[i][j] = c
-            if all(v is not None for v in pending[i]):
-                rows[i] = _reduce(groups[i],pending.pop(i))
-            if progress is not None:
-                progress(dict(completed=completed,total=len(tasks),pair=groups[i]['pair'],
-                              sequence_id=groups[i]['sequence_id'],label=groups[i]['label']))
-    if pending or any(row is None for row in rows):
-        raise RuntimeError('G1a did not complete every replay; no subset is reported.')
+    rows = _run_groups(groups,workers,progress)
     comparisons = []
     for pair,sids in zip(core.F4_G_PAIRS,ids):
         for sid in sids:
@@ -341,7 +347,7 @@ def run_joint_bank_refinement(*, workers=8, progress=None, sequence_ids=G1A_SEQU
     case = core.build_f4_b_case()
     registered = ids==G1A_SEQUENCE_IDS and stride==10 and numerics is None
     return dict(stage='G1a',design_version=1,registered_design=registered,workers=workers,
-                sequence_ids=[list(group) for group in ids],grid_stride=stride,conditional_runs=len(tasks),
+                sequence_ids=[list(group) for group in ids],grid_stride=stride,conditional_runs=sum(len(g['hypotheses']) for g in groups),
                 numerical_levels=levels,observation_contract=dict(time_unit='day',observation_kind='point',price_side='right'),
                 inputs=dict(baseline=case.baseline,price_edges=case.price_edges.tolist(),price_values=case.price_values.tolist(),
                             state_response='1-2*x',price_response='1-2*u'),

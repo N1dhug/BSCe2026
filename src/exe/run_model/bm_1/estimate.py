@@ -43,6 +43,7 @@ import numpy as np
 from src.validation.bm_1 import estimation as synthetic
 from src.validation.bm_1 import mixture_estimation as mixture_validation
 from src.validation.bm_1 import joint_estimation as joint_validation
+from src.validation.bm_1 import joint_grid
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -1150,6 +1151,46 @@ def run_joint_bank_refinement(args):
         raise RuntimeError('G1a joint-bank numerical/probability gates failed; report retained for review.')
 
 
+def run_joint_parameter_grid(args):
+    """G1b0 grid/prior pilot, with a raw-validated clean G1a dependency."""
+    if args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    started = last_printed = perf_counter()
+    dependency,digest = _read_bank_dependency(args.g1a_report,joint_grid.validated_g1a)
+    provenance = dict(sha256=digest,source_commit=dependency['source_commit'],
+                      g0=dict(dependency['dependencies']['g0']))
+    del dependency
+    print(f'F4-G G1b0: 3/5/9 nodes per axis; 648 fresh replays / 26 reductions; workers={args.workers}',flush=True)
+
+    def progress(row):
+        nonlocal last_printed
+        now = perf_counter()
+        if not args.quiet and (row['completed'] in (1,row['total']) or now-last_printed>=10):
+            last_printed = now
+            elapsed = now-started
+            eta = elapsed*(row['total']-row['completed'])/row['completed']
+            print(f"  replays {row['completed']}/{row['total']}; ID{row['sequence_id']} "
+                  f"{'/'.join(row['pair'])}; {row['label']}; elapsed={elapsed:.1f}s; rough ETA={eta:.1f}s",flush=True)
+
+    result = joint_grid.run_joint_parameter_grid(workers=args.workers,progress=progress)
+    result['dependencies'] = dict(g1a=provenance)
+    for row in result['comparisons']:
+        if row['kind'].startswith('FV_'):
+            detail = f"odds={row['maximum_log_odds_error']:.4g}; TV={row['maximum_weight_tv']:.4g}"
+        else:
+            detail = (f"parameter TV={row['maximum_parameter_tv']:.4g}; "
+                      f"unit mean/SD={row['maximum_unit_mean_error']:.4g}/{row['maximum_unit_sd_error']:.4g}")
+        print(f"  {'/'.join(row['coordinates'])} ID{row['sequence_id']} {row['kind']} "
+              f"{row['left']}->{row['right']}: {detail}; "
+              f"evidence={row['maximum_cumulative_evidence_error']:.4g}; "
+              f"state L1 pred/post={row['maximum_predicted_l1']:.4g}/{row['maximum_posterior_l1']:.4g}; "
+              f"passes={row['passes']}; selected={row['selected']}")
+    print(f"  registered={result['registered_design']}; passes G1b0={result['passes']}")
+    _write_likelihood_report(args,result,started)
+    if not result['passes']:
+        raise RuntimeError('G1b0 grid/numerical/probability gates failed; report retained for review.')
+
+
 def run_preparation(args):
     """Reproduce independent F4-0 quadrature through the common entry point."""
     if args.output is not None and args.output.exists():
@@ -1332,6 +1373,14 @@ def build_parser():
     joint_refinement.add_argument('--output',type=Path,required=True,help='New JSON/gzip report; never overwritten.')
     joint_refinement.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
     joint_refinement.set_defaults(handler=run_joint_bank_refinement)
+
+    parameter_grid = subparsers.add_parser(
+        'joint-bank-grid',help='G1b0: new-record joint parameter-grid/prior pilot and fresh FV controls.')
+    parameter_grid.add_argument('--g1a-report',type=Path,required=True,help='Passing registered clean-source G1a JSON/gzip.')
+    parameter_grid.add_argument('--workers',type=int,default=8,help='Independent spawn workers; locked pilot design.')
+    parameter_grid.add_argument('--output',type=Path,required=True,help='New JSON/gzip report; never overwritten.')
+    parameter_grid.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
+    parameter_grid.set_defaults(handler=run_joint_parameter_grid)
 
     mixture_static = subparsers.add_parser(
         'mixture-static',

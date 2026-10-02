@@ -1100,7 +1100,7 @@ Syv daglige state-resets er ikke én fortsat syvdages-record. Den fulde
 preregistrering og nye data fastlægges inden disse senere kørsler.
 
 G0 er afsluttet som metodekontrol; G1a's FV-numerik er rå-reviewet nedenfor.
-G1b's parametergrid og G2's robusthed afventer.
+G1b0's parametergrid/prior-pilot er preregistreret; større population og G2 afventer.
 Ugeforecast uden nye observationer er fortsat en særskilt I-leverance med
 erklærede fremtidige inputs. Fit, 168-timers forward-prediction og evaluering
 af alle ugers origins i en erklæret måned skal benchmarkes separat på samme
@@ -1205,6 +1205,69 @@ fast støtte og erklæret prior-mål. Uniform vægt på forskellige diskrete nod
 er ikke automatisk samme mål; kontinuerte priorer kræver erklærede kvadraturvægte.
 Nytilkomne hypoteser skal også numerisk kontrolleres. G0/G1a er ikke held-out
 recovery-data, og ugeforecast/måneds-runtime certificeres fortsat særskilt.
+
+\subsection{F4-G1b0: pilot for parametergrid og et fast prior-mål}
+Design låst 2. oktober 2026: ID1356 til rho/Xi med truth \((1,0.75)\),
+ID1357 til støjparret med truth \((0.5,0.03)\) og kendt Xi=1. Øvrige inputs,
+parametre, \(\Beta(20,20)\), EM-step, RNG og 24 målinger følger G1a.
+Dette er en numerisk pilot før en større population, ikke recovery-data.
+
+Støtter: rho \([0.5,1.5]\), Xi \([0,1]\), sigma-X \([0.125,2]\)
+og sigma-Y \([0.0075,0.12]\). Prioren er produkt-uniform i rho/Xi og
+produkt-uniform i log(sigma-X)/log(sigma-Y). I normaliseret prior-koordinat
+\(u\in[0,1]\) er
+\[
+ \theta(u)=a+(b-a)u\quad(\rho,\Xi),\qquad
+ \theta(u)=a(b/a)^u\quad(\sigma_X,\sigma_Y).
+\]
+Støjpriorens fysiske marginaltæthed er \(1/(\theta\log(b/a))\).
+Begge akser har 3/5/9 nested noder. På \(n\) noder er trapezprioren
+\[
+ \pi_{ij}^{(n)}=q_iq_j,\qquad
+ q_i=\begin{cases}1/[2(n-1)],&i=0\text{ eller }n-1,\\
+                  1/(n-1),&\text{ellers.}\end{cases}
+\]
+Summen er 1; støtten ændres ikke. G0's fem fysiske noder bevares præcis.
+En 5x5 prior bridge sammenligner \(\pi_{ij}=1/25\) med trapezprioren på
+samme conditional replays. Dette er prior-følsomhed, ikke grid-konvergens.
+
+Alle 81 finest-grid-hypoteser gennemfører friske FV-replays ved G1a's mellem,
+time-fine, spatial-fine og quadrature-fine: 648 replays i én spawn-pool med
+otte workers og BLAS=1. Scores/states genbruges til nested kvadraturer og
+prior bridge; hypotesernes states blandes aldrig sammen. Der er 26
+bankreduktioner; prediction bruger gamle parameterweights, posterior nye.
+De tre FV-kontroller på både kandidatens 5x5- og det fulde 9x9-grid kræver
+G1a's gates ved alle prefixer,
+og time-control skal faktisk mindske hver hypoteses max-step.
+
+Atomare posteriors på forskellige grids kan ikke sammenlignes med node-TV
+som et konvergensmål. Alene til sammenligning tilordnes hver node sin
+dualcelle, med kanter \(0,(u_0+u_1)/2,\ldots,(u_{n-2}+u_{n-1})/2,1\).
+Fordel nodeposteriorens masse konstant over den tilhørende rektangelcelle.
+Begge love overføres konservativt til unionen af deres kanter; hvis masserne
+dér er \(P_{\alpha\beta}\) og \(Q_{\alpha\beta}\), kræves
+\[
+ \tfrac12\sum_{\alpha,\beta}|P_{\alpha\beta}-Q_{\alpha\beta}|\le0.02.
+\]
+Dette ændrer ingen prior, Bayes-vægt eller conditional startstate.
+5x5 mod 9x9 kræver desuden ved hvert prefix: max unit-middelforskel 0.01,
+max unit-SD-forskel 0.02, absolut kumuleret evidencefejl 0.10 og begge
+marginale state-\(L^1\)-fejl 0.02. Unit-momenter beregnes af nodeposterioren,
+mens TV bruger dualcelleloven.
+
+Alle 14 aktive kontroller skal bestå: tre FV-akser på begge grids og én
+parameterkontrol per par. 3x3 mod 5x5 og prior bridge gemmes som fire diagnostikker.
+Massefejl højst \(10^{-10}\) og ikke-negative masser kræves for alle banker
+og conditional replays. Ingen record eller hypotese frasorteres.
+CLI genvaliderer hele den rene G1a-artifact og gemmer dependency-digest/source,
+priorvægte, noder, dualkanter, rå scores/vægte, marginale states og prefix-fejl.
+Fejlet gate gemmes før nonzero exit; fejlet replay afbryder uden et delresumé.
+Andre API-IDs/grids/numerik er uregistreret.
+
+Et bestået G1b0 accepterer alene 5x5-trapezbanken på to pilotrecords.
+En større population og G2 følger efter rå review og ny preregistrering.
+Ved fejl bevares originalartifactet, og en ny version låser ændret grid/numerik;
+støtten indsnævres ikke efter truth. Registreret lokal evidens afventer.
 
 \subsection{Prior under reparameterisering}
 

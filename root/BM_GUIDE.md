@@ -45,6 +45,7 @@ Hver kommando har `--help`. De tunge studier nedenfor er **ikke** daglige checks
 | F4-F F4 FV-rho-reference med finere tid, genbrug af gemt population | `bank-population-time-refine` |
 | F4-G G0 fælles rho/Xi- og sigma_x/sigma_y-bank, prefix-identiteter | `joint-bank-identity` |
 | F4-G G1a FV-tid, state-grid og quadrature for de to frie par | `joint-bank-refine --g0-report <G0-JSON>` |
+| F4-G G1b0 parametergrid/prior-pilot med FV-kontrol af nye noder | `joint-bank-grid --g1a-report <G1a-JSON>` |
 
 `preparation` erstatter det tidligere `root/f4/verify_preparation.py`: samme
 uafhængige regneregler, nu i validation og med fælles CLI. Ingen kontrol er slettet.
@@ -233,23 +234,22 @@ F4-F er afsluttet, og cleanup fra PR #50 er merged. Ingen F-studier skal
 gentages. G0 på ren `6670969` er gennemført og rå-reviewet: 416 tests består,
 alle 100 conditional forløb gennemfører på 86.6074 s med 8 workers og BLAS=1,
 og begge par består metodeidentiteten. Artifact-digest og kvantitative resultater
-står i F4-statusfilen. Ingen G0-genkørsel er nødvendig; PR #51 afventer brugerens
-merge. G1a's par-numerik er også gennemført og rå-reviewet nedenfor.
+står i F4-statusfilen. Ingen G0-genkørsel er nødvendig; PR #51 er korrekt merged
+på main 44c6f3c. G1a's par-numerik er også gennemført og rå-reviewet nedenfor.
 
 G0 kontrollerer begge valgte par på ID1348/1349 med 25 joint-hypoteser hver,
 50 conditional online-forløb og 50 friske offline-replays. Designet er fast i CLI;
 default er **8 workers**, og `--blas-threads 1` skal angives ved denne kørsel.
 En pool fordeler uafhængige hypoteser; der er ingen nested workers.
 
-Hent det dokumenterede review fra projektmappen på feature-branchen
-(PR'en merger brugeren selv):
+Hent det dokumenterede review fra projektmappen på main:
 
 ```powershell
 git fetch --prune origin
 if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
-git switch feature/f4-g-joint-bank-identity
+git switch main
 if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
-git pull --ff-only origin feature/f4-g-joint-bank-identity
+git pull --ff-only origin main
 if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
 git status
 git log -1 --oneline
@@ -277,15 +277,14 @@ En fejlet gate gemmes og giver nonzero exit; fejlende replays frasorteres ikke.
 Progress/ETA er grov, fordi støjparret koster mere end rho/Xi-parret.
 Terminalresumé og rå `.json.gz` fra den registrerede kørsel er gennemgået.
 Runtime er målt på denne dagskontrol, uden et løfte om ugeforecast eller måneds-throughput.
-G1a's par-numerik er afsluttet nedenfor; G1b's parametergrid og G2's længere
-records/sampling/mismatch er endnu ikke implementeret.
+G1a's par-numerik er afsluttet nedenfor; G1b0's parametergrid-pilot er næste
+lokale kørsel. En større G1b-population og G2 er endnu ikke implementeret.
 
 ## F4-G1a: registreret kørsel afsluttet
 
-Separat branch `feature/f4-g-joint-refinement` bygger på det rå-reviewede G0.
-G0-rapporten ovenfor genbruges som valideret dependency; den skal ikke genkøres.
-Så længe PR #51 er åben, har G1-PR'en den som base; brugeren merger G0 først,
-og PR #52 retargetes til main, før G1a merges.
+PR #52 er korrekt merged på main `0426b50` efter G0; det testede merge-tree
+er identisk med det gennemgåede head. G0-rapporten blev genbrugt som valideret
+dependency; den skal ikke genkøres.
 
 Ren `de6fcd5` er gennemført og rå-reviewet: **425 tests** består på 212.081 s,
 alle **42 banker / 1.050 replays og 18 aktive kontroller** består med
@@ -301,9 +300,9 @@ Hent resultatdokumentationen fra projektmappen:
 ```powershell
 git fetch --prune origin
 if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
-git switch feature/f4-g-joint-refinement
+git switch main
 if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
-git pull --ff-only origin feature/f4-g-joint-refinement
+git pull --ff-only origin main
 if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
 git log -1 --oneline
 if (git status --porcelain) { throw "Working tree er ikke ren." }
@@ -325,9 +324,9 @@ kilde og et nyt outputnavn, så originalrapporten bevares. Fra projektmappen:
 ```powershell
 git fetch --prune origin
 if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
-git switch feature/f4-g-joint-refinement
+git switch main
 if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
-git pull --ff-only origin feature/f4-g-joint-refinement
+git pull --ff-only origin main
 if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
 git log -1 --oneline
 if (git status --porcelain) { throw "Working tree er ikke ren." }
@@ -345,6 +344,53 @@ $g1aTimer.Stop()
 Write-Host ("G1a wall time inkl. opstart/output: {0:N2} s" -f $g1aTimer.Elapsed.TotalSeconds)
 if ($g1aExit -ne 0) { throw "G1a fejlede; behold rapporten til review." }
 ```
+
+## Næste lokale kørsel: F4-G1b0
+
+Branch **feature/f4-g-parameter-grid** bygger på merged main `0426b50`.
+Prior-målet er uniformt i rho/Xi og log-uniformt i støjparametrene, med
+tensor-trapezvægte på 3/5/9 nested noder per akse. Nye **ID1356/1357**
+kontrollerer 5x5→9x9; både 5x5- og 9x9-gridet får tre FV-kontroller.
+**648 replays / 26 bankreduktioner**, alle 14 aktive gates skal bestå.
+Coarse-grid og prior bridge er diagnostik. Dette er en pilot; større population,
+recovery og uge-/månedsmål følger særskilt. Design og tolerancer står i F4/noterne.
+
+**Genbrug den rå-reviewede G1a-fil; ingen G0/G1a-genkørsel.** CLI råvaliderer
+G1a's 42 banker og 36 kontroller før arbejdet og gemmer digest/source.
+Windows-default er **8 workers, BLAS=1**. Rapportens tid inkluderer
+dependency-review, men slutter før JSON/gzip-lagring; stopwatch måler hele
+processen. Replays koster forskelligt, så ETA er grov.
+
+Fra projektmappen, før den registrerede kørsel:
+
+```powershell
+git fetch --prune origin
+if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
+git switch feature/f4-g-parameter-grid
+if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+git pull --ff-only origin feature/f4-g-parameter-grid
+if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
+git log -1 --oneline
+if (git status --porcelain) { throw "Working tree er ikke ren." }
+
+python -B -m unittest discover -s tests -q
+if ($LASTEXITCODE -ne 0) { throw "Tests fejlede." }
+
+$g1bTimer = [System.Diagnostics.Stopwatch]::StartNew()
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-grid `
+  --g1a-report files/output/bm_1/runs/estimation/f4_g_g1a_joint_bank_refinement.json.gz `
+  --workers 8 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/f4_g_g1b0_joint_parameter_grid.json.gz
+$g1bExit = $LASTEXITCODE
+$g1bTimer.Stop()
+Write-Host ("G1b0 wall time inkl. opstart/output: {0:N2} s" -f $g1bTimer.Elapsed.TotalSeconds)
+if ($g1bExit -ne 0) { throw "G1b0 fejlede; behold rapporten til review." }
+```
+
+Send rå gzip og terminalresumé, også ved fejlet gate. Output overskrives aldrig.
+Originale fejl beholdes før en ny designversion; ingen automatisk tilpasning af
+grid, støtte, numerik eller records. Brugeren merger selv efter review.
+Development API-overrides er eksplicit uregistrerede.
 
 ## Kodeplacering
 
