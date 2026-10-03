@@ -77,6 +77,82 @@ class wm_4(wm):
         if sigma_I < 0.0: raise ValueError("sigma_I must be nonnegative.")
         return np.array([0.0, sigma_0 + sigma_I * I], dtype=float)
 
+    @staticmethod
+    def diffusion_hypothesis(hypothesis, time_hours, I, U, theta):
+        """Evaluate exploratory WM4 diffusion hypotheses H0-H2.
+
+        H0: g = sigma_0 + sigma_t * (1 + cos(2*pi*(t-phase)/24)) / 2
+        H1: H0 + sigma_I * I
+        H2: H1 + sigma_U * |U|
+
+        sigma_0, sigma_t, sigma_I and sigma_U are nonnegative. The periodic
+        term gives H0 a simple positive 24-hour uncertainty profile without
+        using O(t). phase is measured in physical hours.
+        """
+        hypothesis = str(hypothesis).strip().upper()
+        if hypothesis not in ("H0", "H1", "H2"): raise ValueError("hypothesis must be one of H0, H1 or H2.")
+        theta = np.asarray(theta, dtype=float).reshape(-1)
+        expected = {"H0": 3, "H1": 4, "H2": 5}[hypothesis]
+        if theta.size != expected or not np.all(np.isfinite(theta)): raise ValueError(f"{hypothesis} theta must contain exactly {expected} finite values.")
+
+        sigma_0, sigma_t, phase = map(float, theta[:3])
+        if sigma_0 <= 0.0 or sigma_t < 0.0: raise ValueError("sigma_0 must be positive and sigma_t must be nonnegative.")
+        if not 0.0 <= phase <= 24.0: raise ValueError("diffusion phase must lie in [0, 24] physical hours.")
+
+        time_hours = np.asarray(time_hours, dtype=float)
+        I, U = np.asarray(I, dtype=float), np.asarray(U, dtype=float)
+        if not np.all(np.isfinite(time_hours)) or not np.all(np.isfinite(I)) or not np.all(np.isfinite(U)): raise ValueError("diffusion inputs must be finite.")
+        if np.any(I < 0.0): raise ValueError("wm_4 diffusion hypotheses require I >= 0.")
+        if np.any(U < -1.0) or np.any(U > 1.0): raise ValueError("wm_4 diffusion hypotheses require U in [-1, 1].")
+
+        periodic = 0.5 * (1.0 + np.cos(2.0 * np.pi * (time_hours - phase) / 24.0))
+        g = sigma_0 + sigma_t * periodic
+        if hypothesis in ("H1", "H2"):
+            sigma_I = float(theta[3])
+            if sigma_I < 0.0: raise ValueError("sigma_I must be nonnegative.")
+            g = g + sigma_I * I
+        if hypothesis == "H2":
+            sigma_U = float(theta[4])
+            if sigma_U < 0.0: raise ValueError("sigma_U must be nonnegative.")
+            g = g + sigma_U * np.abs(U)
+        return np.asarray(g, dtype=float)
+
+    def process_uncertainty(self, state, hypothesis, theta):
+        """Propagate SDE process covariance only, with P0=0.
+
+        This deliberately excludes initial-state/parameter sensitivity. For
+        I=O+R, the returned input standard deviation is sqrt(P_RR).
+        """
+        required = ("Time", "I", "U", "r")
+        missing = [name for name in required if name not in state]
+        if missing: raise ValueError("state is missing required entries: " + ", ".join(missing) + ".")
+        Time = np.asarray(state["Time"], dtype=float).reshape(-1)
+        I = np.asarray(state["I"], dtype=float).reshape(-1)
+        U = np.asarray(state["U"], dtype=float).reshape(-1)
+        if Time.size != self.t_steps or I.size != self.t_steps or U.size != self.t_steps: raise ValueError("state signal lengths must equal wm_4.t_steps.")
+        r = wm_4_validation.r_coefficients(state["r"])
+
+        g = self.diffusion_hypothesis(hypothesis, Time, I, U, theta)
+        transition = np.array([
+            [1.0, self.dt],
+            [self.dt * r[0], 1.0 + self.dt * r[2]],
+        ], dtype=float)
+        covariance = np.zeros((self.t_steps, 2, 2), dtype=float)
+        for k in range(self.t_steps - 1):
+            process = np.array([[0.0, 0.0], [0.0, g[k] * g[k] * self.dt]], dtype=float)
+            covariance[k + 1] = transition @ covariance[k] @ transition.T + process
+            covariance[k + 1] = 0.5 * (covariance[k + 1] + covariance[k + 1].T)
+        input_variance = np.maximum(covariance[:, 1, 1], 0.0)
+        return {
+            "covariance": covariance,
+            "input_variance": input_variance,
+            "input_std": np.sqrt(input_variance),
+            "diffusion": g,
+            "transition": transition,
+            "hypothesis": str(hypothesis).strip().upper(),
+            "theta": np.asarray(theta, dtype=float).copy(),
+        }
+
     def sensitivity(self, parameters):
         """Euler sensitivity of [F,R] and I=O+R to the initial state [F0,R0]."""
         r = parameters["r"] if isinstance(parameters, dict) else parameters
