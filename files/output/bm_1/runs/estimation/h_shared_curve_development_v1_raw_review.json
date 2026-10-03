@@ -1,0 +1,39 @@
+{
+  "scope": "Independent raw objective/penalty/geometry/budget/prefix-score/final-mass checks; no new FV replay, scientific acceptance or optimizer refinement.",
+  "report_sha256": "dd6ad107683fbe5f09c679ec6998542058787099773e05b9a76fc704ad495acb",
+  "report_bytes": 216528,
+  "source_commit": "e6d3441e5867010eae801e41b2f4efa8e9ac3cd3",
+  "source_hashes_checked": 114,
+  "all_checks_pass": true,
+  "scientific_acceptance": false,
+  "elapsed_seconds": 44.785657229993376,
+  "conditional_training_replays": 694,
+  "families": {
+    "two": {
+      "evaluations": 87,
+      "budget_exhausted": false,
+      "starts_attempted": 2,
+      "starts_completed": 2,
+      "optimizer_successes": 2,
+      "maximum_penalty_error": 1.6291831707489213e-17,
+      "maximum_objective_error": 7.0915495697931874e-15,
+      "maximum_selected_geometry_error": 4.889751797909625e-17
+    },
+    "four": {
+      "evaluations": 250,
+      "budget_exhausted": true,
+      "starts_attempted": 1,
+      "starts_completed": 0,
+      "optimizer_successes": 0,
+      "maximum_penalty_error": 7.43762690325056e-17,
+      "maximum_objective_error": 7.098488463697095e-15,
+      "maximum_selected_geometry_error": 7.882149793969617e-17
+    }
+  },
+  "maximum_prefix_sum_error": 7.105427357601002e-15,
+  "maximum_pooled_sum_error": 7.105427357601002e-15,
+  "maximum_saved_mass_error": 3.384879182499745e-16,
+  "maximum_recorded_mass_error": 6.994405055138486e-15,
+  "minimum_cell_mass": 0.0,
+  "maximum_diagnostic_difference_error": 0.0
+}

@@ -154,7 +154,7 @@ til en kortere forecast; senere breakpoints ændrer ikke dens state-forløb.
 kurveobjekt med to/fire stykker, ordnede indre værdier og endpoints 1,-1. Den
 samme f/g eksporteres til `BM1Parameters`, F3 og forecast. Kurvebeskrivelsen
 gemmer kun geometri; det endelige H-artifact skal også deklarere træning,
-population, normalisering, øvrige parametre og modelvalg. Samlet kurvefit,
+population, normalisering, øvrige parametre og modelvalg. Fuld erklæret træning,
 ny representativ FV-kurve-numerik og blind validering mangler stadig.
 
 Den lille pooled-fitprototype kører i det eksisterende entrypoint:
@@ -186,6 +186,15 @@ kilders SHA256. `scientific_acceptance=False` er tilsigtet. Budget-ETA er tid
 til det maksimale fitbudget; early convergence kan forkorte fit, og numeriske
 diagnoser følger bagefter. Piloten er ikke genoptagelig og må ikke bruges som
 en lang produktionstræning. Start ikke ekstra tunge lokale jobs under G2a.
+
+Den gemte Linux-pilot på ren `e6d3441` tog **44.79 s** med BLAS=1 og 694
+conditional record-replays. To-stykkers fit brugte 87 kandidater og begge
+starter konvergerede; fire-stykkers fit stoppede ved 250 kandidater i første
+start. Budgetstoppet bevares, og ingen modelvinder eller ekstra budgetrunde
+følger af TRAIN-forbedringen. [Rårapport](../files/output/bm_1/runs/estimation/h_shared_curve_development_v1.json.gz)
+og [uafhængigt rå review](../files/output/bm_1/runs/estimation/h_shared_curve_development_v1_raw_review.json)
+ligger i repoet. Dette er et lille lokalt runtime-budget, ikke en prognose for
+hele H-træningen eller for Windows-maskinen.
 
 ## Almindelig kontrol fra projektmappen
 

@@ -701,6 +701,17 @@ Denne pooled prototype afslutter ikke H1's nye lineære/nonlineære truth-cases,
 den historiske datakontrakt, fuld træning, modelvalg eller blind H3-validering.
 Træningsforbedring på to gamle records afgør ingen endelig modelvinder.
 
+Den rene Linux-pilot på kilde \texttt{e6d3441}, BLAS=1, tog 44.79 sekunder
+for 694 conditional døgn-replays. Begge to-stykkers starter konvergerede efter
+87 forskellige kandidater samlet. Fire-stykkers fit brugte 250 kandidater
+og stoppede på budgettet under første start; dette er ikke convergence.
+Pooled TRAIN-log-likelihood steg med henholdsvis 0.842687 og 1.774395 fra
+lineær reference 90.955651. Ingen model vælges ud fra disse træningsgevinster.
+Maksimal registreret massefejl var $6.995\cdot10^{-15}$ uden repair.
+Uafhængig longdouble-genberegning af gemte objectives afveg højst
+$7.099\cdot10^{-15}$; dette kontrollerer rå aritmetik, ikke kurve-recovery.
+Rårapport, kandidatbudget og fixed-candidate refinements findes i F4-statusfilen.
+
 \subsection{Identifikation, numerik og fastlåsning}
 Uden endpoints kan \(f+c,g-c\) give samme sum, og fælles amplitudeskalering kan
 blandes sammen med \(k\). \eqref{eq:endpoints} fjerner disse eksakte friheder,

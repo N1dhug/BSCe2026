@@ -47,7 +47,8 @@ Disse kurveregler gælder BM og ændrer ikke WM-modellernes egne fitkontrakter.
 ## Beslutning fra Johan, 3. oktober 2026
 
 - Estimation og validering af fleksible `f(x)`/`g(u)` er en **obligatorisk H-f/g-leverance**,
-  endnu ikke implementeret. Den må ikke igen klassificeres som en valgfri udvidelse.
+  endnu ikke afsluttet; udviklingsestimatoren er implementeret, fuldt fit og
+  videnskabelig validering mangler. Den må ikke igen klassificeres som en valgfri udvidelse.
 - Ét fælles kurvepar skal bestemmes samlet på tværs af træningsdage for en erklæret
   population/gruppe og holdes fast ved validering/forecast. Ingen f/g-fit per dag.
   Daglig baseline og state-estimation kan fortsat variere.
