@@ -28,17 +28,30 @@ def rectangular_hat_law(scores, counts):
     counts = tuple(checks.positive_integer(n, 'axis nodes', minimum=2) for n in counts)
     if len(counts) != 2 or any(n > finest or (finest-1) % (n-1) for n in counts):
         raise ValueError('Both rectangular axes must be nested in the source grid.')
-    unit = [np.linspace(0, 1, n) for n in counts]
-    quadrature = [np.r_[.5, np.ones(n - 2), .5] / (n - 1) for n in counts]
     indices = [np.arange(0, finest, (finest-1) // (n - 1)) for n in counts]
     selected = scores.reshape(len(scores), finest, finest)[:, indices[0], :][:, :, indices[1]]
-    likelihood = np.cumsum(selected, axis=0)
+    return tensor_hat_law(selected.reshape(len(scores), -1), counts)
+
+
+def tensor_hat_law(scores, counts):
+    """Positive normalized tensor hats from a complete rectangular score grid."""
+    counts = tuple(checks.positive_integer(n, 'axis nodes', minimum=2) for n in counts)
+    if len(counts) != 2:
+        raise ValueError('A tensor hat requires two axes.')
+    scores = np.asarray(scores, dtype=float)
+    if (scores.ndim != 2 or not len(scores) or scores.shape[1] != np.prod(counts)
+            or not np.all(np.isfinite(scores))):
+        raise ValueError('Scores must contain the complete finite rectangular grid.')
+    unit = [np.linspace(0, 1, n) for n in counts]
+    quadrature = [np.r_[.5, np.ones(n - 2), .5] / (n - 1) for n in counts]
+    likelihood = np.cumsum(scores.reshape(len(scores), *counts), axis=0)
     log_prior = np.log(np.outer(*quadrature))
     evidence = logsumexp((likelihood + log_prior).reshape(len(scores), -1), axis=1)
     density = np.exp(likelihood - evidence[:, None, None])
     weights = density * np.outer(*quadrature)
     mass = weights.sum(axis=(1, 2))
-    assert np.max(abs(mass - 1)) < 1e-10
+    if np.max(abs(mass - 1)) >= 1e-10:
+        raise ValueError('Tensor hat mass is not normalized.')
     mean, sd = [], []
     for axis, n in enumerate(counts):
         step = 1 / (n - 1)
@@ -50,8 +63,16 @@ def rectangular_hat_law(scores, counts):
         m = marginal @ centers
         mean.append(m)
         sd.append(np.sqrt(np.maximum(marginal @ second - m ** 2, 0)))
+    centers = []
+    for nodes in unit:
+        c = nodes.copy(); h = 1 / (len(nodes) - 1)
+        c[[0, -1]] = [h / 3, 1 - h / 3]
+        centers.append(c)
+    mean = np.column_stack(mean)
+    cross = np.einsum('kij,i,j->k', weights, *centers, optimize=True)
     return dict(unit=unit, density=density, evidence=evidence,
-                mean=np.column_stack(mean), sd=np.column_stack(sd), mass=mass)
+                mean=mean, sd=np.column_stack(sd), mass=mass,
+                covariance=cross - mean[:, 0] * mean[:, 1])
 
 
 def _interpolate(values, source, target):
