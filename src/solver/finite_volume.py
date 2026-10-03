@@ -375,6 +375,63 @@ class finite_volume_1d_cached(finite_volume_1d_lapack):
                     cell_mass=history, prediction_diagnostics=per_column)
 
 
+class finite_volume_1d_fitted(finite_volume_1d_cached):
+    """Experimental exponential-fitting flux for the same Ito FPE.
+
+    For J=a*p-(D*p)' use the face drift a-D' and diffusion D=0.5*b^2.
+    The local midpoint/central approximation gives nonnegative nearest-neighbor
+    rates with zero exterior flux. Constant-coefficient equilibria are exact;
+    variable-coefficient equilibria require spatial convergence checks.
+    This is a different spatial discretization, never an automatic replacement
+    for a registered upwind grid. Reference: Pareschi/Zanella (2017), section 2,
+    https://arxiv.org/abs/1702.00088 .
+    """
+
+    @staticmethod
+    def _bernoulli(values):
+        """Evaluate z/(exp(z)-1) without cancellation or overflowing exp(z)."""
+        values = np.asarray(values, dtype=float)
+        result = np.empty_like(values)
+        small = abs(values) < 1e-4
+        positive, negative = values > 50., values < -50.
+        ordinary = ~(small | positive | negative)
+        z = values[small]
+        result[small] = 1-z/2+z*z/12-z**4/720+z**6/30240
+        z = values[positive]
+        result[positive] = z*np.exp(-z)/(1-np.exp(-z))
+        z = values[negative]
+        result[negative] = -z/(1-np.exp(z))
+        z = values[ordinary]
+        result[ordinary] = z/np.expm1(z)
+        return result
+
+    @classmethod
+    def generator_tridiagonal(cls, dx, drift_faces, diffusion_centers):
+        dx, drift, diffusion = finite_volume_1d_validation.generator_inputs(
+            dx, drift_faces, diffusion_centers)
+        D = .5*np.square(diffusion)
+        face_D = (D[:-1]+D[1:])/2
+        face_drift = drift-np.diff(D)/dx
+        if not np.all(np.isfinite(face_D)) or not np.all(np.isfinite(face_drift)):
+            raise ValueError('Fitted FV coefficients must be finite.')
+        right, left = np.maximum(face_drift, 0.)/dx, np.maximum(-face_drift, 0.)/dx
+        active = face_D > 0.
+        peclet = face_drift[active]*dx/face_D[active]
+        if not np.all(np.isfinite(peclet)):
+            raise ValueError('Fitted FV Peclet values must be finite.')
+        right[active] = face_D[active]/dx**2*cls._bernoulli(-peclet)
+        left[active] = face_D[active]/dx**2*cls._bernoulli(peclet)
+        diagonal = -(np.r_[right, 0.]+np.r_[0., left])
+        column_sum = diagonal.copy()
+        column_sum[:-1] += right
+        column_sum[1:] += left
+        if not all(np.all(np.isfinite(v)) for v in (right, left, diagonal)):
+            raise ValueError('Fitted FV transition rates must be finite.')
+        return right, diagonal, left, dict(
+            maximum_abs_column_sum=float(np.max(abs(column_sum))),
+            minimum_off_diagonal_rate=float(min(right.min(), left.min())))
+
+
 class finite_volume_2d:
     """Generic two-dimensional finite-volume PDE solver.
 

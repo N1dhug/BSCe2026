@@ -179,5 +179,51 @@ class BatchedFilterTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b'keep')
 
 
+class ForecastCollapseTests(unittest.TestCase):
+    def test_process_state_dependence_and_objective_are_preserved(self):
+        from src.method.bm_1_batch_filter import collapse_sigma_y_for_process_forecast
+        rng = np.random.default_rng(15121)
+        hypotheses = np.array([[.125, .12], [2., .0075], [.125, .0075], [2., .12]])
+        states = rng.dirichlet(np.ones(17), size=4)
+        original_states = states.copy()
+        logs = np.log([.1, .25, .2, .45])
+        collapsed = collapse_sigma_y_for_process_forecast(hypotheses, logs, states)
+        np.testing.assert_allclose(np.exp(collapsed['log_weights']), [.3, .7], atol=1e-15, rtol=0)
+        solver = finite_volume_1d_cached()
+        future = []
+        grouped = []
+        for sigma, state in zip(hypotheses[:, 0], states):
+            future.append(solver.solve([0., .4, 1.], state, lambda t, x: .2*(.5-x),
+                                      lambda t, x: sigma*x*(1-x), max_step=1/48)['cell_mass'])
+        for sigma, state in zip(collapsed['sigma_x'], collapsed['initial_mass']):
+            grouped.append(solver.solve([0., .4, 1.], state, lambda t, x: .2*(.5-x),
+                                       lambda t, x: sigma*x*(1-x), max_step=1/48)['cell_mass'])
+        full = np.einsum('j,jtn->tn', np.exp(logs), np.asarray(future))
+        reduced = np.einsum('j,jtn->tn', np.exp(collapsed['log_weights']), np.asarray(grouped))
+        np.testing.assert_allclose(full, reduced, atol=2e-15, rtol=0)
+        centers = solver.grid(17)[1]
+        demand = .5+.5*np.tanh(2*(.5-centers))
+        np.testing.assert_allclose(full @ ((demand-.6)**2), reduced @ ((demand-.6)**2), atol=2e-15, rtol=0)
+        wrong = solver.solve([0., .4, 1.], np.exp(logs) @ states, lambda t, x: .2*(.5-x),
+                             lambda t, x: float(np.exp(collapsed['log_weights']) @ collapsed['sigma_x'])*x*(1-x),
+                             max_step=1/48)['cell_mass']
+        self.assertGreater(np.max(abs(wrong-reduced)), .001)
+        np.testing.assert_array_equal(states, original_states)
+
+    def test_zero_weights_and_invalid_laws_are_handled_without_repair(self):
+        from src.method.bm_1_batch_filter import collapse_sigma_y_for_process_forecast
+        hypotheses = np.array([[.5, .01], [.5, .1], [2., .01]])
+        states = np.ones((3, 7))/7
+        got = collapse_sigma_y_for_process_forecast(hypotheses, [0., -np.inf, -np.inf], states)
+        np.testing.assert_array_equal(got['log_weights'], [0., -np.inf])
+        np.testing.assert_array_equal(got['initial_mass'], states[:2])
+        for h, w, s in ((hypotheses[:, :1], [0., -np.inf, -np.inf], states),
+                        (hypotheses, [0., 0., 0.], states),
+                        (hypotheses, [0., -np.inf, -np.inf], states*2),
+                        (hypotheses, [0., -np.inf], states)):
+            with self.assertRaises(ValueError):
+                collapse_sigma_y_for_process_forecast(h, w, s)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -919,3 +919,58 @@ H har forberedelsesfunktioner i `src/tools/bm_1_data.py`:
 De kræver eksplicit timezone, population, power-unit og observationstype.
 De er ikke et historisk fit. Afklar først punkt versus interval/energi, faktisk
 forbrugerpris, historik og kronologisk split. F3's retrospektive eksperiment er bevaret.
+
+
+## Sigma_y-batching til kommende forsøg
+
+PR #59 tilføjer en opt-in multiple-RHS-filtervej og en særskilt benchmark.
+De eksisterende G2a-v2/G2b/G2c-kommandoer ændrer ikke backendafvikling. G2a-v2
+skal færdiggøres på manifestets oprindelige revision, før checkout opdateres.
+Efter merge og afsluttet igangværende kørsel kan backendpanelet måles lokalt:
+
+```powershell
+if (git status --porcelain) { throw "Working tree er ikke ren." }
+$batchRoot = "files/output/bm_1/runs/estimation"
+$batchTag = Get-Date -Format "yyyyMMdd_HHmmss"
+$batchOutput = "$batchRoot/fv_sigma_y_batch_windows_$batchTag.json.gz"
+$batchLog = "$batchRoot/fv_sigma_y_batch_windows_$batchTag.txt"
+New-Item -ItemType Directory -Force -Path $batchRoot | Out-Null
+python -B -m src.exe.run_model.bm_1.estimate benchmark-fv-batch `
+  --days 7 --repeats 2 --batch-size 4 --blas-threads 1 --output $batchOutput `
+  2>&1 | Tee-Object -FilePath $batchLog
+$batchExit = $LASTEXITCODE
+Write-Host "Rapport: $batchOutput; terminaloutput: $batchLog; exit=$batchExit"
+if ($batchExit -ne 0) { throw "Batchkontrol fejlede; behold rapport/log." }
+```
+
+Panelet sammenligner alle prefix-scores og state-masser, actual steps og
+uniform-bank evidence/vægte på samme gamle syvdages-record. Det gemmer alle
+scores samt sidste prefix-state for begge backends i sidste gentagelse;
+fulde tidligere state-historier indgår i eksekveringskontrollen, men lagres ikke.
+Rapporten kræver ren source og overskriver ikke output. Et bestået panel
+certificerer backendækvivalens på panelet, ikke G2-konvergens eller population.
+Serial speedup er målt mod den allerede cached backend, ikke den gamle Thomas-
+eller uncached-LAPACK-vej. Ingen Windows-/parallel-runtime kan udledes alene
+fra Linux-panelet.
+
+Intern streaming kan bruge `batch_sigma_y=4` på en cached sigma_x/sigma_y-gruppe.
+Grupper har samme record, fysisk processoperator, grid og observationstider.
+Hver hypotese beholder sin egen conditional state og Bayes-update. Hypoteseorden
+og den eksisterende bankreduktion er uændret. Batches krydser ikke sigma_x og
+queue er bounded til én batch per worker; maksimal batchbredde er fire.
+Dette flag er ikke tilføjet til de gamle videnskabelige CLI'er.
+
+`run_fv_sigma_y_batch` og `collapse_sigma_y_for_process_forecast` findes i
+`src/method/bm_1_batch_filter.py`. Forecast-hjælperen summerer kun sigma_y ved
+fast sigma_x i en repræsenteret node-bank efter sidste assimilation. Den er
+eksakt for state/demand og forventet F3-objective under fælles fremtidig policy,
+men kan ikke erstatte den fulde bank til Y-predictive density eller nye målinger.
+En marginal state alene er heller ikke nok til helperen: de betingede
+state–parameter-laws skal være bevaret ved origin.
+
+`finite_volume_1d_fitted` er desuden en eksperimentel eksponentielt fitted
+rumflux for samme Ito-FPE, inklusive D′. Den kan bruges i interne diagnostiske
+grupper med `backend='fitted'`, men eksisterende videnskabelige CLI'er beholder
+deres registrerede numerik. Se `root/F4.md` for gamle-data-panel, bevarede
+all-node-fejl og de manglende tids-/quadrature-/parameterkontroller. Færre
+celler er en ny numerisk kandidat, ikke en backendækvivalens fra batchpanelet.

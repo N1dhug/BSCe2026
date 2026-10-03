@@ -181,10 +181,13 @@ def _candidate_replay(task):
     case,obs,settings = group['case'],group['observations'],group['settings']
     model,base = case.build_model()
     backend = group.get('backend','reference')
-    if backend in ('lapack', 'cached'):
-        from src.solver.finite_volume import finite_volume_1d_lapack, finite_volume_1d_cached
-        model.fokker_planc_reference = (finite_volume_1d_cached(vectorized_inputs=True) if backend == 'cached'
-                                       else finite_volume_1d_lapack())
+    if backend in ('lapack', 'cached', 'fitted'):
+        from src.solver.finite_volume import (
+            finite_volume_1d_lapack, finite_volume_1d_cached, finite_volume_1d_fitted,
+        )
+        solver = {'lapack': finite_volume_1d_lapack, 'cached': finite_volume_1d_cached,
+                  'fitted': finite_volume_1d_fitted}[backend]
+        model.fokker_planc_reference = (solver(vectorized_inputs=True) if backend != 'lapack' else solver())
     elif backend!='reference':
         raise ValueError('Unknown conditional FV backend.')
     candidate = replace(core.f4_e_truth_candidate(case),
@@ -197,8 +200,9 @@ def _candidate_replay(task):
     except (RuntimeError,ValueError,FloatingPointError) as exc:
         raise RuntimeError(f"{group.get('stage','G1a')} replay failed: ID{group['sequence_id']}, {group['pair']}="
                            f"{group['hypotheses'][j].tolist()}, {group['label']}: {exc}") from exc
-    return i, j, _replay_payload(result, group, model, core._f4_e_parameters(base, candidate),
-                                  perf_counter()-started)
+    payload = _replay_payload(result, group, model, core._f4_e_parameters(base, candidate), 0.)
+    payload['elapsed_seconds'] = perf_counter()-started
+    return i, j, payload
 
 
 def _replay_payload(result, group, model, parameters, elapsed):

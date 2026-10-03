@@ -89,3 +89,42 @@ def run_fv_sigma_y_batch(model, parameters, sigma_x, sigma_y_values,
         predicted_mass=predicted[column], posterior_mass=posterior[column],
         observed=observations.observed, log_evidence=scores[column], integration_t=integration_t,
         prediction_diagnostics=tuple(diagnostics[column])) for column in range(len(noises)))
+
+
+def collapse_sigma_y_for_process_forecast(hypotheses, log_weights, conditional_mass):
+    """Exactly retain the represented node-bank state--sigma_x law.
+
+    The hypothesis columns must be (sigma_x, sigma_y), with all other process
+    parameters and future inputs fixed. Common linear propagation at each
+    sigma_x then preserves the full state/demand distribution and expected F3
+    objective under one shared policy. No sigma_x values are averaged.
+
+    This reduction is for a frozen origin with no further assimilation. The
+    resulting law does not retain sigma_y--state dependence, so it cannot
+    replace the full bank for future Y densities or observation updates.
+    A zero-weight process group retains a valid arbitrary representative state.
+    """
+    from scipy.special import logsumexp
+    if np.iscomplexobj(hypotheses):
+        raise ValueError('hypotheses must be real.')
+    hypotheses = np.asarray(hypotheses, dtype=float)
+    if (hypotheses.ndim != 2 or hypotheses.shape[1] != 2 or len(hypotheses) == 0
+            or not np.all(np.isfinite(hypotheses)) or np.any(hypotheses[:, 0] < 0.)
+            or np.any(hypotheses[:, 1] <= 0.)):
+        raise ValueError('hypotheses must contain finite (sigma_x >= 0, sigma_y > 0) rows.')
+    logs = checks.log_probability_mass(log_weights, 'log_weights')
+    states = checks.probability_rows(conditional_mass, 'conditional_mass')
+    if len(hypotheses) != len(logs) or len(states) != len(logs):
+        raise ValueError('Hypotheses, weights and conditional states must have equal row counts.')
+    processes = np.unique(hypotheses[:, 0])
+    process_logs, initial = [], []
+    for process in processes:
+        selected = hypotheses[:, 0] == process
+        local_logs = logs[selected]
+        weight = float(logsumexp(local_logs))
+        state = (np.exp(local_logs-weight) @ states[selected] if np.isfinite(weight) else
+                 states[selected][0])
+        initial.append(checks.probability_mass(state, 'grouped initial state'))
+        process_logs.append(weight)
+    return dict(sigma_x=processes, log_weights=np.array(process_logs), initial_mass=np.stack(initial),
+                scope='Frozen-origin state/demand/F3 objective only; not Y likelihood or continued assimilation')
