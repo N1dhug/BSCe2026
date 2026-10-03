@@ -77,6 +77,12 @@ reference bruger filtreret state, ikke truth. Parameterusikkerhed udelades.
 Demo og tids-/rumdiagnoser accepterer ingen populations-/ugekalibreringsclaim;
 `forecast_scientific_acceptance=False` er tilsigtet.
 
+Den gennemførte Linux-demo på ren `df904fa` tog 10.94 s med BLAS=1.
+[Rårapport](../files/output/bm_1/runs/estimation/i_baseline_development_v1.json.gz)
+og [uafhængigt rå review](../files/output/bm_1/runs/estimation/i_baseline_development_v1_raw_review.json)
+ligger i repoet. Rho-MAP rammer den øvre støtte, med effektivt hypotesetal 38.73/41;
+det fungerende handoff er ikke parameter-recovery. Se tal og begrænsninger i F4.
+
 `src/control/bm_1_handoff.py` er det fælles origin/F3/forecast-interface til I/F5/F6;
 modellen og solverkernels genbruges. Nye tider bruger den erklærede tidsenhed,
 og ingen fremtidige observationer indgår. Et længere prisprogram kan genbruges
