@@ -712,6 +712,24 @@ Uafhængig longdouble-genberegning af gemte objectives afveg højst
 $7.099\cdot10^{-15}$; dette kontrollerer rå aritmetik, ikke kurve-recovery.
 Rårapport, kandidatbudget og fixed-candidate refinements findes i F4-statusfilen.
 
+De gamle inputs har kun priser $u=0.35,0.65$. For indre g-knudeværdier
+$v=(v_1,v_2,v_3)$ er den del af prisresponsen, som afhænger af $v$,
+\[
+ Wv,\qquad W=\begin{pmatrix}0.6&0.4&0\\0&0.4&0.6\end{pmatrix},
+ \qquad W\begin{pmatrix}-2/3\\1\\-2/3\end{pmatrix}=0.
+\]
+Begge priser ligger mellem indre knuder, så ingen endpointbidrag mangler her.
+Matricen har rang 2; små ændringer i nulretningen kan bevare monotonitet,
+endpoints og g ved alle anvendte priser. Hele observationsloven er da uændret
+ved samme f og øvrige inputs. Regularisering kan vælge et punkt i denne
+retning, men gør ikke retningen identificeret fra data.
+Et rent replay sammenlignede lineær g med knudeværdier
+$(1,0.4333333333,0.1,-0.5666666667,-1)$; pooled score og begge slutposteriorer
+var identiske ved den anvendte præcision. Prisniveauer
+$(0.125,0.375,0.625,0.875)$ giver derimod rang 3 i den indre basis og er
+et forslag til en separat H1-pilot. Dette er en nødvendig supportkontrol,
+ikke bevis for fælles f/g-recovery eller praktisk identifikation af latent state.
+
 \subsection{Identifikation, numerik og fastlåsning}
 Uden endpoints kan \(f+c,g-c\) give samme sum, og fælles amplitudeskalering kan
 blandes sammen med \(k\). \eqref{eq:endpoints} fjerner disse eksakte friheder,

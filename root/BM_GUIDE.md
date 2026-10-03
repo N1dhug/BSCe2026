@@ -196,6 +196,14 @@ og [uafhængigt rå review](../files/output/bm_1/runs/estimation/h_shared_curve_
 ligger i repoet. Dette er et lille lokalt runtime-budget, ikke en prognose for
 hele H-træningen eller for Windows-maskinen.
 
+De to gamle prisniveauer kan kun identificere to kombinationer af de tre indre
+fire-stykkers g-værdier. Mere fitbudget løser ikke den manglende prisvariation;
+regulariseringen kan styre den resterende retning uden dataevidens. En gemt
+[pris-supportdiagnose](../files/output/bm_1/runs/estimation/h_curve_price_support_development_v1.json)
+viser to forskellige monotone g-kurver med identisk likelihood/slutfordeling.
+Næste H1-design skal kontrollere input-support før længere fit; et forslag med
+fire spredte priser står i F4. Det eksisterende F/G-design ændres ikke.
+
 ## Almindelig kontrol fra projektmappen
 
 ```powershell
