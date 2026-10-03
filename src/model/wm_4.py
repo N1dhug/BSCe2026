@@ -101,13 +101,13 @@ class wm_4(wm):
 
         time_hours = np.asarray(time_hours, dtype=float)
         I, U = np.asarray(I, dtype=float), np.asarray(U, dtype=float)
-        if not np.all(np.isfinite(time_hours)) or not np.all(np.isfinite(I)) or not np.all(np.isfinite(U)): raise ValueError("diffusion inputs must be finite.")
-        if np.any(I < 0.0): raise ValueError("wm_4 diffusion hypotheses require I >= 0.")
+        if not np.all(np.isfinite(time_hours)) or not np.all(np.isfinite(U)): raise ValueError("diffusion time and price inputs must be finite.")
         if np.any(U < -1.0) or np.any(U > 1.0): raise ValueError("wm_4 diffusion hypotheses require U in [-1, 1].")
 
         periodic = 0.5 * (1.0 + np.cos(2.0 * np.pi * (time_hours - phase) / 24.0))
         g = sigma_0 + sigma_t * periodic
         if hypothesis in ("H1", "H2"):
+            if not np.all(np.isfinite(I)): raise ValueError("H1/H2 diffusion input I must be finite.")
             sigma_I = float(theta[3])
             if sigma_I < 0.0: raise ValueError("sigma_I must be nonnegative.")
             g = g + sigma_I * I
@@ -115,7 +115,9 @@ class wm_4(wm):
             sigma_U = float(theta[4])
             if sigma_U < 0.0: raise ValueError("sigma_U must be nonnegative.")
             g = g + sigma_U * np.abs(U)
-        return np.asarray(g, dtype=float)
+        g = np.asarray(g, dtype=float)
+        if not np.all(np.isfinite(g)) or np.any(g <= 0.0): raise ValueError("Diffusion hypothesis must remain finite and strictly positive over the trajectory.")
+        return g
 
     def process_uncertainty(self, state, hypothesis, theta):
         """Propagate SDE process covariance only, with P0=0.
