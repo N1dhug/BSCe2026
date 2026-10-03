@@ -1359,6 +1359,28 @@ def run_fv_benchmark(args):
     return result
 
 
+def run_fv_batch_benchmark(args):
+    """Measure the opt-in sigma_y batch without changing any registered study."""
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    source = _source_snapshot()
+    if source['working_tree_dirty']:
+        raise ValueError('Commit source changes before the batch benchmark.')
+    started = perf_counter()
+    def progress(done, total):
+        if not args.quiet:
+            print(f'  sigma_y batch checks {done}/{total}; elapsed={perf_counter()-started:.1f}s', flush=True)
+    result = joint_validation.benchmark_sigma_y_batch(record_days=args.days, repeats=args.repeats,
+                                                      batch_size=args.batch_size, progress=progress)
+    if _source_snapshot() != source:
+        raise RuntimeError('Source changed during benchmark.')
+    _write_likelihood_report(args, result, started)
+    print(f"Sigma_y batching passes={result['passes']}; serial speedup={result['measured_serial_speedup']:.2f}x")
+    if not result['passes']:
+        raise RuntimeError('Batch equivalence failed; inspect the saved report.')
+    return result
+
+
 def run_joint_grid_diagnosis(args):
     """Diagnose an existing complete G2a v1; never grant production acceptance."""
     if args.output.exists():
@@ -1773,6 +1795,14 @@ def build_parser():
     benchmark.add_argument('--output', type=Path)
     benchmark.add_argument('--quiet', action='store_true')
     benchmark.set_defaults(handler=run_fv_benchmark)
+    batch_benchmark = subparsers.add_parser('benchmark-fv-batch',
+        help='Paired sigma_y multiple-RHS equivalence/timings; no study release.')
+    batch_benchmark.add_argument('--days', type=int, choices=(1, 3, 7), default=7)
+    batch_benchmark.add_argument('--repeats', type=int, default=2)
+    batch_benchmark.add_argument('--batch-size', type=int, choices=(2, 3, 4), default=4)
+    batch_benchmark.add_argument('--output', type=Path)
+    batch_benchmark.add_argument('--quiet', action='store_true')
+    batch_benchmark.set_defaults(handler=run_fv_batch_benchmark)
     diagnosis = subparsers.add_parser('joint-bank-grid-diagnose',
         help='Posthoc axis/spatial diagnosis on a complete old seven-day G2a report.')
     diagnosis.add_argument('--g2a-report', type=Path, required=True)

@@ -250,16 +250,18 @@ class finite_volume_1d_lapack(finite_volume_1d):
     @staticmethod
     def _solve_tridiagonal(lower, diagonal, upper, rhs):
         from scipy.linalg.lapack import dgtsv
+        rhs = np.array(rhs, dtype=float, copy=True, order='F')
+        vector = rhs.ndim == 1
         _, _, _, solved, info = dgtsv(
             np.array(lower,dtype=float,copy=True),
             np.array(diagonal,dtype=float,copy=True),
             np.array(upper,dtype=float,copy=True),
-            np.array(rhs,dtype=float,copy=True)[:,None],
+            rhs[:, None] if vector else rhs,
             overwrite_dl=1,overwrite_d=1,overwrite_du=1,overwrite_b=1,
         )
         if info != 0:
             raise RuntimeError(f'LAPACK FV tridiagonal solve failed (info={info}).')
-        return solved[:,0]
+        return solved[:, 0] if vector else solved
 
 
 class finite_volume_1d_cached(finite_volume_1d_lapack):
@@ -309,12 +311,68 @@ class finite_volume_1d_cached(finite_volume_1d_lapack):
                 if len(factors) > 32:
                     factors.popitem(last=False)
             factors.move_to_end(factor_key)
-            solved, info = dgttrs(*factors[factor_key], np.array(mass, copy=True)[:, None], overwrite_b=1)
+            rhs = np.array(mass, copy=True, order='F')
+            vector = rhs.ndim == 1
+            solved, info = dgttrs(*factors[factor_key], rhs[:, None] if vector else rhs, overwrite_b=1)
             if info != 0:
                 raise RuntimeError(f'LAPACK FV factored solve failed (info={info}).')
-            return solved[:, 0], diagnostics
+            return (solved[:, 0] if vector else solved), diagnostics
 
         return advance
+
+    def solve_many(self, t_eval, initial_mass, drift, diffusion, *,
+                   bounds=(0.0, 1.0), breakpoints=None, max_step=np.inf,
+                   coefficient_key=None):
+        """Evolve independent probability rows under one common operator.
+
+        This is the same implicit Euler system with multiple right-hand sides.
+        Every column retains its own state; diagnostics check every internal
+        step and every column. Initial rows are validated without repair.
+        Output masses have shape (requested times, hypotheses, cells).
+        """
+        if not callable(drift) or not callable(diffusion):
+            raise TypeError('drift and diffusion must be callable.')
+        if np.iscomplexobj(initial_mass):
+            raise ValueError('initial_mass must be real.')
+        initial = np.asarray(initial_mass, dtype=float)
+        if initial.ndim != 2 or initial.shape[0] < 1:
+            raise ValueError('initial_mass must contain one or more probability rows.')
+        initial = np.stack([finite_volume_1d_validation.initial_mass(row) for row in initial])
+        edges, centers, dx = self.grid(initial.shape[1], bounds=bounds)
+        integration_t, output_indices = self.build_time_grid(t_eval, breakpoints, max_step)
+        mass = np.array(initial.T, order='F', copy=True)
+        history = np.empty((len(output_indices), *initial.shape), dtype=float)
+        history[0] = initial
+        next_output = 1
+        advance = self._stepper(dx, edges, centers, drift, diffusion, coefficient_key)
+        minima = initial.min(axis=1)
+        mass_errors = abs(initial.sum(axis=1)-1.)
+        column_error = 0.
+        minimum_rate = np.inf
+        for index, (left, right) in enumerate(zip(integration_t[:-1], integration_t[1:])):
+            mass, diagnostics = advance(mass, float(left), float(right-left))
+            if mass.shape != (initial.shape[1], initial.shape[0]) or not np.all(np.isfinite(mass)):
+                raise RuntimeError('Batched finite-volume evolution returned invalid masses.')
+            if np.any(mass < 0.):
+                raise RuntimeError('Batched finite-volume evolution returned negative masses; no repair.')
+            row_errors = abs(mass.T.sum(axis=1)-1.)
+            if np.any(row_errors > 1e-10):
+                raise RuntimeError('Batched finite-volume probability mass drifted; no repair.')
+            minima = np.minimum(minima, mass.min(axis=0))
+            mass_errors = np.maximum(mass_errors, row_errors)
+            column_error = max(column_error, diagnostics['maximum_abs_column_sum'])
+            minimum_rate = min(minimum_rate, diagnostics['minimum_off_diagonal_rate'])
+            if next_output < len(output_indices) and index+1 == output_indices[next_output]:
+                history[next_output] = mass.T
+                next_output += 1
+        shared = dict(integration_t=integration_t.copy(), output_indices=output_indices.copy(),
+            n_steps=len(integration_t)-1, maximum_abs_generator_column_sum=column_error,
+            minimum_off_diagonal_rate=minimum_rate, used_clipping=False, used_renormalization=False)
+        per_column = tuple(dict(shared, minimum_cell_mass=float(minima[j]),
+                                maximum_abs_mass_error=float(mass_errors[j]))
+                           for j in range(len(initial)))
+        return dict(t=np.asarray(t_eval, dtype=float).copy(), x_grid=centers, x_edges=edges,
+                    cell_mass=history, prediction_diagnostics=per_column)
 
 
 class finite_volume_2d:
