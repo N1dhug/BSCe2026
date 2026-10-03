@@ -53,6 +53,68 @@ filteret, men **ingen målt walltime-gevinst for selve filteret**. Tallene gæld
 de konkrete benchmarks, ikke hele projektet. Kørende/resumérbar G2a-v2 beholder
 altid kildecommitten fra sit manifest.
 
+## BM-figurer som i WM-eksemplerne
+
+Figureksport er nu tilgængelig i `src/tools/bm_1_outputs.py` og CLI'en
+`src/exe/run_model/bm_1/outputs.py`. Den genbruger F1/F2-beregninger og gemte
+fordelinger; den udfører ingen ny estimation. Kør i en opdateret separat mappe,
+aldrig ved at opdatere kilden under G2a-v2.
+
+Lav de første figurer med det eksisterende F2-referencescenarie:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.outputs reference
+if ($LASTEXITCODE -ne 0) { throw "BM-figureksport fejlede." }
+```
+
+Kommandoen skriver en ny mappe under `files/output/bm_1/runs/outputs/` og udskriver
+den fulde sti. Der bruges ét FV-forløb samt en deterministisk sammenligning fra
+initialfordelingens middelværdi. Eksisterende referenceinputs/parametre og solver
+genbruges; figurens outputgrid er 193 tidspunkter plus eventuelle prisbreakpoints.
+Dette er en syntetisk reference, ikke et fit på målerdata eller afsluttet H-f/g.
+
+| Fil | Indhold |
+|---|---|
+| `bm_state_density.png` | Tæthed p(X,t) med E[X] ovenpå, som WM2's tæthedsplot. |
+| `bm_response.png` | State/pris, latent state-usikkerhed, netto-opladningsdemand E[D]-B og demand/baseline; reference indeholder også deterministiske kurver. |
+| `bm_demand.png` | Demand/baseline, pris og BM-state; målinger vises kun, når kaldet indeholder dem. |
+| `moments.csv` | Tid, eventuelle tidsstempler, B/U, middelværdi, standardafvigelse, 5/95%-kvantiler og eventuelle målinger. |
+| `distribution.npz` | De fulde vægtede conditional masser og hver parameterhypoteses egne demandværdier samt inputs. |
+| `summary.json` | Fortolkning, datakontrakt/metadata, massefejl og eventuelle MSE/RMSE/MAE/bias. Bias er prediction minus observation. |
+
+Tegn den allerede gemte I-demonstration **uden nyt FV-replay eller optimizer**:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.outputs i-report --input files/output/bm_1/runs/estimation/i_baseline_development_v1.json.gz
+if ($LASTEXITCODE -ne 0) { throw "I-figureksport fejlede." }
+```
+
+Kun de syv gemte horisonter tegnes; der opfindes ingen timeprognose mellem dem.
+`--belief known` vælger den kendte parameterreference; default er `rho_map`.
+Den oprindelige I-demo og udeladt parameterusikkerhed fremgår stadig af metadata.
+Et tæthedsplots tidsfelter viser nærmeste gemte slice, ikke nye beregnede laws.
+
+Tegn en allerede eksporteret fordeling igen:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.outputs redraw --input "STIEN_TIL_DEN_TIDLIGERE_OUTPUTMAPPE"
+```
+
+Alle kommandoer accepterer `--output-dir`; en eksisterende mappe afvises.
+Eksporten bruger marginale **latente** 5–95%-kvantiler af X/D på det gemte support,
+ikke konfidensintervaller, målestøjsintervaller eller samtidig 90%-ugecoverage.
+Parameter/state-afhængigheden bevares i den fælles lov; ingen middelparameter-
+substitution, massereparation eller ny observation update. BM-state og E[D]-B
+sidestilles ikke med WM2/WM4's V/R/Q. Forecast, fit, filter og counterfactual
+control skal deklareres særskilt. Observeret forbrug under spotprisen bruges
+ikke til fejlscoring af et kontrafaktisk optimeret prisforløb.
+
+Februar-testbranchen `preview/bm-f4-february` tilsluttes samme eksport og får
+`forecast_distribution/` samt, ved kontrol, `control_distribution/` med ovenstående
+filer. Det sker fra dens allerede beregnede joint laws uden ekstra solverforløb.
+Det er fortsat et foreløbigt real-data-preview; den accepterer ikke H-f/g/I/J.
+Opdatér først en lokal preview-mappe, når dens aktuelle kørsel er stoppet/færdig.
+
 ## I-baseline og H1-forberedelse
 
 Den lille integration bruger gammelt F3-ID1326, ikke en ny population. Kendt
