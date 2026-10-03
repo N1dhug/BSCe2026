@@ -630,7 +630,7 @@ også hvis en gate fejler. Behold den gamle G1b0-fil uændret. Et bestået G1c0
 gælder alene 33x33-hat-loven på de to records; original dualcelle-accept,
 held-out population, G2 og uge-/månedsruntime følger ikke automatisk.
 
-## Næste lokale kørsel: G2a fortsatte records
+## G2a v1: afsluttet syvdages Windows-kørsel
 
 PR #54 er merged på `main` som `014446c`. G2a udvikles separat på
 **feature/f4-g-robustness-pilot** / PR #55; brugeren merger efter Windows-kørsel
@@ -639,13 +639,20 @@ og rå review. Designet er preregistreret før recordgenerering i `e058299`.
 uafhængigt råreview er afsluttet. Det accepterer kun ét døgn på Linux.
 Læs [F4.md](F4.md) for evidens, låste IDs, truth-/FV-/hat-gates og afgrænsning.
 
+**Windows-resultatet er rå-reviewet:** clean `86dc765`, alle 33.800 replays færdige,
+28646.89 s samlet, truth/raw/probability består, men rum- og hat-gates fejler.
+Exit 1 følger efter lagring af den komplette rapport. **Ingen genkørsel på grund
+af manglende terminalhistorik. G2b/G2c må ikke startes med denne kandidat.**
+Alle kontroller består gennem dag 1; dag 3 og 7 afvises. Bevar originalfilen.
+PowerShell-blokken nedenfor er reproduktionsvejledning, ikke næste kørsel.
+
 Kørslen bruger de **tre eksisterende** G1b0/G1b3/G1c0-rapporter som validerede
 dependencies, uden at gentage deres replays. Nye ID1358/1359 køres med
 **33.800 replays / 16 banker**, 8 workers og BLAS=1. Hver hypotese fortsætter
 egen state gennem midnat. Syv døgn leverer dag 1/3/7 som prefixer.
 
-**Syv døgn estimeres til 6–9 timer på brugerens Windows-maskine.**
-Det er G1b3's målte tid skaleret med længden, ikke et målt G2-resultat.
+**Det oprindelige estimat var 6–9 timer; den afsluttede Windows-kørsel målte
+7 timer og 57 minutter inklusive opstart og output.**
 En valgfri éndagskontrol (`--days 1`, eget nyt outputnavn) estimeres til
 45–90 minutter og certificerer kun ét døgn. Den er ikke påkrævet før en
 direkte syvdageskørsel; særskilte kortere kørsler giver ekstra arbejde.

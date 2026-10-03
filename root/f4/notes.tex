@@ -1630,7 +1630,61 @@ max TV-afvigelse er \(2.698\cdot10^{-16}\). Begge checkpoints reproduceres.
 Conditional state-historier er ikke alle gemt; konstruktionskontrol suppleres af
 G0 og recursion-/spawn-tests. Ingen nye conditional replays under review. Rå gzip,
 source og digests er registreret i F4-status. Dette er kun éndags Linux-evidens;
-syv døgn, Windows-råreview og G2-population afventer.
+syvdages Windows-resultatet er rå-reviewet nedenfor og afvist.
+
+\paragraph{Registreret syvdages Windows-resultat og råreview.}
+Ren \texttt{86dc765}, 8 workers og BLAS=1, gennemførte alle 33800 replays
+og 16 banker med 168 observationsprefixer. Truth-, probability- og
+raw-gates består; G2a afvises. Rapportens tid før lagring er 28563.2970 s;
+terminalens samlede tid er 28646.89 s (7 timer, 57 minutter), exit 1.
+Den afsluttende RuntimeError følger efter lagring af en komplet negativ
+rapport. Terminalhistorikken mangler setup og testresumé; Windows-testantal
+eller testtid udledes derfor ikke af dette uddrag.
+
+Alle fire tids- og fire likelihood-quadrature-kontroller består.
+Alle fire rumkontroller afvises. rho/Xi's relevante log-oddsfejl er
+0.189961/0.191937 på 33/65-gridet, mod 0.10; weight-TV er
+0.0147300/0.0147321, mod 0.01. Første log-oddsafvisning er ved
+observation 28; TV afvises først ved 43. Støjparrets relevante
+log-oddsfejl er 0.114700/0.114716 og afvises ved observation 61/58.
+Dets weight-TV er 0.00377513/0.00377377 og består.
+Alle FV-evidence- og state-L1-kontroller består.
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Hat-TV & Gennem dag 1 & Gennem dag 3 & Gennem dag 7\\
+\midrule
+$\rho/\Xi$ & 0.00672879 & 0.01789879 & 0.04048640\\
+$\sigma_x/\sigma_y$ & 0.00681781 & 0.02057818 & 0.04414739\\
+\bottomrule
+\end{tabular}
+\end{center}
+Grænsen er 0.02; første TV-afvisning er ved observation 80/69.
+Alle øvrige hat-gates består. Alle aktive kontroller består gennem dag 1;
+dag 3 og 7 afvises. Original dualcelle-TV bevares særskilt som afvist:
+0.116529/0.151180. Truth RMS/max over $\sigma_y$ er
+0.00256934/0.00571985 og 0.00419420/0.01283224, uden randkorrektioner.
+
+Råreview genvaliderer original source og faktiske dependency-digests,
+558 arrays/størrelser, long-double Bayes, alle FV-/originalkontroller og
+seks checkpoint-resuméer. Primal Gauss3-momenter og adaptiv QUADPACK
+reproducerer alle 336 aktive TV-værdier; max afvigelse $3.0573\cdot10^{-11}$.
+Max marginal-massefejl er $7.3053\cdot10^{-14}$, max registreret conditional
+massefejl $3.3679\cdot10^{-12}$ og minimum 0. Review tager 49.99 s efter
+indlæsning, uden nye conditional replays. Alle conditional state-historier
+findes ikke i artifactet; eksisterende konstruktions-/recursion-tests
+supplerer rå algebra og marginalkontrol. Gzip-størrelse og SHA-256 står i
+F4-status; den komplette råfil gør genkørsel på grund af terminalhistorik unødvendig.
+
+G2a v1 er afsluttet med et negativt numerisk resultat. G2b/G2c er
+blokeret på denne kandidat. Næste diagnose adskiller rum- og parametergrid:
+først et lille fast-parameter-panel på gamle ID1358/1359 med cached-backend
+og finere rumgrid, inklusive relevante hypoteser og støttehjørner.
+Panelet måler fejl/runtime og giver ikke bankaccept. En ny samlet
+kandidat/reference-pilot skal preregistreres med uændrede tolerancer;
+65x65 eller finere rumgrid er endnu ikke accepteret som kandidat.
+G2b/G2c's nye records bruges ikke til denne diagnose.
 
 \subsection{Prior under reparameterisering}
 
