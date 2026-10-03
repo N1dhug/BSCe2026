@@ -60,11 +60,12 @@ def validate_filter_arrays(row, record, *, cells):
         raise ValueError('Saved H1 probability guards failed.')
 
 
-def run_numerical_unit(record, f, g):
+def run_numerical_unit(record, f, g, *, numerics=None, backend='upwind'):
     """Four full replays of one candidate/record, preserving every prefix."""
-    rows = {name: filter_arrays(replay_curve_record(record, f, g, keep_history=True, **settings))
-            for name, settings in H1_NUMERICS.items()}
-    for name, settings in H1_NUMERICS.items():
+    numerics = H1_NUMERICS if numerics is None else numerics
+    rows = {name: filter_arrays(replay_curve_record(record, f, g, keep_history=True, backend=backend, **settings))
+            for name, settings in numerics.items()}
+    for name, settings in numerics.items():
         validate_filter_arrays(rows[name], record, cells=settings['cells'])
     return rows
 
@@ -73,7 +74,7 @@ def compare_numerical_unit(rows, linear_rows):
     """Recompute gates from saved arrays; no trust in a cached passes flag."""
     result = {}
     base = rows['base']
-    for name in H1_NUMERICS:
+    for name in rows:
         if name == 'base':
             continue
         fine = rows[name]

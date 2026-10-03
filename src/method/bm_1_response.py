@@ -17,7 +17,7 @@ from src.method.bm_1_estimation import run_fv_filter
 from src.model.bm_1 import bm_1
 from src.params.bm_1 import BM1ObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
-from src.solver.finite_volume import finite_volume_1d_cached
+from src.solver.finite_volume import finite_volume_1d_cached, finite_volume_1d_fitted
 from src.validation import estimation as checks
 from src.validation.model.bm import bm_validation
 
@@ -105,7 +105,7 @@ def curve_pair_logits(f, g, *, pieces):
 
 
 def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
-                        quadrature_order=3, keep_history=False):
+                        quadrature_order=3, keep_history=False, backend="upwind"):
     """One complete fresh replay, shared by fitting and full-history validation.
 
     B/U callbacks already need NumPy broadcasting for the BM1 forward output.
@@ -115,8 +115,11 @@ def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
     if not isinstance(record, CurveTrainingRecord):
         raise TypeError('A declared curve training/development record is required.')
     cells = checks.positive_integer(cells, 'cells', minimum=3)
+    if backend not in ('upwind', 'fitted'):
+        raise ValueError('Curve FV backend must be upwind or fitted.')
     model = bm_1(record.baseline, record.baseline, record.horizon, 2)
-    model.fokker_planc_reference = finite_volume_1d_cached(vectorized_inputs=True)
+    solver = finite_volume_1d_cached if backend == 'upwind' else finite_volume_1d_fitted
+    model.fokker_planc_reference = solver(vectorized_inputs=True)
     edges, _, _ = model.fokker_planc_reference.grid(cells, bounds=(0., 1.))
     initial = checks.probability_mass(record.initial_mass_builder(edges.copy()), 'initial mass')
     if initial.size != cells:

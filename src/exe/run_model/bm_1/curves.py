@@ -33,7 +33,7 @@ import numpy as np
 from src.exe.run_model.bm_1.reports import _RunLock, _atomic_report, _read_likelihood_report
 from src.exe.run_model.progress import runtime_text
 from src.validation.bm_1.response_cases import (
-    H1_IDS, H1_NUMERICS, h1_design, h1_candidate_panel, h1_training_records, response_price_support,
+    H1_IDS, H1_NUMERICS, H1_V2_NUMERICS, h1_design, h1_candidate_panel, h1_training_records, response_price_support,
 )
 from src.validation.bm_1.response_numerics import (
     run_numerical_unit, validate_filter_arrays, compare_numerical_unit,
@@ -71,7 +71,11 @@ def run_numerics(args):
     exists = directory.exists()
     if exists != args.resume:
         raise ValueError('Use a new run directory, or --resume for an existing run.')
-    manifest = dict(schema='bm1-h1-numerics-run-v1', source=source, design=h1_design())
+    version = int(getattr(args, 'design', 'v1')[1:])
+    design = h1_design(version)
+    numerics = H1_NUMERICS if version == 1 else H1_V2_NUMERICS
+    backend = 'upwind' if version == 1 else 'fitted'
+    manifest = dict(schema='bm1-h1-numerics-run-v1', source=source, design=design)
     completed, fresh, rows = 0, 0, []
     total = sum(map(len, H1_IDS.values()))*len(h1_candidate_panel())
     with _RunLock(directory):
@@ -112,15 +116,15 @@ def run_numerics(args):
                                 or perf_counter()-begun >= args.max_hours*3600):
                             stop = 'unit_budget' if args.limit_units is not None and fresh >= args.limit_units else 'time_budget'
                             break
-                        values = run_numerical_unit(record, f, g)
+                        values = run_numerical_unit(record, f, g, numerics=numerics, backend=backend)
                         if source_snapshot() != source:
                             raise ValueError('Source changed during H1; no new unit published.')
                         _atomic_report(path, dict(identity=identity, rows=values))
                         _, digest = _read_likelihood_report(path)
                         fresh += 1
-                    if set(values) != set(H1_NUMERICS):
+                    if set(values) != set(numerics):
                         raise ValueError('Saved H1 unit is incomplete.')
-                    for level, settings in H1_NUMERICS.items():
+                    for level, settings in numerics.items():
                         validate_filter_arrays(values[level], record, cells=settings['cells'])
                     if candidate_name == 'linear':
                         linear_rows = values
@@ -139,7 +143,7 @@ def run_numerics(args):
                     break
             if stop:
                 break
-        summary = dict(schema='bm1-h1-numerics-summary-v1', source=source, design=h1_design(),
+        summary = dict(schema='bm1-h1-numerics-summary-v1', source=source, design=design,
             completed=completed == total, completed_units=completed, expected_units=total,
             new_units=fresh, units=rows, stop_reason=stop,
             numerical_panel_passes=completed == total and all(row['passes'] for row in rows),
@@ -158,6 +162,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     numerics = sub.add_parser('numerics', help='Run/review the fixed H1 numerical panel.')
+    numerics.add_argument('--design', choices=('v1', 'v2'), default='v1')
     numerics.add_argument('--run-dir', type=Path, required=True)
     numerics.add_argument('--resume', action='store_true')
     numerics.add_argument('--limit-units', type=int)

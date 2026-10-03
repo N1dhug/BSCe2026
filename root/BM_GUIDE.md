@@ -174,6 +174,14 @@ python -B -m src.exe.run_model.bm_1.curves numerics --run-dir files/output/bm_1/
 if ($LASTEXITCODE -ne 0) { throw "H1-kørslen fejlede eller panelets numerik blev afvist; behold output." }
 ```
 
+V1 er gennemført og **afvist** (se F4-status). En særskilt v2-opfølgning bruger
+samme cases og grænser med eksisterende fitted-flux og finere tid/rum. Start i
+en ny mappe med `--design v2`; samme flag skal bruges ved resume:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.curves numerics --design v2 --run-dir files/output/bm_1/runs/estimation/h1_numerics_v2 --blas-threads 1
+```
+
 96 units à fire FV-replays gemmes som komprimeret NPZ. `manifest.json` fastlåser
 source, kurver, records, numerik og grænser; `summary.json` giver alle prefix-
 kontroller og SHA256 for hver råunit. Resume verificerer rådata og genkører

@@ -22,6 +22,13 @@ H1_NUMERICS = {
     'spatial': dict(cells=1601, max_step=1/1536, quadrature_order=3),
     'quadrature': dict(cells=801, max_step=1/1536, quadrature_order=5),
 }
+# Explicit post-v1 follow-up: unchanged cases/panel/gates, existing fitted flux.
+H1_V2_NUMERICS = {
+    'base': dict(cells=3201, max_step=1/12288, quadrature_order=3),
+    'time': dict(cells=3201, max_step=1/24576, quadrature_order=3),
+    'spatial': dict(cells=6401, max_step=1/12288, quadrature_order=3),
+    'quadrature': dict(cells=3201, max_step=1/12288, quadrature_order=5),
+}
 H1_TOLERANCES = dict(prefix_log_evidence=.1, centered_prefix_log_evidence=.1,
                      posterior_l1=.02, truth_state=.002, truth_demand=.003)
 
@@ -100,8 +107,10 @@ def response_price_support(prices, *, pieces=4):
                 interpretation='Input support only; not practical f/g identification.')
 
 
-def h1_design():
+def h1_design(version=1):
     """JSON-safe design frozen before generating any new observations."""
+    if version not in (1, 2):
+        raise ValueError('H1 design version must be 1 or 2.')
     cases = {}
     for name, ids in H1_IDS.items():
         case = build_h1_case(name, initial_index=0)
@@ -113,9 +122,11 @@ def h1_design():
             f=case.state_response.to_record(), g=case.price_response.to_record(),
             truth_steps=[case.truth_max_step, case.truth_fine_max_step],
             seed_roots=[case.initial_seed_root, case.brownian_seed_root, case.measurement_seed_root])
-    return dict(schema='bm1-h1-development-v1', cases=cases,
+    return dict(schema=f'bm1-h1-development-v{version}', cases=cases,
         candidates=[dict(name=n, f=f.to_record(), g=g.to_record()) for n, f, g in h1_candidate_panel()],
-        numerics=H1_NUMERICS, tolerances=H1_TOLERANCES,
+        numerics=H1_NUMERICS if version == 1 else H1_V2_NUMERICS, tolerances=H1_TOLERANCES,
+        backend='upwind' if version == 1 else 'fitted',
+        selection_basis='preregistered v1' if version == 1 else 'posthoc follow-up to rejected v1; same development records',
         observation_kind='point', time_unit='day', price_side='right',
         role='DEVELOPMENT', final_holdout_used=False,
         interpretation='Fixed-candidate numerical screen; no population/recovery/forecast acceptance.')
