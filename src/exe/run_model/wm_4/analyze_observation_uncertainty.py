@@ -47,6 +47,9 @@ def uncertainty_frame(stacked):
     if U.shape != I.shape or Temp.shape != I.shape: raise ValueError("I, U and Temp weekday matrices must have identical shape.")
 
     dI, dU = _within_day_delta(I), _within_day_delta(U)
+    mean_abs_dI, mean_abs_dU = np.full(DAY_HOURS, np.nan), np.full(DAY_HOURS, np.nan)
+    mean_abs_dI[1:] = np.mean(np.abs(dI[:, 1:]), axis=0)
+    mean_abs_dU[1:] = np.mean(np.abs(dU[:, 1:]), axis=0)
     hours = np.arange(DAY_HOURS, dtype=float)
     result = pd.DataFrame({
         "hour": hours.astype(int),
@@ -56,14 +59,13 @@ def uncertainty_frame(stacked):
         "mean_U": np.mean(U, axis=0),
         "mean_abs_U": np.mean(np.abs(U), axis=0),
         "std_U": np.std(U, axis=0, ddof=1),
-        "mean_abs_dI": np.nanmean(np.abs(dI), axis=0),
-        "mean_abs_dU": np.nanmean(np.abs(dU), axis=0),
+        "mean_abs_dI": mean_abs_dI,
+        "mean_abs_dU": mean_abs_dU,
         "mean_Temp": np.mean(Temp, axis=0),
         "std_Temp": np.std(Temp, axis=0, ddof=1),
         "time_sin": np.sin(2.0 * np.pi * hours / DAY_HOURS),
         "time_cos": np.cos(2.0 * np.pi * hours / DAY_HOURS),
     })
-    result.loc[0, ["mean_abs_dI", "mean_abs_dU"]] = np.nan
     return result
 
 
