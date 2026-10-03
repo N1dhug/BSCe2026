@@ -46,6 +46,7 @@ from src.validation.bm_1 import mixture_estimation as mixture_validation
 from src.validation.bm_1 import joint_estimation as joint_validation
 from src.validation.bm_1 import joint_grid
 from src.validation.bm_1 import joint_robustness
+from src.validation.bm_1 import joint_diagnostics
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -1357,6 +1358,37 @@ def run_fv_benchmark(args):
     return result
 
 
+def run_joint_grid_diagnosis(args):
+    """Diagnose an existing complete G2a v1; never grant production acceptance."""
+    if args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    source = _source_snapshot()
+    if source['working_tree_dirty']:
+        raise ValueError('Grid diagnosis requires a clean source checkout.')
+    started = perf_counter()
+    report, digest = _read_bank_dependency(args.g2a_report, joint_grid.validated_g2a)
+    if report['record_days'] != 7:
+        raise ValueError('Grid diagnosis requires the complete seven-day G2a report.')
+    print('G2a posthoc axis diagnosis: existing scores; no parameter-bank acceptance.', flush=True)
+    axes = joint_diagnostics.diagnose_parameter_axes(report)
+    panel = joint_diagnostics.select_spatial_panel(report)
+    def progress(done, total):
+        if not args.quiet:
+            print(f'  spatial replays {done}/{total}; elapsed={perf_counter()-started:.1f}s', flush=True)
+    spatial = joint_diagnostics.run_spatial_panel(report, panel, progress=progress)
+    if _source_snapshot() != source:
+        raise ValueError('Source changed during grid diagnosis.')
+    result = dict(stage='G2a-grid-diagnosis', registered_design=False, certifies_g2a=False,
+        completed=True, sequence_ids=list(joint_grid.G2A_IDS), record_days=7,
+        input_g2a=dict(sha256=digest, source_commit=report['source_commit'], passes=report['passes']),
+        axis_diagnosis=axes, spatial_panel=panel, spatial_diagnosis=spatial,
+        conditional_runs=spatial['conditional_runs'],
+        interpretation='Posthoc diagnosis on old records. Axis comparisons use saved conditional scores; state-mixture convergence is not inferred. Spatial checks use a selected conditional subset, not a complete bank. No new G2 acceptance.')
+    _write_likelihood_report(args, result, started)
+    print(f"Grid diagnosis complete: {result['conditional_runs']} replays; G2a certification=False", flush=True)
+    return result
+
+
 def _source_snapshot():
     """Capture source before a resumable job, and verify it again before saving."""
     revision = subprocess.run(['git','rev-parse','HEAD'], cwd=ROOT, text=True, capture_output=True, check=True).stdout.strip()
@@ -1585,6 +1617,12 @@ def build_parser():
     benchmark.add_argument('--output', type=Path)
     benchmark.add_argument('--quiet', action='store_true')
     benchmark.set_defaults(handler=run_fv_benchmark)
+    diagnosis = subparsers.add_parser('joint-bank-grid-diagnose',
+        help='Posthoc axis/three-level spatial diagnosis on a complete old seven-day G2a report.')
+    diagnosis.add_argument('--g2a-report', type=Path, required=True)
+    diagnosis.add_argument('--output', type=Path, required=True)
+    diagnosis.add_argument('--quiet', action='store_true')
+    diagnosis.set_defaults(handler=run_joint_grid_diagnosis)
     for command_name, stage in (('joint-bank-robustness-pilot','G2b'), ('joint-bank-robustness-population','G2c')):
         robustness = subparsers.add_parser(command_name, help=f'{stage}: gated, resumable seven-day paired experiments.')
         robustness.add_argument('--g2a-report', type=Path, required=True)
