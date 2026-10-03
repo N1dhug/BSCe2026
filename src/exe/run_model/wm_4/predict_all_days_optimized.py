@@ -98,7 +98,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
         "equilibrium_prediction_state": bool(equilibrium_initial_state), "prediction_state_fit_mse": init_fit_mse,
         "r_F": r[0], "r_U": r[1], "r_R": r[2], "r_0": r[3],
         "fit_intercept": bool(fit["fit_intercept"]),
-        "U_0": float(U(model.t[0])), "equilibrium_gain": float(-r[1] / r[0]),
+        "U_0": float(U(model.t[0])), "equilibrium_gain": float(-r[1] / r[0]), "equilibrium_offset": float(-r[3] / r[0]),
         "F_0": init[0], "R_0": init[1],
         "training_F0_mean": float(np.mean(training_states[:, 0])),
         "training_F0_std": float(np.std(training_states[:, 0])),
@@ -211,7 +211,7 @@ def main():
     parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
     parser.add_argument("--optimize-initial-state", action="store_true", help="Oracle diagnostic: fit prediction-day [F0,R0] from that day's observed I for top-end parameterization comparison.")
     parser.add_argument("--zero-initial-state", action="store_true", help="Predict every day from the fixed neutral initial state [F0,R0]=[0,0].")
-    parser.add_argument("--equilibrium-initial-state", action="store_true", help="Predict every day from F0=-(r_U/r_F)U0 and R0=0 using fitted historical parameters and the known midnight price.")
+    parser.add_argument("--equilibrium-initial-state", action="store_true", help="Predict every day from F0=-(r_0+r_U*U0)/r_F and R0=0 using fitted historical parameters and the known midnight price.")
     parser.add_argument("--save-daily-plots", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--max-state-iter", type=int, default=50)
