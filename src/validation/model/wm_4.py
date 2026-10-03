@@ -20,12 +20,14 @@ class wm_4_validation(wm_1_validation):
 
     @classmethod
     def r_coefficients(cls, r, tol=1e-10):
-        r = cls.vector(r, 3, "r")
-        r_F, r_U, r_R = map(float, r)
+        values = np.asarray(r, dtype=float).reshape(-1)
+        if values.size == 3: values = np.concatenate((values, np.array([0.0])))
+        r = cls.vector(values, 4, "r")
+        r_F, r_U, r_R, r_0 = map(float, r)
         if r_F >= -tol: raise ValueError("wm_4 requires r_F < 0 so the flexibility dynamics are restoring.")
         if r_U > tol: raise ValueError("wm_4 requires r_U <= 0 so higher signed prices reduce flexibility flow.")
         if r_R >= -tol: raise ValueError("wm_4 requires r_R < 0 so the rate state is damped.")
-        if r_U < r_F - tol: raise ValueError("wm_4 requires r_F <= r_U so F*(U) remains in [-1, 1] for U in [-1, 1].")
+        if r_F - r_U + abs(r_0) > tol: raise ValueError("wm_4 requires |r_0| - r_U <= -r_F so F*(U) remains in [-1, 1] for U in [-1, 1].")
         return r
 
     @classmethod
@@ -38,11 +40,12 @@ class wm_4_validation(wm_1_validation):
         return q
 
     @classmethod
-    def legacy_r(cls, q, kappa_R):
+    def legacy_r(cls, q, kappa_R, q_0=0.0):
         q = cls.q_coefficients(q)
+        q_0 = cls._finite_scalar(q_0, "q_0")
         kappa_R = cls._finite_scalar(kappa_R, "kappa_R")
         if kappa_R <= 0.0: raise ValueError("kappa_R must be positive.")
-        return cls.r_coefficients(np.array([kappa_R * q[0], kappa_R * q[1], -kappa_R], dtype=float))
+        return cls.r_coefficients(np.array([kappa_R * q[0], kappa_R * q[1], -kappa_R, kappa_R * q_0], dtype=float))
 
     @classmethod
     def coefficients(cls, r, gamma=None):
@@ -64,12 +67,13 @@ class wm_4_validation(wm_1_validation):
         if "PE" in validated and not callable(validated["PE"]): raise TypeError("parameters['PE'] must be callable.")
         validated.setdefault("PE", lambda _t: 0.0)
 
-        r = cls.r_coefficients(validated["r"]) if "r" in validated else cls.legacy_r(validated["q"], validated["kappa_R"])
+        r = cls.r_coefficients(validated["r"]) if "r" in validated else cls.legacy_r(validated["q"], validated["kappa_R"], validated.get("q_0", 0.0))
         r, gamma = cls.coefficients(r, validated.get("gamma"))
         validated["r"], validated["gamma"] = r, gamma
         kappa_R = -r[2]
         validated["kappa_R"] = float(kappa_R)
         validated["q"] = r[:2] / kappa_R
+        validated["q_0"] = float(r[3] / kappa_R)
         return validated
 
     @classmethod
