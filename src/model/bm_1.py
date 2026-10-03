@@ -184,26 +184,8 @@ class bm_1(bm):
         )
         return (*output, diagnostics)
 
-    def fokker_planc_reference_solver(
-        self,
-        initial_mass,
-        parameters,
-        sigma_x,
-        *,
-        t_eval=None,
-        breakpoints=None,
-        max_step=np.inf,
-    ):
-        """Solve stochastic bm_1 with the pure finite-volume Fokker-Planck reference.
-
-        The state distribution is represented by cell probability masses on
-        [0, 1]. The supplied initial_mass must already be normalized; this
-        reference does not clip or renormalize probability during evolution.
-        """
-        if t_eval is None:
-            t_eval = self.t.copy()
-        _, parameters, sigma_x = bm_1_validation.stochastic_inputs([0.5], parameters, sigma_x)
-
+    def _fv_evolution_fields(self, parameters, sigma_x, t_eval, breakpoints, max_step):
+        """Build the shared FV fields and exact cache keys for fixed parameters."""
         def drift(t, X):
             return self._drift(t, X, parameters)
 
@@ -232,6 +214,31 @@ class bm_1(bm):
                 def coefficient_key(time):
                     return (float(self.B(time)), float(parameters[0](time)))
             options['coefficient_key'] = coefficient_key
+        return drift, diffusion, options
+
+    def fokker_planc_reference_solver(
+        self,
+        initial_mass,
+        parameters,
+        sigma_x,
+        *,
+        t_eval=None,
+        breakpoints=None,
+        max_step=np.inf,
+    ):
+        """Solve stochastic bm_1 with the pure finite-volume Fokker-Planck reference.
+
+        The state distribution is represented by cell probability masses on
+        [0, 1]. The supplied initial_mass must already be normalized; this
+        reference does not clip or renormalize probability during evolution.
+        """
+        if t_eval is None:
+            t_eval = self.t.copy()
+        _, parameters, sigma_x = bm_1_validation.stochastic_inputs([0.5], parameters, sigma_x)
+
+        drift, diffusion, options = self._fv_evolution_fields(
+            parameters, sigma_x, t_eval, breakpoints, max_step,
+        )
         result = self.fokker_planc_reference.solve(
             t_eval,
             initial_mass,

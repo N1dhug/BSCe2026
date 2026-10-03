@@ -181,10 +181,13 @@ def _candidate_replay(task):
     case,obs,settings = group['case'],group['observations'],group['settings']
     model,base = case.build_model()
     backend = group.get('backend','reference')
-    if backend in ('lapack', 'cached'):
-        from src.solver.finite_volume import finite_volume_1d_lapack, finite_volume_1d_cached
-        model.fokker_planc_reference = (finite_volume_1d_cached(vectorized_inputs=True) if backend == 'cached'
-                                       else finite_volume_1d_lapack())
+    if backend in ('lapack', 'cached', 'fitted'):
+        from src.solver.finite_volume import (
+            finite_volume_1d_lapack, finite_volume_1d_cached, finite_volume_1d_fitted,
+        )
+        solver = {'lapack': finite_volume_1d_lapack, 'cached': finite_volume_1d_cached,
+                  'fitted': finite_volume_1d_fitted}[backend]
+        model.fokker_planc_reference = (solver(vectorized_inputs=True) if backend != 'lapack' else solver())
     elif backend!='reference':
         raise ValueError('Unknown conditional FV backend.')
     candidate = replace(core.f4_e_truth_candidate(case),
@@ -197,10 +200,16 @@ def _candidate_replay(task):
     except (RuntimeError,ValueError,FloatingPointError) as exc:
         raise RuntimeError(f"{group.get('stage','G1a')} replay failed: ID{group['sequence_id']}, {group['pair']}="
                            f"{group['hypotheses'][j].tolist()}, {group['label']}: {exc}") from exc
+    payload = _replay_payload(result, group, model, core._f4_e_parameters(base, candidate), 0.)
+    payload['elapsed_seconds'] = perf_counter()-started
+    return i, j, payload
+
+
+def _replay_payload(result, group, model, parameters, elapsed):
+    case, obs, settings = group['case'], group['observations'], group['settings']
     extra = {}
     if group.get('keep_demand', False):
         from src.method.bm_1_estimation import _observation_demand, _legendre_rule
-        parameters = core._f4_e_parameters(base, candidate)
         nodes, weights = _legendre_rule(settings['likelihood_quadrature_order'])
         points = result.x_grid[:, None] + np.diff(result.x_edges)[:, None]*nodes[None, :]/2
         demand_cache = {}
@@ -215,10 +224,140 @@ def _candidate_replay(task):
         demands = np.asarray(means)
         extra = {phase+'_demand_mean': np.sum(demands*getattr(result, phase+'_mass'), axis=1)
                  for phase in ('predicted', 'posterior')}
-    return i,j,dict(scores=result.log_evidence,predicted=result.predicted_mass,posterior=result.posterior_mass,
+    return dict(scores=result.log_evidence,predicted=result.predicted_mass,posterior=result.posterior_mass,
                     maximum_abs_mass_error=result.maximum_abs_mass_error,minimum_cell_mass=result.minimum_cell_mass,
                     actual_max_step=max(d['actual_max_step'] for d in result.prediction_diagnostics),
-                    elapsed_seconds=perf_counter()-started, **extra)
+                    elapsed_seconds=elapsed, **extra)
+
+
+def _candidate_batch_replay(task):
+    """Opt-in noise-axis batch; different process operators may never mix."""
+    i, start, stop, group = task
+    if stop-start == 1:
+        return [_candidate_replay((i, start, group))]
+    if tuple(group['pair']) != ('sigma_x', 'sigma_y') or group.get('backend') != 'cached':
+        raise ValueError('Only cached sigma_x/sigma_y replays may share an operator.')
+    hypotheses = np.asarray(group['hypotheses'])[start:stop]
+    if not len(hypotheses) or np.any(hypotheses[:, 0] != hypotheses[0, 0]):
+        raise ValueError('A sigma_y batch must have exactly one fixed sigma_x.')
+    from src.method.bm_1_batch_filter import run_fv_sigma_y_batch
+    from src.solver.finite_volume import finite_volume_1d_cached
+    started = perf_counter()
+    case, obs, settings = group['case'], group['observations'], group['settings']
+    model, base = case.build_model()
+    model.fokker_planc_reference = finite_volume_1d_cached(vectorized_inputs=True)
+    candidate = replace(core.f4_e_truth_candidate(case), sigma_x=float(hypotheses[0, 0]))
+    parameters = core._f4_e_parameters(base, candidate)
+    try:
+        results = run_fv_sigma_y_batch(model, parameters, candidate.sigma_x, hypotheses[:, 1],
+            core.beta_initial_mass(case, model, settings['x_steps']), case.horizon[0], obs,
+            breakpoints=case.breakpoints, max_step=settings['max_step'],
+            likelihood_quadrature_order=settings['likelihood_quadrature_order'])
+    except (RuntimeError, ValueError, FloatingPointError) as exc:
+        raise RuntimeError(f"{group.get('stage', 'G')} sigma_y batch failed: ID{group['sequence_id']}, "
+                           f"hypotheses {start}:{stop}, {group['label']}: {exc}") from exc
+    seconds = perf_counter()-started
+    payloads = []
+    for offset, result in enumerate(results):
+        payload = _replay_payload(result, group, model, parameters, seconds/len(results))
+        payload.update(batch_hypotheses=len(results), shared_batch_elapsed_seconds=seconds,
+                       timing_interpretation='equal share of shared filter walltime; not a scalar replay timing')
+        payloads.append((i, start+offset, payload))
+    return payloads
+
+
+def benchmark_sigma_y_batch(*, record_days=7, repeats=2, batch_size=4, progress=None):
+    """Paired execution benchmark on old G2a noise data, not convergence evidence.
+
+    Compare three process-noise values, the four rectangular-v2 FV settings,
+    and equally spaced sigma_y support nodes. Timings include result creation;
+    backend order alternates. All state prefixes are checked during execution.
+    Scores and final states are retained for independent partial raw review.
+    """
+    from src.validation.bm_1 import joint_pilot
+    repeats = checks.positive_integer(repeats, 'repeats')
+    batch_size = checks.positive_integer(batch_size, 'batch_size', minimum=2)
+    if batch_size > 4:
+        raise ValueError('Batch benchmark supports two to four hypotheses.')
+    pair = ('sigma_x', 'sigma_y')
+    case, sequence, truth = joint_pilot.grid._g2a_truth_record(pair, joint_pilot.grid.G2A_IDS[1], record_days)
+    if not truth['passes']:
+        raise RuntimeError('Benchmark truth record failed; no repaired or selected survivor.')
+    noise_bounds = np.asarray(core.F4_E_PARAMETER_GRIDS['sigma_y'])[[0, -1]]
+    noises = np.geomspace(*noise_bounds, batch_size)
+    process_bounds = np.asarray(core.F4_E_PARAMETER_GRIDS['sigma_x'])[[0, -1]]
+    processes = np.geomspace(*process_bounds, 3)
+    rows = []
+    for sigma in processes:
+        for label, settings in joint_pilot.configurations(pair):
+            group = dict(pair=pair, sequence_id=sequence.sequence_id, case=case,
+                observations=sequence.observations, backend='cached', label=label, settings=settings,
+                hypotheses=np.column_stack((np.full(batch_size, sigma), noises)))
+            timings = {'scalar': [], 'batch': []}
+            errors = dict(scores=0., predicted=0., posterior=0., actual_max_step=0.,
+                          joint_log_weights=0., cumulative_log_evidence=0.)
+            maxima, minima = [], []
+            for repeat in range(repeats):
+                results = {}
+                for mode in (('scalar', 'batch') if repeat % 2 == 0 else ('batch', 'scalar')):
+                    started = perf_counter()
+                    results[mode] = ([_candidate_replay((0, j, group)) for j in range(batch_size)]
+                                     if mode == 'scalar' else _candidate_batch_replay((0, 0, batch_size, group)))
+                    timings[mode].append(perf_counter()-started)
+                for scalar, batched in zip(results['scalar'], results['batch']):
+                    a, b = scalar[2], batched[2]
+                    for key in ('scores', 'predicted', 'posterior', 'actual_max_step'):
+                        errors[key] = max(errors[key], float(np.max(abs(np.asarray(a[key])-b[key]))))
+                    for result in (a, b):
+                        maxima.append(result['maximum_abs_mass_error'])
+                        minima.append(result['minimum_cell_mass'])
+                raw = {}
+                for mode in ('scalar', 'batch'):
+                    scores = np.column_stack([r[2]['scores'] for r in results[mode]])
+                    joint = -np.log(batch_size)+np.cumsum(scores, axis=0)
+                    evidence = logsumexp(joint, axis=1)
+                    raw[mode] = dict(scores=scores, log_weights=joint-evidence[:, None], evidence=evidence,
+                        final_predicted=np.stack([r[2]['predicted'][-1] for r in results[mode]]),
+                        final_posterior=np.stack([r[2]['posterior'][-1] for r in results[mode]]))
+                for key, field in (('joint_log_weights', 'log_weights'), ('cumulative_log_evidence', 'evidence')):
+                    errors[key] = max(errors[key], float(np.max(abs(raw['scalar'][field]-raw['batch'][field]))))
+            passes = bool(max(errors.values()) <= 1e-10 and max(maxima) <= 1e-10 and min(minima) >= 0.)
+            retained = {mode: {key: value.tolist() for key, value in values.items()}
+                        for mode, values in raw.items()}
+            rows.append(dict(sigma_x=float(sigma), sigma_y_values=noises.tolist(), label=label, settings=settings,
+                timings_seconds=timings, maximum_errors=errors, maximum_abs_mass_error=max(maxima),
+                minimum_cell_mass=min(minima), final_repeat_raw=retained, passes=passes))
+            if progress is not None:
+                progress(len(rows), 12)
+    scalar_time = sum(float(np.median(r['timings_seconds']['scalar'])) for r in rows)
+    batch_time = sum(float(np.median(r['timings_seconds']['batch'])) for r in rows)
+    return dict(stage='FV-sigma-y-batch-benchmark', design_version=1, record_days=record_days,
+        sequence_id=sequence.sequence_id, observation_times=sequence.observations.times.tolist(),
+        observations=sequence.observations.values.tolist(), batch_size=batch_size, repeats=repeats,
+        tested_scalar_hypotheses=12*batch_size*repeats, tested_batch_calls=12*repeats,
+        tolerance=1e-10, rows=rows, measured_serial_speedup=scalar_time/batch_time,
+        median_scalar_seconds_sum=scalar_time, median_batch_seconds_sum=batch_time,
+        passes=all(r['passes'] for r in rows),
+        interpretation='Same-record backend equivalence and serial timings; no G2 convergence/production release.',
+        retained_raw='Every score and final state of the final repeat; earlier repeats/all state prefixes checked during execution.')
+
+
+def _batch_tasks(groups):
+    """Keep hypothesis order and bound batches at each process-parameter boundary."""
+    for i, group in enumerate(groups):
+        width = checks.positive_integer(group.get('batch_sigma_y', 1), 'batch_sigma_y')
+        if width > 4:
+            raise ValueError('batch_sigma_y is bounded at four to limit worker/result memory.')
+        if width > 1 and (tuple(group['pair']) != ('sigma_x', 'sigma_y') or group.get('backend') != 'cached'):
+            raise ValueError('sigma_y batching requires the cached noise pair.')
+        hypotheses = np.asarray(group['hypotheses'])
+        start = 0
+        while start < len(hypotheses):
+            stop = start+1
+            while stop < min(start+width, len(hypotheses)) and hypotheses[stop, 0] == hypotheses[start, 0]:
+                stop += 1
+            yield i, start, stop, group
+            start = stop
 
 
 def benchmark_joint_fv(*, record_days=7, repeats=2, progress=None):
@@ -375,41 +514,56 @@ def _run_groups(groups, workers, progress=None, *, reducer=_reduce):
 
 
 def _run_groups_streaming(groups, workers, progress, accumulator_factory):
-    """Bound in-flight results to 2*workers and consume in hypothesis order.
+    """Reduce in hypothesis order with a bounded result queue.
 
-    A completed conditional is reduced immediately and then released. Ordered
-    consumption makes summation independent of worker completion order; the
-    bounded queue also prevents a slow early task from growing a result cache.
-    No conditional result is shared across different experiments or settings.
+    Scalar execution keeps the original 2*workers queue. Opt-in noise batching
+    allows one at-most-four-hypothesis batch per worker. A different process
+    operator, record or FV configuration never shares a conditional trajectory.
     """
-    tasks = ((i,j,g) for i,g in enumerate(groups) for j in range(len(g['hypotheses'])))
+    batched = any(g.get('batch_sigma_y', 1) != 1 for g in groups)
+    tasks = (_batch_tasks(groups) if batched else
+             ((i, j, g) for i, g in enumerate(groups) for j in range(len(g['hypotheses']))))
     total = sum(len(g['hypotheses']) for g in groups)
-    manager = ProcessPoolExecutor(max_workers=workers,mp_context=get_context('spawn')) if workers>1 else nullcontext(None)
-    rows = [];current = None;accumulator = None;expected_j = 0
+    manager = (ProcessPoolExecutor(max_workers=workers, mp_context=get_context('spawn'))
+               if workers > 1 else nullcontext(None))
+    rows, current, accumulator, expected_j = [], None, None, 0
+    worker_function = _candidate_batch_replay if batched else _candidate_replay
     with manager as pool:
         queue = deque()
         def enqueue():
-            task = next(tasks,None)
+            task = next(tasks, None)
             if task is not None:
-                queue.append(pool.submit(_candidate_replay,task) if pool is not None else task)
-        for _ in range(2*workers if pool is not None else 1): enqueue()
+                queue.append(pool.submit(worker_function, task) if pool is not None else task)
+        capacity = (workers if batched else 2*workers) if pool is not None else 1
+        for _ in range(capacity):
+            enqueue()
         completed = 0
         while queue:
             item = queue.popleft()
-            i,j,conditional = item.result() if pool is not None else _candidate_replay(item)
+            results = item.result() if pool is not None else worker_function(item)
             enqueue()
-            if i!=current:
-                if accumulator is not None: rows.append(accumulator.finish())
-                if i!=len(rows): raise RuntimeError('Streaming bank order changed.')
-                current=i;expected_j=0;accumulator=accumulator_factory(groups[i])
-            if j!=expected_j: raise RuntimeError('Streaming hypothesis order changed.')
-            accumulator.add(j,conditional);expected_j+=1;completed+=1
-            del conditional,item
-            if progress is not None:
-                progress(dict(completed=completed,total=total,pair=groups[i]['pair'],
-                              sequence_id=groups[i]['sequence_id'],label=groups[i]['label']))
-        if accumulator is not None: rows.append(accumulator.finish())
-    if completed!=total or len(rows)!=len(groups):
+            if not batched:
+                results = [results]
+            for i, j, conditional in results:
+                if i != current:
+                    if accumulator is not None:
+                        rows.append(accumulator.finish())
+                    if i != len(rows):
+                        raise RuntimeError('Streaming bank order changed.')
+                    current, expected_j = i, 0
+                    accumulator = accumulator_factory(groups[i])
+                if j != expected_j:
+                    raise RuntimeError('Streaming hypothesis order changed.')
+                accumulator.add(j, conditional)
+                expected_j += 1
+                completed += 1
+                if progress is not None:
+                    progress(dict(completed=completed, total=total, pair=groups[i]['pair'],
+                                  sequence_id=groups[i]['sequence_id'], label=groups[i]['label']))
+            del results, item, conditional
+        if accumulator is not None:
+            rows.append(accumulator.finish())
+    if completed != total or len(rows) != len(groups):
         raise RuntimeError('Streaming study did not complete every replay.')
     return rows
 
