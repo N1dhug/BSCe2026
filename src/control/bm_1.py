@@ -650,6 +650,38 @@ class FVStochasticPriceEvaluator(_PriceEvaluatorBase):
         """Scalar objective interface for a numerical optimizer."""
         return self.evaluate(prices).total
 
+    def evaluate_cost(self, prices):
+        """Return cost outputs; accelerated subclasses may avoid storing history."""
+        evaluation = self.evaluate(prices)
+        return FVCostEvaluation(evaluation.objective, evaluation.diagnostics, evaluation.penalties)
+
+    def evaluate_targets(self, prices, targets):
+        """Evaluate target-only alternatives with one fixed-price propagation.
+
+        Each row of ``targets`` gives A at this evaluator's existing midpoints.
+        Parameters, prices, baseline, initial law and grids stay fixed. A is
+        used only in the tracking cost, never as a changed process input.
+        Terminal/price penalties are retained. This covers quadratic tracking,
+        not an unimplemented general F5 economic or risk objective.
+        """
+        if np.iscomplexobj(targets):
+            raise ValueError('targets must be real.')
+        targets = np.asarray(targets, dtype=float)
+        if (targets.ndim != 2 or targets.shape[0] == 0
+                or targets.shape[1] != self.midpoints.size
+                or not np.all(np.isfinite(targets))):
+            raise ValueError('targets must have shape (candidates, midpoint times) and be finite.')
+        # FastFV overrides the cost-only path to avoid storing density history.
+        # No cache survives this explicit sweep.
+        evaluation = self.evaluate_cost(prices)
+        return tuple(FVCostEvaluation(
+            objective=tracking.stochastic_tracking_objective(
+                self.widths, evaluation.objective.expected_demand,
+                evaluation.objective.second_moment, target,
+            ),
+            diagnostics=dict(evaluation.diagnostics), penalties=evaluation.penalties,
+        ) for target in targets)
+
 
 class FastFVStochasticPriceEvaluator(FVStochasticPriceEvaluator):
     """Drop-in opt-in evaluator; construct a new instance if grids change.

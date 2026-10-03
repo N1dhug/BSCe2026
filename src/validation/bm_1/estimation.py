@@ -1316,10 +1316,10 @@ def _evaluate_f4_e_prepared(
         breakpoints=case.breakpoints,
         max_step=max_step,
         likelihood_quadrature_order=likelihood_quadrature_order,
+        keep_history=False,
     )
     log_evidence = filtered.log_evidence[filtered.observed].copy()
     log_evidence.setflags(write=False)
-    integration_t = filtered.integration_t
     return {
         'candidate': candidate,
         'total_log_likelihood': float(np.sum(log_evidence)),
@@ -1328,8 +1328,8 @@ def _evaluate_f4_e_prepared(
         'minimum_cell_mass': filtered.minimum_cell_mass,
         'x_steps': x_steps,
         'max_step': max_step,
-        'actual_max_step': float(np.max(np.diff(integration_t))),
-        'n_steps': int(integration_t.size - 1),
+        'actual_max_step': filtered.actual_max_step,
+        'n_steps': filtered.n_steps,
         'likelihood_quadrature_order': likelihood_quadrature_order,
     }
 

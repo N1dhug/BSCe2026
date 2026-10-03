@@ -1,0 +1,91 @@
+{
+  "benchmark": "F4-F6 avoid redundant storage/propagation",
+  "repeats": 3,
+  "scope": "Implementation equality and local timing only; not H-f/g, F5 or F6 validation.",
+  "environment": {
+    "platform": "Linux-6.18.44-x86_64-with-glibc2.39",
+    "python": "3.12.14",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0"
+  },
+  "source_sha256": {
+    "src/method/bm_1_estimation.py": "fc5774006d9731b843cf15d4f5de1cc9b4baed1e586d799e4ba9df5023dbd0c3",
+    "src/control/bm_1.py": "9870c59085cf9248772871a361a3f6378d9b0475bc3a702a11ee4b4af7e02c33",
+    "src/control/objective.py": "ae098b1ecb5af095b970c961b97463bb726e365f09cb38340524e6991d6dbece",
+    "src/validation/bm_1/estimation.py": "3061daa9abab07022f567ca282c97d51cd50a2430a555d485d0a4a3f0d937988",
+    "src/validation/bm_1/joint_pilot.py": "63ca7f7c096d0aef6988f76967ec80235d2478d21b843eb1990a8b493dab07f5",
+    "src/model/bm_1.py": "ef902d4acd9555bd185001fbbaf3b5e9bf63ab6eab9de1967476d1c66a91d307",
+    "src/model/base/bm.py": "3c0066ca559898c1c5b15ff433a3cd902b01fbd99438745aabcac76344282522",
+    "src/solver/finite_volume.py": "28cf8118216457ea7d87bb775d36885fc8cc6f94614db005d38335ad4e497d03",
+    "src/validation/solver/finite_volume.py": "e8eecd9025a055b62af16c92c9ba5421df8f1c4b8eef33fecca9f1c267497377",
+    "src/params/bm_1.py": "4cce1629c26d548401786b48f668679f1182658d4ccb3009f23037ffea07f140",
+    "tests/benchmark_bm_efficiency.py": "cd0b00d38c511c44a6cc5a711a3c34ec3846630b02f7fbd6a89418698b4ee5b6"
+  },
+  "likelihood": {
+    "sequence_id": 1359,
+    "record_days": 7,
+    "observations": 168,
+    "cells": 3201,
+    "max_step": 0.0006510416666666666,
+    "quadrature_order": 3,
+    "seconds": {
+      "full": [
+        1.0260175239964155,
+        1.0246777279971866,
+        1.167808514990611
+      ],
+      "likelihood_only": [
+        1.0296018560038647,
+        1.05309841100825,
+        1.0625077269942267
+      ]
+    },
+    "median_seconds": {
+      "full": 1.0260175239964155,
+      "likelihood_only": 1.05309841100825
+    },
+    "peak_tracemalloc_bytes": {
+      "full": 35168824,
+      "likelihood_only": 1287559
+    },
+    "maximum_absolute_differences": {
+      "log_evidence": 0.0,
+      "final_posterior": 0.0,
+      "final_prediction": 0.0,
+      "total_log_likelihood": 0.0,
+      "mass_error": 0.0,
+      "minimum_cell_mass": 0.0,
+      "actual_max_step": 0.0,
+      "n_steps": 0
+    }
+  },
+  "target_sweep": {
+    "candidates": 21,
+    "horizon_days": 1,
+    "cells": 201,
+    "objective_max_step": 0.010416666666666666,
+    "solver_max_step": 0.0013020833333333333,
+    "propagations": {
+      "independent": 21,
+      "reused": 1
+    },
+    "seconds": {
+      "independent": [
+        0.4094795020064339,
+        0.4071768180001527,
+        0.42426218699256424
+      ],
+      "reused": [
+        0.02168167599302251,
+        0.020408204989507794,
+        0.01897118700435385
+      ]
+    },
+    "median_seconds": {
+      "independent": 0.4094795020064339,
+      "reused": 0.020408204989507794
+    },
+    "maximum_absolute_cost_difference": 0.0,
+    "scope": "Same U, baseline, parameters, prior, time grid and quadratic tracking; A alone changes."
+  }
+}

@@ -20,6 +20,39 @@ den sammenlignes med en enklere to-stykkers og den lineære reference.
 Frosne kurver/skalaer bruges ved validering og forecast. Det eksisterende G-design
 forbliver den lineære reference; denne beslutning ændrer ikke gamle run/checkpoints.
 
+## Genbrug i F4–F6
+
+Læs F4-planens **Yderligere effektivisering** før ny implementering: ét fælles
+I/F5/F6-interface, tidlig f/g-pilot og forberedelse af økonomi/sløjfe under fits.
+
+* `run_fv_filter(..., keep_history=False)` returnerer `BM1FVLikelihoodResult` med
+  `log_evidence`, `observed`, `total_log_likelihood`, `final_step` og samlede
+  numeriske diagnoser. Ingen mellemliggende state-historik lagres. Alle observationer
+  og steps beregnes stadig med den eksisterende kernel. E's kandidat-likelihood
+  bruger dette automatisk; en kommende H-f/g-optimizer bør også bruge det.
+  Brug default `keep_history=True` til state-/forecast-validering og figurer.
+* `evaluator.evaluate_targets(prices, targets)` på FV-evaluators vurderer hver
+  target-række på `evaluator.midpoints` med én fælles propagation ved fast pris.
+  Returnerer én `FVCostEvaluation` per række, inklusive uændrede F3-straffe.
+  Andre priser, priorer, kurver, baseline/process-inputs eller numerik kan ikke
+  genbruge denne propagation. Det er kvadratisk tracking, ikke fuld F5-økonomi.
+
+Parret implementation-/hukommelsesbenchmark i en **separat** opdateret mappe:
+
+```powershell
+$env:OPENBLAS_NUM_THREADS = "1"
+$env:OMP_NUM_THREADS = "1"
+python -B -m tests.benchmark_bm_efficiency --repeats 3 --output files/output/bm_1/benchmarks/f4_f6_efficiency_local.json
+```
+
+Kommandoen afviser eksisterende output og gemmer rå tider, miljø, kilders SHA256
+og numeriske forskelle. Tracemalloc køres særskilt fra tidsmålingen; sporet
+peak-allokering er ikke hele processens RAM. Målingen fra 3. oktober gav 20.06×
+for et sweep med 21 A-mål og 96.34% mindre sporet hukommelse for likelihood-only
+filteret, men **ingen målt walltime-gevinst for selve filteret**. Tallene gælder
+de konkrete benchmarks, ikke hele projektet. Kørende/resumérbar G2a-v2 beholder
+altid kildecommitten fra sit manifest.
+
 ## Almindelig kontrol fra projektmappen
 
 ```powershell

@@ -22,6 +22,12 @@ chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
   `src/exe/run_model/progress.py`; medregn forskellig opgavepris, hvor den er
   kendt, og adskil nyt arbejde fra gemt arbejde ved resume. Ingen ekstra replays
   eller hyppigere checkpoint-skrivning for at måle ETA.
+- Følg også F4-planens afsnit **Yderligere effektivisering**: fælles I/F5/F6-
+  interfaces, tidlig H-f/g-pilot og forberedelse under beregninger. Brug
+  `run_fv_filter(..., keep_history=False)` til rene likelihood-kandidater og
+  `evaluate_targets` til flere kvadratiske A-mål ved uændret U/process. Fuld
+  historik/validering bevares for valgte modeller; de nye helpers afslutter
+  hverken H-f/g, F5 eller F6. Ingen ny spekulativ solveromskrivning på kritisk vej.
 
 Disse kurveregler gælder BM og ændrer ikke WM-modellernes egne fitkontrakter.
 

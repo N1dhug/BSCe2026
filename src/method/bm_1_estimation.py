@@ -614,12 +614,66 @@ def fv_filter_step(model, parameters, sigma_x, sigma_y, prior_mass, previous_tim
     )
 
 
+@dataclass(frozen=True)
+class BM1FVLikelihoodResult:
+    """Likelihood-only replay, retaining the final state and every guard result.
+
+    Intermediate density histories are deliberately absent. Re-run the chosen
+    candidate with full history for plots and validation; this is not a new
+    estimator or a substitute for state/forecast validation.
+    """
+
+    final_step: BM1FVFilterStep
+    log_evidence: ArrayLike
+    observed: ArrayLike
+    maximum_abs_mass_error: float
+    minimum_cell_mass: float
+    actual_max_step: float
+    n_steps: int
+
+    def __post_init__(self):
+        if not isinstance(self.final_step, BM1FVFilterStep):
+            raise TypeError('final_step must be a BM1FVFilterStep.')
+        observed = np.asarray(self.observed).copy()
+        if np.iscomplexobj(self.log_evidence):
+            raise ValueError('log_evidence must be real.')
+        scores = np.asarray(self.log_evidence, dtype=float).copy()
+        if (observed.ndim != 1 or observed.size == 0 or observed.dtype.kind != 'b'
+                or scores.shape != observed.shape
+                or np.any(~np.isfinite(scores[observed]))
+                or np.any(~np.isnan(scores[~observed]))):
+            raise ValueError('Log evidence must be finite exactly at observed steps.')
+        for name in ('maximum_abs_mass_error', 'minimum_cell_mass', 'actual_max_step'):
+            value = checks.finite_scalar(getattr(self, name), name)
+            if (name == 'maximum_abs_mass_error' and value < 0.0
+                    or name == 'actual_max_step' and value <= 0.0):
+                raise ValueError(f'Invalid {name}.')
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, 'n_steps', checks.positive_integer(self.n_steps, 'n_steps'))
+        scores.setflags(write=False)
+        observed.setflags(write=False)
+        object.__setattr__(self, 'log_evidence', scores)
+        object.__setattr__(self, 'observed', observed)
+
+    @property
+    def total_log_likelihood(self):
+        return float(np.sum(self.log_evidence[self.observed]))
+
+
 def run_fv_filter(model, parameters, sigma_x, sigma_y, initial_mass, initial_time,
                   observations, *, breakpoints=None, max_step=np.inf,
-                  likelihood_quadrature_order=1):
-    """Replay point observations through the same pure one-step FV filter kernel."""
+                  likelihood_quadrature_order=1, keep_history=True):
+    """Replay the same one-step kernel, optionally retaining only fit outputs.
+
+    ``keep_history=False`` returns BM1FVLikelihoodResult with the same scores,
+    final posterior and aggregate numerical diagnostics, using O(cells + times)
+    retained storage. Each candidate still starts from the supplied initial law
+    and processes every observation; no posterior is reused across candidates.
+    """
     if not isinstance(observations, BM1ObservationSeries):
         raise TypeError('observations must be a BM1ObservationSeries.')
+    if not isinstance(keep_history, (bool, np.bool_)):
+        raise TypeError('keep_history must be boolean.')
     initial_time = checks.finite_scalar(initial_time, 'initial_time')
     if observations.times[0] <= initial_time:
         raise ValueError('All observation times must be strictly after initial_time.')
@@ -627,6 +681,9 @@ def run_fv_filter(model, parameters, sigma_x, sigma_y, initial_mass, initial_tim
     current_time = initial_time
     steps = []
     grids = []
+    scores = []
+    maximum_mass_error, minimum_cell_mass = 0.0, np.inf
+    actual_max_step, n_steps = 0.0, 0
     for time, value, is_observed in zip(observations.times, observations.values, observations.observed):
         step = fv_filter_step(
             model, parameters, sigma_x, sigma_y, current_mass, current_time, float(time),
@@ -634,11 +691,24 @@ def run_fv_filter(model, parameters, sigma_x, sigma_y, initial_mass, initial_tim
             price_side=observations.price_side, breakpoints=breakpoints, max_step=max_step,
             likelihood_quadrature_order=likelihood_quadrature_order,
         )
-        steps.append(step)
-        grid = np.asarray(step.diagnostics['integration_t'], dtype=float)
-        grids.append(grid if not grids else grid[1:])
+        if keep_history:
+            steps.append(step)
+            grid = np.asarray(step.diagnostics['integration_t'], dtype=float)
+            grids.append(grid if not grids else grid[1:])
+        else:
+            scores.append(step.log_evidence)
+            maximum_mass_error = max(maximum_mass_error, step.diagnostics['maximum_abs_mass_error'])
+            minimum_cell_mass = min(minimum_cell_mass, step.diagnostics['minimum_cell_mass'])
+            actual_max_step = max(actual_max_step, step.diagnostics['actual_max_step'])
+            n_steps += step.diagnostics['n_steps']
         current_mass = step.posterior_mass
         current_time = step.time
+    if not keep_history:
+        return BM1FVLikelihoodResult(
+            final_step=step, log_evidence=scores, observed=observations.observed,
+            maximum_abs_mass_error=maximum_mass_error, minimum_cell_mass=minimum_cell_mass,
+            actual_max_step=actual_max_step, n_steps=n_steps,
+        )
     return BM1FVFilterResult(
         initial_time=initial_time, initial_mass=initial_mass, times=observations.times,
         x_edges=steps[0].x_edges, x_grid=steps[0].x_grid,
