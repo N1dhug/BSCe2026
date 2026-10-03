@@ -9,6 +9,9 @@ Default: 7-13 February 2022, fixed origin, 168 hours, MED meters. Reads the
 real files/input/data/input.xlsx and prices.xlsx; no synthetic data, WM
 execution, weather downloads or network calls. Future historical DK1 prices
 are known oracle inputs, not price forecasts.
+Consumption defaults to WM4's raw observed MED mean: missing meters are
+excluded from that hour's denominator, never interpolated. Meter counts are
+exported. --population-policy strict requires every selected meter instead.
 
 Provisional FV application, NOT completed/accepted F4:
 * small DISCRETE rho/Xi prior, not the validated continuous hat bank;
@@ -180,7 +183,7 @@ def git_info(root):
                 inspected_commit=INSPECTED_COMMIT)
 
 
-def load_raw(root, tag, end):
+def load_raw(root, tag, end, population_policy="wm-observed-mean"):
     from src.tools.import_data.import_input import input_data
     data_dir = root / "files/input/data"
     reader = input_data(data_dir / "input.xlsx")
@@ -191,9 +194,15 @@ def load_raw(root, tag, end):
     readings = reader.observed_data[columns].apply(pd.to_numeric, errors="coerce")
     if not readings.index.is_unique:
         raise ValueError("Duplicate input timestamps require an explicit data decision.")
-    # Keep the selected population fixed: partial meter rows are missing, not
-    # means of a different subset. Never use reader.data's interpolation.
-    consumption = readings.mean(axis=1).where(readings.notna().all(axis=1))
+    if population_policy not in ("wm-observed-mean", "strict"):
+        raise ValueError("Unknown population policy.")
+    # WM4 -> aligned_wm4_data -> aligned_data -> consumption_series uses this
+    # raw observed mean, skipping missing meters in each hour's denominator.
+    # reader.data is interpolated and MUST NOT be used for this comparison.
+    count = readings.notna().sum(axis=1).rename("observed_meter_count")
+    consumption = readings.mean(axis=1)
+    if population_policy == "strict":
+        consumption = consumption.where(count.eq(len(columns)))
     consumption = consumption.sort_index().rename("I_raw")
     # WM's spot-price importer interpolates its public data view. Read the
     # same workbook columns directly to retain the genuine observation mask.
@@ -211,10 +220,23 @@ def load_raw(root, tag, end):
     u = u.loc[u.index < end]
     if not u.index.is_unique:
         raise ValueError("Duplicate DK1 timestamps require an explicit data decision.")
-    frame = pd.concat([consumption, u.rename("price_raw")], axis=1).sort_index()
+    frame = pd.concat([consumption, u.rename("price_raw"), count], axis=1).sort_index()
     frame = frame.loc[frame.index < end]
+    frame["observed_meter_count"] = frame.observed_meter_count.fillna(0).astype(int)
+    frame["selected_meter_count"] = len(columns)
+    coverage = readings.loc[readings.index < end]
+    counts = count.reindex(coverage.index)
     metadata = dict(tag=tag, measurement_columns=columns,
-                    population_policy="fixed selected meters; any missing meter => missing aggregate",
+                    population_policy=population_policy,
+                    aggregation=("WM4 raw observed mean; missing meters excluded per hour"
+                                 if population_policy == "wm-observed-mean" else
+                                 "all selected meters required; any missing meter => missing aggregate"),
+                    consumption_imputation=False,
+                    wm_consumption_rule="src.exe.run_model.wm_3.fit_weekly.consumption_series",
+                    coverage=dict(end_exclusive=str(end), selected_meters=len(columns),
+                                  partial_hours=int(((counts > 0) & (counts < len(columns))).sum()),
+                                  empty_hours=int(counts.eq(0).sum()),
+                                  missing_by_meter={c:int(coverage[c].isna().sum()) for c in columns}),
                     source_start=str(consumption.index.min()),
                     source_end=str(consumption.index.max()),
                     source_hashes={p.name: sha256(p) for p in
@@ -222,8 +244,40 @@ def load_raw(root, tag, end):
     return frame, metadata
 
 
-def prepare(frame, start, args):
+def forecast_baseline(frame, target, origin, population_policy):
+    """Keep the five-occurrence contract; identify actual missing source hours."""
     from src.tools.bm_1_data import previous_weekday_mean
+    history = frame["I_raw"].copy()
+    history.index = history.index.tz_localize(TZ, ambiguous="raise", nonexistent="raise")
+    try:
+        return previous_weekday_mean(history, target, origin=origin)
+    except ValueError as exc:
+        if "Five complete prior occurrences" not in str(exc):
+            raise
+        failures = []
+        for stamp in target:
+            sources, week = [], 1
+            while len(sources) < 5:
+                source = stamp-pd.DateOffset(weeks=week)
+                week += 1
+                if source < origin:
+                    sources.append(source)
+            for source in sources:
+                if not np.isfinite(history.get(source, np.nan)):
+                    local = source.tz_localize(None)
+                    available = frame.observed_meter_count.get(local, 0) if "observed_meter_count" in frame else "unknown"
+                    total = frame.selected_meter_count.get(local, "unknown") if "selected_meter_count" in frame else "unknown"
+                    failures.append(f"{source.isoformat()} ({available}/{total} observed meters)")
+        samples = list(dict.fromkeys(failures))
+        hint = (" Use --population-policy wm-observed-mean to match WM4's raw observed mean."
+                if population_policy == "strict" else
+                " At least one required hour has no usable aggregate; inspect the workbook timestamps/readings.")
+        raise ValueError(f"{exc} Population policy={population_policy}; "
+                         f"missing historical hours={len(samples)}; first={samples[:8]}."
+                         f"{hint} No source hour is filled or replaced.") from exc
+
+
+def prepare(frame, start, args):
     end = start + pd.Timedelta(days=7)
     train_start = start - pd.Timedelta(days=7)
     # This preview avoids DST; the underlying H adapter needs a richer interval
@@ -254,9 +308,8 @@ def prepare(frame, start, args):
     if selected["U_bm"].min() < 0 or selected["U_bm"].max() > 1:
         raise ValueError("A price is outside the frozen bounds. Supply independently chosen physical --price-low/--price-high; prices are never clipped.")
     target = pd.date_range(start, end, freq="h", inclusive="left", tz=TZ)
-    hs = frame["I_raw"].copy()
-    hs.index = hs.index.tz_localize(TZ, ambiguous="raise", nonexistent="raise")
-    baseline, source_dates = previous_weekday_mean(hs, target, origin=start.tz_localize(TZ))
+    baseline, source_dates = forecast_baseline(frame, target, start.tz_localize(TZ),
+                                               getattr(args, "population_policy", "wm-observed-mean"))
     base = baseline.to_numpy()/scale
     if np.any((base < 0) | (base > 1)):
         raise ValueError("Historical baseline is outside BM's physical power scale.")
@@ -761,6 +814,8 @@ def main(argv=None):
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--week", default="2022-02-07", help="Exact forecast start, not silently snapped to Monday.")
     parser.add_argument("--tag", default="MED", help="Same default population as WM4; empty string selects all meters.")
+    parser.add_argument("--population-policy", choices=["wm-observed-mean", "strict"], default="wm-observed-mean",
+                        help="WM4 raw observed mean (default), or require every selected meter. Neither mode imputes consumption.")
     parser.add_argument("--observation-contract", choices=["point", "hourly-point-approximation"])
     parser.add_argument("--audit-only", action="store_true")
     parser.add_argument("--power-scale", type=float)
@@ -808,12 +863,19 @@ def main(argv=None):
     if start.tzinfo is not None:
         parser.error("Provide a local calendar date without timezone.")
     end = start + pd.Timedelta(days=7)
-    frame, sources = load_raw(root, args.tag, end)
-    selected, scaling, baseline_dates = prepare(frame, start, args)
+    frame, sources = load_raw(root, args.tag, end, args.population_policy)
+    try:
+        selected, scaling, baseline_dates = prepare(frame, start, args)
+    except ValueError as exc:
+        parser.error(str(exc))
     print(f"Target {start} -> {end}; fixed forecast origin; {len(sources['measurement_columns'])} {args.tag} meters", flush=True)
     print(f"Frozen power scale={scaling['power_scale']:.8g}; price bounds=[{scaling['price_low']:.8g}, {scaling['price_high']:.8g}]", flush=True)
     print(f"Training missing hours={selected.I.iloc[:168].isna().sum()}; target missing hours={selected.I.iloc[168:].isna().sum()}", flush=True)
+    print(f"Consumption policy={args.population_policy}; raw observations, no imputation; "
+          f"contributing meters per training/target hour={selected.observed_meter_count.min()}..{selected.observed_meter_count.max()}", flush=True)
     if args.audit_only:
+        if args.curve_mode == "auto":
+            curve_dataset(frame, start, scaling, args)
         print(json.dumps(dict(sources=sources, scaling=scaling, baseline_first_hour_sources=baseline_dates[0]), indent=2))
         return 0
     if not args.observation_contract:
@@ -898,6 +960,7 @@ def main(argv=None):
                      "fixed noise; no mixture or noise-bank comparison",
                      "metadata/point versus interval observation contract not established by workbook importer",
                      "historical DK1 spot prices are a proxy for the unknown price paid by these meters",
+                     "WM raw observed mean can change contributing meters by hour; exported counts document this",
                      "no causal demand-response claim; no population-calibration claim"])
     (directory/"summary.json").write_text(json.dumps(summary, indent=2, allow_nan=False)+"\n", encoding="utf-8")
     save_plot(hourly, directory, start)

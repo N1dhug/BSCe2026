@@ -1113,6 +1113,33 @@ Fælles lineære, 2-stykkers og 4-stykkers f/g sammenlignes; valgte kurver fryse
 `--skip-optimize` udelader kun kontrolscenariet. `--curve-mode linear` er en
 udtrykkelig referencekørsel, der springer det fleksible kurvefit over.
 
+Forbrug bruger som default `--population-policy wm-observed-mean`: præcis
+WM4's `consumption_series`-regel på rå `observed_data`, dvs. gennemsnittet af
+tilgængelige MED-målinger ved hver time. En tom målercelle udelades af nævneren;
+ingen forbrugsværdier interpoleres eller hentes fra importerens udfyldte `data`.
+Antal bidragende/valgte målere gemmes i `hourly_results.csv` og dækningsmetadata
+i `summary.json`. Bidragende population kan derfor variere pr. time ligesom WM.
+`--population-policy strict` kræver i stedet alle valgte målere ved hver time.
+Begge tilstande afviser en helt manglende påkrævet baselinetime: ingen af de fem
+historiske ugedagsværdier erstattes med en anden time/uge.
+
+Hvis den første datakontrol fejlede med `Five complete prior occurrences`,
+opdatér kun den allerede oprettede preview-mappe (ingen ny worktree):
+
+```powershell
+Set-Location "C:\Users\jvils\OneDrive\Skrivebord\Til VS\fag\7 semester\BSCe2026-bm-preview"
+git pull --ff-only origin preview/bm-f4-february
+if ($LASTEXITCODE -ne 0) { throw "Preview-opdatering fejlede." }
+python -B bm_f4_february_preview.py --audit-only
+if ($LASTEXITCODE -ne 0) { throw "Datakontrol fejlede." }
+python -B bm_f4_february_preview.py --week 2022-02-07 --tag MED --workers 2 --observation-contract hourly-point-approximation
+if ($LASTEXITCODE -ne 0) { throw "BM-preview fejlede." }
+```
+
+Dette `git pull` gælder kun preview-worktree; G2a's oprindelige checkout må
+fortsat ikke opdateres. Rettelsen er afprøvet med isolerede workbooks med delvist
+og helt manglende målere, ikke ved en fuld kørsel på den store rigtige inputfil.
+
 En ny mappe under `files/output/bm_1/runs/f4_bm_preview/` indeholder:
 
 | Fil | Indhold |

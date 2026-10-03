@@ -32,10 +32,11 @@ class BMPreviewTests(unittest.TestCase):
         book = Workbook()
         sheet = book.active
         sheet.title = "2022 med dato (3)"
-        sheet.append(["Unnamed: meta", "Unnamed: time", "fixture_meter"])
-        sheet.append(["Dato", "Time", "MED"])
+        sheet.append(["Unnamed: meta", "Unnamed: time", "fixture_meter", "partial_meter", "empty_meter"])
+        sheet.append(["Dato", "Time", "MED", "MED", "MED"])
         for stamp, value in zip(index, values):
-            sheet.append([stamp.date(), int(stamp.hour), float(value)])
+            partial = None if stamp in (pd.Timestamp("2022-01-03"), pd.Timestamp("2022-02-09 03:00")) else float(value+20)
+            sheet.append([stamp.date(), int(stamp.hour), float(value), partial, None])
         book.save(data / "input.xlsx")
         # A genuine full-year time structure includes October's repeated local
         # hour; that unrelated ambiguity must not reject the February run.
@@ -62,6 +63,39 @@ class BMPreviewTests(unittest.TestCase):
         selected, scaling, dates = preview.prepare(frame, start, self.args())
         data, n_train, _ = preview.curve_dataset(frame, start, scaling, self.args())
         return frame, selected, scaling, dates, data, n_train
+
+    def test_partial_meters_match_wm_raw_mean_without_imputation(self):
+        frame, selected, _, _, _, _ = self.record()
+        from src.tools.import_data.import_input import input_data
+        reader = input_data(self.root / "files/input/data/input.xlsx")
+        columns = [c for c in reader.measurement_columns if reader.measurement_tag(c) == "MED"]
+        expected = reader.observed_data[columns].mean(axis=1).dropna().sort_index()
+        pd.testing.assert_series_equal(frame.I_raw.dropna(), expected, check_names=False)
+        pd.testing.assert_series_equal(frame.observed_meter_count,
+                                      reader.observed_data[columns].notna().sum(axis=1), check_names=False)
+        self.assertEqual(frame.loc["2022-01-03", "observed_meter_count"].iloc[0], 1)
+        self.assertEqual(frame.loc["2022-01-03 00:00", "I_raw"], 85.)
+        self.assertEqual(selected.loc["2022-02-09 03:00", "observed_meter_count"], 1)
+        self.assertTrue(frame.selected_meter_count.eq(3).all())
+        _, metadata = preview.load_raw(self.root, "MED", pd.Timestamp("2022-02-14"))
+        self.assertFalse(metadata["consumption_imputation"])
+        self.assertEqual(metadata["population_policy"], "wm-observed-mean")
+        strict, _ = preview.load_raw(self.root, "MED", pd.Timestamp("2022-02-14"), "strict")
+        args = self.args()
+        args.population_policy = "strict"
+        # All-NaN meters are not silently filled or dropped in strict mode.
+        self.assertTrue(strict.I_raw.isna().all())
+        partial = frame.copy()
+        partial.loc["2022-01-03 00:00", "I_raw"] = np.nan
+        with self.assertRaisesRegex(ValueError, "2022-01-03T00:00:00.*1/3 observed meters"):
+            preview.prepare(partial, pd.Timestamp("2022-02-07"), args)
+
+    def test_all_missing_source_hour_is_rejected_with_its_timestamp(self):
+        frame, *_ = self.record()
+        frame.loc["2022-01-04 00:00", "I_raw"] = np.nan
+        frame.loc["2022-01-04 00:00", "observed_meter_count"] = 0
+        with self.assertRaisesRegex(ValueError, "2022-01-04T00:00:00.*0/3 observed meters"):
+            preview.prepare(frame, pd.Timestamp("2022-02-07"), self.args())
 
     def test_holdout_and_selection_do_not_leak_into_training(self):
         frame, selected, scaling, dates, data, n_train = self.record()
@@ -145,6 +179,8 @@ socket.socket.connect = connect
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         summary = json.loads((output / "summary.json").read_text())
         self.assertEqual(summary["models_executed"], ["BM1"])
+        self.assertEqual(summary["data"]["population_policy"], "wm-observed-mean")
+        self.assertFalse(summary["data"]["consumption_imputation"])
         self.assertEqual(set(summary["metrics"]), {"BM", "B"})
         self.assertEqual(set(summary["raw_unit_metrics"]), {"BM", "B"})
         self.assertNotIn("wm4", summary)
@@ -157,6 +193,9 @@ socket.socket.connect = connect
         self.assertEqual(summary["control"]["curve_family"], curves["selected"]["family"])
         hourly = pd.read_csv(output / "hourly_results.csv")
         self.assertEqual(len(hourly), 168)
+        self.assertEqual(hourly.observed_meter_count.min(), 1)
+        self.assertEqual(hourly.observed_meter_count.max(), 2)
+        self.assertTrue(hourly.selected_meter_count.eq(3).all())
         self.assertFalse(any("wm" in c.lower() or c == "Temp" for c in hourly.columns))
         self.assertEqual(len(pd.read_csv(output / "control_hourly.csv")), 168)
         self.assertEqual(len(pd.read_csv(output / "curve_validation.csv")), 3)
