@@ -4,6 +4,12 @@ Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tids
 3. oktober 2026**. Det er den autoritative fælles status og to-do-liste; ældre
 chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
 
+- Brugerens regel, 3. oktober 2026: brug **branches i eksisterende checkout**.
+  Opret ikke flere worktrees, medmindre det er strengt nødvendigt; en ny fase,
+  preview eller parallel chat er ikke i sig selv en grund. Bevar source under
+  aktive låste kørsler. Før et eksisterende worktree fjernes: bevar branchen,
+  egne ændringer og alle nødvendige ignorerede rådata/logs; kontrollér at ingen
+  kørsel bruger mappen. Reglen gælder også WM-arbejde.
 - I-baselinens origin/forecast/F3-integration er implementeret på det afsluttede
   F-spor; pooled H-f/g-fitprototype og gammel-record budgetpilot er implementeret.
   Næste udvikling er H1's nye curve-cases/numerik og H's data-/splitkontrakt.

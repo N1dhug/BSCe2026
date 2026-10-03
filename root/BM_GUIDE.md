@@ -4,7 +4,10 @@
 Den aktive prioritering fra 3. oktober 2026 er I-baseline på det afsluttede
 F-spor (integration nu implementeret), derefter obligatorisk H-f/g inden den endelige samlede I/J-leverance;
 G2b/G2c er fortsat blokeret og udsat fra den kritiske vej. Bevar arkiveret G2a-v2
-på dens oprindelige kildecommit; nyt arbejde kræver et separat checkout/worktree.
+på dens oprindelige kildecommit. Nyt arbejde bruger branches i eksisterende
+checkout; opret kun et worktree, hvis det er strengt nødvendigt. Bevar aktive
+kørselsmapper og nødvendige ignorerede rådata/logs før oprydning. Se `AGENTS.md`
+og arbejdsformen i F4-planen.
 **Sammenhængende matematik:** [f4/main.tex](f4/main.tex) + [f4/notes.tex](f4/notes.tex).
 **Afsluttet F1–F3-evidens:** [BM_REFERENCE.md](BM_REFERENCE.md).
 Der vedligeholdes ikke parallelle audit-/closure-rapporter i `root`.
@@ -37,7 +40,7 @@ I/F5/F6-interface, tidlig f/g-pilot og forberedelse af økonomi/sløjfe under fi
   Andre priser, priorer, kurver, baseline/process-inputs eller numerik kan ikke
   genbruge denne propagation. Det er kvadratisk tracking, ikke fuld F5-økonomi.
 
-Parret implementation-/hukommelsesbenchmark i en **separat** opdateret mappe:
+Parret implementation-/hukommelsesbenchmark fra en opdateret branch:
 
 ```powershell
 $env:OPENBLAS_NUM_THREADS = "1"
@@ -57,7 +60,7 @@ altid kildecommitten fra sit manifest.
 
 Figureksport er nu tilgængelig i `src/tools/bm_1_outputs.py` og CLI'en
 `src/exe/run_model/bm_1/outputs.py`. Den genbruger F1/F2-beregninger og gemte
-fordelinger; den udfører ingen ny estimation. Kør i en opdateret separat mappe,
+fordelinger; den udfører ingen ny estimation. Kør fra en opdateret branch,
 aldrig ved at opdatere kilden under G2a-v2.
 
 Lav de første figurer med det eksisterende F2-referencescenarie:
@@ -124,7 +127,7 @@ F3. Samme origin bruges til 1/6/12/24/48/72/168-timers forecast med ét forward-
 forløb; fra dag 1 går 168 timer til dag 8. Fremtidige inputs deklareres før
 filteret: konstant B=0.5 og det gentagne syntetiske daglige U-mønster.
 
-Kommandoen virker i en opdateret **separat** mappe, uden G2a-dependencies:
+Kommandoen virker fra en opdateret branch, uden G2a-dependencies:
 
 ```powershell
 $iTag = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -1186,7 +1189,8 @@ afbrydelse kan op til `workers` igangværende units kræve genkørsel. Eksistere
 source-/dependency-kontrol, lås og atomisk lagring er uændret.
 
 En kort, selvstændig afviklingsmåling kræver ingen G2a-fil og accepterer ingen
-studier. Kør fra **ny source i en separat mappe**, ikke den kørende G2a-mappe:
+studier. Kør fra en branch med **ny source**. Bevar source, hvis en aktiv låst
+kørsel stadig bruger checkoutet; kun da kan et separat worktree være nødvendigt:
 
 ```powershell
 $executionTag = Get-Date -Format 'yyyyMMdd_HHmmss'
