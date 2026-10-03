@@ -3,7 +3,8 @@
 **F4-status og næste opgave:** [F4.md](F4.md).
 Den aktive prioritering fra 3. oktober 2026 er I-baseline på det afsluttede
 F-spor (integration nu implementeret), derefter obligatorisk H-f/g inden den endelige samlede I/J-leverance;
-G2b/G2c er fortsat blokeret og udsat fra den kritiske vej. Bevar arkiveret G2a-v2
+G2b-v2 er særskilt nat-sidearbejde uden for den kritiske vej; G2c kræver en ny
+kompatibel registrering og G2b-accept. Bevar arkiveret G2a-v2
 på dens oprindelige kildecommit. Nyt arbejde bruger branches i eksisterende
 checkout; opret kun et worktree, hvis det er strengt nødvendigt. Bevar aktive
 kørselsmapper og nødvendige ignorerede rådata/logs før oprydning. Se `AGENTS.md`
@@ -14,7 +15,8 @@ Der vedligeholdes ikke parallelle audit-/closure-rapporter i `root`.
 
 **Fælles beslutning for alle projektchats, 3. oktober 2026:** Fleksible f/g-kurver
 skal estimeres og valideres i **H-f/g** før endelig H→I-handoff/J. Arbejdet er
-obligatorisk og endnu ikke implementeret; der findes ingen ny kurvefit-CLI her.
+obligatorisk; kurve-API og pooled fitprototype er implementeret, fuldt H-fit og
+videnskabelig validering mangler stadig.
 Læs repoets [../AGENTS.md](../AGENTS.md) og den aktuelle H-f/g-plan før arbejdet.
 Kurverne deles på tværs af hele den erklærede træningspopulation, aldrig per dag.
 Kandidaten med fire argumentintervaller `[0,0.25]`, `[0.25,0.5]`, `[0.5,0.75]`,
@@ -1131,6 +1133,63 @@ python -B root/f4/review_g2a_rectangular.py `
   --output "files/output/bm_1/runs/estimation/g2a_rectangular_windows_v2_raw_review_reproduced.json"
 if ($LASTEXITCODE -ne 0) { throw "Råreview fejlede; behold alle originalfiler." }
 ```
+
+## G2b-v2 som nat-sidearbejde: cirka otte timer per invocation
+
+H1/H's datakontrakt, H2/H3 og endelig I/J er fortsat hovedsporet. Dette er en
+særskilt registreret G2b-v2-kørsel, som genbruger de accepterede rektangulære
+G2a-v2-grids og kontrollerer dem igen på alle fem scenarier og nye ID1360/1361.
+De gamle kvadratiske G2b/G2c-kommandoer nedenfor forbliver blokeret.
+G2c startes ikke automatisk og kræver senere kompatibelt design og G2b-accept.
+
+Behold original G2a-v1-rapport og hele afsluttede G2a-v2-run-mappen. Python
+råvaliderer alle otte gamle units uden nye FV-replays før G2b; summary alene
+accepteres ikke. Første opstart kan derfor tage nogle minutter.
+
+**Første korte lokale afviklingspilot:** brug kommandoen nedenfor med
+`-LimitChunks 1` på launcher-scriptet. Den gemte blok genbruges ved natkørslen;
+undlad flaget for fuld afvikling. En enkelt blok tester lokal afvikling, ikke numerisk
+G2b-accept. Default `--chunk-size 64` giver regelmæssige checkpoints.
+
+**Gentag samme natkommando hver nat**, fra dit eksisterende hovedrepo. Ved første
+invocation oprettes kun en lokal `night/g2b-v2`-branch. Ved resume hentes source
+fra manifestet, så main kan udvikles mellem natkørslerne. Der oprettes intet
+worktree. Skift eller pull aldrig under en aktiv Python-kørsel.
+
+```powershell
+# Første gang: en kort lokal afviklingspilot, som gemmes til senere resume.
+& ./root/f4/run_g2b_night.ps1 -LimitChunks 1
+
+# Derefter: cirka otte timer. Brug denne samme linje ved kommende nætter.
+& ./root/f4/run_g2b_night.ps1
+```
+
+Efter en pause viser summary normalt `completed=False`, `passes=False` og
+`stop_reason=time_budget`. Det er en gemt delkørsel, ikke en numerisk fejl.
+`failed_comparisons` viser reelle afvisninger; de stopper nyt studiearbejde.
+En komplet bestået kørsel kræver 40 units, 80 banker og alle 70 kontroller.
+Behold manifest, summary, checkpoint, log og alle units. En ny invocation
+starter ved første ikke-gemte hypotese. Ved hård afbrydelse kan den igangværende
+ikke-publicerede blok skulle gentages. Otte timer kan overskrides af sidste
+blok, lagring og slutopsamling; computeren slukkes ikke automatisk.
+
+Når Python er stoppet, kan dagsarbejdet fortsætte på main:
+
+```powershell
+& {
+    git switch main
+    if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+    git pull --ff-only origin main
+    if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
+}
+```
+
+Lad nat-branchen blive på sin oprindelige commit. Næste nat bruges samme script
+og samme run-mappe, ikke en ny kopi. `--collect-only` med samme paths kan
+råvalidere gemt arbejde uden nye FV-replays. Progress viser grov resterende
+og samlet tid for det resterende studie; tidligere gemt arbejde indgår ikke
+i hastighedsmålingen. Fuld numerisk accept og et efterfølgende råreview mangler,
+selv om afviklings- og genoptagelsestests består.
 
 ## G2b/G2c og hurtigere FV (efter syvdages G2a-review)
 

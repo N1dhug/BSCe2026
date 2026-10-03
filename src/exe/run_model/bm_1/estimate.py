@@ -48,6 +48,7 @@ from src.validation.bm_1 import joint_grid
 from src.validation.bm_1 import joint_robustness
 from src.validation.bm_1 import joint_diagnostics
 from src.validation.bm_1 import joint_pilot
+from src.validation.bm_1 import joint_night
 from src.exe.run_model.progress import fv_work, runtime_text
 
 
@@ -1672,49 +1673,55 @@ def run_joint_robustness(args):
         return summary
 
 
-def _rectangular_identity(manifest, unit):
-    return dict(stage=joint_pilot.STAGE, design_version=2, unit_name=joint_pilot.unit_name(unit),
+def _rectangular_identity(manifest, unit, study=joint_pilot):
+    return dict(stage=study.STAGE, design_version=2, unit_name=study.unit_name(unit),
                 source=manifest['source'], dependencies=manifest['dependencies'])
 
 
-def _collect_rectangular(directory, manifest, truth_cache):
+def _collect_rectangular(directory, manifest, truth_cache, study=joint_pilot):
     """Final units are immutable; summaries are always rebuilt from their raw arrays."""
-    joint_grid._check_recorded(manifest['design'], joint_pilot.design_header(), 'rectangular manifest design')
+    joint_grid._check_recorded(manifest['design'], study.design_header(), 'rectangular manifest design')
     source = manifest['source']
     if source.get('working_tree_dirty') is not False or not re.fullmatch('[0-9a-f]{40}', str(source.get('source_commit'))):
         raise ValueError('Rectangular evidence requires a clean recorded source commit.')
-    expected = {joint_pilot.unit_name(u)+'.npz' for u in joint_pilot.units()}
+    expected = {study.unit_name(u)+'.npz' for u in study.units()}
     unknown = {p.name for p in (directory/'units').glob('*.npz')} - expected
     if unknown: raise ValueError('Unregistered rectangular unit files: '+str(sorted(unknown)))
     rows, digests = [], {}
-    for unit in joint_pilot.units():
-        path = directory/'units'/(joint_pilot.unit_name(unit)+'.npz')
+    for unit in study.units():
+        path = directory/'units'/(study.unit_name(unit)+'.npz')
         if not path.exists(): continue
         report, digest = _read_likelihood_report(path)
-        for key, value in _rectangular_identity(manifest, unit).items():
+        for key, value in _rectangular_identity(manifest, unit, study).items():
             joint_grid._check_recorded(report.get(key), value, 'rectangular unit '+key)
-        group = joint_pilot.make_group(unit, truth_cache[tuple(unit[0])])
-        joint_pilot.validate_rows(report['rows'], group)
+        group = study.make_group(unit, truth_cache[tuple(unit[0])])
+        study.validate_rows(report['rows'], group)
         if report.get('raw_validation') != {'passes':True}:
             raise ValueError('Retained rectangular unit failed raw validation; inspect it before continuing.')
         rows.extend(report['rows']); digests[report['unit_name']] = digest
-    summary = joint_pilot.summarize(rows)
+    summary = study.summarize(rows)
     summary.update(source=source, dependencies=manifest['dependencies'], unit_sha256=digests,
         completed_units=len(digests), expected_units=len(expected),
-        conditional_runs=sum(np.prod(joint_pilot.GRIDS['__'.join(u[0])][1]).item()
-            for u in joint_pilot.units() if joint_pilot.unit_name(u) in digests))
+        conditional_runs=sum(np.prod(study.GRIDS['__'.join(u[0])][1]).item()
+            for u in study.units() if study.unit_name(u) in digests))
     return rows, summary
 
 
-def run_joint_rectangular_pilot(args):
-    """Fixed G2a v2, with one atomic rolling reduction and eight final raw units."""
-    from concurrent.futures import ProcessPoolExecutor
-    from contextlib import nullcontext
-    from multiprocessing import get_context
+def _rectangular_options(args):
     from src.validation import estimation as checks
     workers = checks.positive_integer(args.workers, 'workers')
     chunk = checks.positive_integer(args.chunk_size, 'chunk_size')
     limit = None if args.limit_chunks is None else checks.positive_integer(args.limit_chunks, 'limit_chunks')
+    hours = getattr(args, 'max_hours', None)
+    if hours is not None:
+        hours = checks.finite_scalar(hours, 'max_hours')
+        if hours <= 0: raise ValueError('max_hours must be positive.')
+    return workers, chunk, limit, hours
+
+
+def run_joint_rectangular_pilot(args):
+    """Fixed G2a v2, with one atomic rolling reduction and eight final raw units."""
+    _rectangular_options(args)
     source = _source_snapshot()
     if not args.collect_only and source['working_tree_dirty']:
         raise ValueError('Commit source changes before starting or resuming rectangular evidence.')
@@ -1724,31 +1731,79 @@ def run_joint_rectangular_pilot(args):
     del previous
     truth_cache = {pair:joint_grid._g2a_truth_record(pair, sid, joint_pilot.DAYS)
                    for pair, sid in zip(synthetic.F4_G_PAIRS, joint_grid.G2A_IDS)}
+    return _run_rectangular_blocks(args, source, dependencies, truth_cache)
+
+
+def run_joint_night_pilot(args):
+    """Prerequisite-gated G2b v2; the eight-hour budget pauses at saved blocks."""
+    started = perf_counter()
+    _rectangular_options(args)
+    source = _source_snapshot()
+    if not args.collect_only and source['working_tree_dirty']:
+        raise ValueError('Commit source changes before starting or resuming G2b-v2 evidence.')
+    if not args.quiet:
+        print('G2b-v2: checking the original G2a dependency and all eight G2a-v2 raw units; no FV reruns.', flush=True)
+    previous, digest = _read_bank_dependency(args.g2a_report, joint_pilot.require_previous)
+    old_dependency = dict(g2a_v1=dict(sha256=digest, source_commit=previous['source_commit'],
+                                    dependencies=previous['dependencies']))
+    del previous
+    old_truth = {pair:joint_grid._g2a_truth_record(pair, sid, joint_pilot.DAYS)
+                 for pair, sid in zip(synthetic.F4_G_PAIRS, joint_grid.G2A_IDS)}
+    with _RunLock(args.g2a_run_dir):
+        manifest, manifest_digest = _read_likelihood_report(args.g2a_run_dir/'manifest.json')
+        joint_grid._check_recorded(manifest['stage'], joint_pilot.STAGE, 'G2a-v2 stage')
+        joint_grid._check_recorded(manifest['dependencies'], old_dependency, 'G2a-v2 dependency')
+        _, accepted = _collect_rectangular(args.g2a_run_dir, manifest, old_truth)
+        if not accepted['completed'] or not accepted['passes']:
+            raise ValueError('G2b-v2 requires all eight complete, raw-validated passing G2a-v2 units.')
+    dependencies = dict(g2a_v2=dict(manifest_sha256=manifest_digest,
+        source_commit=manifest['source']['source_commit'], unit_sha256=accepted['unit_sha256'],
+        dependencies=old_dependency))
+    del accepted, old_truth
+    truth_cache = {pair:joint_grid._g2a_truth_record(pair, sid, joint_night.DAYS)
+                   for pair, sid in zip(synthetic.F4_G_PAIRS, joint_night.PILOT_IDS)}
+    return _run_rectangular_blocks(args, source, dependencies, truth_cache,
+                                   study=joint_night, invocation_started=started)
+
+
+def _run_rectangular_blocks(args, source, dependencies, truth_cache, *, study=joint_pilot,
+                            invocation_started=None):
+    """Shared ordered checkpoint runner; the study adapter fixes scientific scope."""
+    from concurrent.futures import ProcessPoolExecutor
+    from contextlib import nullcontext
+    from multiprocessing import get_context
+    workers, chunk, limit, hours = _rectangular_options(args)
+    invocation_started = perf_counter() if invocation_started is None else invocation_started
+    deadline = None if hours is None else invocation_started + hours*3600
+    stop_reason = None
     with _RunLock(args.run_dir):
         manifest_path = args.run_dir/'manifest.json'
         if manifest_path.exists():
             manifest, _ = _read_likelihood_report(manifest_path)
-            if manifest['stage'] != joint_pilot.STAGE or manifest['dependencies'] != dependencies:
+            if manifest['stage'] != study.STAGE or manifest['dependencies'] != dependencies:
                 raise ValueError('Run directory belongs to a different design/dependency.')
             if not args.collect_only and manifest['source'] != source:
                 raise ValueError('Resume requires the original clean source commit.')
         else:
             if args.collect_only: raise FileNotFoundError('No rectangular manifest to collect.')
-            manifest = dict(stage=joint_pilot.STAGE, design=joint_pilot.design_header(),
+            manifest = dict(stage=study.STAGE, design=study.design_header(),
                             source=source, dependencies=dependencies)
             _atomic_report(manifest_path, manifest)
-        rows, summary = _collect_rectangular(args.run_dir, manifest, truth_cache)
+        rows, summary = _collect_rectangular(args.run_dir, manifest, truth_cache, study)
+        if hasattr(study, 'completed_group_checks') and summary['failed_comparisons'] and not args.collect_only:
+            _atomic_report(args.run_dir/'summary.json', summary, replace_existing=True)
+            raise RuntimeError('Saved numerical comparisons failed; inspect them before continuing.')
         checkpoint_path = args.run_dir/'checkpoint.npz'
         checkpoint = _read_likelihood_report(checkpoint_path)[0] if checkpoint_path.exists() else None
         present = set(summary['unit_sha256'])
-        pending = [u for u in joint_pilot.units() if joint_pilot.unit_name(u) not in present]
+        pending = [u for u in study.units() if study.unit_name(u) not in present]
         if checkpoint is not None:
-            unit = next((u for u in joint_pilot.units() if joint_pilot.unit_name(u)==checkpoint.get('unit_name')), None)
+            unit = next((u for u in study.units() if study.unit_name(u)==checkpoint.get('unit_name')), None)
             if unit is None: raise ValueError('Checkpoint has an unregistered unit.')
-            for k,v in _rectangular_identity(manifest, unit).items():
+            for k,v in _rectangular_identity(manifest, unit, study).items():
                 joint_grid._check_recorded(checkpoint.get(k), v, 'checkpoint '+k)
-            restored = joint_pilot.RectangularReduction(joint_pilot.make_group(unit, truth_cache[unit[0]])).restore(checkpoint['reduction'])
-            if joint_pilot.unit_name(unit) in present:
+            restored = study.RectangularReduction(study.make_group(unit, truth_cache[unit[0]])).restore(checkpoint['reduction'])
+            if study.unit_name(unit) in present:
                 # Crash after publishing a final unit but before removing its rolling checkpoint.
                 if restored.seen != len(restored.group['hypotheses']):
                     raise ValueError('Final unit conflicts with an incomplete checkpoint.')
@@ -1764,10 +1819,10 @@ def run_joint_rectangular_pilot(args):
             _atomic_report(args.run_dir/'summary.json', summary, replace_existing=True)
             return summary
         started = perf_counter(); blocks = 0
-        work_per_replay = {joint_pilot.unit_name(u):fv_work(
-            dict(joint_pilot.configurations(u[0]))[u[2]], joint_pilot.DAYS, 24*joint_pilot.DAYS)
+        work_per_replay = {study.unit_name(u):fv_work(
+            dict(study.configurations(u[0]))[u[-1]], study.DAYS, len(study.make_group(u, truth_cache[u[0]])['observations'].times))
             for u in pending}
-        remaining_counts = {joint_pilot.unit_name(u):int(np.prod(joint_pilot.GRIDS['__'.join(u[0])][-1]))
+        remaining_counts = {study.unit_name(u):int(np.prod(study.GRIDS['__'.join(u[0])][-1]))
                             for u in pending}
         if checkpoint is not None:
             remaining_counts[checkpoint['unit_name']] -= checkpoint['reduction']['completed_hypotheses']
@@ -1779,15 +1834,22 @@ def run_joint_rectangular_pilot(args):
         expected_runs = manifest['design']['expected_conditional_runs']
         if limit is not None and not args.quiet:
             print('  ETA covers all pending study work; --limit-chunks can stop this invocation sooner.', flush=True)
+        if hours is not None and not args.quiet:
+            print(f'  Invocation budget={hours:g}h, including setup; pause at a saved block boundary. '
+                  'ETA covers all pending study work across nights.', flush=True)
         manager = (ProcessPoolExecutor(max_workers=workers, mp_context=get_context('spawn'))
                    if workers>1 and pending else nullcontext(None))
         with manager as pool:
             for unit in pending:
-                group = joint_pilot.make_group(unit, truth_cache[unit[0]])
-                reducer = joint_pilot.RectangularReduction(group)
+                group = study.make_group(unit, truth_cache[unit[0]])
+                reducer = study.RectangularReduction(group)
                 if checkpoint is not None: reducer.restore(checkpoint['reduction'])
-                name = joint_pilot.unit_name(unit)
+                name = study.unit_name(unit)
+                payload = checkpoint
                 while reducer.seen < len(group['hypotheses']):
+                    if deadline is not None and perf_counter() >= deadline:
+                        stop_reason = 'time_budget'
+                        break
                     before = reducer.seen; block_started = last_printed = perf_counter()
                     def progress(done, total):
                         nonlocal last_printed
@@ -1798,14 +1860,14 @@ def run_joint_rectangular_pilot(args):
                                   f'study replays={initial_runs+new_runs+done-before}/{expected_runs}; '
                                   f'{runtime_text(started, work, planned_work, now=now)}', flush=True)
                             last_printed = now
-                    joint_pilot.advance(reducer, min(before+chunk, len(group['hypotheses'])), pool,
+                    study.advance(reducer, min(before+chunk, len(group['hypotheses'])), pool,
                                         progress, workers=workers)
                     if _source_snapshot() != source: raise ValueError('Source changed during the block; original checkpoint retained.')
-                    payload = dict(_rectangular_identity(manifest, unit), reduction=reducer.checkpoint(),
+                    payload = dict(_rectangular_identity(manifest, unit, study), reduction=reducer.checkpoint(),
                                    last_block=dict(hypotheses=reducer.seen-before, workers=workers,
                                                    seconds_before_storage=perf_counter()-block_started))
                     # Validate the complete rolling state before atomically replacing its predecessor.
-                    joint_pilot.RectangularReduction(group).restore(payload['reduction'])
+                    study.RectangularReduction(group).restore(payload['reduction'])
                     _atomic_report(checkpoint_path, payload, replace_existing=True)
                     blocks += 1
                     new_runs += reducer.seen-before
@@ -1814,12 +1876,14 @@ def run_joint_rectangular_pilot(args):
                           f'block={payload["last_block"]["seconds_before_storage"]:.2f}s; '
                           f'study replays={initial_runs+new_runs}/{expected_runs}; '
                           f'{runtime_text(started, completed_work, planned_work)}', flush=True)
-                    if limit is not None and blocks >= limit and reducer.seen < len(group['hypotheses']): break
+                    if limit is not None and blocks >= limit and reducer.seen < len(group['hypotheses']):
+                        stop_reason = 'block_limit'
+                        break
                 checkpoint = payload if reducer.seen < len(group['hypotheses']) else None
-                if checkpoint is not None: break
-                result = dict(_rectangular_identity(manifest, unit), rows=reducer.finish())
+                if reducer.seen < len(group['hypotheses']): break
+                result = dict(_rectangular_identity(manifest, unit, study), rows=reducer.finish())
                 try:
-                    joint_pilot.validate_rows(result['rows'], group)
+                    study.validate_rows(result['rows'], group)
                     result['raw_validation'] = dict(passes=True)
                 except (ValueError, KeyError, TypeError) as exc:
                     result['raw_validation'] = dict(passes=False, error=str(exc))
@@ -1829,22 +1893,34 @@ def run_joint_rectangular_pilot(args):
                 if not result['raw_validation']['passes']:
                     raise RuntimeError('Completed rectangular raw unit failed; available data retained.')
                 rows.extend(result['rows']); summary['unit_sha256'][name] = hashlib.sha256(destination.read_bytes()).hexdigest()
-                if limit is not None and blocks >= limit: break
+                if hasattr(study, 'completed_group_checks') and unit[-1] == 'quadrature_fine':
+                    if any(not c['passes'] for c in study.completed_group_checks(rows, unit)):
+                        stop_reason = 'numerical_failure'
+                        break
+                if limit is not None and blocks >= limit:
+                    stop_reason = 'block_limit'
+                    break
+                if deadline is not None and perf_counter() >= deadline:
+                    stop_reason = 'time_budget'
+                    break
         # Reuse newly validated raw rows; no second file read or extra replay.
-        digests = summary['unit_sha256']; summary = joint_pilot.summarize(rows)
+        digests = summary['unit_sha256']; summary = study.summarize(rows)
         summary.update(source=source, dependencies=dependencies, unit_sha256=digests,
-            completed_units=len(digests), expected_units=len(joint_pilot.units()),
-            conditional_runs=sum(np.prod(joint_pilot.GRIDS['__'.join(u[0])][1]).item()
-                for u in joint_pilot.units() if joint_pilot.unit_name(u) in digests),
+            completed_units=len(digests), expected_units=len(study.units()),
+            conditional_runs=sum(np.prod(study.GRIDS['__'.join(u[0])][1]).item()
+                for u in study.units() if study.unit_name(u) in digests),
             partial_unit=None if checkpoint is None else dict(unit_name=checkpoint['unit_name'],
                 completed_hypotheses=checkpoint['reduction']['completed_hypotheses']),
             invocation_seconds=perf_counter()-started, new_blocks=blocks)
+        if hours is not None:
+            summary.update(max_hours=hours, budget_elapsed_seconds=perf_counter()-invocation_started,
+                           stop_reason=stop_reason or ('complete' if summary['completed'] else 'paused'))
         summary['conditional_runs'] += 0 if checkpoint is None else checkpoint['reduction']['completed_hypotheses']
         _atomic_report(args.run_dir/'summary.json', summary, replace_existing=True)
-        print(f'Rectangular G2a: {len(digests)}/{len(joint_pilot.units())} final units; '
+        print(f'{study.STAGE}: {len(digests)}/{len(study.units())} final units; '
               f'complete={summary["completed"]}; passes={summary["passes"]}')
-        if summary['completed'] and not summary['passes']:
-            raise RuntimeError('Rectangular G2a numerical gates failed; complete raw units retained for review.')
+        if (summary['completed'] and not summary['passes']) or stop_reason == 'numerical_failure':
+            raise RuntimeError('Rectangular numerical gates failed; saved raw units retained for review.')
         return summary
 
 
@@ -1942,6 +2018,19 @@ def build_parser():
     rectangular.add_argument('--collect-only', action='store_true', help='Validate saved raw units and checkpoint without new replays.')
     rectangular.add_argument('--quiet', action='store_true')
     rectangular.set_defaults(handler=run_joint_rectangular_pilot)
+
+    night = subparsers.add_parser('joint-bank-rectangular-robustness',
+        help='G2b v2: full paired robustness controls, atomic blocks and an eight-hour execution budget.')
+    night.add_argument('--g2a-report', type=Path, required=True, help='Original complete rejected G2a-v1 report.')
+    night.add_argument('--g2a-run-dir', type=Path, required=True, help='Complete accepted G2a-v2 raw run directory.')
+    night.add_argument('--run-dir', type=Path, required=True)
+    night.add_argument('--workers', type=int, default=8)
+    night.add_argument('--chunk-size', type=int, default=64, help='Checkpoint frequency only; does not reduce study scope.')
+    night.add_argument('--max-hours', type=float, default=8, help='Pause at a block boundary after this invocation budget.')
+    night.add_argument('--limit-chunks', type=int, help='Stop after this many new blocks for a short execution pilot.')
+    night.add_argument('--collect-only', action='store_true', help='Validate saved raw evidence without new FV replays.')
+    night.add_argument('--quiet', action='store_true')
+    night.set_defaults(handler=run_joint_night_pilot)
     for command_name, stage in (('joint-bank-robustness-pilot','G2b'), ('joint-bank-robustness-population','G2c')):
         robustness = subparsers.add_parser(command_name, help=f'{stage}: gated, resumable seven-day paired experiments.')
         robustness.add_argument('--g2a-report', type=Path, required=True)

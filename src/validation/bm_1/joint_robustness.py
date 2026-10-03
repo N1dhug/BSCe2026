@@ -161,8 +161,17 @@ def _physical_hat_moments(nodes, density, coordinate):
 
 def checkpoints(row, truth_record, indices, record_days=None):
     record_days = RECORD_DAYS if record_days is None else record_days
-    law = grid._hat_law(row)
-    nodes = law['unit']; q = np.full(len(nodes), 1/(len(nodes)-1)); q[[0,-1]] *= .5
+    if 'parameter_grid_shape' in row:
+        from src.validation.bm_1 import joint_diagnostics as hats
+        law = hats.tensor_hat_law(row['conditional_log_evidence'], row['parameter_grid_shape'])
+        axes = law['unit']
+    else:
+        law = grid._hat_law(row)
+        axes = [law['unit'], law['unit']]
+    weights = []
+    for nodes in axes:
+        q = np.full(len(nodes), 1/(len(nodes)-1)); q[[0,-1]] *= .5
+        weights.append(q)
     state = np.asarray(truth_record['fine']['state'])[1:][indices]
     demand = np.asarray(truth_record['fine']['demand'])[1:][indices]
     centers = (np.asarray(row['x_edges'])[:-1]+np.asarray(row['x_edges'])[1:])/2
@@ -171,9 +180,9 @@ def checkpoints(row, truth_record, indices, record_days=None):
         if day > record_days: continue
         count = int(np.searchsorted(row['observation_times'], day, side='right'))
         density = law['density'][count-1]
-        marginals = (density @ q, q @ density)
+        marginals = (density @ weights[1], weights[0] @ density)
         parameters = {name:_physical_hat_moments(nodes, marginal, name)
-                      for name, marginal in zip(row['coordinates'], marginals)}
+                      for name, nodes, marginal in zip(row['coordinates'], axes, marginals)}
         for name, value in zip(row['coordinates'], row['truth']):
             a, b = parameters[name]['interval_95']
             parameters[name]['truth'] = value

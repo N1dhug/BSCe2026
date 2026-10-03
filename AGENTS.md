@@ -14,12 +14,21 @@ chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
   F-spor; pooled H-f/g-fitprototype og gammel-record budgetpilot er implementeret.
   Næste udvikling er H1's nye curve-cases/numerik og H's data-/splitkontrakt.
   Obligatorisk H-f/g
-  skal gennemføres før den endelige samlede I/J-leverance. G2b/G2c er en udsat og fortsat
-  blokeret udvidelse; markér dem ikke som gennemført.
+  skal gennemføres før den endelige samlede I/J-leverance. G2b-v2 er valgfrit
+  nat-sidearbejde; G2c er kun en mulig opfølgning efter G2b-accept. Ingen af dem
+  må blokere H/I/J eller markeres gennemført uden komplette kontroller.
 - G2a-v2 er komplet, rå-reviewet og numerisk bestået på ren `01c7c153`:
   8 units, 42.312 replays, 14 kontroller; nul nye FV-replays i råreviewet.
   Bevar original source og arkiv; løs ikke resume-kontrollen. Det frigiver
   hverken G2b/G2c eller recovery/forecast. Næste aktive arbejde er H1/H's datakontrakt.
+- Beslutning fra Johan, 3. oktober kl. 22:26: natkørsler budgetteres til cirka
+  otte timer per invocation, med hyppige atomiske blok-checkpoints og genoptagelse.
+  Brug den særskilt registrerede `joint-bank-rectangular-robustness` (G2b-v2),
+  som råvaliderer alle otte beståede G2a-v2-units før nyt arbejde. Tidsstop er
+  en pause, ikke accept; bevarede hypoteser genkøres ikke. Gamle kvadratiske
+  G2b/G2c-prerequisites løsnes ikke. G2c kræver et nyt kompatibelt design og
+  G2b-accept. Fastlås nat-source i en branch i samme checkout; skift/pull aldrig
+  under en aktiv kørsel. H1/H2/H3 og endelig I/J er fortsat hovedsporet.
 - Metode og forsøgsdefinitioner: `root/f4/notes.tex`; kommandoer: `root/BM_GUIDE.md`.
   Opdatér fælles status i `root/F4.md` sammen med en leverance.
 - Genbrug F1–F3-interfaces og gennemført evidens. Bevar grids, seeds, observationers

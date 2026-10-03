@@ -112,6 +112,8 @@ class RectangularReduction(grid._StreamingGridReduction):
                 scale=np.full((2,count), -np.inf), denominator=np.zeros((2,count)),
                 numerator=np.zeros((2,count,cells)), steps=np.empty(n),
                 seconds=0., mass_error=0., minimum=np.inf, seen=0))
+            if group.get('keep_demand', False):
+                self.banks[-1]['demand_means'] = np.empty((2, count, n))
 
     def finish(self):
         if self.seen != len(self.group['hypotheses']):
@@ -133,6 +135,12 @@ class RectangularReduction(grid._StreamingGridReduction):
             row.update(parameter_grid_shape=list(bank['shape']), prior_kind='quadrature',
                 parameter_unit_nodes=[u.tolist() for u in bank['unit']],
                 parameter_dual_edges=[e.tolist() for e in bank['edges']], fv_label=self.group['label'])
+            if 'demand_means' in bank:
+                for p, phase, weights in ((0, 'predicted', 'prior_log_weights'),
+                                          (1, 'posterior', 'log_weights')):
+                    raw = bank['demand_means'][p]
+                    row['conditional_'+phase+'_demand_mean'] = raw
+                    row['marginal_'+phase+'_demand_mean'] = np.sum(np.exp(reduced[weights])*raw, axis=1)
             rows.append(row)
         return rows
 
@@ -145,6 +153,8 @@ class RectangularReduction(grid._StreamingGridReduction):
             local = [i for j, i in bank['indices'].items() if j < self.seen]
             banks.append(dict(scores=bank['scores'][:, local], steps=bank['steps'][local],
                 **{k:bank[k] for k in ('scale', 'denominator', 'numerator', 'seconds', 'mass_error', 'minimum')}))
+            if 'demand_means' in bank:
+                banks[-1]['demand_means'] = bank['demand_means'][:, :, local]
         return dict(completed_hypotheses=self.seen, banks=banks)
 
     def restore(self, payload):
@@ -177,6 +187,9 @@ class RectangularReduction(grid._StreamingGridReduction):
                 raise ValueError('Checkpoint conditional probability gate failed.')
             bank['scores'][:, local] = scores
             bank['steps'][local] = steps
+            if 'demand_means' in bank:
+                bank['demand_means'][:, :, local] = fv._array(
+                    saved['demand_means'], (2, count, len(local)), 'checkpoint demand means')
             for k in ('scale', 'denominator', 'numerator'):
                 bank[k] = np.asarray(saved[k]).copy()
             bank['seen'] = len(local)
@@ -186,6 +199,9 @@ class RectangularReduction(grid._StreamingGridReduction):
                 if j >= seen: break
                 fv._equal_array(bank['scores'][:,local], reference['scores'][:,j], 'checkpoint nested scores', 0.)
                 fv._equal_array(bank['steps'][local], reference['steps'][j], 'checkpoint nested steps', 0.)
+                if 'demand_means' in bank:
+                    fv._equal_array(bank['demand_means'][:, :, local], reference['demand_means'][:, :, j],
+                                    'checkpoint nested demand means', 0.)
         self.seen = seen
         return self
 
