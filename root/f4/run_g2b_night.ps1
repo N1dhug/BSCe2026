@@ -1,7 +1,7 @@
 # Start or resume the same G2b-v2 study; creates a branch, never a worktree.
 [CmdletBinding()]
 param(
-    [ValidateRange(0.000001, 168)][double]$MaxHours = 8,
+    [ValidateRange(0.000001, 168.0)][double]$MaxHours = 8,
     [ValidateRange(1, 256)][int]$Workers = 8,
     [ValidateRange(1, 1000000)][int]$ChunkSize = 64,
     [ValidateRange(0, 1000000)][int]$LimitChunks = 0

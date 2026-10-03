@@ -22,6 +22,14 @@ concurrency:
   group: bm-review-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  windows-launcher:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check night launcher on Windows PowerShell 5.1
+        shell: powershell
+        run: ./tests/check_g2b_night_launcher.ps1
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 15
