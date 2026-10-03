@@ -764,6 +764,26 @@ men hele panelet skal kontrolleres særskilt. Ingen cases, frø eller tolerancer
 A--G's upwind-design. Standardkurvefit beholder upwind indtil et specifikt
 numerisk accepteret fitdesign er valgt.
 
+\paragraph{Gennemført v2 og afbrudt videre arbejde.}
+På ren kilde \texttt{cfde153} gennemførtes 96 units og 384 replays på
+cirka 903 s. Alle registrerede panelkontroller bestod.
+Maksimal tidsfejl var $0.09523740$ i prefix-evidens,
+$0.08447684$ i lineært centreret evidens og $0.00934660$ i posterior-$L^1$;
+rumkontrollen gav $0.04633238$, $0.04584516$ og $0.01130512$.
+Et separat long-double-review af de gemte arrays kontrollerede 18\,432
+Bayes-opdateringer uden nye FV-replays, med maksimale score- og
+posteriorafvigelser $2.4373\cdot10^{-15}$ og $2.5477\cdot10^{-16}$.
+Dette accepterer kun det deklarerede numeriske panel.
+
+En efterfølgende miljøafbrydelse gjorde den tidligere checkout utilgængelig.
+Råfilerne er endnu ikke bekræftet varigt bevaret; gendan og verificér dem,
+eller reproducer studiet på registreret source, før de bruges som dependency.
+Sessionsresuméet erstatter ikke råevidens. Lokalt forberedt H1b-fit og
+historiske datakontrakter er endnu ikke publiceret, og det fulde fit er
+ikke kørt. Valgte fitkurver kræver egen numerik. H2/H3, identifikation og
+forecast er fortsat uafsluttede. Se den aktuelle arbejdsplan for
+genoptagelsesrækkefølge og kendt repository-layout-testfejl.
+
 \subsection{Identifikation, numerik og fastlåsning}
 Uden endpoints kan \(f+c,g-c\) give samme sum, og fælles amplitudeskalering kan
 blandes sammen med \(k\). \eqref{eq:endpoints} fjerner disse eksakte friheder,

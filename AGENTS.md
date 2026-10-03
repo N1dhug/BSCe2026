@@ -1,5 +1,12 @@
 # Fælles projektkontekst
 
+**Afbrudt H-session:** Se afsnittet om miljøafbrydelse i `root/F4.md`.
+Sidste publicerede H-kode er `cfde153` på
+`feature/f4-h-overnight-review`; H1-v2 blev kørt og rå-reviewet, men
+råmapper skal gendannes/verificeres før H1b. Senere lokale fit-/datakontrakt-
+og layoutrettelser er endnu ikke publiceret. Fuld regression havde én
+layoutfejl; main er ikke opdateret. Gendan og test før videre publicering.
+
 Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tidsreduktion,
 3. oktober 2026**. Det er den autoritative fælles status og to-do-liste; ældre
 chatplaner og historiske "næste opgave"-afsnit kan være overhalet.

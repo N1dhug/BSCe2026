@@ -158,6 +158,16 @@ ikke. Nye preview-kørsler får dagsfigurerne direkte under deres
 
 ## H1: nye kurver og numerisk kontrol
 
+**Genoptagelsesstatus efter miljøafbrydelsen:** Koden er publiceret til
+`feature/f4-h-overnight-review` ved `cfde153`; main er ikke ændret.
+V2-kørslen og det uafhængige arrayreview bestod i sessionen, men råmapperne
+skal gendannes eller reproduceres før næste dependency-gate.
+Den lokale H1b-`fit`-kommando og datakontrakt er endnu ikke publiceret;
+brug ikke en antaget fit-kommando fra dette kodecheckpoint.
+Fuld regression havde én kendt layoutfejl, hvis lokale rettelse også
+mangler publicering. Se F4-status for præcis genoptagelsesrækkefølge.
+
+
 Det nye entrypoint holder H adskilt fra den store G-CLI og genbruger samme
 atomiske checkpoint-I/O. Kør fra en **ren branch**, uden at ændre source under
 kørslen. Gemte G-resultater er ikke en dependency. Lav først én kort unit:
