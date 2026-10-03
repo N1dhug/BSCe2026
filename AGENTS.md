@@ -4,6 +4,12 @@ Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tids
 3. oktober 2026**. Det er den autoritative fælles status og to-do-liste; ældre
 chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
 
+- Aftalt rækkefølge, Johan 3. oktober kl. 23:08: **F4 færdig → grundig
+  prognosediagnose og eventuelle begrundede forbedringer → F5 → F6**. Se
+  **Opfølgning efter F4 — demand-prognose og baseline** i `root/F4.md`.
+  Nye model-/baselineændringer for de oversete demand-hop starter først efter
+  F4; mellemtrinnet er ikke en ny F4-gate. Det tidligere samlede tidsbudget
+  skal revurderes med dette mellemtrin.
 - Brugerens regel, 3. oktober 2026: brug **branches i eksisterende checkout**.
   Opret ikke flere worktrees, medmindre det er strengt nødvendigt; en ny fase,
   preview eller parallel chat er ikke i sig selv en grund. Bevar source under
