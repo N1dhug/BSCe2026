@@ -14,7 +14,7 @@ OPTIMIZED = PREDICTION / "all_days_optimized_top_end"
 BRUTE_FORCE = PREDICTION / "all_days_brute_force_top_end"
 OUTPUT = PREDICTION / "fitter_top_end_analysis"
 METHODS = ("warmup", "optimized", "brute_force")
-PARAMETERS = ("r_F", "r_U", "r_R", "r_0")
+PARAMETERS = ("r_F", "r_U", "r_R")
 REQUIRED = {"day", "weekday", "wm4_mse", "wm4_rmse", "wm4_mae", "wm4_bias", "O_mse", "F_0", "R_0", *PARAMETERS}
 
 
@@ -22,7 +22,6 @@ def load_method(name, root):
     path = Path(root) / "daily_metrics.csv"
     if not path.exists(): raise FileNotFoundError(f"Missing {path}. Run the {name} all-days predictor first.")
     frame = pd.read_csv(path, parse_dates=["day"])
-    if "r_0" not in frame.columns: frame["r_0"] = 0.0
     missing = sorted(REQUIRED.difference(frame.columns))
     if missing: raise RuntimeError(f"{path} is missing required columns: {', '.join(missing)}.")
     frame = frame.sort_values("day").drop_duplicates("day", keep="last").reset_index(drop=True)
