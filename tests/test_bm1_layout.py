@@ -147,7 +147,8 @@ class ConsolidatedLayoutTests(unittest.TestCase):
     def test_core_control_has_no_reference_scenario_dependency(self):
         root = Path(__file__).resolve().parents[1]
         paths = [root / name for name in (
-            'src/control/bm_1.py', 'src/control/objective.py', 'src/method/beta_mixture.py',
+            'src/control/bm_1.py', 'src/control/bm_1_handoff.py',
+            'src/control/objective.py', 'src/method/beta_mixture.py',
         )]
         self.assertTrue(all(path.is_file() for path in paths))
         for path in paths:

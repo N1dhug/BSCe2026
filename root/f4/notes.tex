@@ -2151,6 +2151,33 @@ Vi adskiller kendte syntetiske input, historiske input anvendt som \emph{oracle}
 
 Som minimum scores middelværdi, predictive observation-density og intervaldækning pr. horisont. PIT kan beregnes fra \eqref{eq:observationcdf} før assimilation. Baseline-only og en erklæret sæson-/ugegentagelsesreference inkluderes. Træningsskalering, modelvalg og tuning fryses før det endelige testforløb. Overlappende forecastorigins og observationer fra samme path er ikke uafhængige; usikkerhed om scores skal håndteres med uafhængige simulationer eller en passende tidsblok-protokol.
 
+\subsection{Implementeret lille I-baseline}
+Den første integration bruger det allerede anvendte F3-udviklingsrecord ID1326,
+FV401, tidsstep højst $1/768$ dag og Gauss3-likelihood. Den eksisterende rho-bank
+med 41 noder og diskret uniform prior assimilerer de samme 24 observationer som
+det kendte parameterfilter. MAP defineres ved største diskrete posteriorvægt;
+en eksakt lighed afgøres ved første node. Valget ledsages af den valgte nodes
+egen conditional state-posterior og $C=1/\rho_{\rm MAP}$.
+
+Origin er $\tau=1$ dag. Før filtrering fastlægges fremtidig $B=0.5$ og gentagelse
+af det syntetiske daglige prisprogram. Alle horisonter fra 1 til 168 timer
+udtages fra ét forward-forløb uden senere målinger; sidste tid er dag 8.
+Demand-momenter beregnes på FV-cellecentre, og observationsvariansen får
+det separate bidrag $\sigma_Y^2$. Tids-/rumdiagnoser ved $1/1536$ dag og
+801 celler bruger samme frosne origin med konservativ remap; det er ikke
+en ny kontrol af parameterbankens estimation eller empirical calibration.
+
+Eksisterende F3 optimerer to holdte priser over næste døgn fra to erklærede
+starter, under samme tracking-/terminal-/prisstraf. Neutral policy og begge
+frosne optimerede policies vurderes under hver belief; kendt reference bruger
+sin filtrerede state-lov, ikke sand state. Parameterusikkerhed er udeladt,
+og lokal optimizerkonvergens er ikke global optimalitet. Koden genbruger
+\texttt{BM1Parameters}, konservativ massetransfer og F3-evaluator. Denne
+udviklingsdemo dokumenterer integration, ikke parameter-recovery, population,
+operationel forecasting eller gennemført H-f/g. H1's kontinuerte monotone
+to-/fire-stykkers kurve-API er forberedt, men fælles kurvefit og selvstændig
+numerisk/statistisk validering mangler fortsat.
+
 \section{Overførsel af posterior og F3-handoff}
 \subsection{Konservativ overførsel mellem grids}
 Antag source-celler \(V_i\) med masser \(m_i\), og repræsentér density som konstant i hver source-celle. For target-celler \(W_j\) bliver

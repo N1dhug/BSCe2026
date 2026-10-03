@@ -1839,9 +1839,41 @@ def run_joint_rectangular_pilot(args):
         return summary
 
 
+def run_i_baseline(args):
+    from src.validation.bm_1.forecast import run_i_baseline as run
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    started = perf_counter()
+    def source_snapshot():
+        snapshot = _source_snapshot()
+        # Also detect edits within an already dirty development checkout.
+        # These hashes cost no model replays and do not alter old G2a guards.
+        snapshot['source_sha256'] = {
+            path.relative_to(ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted((ROOT / 'src').rglob('*.py'))}
+        return snapshot
+    source = source_snapshot()
+    def progress(phase, completed, total, completed_work, total_work):
+        print(f'I-baseline {phase}: {completed}/{total} phases; '
+              + runtime_text(started, completed_work, total_work), flush=True)
+    result = run(progress=None if args.quiet else progress)
+    if source_snapshot() != source:
+        raise ValueError('Source changed during I-baseline; no result published.')
+    result['source_sha256'] = source['source_sha256']
+    _write_likelihood_report(args, result, started)
+    print(f"I-baseline integration={result['integration_passes']}; "
+          f"forecast scientific acceptance={result['forecast_scientific_acceptance']}", flush=True)
+    return result
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
+    i_baseline = subparsers.add_parser('i-baseline',
+        help='Small F-based frozen-origin forecast and F3 handoff; no population acceptance.')
+    i_baseline.add_argument('--output', type=Path, help='Optional new JSON/gzip report.')
+    i_baseline.add_argument('--quiet', action='store_true')
+    i_baseline.set_defaults(handler=run_i_baseline)
     preparation = subparsers.add_parser(
         'preparation', help='Independent continuous F4-0 quadrature and Bayes checks.',
     )

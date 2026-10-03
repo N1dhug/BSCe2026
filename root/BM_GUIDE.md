@@ -1,8 +1,8 @@
 # BM — arbejdsvejviser
 
 **F4-status og næste opgave:** [F4.md](F4.md).
-Den aktive prioritering fra 3. oktober 2026 er først I-baseline på det afsluttede
-F-spor, derefter obligatorisk H-f/g inden den endelige samlede I/J-leverance;
+Den aktive prioritering fra 3. oktober 2026 er I-baseline på det afsluttede
+F-spor (integration nu implementeret), derefter obligatorisk H-f/g inden den endelige samlede I/J-leverance;
 G2b/G2c er fortsat blokeret og udsat fra den kritiske vej. Bevar kørende G2a-v2
 på dens oprindelige kildecommit; nyt arbejde kræver et separat checkout/worktree.
 **Sammenhængende matematik:** [f4/main.tex](f4/main.tex) + [f4/notes.tex](f4/notes.tex).
@@ -52,6 +52,42 @@ for et sweep med 21 A-mål og 96.34% mindre sporet hukommelse for likelihood-onl
 filteret, men **ingen målt walltime-gevinst for selve filteret**. Tallene gælder
 de konkrete benchmarks, ikke hele projektet. Kørende/resumérbar G2a-v2 beholder
 altid kildecommitten fra sit manifest.
+
+## I-baseline og H1-forberedelse
+
+Den lille integration bruger gammelt F3-ID1326, ikke en ny population. Kendt
+FV-filter og 41-node-rho-bank assimilerer kun Y1..Y24. `BM1ForecastOrigin`
+eksporterer MAP-nodens egne parametre og conditional posterior konservativt til
+F3. Samme origin bruges til 1/6/12/24/48/72/168-timers forecast med ét forward-
+forløb; fra dag 1 går 168 timer til dag 8. Fremtidige inputs deklareres før
+filteret: konstant B=0.5 og det gentagne syntetiske daglige U-mønster.
+
+Kommandoen virker i en opdateret **separat** mappe, uden G2a-dependencies:
+
+```powershell
+$iTag = Get-Date -Format "yyyyMMdd_HHmmss"
+python -B -m src.exe.run_model.bm_1.estimate i-baseline --blas-threads 1 --output "files/output/bm_1/runs/estimation/i_baseline_$iTag.json.gz"
+```
+
+Vent med et ekstra lokalt CPU-job, hvis G2a allerede bruger din PC fuldt.
+Eksisterende output afvises. Rå scores, vægte, origins og forecast-masser,
+numeriske diagnoser, kildecommit og kendt/estimeret F3-policy-sammenligning gemmes.
+F3 bruger næste døgn, to priser og samme tracking-/terminal-/prisstraf; kendt
+reference bruger filtreret state, ikke truth. Parameterusikkerhed udelades.
+Demo og tids-/rumdiagnoser accepterer ingen populations-/ugekalibreringsclaim;
+`forecast_scientific_acceptance=False` er tilsigtet.
+
+`src/control/bm_1_handoff.py` er det fælles origin/F3/forecast-interface til I/F5/F6;
+modellen og solverkernels genbruges. Nye tider bruger den erklærede tidsenhed,
+og ingen fremtidige observationer indgår. Et længere prisprogram kan genbruges
+til en kortere forecast; senere breakpoints ændrer ikke dens state-forløb.
+
+`BM1PiecewiseResponse` i `src/params/bm_1_response.py` forbereder H1: ét fælles
+kurveobjekt med to/fire stykker, ordnede indre værdier og endpoints 1,-1. Den
+samme f/g eksporteres til `BM1Parameters`, F3 og forecast. Kurvebeskrivelsen
+gemmer kun geometri; det endelige H-artifact skal også deklarere træning,
+population, normalisering, øvrige parametre og modelvalg. Samlet kurvefit,
+ny FV-kurve-numerik og blind validering mangler stadig.
 
 ## Almindelig kontrol fra projektmappen
 
