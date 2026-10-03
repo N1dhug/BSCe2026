@@ -1,12 +1,24 @@
 # BM — arbejdsvejviser
 
 **F4-status og næste opgave:** [F4.md](F4.md).
-Den aktive prioritering fra 3. oktober 2026 er I/J på det afsluttede F-spor;
+Den aktive prioritering fra 3. oktober 2026 er først I-baseline på det afsluttede
+F-spor, derefter obligatorisk H-f/g inden den endelige samlede I/J-leverance;
 G2b/G2c er fortsat blokeret og udsat fra den kritiske vej. Bevar kørende G2a-v2
 på dens oprindelige kildecommit; nyt arbejde kræver et separat checkout/worktree.
 **Sammenhængende matematik:** [f4/main.tex](f4/main.tex) + [f4/notes.tex](f4/notes.tex).
 **Afsluttet F1–F3-evidens:** [BM_REFERENCE.md](BM_REFERENCE.md).
 Der vedligeholdes ikke parallelle audit-/closure-rapporter i `root`.
+
+**Fælles beslutning for alle projektchats, 3. oktober 2026:** Fleksible f/g-kurver
+skal estimeres og valideres i **H-f/g** før endelig H→I-handoff/J. Arbejdet er
+obligatorisk og endnu ikke implementeret; der findes ingen ny kurvefit-CLI her.
+Læs repoets [../AGENTS.md](../AGENTS.md) og den aktuelle H-f/g-plan før arbejdet.
+Kurverne deles på tværs af hele den erklærede træningspopulation, aldrig per dag.
+Kandidaten med fire argumentintervaller `[0,0.25]`, `[0.25,0.5]`, `[0.5,0.75]`,
+`[0.75,1]` er én kontinuert, ikke-voksende funktion med fælles estimerede knudeværdier;
+den sammenlignes med en enklere to-stykkers og den lineære reference.
+Frosne kurver/skalaer bruges ved validering og forecast. Det eksisterende G-design
+forbliver den lineære reference; denne beslutning ændrer ikke gamle run/checkpoints.
 
 ## Almindelig kontrol fra projektmappen
 

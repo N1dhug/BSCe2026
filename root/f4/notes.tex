@@ -5,6 +5,9 @@ Disse noter samler F4-0--G0's matematik, forsøgsdesign og validerede synthetic 
 resterende opgaver står kun i \texttt{root/F4.md}; kommandoer i \texttt{root/BM\_GUIDE.md}.
 Modellen videreføres fra F1--F3 \cite{repo,junker}. Et beskrevet filter/forecast er
 ikke dermed et implementeret eller valideret resultat.
+Beslutningen fra 3. oktober 2026 gør fælles estimation af fleksible \(f,g\)-kurver
+obligatorisk i H. Den planlagte kurvematematik er særskilt nedenfor; de eksisterende
+A--G-forsøg med faste lineære responser ændres ikke og validerer ikke de nye kurver.
 
 \section{BM1: model, notation og enheder}
 \subsection{Demand og fleksibilitetsstate}
@@ -594,6 +597,102 @@ Den er approksimeret i praksis, fordi FP/filteret er numerisk. Hver ny kandidat 
 Et snit fastholder andre parametre. En profil reoptimerer dem. En skarp kurve i et snit er ikke bevis for skarp fælles identifikation. Batch-fit er et nyttigt kontrolværktøj, men opfylder ikke alene kravet om rekursiv parameterestimation.
 
 Junkers Appendix B diskuterer en længerehorisont-predictionsobjective \cite{junker}. Den skal ikke forveksles med produktet af betingede one-step densities i \eqref{eq:batch}. Et produkt af flere ubetingede forecast-marginaler fra samme origin er generelt ikke den fælles likelihood, fordi forecastfejlene kan være tidsafhængige.
+
+\section{Fælles estimation af fleksible responskurver: planlagt H-f/g}
+\label{sec:sharedresponse}
+Dette er matematik for den obligatoriske H-f/g-leverance, ikke en rapport om et
+allerede implementeret eller valideret kurvefit. Én \(f\)-kurve og én \(g\)-kurve
+skal gælde på tværs af dage i en erklæret population med samme normalisering.
+State og baseline kan variere dagligt; kurvekoefficienterne har intet dagsindeks.
+Generelle kurver betyder derfor generalitet inden for denne population, ikke en
+udokumenteret universel respons for alle forbrugertyper.
+
+\subsection{Argumentintervaller og kontinuerte delstykker}
+Lad \(0=q_0<q_1<\cdots<q_M=1\) være faste knuder. For hver respons
+\(h\in\{f,g\}\) vælges faldvægte \(w_{h,j}\geq0\), \(\sum_{j=1}^M w_{h,j}=1\).
+På intervallet \(z\in[q_{i-1},q_i]\) defineres
+\begin{equation}
+ h(z)=1-2\left[\sum_{j=1}^{i-1}w_{h,j}
+       +w_{h,i}\frac{z-q_{i-1}}{q_i-q_{i-1}}\right].
+ \label{eq:shared_piecewise_response}
+\end{equation}
+For \(f\) er \(z=x\); for \(g\) er \(z=u\). Delstykker vælges altså efter
+ladetilstand henholdsvis pris, ikke dato eller klokkeslæt. Ved fælles knuder er
+venstre og højre værdi ens. Endpoints er \(h(0)=1\), \(h(1)=-1\), og på hvert
+åbent delinterval er
+\[
+ h'(z)=-\frac{2w_{h,i}}{q_i-q_{i-1}}\leq0.
+\]
+Dermed er kurven kontinuert, ikke-voksende, begrænset til \([-1,1]\) og Lipschitz
+for faste adskilte knuder. Der tillades ikke selvstændigt fittede delkurver med
+spring eller daglige koefficienter. Constrainten efterlader \(M-1\) frie vægte
+per kurve. Den lineære reference svarer præcis til \(w_{h,i}=q_i-q_{i-1}\).
+
+En billig første pilot bruger \((0,0.5,1)\), altså én formparameter per kurve.
+Den konkrete fire-stykkers kandidat bruger \((0,0.25,0.5,0.75,1)\), altså tre
+per kurve og seks i alt. Begge familier skal sammenlignes med den lineære
+reference. Flere knuder eller en formbevarende monoton spline er en yderligere
+kompleksitetsbeslutning, som skal begrundes på udviklings-/valideringsdata.
+
+\subsection{Et fælles objective for hele træningsperioden}
+Skriv \(\vartheta=(\bm\alpha,\bm\beta,\psi)\), hvor \(\bm\alpha,\bm\beta\)
+beskriver fælles \(f,g\), og \(\psi\) indeholder de øvrige erklærede parametre.
+For uafhængige træningsrecords \(r\), med observerede indeks \(\mathcal O_r\), er
+\begin{equation}
+ \ell_{\mathrm{train}}(\vartheta)
+ =\sum_{r\in\mathrm{TRAIN}}\sum_{k\in\mathcal O_r}
+  \log p_\vartheta\!\left(Y_{r,k}\mid
+       \mathcal Y_{r,k-1},B_r,U_r\right).
+ \label{eq:shared_response_likelihood}
+\end{equation}
+Hver faktor kommer fra kandidatens egen FP-prediction før assimilation af
+\(Y_{r,k}\). Hver uafhængig record har sin erklærede initialprior. For ét
+sammenhængende forløb summeres i stedet over hele dette forløb med bevaret
+conditional state gennem midnat; en kalenderdag gør ikke records uafhængige.
+Ændres kurverne, skal det berørte forløb replayes korrekt med de nye kurver.
+En gammel state-posterior fra en anden kandidat er ikke en gyldig start.
+
+En afgrænset constrained optimizer kan maksimere
+\begin{equation}
+ \widehat\vartheta=\arg\max_{\vartheta\in\mathcal A}
+ \left\{\ell_{\mathrm{train}}(\vartheta)
+          -\lambda\mathcal R(\bm\alpha,\bm\beta)\right\},\qquad
+ \mathcal R=\sum_{h\in\{f,g\}}\sum_{j=1}^{M-1}
+       [h(q_j)-(1-2q_j)]^2.
+ \label{eq:shared_response_fit}
+\end{equation}
+\(\mathcal A\) indeholder kurve- og fysiske constraints. Regulariseringen trækker
+svagt bestemte knudeværdier mod den lineære reference. Knuder, kandidatfamilier,
+regulariseringsvalg, startpunkter og beregningsbudget deklareres før studiet;
+kompleksitet og \(\lambda\) vælges på kronologiske modelvalideringsblokke, aldrig
+på slut-holdout. Et fuldt Cartesian-grid over seks formparametre plus fysiske
+parametre er ikke arbejdsmetoden. Det endelige objective bruger alle observationer
+i den deklarerede træningsperiode; en kort pilot er kun udvikling.
+
+\subsection{Identifikation, numerik og fastlåsning}
+Uden endpoints kan \(f+c,g-c\) give samme sum, og fælles amplitudeskalering kan
+blandes sammen med \(k\). \eqref{eq:endpoints} fjerner disse eksakte friheder,
+men ikke svag praktisk identifikation ved smalt prisområde, latent state,
+satureret respons eller kobling til \(\rho,\Xi,k,\sigma_X,\sigma_Y\).
+Den første pilot holder \(k\) erklæret fast; efterfølgende profiler undersøger
+udvalgte koblinger. En betinget skarp likelihood er ikke i sig selv joint recovery.
+Ved \(\Xi=0\) er observationsmean baseline, så f/g-likelihood skal være flad:
+det er en negativ kontrol, ikke data til kurvelæring.
+
+Nye stykvise kurver får særskilt syntetisk/numerisk kontrol, herunder variation i
+pris/state og refinement af relevante likelihood-forskelle. A--G's lineære
+evidens kan ikke overføres som en generel accept af nye kurveformer.
+For \(g\) rapporteres prisdækning; for \(f\) rapporteres posterior-state-dækning
+uden adgang til sand state i fittet. Regularisering i udækkede intervaller er en
+modelantagelse, ikke en empirisk identificeret respons.
+
+Efter modelvalg fryses kurver og skalaer til validering og forecast. Daglig
+state-assimilation må fortsætte med de samme kurver. Usikkerhed/stabilitet vurderes
+på passende tidsblokke, og lineær, to-stykkers og fire-stykkers fit sammenlignes
+på samme informationsgrundlag. Kurvebeskrivelsen gemmer knuder, koefficienter,
+population, træningsperioder, normalisering og øvrige parameterbetingelser.
+Dokumenteret manglende identifikation kan være et resultat; den obligatoriske
+estimation og validering må ikke erstattes af alene at køre den lineære reference.
 
 \section{Rekursiv parameterbank og bevaret afhængighed}
 \subsection{En overskuelig første metode}
