@@ -1,12 +1,13 @@
 """Robustness design, continuous-law statistics and recoverable job boundaries."""
 import copy
+from concurrent.futures import Future
 from contextlib import contextmanager
 import gzip
 import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
@@ -82,10 +83,17 @@ class RobustnessMathTests(unittest.TestCase):
             unit=(core.F4_G_PAIRS[1],robust.POPULATION_STARTS[1],'sampling_4h')
             serial=robust.run_unit('G2c',unit,workers=1)
             parallel=robust.run_unit('G2c',unit,workers=2)
+            other=(unit[0],unit[1]+1,'matched')
+            dispatched=list(robust.iter_units('G2c',[unit,other],workers=2,parallelism='units'))
+            self.assertEqual({robust.unit_name(u) for u,_,_ in dispatched},
+                             {robust.unit_name(unit),robust.unit_name(other)})
+            whole=next(r for u,r,_ in dispatched if u==unit)
             self.assertTrue(robust.validate_unit(serial,'G2c',unit))
+            self.assertTrue(robust.validate_unit(whole,'G2c',unit))
             for field in ('conditional_log_evidence','log_weights','marginal_predicted_mass','marginal_posterior_mass',
                           'conditional_predicted_demand_mean','marginal_predicted_demand_mean','marginal_posterior_demand_mean'):
                 np.testing.assert_allclose(serial['rows'][0][field],parallel['rows'][0][field],atol=1e-13,rtol=0)
+                np.testing.assert_array_equal(serial['rows'][0][field],whole['rows'][0][field])
             row=serial['rows'][0]
             scores=np.array(row['conditional_log_evidence']);prior=np.array(row['initial_log_weights'])
             reduced=fv.parameter_bank_weights(scores,prior,np.ones(6,dtype=bool))
@@ -94,6 +102,39 @@ class RobustnessMathTests(unittest.TestCase):
                 np.testing.assert_allclose(row['marginal_'+phase+'_demand_mean'],expected,atol=1e-13,rtol=0)
             self.assertGreater(np.max(abs(np.sum(np.exp(reduced['log_weights'])*np.asarray(row['conditional_predicted_demand_mean']),axis=1)
                                           -row['marginal_predicted_demand_mean'])),1e-6)
+
+    def test_unit_dispatch_drains_started_results_on_raw_failure_or_worker_error(self):
+        units=robust.design_units('G2c')[:3]
+        for worker_error in (False,True):
+            pool=MagicMock()
+            pool.__enter__.return_value=pool
+            def submit(function,payload):
+                future=Future()
+                if worker_error and payload==units[0]: future.set_exception(ValueError('worker failed'))
+                else: future.set_result(({'passes':True},1.))
+                return future
+            pool.submit.side_effect=submit
+            with patch.object(robust,'ProcessPoolExecutor',return_value=pool), \
+                 patch.object(robust,'_prepare_unit',side_effect=lambda stage,u:u):
+                seen=[]
+                def consume():
+                    for u,result,_ in robust.iter_units('G2c',units,workers=2,parallelism='units'):
+                        seen.append(u)
+                        if u==units[0]: result['passes']=False  # Parent-side raw validation failed.
+                if worker_error:
+                    with self.assertRaisesRegex(ValueError,'worker failed'): consume()
+                    self.assertEqual(seen,[units[1]])
+                else:
+                    consume()
+                    self.assertEqual(seen,units[:2])
+                self.assertEqual(pool.submit.call_count,2)
+
+    def test_invalid_execution_selection_never_starts_workers(self):
+        unit=robust.design_units('G2c')[0]
+        with patch.object(robust,'ProcessPoolExecutor') as pool:
+            for units,mode in (([unit,unit],'units'),([unit],'nested'),([(('rho','Xi'),-1,'matched')],'units')):
+                with self.assertRaises(ValueError):list(robust.iter_units('G2c',units,parallelism=mode))
+            pool.assert_not_called()
 
 
 class RobustnessRawTests(unittest.TestCase):
@@ -152,6 +193,12 @@ class RobustnessRawTests(unittest.TestCase):
             b['bank_log_evidence']=(np.arange(1,24,2)+.1).tolist()
             result=robust.summarize_units('G2b',[a,b])
             self.assertAlmostEqual(result['paired_scores'][0]['mean_score_difference'],.1,places=12)
+
+    def test_summary_is_identical_after_out_of_order_unit_completion(self):
+        with self.fixture():
+            records=[robust.compact_unit(r) for r in self.reports.values()]
+            self.assertEqual(robust.summarize_units('G2b',records),
+                             robust.summarize_units('G2b',records[::-1]))
 
     def test_checkpoint_resume_revalidates_saved_units_without_replays(self):
         from src.exe.run_model.bm_1 import estimate

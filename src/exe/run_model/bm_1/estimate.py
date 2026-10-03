@@ -1381,6 +1381,19 @@ def run_fv_batch_benchmark(args):
     return result
 
 
+def run_execution_benchmark(args):
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    started = perf_counter()
+    def progress(row):
+        if not args.quiet:
+            print(f"  repeat={row['repeat']}; {row['parallelism']}: {row['seconds']:.2f}s",flush=True)
+    result = joint_robustness.benchmark_execution(workers=args.workers,repeats=args.repeats,progress=progress)
+    _write_likelihood_report(args,result,started)
+    print(f"Execution diagnostic speedup={result['speedup']:.2f}x; no population/forecast acceptance.")
+    return result
+
+
 def run_joint_grid_diagnosis(args):
     """Diagnose an existing complete G2a v1; never grant production acceptance."""
     if args.output.exists():
@@ -1554,6 +1567,7 @@ def run_joint_robustness(args):
     """Gated resumable G2b/G2c with immutable raw units and derived summaries."""
     from src.validation import estimation as checks
     workers = checks.positive_integer(args.workers, 'workers')
+    parallelism = args.parallelism
     limit = None if args.limit_units is None else checks.positive_integer(args.limit_units, 'limit_units')
     source = _source_snapshot()
     if not args.collect_only and source['working_tree_dirty']:
@@ -1591,18 +1605,22 @@ def run_joint_robustness(args):
         pending = [u for u in joint_robustness.design_units(args.study_stage) if joint_robustness.unit_name(u) not in present]
         if args.collect_only: pending=[]
         if limit is not None: pending=pending[:limit]
-        for unit in pending:
-            name = joint_robustness.unit_name(unit); started=last_printed=perf_counter()
-            print(f'{args.study_stage}: {name}; complete units={len(records)}/{len(manifest["design"]["unit_names"])}', flush=True)
-            def progress(row):
-                nonlocal last_printed
-                now=perf_counter()
-                if not args.quiet and (row['completed'] in (1,row['total']) or now-last_printed>=10):
-                    last_printed=now
-                    print(f"  {row['completed']}/{row['total']} replays; elapsed={now-started:.1f}s", flush=True)
-            result = joint_robustness.run_unit(args.study_stage, unit, workers=workers, progress=progress)
+        started=last_printed=perf_counter()
+        print(f'{args.study_stage}: {len(pending)} pending units; parallelism={parallelism}; workers={workers}', flush=True)
+        def progress(row):
+            nonlocal last_printed
+            now=perf_counter()
+            if not args.quiet and (row['completed'] in (1,row['total']) or now-last_printed>=10):
+                last_printed=now
+                print(f"  record={row['sequence_id']}; {row['completed']}/{row['total']} replays; "
+                      f"run elapsed={now-started:.1f}s", flush=True)
+        for unit, result, elapsed in joint_robustness.iter_units(args.study_stage, pending,
+                workers=workers, parallelism=parallelism, progress=progress):
+            name = joint_robustness.unit_name(unit)
             result.update(source, dependencies=dependencies, workers=workers,
-                          blas_threads_requested=args.blas_threads, elapsed_seconds=perf_counter()-started)
+                          parallelism=parallelism, hypothesis_workers_per_unit=workers if parallelism=='hypotheses' else 1,
+                          blas_threads_requested=args.blas_threads, elapsed_seconds=elapsed,
+                          timing_scope='unit computation; units mode excludes parent preparation, transfer and raw validation')
             try:
                 joint_robustness.validate_unit(result, args.study_stage, unit, require_source=True)
                 if _source_snapshot()!=source: raise ValueError('Source changed during the unit.')
@@ -1617,11 +1635,14 @@ def run_joint_robustness(args):
             summary = joint_robustness.summarize_units(args.study_stage, records)
             summary.update(unit_sha256=digests, source=source, dependencies=dependencies)
             _atomic_report(args.run_dir/'summary.json', summary, replace_existing=True)
-            print(f"  saved {destination}; passes={result['passes']}", flush=True)
+            print(f"  saved {destination}; passes={result['passes']}; "
+                  f"complete units={len(records)}/{len(manifest['design']['unit_names'])}", flush=True)
             if not result['passes']:
-                raise RuntimeError('Truth/numerical/raw gate failed; complete available unit retained for review.')
+                print('  Gate failed: stopping new dispatch; retaining submitted units as they finish.', flush=True)
             del result
         _atomic_report(args.run_dir/'summary.json', summary, replace_existing=True)
+        if summary['failed_units']:
+            raise RuntimeError('Truth/numerical/raw gate failed; complete available units retained for review.')
         print(f"{args.study_stage}: {summary['completed_units']}/{summary['expected_units']} units; "
               f"complete={summary['complete']}; passes={summary['passes']}")
         return summary
@@ -1803,6 +1824,13 @@ def build_parser():
     batch_benchmark.add_argument('--output', type=Path)
     batch_benchmark.add_argument('--quiet', action='store_true')
     batch_benchmark.set_defaults(handler=run_fv_batch_benchmark)
+    execution = subparsers.add_parser('benchmark-execution',
+        help='Compare hypothesis/unit process placement on two diagnostic seven-day banks; no study acceptance.')
+    execution.add_argument('--workers',type=int,default=2)
+    execution.add_argument('--repeats',type=int,default=2)
+    execution.add_argument('--output',type=Path)
+    execution.add_argument('--quiet',action='store_true')
+    execution.set_defaults(handler=run_execution_benchmark)
     diagnosis = subparsers.add_parser('joint-bank-grid-diagnose',
         help='Posthoc axis/spatial diagnosis on a complete old seven-day G2a report.')
     diagnosis.add_argument('--g2a-report', type=Path, required=True)
@@ -1827,6 +1855,10 @@ def build_parser():
         if stage=='G2c': robustness.add_argument('--pilot-dir', type=Path, required=True)
         robustness.add_argument('--run-dir', type=Path, required=True)
         robustness.add_argument('--workers', type=int, default=8)
+        robustness.add_argument('--parallelism', choices=('units','hypotheses'),
+            default='units' if stage=='G2c' else 'hypotheses',
+            help='units: independent records with local ordered reduction; hypotheses: parallel replays in one record. '
+                 'Workers is the total process budget; units mode reports progress at completed unit boundaries.')
         robustness.add_argument('--limit-units', type=int, help='Complete at most this many new units, then stop cleanly.')
         robustness.add_argument('--collect-only', action='store_true', help='Validate and summarize saved units without new replays.')
         robustness.add_argument('--quiet', action='store_true')

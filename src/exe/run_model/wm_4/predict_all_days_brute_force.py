@@ -21,7 +21,19 @@ END_DAY = "2022-08-22"
 def historical_brute_force_state(fit):
     states = np.asarray(fit["init_cond"], dtype=float)
     if states.ndim != 2 or states.shape[1] != 2: raise ValueError("Brute-force historical fit must contain one [F0,R0] row per training day.")
-    return np.array([float(fit["F0"]), float(np.median(states[:, 1]))], dtype=float)
+    return np.median(states, axis=0).astype(float)
+
+
+def brute_force_profiles(fit, prediction_day):
+    training_days, profiles = list(fit["training_days"]), fit["f0_profile"]
+    if len(profiles) != len(training_days): raise ValueError("Brute-force F0 profiles must contain one profile per training day.")
+    frames = []
+    for training_day, profile in zip(training_days, profiles):
+        frame = pd.DataFrame(profile)
+        frame.insert(0, "training_day", training_day)
+        frame.insert(0, "prediction_day", prediction_day)
+        frames.append(frame)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False, optimize_initial_state=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
@@ -46,21 +58,29 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
     wm4_metrics, output_metrics = deviation_metrics(observed, predicted), deviation_metrics(observed, baseline)
     r = np.asarray(fit["r"], dtype=float)
     training_states = np.asarray(fit["init_cond"], dtype=float)
-    profile = pd.DataFrame(fit["f0_profile"])
-    profile.insert(0, "prediction_day", start)
+    if training_states.ndim != 2 or training_states.shape[1] != 2: raise ValueError("Brute-force historical fit must contain one [F0,R0] row per training day.")
+    f0 = training_states[:, 0]
+    feasible = np.asarray(fit["brute_force_feasible_candidates"], dtype=float).reshape(-1)
+    if feasible.size != len(training_states): raise ValueError("Brute-force feasible-candidate counts must contain one value per training day.")
+    profile = brute_force_profiles(fit, start)
 
     daily = {
         "day": start, "weekday": start.day_name(), "fit_method": fit["fit_method"],
         "optimized_prediction_state": bool(optimize_initial_state), "prediction_state_fit_mse": init_fit_mse,
-        "F_0": init[0], "R_0": init[1], "best_F0": float(fit["F0"]),
-        "r_F": r[0], "r_U": r[1], "r_R": r[2],
+        "F_0": init[0], "R_0": init[1],
+        "best_F0": float(np.median(f0)),
+        "training_F0_mean": float(np.mean(f0)), "training_F0_std": float(np.std(f0)),
+        "training_F0_median": float(np.median(f0)), "training_F0_min": float(np.min(f0)), "training_F0_max": float(np.max(f0)),
+        "r_F": r[0], "r_U": r[1], "r_R": r[2], "r_0": r[3],
         "training_R0_mean": float(np.mean(training_states[:, 1])),
         "training_R0_std": float(np.std(training_states[:, 1])),
         "training_R0_median": float(np.median(training_states[:, 1])),
         "qp_loss": float(fit["qp_loss"]),
         "deterministic_fit_loss": float(fit["deterministic_loss"]),
         "brute_force_candidates": int(fit["brute_force_candidates"]),
-        "brute_force_feasible_candidates": int(fit["brute_force_feasible_candidates"]),
+        "brute_force_feasible_candidates": float(np.mean(feasible)),
+        "brute_force_feasible_candidates_min": int(np.min(feasible)),
+        "brute_force_feasible_candidates_max": int(np.max(feasible)),
         "state_iterations": int(fit["state_iterations"]),
         "sigma_0": np.nan if deterministic else fit["sigma_0"],
         "sigma_I": np.nan if deterministic else fit["sigma_I"],
@@ -81,6 +101,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
         "training_day": fit["training_days"],
         "F_0": training_states[:, 0],
         "R_0": training_states[:, 1],
+        "feasible_F0_candidates": feasible.astype(int),
     })
 
     if save_daily_plots:
@@ -101,12 +122,12 @@ def save_performance_plot(hourly, daily, path):
     axes[1].plot(daily["day"], daily["O_mse"], label="O daily MSE")
     axes[1].set_ylabel("Daily MSE"); axes[1].legend(); axes[1].grid(True, alpha=0.25)
 
-    axes[2].plot(daily["day"], daily["best_F0"], label="Historical brute-force shared F0")
+    axes[2].plot(daily["day"], daily["training_F0_median"], label="Historical training F0 median")
     axes[2].plot(daily["day"], daily["F_0"], label="Prediction-day F0")
     axes[2].axhline(0.0, linestyle="--", label="Neutral F0=0")
     axes[2].set_ylabel("F0"); axes[2].set_xlabel("Day"); axes[2].legend(); axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle("wm_4 brute-force F0 out-of-sample performance")
+    fig.suptitle("wm_4 brute-force per-training-day F0 performance")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -119,12 +140,12 @@ def print_summary(hourly, daily, skipped):
     print(f"{'':<8}{'MSE':>14}{'RMSE':>14}{'MAE':>14}{'bias':>14}")
     print(f"{'WM4':<8}{wm4['mse']:>14.10f}{wm4['rmse']:>14.10f}{wm4['mae']:>14.10f}{wm4['bias']:>14.10f}")
     print(f"{'O(t)':<8}{output['mse']:>14.10f}{output['rmse']:>14.10f}{output['mae']:>14.10f}{output['bias']:>14.10f}")
-    print(f"mean historical best F0={daily['best_F0'].mean():.8f}, std={daily['best_F0'].std():.8f}, median={daily['best_F0'].median():.8f}")
+    print(f"historical training F0 median mean={daily['training_F0_median'].mean():.8f}, std={daily['training_F0_median'].std():.8f}")
+    print(f"historical training F0 mean mean={daily['training_F0_mean'].mean():.8f}")
     if daily["optimized_prediction_state"].any():
         print(f"oracle prediction F0 mean={daily['F_0'].mean():.8f}, std={daily['F_0'].std():.8f}")
         print(f"oracle prediction-state MSE mean={daily['prediction_state_fit_mse'].mean():.10f}")
-    print(f"neutral F0 selections={int(np.count_nonzero(np.isclose(daily['best_F0'], 0.0)))}/{len(daily)}")
-    print(f"mean feasible candidates={daily['brute_force_feasible_candidates'].mean():.2f}/{daily['brute_force_candidates'].mean():.2f}")
+    print(f"mean feasible candidates per training day={daily['brute_force_feasible_candidates'].mean():.2f}/{daily['brute_force_candidates'].mean():.2f}")
     if skipped:
         print(); print("skipped days:")
         for day, reason in skipped: print(f"{day:%Y-%m-%d}: {reason}")
@@ -146,8 +167,8 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
             daily_rows.append(daily); hourly_frames.append(hourly)
             training_frames.append(training); profile_frames.append(profile)
             print(
-                f"{day:%Y-%m-%d} | F0={daily['best_F0']:.6f} | "
-                f"r=[{daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}] | "
+                f"{day:%Y-%m-%d} | training_F0_median={daily['training_F0_median']:.6f} | "
+                f"r=[{daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}, {daily['r_0']:.6f}] | "
                 f"initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | QP={daily['qp_loss']:.8g} | "
                 f"WM4 MSE={daily['wm4_mse']:.8f} | O MSE={daily['O_mse']:.8f}"
             )
@@ -166,7 +187,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
 
 
 def main():
-    parser = ArgumentParser(description="Evaluate WM4 predictions across a date range using brute-force shared historical F0 fits.")
+    parser = ArgumentParser(description="Evaluate WM4 predictions across a date range using per-training-day brute-force F0 fits.")
     parser.add_argument("--start-day", default=START_DAY)
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
