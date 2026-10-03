@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import numpy as np
 
 from src.validation.solver.finite_volume import finite_volume_1d_validation, finite_volume_2d_validation
@@ -146,6 +148,7 @@ class finite_volume_1d:
         bounds=(0.0, 1.0),
         breakpoints=None,
         max_step=np.inf,
+        coefficient_key=None,
     ):
         """Solve a one-dimensional Fokker-Planck equation without post-correction."""
         # Validate and construct grids
@@ -163,8 +166,12 @@ class finite_volume_1d:
         )
 
         mass = initial_mass.copy()
-        full_history = np.empty((integration_t.size, mass.size), dtype=float)
-        full_history[0] = mass
+        # Only requested outputs are retained. Every internal step is still
+        # solved and checked; filtering usually requests only two endpoints.
+        mass_history = np.empty((len(output_indices), mass.size), dtype=float)
+        mass_history[0] = mass
+        next_output = 1
+        advance = self._stepper(dx, edges, centers, drift, diffusion, coefficient_key)
 
         maximum_abs_column_sum = 0.0
         minimum_off_diagonal_rate = np.inf
@@ -176,34 +183,11 @@ class finite_volume_1d:
             right = float(integration_t[n + 1])
             h = right - left
 
-            internal_faces = edges[1:-1]
-            drift_faces = finite_volume_1d_validation.field(
-                drift(left, internal_faces),
-                internal_faces.shape,
-                "drift",
-            )
-            diffusion_centers = finite_volume_1d_validation.field(
-                diffusion(left, centers),
-                centers.shape,
-                "diffusion",
-            )
-
-            lower, diagonal, upper, generator_diagnostics = (
-                self.generator_tridiagonal(
-                    dx,
-                    drift_faces,
-                    diffusion_centers,
-                )
-            )
-
-            mass = self._solve_tridiagonal(
-                -h * lower,
-                1.0 - h * diagonal,
-                -h * upper,
-                mass,
-            )
+            mass, generator_diagnostics = advance(mass, left, h)
             mass = finite_volume_1d_validation.evolved_mass(mass)
-            full_history[n + 1] = mass
+            if next_output < len(output_indices) and n + 1 == output_indices[next_output]:
+                mass_history[next_output] = mass
+                next_output += 1
 
             maximum_abs_column_sum = max(
                 maximum_abs_column_sum,
@@ -219,7 +203,6 @@ class finite_volume_1d:
                 abs(float(np.sum(mass)) - 1.0),
             )
 
-        mass_history = full_history[output_indices].copy()
         density_history = mass_history / dx
         diagnostics = {
             "integration_t": integration_t.copy(),
@@ -243,6 +226,20 @@ class finite_volume_1d:
             "diagnostics": diagnostics,
         }
 
+    def _stepper(self, dx, edges, centers, drift, diffusion, coefficient_key):
+        if coefficient_key is not None:
+            raise ValueError('Coefficient reuse requires the cached LAPACK backend.')
+        faces = edges[1:-1]
+
+        def advance(mass, time, step):
+            a = finite_volume_1d_validation.field(drift(time, faces), faces.shape, 'drift')
+            b = finite_volume_1d_validation.field(diffusion(time, centers), centers.shape, 'diffusion')
+            lower, diagonal, upper, diagnostics = self.generator_tridiagonal(dx, a, b)
+            mass = self._solve_tridiagonal(-step * lower, 1.0 - step * diagonal, -step * upper, mass)
+            return mass, diagnostics
+
+        return advance
+
 
 class finite_volume_1d_lapack(finite_volume_1d):
     """Opt-in LAPACK linear solve for the identical conservative FV scheme.
@@ -263,6 +260,61 @@ class finite_volume_1d_lapack(finite_volume_1d):
         if info != 0:
             raise RuntimeError(f'LAPACK FV tridiagonal solve failed (info={info}).')
         return solved[:,0]
+
+
+class finite_volume_1d_cached(finite_volume_1d_lapack):
+    """Exact coefficient/factor reuse for declared time-independent fields.
+
+    ``coefficient_key(t)`` is a caller contract: equal keys must imply identical
+    drift and diffusion arrays on this fixed spatial grid. With no such contract
+    the ordinary LAPACK path evaluates both fields at every original left time.
+    Caches are bounded and local to one solve, so parameters, grids and inputs
+    cannot leak between calls. Step lengths are exact floats, never rounded.
+    """
+
+    def __init__(self, *, vectorized_inputs=False):
+        if not isinstance(vectorized_inputs, (bool, np.bool_)):
+            raise TypeError('vectorized_inputs must be boolean.')
+        self.vectorized_inputs = bool(vectorized_inputs)
+
+    def _stepper(self, dx, edges, centers, drift, diffusion, coefficient_key):
+        if coefficient_key is None:
+            return super()._stepper(dx, edges, centers, drift, diffusion, None)
+        if not callable(coefficient_key):
+            raise TypeError('coefficient_key must be callable.')
+        from scipy.linalg.lapack import dgttrf, dgttrs
+
+        faces = edges[1:-1]
+        generators, factors = OrderedDict(), OrderedDict()
+
+        def advance(mass, time, step):
+            key = coefficient_key(time)
+            if key not in generators:
+                a = finite_volume_1d_validation.field(drift(time, faces), faces.shape, 'drift')
+                b = finite_volume_1d_validation.field(diffusion(time, centers), centers.shape, 'diffusion')
+                generators[key] = self.generator_tridiagonal(dx, a, b)
+                if len(generators) > 8:
+                    generators.popitem(last=False)
+            generators.move_to_end(key)
+            lower, diagonal, upper, diagnostics = generators[key]
+            factor_key = (key, step)
+            if factor_key not in factors:
+                system = (-step * lower, 1.0 - step * diagonal, -step * upper)
+                if not all(np.all(np.isfinite(v)) for v in system):
+                    raise ValueError('Implicit step matrix must be finite.')
+                *factor, info = dgttrf(*system, overwrite_dl=1, overwrite_d=1, overwrite_du=1)
+                if info != 0:
+                    raise RuntimeError(f'LAPACK FV factorization failed (info={info}).')
+                factors[factor_key] = factor
+                if len(factors) > 32:
+                    factors.popitem(last=False)
+            factors.move_to_end(factor_key)
+            solved, info = dgttrs(*factors[factor_key], np.array(mass, copy=True)[:, None], overwrite_b=1)
+            if info != 0:
+                raise RuntimeError(f'LAPACK FV factored solve failed (info={info}).')
+            return solved[:, 0], diagnostics
+
+        return advance
 
 
 class finite_volume_2d:

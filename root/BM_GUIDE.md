@@ -725,3 +725,66 @@ Lokale resultater hører i ignoreret `files/output/bm_1/runs/`, PDF-build i
 `root/f4/build/`. Bevar inputworkbooks og afsluttet evidens i
 `files/output/bm_1/f3_b/` og `files/output/bm_1/real_data/`. Slet ikke brugerens
 lokale arbejde, stashes eller miljøer for at opnå en ren status.
+
+## G2b/G2c og hurtigere FV (efter syvdages G2a-review)
+
+Den igangværende G2a-kørsel på `86dc765` skal færdiggøre uændret. Ingen ekstra
+fuld G2a-kørsel kræves alene for performanceændringer. Ny kode ligger separat
+fra PR #55 og må først synkroniseres, når Python-kørslen er afsluttet.
+
+En kort backendkontrol på gamle G2a-records måler begge par, fire hjørner og
+centrum, alle fire FV-settings og to gentagelser. Den bruger ikke nye G2b/G2c-records:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate benchmark-fv `
+  --days 7 --repeats 2 --blas-threads 1 `
+  --output files/output/bm_1/runs/estimation/fv_backend_windows_v1.json
+if ($LASTEXITCODE -ne 0) { throw "FV-backendkontrollen fejlede." }
+```
+
+Rapporten måler seriel replaytid. Parallel walltime, opstart, reduktion, råreview
+og output har også en pris; et speedup-tal er ikke et løfte om samlet Windows-tid.
+`joint-bank-continued-pilot --fv-backend cached` findes til eksplicit sammenligning,
+men default er fortsat den gamle LAPACK-backend.
+
+Efter bestået og råreviewet syvdages G2a kan følgende køres fra et rent checkout
+af den nye revision. **Kør først én G2b-unit og review runtime/resultat**, inden
+resten startes. Det samlede G2b-design er ti units; G2c er 560. Det er forsknings-
+studier og indgår ikke i den almindelige testsuite.
+
+```powershell
+$g2Root = "files/output/bm_1/runs/estimation"
+$g2a = "$g2Root/f4_g_g2a_continued_7d_v1.json.gz"
+$g2b = "$g2Root/f4_g_g2b_robustness_v1"
+$g2c = "$g2Root/f4_g_g2c_population_v1"
+
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-robustness-pilot `
+  --g2a-report $g2a --run-dir $g2b --limit-units 1 --workers 8 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "G2b-unit fejlede; behold hele mappen til review." }
+```
+
+Samme kommando fortsætter fra næste manglende unit. Udelad `--limit-units 1`
+for at færdiggøre resten efter review. G2c kræver alle ti beståede rå G2b-units:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-robustness-population `
+  --g2a-report $g2a --pilot-dir $g2b --run-dir $g2c `
+  --limit-units 10 --workers 8 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "G2c fejlede; behold hele mappen til review." }
+```
+
+`--limit-units` begrænser nye beregninger, ikke studiedesignet. Et succesfuldt
+chunk-exit er ikke samlet accept: se `complete` og `passes` i `summary.json`.
+`--collect-only` genvaliderer og opsummerer eksisterende units uden replays.
+`manifest.json`, `units/*.npz` og `summary.json` skal bevares sammen; de store
+arrays er tabsfrie NPY-medlemmer plus metadata i ZIP, ikke pickle. En unit er én
+record/scenarie med alle sine banker. Ved afbrydelse genbruges komplette units;
+den igangværende unit beregnes igen. Skift ikke kildecommit under en serie.
+En efterladt `run.lock` blokerer ikke resume; låsen holdes af operativsystemet.
+Ingen fejlede eller manglende records fjernes for at få et grønt resumé.
+
+H har forberedelsesfunktioner i `src/tools/bm_1_data.py`:
+`previous_weekday_mean`, `EstimationPowerScale` og `historical_point_observations`.
+De kræver eksplicit timezone, population, power-unit og observationstype.
+De er ikke et historisk fit. Afklar først punkt versus interval/energi, faktisk
+forbrugerpris, historik og kronologisk split. F3's retrospektive eksperiment er bevaret.

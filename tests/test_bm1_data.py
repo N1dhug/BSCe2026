@@ -132,6 +132,67 @@ class F3GHistoricalContractTests(unittest.TestCase):
             self.assertTrue(np.isfinite(item.standard_error))
 
 
+class HistoricalEstimationPreparationTests(unittest.TestCase):
+    def test_five_weekday_arithmetic_mean_keeps_local_hour_and_no_future_history(self):
+        from src.tools.bm_1_data import previous_weekday_mean
+        index = pd.date_range('2022-02-01', '2022-05-01', freq='h', tz='Europe/Copenhagen')
+        history = pd.Series(99., index=index)
+        target = pd.Timestamp('2022-03-28 10:00', tz=index.tz)
+        expected = [target-pd.DateOffset(weeks=k) for k in range(1,6)]
+        history.loc[expected] = [.1,.2,.3,.4,.9]
+        baseline, used = previous_weekday_mean(history, [target], origin=target.normalize())
+        self.assertAlmostEqual(baseline.iloc[0], .38)
+        self.assertEqual(used[0], tuple(expected))
+        self.assertTrue(all(t.hour==10 and t.weekday()==0 for t in used[0]))
+        history.loc[history.index>=target.normalize()] = -1000
+        again, _ = previous_weekday_mean(history, [target], origin=target.normalize())
+        np.testing.assert_array_equal(again, baseline)
+        history.loc[expected[2]] = np.nan
+        with self.assertRaisesRegex(ValueError, 'Five complete'):
+            previous_weekday_mean(history, [target], origin=target.normalize())
+
+    def test_longer_forecast_uses_only_pre_origin_weekday_occurrences(self):
+        from src.tools.bm_1_data import previous_weekday_mean
+        origin = pd.Timestamp('2022-05-02', tz='Europe/Copenhagen')
+        history = pd.Series(1., index=pd.date_range('2022-03-01','2022-06-01',freq='h',tz=origin.tz))
+        target = origin+pd.DateOffset(weeks=2, hours=12)
+        _, sources = previous_weekday_mean(history, [target], origin=origin)
+        self.assertTrue(all(t<origin for t in sources[0]))
+        self.assertEqual(sources[0][0], pd.Timestamp('2022-04-25 12:00',tz=origin.tz))
+
+    def test_point_adapter_preserves_dst_elapsed_time_missing_mask_and_unclipped_values(self):
+        from src.tools.bm_1_data import EstimationPowerScale, historical_point_observations
+        origin = pd.Timestamp('2022-10-30',tz='Europe/Copenhagen')
+        times = pd.date_range(origin+pd.Timedelta(hours=1), periods=5, freq='h')
+        data = pd.Series([5.,np.nan,12.,-1.,8.], index=times)
+        obs, metadata = historical_point_observations(data, origin=origin,
+            scale=EstimationPowerScale(10.,'kW'), measurement_id='declared cohort', observation_kind='point')
+        np.testing.assert_array_equal(obs.times, np.arange(1,6)/24)
+        np.testing.assert_array_equal(obs.observed, [True,False,True,True,True])
+        np.testing.assert_array_equal(obs.values[[0,2,3,4]], [.5,1.2,-.1,.8])
+        self.assertNotEqual(metadata['timestamps'][1],metadata['timestamps'][2])
+        self.assertEqual(times[1].hour,times[2].hour)
+        for kind in ('interval_mean','energy','unknown'):
+            with self.assertRaises(NotImplementedError):
+                historical_point_observations(data, origin=origin, scale=EstimationPowerScale(10.,'kW'),
+                    measurement_id='cohort', observation_kind=kind)
+
+    def test_training_scale_is_frozen_before_origin_and_naive_times_are_rejected(self):
+        from src.tools.bm_1_data import EstimationPowerScale, historical_point_observations
+        times = pd.date_range('2022-01-01', periods=8, freq='h',tz='UTC')
+        data = pd.Series([1,2,3,4,1000,2000,3000,4000],index=times)
+        scale = EstimationPowerScale.from_training(data,cutoff=times[4],unit='kW')
+        self.assertEqual(scale.power,4.)
+        with self.assertRaisesRegex(ValueError,'after the estimation origin'):
+            historical_point_observations(data.iloc[5:],origin=times[3],scale=scale,
+                                         measurement_id='cohort',observation_kind='point')
+        with self.assertRaises(ValueError):
+            historical_point_observations(data.set_axis(times.tz_localize(None)),origin=times[0],scale=scale,
+                                         measurement_id='cohort',observation_kind='point')
+        with self.assertRaises(ValueError):EstimationPowerScale(0.,'kW')
+        with self.assertRaises(ValueError):EstimationPowerScale(1.,'kWh')
+
+
 class RealDataDailyExperimentTests(unittest.TestCase):
 
     def test_history_baseline_is_hourwise_trimmed_mean(self):

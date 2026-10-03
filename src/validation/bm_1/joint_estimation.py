@@ -181,9 +181,10 @@ def _candidate_replay(task):
     case,obs,settings = group['case'],group['observations'],group['settings']
     model,base = case.build_model()
     backend = group.get('backend','reference')
-    if backend=='lapack':
-        from src.solver.finite_volume import finite_volume_1d_lapack
-        model.fokker_planc_reference = finite_volume_1d_lapack()
+    if backend in ('lapack', 'cached'):
+        from src.solver.finite_volume import finite_volume_1d_lapack, finite_volume_1d_cached
+        model.fokker_planc_reference = (finite_volume_1d_cached(vectorized_inputs=True) if backend == 'cached'
+                                       else finite_volume_1d_lapack())
     elif backend!='reference':
         raise ValueError('Unknown conditional FV backend.')
     candidate = replace(core.f4_e_truth_candidate(case),
@@ -196,10 +197,74 @@ def _candidate_replay(task):
     except (RuntimeError,ValueError,FloatingPointError) as exc:
         raise RuntimeError(f"{group.get('stage','G1a')} replay failed: ID{group['sequence_id']}, {group['pair']}="
                            f"{group['hypotheses'][j].tolist()}, {group['label']}: {exc}") from exc
+    extra = {}
+    if group.get('keep_demand', False):
+        from src.method.bm_1_estimation import _observation_demand, _legendre_rule
+        parameters = core._f4_e_parameters(base, candidate)
+        nodes, weights = _legendre_rule(settings['likelihood_quadrature_order'])
+        points = result.x_grid[:, None] + np.diff(result.x_edges)[:, None]*nodes[None, :]/2
+        demand_cache = {}
+        means = []
+        for time in obs.times:
+            price_time = time if obs.price_side == 'right' else np.nextafter(time, case.horizon[0])
+            key = (float(model.B(time)), float(parameters[0](price_time)))
+            if key not in demand_cache:
+                demand_cache[key] = _observation_demand(model, parameters, float(time), points.ravel(),
+                    obs.price_side, case.horizon[0]).reshape(points.shape) @ (weights/2)
+            means.append(demand_cache[key])
+        demands = np.asarray(means)
+        extra = {phase+'_demand_mean': np.sum(demands*getattr(result, phase+'_mass'), axis=1)
+                 for phase in ('predicted', 'posterior')}
     return i,j,dict(scores=result.log_evidence,predicted=result.predicted_mass,posterior=result.posterior_mass,
                     maximum_abs_mass_error=result.maximum_abs_mass_error,minimum_cell_mass=result.minimum_cell_mass,
                     actual_max_step=max(d['actual_max_step'] for d in result.prediction_diagnostics),
-                    elapsed_seconds=perf_counter()-started)
+                    elapsed_seconds=perf_counter()-started, **extra)
+
+
+def benchmark_joint_fv(*, record_days=7, repeats=2, progress=None):
+    """Paired backend check on old G2a data, not new scientific evidence.
+
+    Five hypotheses (four support corners and the center) per pair, all four
+    FV settings. Timing is serial, alternating backend order, with identical
+    observations; a speed ratio is measured, never a test pass criterion.
+    """
+    from src.validation.bm_1 import joint_grid as grid
+    repeats = checks.positive_integer(repeats, 'repeats')
+    rows = []
+    configs = grid._grid_configurations(G1A_NUMERICS)
+    for pair, sid in zip(core.F4_G_PAIRS, grid.G2A_IDS):
+        case, sequence, _ = grid._g2a_truth_record(pair, sid, record_days)
+        hypotheses = grid._parameter_grid(pair, 65, 65)[0]
+        selected = [0, 64, 32*65+32, 64*65, 65*65-1]
+        for label, settings in configs['__'.join(pair)]:
+            for j in selected:
+                group = dict(case=case, observations=sequence.observations, pair=pair,
+                    hypotheses=hypotheses[j:j+1], sequence_id=sid, label=label, settings=settings)
+                durations = {'lapack': [], 'cached': []}
+                errors = {name: 0. for name in ('scores', 'predicted', 'posterior', 'actual_max_step')}
+                diagnostics = []
+                for repeat in range(repeats):
+                    results = {}
+                    for backend in (('lapack', 'cached') if repeat % 2 == 0 else ('cached', 'lapack')):
+                        results[backend] = _candidate_replay((0, 0, dict(group, backend=backend)))[2]
+                        durations[backend].append(results[backend]['elapsed_seconds'])
+                    for name in errors:
+                        errors[name] = max(errors[name], float(np.max(abs(
+                            np.asarray(results['cached'][name])-np.asarray(results['lapack'][name])))))
+                    diagnostics.extend(results.values())
+                rows.append(dict(coordinates=list(pair), sequence_id=sid, label=label,
+                    hypothesis=group['hypotheses'][0].tolist(), settings=settings, seconds=durations,
+                    maximum_errors=errors,
+                    maximum_abs_mass_error=max(r['maximum_abs_mass_error'] for r in diagnostics),
+                    minimum_cell_mass=min(r['minimum_cell_mass'] for r in diagnostics),
+                    passes=bool(max(errors.values())<=1e-10 and _probability_gate(diagnostics))))
+                if progress is not None: progress(len(rows), 40)
+    times = {b:sum(float(np.median(r['seconds'][b])) for r in rows) for b in ('lapack','cached')}
+    return dict(stage='FV-backend-benchmark', record_days=record_days, repeats=repeats,
+        sequence_ids=list(grid.G2A_IDS), rows=rows, median_seconds_sum=times,
+        measured_serial_speedup=times['lapack']/times['cached'],
+        comparison_tolerance=1e-10, passes=all(r['passes'] for r in rows),
+        interpretation='Paired implementation equivalence and serial timing on old records; no new G2 acceptance or Windows runtime promise.')
 
 
 def _reduce(group, conditionals):
@@ -227,16 +292,18 @@ def _reduced_row(group, scores, prior, reduced, predicted, posterior, diagnostic
     truth = core.f4_e_truth_candidate(case)
     mass_error = max(diagnostics['maximum_abs_mass_error'],
                      float(np.max(np.abs(predicted.sum(axis=1)-1))),float(np.max(np.abs(posterior.sum(axis=1)-1))))
+    def raw_array(value):
+        return value if group.get('array_output', False) else value.tolist()
     return dict(coordinates=list(group['pair']),sequence_id=group['sequence_id'],label=group['label'],
                 settings=group['settings'],hypotheses=h.tolist(),initial_log_weights=prior.tolist(),
                 truth=[getattr(truth,n) for n in group['pair']],
                 fixed_parameters={n:getattr(truth,n) for n in ('rho','Xi','k','sigma_x','sigma_y') if n not in group['pair']},
                 observation_times=obs.times.tolist(),observations=obs.values.tolist(),observed=obs.observed.tolist(),
                 initial_mass=core.beta_initial_mass(case,case.build_model()[0],cells).tolist(),
-                conditional_log_evidence=scores.tolist(),log_weights=reduced['log_weights'].tolist(),
+                conditional_log_evidence=raw_array(scores),log_weights=raw_array(reduced['log_weights']),
                 bank_log_evidence=reduced['log_evidence'].tolist(),
                 cumulative_log_evidence=np.cumsum(reduced['log_evidence']).tolist(),
-                marginal_predicted_mass=predicted.tolist(),marginal_posterior_mass=posterior.tolist(),
+                marginal_predicted_mass=raw_array(predicted),marginal_posterior_mass=raw_array(posterior),
                 x_edges=np.linspace(0,1,cells+1).tolist(),maximum_abs_mass_error=mass_error,
                 minimum_cell_mass=diagnostics['minimum_cell_mass'],
                 conditional_actual_max_steps=diagnostics['conditional_actual_max_steps'],

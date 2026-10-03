@@ -1632,6 +1632,63 @@ G0 og recursion-/spawn-tests. Ingen nye conditional replays under review. Rå gz
 source og digests er registreret i F4-status. Dette er kun éndags Linux-evidens;
 syv døgn, Windows-råreview og G2-population afventer.
 
+\subsection{G2b/G2c: parret robusthed og genoptagelig population}
+Disse studier er implementeret, men deres produktionskørsler er betingede af
+råvalideret syvdages-G2a og derefter bestået G2b. G2b bruger ID1360/1361
+og fem scenarier per par: timevis matched, sampling hver anden/fjerde time,
+antaget baseline 0.55 i stedet for truth 0.50, samt antaget
+$\Beta(16,24)$ i stedet for initial truth $\Beta(20,20)$.
+Sampling vælger eksisterende målinger; nye støjtræk bruges ikke.
+Hvert scenarie har 33/65-grids og begge grids' separate FV-kontroller:
+169000 conditional replays, 80 banker og 70 aktive sammenligninger.
+
+G2c bruger 200 fortsatte records per par (ID1362--1561 og 1562--1761).
+De første 20 per par får også de fire parrede afvigelser; i alt 560 banker
+med 1089 hypoteser, altså 609840 replays. Kun det accepterede kandidatgrid
+bruges her. Dette er pilotunderstøttet numerik, ikke et konvergensbevis for
+hver populationsrecord. Svag recovery er et gyldigt resultat og ændrer
+ikke numeriske tolerancer. Checkpoints ved dag 1/3/7 deler samme path.
+
+For en fysisk parameter $\theta=T(u)$ beregnes momenter fra den kontinuerte
+hat-marginal $p(u)$ som $\int T(u)p(u)\,\dd u$ og
+$\int T(u)^2p(u)\,\dd u$. På støjakser er $T$ eksponentiel; det er forkert
+blot at transformere middelværdien i log-koordinaten. Marginale
+95\%-intervaller kommer fra inversion af den præcise stykvist kvadratiske
+CDF. Empiriske hit-rater ved fast truth rapporteres med Wilson-intervaller;
+de er ikke universelle Bayes-kalibreringsgarantier.
+
+Predictive demand bruger vægtene før målingen, posterior-demand vægtene
+efter. Demand integreres i hver state-celle og under hver hypotese;
+parameterafhængig demand må ikke evalueres ved en gennemsnitsparameter.
+Sampling-scenariernes Y-scores sammenlignes kun på fælles observationstider,
+altid før den aktuelle assimilation. De har forskellige informationshistorikker.
+
+Hver record/scenarie gemmes tabsfrit og atomisk med kilderevision,
+design og dependency-digests. Genoptagelse genvaliderer de gemte rå enheder.
+Manglende eller fejlede enheder forhindrer samlet accept; et afsluttet
+chunk er ikke en afsluttet population.
+
+\subsection{Eksakt genbrug i FV og forberedelse af historiske input}
+På et fast state-grid løses fortsat
+$(I-hQ(B(t),U(t),\theta))m_{n+1}=m_n$ ved implicit Euler.
+Ved identiske koefficienter og identisk floating-point-step $h$ genbruges
+LAPACK-faktoriseringen. Ingen step afrundes, ingen masse repareres, og alle
+interne step kontrolleres. Cachen er lokal til ét solve og begrænset i størrelse;
+ændrede parametre eller callbacks kan derfor ikke arve en gammel operator.
+Generiske modeloverrides bruger den almindelige callback-vej.
+Kun ønskede outputmasser gemmes, men den interne integration er uændret.
+Benchmark på gamle G2a-records kontrollerer begge par, støttehjørner/centrum
+og alle fire FV-konfigurationer. Målt seriel hastighed er ikke Windows-walltime.
+
+H-forberedelsen indeholder en punktmålingsadapter med eksplicit population,
+effektenhed, timezone, missing-mask og frossen fysisk/train-only skala.
+State-tid er faktisk UTC-forløbet tid, også over DST. Baseline-referencen er
+aritmetisk gennemsnit af de fem seneste samme lokale ugedage/timepunkter,
+alle før origin. Tvetydige eller manglende historiktimer afvises frem for at
+imputeres tavst. Intervaleffekt/energi kræver egen observationsmodel;
+spotpris må ikke uden metadata kaldes faktisk forbrugerpris.
+Et historisk fit eller en kausal prisrespons er endnu ikke demonstreret.
+
 \subsection{Prior under reparameterisering}
 
 Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved

@@ -195,12 +195,14 @@ class _StreamingGridReduction:
         for n in group['counts']:
             step = (finest-1)//(n-1)
             indices = np.arange(finest*finest).reshape(finest,finest)[::step,::step].ravel()
-            h,unit,edges,prior = _parameter_grid(group['pair'],n,finest)
+            h,unit,edges,prior = _parameter_grid(group['pair'],n,group.get('parameter_grid_finest', finest))
             bank = dict(n=n,indices={int(j):local for local,j in enumerate(indices)},
                         h=h,unit=unit,edges=edges,prior=prior,scores=np.empty((count,n*n)),
                         scale=np.full((2,count),-np.inf),denominator=np.zeros((2,count)),
                         numerator=np.zeros((2,count,cells)),steps=np.empty(n*n),
                         seconds=0.,mass_error=0.,minimum=np.inf,seen=0)
+            if group.get('keep_demand', False):
+                bank['demand_means'] = np.empty((2, count, n*n))
             self.banks.append(bank)
 
     def add(self, j, conditional):
@@ -229,6 +231,10 @@ class _StreamingGridReduction:
             bank['denominator'] += factor
             bank['scale'] = scale
             bank['scores'][:,local] = scores
+            if 'demand_means' in bank:
+                for phase_index, phase in enumerate(('predicted', 'posterior')):
+                    bank['demand_means'][phase_index, :, local] = fv._array(
+                        conditional[phase+'_demand_mean'], (count,), 'conditional demand mean')
             bank['steps'][local] = conditional['actual_max_step']
             bank['seconds'] += conditional['elapsed_seconds']
             bank['mass_error'] = max(bank['mass_error'],conditional['maximum_abs_mass_error'])
@@ -254,6 +260,12 @@ class _StreamingGridReduction:
             row = fv._reduced_row(group,bank['scores'],bank['prior'],reduced,marginal[0],marginal[1],diagnostics)
             row.update(parameter_nodes_per_axis=n,prior_kind='quadrature',parameter_unit_nodes=bank['unit'].tolist(),
                        parameter_dual_edges=bank['edges'].tolist(),fv_label=self.group['label'])
+            if 'demand_means' in bank:
+                for p, phase, weight_field in ((0, 'predicted', 'prior_log_weights'), (1, 'posterior', 'log_weights')):
+                    raw = bank['demand_means'][p]
+                    row['conditional_'+phase+'_demand_mean'] = raw if self.group.get('array_output', False) else raw.tolist()
+                    row['marginal_'+phase+'_demand_mean'] = np.sum(
+                        np.exp(reduced[weight_field])*raw, axis=1).tolist()
             rows.append(row)
         return rows
 
@@ -859,7 +871,10 @@ def _g2a_truth_record(pair, sid, days):
     return case,fine,record
 
 
-def _g2a_header(days, ids, counts, levels, *, registered):
+def _g2a_header(days, ids, counts, levels, *, registered, backend='lapack'):
+    backends = dict(lapack='lapack-tridiagonal; unchanged FV scheme',
+                    cached='cached-lapack; exact BM1 input keys and unrounded step lengths')
+    if backend not in backends: raise ValueError('G2a FV backend must be lapack or cached.')
     return dict(stage='G2a',design_version=1,registered_design=registered,
         sequence_ids=list(ids),record_days=days,checkpoint_days=[d for d in G2A_DAYS if d<=days],
         parameter_grid_counts=list(counts),candidate_parameter_nodes_per_axis=counts[0],
@@ -876,7 +891,7 @@ def _g2a_header(days, ids, counts, levels, *, registered):
         parameter_criteria=dict(G1B0_CRITERIA),
         tv_quadrature=dict(orders=list(G1C0_TV_ORDERS),maximum_successive_difference=G1C0_QUADRATURE_TOLERANCE,
             acceptance_margin=G1C0_QUADRATURE_TOLERANCE,rigorous_error_bound=False),
-        conditional_backend='lapack-tridiagonal; unchanged FV scheme',
+        conditional_backend=backends[backend],
         reduction='ordered streaming log-scaled sums; at most 2*workers in flight',
         certifies_original_dual_cell_law=False,
         interpretation='New-record numerical pilot only at the recorded horizon; no population, sampling/mismatch robustness, recovery or forecast certification.')
@@ -920,7 +935,7 @@ def _g2a_checkpoints(rows, records, days, candidate_count):
 
 
 def run_joint_continued_pilot(*, record_days=7, workers=8, progress=None,
-                             sequence_ids=G2A_IDS, counts=G2A_COUNTS, numerics=None):
+                             sequence_ids=G2A_IDS, counts=G2A_COUNTS, numerics=None, backend='lapack'):
     """G2a: nested 33/65 grids, every FV control, and no daily state resets.
 
     API overrides support small diagnostics/tests, never registered evidence.
@@ -938,7 +953,7 @@ def run_joint_continued_pilot(*, record_days=7, workers=8, progress=None,
     # Normalize and own metadata; caller mutations cannot alter the design.
     levels = {key:{name:list(values) for name,values in lv.items()} for key,lv in levels.items()}
     header = _g2a_header(days,ids,sizes,levels,
-        registered=bool(ids==G2A_IDS and sizes==G2A_COUNTS and numerics is None))
+        registered=bool(ids==G2A_IDS and sizes==G2A_COUNTS and numerics is None), backend=backend)
     sequences = [_g2a_truth_record(pair,sid,days) for pair,sid in zip(core.F4_G_PAIRS,ids)]
     records = [v[2] for v in sequences]
     truth_pass = all(r['passes'] for r in records)
@@ -953,7 +968,7 @@ def run_joint_continued_pilot(*, record_days=7, workers=8, progress=None,
         for label,settings in configs['__'.join(pair)]:
             groups.append(dict(stage='G2a',pair=pair,sequence_id=sid,case=case,
                 observations=sequence.observations,hypotheses=h,counts=sizes,label=label,
-                settings=settings,prior_bridge=False,backend='lapack'))
+                settings=settings,prior_bridge=False,backend=backend))
     banks = fv._run_groups_streaming(groups,workers,progress,_StreamingGridReduction)
     rows = [r for bank in banks for r in bank]
     comparisons,dual = _g2a_comparisons(rows,ids,sizes)
@@ -963,6 +978,44 @@ def run_joint_continued_pilot(*, record_days=7, workers=8, progress=None,
         checkpoints=_g2a_checkpoints(rows,records,days,sizes[0]),
         passes=bool(fv._probability_gate(rows) and all(c['passes'] for c in comparisons)))
     return result
+
+
+def _validate_grid_row(r, *, pair, sid, n, label, case, observations, settings, finest,
+                       stage, keep_demand=False):
+    """Shared raw identities for a declared all-observed tensor-grid experiment."""
+    h, unit, edges, prior = _parameter_grid(pair, n, finest)
+    truth = core.f4_e_truth_candidate(case)
+    k, cells = len(observations.times), settings['x_steps']
+    metadata = dict(coordinates=list(pair), sequence_id=sid, label=f'{n}/{label}/quadrature',
+        settings=settings, truth=[getattr(truth, p) for p in pair],
+        fixed_parameters={p:getattr(truth,p) for p in ('rho','Xi','k','sigma_x','sigma_y') if p not in pair},
+        observed=[True]*k, prior_kind='quadrature', fv_label=label)
+    for name, value in metadata.items(): _check_recorded(r.get(name), value, stage+' bank '+name)
+    for name, value in dict(hypotheses=h, parameter_unit_nodes=unit, parameter_dual_edges=edges,
+        initial_log_weights=prior, observation_times=observations.times, observations=observations.values,
+        initial_mass=core.beta_initial_mass(case, case.build_model()[0], cells),
+        x_edges=np.linspace(0,1,cells+1)).items(): fv._equal_array(r.get(name), value, stage+' bank '+name)
+    scores = fv._array(r['conditional_log_evidence'], (k,n*n), stage+' scores')
+    raw = prior + np.cumsum(scores, axis=0)
+    evidence = logsumexp(raw, axis=1); logs = raw-evidence[:,None]
+    fv._equal_array(r['log_weights'], logs, stage+' weights')
+    fv._equal_array(r['cumulative_log_evidence'], evidence, stage+' evidence')
+    fv._equal_array(r['bank_log_evidence'], np.diff(np.r_[0.,evidence]), stage+' evidence increments')
+    for name, value in core._f4_g_joint_summary(h, logs, pair).items():
+        _check_recorded(r.get(name), value, stage+' summary '+name)
+    for phase in ('predicted', 'posterior'):
+        fv._mass(r['marginal_'+phase+'_mass'], k, cells, stage+' '+phase)
+        if keep_demand:
+            means = fv._array(r['conditional_'+phase+'_demand_mean'], (k,n*n), stage+' demand')
+            if np.any((means < -1e-10) | (means > 1+1e-10)):
+                raise ValueError(stage+' demand means are outside normalized support.')
+            weights = np.exp(logs if phase=='posterior' else np.vstack([prior,logs[:-1]]))
+            fv._equal_array(r['marginal_'+phase+'_demand_mean'], np.sum(weights*means, axis=1), stage+' weighted demand')
+    steps = fv._array(r['conditional_actual_max_steps'], (n*n,), stage+' steps')
+    if np.any((steps<=0) | (steps>settings['max_step']+1e-14)):
+        raise ValueError(stage+' actual steps are invalid.')
+    if checks.finite_scalar(r['conditional_seconds'], 'conditional seconds') < 0:
+        raise ValueError(stage+' conditional seconds must be nonnegative.')
 
 
 def validated_g2a(report, *, require_source=False):
@@ -986,7 +1039,9 @@ def validated_g2a(report, *, require_source=False):
     days = checks.positive_integer(report.get('record_days'),'record days')
     if days not in G2A_DAYS: raise ValueError('G2a requires 1, 3 or 7 days.')
     levels = {key:{name:list(v) for name,v in lv.items()} for key,lv in fv.G1A_NUMERICS.items()}
-    header = _g2a_header(days,G2A_IDS,G2A_COUNTS,levels,registered=True)
+    backend = ('cached' if report.get('conditional_backend') ==
+               'cached-lapack; exact BM1 input keys and unrounded step lengths' else 'lapack')
+    header = _g2a_header(days,G2A_IDS,G2A_COUNTS,levels,registered=True,backend=backend)
     for name,value in header.items(): _check_recorded(report.get(name),value,'G2a '+name)
     sequences = [_g2a_truth_record(pair,sid,days) for pair,sid in zip(core.F4_G_PAIRS,G2A_IDS)]
     records = [v[2] for v in sequences]
@@ -1009,31 +1064,8 @@ def validated_g2a(report, *, require_source=False):
         key = (tuple(r['coordinates']),r['sequence_id'],r['parameter_nodes_per_axis'],r['fv_label'])
         if key not in expected or key in seen: raise ValueError('G2a banks are duplicate or unregistered.')
         seen[key]=r;case,seq,settings=expected[key];pair,sid,n,label=key
-        h,unit,edges,prior = _parameter_grid(pair,n,G2A_COUNTS[-1])
-        truth=core.f4_e_truth_candidate(case);k=len(seq.observations.times);cells=settings['x_steps']
-        metadata = dict(coordinates=list(pair),sequence_id=sid,label=f'{n}/{label}/quadrature',
-            settings=settings,truth=[getattr(truth,p) for p in pair],
-            fixed_parameters={p:getattr(truth,p) for p in ('rho','Xi','k','sigma_x','sigma_y') if p not in pair},
-            observed=[True]*k,prior_kind='quadrature',fv_label=label)
-        for name,value in metadata.items(): _check_recorded(r.get(name),value,'G2a bank '+name)
-        for name,value in dict(hypotheses=h,parameter_unit_nodes=unit,parameter_dual_edges=edges,
-            initial_log_weights=prior,observation_times=seq.observations.times,observations=seq.observations.values,
-            initial_mass=core.beta_initial_mass(case,case.build_model()[0],cells),
-            x_edges=np.linspace(0,1,cells+1)).items(): fv._equal_array(r.get(name),value,'G2a bank '+name)
-        scores=fv._array(r['conditional_log_evidence'],(k,n*n),'G2a scores')
-        raw=prior+np.cumsum(scores,axis=0);evidence=logsumexp(raw,axis=1);logs=raw-evidence[:,None]
-        fv._equal_array(r['log_weights'],logs,'G2a weights')
-        fv._equal_array(r['cumulative_log_evidence'],evidence,'G2a evidence')
-        fv._equal_array(r['bank_log_evidence'],np.diff(np.r_[0.,evidence]),'G2a evidence increments')
-        summary=core._f4_g_joint_summary(h,logs,pair)
-        for name,value in summary.items(): _check_recorded(r.get(name),value,'G2a summary '+name)
-        for phase in ('predicted','posterior'):
-            fv._mass(r['marginal_'+phase+'_mass'],k,cells,'G2a '+phase)
-        steps=fv._array(r['conditional_actual_max_steps'],(n*n,),'G2a steps')
-        if np.any((steps<=0)|(steps>settings['max_step']+1e-14)):
-            raise ValueError('G2a actual steps are invalid.')
-        if checks.finite_scalar(r['conditional_seconds'],'conditional seconds')<0:
-            raise ValueError('G2a conditional seconds must be nonnegative.')
+        _validate_grid_row(r, pair=pair, sid=sid, n=n, label=label, case=case,
+                           observations=seq.observations, settings=settings, finest=G2A_COUNTS[-1], stage='G2a')
     comparisons,dual=_g2a_comparisons(rows,G2A_IDS,G2A_COUNTS)
     _check_recorded(report.get('comparisons'),comparisons,'G2a comparisons')
     _check_recorded(report.get('original_dual_cell_comparisons'),dual,'G2a original dual-cell diagnostics')

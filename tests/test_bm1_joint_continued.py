@@ -1,5 +1,6 @@
 """Continuation, new-record design and raw failure paths for G2a."""
 import copy
+from contextlib import nullcontext
 import gzip
 import json
 from pathlib import Path
@@ -85,21 +86,30 @@ class ContinuedRecordTests(unittest.TestCase):
 class ContinuedRawTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # Raw-tamper cases exercise the validator against fixed expected seed
+        # data. Generate those expensive independent paths once; the positive
+        # test below still checks real regeneration, and continuation tests
+        # separately compare the actual 1/3/7-day coupled prefixes.
+        cls.truth = {(pair,sid,7):grid._g2a_truth_record(pair,sid,7)
+                     for pair,sid in zip(core.F4_G_PAIRS,grid.G2A_IDS)}
         with patch.object(fv,'G1A_NUMERICS',TINY_LEVELS),patch.object(grid,'G2A_COUNTS',(3,5)),\
-             patch.object(fv,'_candidate_replay',side_effect=flat_replay):
+             patch.object(fv,'_candidate_replay',side_effect=flat_replay),\
+             patch.object(grid,'_g2a_truth_record',side_effect=lambda *key:cls.truth[key]):
             cls.report=grid.run_joint_continued_pilot(record_days=7,workers=1,counts=(3,5))
         dependency={}
         for stage in ('g0','g1a','g1b0','g1b3','g1c0'):
             dependency={stage:dict(sha256='b'*64,source_commit='c'*40,**dependency)}
         cls.report.update(source_commit='a'*40,working_tree_dirty=False,dependencies=dependency)
 
-    def validate(self,report):
-        with patch.object(fv,'G1A_NUMERICS',TINY_LEVELS),patch.object(grid,'G2A_COUNTS',(3,5)):
+    def validate(self,report, *, regenerate_truth=False):
+        truth = (nullcontext() if regenerate_truth else
+                 patch.object(grid,'_g2a_truth_record',side_effect=lambda *key:self.truth[key]))
+        with patch.object(fv,'G1A_NUMERICS',TINY_LEVELS),patch.object(grid,'G2A_COUNTS',(3,5)),truth:
             return grid.validated_g2a(report,require_source=True)
 
     def test_all_candidate_and_reference_controls_and_prefix_checkpoints_are_present(self):
         r=self.report
-        self.assertTrue(self.validate(r));self.assertTrue(r['passes'])
+        self.assertTrue(self.validate(r,regenerate_truth=True));self.assertTrue(r['passes'])
         self.assertEqual(r['bank_reductions'],16);self.assertEqual(r['conditional_runs'],200)
         controls=[c for c in r['comparisons'] if c['kind'].startswith('FV_')]
         self.assertEqual(len(controls),12)
@@ -182,8 +192,11 @@ class ContinuedCLITests(unittest.TestCase):
 
     def test_hat_dependency_is_recomputed_and_rejects_altered_continuous_law(self):
         from tests.test_bm1_joint_hat import JointHatDependencyTests
-        JointHatDependencyTests.setUpClass();dense=JointHatDependencyTests.report
-        with patch.object(grid,'G1B3_COUNTS',JointHatDependencyTests.counts):
+        # This is a dependency/reconstruction test with mocked constant
+        # conditionals; production-size state grids add no numerical coverage.
+        with patch.object(fv,'G1A_NUMERICS',TINY_LEVELS):
+            JointHatDependencyTests.setUpClass();dense=JointHatDependencyTests.report
+        with patch.object(fv,'G1A_NUMERICS',TINY_LEVELS),patch.object(grid,'G1B3_COUNTS',JointHatDependencyTests.counts):
             hat=grid.run_joint_parameter_reconstruction(dense)
             hat.update(source_commit='a'*40,working_tree_dirty=False)
             self.assertTrue(grid.validated_g1c0(hat,dense,require_source=True))

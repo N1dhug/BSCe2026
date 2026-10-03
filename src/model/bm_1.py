@@ -10,7 +10,7 @@ from src.method.fokker_planc import bm_1_fokker_planc
 from src.validation.model.bm_1 import bm_1_validation
 from src.tools.input_generator.input_builder import input_builder
 from src.method.objective import tracking_error
-from src.solver.finite_volume import finite_volume_1d
+from src.solver.finite_volume import finite_volume_1d, finite_volume_1d_cached
 
 
 class bm_1(bm):
@@ -209,6 +209,29 @@ class bm_1(bm):
 
         def diffusion(t, X):
             return self.diffusion_coefficient(X, sigma_x)
+        options = {}
+        # In the standard BM1 equations time enters only through B(t), U(t).
+        # f/g and physical parameters are fixed pure inputs within this solve.
+        # Overrides keep the ordinary callback path; no stationarity is guessed.
+        standard = all(getattr(getattr(self, name), '__func__', None) is implementation
+                       for name, implementation in (
+                           ('_drift', bm_1._drift), ('eval', bm.eval), ('l', bm.l),
+                           ('D', bm.D), ('diffusion_coefficient', bm.diffusion_coefficient)))
+        if isinstance(self.fokker_planc_reference, finite_volume_1d_cached) and standard:
+            if self.fokker_planc_reference.vectorized_inputs:
+                # Opt-in, like F3's blocked evaluator: both input callbacks
+                # must obey ordinary NumPy broadcasting. No fallback hides an
+                # invalid field. The grid is identical to the solver's grid.
+                grid, _ = self.fokker_planc_reference.build_time_grid(t_eval, breakpoints, max_step)
+                left = grid[:-1]
+                baseline = np.broadcast_to(self.B(left), left.shape)
+                price = np.broadcast_to(parameters[0](left), left.shape)
+                keys = dict(zip(left, zip(map(float, baseline), map(float, price))))
+                coefficient_key = keys.__getitem__
+            else:
+                def coefficient_key(time):
+                    return (float(self.B(time)), float(parameters[0](time)))
+            options['coefficient_key'] = coefficient_key
         result = self.fokker_planc_reference.solve(
             t_eval,
             initial_mass,
@@ -217,6 +240,7 @@ class bm_1(bm):
             bounds=(0.0, 1.0),
             breakpoints=breakpoints,
             max_step=max_step,
+            **options,
         )
         x = result['x_grid']
         cell_mass = result['cell_mass']

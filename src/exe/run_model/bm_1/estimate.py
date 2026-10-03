@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -44,6 +45,7 @@ from src.validation.bm_1 import estimation as synthetic
 from src.validation.bm_1 import mixture_estimation as mixture_validation
 from src.validation.bm_1 import joint_estimation as joint_validation
 from src.validation.bm_1 import joint_grid
+from src.validation.bm_1 import joint_robustness
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -753,6 +755,8 @@ def _read_likelihood_report(path):
     """Read plain/gzip evidence and identify the exact stored bytes."""
     import gzip
     raw = path.read_bytes()
+    if path.suffix == '.npz':
+        return _read_array_checkpoint(raw), hashlib.sha256(raw).hexdigest()
     decoded = gzip.decompress(raw) if path.suffix == '.gz' else raw
     return json.loads(decoded.decode('utf-8')), hashlib.sha256(raw).hexdigest()
 
@@ -1302,7 +1306,8 @@ def run_joint_continued_pilot(args):
             elapsed = now-started;eta=elapsed*(row['total']-row['completed'])/row['completed']
             print(f"  replays {row['completed']}/{row['total']}; ID{row['sequence_id']} "
                   f"{'/'.join(row['pair'])}; {row['label']}; elapsed={elapsed:.1f}s; rough ETA={eta:.1f}s",flush=True)
-    result = joint_grid.run_joint_continued_pilot(record_days=args.days,workers=args.workers,progress=progress)
+    result = joint_grid.run_joint_continued_pilot(record_days=args.days,workers=args.workers,progress=progress,
+                                                 backend=args.fv_backend)
     result['dependencies'] = dict(g1c0=dependency)
     # Final format/algebra errors must also preserve expensive completed replays.
     try:
@@ -1337,6 +1342,235 @@ def run_preparation(args):
     return report
 
 
+def run_fv_benchmark(args):
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    started = perf_counter()
+    def progress(done, total):
+        if not args.quiet:
+            print(f'  paired FV checks {done}/{total}; elapsed={perf_counter()-started:.1f}s', flush=True)
+    result = joint_validation.benchmark_joint_fv(record_days=args.days, repeats=args.repeats, progress=progress)
+    _write_likelihood_report(args, result, started)
+    print(f"FV backend comparison passes={result['passes']}; serial speedup={result['measured_serial_speedup']:.2f}x")
+    if not result['passes']:
+        raise RuntimeError('FV backend equivalence failed; inspect saved report.')
+    return result
+
+
+def _source_snapshot():
+    """Capture source before a resumable job, and verify it again before saving."""
+    revision = subprocess.run(['git','rev-parse','HEAD'], cwd=ROOT, text=True, capture_output=True, check=True).stdout.strip()
+    dirty = subprocess.run(['git','status','--porcelain'], cwd=ROOT, text=True, capture_output=True, check=True).stdout
+    return dict(source_commit=revision, working_tree_dirty=bool(dirty))
+
+
+def _atomic_report(path, payload, *, replace_existing=False):
+    """Publish only closed complete JSON/gzip files under the exclusive run lock."""
+    import gzip
+    import tempfile
+    if path.exists() and not replace_existing:
+        raise FileExistsError(f'Refusing to overwrite {path}.')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=path.name+'.', suffix='.partial', dir=path.parent)
+    os.close(fd)
+    temporary = Path(name)
+    try:
+        if path.suffix=='.npz':
+            _write_array_checkpoint(temporary, payload)
+        else:
+            opener = gzip.open if path.suffix=='.gz' else open
+            with opener(temporary, 'wt', encoding='utf-8') as handle:
+                json.dump(payload, handle, allow_nan=False, separators=(',',':'))
+                handle.write('\n')
+        if path.exists() and not replace_existing:
+            raise FileExistsError(f'Refusing to overwrite {path}.')
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _write_array_checkpoint(path, report):
+    """Avoid millions of Python floats/text conversions for large raw arrays."""
+    import zipfile
+    arrays = {}
+    def encode(value):
+        if isinstance(value, np.ndarray):
+            if value.dtype.kind not in 'biuf': raise TypeError('Checkpoint arrays must be real numeric arrays.')
+            name = f'array_{len(arrays):04d}.npy'; arrays[name]=value
+            return {'__npy__':name}
+        if isinstance(value,dict): return {k:encode(v) for k,v in value.items()}
+        if isinstance(value,(list,tuple)): return [encode(v) for v in value]
+        if isinstance(value,np.generic): return value.item()
+        return value
+    metadata = dict(format='bm1-array-checkpoint-v1', report=encode(report))
+    with zipfile.ZipFile(path,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=1) as archive:
+        archive.writestr('metadata.json',json.dumps(metadata,allow_nan=False,separators=(',',':')))
+        for name,array in arrays.items():
+            with archive.open(name,'w',force_zip64=True) as member:
+                np.lib.format.write_array(member,np.asarray(array),allow_pickle=False)
+
+
+def _read_array_checkpoint(raw):
+    import io
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        names = archive.namelist()
+        if len(names)!=len(set(names)): raise ValueError('Duplicate checkpoint members.')
+        metadata = json.loads(archive.read('metadata.json'))
+        if metadata.get('format')!='bm1-array-checkpoint-v1': raise ValueError('Unknown checkpoint format.')
+        used = {'metadata.json'}
+        def decode(value):
+            if isinstance(value,dict) and set(value)=={'__npy__'}:
+                name=value['__npy__']
+                if not isinstance(name,str) or not re.fullmatch(r'array_[0-9]{4}\.npy',name) or name in used:
+                    raise ValueError('Invalid or duplicate checkpoint array reference.')
+                used.add(name)
+                with archive.open(name) as member: array=np.lib.format.read_array(member,allow_pickle=False)
+                if array.dtype.kind not in 'biuf': raise ValueError('Checkpoint arrays must be real numeric arrays.')
+                return array
+            if isinstance(value,dict): return {k:decode(v) for k,v in value.items()}
+            if isinstance(value,list): return [decode(v) for v in value]
+            return value
+        result=decode(metadata['report'])
+        if used!=set(names): raise ValueError('Unreferenced members in checkpoint.')
+        return result
+
+
+class _RunLock:
+    """OS-held lock releases after a crash; an old lock file never blocks resume."""
+    def __init__(self, directory):
+        self.path = directory / 'run.lock'
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.handle = self.path.open('a+b')
+        if self.handle.tell()==0:
+            self.handle.write(b'0'); self.handle.flush()
+        self.handle.seek(0)
+        try:
+            if os.name=='nt':
+                import msvcrt
+                msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            self.handle.close()
+            raise RuntimeError('This run directory is already in use by another process.') from exc
+        return self
+
+    def __exit__(self, *args):
+        self.handle.close()
+
+
+def _collect_robustness(directory, manifest, *, require_complete=False):
+    """Read every present registered unit and independently rebuild its summary."""
+    stage = manifest['stage']
+    joint_grid._check_recorded(manifest['design'], joint_robustness.design_header(stage), stage+' manifest design')
+    source = manifest['source']
+    if source.get('working_tree_dirty') is not False or not re.fullmatch('[0-9a-f]{40}', str(source.get('source_commit'))):
+        raise ValueError('Resumable evidence requires a clean source commit.')
+    units = joint_robustness.design_units(stage)
+    expected_files = {joint_robustness.unit_name(u)+'.npz' for u in units}
+    unknown = {p.name for p in (directory/'units').glob('*.npz')} - expected_files
+    if unknown: raise ValueError('Unregistered unit files in run directory: '+str(sorted(unknown)))
+    records, digests, truth_cache = [], {}, {}
+    for unit in units:
+        path = directory/'units'/(joint_robustness.unit_name(unit)+'.npz')
+        if not path.exists(): continue
+        report, digest = _read_likelihood_report(path)
+        for key, value in source.items():
+            joint_grid._check_recorded(report.get(key), value, stage+' unit source '+key)
+        joint_grid._check_recorded(report.get('dependencies'), manifest['dependencies'], stage+' unit dependency')
+        joint_robustness.validate_unit(report, stage, unit, require_source=True, truth_cache=truth_cache)
+        if report.get('raw_validation') != {'passes':True}:
+            raise ValueError('A retained unit failed final raw validation; inspect it before continuing.')
+        records.append(joint_robustness.compact_unit(report)); digests[report['unit_name']] = digest
+        del report
+    summary = joint_robustness.summarize_units(stage, records)
+    summary.update(unit_sha256=digests, source=source, dependencies=manifest['dependencies'])
+    if require_complete and not summary['passes']:
+        raise ValueError('G2c requires all ten complete passing G2b units; partial/failed pilots are insufficient.')
+    return records, summary
+
+
+def run_joint_robustness(args):
+    """Gated resumable G2b/G2c with immutable raw units and derived summaries."""
+    from src.validation import estimation as checks
+    workers = checks.positive_integer(args.workers, 'workers')
+    limit = None if args.limit_units is None else checks.positive_integer(args.limit_units, 'limit_units')
+    source = _source_snapshot()
+    if not args.collect_only and source['working_tree_dirty']:
+        raise ValueError('Commit source changes before starting or resuming registered evidence.')
+    g2a, digest = _read_likelihood_report(args.g2a_report)
+    joint_robustness.require_g2a(g2a)
+    dependencies = dict(g2a=dict(sha256=digest, source_commit=g2a['source_commit'], dependencies=g2a['dependencies']))
+    del g2a
+    if args.study_stage=='G2c':
+        pilot, pilot_digest = _read_likelihood_report(args.pilot_dir/'manifest.json')
+        if pilot['stage']!='G2b' or pilot['dependencies']!=dependencies:
+            raise ValueError('G2c must use the exact G2a dependency of its G2b pilot.')
+        with _RunLock(args.pilot_dir):
+            _, accepted = _collect_robustness(args.pilot_dir, pilot, require_complete=True)
+        dependencies = dict(g2b=dict(manifest_sha256=pilot_digest, source=pilot['source'],
+                            unit_sha256=accepted['unit_sha256'], **dependencies))
+    with _RunLock(args.run_dir):
+        path = args.run_dir/'manifest.json'
+        if path.exists():
+            manifest, _ = _read_likelihood_report(path)
+            if manifest['stage']!=args.study_stage or manifest['dependencies']!=dependencies:
+                raise ValueError('Run directory belongs to a different stage or dependency; use a new directory.')
+            if not args.collect_only and manifest['source']!=source:
+                raise ValueError('Resume requires the original clean source commit recorded in manifest.json.')
+        else:
+            if args.collect_only: raise FileNotFoundError('No run manifest to collect.')
+            manifest = dict(stage=args.study_stage, source=source, dependencies=dependencies,
+                            design=joint_robustness.design_header(args.study_stage))
+            _atomic_report(path, manifest)
+        records, summary = _collect_robustness(args.run_dir, manifest)
+        if summary['failed_units']:
+            _atomic_report(args.run_dir/'summary.json', summary, replace_existing=True)
+            raise RuntimeError('A completed unit failed; its data are retained and no failed records are dropped.')
+        present = set(summary['unit_sha256'])
+        pending = [u for u in joint_robustness.design_units(args.study_stage) if joint_robustness.unit_name(u) not in present]
+        if args.collect_only: pending=[]
+        if limit is not None: pending=pending[:limit]
+        for unit in pending:
+            name = joint_robustness.unit_name(unit); started=last_printed=perf_counter()
+            print(f'{args.study_stage}: {name}; complete units={len(records)}/{len(manifest["design"]["unit_names"])}', flush=True)
+            def progress(row):
+                nonlocal last_printed
+                now=perf_counter()
+                if not args.quiet and (row['completed'] in (1,row['total']) or now-last_printed>=10):
+                    last_printed=now
+                    print(f"  {row['completed']}/{row['total']} replays; elapsed={now-started:.1f}s", flush=True)
+            result = joint_robustness.run_unit(args.study_stage, unit, workers=workers, progress=progress)
+            result.update(source, dependencies=dependencies, workers=workers,
+                          blas_threads_requested=args.blas_threads, elapsed_seconds=perf_counter()-started)
+            try:
+                joint_robustness.validate_unit(result, args.study_stage, unit, require_source=True)
+                if _source_snapshot()!=source: raise ValueError('Source changed during the unit.')
+                result['raw_validation'] = dict(passes=True)
+            except (ValueError, KeyError, TypeError) as exc:
+                result.update(passes=False, raw_validation=dict(passes=False,error=str(exc)))
+            destination = args.run_dir/'units'/(name+'.npz')
+            _atomic_report(destination, result)
+            unit_digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+            records.append(joint_robustness.compact_unit(result)); summary['unit_sha256'][name]=unit_digest
+            digests = summary['unit_sha256']
+            summary = joint_robustness.summarize_units(args.study_stage, records)
+            summary.update(unit_sha256=digests, source=source, dependencies=dependencies)
+            _atomic_report(args.run_dir/'summary.json', summary, replace_existing=True)
+            print(f"  saved {destination}; passes={result['passes']}", flush=True)
+            if not result['passes']:
+                raise RuntimeError('Truth/numerical/raw gate failed; complete available unit retained for review.')
+            del result
+        _atomic_report(args.run_dir/'summary.json', summary, replace_existing=True)
+        print(f"{args.study_stage}: {summary['completed_units']}/{summary['expected_units']} units; "
+              f"complete={summary['complete']}; passes={summary['passes']}")
+        return summary
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -1345,6 +1579,22 @@ def build_parser():
     )
     preparation.add_argument('--output', type=Path, help='Optional new JSON file.')
     preparation.set_defaults(handler=run_preparation)
+    benchmark = subparsers.add_parser('benchmark-fv', help='Paired exact FV backend checks and serial timings on old G2a records.')
+    benchmark.add_argument('--days', type=int, choices=(1, 3, 7), default=7)
+    benchmark.add_argument('--repeats', type=int, default=2)
+    benchmark.add_argument('--output', type=Path)
+    benchmark.add_argument('--quiet', action='store_true')
+    benchmark.set_defaults(handler=run_fv_benchmark)
+    for command_name, stage in (('joint-bank-robustness-pilot','G2b'), ('joint-bank-robustness-population','G2c')):
+        robustness = subparsers.add_parser(command_name, help=f'{stage}: gated, resumable seven-day paired experiments.')
+        robustness.add_argument('--g2a-report', type=Path, required=True)
+        if stage=='G2c': robustness.add_argument('--pilot-dir', type=Path, required=True)
+        robustness.add_argument('--run-dir', type=Path, required=True)
+        robustness.add_argument('--workers', type=int, default=8)
+        robustness.add_argument('--limit-units', type=int, help='Complete at most this many new units, then stop cleanly.')
+        robustness.add_argument('--collect-only', action='store_true', help='Validate and summarize saved units without new replays.')
+        robustness.add_argument('--quiet', action='store_true')
+        robustness.set_defaults(handler=run_joint_robustness, study_stage=stage)
     command = subparsers.add_parser(
         'synthetic',
         help='Generate one locked F4-A synthetic truth/observation sequence.',
@@ -1549,6 +1799,8 @@ def build_parser():
     continued.add_argument('--days',type=int,choices=joint_grid.G2A_DAYS,default=7,
         help='Registered horizon; seven days supplies day 1/3/7 prefixes without shorter reruns.')
     continued.add_argument('--workers',type=int,default=8,help='Spawn workers; BLAS=1 recommended.')
+    continued.add_argument('--fv-backend',choices=('lapack','cached'),default='lapack',
+        help='Same FV scheme; cached reuses exact operators. The original default is preserved.')
     continued.add_argument('--output',type=Path,required=True,help='New G2a JSON/gzip; existing reports are never overwritten.')
     continued.add_argument('--quiet',action='store_true',help='Suppress intermediate progress only.')
     continued.set_defaults(handler=run_joint_continued_pilot)

@@ -42,6 +42,114 @@ class DaySignals:
     baseline_days: tuple
 
 
+def _aware_series(values, name):
+    """H inputs retain timezone, duplicate-time and missing-value information."""
+    if not isinstance(values, pd.Series) or not isinstance(values.index, pd.DatetimeIndex):
+        raise TypeError(f'{name} must be one explicitly selected timestamped Series.')
+    if values.index.tz is None or values.index.hasnans or not values.index.is_unique or not values.index.is_monotonic_increasing:
+        raise ValueError(f'{name} requires timezone-aware, unique, increasing timestamps.')
+    if np.iscomplexobj(values.to_numpy()): raise ValueError(f'{name} must be real.')
+    array = pd.to_numeric(values, errors='raise').to_numpy(dtype=float)
+    if np.any(np.isinf(array)): raise ValueError(f'{name} must contain finite values or explicit NaN missing values.')
+    return pd.Series(array, index=values.index.copy(), name=values.name)
+
+
+def previous_weekday_mean(history, target_times, *, origin):
+    """H/WM reference: arithmetic mean of five previous same-weekday/hour values.
+
+    All five values must precede the fixed forecast origin. Local calendar
+    weeks preserve the hour across DST; ambiguous/nonexistent history hours
+    require an explicit data decision and are rejected. No trimmed mean,
+    nearest-time fill, target-day values, or future history is substituted.
+    F3's separate retrospective trimmed-mean experiment remains unchanged.
+    """
+    history = _aware_series(history, 'history')
+    targets = pd.DatetimeIndex(target_times)
+    origin = pd.Timestamp(origin)
+    if targets.tz is None or origin.tzinfo is None:
+        raise ValueError('Target times and origin require an explicit timezone.')
+    if targets.hasnans or not targets.is_unique or not targets.is_monotonic_increasing or np.any(targets < origin):
+        raise ValueError('Target times must be unique, increasing and at or after origin.')
+    local = targets.tz_convert(history.index.tz)
+    source_times, values = [], []
+    for target in local:
+        candidates = []
+        week = 1
+        while len(candidates)<5:
+            # DateOffset is a local calendar week; Timedelta would shift the
+            # selected local hour by one at a daylight-saving transition.
+            try:
+                stamp = target - pd.DateOffset(weeks=week)
+            except (ValueError, TypeError) as exc:
+                raise ValueError('Ambiguous/nonexistent local history hour; resolve the observation contract.') from exc
+            week += 1
+            if stamp < origin: candidates.append(stamp)
+        samples = history.reindex(pd.DatetimeIndex(candidates)).to_numpy()
+        if not np.all(np.isfinite(samples)):
+            raise ValueError('Five complete prior occurrences of the same weekday/hour are required.')
+        source_times.append(tuple(candidates)); values.append(float(np.mean(samples)))
+    return pd.Series(values, index=targets, name='previous_five_weekday_mean'), tuple(source_times)
+
+
+@dataclass(frozen=True)
+class EstimationPowerScale:
+    """Positive physical power scale, optionally fitted strictly before a cutoff."""
+    power: float
+    unit: str
+    fitted_before: pd.Timestamp | None = None
+
+    def __post_init__(self):
+        if isinstance(self.power, (bool, np.bool_)) or not np.isfinite(self.power) or self.power<=0:
+            raise ValueError('Power scale must be finite and positive.')
+        if self.unit not in ('W','kW','MW'):
+            raise ValueError('Declare the power unit as W, kW or MW; energy requires an interval observation model.')
+        if self.fitted_before is not None:
+            cutoff = pd.Timestamp(self.fitted_before)
+            if cutoff.tzinfo is None: raise ValueError('Training cutoff requires a timezone.')
+            object.__setattr__(self, 'fitted_before', cutoff)
+
+    @classmethod
+    def from_training(cls, history, *, cutoff, unit):
+        history = _aware_series(history, 'training history')
+        cutoff = pd.Timestamp(cutoff)
+        if cutoff.tzinfo is None: raise ValueError('Training cutoff requires a timezone.')
+        training = history.loc[history.index < cutoff].dropna()
+        if training.empty or np.any(training.to_numpy()<0):
+            raise ValueError('A nonempty nonnegative training history is required.')
+        return cls(float(training.max()), unit, cutoff)
+
+
+def historical_point_observations(measurements, *, origin, scale, measurement_id,
+                                  observation_kind, price_side='right'):
+    """H adapter only: selected point power readings, no fit or price assumption.
+
+    Callers must establish that rows are point measurements for the declared
+    population. Hourly energy/average power is deliberately not relabeled as a
+    point observation. Missing rows must be represented explicitly in the input
+    index as NaN; model time is actual elapsed UTC time in days, including DST.
+    """
+    from src.params.bm_1 import BM1ObservationSeries
+    if observation_kind!='point':
+        raise NotImplementedError('Interval power/energy needs a separate observation likelihood before H fitting.')
+    if not isinstance(scale, EstimationPowerScale): raise TypeError('An explicit frozen power scale is required.')
+    if not isinstance(measurement_id,str) or not measurement_id.strip():
+        raise ValueError('Declare the selected measurement/population identifier.')
+    data = _aware_series(measurements, 'measurements')
+    origin = pd.Timestamp(origin)
+    if origin.tzinfo is None or data.empty or data.index[0]<=origin:
+        raise ValueError('Timezone-aware observations must lie strictly after origin.')
+    if scale.fitted_before is not None and scale.fitted_before>origin:
+        raise ValueError('Training scale used data after the estimation origin.')
+    days = (data.index.tz_convert('UTC')-origin.tz_convert('UTC')).total_seconds().to_numpy()/86400.
+    observed = data.notna().to_numpy()
+    observations = BM1ObservationSeries(days, data.to_numpy()/scale.power, 'day', observed, 'point', price_side)
+    metadata = dict(measurement_id=measurement_id, timestamps=[t.isoformat() for t in data.index],
+        origin=origin.isoformat(), power_scale=scale.power, power_unit=scale.unit,
+        scale_fitted_before=None if scale.fitted_before is None else scale.fitted_before.isoformat(),
+        missing_policy='explicit mask; no imputation', baseline_reference='five previous same-weekday/hour arithmetic mean')
+    return observations, metadata
+
+
 def _normalize(series, lower, upper, name):
     lower = float(lower)
     upper = float(upper)
