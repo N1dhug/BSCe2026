@@ -41,7 +41,7 @@ def hour_controlled_correlations(hourly):
     work = _demean_by_hour(hourly, columns)
     renamed = pd.DataFrame({"s_I": work["s_I_hour_demeaned"]})
     for variable in columns[1:]: renamed[variable] = work[f"{variable}_hour_demeaned"]
-    return correlation_metrics(renamed)
+    return correlation_metrics(renamed, variables=columns[1:])
 
 
 def hourly_summary(hourly):
