@@ -1841,6 +1841,14 @@ registrering af deres rektangulære grids/settings og dependency-kontrakt;
 den eksisterende kvadratiske 33/65-kørsel frigives ikke af denne pilot.
 
 \subsection{G2b/G2c: parret robusthed og genoptagelig population}
+Studiernes matematiske definition nedenfor bevares, mens deres prioritet i
+forhold til forecast og kontrol bestemmes af \texttt{root/F4.md}.
+Placering af komplette record/scenarier på hver sin worker ændrer ikke
+bankens ordnede log-skalerede sum: hver betinget state-law beregnes fortsat
+separat, prediction bruger de gamle parametervægte, og posterior de nye.
+Kun færdige banker overføres til hovedprocessen. Det er en ændring af afvikling,
+ikke af støtte, kvadratur, numerik, frø eller acceptkriterier.
+
 Disse studier er implementeret, men deres produktionskørsler er betingede af
 råvalideret syvdages-G2a og derefter bestået G2b. G2b bruger ID1360/1361
 og fem scenarier per par: timevis matched, sampling hver anden/fjerde time,

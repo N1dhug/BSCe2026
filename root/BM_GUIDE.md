@@ -1,6 +1,9 @@
 # BM — arbejdsvejviser
 
 **F4-status og næste opgave:** [F4.md](F4.md).
+Den aktive prioritering fra 3. oktober 2026 er I/J på det afsluttede F-spor;
+G2b/G2c er fortsat blokeret og udsat fra den kritiske vej. Bevar kørende G2a-v2
+på dens oprindelige kildecommit; nyt arbejde kræver et separat checkout/worktree.
 **Sammenhængende matematik:** [f4/main.tex](f4/main.tex) + [f4/notes.tex](f4/notes.tex).
 **Afsluttet F1–F3-evidens:** [BM_REFERENCE.md](BM_REFERENCE.md).
 Der vedligeholdes ikke parallelle audit-/closure-rapporter i `root`.
@@ -876,10 +879,11 @@ og output har også en pris; et speedup-tal er ikke et løfte om samlet Windows-
 `joint-bank-continued-pilot --fv-backend cached` findes til eksplicit sammenligning,
 men default er fortsat den gamle LAPACK-backend.
 
-**De følgende G2b/G2c-blokke er betinget reproduktionsvejledning og må ikke
-startes med den afviste G2a v1-fil.** Efter en bestået og råreviewet syvdages
-G2a-kandidat kan følgende køres fra et rent checkout
-af den nye revision. **Kør først én G2b-unit og review runtime/resultat**, inden
+**De følgende G2b/G2c-blokke er betinget reproduktionsvejledning, ikke aktuelle
+arbejdsordrer. De må ikke startes med den afviste G2a v1-fil.** Den rektangulære
+v2 ændrer ikke automatisk disse kommandoers gamle grid/dependency-kontrakt.
+Et kompatibelt registreret design og råreview er påkrævet før frigivelse.
+**Kør derefter først én G2b-unit og review runtime/resultat**, inden
 resten startes. Det samlede G2b-design er ti units; G2c er 560. Det er forsknings-
 studier og indgår ikke i den almindelige testsuite.
 
@@ -900,7 +904,7 @@ for at færdiggøre resten efter review. G2c kræver alle ti beståede rå G2b-u
 ```powershell
 python -B -m src.exe.run_model.bm_1.estimate joint-bank-robustness-population `
   --g2a-report $g2a --pilot-dir $g2b --run-dir $g2c `
-  --limit-units 10 --workers 8 --blas-threads 1
+  --limit-units 10 --parallelism units --workers 8 --blas-threads 1
 if ($LASTEXITCODE -ne 0) { throw "G2c fejlede; behold hele mappen til review." }
 ```
 
@@ -913,6 +917,40 @@ record/scenarie med alle sine banker. Ved afbrydelse genbruges komplette units;
 den igangværende unit beregnes igen. Skift ikke kildecommit under en serie.
 En efterladt `run.lock` blokerer ikke resume; låsen holdes af operativsystemet.
 Ingen fejlede eller manglende records fjernes for at få et grønt resumé.
+
+**Procesplacering:** `--parallelism units` fordeler komplette record/scenarier
+over én persistent pool. Hver worker udfører hypoteserne serielt i samme orden
+og sender kun de reducerede banker tilbage. `--workers` er det samlede budget,
+ikke et antal ydre gange indre workers. G2c bruger dette som default. G2b's
+default `hypotheses` bevarer parallelismen i en enkelt pilot-unit; `units` kan
+vælges ved flere units efter lokal måling. Råvalidering og lagring sker i
+hovedprocessen. Progress i `units` vises ved færdige units; ingen output imellem
+betyder ikke nødvendigvis et hængt job. Resuméets rækkefølge er uafhængig af,
+hvilken worker der afslutter først.
+
+Ved en fejlet gate starter ingen nye units, men allerede indsendte units får
+lov at afslutte og gemmes. Kommandoen returnerer derefter fejl. Ved hård
+afbrydelse kan op til `workers` igangværende units kræve genkørsel. Eksisterende
+source-/dependency-kontrol, lås og atomisk lagring er uændret.
+
+En kort, selvstændig afviklingsmåling kræver ingen G2a-fil og accepterer ingen
+studier. Kør fra **ny source i en separat mappe**, ikke den kørende G2a-mappe:
+
+```powershell
+$executionTag = Get-Date -Format 'yyyyMMdd_HHmmss'
+python -B -m src.exe.run_model.bm_1.estimate benchmark-execution `
+  --workers 2 --repeats 2 --blas-threads 1 `
+  --output "files/output/bm_1/runs/estimation/execution_$executionTag.json"
+if ($LASTEXITCODE -ne 0) { throw "Afviklingskontrollen fejlede; behold output/log." }
+```
+
+Benchmarken bruger to identiske syvdages-banker fra gammelt ID1359, hver med
+3×3 hypoteser, FV3201/h=1/1536/q=3, og skifter kørselsrækkefølge mellem repeats.
+Den måler spawn, beregning, reduktion og overførsel; truth-setup, efterfølgende
+råvalidering og filskrivning er udenfor de sammenlignede tider. Ni rå numeriske
+felter sammenlignes med tolerance 1e-12. To units kan højst udnytte to samtidige
+unit-workers; denne diagnostik er ikke en måling af otte-worker skalering.
+Se måleresultatet og dets begrænsninger i [F4.md](F4.md).
 
 H har forberedelsesfunktioner i `src/tools/bm_1_data.py`:
 `previous_weekday_mean`, `EstimationPowerScale` og `historical_point_observations`.
