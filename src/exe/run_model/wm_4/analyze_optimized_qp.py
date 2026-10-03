@@ -9,7 +9,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[4]
 OPTIMIZED = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized"
 OUTPUT = OPTIMIZED / "analysis"
-PARAMETERS = ("r_F", "r_U", "r_R")
+PARAMETERS = ("r_F", "r_U", "r_R", "r_0")
 METRICS = ("mse", "rmse", "mae", "bias")
 
 
