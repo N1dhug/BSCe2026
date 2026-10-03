@@ -12,6 +12,9 @@ are known oracle inputs, not price forecasts.
 Consumption defaults to WM4's raw observed MED mean: missing meters are
 excluded from that hour's denominator, never interpolated. Meter counts are
 exported. --population-policy strict requires every selected meter instead.
+The default baseline still requires all five prior weekday/hour observations.
+--baseline-policy available-history explicitly allows four of those same five
+for this disposable preview, records every omission, and never imputes I.
 
 Provisional FV application, NOT completed/accepted F4:
 * small DISCRETE rho/Xi prior, not the validated continuous hat bank;
@@ -224,6 +227,7 @@ def load_raw(root, tag, end, population_policy="wm-observed-mean"):
     frame = frame.loc[frame.index < end]
     frame["observed_meter_count"] = frame.observed_meter_count.fillna(0).astype(int)
     frame["selected_meter_count"] = len(columns)
+    frame["input_row_present"] = frame.index.isin(readings.index)
     coverage = readings.loc[readings.index < end]
     counts = count.reindex(coverage.index)
     metadata = dict(tag=tag, measurement_columns=columns,
@@ -236,6 +240,9 @@ def load_raw(root, tag, end, population_policy="wm-observed-mean"):
                     coverage=dict(end_exclusive=str(end), selected_meters=len(columns),
                                   partial_hours=int(((counts > 0) & (counts < len(columns))).sum()),
                                   empty_hours=int(counts.eq(0).sum()),
+                                  absent_input_hours=int((~frame.input_row_present).sum()),
+                                  missing_aggregate_hours=int(frame.I_raw.isna().sum()),
+                                  first_missing_aggregate_hours=[t.isoformat() for t in frame.index[frame.I_raw.isna()][:8]],
                                   missing_by_meter={c:int(coverage[c].isna().sum()) for c in columns}),
                     source_start=str(consumption.index.min()),
                     source_end=str(consumption.index.max()),
@@ -244,11 +251,40 @@ def load_raw(root, tag, end, population_policy="wm-observed-mean"):
     return frame, metadata
 
 
-def forecast_baseline(frame, target, origin, population_policy):
-    """Keep the five-occurrence contract; identify actual missing source hours."""
+def prior_weekday_times(target, origin):
+    """The nominal five local weekday/hour occurrences before a fixed origin."""
+    sources, week = [], 1
+    while len(sources) < 5:
+        source = target-pd.DateOffset(weeks=week)
+        week += 1
+        if source < origin:
+            sources.append(source)
+    return tuple(sources)
+
+
+def forecast_baseline(frame, target, origin, population_policy, baseline_policy="strict-five"):
+    """Strict H reference, or explicitly declared four/five-observation preview."""
     from src.tools.bm_1_data import previous_weekday_mean
     history = frame["I_raw"].copy()
     history.index = history.index.tz_localize(TZ, ambiguous="raise", nonexistent="raise")
+    if np.isinf(history.to_numpy(dtype=float)).any():
+        raise ValueError("Infinite consumption is invalid, not a missing observation.")
+    if baseline_policy not in ("strict-five", "available-history"):
+        raise ValueError("Unknown baseline policy.")
+    if baseline_policy == "available-history":
+        values, used = [], []
+        for stamp in target:
+            sources = prior_weekday_times(stamp, origin)
+            samples = history.reindex(pd.DatetimeIndex(sources)).to_numpy()
+            valid = np.isfinite(samples)
+            if valid.sum() < 4:
+                missing = [t.isoformat() for t, keep in zip(sources, valid) if not keep]
+                raise ValueError(f"available-history baseline requires at least four observed values "
+                                 f"among the same five prior weekday/hours; target={stamp.isoformat()}, "
+                                 f"observed={valid.sum()}/5, missing={missing}. No I is imputed.")
+            values.append(float(np.mean(samples[valid])))
+            used.append(tuple(t for t, keep in zip(sources, valid) if keep))
+        return pd.Series(values, index=target, name="available_history_weekday_mean"), tuple(used)
     try:
         return previous_weekday_mean(history, target, origin=origin)
     except ValueError as exc:
@@ -256,25 +292,24 @@ def forecast_baseline(frame, target, origin, population_policy):
             raise
         failures = []
         for stamp in target:
-            sources, week = [], 1
-            while len(sources) < 5:
-                source = stamp-pd.DateOffset(weeks=week)
-                week += 1
-                if source < origin:
-                    sources.append(source)
+            sources = prior_weekday_times(stamp, origin)
             for source in sources:
                 if not np.isfinite(history.get(source, np.nan)):
                     local = source.tz_localize(None)
                     available = frame.observed_meter_count.get(local, 0) if "observed_meter_count" in frame else "unknown"
                     total = frame.selected_meter_count.get(local, "unknown") if "selected_meter_count" in frame else "unknown"
-                    failures.append(f"{source.isoformat()} ({available}/{total} observed meters)")
+                    present = frame.input_row_present.get(local, False) if "input_row_present" in frame else "unknown"
+                    failures.append(f"{source.isoformat()} ({available}/{total} observed meters; input row present={present})")
         samples = list(dict.fromkeys(failures))
         hint = (" Use --population-policy wm-observed-mean to match WM4's raw observed mean."
                 if population_policy == "strict" else
                 " At least one required hour has no usable aggregate; inspect the workbook timestamps/readings.")
         raise ValueError(f"{exc} Population policy={population_policy}; "
                          f"missing historical hours={len(samples)}; first={samples[:8]}."
-                         f"{hint} No source hour is filled or replaced.") from exc
+                         f"{hint} For an explicitly different preview baseline, "
+                         "--baseline-policy available-history requires four or five observations "
+                         "within the same five-week window and records omissions. "
+                         "No source hour is filled or replaced.") from exc
 
 
 def prepare(frame, start, args):
@@ -308,8 +343,9 @@ def prepare(frame, start, args):
     if selected["U_bm"].min() < 0 or selected["U_bm"].max() > 1:
         raise ValueError("A price is outside the frozen bounds. Supply independently chosen physical --price-low/--price-high; prices are never clipped.")
     target = pd.date_range(start, end, freq="h", inclusive="left", tz=TZ)
+    baseline_policy = getattr(args, "baseline_policy", "strict-five")
     baseline, source_dates = forecast_baseline(frame, target, start.tz_localize(TZ),
-                                               getattr(args, "population_policy", "wm-observed-mean"))
+                                               getattr(args, "population_policy", "wm-observed-mean"), baseline_policy)
     base = baseline.to_numpy()/scale
     if np.any((base < 0) | (base > 1)):
         raise ValueError("Historical baseline is outside BM's physical power scale.")
@@ -317,6 +353,16 @@ def prepare(frame, start, args):
     # Repeat the frozen weekly profile over the previous fitting week. It is
     # not advertised as prequential baseline estimation during that fit.
     selected["B"] = np.tile(base, 2)
+    counts = np.array([len(row) for row in source_dates], dtype=int)
+    selected["baseline_observed_weeks"] = np.tile(counts, 2)
+    omitted = [[t.isoformat() for t in prior_weekday_times(stamp, start.tz_localize(TZ))
+                if t not in used] for stamp, used in zip(target, source_dates)]
+    selected.attrs["baseline"] = dict(policy=baseline_policy, nominal_window_weeks=5,
+        minimum_required_observations=5 if baseline_policy == "strict-five" else 4,
+        observed_week_counts={str(n):int(np.sum(counts == n)) for n in (4,5)},
+        omitted_source_times=omitted, consumption_imputed=False,
+        reference_contract=("original five-complete reference" if baseline_policy == "strict-five" else
+                            "explicit disposable-preview alternative; not the five-complete H reference"))
     scaling = dict(power_scale=scale, consumption_transform="raw / power_scale",
                    power_scale_source="explicit" if args.power_scale else "2 * maximum before normalization cutoff",
                    price_low=lo, price_high=hi, price_transform_bm="(raw-low)/(high-low)",
@@ -734,7 +780,10 @@ def save_plot(hourly, directory, start):
     axes[0].plot(hourly.index, hourly.I_bm, label="BM preview predicted mean demand D")
     axes[0].fill_between(hourly.index, hourly.D_p05, hourly.D_p95, alpha=.17,
                          label="BM marginal 90% latent-D interval")
-    axes[0].plot(hourly.index, hourly.B, label="Five previous weekday/hour mean B", ls="--")
+    baseline_label = ("Mean of 4/5 observed weeks in five-week window B"
+                      if hourly.attrs.get("baseline", {}).get("policy") == "available-history"
+                      else "Five previous weekday/hour mean B")
+    axes[0].plot(hourly.index, hourly.B, label=baseline_label, ls="--")
     axes[0].set_ylabel("Normalized input / demand")
     axes[1].step(hourly.index, hourly.U_bm, where="post", label="Known historical DK1 price U [0,1]")
     axes[1].set_ylabel("Normalized price")
@@ -816,6 +865,8 @@ def main(argv=None):
     parser.add_argument("--tag", default="MED", help="Same default population as WM4; empty string selects all meters.")
     parser.add_argument("--population-policy", choices=["wm-observed-mean", "strict"], default="wm-observed-mean",
                         help="WM4 raw observed mean (default), or require every selected meter. Neither mode imputes consumption.")
+    parser.add_argument("--baseline-policy", choices=["strict-five", "available-history"], default="strict-five",
+                        help="Require all five past values (default), or explicitly use four/five from the same window for this preview; no consumption fill.")
     parser.add_argument("--observation-contract", choices=["point", "hourly-point-approximation"])
     parser.add_argument("--audit-only", action="store_true")
     parser.add_argument("--power-scale", type=float)
@@ -873,10 +924,14 @@ def main(argv=None):
     print(f"Training missing hours={selected.I.iloc[:168].isna().sum()}; target missing hours={selected.I.iloc[168:].isna().sum()}", flush=True)
     print(f"Consumption policy={args.population_policy}; raw observations, no imputation; "
           f"contributing meters per training/target hour={selected.observed_meter_count.min()}..{selected.observed_meter_count.max()}", flush=True)
+    baseline_metadata = selected.attrs["baseline"]
+    print(f"Baseline policy={args.baseline_policy}; observed-week counts={baseline_metadata['observed_week_counts']}; "
+          "missing I remains missing", flush=True)
     if args.audit_only:
         if args.curve_mode == "auto":
             curve_dataset(frame, start, scaling, args)
-        print(json.dumps(dict(sources=sources, scaling=scaling, baseline_first_hour_sources=baseline_dates[0]), indent=2))
+        print(json.dumps(dict(sources=sources, scaling=scaling, baseline=baseline_metadata,
+                             baseline_first_hour_sources=baseline_dates[0]), indent=2))
         return 0
     if not args.observation_contract:
         parser.error("Declare --observation-contract point only for established point-power readings, or hourly-point-approximation for an explicitly provisional output preview. Interval likelihoods are not implemented.")
@@ -930,6 +985,15 @@ def main(argv=None):
                         conditional_log_evidence=scores, posterior_weights=posterior.weight.to_numpy(),
                         parameter_nodes=posterior[["rho","Xi"]].to_numpy(), x_edges=np.linspace(0,1,args.cells+1))
     hourly.to_csv(directory/"hourly_results.csv")
+    baseline_history = []
+    for stamp, used in zip(hourly.index, baseline_dates):
+        for source in prior_weekday_times(stamp.tz_localize(TZ), start.tz_localize(TZ)):
+            local = source.tz_localize(None)
+            baseline_history.append(dict(target_timestamp=stamp.isoformat(), source_timestamp=source.isoformat(),
+                I_raw=frame.I_raw.get(local, np.nan), used=source.isoformat() in used,
+                observed_meter_count=int(frame.observed_meter_count.get(local, 0)),
+                input_row_present=bool(frame.input_row_present.get(local, False))))
+    pd.DataFrame(baseline_history).to_csv(directory/"baseline_history.csv", index=False)
     daily.to_csv(directory/"daily_results.csv", index=False)
     if control_hourly is not None:
         control_hourly.to_csv(directory/"control_hourly.csv")
@@ -944,7 +1008,7 @@ def main(argv=None):
             "src/control/bm_1.py", "src/exe/run_model/progress.py", "src/tools/bm_1_outputs.py")},
         environment=dict(python=sys.version, numpy=np.__version__, pandas=pd.__version__),
         settings={k: str(v) if isinstance(v,Path) else v for k,v in vars(args).items()},
-        baseline_source_times=baseline_dates, fit=fit_metadata,
+        baseline_source_times=baseline_dates, baseline=baseline_metadata, fit=fit_metadata,
         fixed_parameters=dict(k=args.k, sigma_x=args.sigma_x, sigma_y=args.sigma_y),
         response_curves=curve,curve_estimation=curve_metadata,
         estimated_means=dict(rho=float(posterior.rho@posterior.weight), Xi=float(posterior.Xi@posterior.weight)),
@@ -961,6 +1025,7 @@ def main(argv=None):
                      "metadata/point versus interval observation contract not established by workbook importer",
                      "historical DK1 spot prices are a proxy for the unknown price paid by these meters",
                      "WM raw observed mean can change contributing meters by hour; exported counts document this",
+                     "available-history, when explicitly selected, is a four/five-observation preview baseline, not the strict H reference",
                      "no causal demand-response claim; no population-calibration claim"])
     (directory/"summary.json").write_text(json.dumps(summary, indent=2, allow_nan=False)+"\n", encoding="utf-8")
     save_plot(hourly, directory, start)
@@ -975,7 +1040,7 @@ def main(argv=None):
         includes_parameter_uncertainty=True, parameter_uncertainty='Finite discrete rho/Xi bank only',
         includes_curve_uncertainty=False,
         observation_contract=args.observation_contract, response_curves=curve,
-        normalization=scaling, population=sources, source=summary['source'],
+        normalization=scaling, baseline_reference=baseline_metadata, population=sources, source=summary['source'],
         forecast_scientific_acceptance=False, limitations=summary['limitations'])
     distribution_args = dict(times=np.arange(168,dtype=float)/24,
         x_edges=np.linspace(0,1,args.cells+1), baseline=hourly.B.to_numpy(),

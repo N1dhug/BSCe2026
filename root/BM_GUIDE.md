@@ -1120,10 +1120,11 @@ ingen forbrugsværdier interpoleres eller hentes fra importerens udfyldte `data`
 Antal bidragende/valgte målere gemmes i `hourly_results.csv` og dækningsmetadata
 i `summary.json`. Bidragende population kan derfor variere pr. time ligesom WM.
 `--population-policy strict` kræver i stedet alle valgte målere ved hver time.
-Begge tilstande afviser en helt manglende påkrævet baselinetime: ingen af de fem
+Med standarden `--baseline-policy strict-five` afviser begge populationstilstande
+en helt manglende påkrævet baselinetime: ingen af de fem
 historiske ugedagsværdier erstattes med en anden time/uge.
 
-Hvis den første datakontrol fejlede med `Five complete prior occurrences`,
+Hvis den første datakontrol fejlede på enkelte tomme målerceller,
 opdatér kun den allerede oprettede preview-mappe (ingen ny worktree):
 
 ```powershell
@@ -1140,12 +1141,45 @@ Dette `git pull` gælder kun preview-worktree; G2a's oprindelige checkout må
 fortsat ikke opdateres. Rettelsen er afprøvet med isolerede workbooks med delvist
 og helt manglende målere, ikke ved en fuld kørsel på den store rigtige inputfil.
 
+Den næste lokale kontrol fandt 120 **helt manglende historiske timer** med
+0/13 MED-målere, blandt andet 17. januar. `--baseline-policy available-history`
+er et eksplicit alternativ til netop den midlertidige preview: B er gennemsnit
+af fire eller fem observerede værdier i samme femugers ugedags-/timevindue.
+Færre end fire stopper stadig kørslen. Der indsættes ingen nye forbrugstal,
+interpolation, target-I eller andre uger. TRAIN-datahuller forbliver NaN, og
+filteret propagates gennem dem uden likelihood-opdatering. Dette er **en anden
+B-definition end den fem-komplette H-reference**, ikke en ændring af H-gates.
+WM4's forbrugsaggregation bevares; BM-B er fortsat sin egen historiske reference,
+ikke WM4's vejrbaserede O-model. Typen af demand-output og fejlmål bevares.
+
+Til denne preview med historikgabet:
+
+```powershell
+Set-Location "C:\Users\jvils\OneDrive\Skrivebord\Til VS\fag\7 semester\BSCe2026-bm-preview" -ErrorAction Stop
+git pull --ff-only origin preview/bm-f4-february
+if ($LASTEXITCODE -ne 0) { throw "Preview-opdatering fejlede." }
+python -B bm_f4_february_preview.py --audit-only --baseline-policy available-history
+if ($LASTEXITCODE -ne 0) { throw "Datakontrol fejlede." }
+python -B bm_f4_february_preview.py --week 2022-02-07 --tag MED --workers 2 --baseline-policy available-history --observation-contract hourly-point-approximation
+if ($LASTEXITCODE -ne 0) { throw "BM-preview fejlede." }
+```
+
+Audit og `summary.json` angiver baselinepolicy, antal timer med fire/fem værdier
+og udeladte historiske timestamps. `baseline_history.csv` har alle 840 mulige
+target-/kildetidspar, rå kildeværdi, `used`, antal observerede målere og om den
+indlæste inputrække findes. `hourly_results.csv` gemmer `baseline_observed_weeks`.
+Tomme kildeværdier forbliver tomme i CSV. Skeln mellem datahul og importproblem
+ved workbook-review; previewalternativet reparerer ikke den oprindelige datafil.
+Syv fixturetests består, inklusive hele fit/forecast/kontrol og distribution-
+eksport med 120 blanke TRAIN-timer. Den store rigtige workbook er ikke kørt her.
+
 En ny mappe under `files/output/bm_1/runs/f4_bm_preview/` indeholder:
 
 | Fil | Indhold |
 |---|---|
 | `bm_weekly_prediction.png` | Tre paneler: observeret/prognosticeret demand og B-baseline; kendt pris; BM-state X. Timevise kurver og marginalt 90% latent-D-interval. |
 | `hourly_results.csv`, `daily_results.csv` | 168 timer samt daglige MSE/RMSE/MAE/bias for BM og B. Ingen WM-kolonner. |
+| `baseline_history.csv` | De fem nominelle kildeuger pr. targettime, faktisk rå værdi og brug/udeladelse; ingen udfyldning. |
 | `summary.json` | Fejlmål i normaliserede og rå enheder, parametre, kilde-/datahashes, settings, tider og begrænsninger. |
 | `response_curves.json/.csv/.png` | Fælles f/g-par og de tre undersøgte kurvefamilier. |
 | `curve_validation.csv`, `curve_trials.csv` | Betinget fit, budgetstatus og tidligere modelvalgsperiode; ingen automatisk accept. |

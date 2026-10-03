@@ -11,7 +11,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -119,6 +119,49 @@ class BMPreviewTests(unittest.TestCase):
         pd.testing.assert_frame_equal(data.iloc[:n_train], d3.iloc[:n_train])
         np.testing.assert_array_equal(data.B, d3.B)
 
+    def test_120_hour_gap_is_explicitly_omitted_without_filling_or_holdout_leakage(self):
+        frame, *_ = self.record()
+        start = pd.Timestamp("2022-02-07")
+        gap = (frame.index >= "2022-01-17") & (frame.index < "2022-01-22")
+        frame.loc[gap, "I_raw"] = np.nan
+        frame.loc[gap, "observed_meter_count"] = 0
+        with self.assertRaisesRegex(ValueError, "missing historical hours=120"):
+            preview.prepare(frame, start, self.args())
+        args = self.args()
+        args.baseline_policy = "available-history"
+        selected, scaling, used = preview.prepare(frame, start, args)
+        counts = selected.baseline_observed_weeks.iloc[168:]
+        self.assertEqual(counts.value_counts().to_dict(), {4:120, 5:48})
+        self.assertTrue(frame.loc[gap, "I_raw"].isna().all())
+        history = frame.I_raw.copy()
+        history.index = history.index.tz_localize(preview.TZ)
+        for n, stamp in enumerate(selected.index[168:]):
+            nominal = preview.prior_weekday_times(stamp.tz_localize(preview.TZ), start.tz_localize(preview.TZ))
+            raw = history.reindex(pd.DatetimeIndex(nominal))
+            self.assertAlmostEqual(selected.B.iloc[168+n]*scaling["power_scale"], raw.dropna().mean())
+            self.assertEqual(used[n], [t.isoformat() for t in raw.dropna().index])
+            self.assertTrue(all(pd.Timestamp(t) < start.tz_localize(preview.TZ) for t in used[n]))
+        changed = frame.copy()
+        changed.loc[changed.index >= start, "I_raw"] += 1000
+        again, scales2, used2 = preview.prepare(changed, start, args)
+        np.testing.assert_array_equal(selected.B, again.B)
+        self.assertEqual(scaling, scales2)
+        self.assertEqual(used, used2)
+        data, _, _ = preview.curve_dataset(frame, start, scaling, args)
+        self.assertEqual(data.I.isna().sum(), 120)
+        frame.loc["2022-01-10 00:00", "I_raw"] = np.nan
+        with self.assertRaisesRegex(ValueError, "observed=3/5"):
+            preview.prepare(frame, start, args)
+
+    def test_available_history_is_identical_when_all_five_sources_exist(self):
+        frame, selected, scaling, dates, *_ = self.record()
+        args = self.args()
+        args.baseline_policy = "available-history"
+        available, scales2, dates2 = preview.prepare(frame, pd.Timestamp("2022-02-07"), args)
+        np.testing.assert_array_equal(selected.B, available.B)
+        self.assertEqual(scaling, scales2)
+        self.assertEqual(dates, dates2)
+
     def test_filter_continuation_has_no_midnight_reset(self):
         _, _, _, _, data, n_train = self.record()
         args = self.args()
@@ -169,18 +212,33 @@ socket.socket.connect = connect
         env = os.environ.copy()
         env["PYTHONPATH"] = str(guard) + os.pathsep + env.get("PYTHONPATH", "")
         output = self.root / "output"
-        result = subprocess.run([sys.executable, "-B", str(ROOT / "bm_f4_february_preview.py"),
+        # Reproduce Johan's complete five-day history gap in the CLI fixture.
+        input_path = self.root / "files/input/data/input.xlsx"
+        original_workbook = input_path.read_bytes()
+        workbook = load_workbook(input_path)
+        for row in workbook.active.iter_rows(min_row=3):
+            if pd.Timestamp("2022-01-17") <= pd.Timestamp(row[0].value) < pd.Timestamp("2022-01-22"):
+                for cell in row[2:]:
+                    cell.value = None
+        workbook.save(input_path)
+        try:
+            result = subprocess.run([sys.executable, "-B", str(ROOT / "bm_f4_february_preview.py"),
             "--repo", str(self.root), "--nodes", "2", "--cells", "41",
             "--max-step", str(1/96), "--workers", "2", "--curve-evaluations", "6",
             "--curve-cells", "21", "--curve-max-step", str(1/48),
+            "--baseline-policy", "available-history",
             "--control-evaluations", "8", "--observation-contract", "hourly-point-approximation",
             "--output-dir", str(output)], capture_output=True, text=True, env=env,
             timeout=180)
+        finally:
+            input_path.write_bytes(original_workbook)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         summary = json.loads((output / "summary.json").read_text())
         self.assertEqual(summary["models_executed"], ["BM1"])
         self.assertEqual(summary["data"]["population_policy"], "wm-observed-mean")
         self.assertFalse(summary["data"]["consumption_imputation"])
+        self.assertEqual(summary["baseline"]["policy"], "available-history")
+        self.assertEqual(summary["baseline"]["observed_week_counts"], {"4":120, "5":48})
         self.assertEqual(set(summary["metrics"]), {"BM", "B"})
         self.assertEqual(set(summary["raw_unit_metrics"]), {"BM", "B"})
         self.assertNotIn("wm4", summary)
@@ -196,6 +254,11 @@ socket.socket.connect = connect
         self.assertEqual(hourly.observed_meter_count.min(), 1)
         self.assertEqual(hourly.observed_meter_count.max(), 2)
         self.assertTrue(hourly.selected_meter_count.eq(3).all())
+        self.assertEqual(hourly.baseline_observed_weeks.value_counts().to_dict(), {4:120, 5:48})
+        history = pd.read_csv(output / "baseline_history.csv")
+        self.assertEqual(len(history), 840)
+        self.assertEqual((~history.used).sum(), 120)
+        self.assertTrue(history.loc[~history.used, "I_raw"].isna().all())
         self.assertFalse(any("wm" in c.lower() or c == "Temp" for c in hourly.columns))
         self.assertEqual(len(pd.read_csv(output / "control_hourly.csv")), 168)
         self.assertEqual(len(pd.read_csv(output / "curve_validation.csv")), 3)
