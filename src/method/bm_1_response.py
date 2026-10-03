@@ -19,6 +19,7 @@ from src.params.bm_1 import BM1ObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
 from src.solver.finite_volume import finite_volume_1d_cached
 from src.validation import estimation as checks
+from src.validation.model.bm import bm_validation
 
 
 @dataclass(frozen=True)
@@ -56,9 +57,7 @@ class CurveTrainingRecord:
                 or self.observations.times[-1] > horizon[-1]
                 or not np.any(self.observations.observed)):
             raise ValueError('Training observations must lie in (start,end] and contain data.')
-        parameters = tuple(self.parameters)
-        if len(parameters) != 6 or not all(callable(v) for v in parameters[:3]):
-            raise ValueError('parameters must be fixed [U,f,g,C,k,Xi].')
+        parameters = tuple(bm_validation.parameters(self.parameters))
         sigma_x = checks.finite_scalar(self.sigma_x, 'sigma_x')
         sigma_y = checks.finite_scalar(self.sigma_y, 'sigma_y', positive=True)
         if sigma_x < 0.:
@@ -105,6 +104,30 @@ def curve_pair_logits(f, g, *, pieces):
     return np.asarray(rows)
 
 
+def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
+                        quadrature_order=3, keep_history=False):
+    """One complete fresh replay, shared by fitting and full-history validation.
+
+    B/U callbacks already need NumPy broadcasting for the BM1 forward output.
+    Vectorized input sampling retains the identical solver grid and exact cache
+    keys. It never shares an operator or posterior across curve candidates.
+    """
+    if not isinstance(record, CurveTrainingRecord):
+        raise TypeError('A declared curve training/development record is required.')
+    cells = checks.positive_integer(cells, 'cells', minimum=3)
+    model = bm_1(record.baseline, record.baseline, record.horizon, 2)
+    model.fokker_planc_reference = finite_volume_1d_cached(vectorized_inputs=True)
+    edges, _, _ = model.fokker_planc_reference.grid(cells, bounds=(0., 1.))
+    initial = checks.probability_mass(record.initial_mass_builder(edges.copy()), 'initial mass')
+    if initial.size != cells:
+        raise ValueError('Initial-law builder must supply one mass per requested cell.')
+    parameters = [record.parameters[0], f, g, *record.parameters[3:]]
+    return run_fv_filter(model, parameters, record.sigma_x, record.sigma_y,
+        initial, record.horizon[0], record.observations, breakpoints=record.breakpoints,
+        max_step=max_step, likelihood_quadrature_order=quadrature_order,
+        keep_history=keep_history)
+
+
 def pooled_curve_log_likelihood(records, f, g, *, cells=401, max_step=1/768,
                                 quadrature_order=3):
     """Whole-record pooled score, with one identical f/g pair in every replay."""
@@ -113,19 +136,10 @@ def pooled_curve_log_likelihood(records, f, g, *, cells=401, max_step=1/768,
             or len({r.record_id for r in records}) != len(records)
             or len({r.observations.time_unit for r in records}) != 1):
         raise ValueError('Declare distinct TRAIN records with one common time unit.')
-    cells = checks.positive_integer(cells, 'cells', minimum=3)
     outputs = []
     for record in records:
-        model = bm_1(record.baseline, record.baseline, record.horizon, 2)
-        model.fokker_planc_reference = finite_volume_1d_cached()
-        edges, _, _ = model.fokker_planc_reference.grid(cells, bounds=(0., 1.))
-        initial = checks.probability_mass(record.initial_mass_builder(edges.copy()), 'initial mass')
-        if initial.size != cells:
-            raise ValueError('Initial-law builder must supply one mass per requested cell.')
-        parameters = [record.parameters[0], f, g, *record.parameters[3:]]
-        result = run_fv_filter(model, parameters, record.sigma_x, record.sigma_y,
-            initial, record.horizon[0], record.observations, breakpoints=record.breakpoints,
-            max_step=max_step, likelihood_quadrature_order=quadrature_order, keep_history=False)
+        result = replay_curve_record(record, f, g, cells=cells, max_step=max_step,
+                                     quadrature_order=quadrature_order)
         if result.maximum_abs_mass_error > 1e-10 or result.minimum_cell_mass < 0.:
             raise RuntimeError('Curve candidate probability control failed; no candidate/record dropped.')
         outputs.append(dict(record_id=record.record_id, log_likelihood=result.total_log_likelihood,
