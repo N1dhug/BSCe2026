@@ -15,7 +15,7 @@ from unittest.mock import patch
 class BMReviewCompatibilityTests(unittest.TestCase):
 
     def test_executable_imports_do_not_run_simulations(self):
-        code = "\nfrom unittest.mock import patch\nfrom importlib import import_module\nimport matplotlib.pyplot  # Finish pyplot setup before patching Figure.savefig.\nwith patch('src.model.bm_1.bm_1.euler_maruyama_solver', side_effect=AssertionError('EM at import')), \\\n     patch('src.model.bm_1.bm_1.fokker_planc_reference_solver', side_effect=AssertionError('FV at import')), \\\n     patch('matplotlib.figure.Figure.savefig', side_effect=AssertionError('figure at import')):\n    for name in ('verify', 'optimize', 'refine', 'real_data'):\n        import_module('src.exe.run_model.bm_1.' + name)\n"
+        code = "\nfrom unittest.mock import patch\nfrom importlib import import_module\nimport matplotlib.pyplot  # Finish pyplot setup before patching Figure.savefig.\nwith patch('src.model.bm_1.bm_1.euler_maruyama_solver', side_effect=AssertionError('EM at import')), \\\n     patch('src.model.bm_1.bm_1.fokker_planc_reference_solver', side_effect=AssertionError('FV at import')), \\\n     patch('matplotlib.figure.Figure.savefig', side_effect=AssertionError('figure at import')):\n    for name in ('verify', 'optimize', 'refine', 'real_data', 'outputs'):\n        import_module('src.exe.run_model.bm_1.' + name)\n"
         result = subprocess.run([sys.executable, '-B', '-c', code], capture_output=True, text=True,
             cwd=Path(__file__).resolve().parents[1], timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -128,7 +128,7 @@ class ConsolidatedLayoutTests(unittest.TestCase):
     def test_expected_bm_entrypoints(self):
         root = Path(__file__).resolve().parents[1]
         actual = {p.name for p in (root / 'src/exe/run_model/bm_1').glob('*.py')}
-        self.assertEqual(actual, {'verify.py', 'optimize.py', 'refine.py', 'real_data.py', 'estimate.py'})
+        self.assertEqual(actual, {'verify.py', 'optimize.py', 'refine.py', 'real_data.py', 'estimate.py', 'outputs.py'})
         for retired in (
             'src/method/bm_1_control.py', 'src/method/bm_1_objective.py',
             'src/method/bm_1_mixture.py', 'src/validation/method/bm_1.py',

@@ -1175,3 +1175,40 @@ python -B -m unittest discover -s tests -p test_bm_f4_february_preview.py -q
 
 Gem output uden for test-worktree, inden denne midlertidige branch/worktree
 slettes. Dette er ikke en anmodning om merge til `main`.
+
+## Supplerende BM-density- og responsfigurer
+
+Februar-previewet eksporterer nu sine allerede beregnede joint conditional
+fordelinger gennem `src/tools/bm_1_outputs.py`, uden ekstra FV-forløb eller
+estimation. I outputmappen tilføjes `forecast_distribution/` og, når kontrol
+køres, `control_distribution/`. Hver indeholder `bm_state_density.png`,
+`bm_response.png`, `bm_demand.png`, `moments.csv`, `distribution.npz` og
+`summary.json`. Forecast har observeret demand og MSE/RMSE/MAE/bias; kontrol
+har ingen fejlscoring mod målinger fra spotprisforløbet.
+
+NPZ bevarer hver rho/Xi-nodes egen demand/state-lov. Bånd er pointvise latente
+5–95%-kvantiler, uden målestøj, kurveusikkerhed eller samtidig ugecoverage.
+Fælles f/g forbliver frosset; WM2's R/Q har ingen direkte BM1-modpart.
+Alt er fortsat foreløbigt og accepterer ikke samlet H-f/g/I/J.
+
+Opdatér den eksisterende preview-mappe først efter dens aktuelle kørsel er
+stoppet/færdig, og genbrug derefter samme februar-kommando:
+
+```powershell
+git pull --ff-only origin preview/bm-f4-february
+if ($LASTEXITCODE -ne 0) { throw "Preview-opdatering fejlede." }
+python -B bm_f4_february_preview.py --week 2022-02-07 --tag MED --workers 2 --observation-contract hourly-point-approximation
+if ($LASTEXITCODE -ne 0) { throw "BM-preview fejlede." }
+```
+
+G2a's pinned checkout opdateres fortsat ikke. En allerede afsluttet gammel run
+mangler de fulde forecast-laws; heatmappet kan ikke genskabes fra dens middelkurve
+eller origin alene. De nye NPZ-filer kan derimod tegnes igen uden genkørsel:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.outputs redraw --input "STIEN_TIL_forecast_distribution"
+```
+
+En separat syntetisk reference med eksisterende F2-inputs kan laves med
+`python -B -m src.exe.run_model.bm_1.outputs reference`. Den gemmes i en ny mappe
+under `files/output/bm_1/runs/outputs/`; det er ikke et fit på de rigtige målere.

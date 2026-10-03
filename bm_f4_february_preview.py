@@ -917,7 +917,7 @@ def main(argv=None):
     control_hourly = None
     if not args.skip_optimize:
         optimal, control_metadata = optimize_tariff(posterior, masses, actual.B.to_numpy(), actual.U_bm.to_numpy(), args,curve=curve)
-        optimized_forecast, _ = bm_forecast(posterior, masses, actual.B.to_numpy(), optimal, args,curve=curve)
+        optimized_forecast, (control_d, control_p) = bm_forecast(posterior, masses, actual.B.to_numpy(), optimal, args,curve=curve)
         control_hourly = pd.DataFrame(optimized_forecast, index=hourly.index)
         control_hourly["U_optimized"] = optimal
         control_hourly["target_B"] = hourly.B
@@ -941,7 +941,7 @@ def main(argv=None):
         normalization=scaling, data=sources, source=git_info(root), script_sha256=sha256(__file__),
         core_source_hashes={p:sha256(root/p) for p in (
             "src/model/bm_1.py", "src/method/bm_1_estimation.py", "src/solver/finite_volume.py",
-            "src/control/bm_1.py", "src/exe/run_model/progress.py")},
+            "src/control/bm_1.py", "src/exe/run_model/progress.py", "src/tools/bm_1_outputs.py")},
         environment=dict(python=sys.version, numpy=np.__version__, pandas=pd.__version__),
         settings={k: str(v) if isinstance(v,Path) else v for k,v in vars(args).items()},
         baseline_source_times=baseline_dates, fit=fit_metadata,
@@ -965,8 +965,32 @@ def main(argv=None):
     (directory/"summary.json").write_text(json.dumps(summary, indent=2, allow_nan=False)+"\n", encoding="utf-8")
     save_plot(hourly, directory, start)
     save_curves(curve,curve_metadata,curve_rows,curve_trials,curve_candidates,directory)
+    # Reuse existing joint conditional laws; no extra estimation/FV replay.
+    # The parameter/state dependence in p and d must remain intact.
+    from src.tools.bm_1_outputs import export_distribution_outputs
+    distribution_metadata = dict(
+        interpretation=f'Provisional fixed-origin BM forecast: {start:%Y-%m-%d}',
+        demand_unit='Normalized demand', information_cutoff=start.isoformat(),
+        observations_assimilated_in_forecast=0, future_price_information='known historical oracle DK1',
+        includes_parameter_uncertainty=True, parameter_uncertainty='Finite discrete rho/Xi bank only',
+        includes_curve_uncertainty=False,
+        observation_contract=args.observation_contract, response_curves=curve,
+        normalization=scaling, population=sources, source=summary['source'],
+        forecast_scientific_acceptance=False, limitations=summary['limitations'])
+    distribution_args = dict(times=np.arange(168,dtype=float)/24,
+        x_edges=np.linspace(0,1,args.cells+1), baseline=hourly.B.to_numpy(),
+        timestamps=hourly.index.astype(str).to_numpy())
+    export_distribution_outputs(directory/'forecast_distribution', **distribution_args,
+        joint_mass=p, demand_values=d, price=hourly.U_bm.to_numpy(),
+        observations=hourly.I.to_numpy(), mode='fixed_origin_forecast',
+        metadata=distribution_metadata)
     if control_hourly is not None:
         save_control_plot(hourly, control_hourly, directory)
+        export_distribution_outputs(directory/'control_distribution', **distribution_args,
+            joint_mass=control_p, demand_values=control_d, price=optimal,
+            mode='counterfactual_control', metadata={**distribution_metadata,
+                'interpretation':f'Provisional counterfactual BM tariff: {start:%Y-%m-%d}',
+                'control_policy':control_metadata})
     print(f"Fitting week={start-pd.Timedelta(days=7)} -> {start}")
     print(f"Prediction week={start} -> {end}; no new I measurements")
     print(f"BM posterior means: rho={summary['estimated_means']['rho']:.8f}, Xi={summary['estimated_means']['Xi']:.8f}")

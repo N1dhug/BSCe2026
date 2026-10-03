@@ -204,6 +204,20 @@ socket.socket.connect = connect
         self.assertIn("remaining~", result.stdout)
         self.assertIn("total~", result.stdout)
         self.assertTrue((output / "origin_bank.npz").is_file())
+        for folder in ('forecast_distribution', 'control_distribution'):
+            info = json.loads((output / folder / 'summary.json').read_text())
+            for name in info['files']:
+                self.assertGreater((output / folder / name).stat().st_size, 0)
+        exported = pd.read_csv(output / 'forecast_distribution/moments.csv')
+        for field, original in [('D_mean', 'I_bm'), ('X_mean', 'X_bm'),
+                                ('D_p05', 'D_p05'), ('D_p95', 'D_p95')]:
+            np.testing.assert_allclose(exported[field], hourly[original], rtol=0, atol=1e-14)
+        counterfactual = json.loads((output / 'control_distribution/summary.json').read_text())
+        self.assertEqual(counterfactual['mode'], 'counterfactual_control')
+        self.assertEqual(counterfactual['metrics'], {})
+        with np.load(output / 'forecast_distribution/distribution.npz', allow_pickle=False) as raw:
+            np.testing.assert_allclose(raw['joint_mass'].sum(axis=(0, 2)), 1., atol=1e-10)
+            self.assertEqual(raw['joint_mass'].shape, raw['demand_values'].shape)
         existing = subprocess.run([sys.executable, "-B", str(ROOT / "bm_f4_february_preview.py"),
             "--repo", str(self.root), "--output-dir", str(output)],
             capture_output=True, text=True, env=env, timeout=30)
