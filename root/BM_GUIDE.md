@@ -741,9 +741,8 @@ Samlet 183.2609 s før lagring; detaljer og selvstændigt review står i F4-stat
 **Ingen ny lokal kørsel kræves alene for review/merge af denne PR.**
 
 Forslaget til næste pilot er rho/Xi 9×65→17×129 med 1601/3201 rumceller,
-og støjpar 33×65→65×129 med 6401/12801 celler. Dette er endnu ikke et
-registreret eller accepteret design: den nye streaming-/valideringskontrakt
-skal implementeres særskilt. Den gamle G2a-CLI har fortsat uændret 33/65-design;
+og støjpar 33×65→65×129 med 6401/12801 celler. Dette er nu fastlagt og implementeret som særskilt v2 nedenfor, men endnu ikke
+accepteret: hele den nye pilot skal køres og rå-reviewes. Den gamle G2a-CLI har fortsat uændret 33/65-design;
 brug ikke dens numerics/counts-overrides som registreret accept.
 
 Følgende er kun reproduktion af diagnosen fra et rent checkout af PR #57
@@ -771,6 +770,73 @@ Negativ G2a v1 er et tilladt input til denne diagnose; dens acceptance ændres
 ikke. De oprindelige scores/observationer genvalideres, og gamle conditional
 scores reproduceres. State-L1 er diagnostik; conditional state-historier er
 ikke gemt til uafhængig genberegning. G2b/G2c-prerequisites er uændrede.
+
+## Genoptagelig rektangulær G2a v2
+
+Designet er fastlagt efter den negative v1 og diagnosen. CLI'en låser rho/Xi
+9×65→17×129 på 1601/3201 rumceller og støjpar 33×65→65×129 på 6401/12801
+celler; h=1/1536 mod 1/3072 og q=3 mod 5 kontrolleres på begge grids.
+42.312 replays med cached FV; samme gamle records, prior, støtte og gates.
+Dette er udvikling, ikke held-out recovery eller forecast-certificering.
+
+Start med én blok efter merge fra et rent checkout. Behold hele run-mappen og
+den afviste v1-rapport. Send `summary.json` og terminalfilen til review af lokal
+bloktid, før hele piloten køres. Denne blok bliver genbrugt ved fortsættelse.
+`chunk-size` og `limit-chunks` ændrer kun afvikling/checkpointfrekvens.
+
+```powershell
+if (git status --porcelain) { throw "Working tree er ikke ren; behold dine ændringer." }
+$rectRoot = "files/output/bm_1/runs/estimation"
+$rectInput = "$rectRoot/f4_g_g2a_continued_7d_v1.json.gz"
+$rectTag = Get-Date -Format "yyyyMMdd_HHmmss"
+$rectDir = "$rectRoot/f4_g_g2a_rectangular_v2_$rectTag"
+$rectLog = "$rectRoot/f4_g_g2a_rectangular_v2_$rectTag.txt"
+if (!(Test-Path $rectInput)) { throw "Den komplette negative v1-rapport mangler: $rectInput" }
+if (Test-Path $rectDir) { throw "Behold eksisterende run-mappe: $rectDir" }
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-rectangular-pilot `
+  --g2a-report $rectInput --run-dir $rectDir --workers 8 `
+  --chunk-size 128 --limit-chunks 1 --blas-threads 1 `
+  2>&1 | Tee-Object -FilePath $rectLog
+$rectExit = $LASTEXITCODE
+if ($rectExit -ne 0) { throw "Blokkørsel fejlede; behold run-mappe/log til review." }
+Write-Host "Send: $rectDir/summary.json og $rectLog"
+```
+
+Fortsæt samme mappe med samme rene source; ændr ikke git-version under en
+igangværende kørsel. Hvis en ny PowerShell-session er åbnet, sæt `$rectDir`,
+`$rectInput` og `$rectLog` til de eksisterende stier før følgende kommando.
+
+```powershell
+if (git status --porcelain) { throw "Working tree er ikke ren." }
+$rectSource = (Get-Content "$rectDir/manifest.json" -Raw | ConvertFrom-Json).source.source_commit
+if ((git rev-parse HEAD) -ne $rectSource) { throw "Genstart kræver source $rectSource" }
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-rectangular-pilot `
+  --g2a-report $rectInput --run-dir $rectDir --workers 8 `
+  --chunk-size 128 --blas-threads 1 `
+  2>&1 | Tee-Object -FilePath $rectLog -Append
+$rectExit = $LASTEXITCODE
+Write-Host "Summary: $rectDir/summary.json; exit=$rectExit"
+if ($rectExit -ne 0) { throw "Numerisk/raw gate eller kørselsfejl; behold alle data til review." }
+```
+
+`--collect-only` med samme input og mappe genvaliderer færdige råunits og det
+rullende checkpoint uden nye FV-replays. En fuld negativ pilot returnerer
+exit≠0, efter alle tilgængelige units og summary er gemt. En begrænset kørsel
+returnerer normalt exit=0 og `completed=False`, `passes=False`; det er ikke i
+sig selv en numerisk afvisning. Se `failed_comparisons` særskilt.
+
+Run-mappen har `manifest.json`, `summary.json`, ét atomisk rullende
+`checkpoint.npz` og otte endelige `units/*.npz`. Formatet er float64 NPY + JSON
+metadata i ZIP uden pickle. Behold hele mappen til raw review; summary alene
+er ikke videnskabelig accept. Der gemmes kun det seneste checkpoint med alle hidtil reducerede hypoteser;
+en afbrydelse mister højst igangværende blok. OS-lås hindrer samtidige
+skrivere. Store v1-rådata genvalideres ved hver invocation; opstart kan derfor
+være længere end selve den første blok.
+
+Linux-kilde `502d0506` har målt to blokke med reel restore (256 hypoteser),
+men ingen fuld unit eller bestået v2. Detaljer i F4-status. Dette er ikke en
+Windows-tidsprognose. **G2b/G2c forbliver blokeret**, også hvis v2 senere består,
+indtil deres grid/settings og dependency-kontrakt er registreret særskilt.
 
 ## G2b/G2c og hurtigere FV (efter syvdages G2a-review)
 

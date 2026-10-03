@@ -1778,6 +1778,66 @@ deres eksisterende 33/65-design er ikke accepteret af dette forslag.
 
 
 
+\subsection{G2a v2: fastlagt rektangulær pilot og atomiske blokke}
+Forslaget ovenfor er nu implementeret særskilt i \texttt{joint\_pilot.py}
+og CLI \texttt{joint-bank-rectangular-pilot}, kilde \texttt{502d0506}.
+Designet er frosset før v2-replays: 42312 conditional kørsler, otte FV-units,
+16 reducerede banker og 14 aktive kontroller. Samme syvdages-records
+ID1358/1359 giver alle 168 prefixer uden reset. Dette er data-informeret
+udvikling på gamle records, ikke held-out evidens. V1-afvisningen bevares.
+
+Akserne er indlejret i én fysisk 129-node-ankerakse per koordinat, med
+første koordinat langsomst. For rektangel $n_1\times n_2$ er prioren
+\[
+ \pi_{ij}=q^{(1)}_i q^{(2)}_j,\qquad
+ q^{(a)}_i=\begin{cases}1/[2(n_a-1)],&i=0,n_a-1,\\
+ 1/(n_a-1),&\text{ellers}.\end{cases}
+\]
+Hver kandidatnode er en reference-node. Hypotesens conditional state
+fortsætter selvstændigt; ingen marginal state føres tilbage. Gamle versus
+opdaterede parametervægte bruges til prediction versus posterior som hidtil.
+Begge grids får separate tid-, rum- og q-kontroller; hat-kandidaten
+sammenlignes med referencen ved middle. Støtte/prior og gates er uændrede.
+
+Efter en ordnet blok af hypoteser gemmes for hver af de to grids råscores,
+faktiske step og de log-skalerede summer
+\[
+ s_{p,k}=\max_{j\in J}\{\log\pi_j+L_{p,k,j}\},\quad
+ D_{p,k}=\sum_{j\in J}e^{\log\pi_j+L_{p,k,j}-s_{p,k}},\quad
+ N_{p,k,\ell}=\sum_{j\in J}e^{\log\pi_j+L_{p,k,j}-s_{p,k}}m_{p,k,j,\ell},
+\]
+hvor $J$ er de allerede reducerede noder, $p$ er prediction/posterior,
+og $L_{\mathrm{pred},k}=L_{k-1}$, $L_{\mathrm{post},k}=L_k$.
+Restore genberegner $s,D$ fra rawscores og kontrollerer
+$N/D$ som ikke-negative normaliserede state-masser. Først når alle
+registreredes noder er med, er dette den færdige bank, som råvalideres.
+Conditional state-historier gemmes ikke; derfor beviser raw-validatoren
+ikke en uafhængig rekonstruktion af hver numerator.
+
+Default er 128 hypoteser per blok. Ét rullende float64/JSON ZIP-checkpoint
+skrives til en ny midlertidig fil og publiceres atomisk. Kun det seneste
+beholdes; en afbrydelse mister højst igangværende blok. Otte færdige FV-units
+publiceres hver for sig og overskrives ikke. OS-lås hindrer samtidige skrivere;
+source skal være ren og uændret, og v1-fildigest/dependency-kæde skal matche.
+Et fuldt checkpoint kan færdiggøre unit-publicering efter et nedbrud uden
+nye replays. Fejlede kontroller og komplette negative resultater bevares.
+
+På ren \texttt{502d0506}, BLAS=1 og otte spawn-workers, er to blokke kørt:
+først noder 0--127, dernæst reel genstart med 128--255. Bloktider før lagring
+var \textbf{12.8889 / 12.6950 s}; samlede kommandoer
+\textbf{48.9816 / 48.5082 s} inklusive genvalidering af den store v1-fil.
+Det dækker kun rho/Xi middle ved lave rho-noder. Det er hverken full-bank
+accept eller et tidsløfte for støjparrets finere settings og Windows.
+Long-double partial normalisatorer/massesummer og udvalgte friske scores
+blev kontrolleret uafhængigt. Alle numeriske v2-gates skal stadig evalueres
+på den komplette pilot. 11 nye tests kontrollerer matematik, reel spawn,
+restore, beskadigede data, forkert source/dependency og nedbrud før
+final-publicering; den fulde regression køres i PR-CI.
+
+\textbf{G2b/G2c er stadig blokeret.} Selv bestået v2 vil kræve særskilt
+registrering af deres rektangulære grids/settings og dependency-kontrakt;
+den eksisterende kvadratiske 33/65-kørsel frigives ikke af denne pilot.
+
 \subsection{G2b/G2c: parret robusthed og genoptagelig population}
 Disse studier er implementeret, men deres produktionskørsler er betingede af
 råvalideret syvdages-G2a og derefter bestået G2b. G2b bruger ID1360/1361
