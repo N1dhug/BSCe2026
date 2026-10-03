@@ -44,8 +44,12 @@ forekomster af samme ugedag/time, også for den foregående kalibreringsuge.
 Den bruger syv kalibreringsdage og 24 timers opvarmning før prognosen. Med
 komplet historik fra 1. januar 2022 er den første mulige uge **14.–20. februar
 2022**. Den kan ligge senere, hvis der mangler originale målinger. Scriptet
-skriver de faktisk valgte datoer. Autosøgningen stopper før 1. marts; den
-scanner ikke resten af sæsonen for at finde en uge med gode resultater.
+skriver de faktisk valgte datoer. Autosøgningen kontrollerer nu uger, der slutter senest 1. juni 2022. Uger med
+manglende original historik, priser uden for de frosne modelgrænser eller
+DST-problemer i kalibrering/prognose springes over med den konkrete grund i
+terminalen. Den valgte uge kan derfor ligge senere end februar. Uger rangordnes
+ikke efter prognosefejl. Der scannes ikke automatisk helt frem til oktober;
+søgegrænsen kan sættes eksplicit med `--search-until`.
 
 For at vælge en bestemt prognoseuge:
 
@@ -126,9 +130,9 @@ skalaer**, og gem filen som `comparison_scales.json`.
 python -B bm_real_wm4_preview.py --repo . --start auto --scales-json .\comparison_scales.json
 ```
 
-Baseline og pris skal ligge inden for den faste modelskala. Hvis en målpris
-falder udenfor, stopper scriptet med de konkrete grænser. Det klipper ikke
-prisen og udleder ikke nye grænser af målugen. Målugens forbrug må gerne ligge
+Baseline og pris skal ligge inden for den faste modelskala. Ved `--start auto` springes en uge over, hvis dens priser falder uden for de
+frosne grænser. Ved en eksplicit `--start YYYY-MM-DD` stopper scriptet med de
+konkrete grænser. Det klipper ikke prisen og udleder ikke nye grænser af målugen. Målugens forbrug må gerne ligge
 uden for den normaliserede træningsskala; det evalueres uden klipning.
 
 ## Hvad dette preview antager
@@ -171,3 +175,31 @@ uafhængighed af prognoseugens målinger. Testdata medfølger ikke som resultate
 Den komplette virkelige `input.xlsx` var ikke tilgængelig som lokale bytes
 her, så den faktiske BM-kørsel og de faktiske tal beregnes på din computer.
 WM4 er ikke kørt under kontrollen.
+
+## Rettelse af autosøgningen, 3. oktober 2026
+
+Den oprindelige grænse før 1. marts fandt ingen uge, når den originale måling
+16. januar kl. 00 manglede. Standardgrænsen er nu 1. juni, og ugevælgeren
+kontrollerer også de faktiske frosne modelgrænser før kalibrering. DST-fejl
+omsættes til en tydelig årsag til at springe ugen over, frem for en traceback.
+Alle tidligere data-, baseline-, pris- og måleregler bevares. Målugens målinger
+bruges kun til at kontrollere tilstedeværelse før kørsel og evaluere prognosen
+bagefter; deres værdier indgår ikke i valget af uge.
+
+Opdater kun preview-worktree og kør igen:
+
+```powershell
+git pull --ff-only origin preview/bm-real-wm4-output
+if ($LASTEXITCODE -ne 0) { throw "Preview-opdatering fejlede." }
+python -B bm_real_wm4_preview.py --repo . --start auto
+if ($LASTEXITCODE -ne 0) { throw "BM-kørslen fejlede." }
+```
+
+Målrettet regression:
+
+```powershell
+python -B -m unittest discover -s tests -p test_bm_real_wm4_preview.py -q
+```
+
+De nye tests reproducerer hullet 16. januar, korte søgegrænser, fremtidige
+priser uden for skalaen, DST og uafhængighed af målugens forbrugsværdier.

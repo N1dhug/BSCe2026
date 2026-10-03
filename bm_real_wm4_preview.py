@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 REFERENCE_COMMIT = "9415d8c881e52e0a024cd8effa904a9e44dcabf5"
+DEFAULT_AUTO_SEARCH_END = "2022-06-01"
 KNOTS = np.linspace(0., 1., 5)
 CURVES = (
     (1., .5, 0., -.5, -1.),
@@ -173,7 +174,10 @@ def make_windows(I, U, start, fit_days, warmup_hours):
     train_index = hourly_index(start - pd.Timedelta(hours=train_hours), train_hours)
     future_index = hourly_index(start, 168)
     all_index = train_index.append(future_index)
-    aware = all_index.tz_localize("Europe/Copenhagen", ambiguous="raise", nonexistent="raise")
+    aware = all_index.tz_localize("Europe/Copenhagen", ambiguous="NaT", nonexistent="NaT")
+    if aware.hasnans:
+        bad = list(all_index[aware.isna()][:3])
+        raise ValueError(f"Unsupported DST/ambiguous local hours {bad}; no clock-time repair.")
     if not np.all(np.diff(aware.asi8) == 3600 * 10**9):
         raise ValueError("This exploratory preview supports weeks with 168 elapsed hours; DST window rejected.")
     history = I.loc[I.index < start]  # Enforced before constructing either baseline.
@@ -199,12 +203,15 @@ def choose_week(I, U, args):
         start = pd.Timestamp(args.start)
         if start.tzinfo is not None or start != start.normalize() or start.weekday() != 0:
             raise ValueError("--start must be a Monday date YYYY-MM-DD (forecast week, not fitting week).")
-        return make_windows(I, U, start, args.fit_days, args.warmup_hours), []
+        window = make_windows(I, U, start, args.fit_days, args.warmup_hours)
+        prepare_signals(I, U, window, args.scales_json)
+        return window, []
     earliest = max(I.dropna().index.min(), U.dropna().index.min(), pd.Timestamp("2022-01-01"))
     earliest += pd.Timedelta(weeks=5, days=args.fit_days, hours=args.warmup_hours)
     candidate = earliest.normalize()
     if candidate < earliest: candidate += pd.Timedelta(days=1)
     candidate += pd.Timedelta(days=(-candidate.weekday()) % 7)
+    first_candidate = candidate
     last = min(I.dropna().index.max() - pd.Timedelta(hours=167),
                U.dropna().index.max() - pd.Timedelta(hours=167),
                pd.Timestamp(args.search_until) - pd.Timedelta(days=7))
@@ -212,12 +219,16 @@ def choose_week(I, U, args):
     while candidate <= last:
         try:
             window = make_windows(I, U, candidate, args.fit_days, args.warmup_hours)
+            # Eligibility includes the frozen model domains. Otherwise a week
+            # can pass its data checks and fail immediately before propagation.
+            prepare_signals(I, U, window, args.scales_json)
             return window, skipped
         except ValueError as exc:
             skipped.append({"start": str(candidate), "reason": str(exc)})
+            print(f"Skipping forecast week {candidate:%Y-%m-%d}: {exc}", flush=True)
         candidate += pd.Timedelta(weeks=1)
     raise ValueError(f"No complete eligible week before {args.search_until}. "
-                     f"First candidate={earliest}; skipped={skipped[:2]}. "
+                     f"First candidate={first_candidate}; checked={len(skipped)}; last failures={skipped[-2:]}. "
                      "Add original history or explicitly extend --search-until.")
 
 
@@ -241,6 +252,23 @@ def freeze_scales(I, U, start, scale_path):
 
 def scale(values, scales, kind):
     return (np.asarray(values) - scales[kind + "_min"]) / (scales[kind + "_max"] - scales[kind + "_min"])
+
+
+def prepare_signals(I, U, window, scale_path):
+    """Freeze pre-origin ranges and check the same signals used by the BM run."""
+    scales, scale_source = freeze_scales(I, U, window["start"], scale_path)
+    window["scales"], window["scale_source"] = scales, scale_source
+    for name, kind in (("train_y", "consumption"), ("train_b", "consumption"),
+                       ("future_b", "consumption"), ("train_u", "price"), ("future_u", "price")):
+        window[name] = scale(window[name + "_raw"], scales, kind)
+    # f/g domains stay [0,1]. No clipping, extension or future-based rescaling.
+    # Scoring consumption is allowed outside the range and is never inspected here.
+    for name, key in (("training baseline", "train_b"), ("forecast baseline", "future_b"),
+                      ("training price", "train_u"), ("forecast price", "future_u")):
+        arr = window[key]
+        if not np.isfinite(arr).all() or np.any(arr < -1e-12) or np.any(arr > 1. + 1e-12):
+            raise ValueError(f"{name} exceeds the frozen [0,1] range (min={arr.min():.5g}, max={arr.max():.5g}). "
+                             "Provide explicit wider shared ranges with --scales-json; no future-based repair was applied.")
 
 
 def parameter_bank(fg_mode):
@@ -402,19 +430,9 @@ def run(args):
     start = window["start"]
     print(f"Forecast: {start} -> {start + pd.Timedelta(days=7)} (exclusive).", flush=True)
     print(f"Fit: {window['train_index'][args.warmup_hours]} -> {start}; warmup={args.warmup_hours}h.", flush=True)
-    scales, scale_source = freeze_scales(I, U, start, args.scales_json)
-    train_y = scale(window["train_y_raw"], scales, "consumption")
-    train_b = scale(window["train_b_raw"], scales, "consumption")
-    future_b = scale(window["future_b_raw"], scales, "consumption")
-    train_u = scale(window["train_u_raw"], scales, "price")
-    future_u = scale(window["future_u_raw"], scales, "price")
-    # f/g are defined only on [0,1]. No implicit extension, clipping, or rescaling
-    # with future prices is allowed. Out-of-range future consumption is scored as-is.
-    for name, arr in (("training baseline", train_b), ("forecast baseline", future_b),
-                      ("training price", train_u), ("forecast price", future_u)):
-        if not np.isfinite(arr).all() or np.any(arr < -1e-12) or np.any(arr > 1. + 1e-12):
-            raise ValueError(f"{name} exceeds the frozen [0,1] range (min={arr.min():.5g}, max={arr.max():.5g}). "
-                             "Provide explicit wider shared ranges with --scales-json; no future-based repair was applied.")
+    scales, scale_source = window["scales"], window["scale_source"]
+    train_y, train_b, future_b = window["train_y"], window["train_b"], window["future_b"]
+    train_u, future_u = window["train_u"], window["future_u"]
     fv = FiniteVolume(args.cells, args.steps_per_hour)
     parameters = parameter_bank(args.fg)
     print(f"{len(parameters)} joint parameter/curve hypotheses; shared f/g across all days.", flush=True)
@@ -472,7 +490,9 @@ def run(args):
         parameters=[dict(**asdict(p), posterior_weight=float(w)) for p, w in zip(parameters, weights)],
         fg_mode=args.fg, curve_knots=KNOTS.tolist(), curve_policy="one shared joint bank; no day-specific refits; weights frozen at origin",
         baseline="five previous same-weekday/hour arithmetic mean", future_baseline_sources=window["future_baseline_sources"],
-        auto_skipped_weeks=skipped, elapsed_seconds=perf_counter()-begin,
+        auto_search_end_exclusive=args.search_until, auto_skipped_weeks=skipped,
+        auto_selection_policy="first week satisfying original-data, frozen-domain and non-DST requirements; no forecast-error ranking",
+        elapsed_seconds=perf_counter()-begin,
         runtime=dict(python=platform.python_version(), numpy=np.__version__, scipy=scipy.__version__,
                      pandas=pd.__version__, matplotlib=matplotlib.__version__, system=platform.platform()),
         limitations=["Coarse surrogate, not completed F4-H/I/J or G validation.",
@@ -495,7 +515,7 @@ def main():
     parser.add_argument("--prices", help="Optional original prices.xlsx override.")
     parser.add_argument("--tag", default="MED")
     parser.add_argument("--start", default="auto", help="Forecast Monday YYYY-MM-DD, or first complete eligible week.")
-    parser.add_argument("--search-until", default="2022-03-01", help="Exclusive auto-search boundary; restricts inspection to early data.")
+    parser.add_argument("--search-until", default=DEFAULT_AUTO_SEARCH_END, help="Exclusive auto-search boundary; default 2022-06-01. No search of the full season.")
     parser.add_argument("--fit-days", type=int, default=7)
     parser.add_argument("--warmup-hours", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=4)
