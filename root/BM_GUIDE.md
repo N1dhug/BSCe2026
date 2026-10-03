@@ -635,7 +635,9 @@ held-out population, G2 og uge-/månedsruntime følger ikke automatisk.
 PR #54 er merged på `main` som `014446c`. G2a udvikles separat på
 **feature/f4-g-robustness-pilot** / PR #55; brugeren merger efter Windows-kørsel
 og rå review. Designet er preregistreret før recordgenerering i `e058299`.
-Læs [F4.md](F4.md) for de låste IDs, truth-/FV-/hat-gates og afgrænsning.
+Éndags Linux-piloten fra clean `67968a9` består alle 12 FV- og 2 hat-kontroller;
+uafhængigt råreview er afsluttet. Det accepterer kun ét døgn på Linux.
+Læs [F4.md](F4.md) for evidens, låste IDs, truth-/FV-/hat-gates og afgrænsning.
 
 Kørslen bruger de **tre eksisterende** G1b0/G1b3/G1c0-rapporter som validerede
 dependencies, uden at gentage deres replays. Nye ID1358/1359 køres med
@@ -647,6 +649,7 @@ Det er G1b3's målte tid skaleret med længden, ikke et målt G2-resultat.
 En valgfri éndagskontrol (`--days 1`, eget nyt outputnavn) estimeres til
 45–90 minutter og certificerer kun ét døgn. Den er ikke påkrævet før en
 direkte syvdageskørsel; særskilte kortere kørsler giver ekstra arbejde.
+Hold maskinen vågen og repoet uændret under kørslen, så source-provenance bevares.
 
 ```powershell
 $g2Status = git status --porcelain
