@@ -4,7 +4,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
+from scipy.optimize import least_squares
 from scipy.stats import norm
 
 from src.exe.run_model.wm_4.analyze_observation_uncertainty import DEFAULT_WEEKS, _stack_days, corresponding_days, uncertainty_frame
@@ -85,10 +85,11 @@ def _initial_starts(hypothesis, records):
 
 
 def _bounds(hypothesis):
-    bounds = [(1e-8, None), (0.0, None), (0.0, 24.0)]
-    if hypothesis in ("H1", "H2"): bounds.append((0.0, None))
-    if hypothesis == "H2": bounds.append((0.0, None))
-    return bounds
+    lower = [1e-8, 0.0, 0.0]
+    upper = [np.inf, np.inf, 24.0]
+    if hypothesis in ("H1", "H2"): lower.append(0.0); upper.append(np.inf)
+    if hypothesis == "H2": lower.append(0.0); upper.append(np.inf)
+    return np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)
 
 
 def predicted_sigma(record, hypothesis, theta):
@@ -99,26 +100,39 @@ def predicted_sigma(record, hypothesis, theta):
 def fit_hypothesis(hypothesis, records):
     hypothesis = str(hypothesis).upper()
     if hypothesis not in HYPOTHESES: raise ValueError("Unknown diffusion hypothesis.")
+    lower, upper = _bounds(hypothesis)
 
-    def objective(theta):
-        total, count = 0.0, 0
+    def residual_vector(theta):
+        residuals = []
+        for record in records:
+            prediction = predicted_sigma(record, hypothesis, theta)
+            residual = prediction[1:] - record["observed_sigma"][1:]
+            if not np.all(np.isfinite(residual)): raise ValueError(f"{hypothesis} produced non-finite uncertainty residuals.")
+            residuals.append(residual)
+        return np.concatenate(residuals)
+
+    candidates, failures = [], []
+    for start in _initial_starts(hypothesis, records):
         try:
-            for record in records:
-                prediction = predicted_sigma(record, hypothesis, theta)
-                residual = prediction[1:] - record["observed_sigma"][1:]
-                total += float(residual @ residual); count += residual.size
-        except (ValueError, FloatingPointError):
-            return np.inf
-        return total / max(count, 1)
+            initial_residual = residual_vector(start)
+            if not np.all(np.isfinite(initial_residual)): raise ValueError("non-finite initial residual")
+            fit = least_squares(
+                residual_vector, start, bounds=(lower, upper),
+                method="trf", x_scale="jac", max_nfev=4000,
+                ftol=1e-10, xtol=1e-10, gtol=1e-10,
+            )
+            if fit.success and np.all(np.isfinite(fit.x)) and np.all(np.isfinite(fit.fun)):
+                candidates.append(fit)
+            else:
+                failures.append(str(fit.message))
+        except (ValueError, FloatingPointError, OverflowError) as exc:
+            failures.append(str(exc))
 
-    candidates = [
-        minimize(objective, start, method="L-BFGS-B", bounds=_bounds(hypothesis))
-        for start in _initial_starts(hypothesis, records)
-    ]
-    valid = [fit for fit in candidates if fit.success and np.isfinite(fit.fun) and np.all(np.isfinite(fit.x))]
-    if not valid: raise RuntimeError(f"{hypothesis} diffusion fit failed.")
-    fit = min(valid, key=lambda item: item.fun)
-    return np.asarray(fit.x, dtype=float), float(fit.fun)
+    if not candidates:
+        detail = failures[0] if failures else "no finite candidate"
+        raise RuntimeError(f"{hypothesis} diffusion fit failed: {detail}")
+    fit = min(candidates, key=lambda item: float(np.mean(item.fun ** 2)))
+    return np.asarray(fit.x, dtype=float), float(np.mean(fit.fun ** 2))
 
 
 def interval_score(y, lower, upper, alpha=0.05):
