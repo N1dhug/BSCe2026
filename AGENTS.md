@@ -17,6 +17,11 @@ chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
   herunder WM-arbejde. Følg brugerens konkrete instruktion om branch/publicering.
 - Relevant regression: `python -B -m unittest discover -s tests -q`.
   Noter: `python -B root/f4/build.py`. Lange forskningsstudier er ikke CI-tests.
+- Nye lange kørsler skal vise et løbende groft estimat for både resterende og
+  samlet tid ved eksisterende statusopdateringer. Genbrug
+  `src/exe/run_model/progress.py`; medregn forskellig opgavepris, hvor den er
+  kendt, og adskil nyt arbejde fra gemt arbejde ved resume. Ingen ekstra replays
+  eller hyppigere checkpoint-skrivning for at måle ETA.
 
 Disse kurveregler gælder BM og ændrer ikke WM-modellernes egne fitkontrakter.
 

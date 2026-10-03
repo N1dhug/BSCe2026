@@ -48,6 +48,7 @@ from src.validation.bm_1 import joint_grid
 from src.validation.bm_1 import joint_robustness
 from src.validation.bm_1 import joint_diagnostics
 from src.validation.bm_1 import joint_pilot
+from src.exe.run_model.progress import fv_work, runtime_text
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -645,10 +646,8 @@ def run_mixture_filter_population(args):
 
     def progress(completed, total, row):
         if not args.quiet and (completed == 1 or completed % max(1, total // 20) == 0):
-            elapsed = perf_counter() - started
-            remaining = elapsed * (total - completed) / completed
             print(f"  completed {completed}/{total}; sequence={row['sequence_id']}; "
-                  f"status={row['status']}; elapsed={elapsed:.1f}s; ETA~{remaining:.1f}s",
+                  f"status={row['status']}; {runtime_text(started, completed, total)}",
                   flush=True)
 
     result = mixture_validation.run_f4_d_recursive_population(
@@ -777,14 +776,12 @@ def run_likelihood_refinement(args):
 
     def progress(completed, total, key, curve):
         if not args.quiet:
-            elapsed = perf_counter() - started
-            remaining = elapsed * (total - completed) / completed
             cells, hmax, order = key
             print(
                 f"  completed {completed}/{total}; cells={cells}; "
                 f"hmax={hmax:.6e}; q={order}; "
                 f"MLE rho={curve['maximizer_rho']}; "
-                f"elapsed={elapsed:.1f}s; ETA~{remaining:.1f}s",
+                f"{runtime_text(started, completed, total)}",
                 flush=True,
             )
 
@@ -840,11 +837,9 @@ def run_parameter_screening(args):
 
     def progress(completed, total, sequence_id, row):
         if not args.quiet:
-            elapsed = perf_counter() - started
-            remaining = elapsed * (total - completed) / completed
             mles = ', '.join(f"{name}={s['grid_mle']}" for name, s in row['slices'].items())
             print(f"  completed {completed}/{total}; sequence={sequence_id}; {mles}; "
-                  f"elapsed={elapsed:.1f}s; ETA~{remaining:.1f}s", flush=True)
+                  f"{runtime_text(started, completed, total)}", flush=True)
 
     result = synthetic.run_f4_e_parameter_screening(
         e1_refinement=e1, workers=args.workers, progress=progress,
@@ -956,11 +951,9 @@ def run_pair_surfaces(args):
 
     def progress(completed, total, key, surface):
         if not args.quiet:
-            elapsed = perf_counter() - started
-            remaining = elapsed * (total - completed) / completed
             sequence_id, pair = key
             print(f"  completed {completed}/{total}; sequence={sequence_id}; pair={pair}; "
-                  f"MLE={surface['grid_mle']}; elapsed={elapsed:.1f}s; ETA~{remaining:.1f}s",
+                  f"MLE={surface['grid_mle']}; {runtime_text(started, completed, total)}",
                   flush=True)
 
     result = synthetic.run_f4_e_pair_surfaces(e2_screening=e2, workers=args.workers, progress=progress)
@@ -992,11 +985,18 @@ def run_bank_identity(args):
     started = perf_counter()
     print('F4-F F0 FV rho bank: sequence=1262; hypotheses=41; cells=401; '
           f'hmax={1/768:.6e}; q=3; workers={args.workers}')
+    online_total = 0
 
     def progress(row):
+        nonlocal online_total
+        if row['phase'] == 'online':
+            online_total = row['total']
+            completed = row['completed']
+        else:
+            completed = 2*online_total
         if not args.quiet:
             print(f"  {row['phase']}: completed {row['completed']}/{row['total']}; "
-                  f"elapsed={perf_counter() - started:.1f}s", flush=True)
+                  f"{runtime_text(started, completed, 2*online_total)}", flush=True)
 
     result = synthetic.run_f4_f_bank_identity(workers=args.workers, progress=progress)
     for name, error in result['maximum_errors'].items():
@@ -1056,12 +1056,10 @@ def run_bank_study(args):
         now = perf_counter()
         if not args.quiet and (row['completed'] in (1, row['total']) or now-last_printed >= 10.):
             last_printed = now
-            elapsed = now-started
-            # Startup and unequal candidate costs make this an approximate ETA.
-            eta = (f"~{elapsed * (row['total']-row['completed']) / row['completed']:.1f}s"
-                   if row['completed'] >= args.workers else 'startup')
+            measured = row['completed'] if row['completed'] >= args.workers else 0
             print(f"  candidates {row['completed']}/{row['total']}; ID{row['sequence_id']}; "
-                  f"{row['coordinate']}; {row['label']}; elapsed={elapsed:.1f}s; ETA={eta}", flush=True)
+                  f"{row['coordinate']}; {row['label']}; "
+                  f"{runtime_text(started, measured, row['total'], now=now)}", flush=True)
 
     if args.study == 'refine':
         result = synthetic.run_f4_f_bank_refinement(workers=args.workers, progress=progress)
@@ -1105,11 +1103,9 @@ def run_joint_bank_identity(args):
         now = perf_counter()
         if not args.quiet and (row['completed'] in (1, row['total']) or now-last_printed >= 10):
             last_printed = now
-            elapsed = now-started
-            eta = elapsed*(row['total']-row['completed'])/row['completed']
             print(f"  conditional runs {row['completed']}/{row['total']}; {row['phase']}; "
                   f"ID{row['sequence_id']} {'/'.join(row['pair'])}; "
-                  f"elapsed={elapsed:.1f}s; rough ETA={eta:.1f}s", flush=True)
+                  f"{runtime_text(started, row['completed'], row['total'], now=now)}", flush=True)
 
     result = synthetic.run_f4_g_joint_identity(workers=args.workers, progress=progress)
     for row in result['rows']:
@@ -1137,10 +1133,9 @@ def run_joint_bank_refinement(args):
         now = perf_counter()
         if not args.quiet and (row['completed'] in (1,row['total']) or now-last_printed>=10):
             last_printed = now
-            elapsed = now-started
-            eta = elapsed*(row['total']-row['completed'])/row['completed']
             print(f"  replays {row['completed']}/{row['total']}; ID{row['sequence_id']} "
-                  f"{'/'.join(row['pair'])}; {row['label']}; elapsed={elapsed:.1f}s; rough ETA={eta:.1f}s",flush=True)
+                  f"{'/'.join(row['pair'])}; {row['label']}; "
+                  f"{runtime_text(started, row['completed'], row['total'], now=now)}",flush=True)
 
     result = joint_validation.run_joint_bank_refinement(workers=args.workers,progress=progress)
     result['dependencies'] = dict(g0=dict(sha256=digest,source_commit=dependency['source_commit']))
@@ -1209,10 +1204,9 @@ def _run_joint_parameter_study(args, *, refinement, fine=False, dense=False):
         now = perf_counter()
         if not args.quiet and (row['completed'] in (1,row['total']) or now-last_printed>=10):
             last_printed = now
-            elapsed = now-started
-            eta = elapsed*(row['total']-row['completed'])/row['completed']
             print(f"  replays {row['completed']}/{row['total']}; ID{row['sequence_id']} "
-                  f"{'/'.join(row['pair'])}; {row['label']}; elapsed={elapsed:.1f}s; rough ETA={eta:.1f}s",flush=True)
+                  f"{'/'.join(row['pair'])}; {row['label']}; "
+                  f"{runtime_text(started, row['completed'], row['total'], now=now)}",flush=True)
 
     result = runner(workers=args.workers,progress=progress)
     result['dependencies'] = {('g1b0' if refinement else 'g1a'):provenance}
@@ -1305,9 +1299,9 @@ def run_joint_continued_pilot(args):
         now = perf_counter()
         if not args.quiet and (row['completed'] in (1,row['total']) or now-last_printed>=10):
             last_printed = now
-            elapsed = now-started;eta=elapsed*(row['total']-row['completed'])/row['completed']
             print(f"  replays {row['completed']}/{row['total']}; ID{row['sequence_id']} "
-                  f"{'/'.join(row['pair'])}; {row['label']}; elapsed={elapsed:.1f}s; rough ETA={eta:.1f}s",flush=True)
+                  f"{'/'.join(row['pair'])}; {row['label']}; "
+                  f"{runtime_text(started, row['completed'], row['total'], now=now)}",flush=True)
     result = joint_grid.run_joint_continued_pilot(record_days=args.days,workers=args.workers,progress=progress,
                                                  backend=args.fv_backend)
     result['dependencies'] = dict(g1c0=dependency)
@@ -1350,7 +1344,7 @@ def run_fv_benchmark(args):
     started = perf_counter()
     def progress(done, total):
         if not args.quiet:
-            print(f'  paired FV checks {done}/{total}; elapsed={perf_counter()-started:.1f}s', flush=True)
+            print(f'  paired FV checks {done}/{total}; {runtime_text(started, done, total)}', flush=True)
     result = joint_validation.benchmark_joint_fv(record_days=args.days, repeats=args.repeats, progress=progress)
     _write_likelihood_report(args, result, started)
     print(f"FV backend comparison passes={result['passes']}; serial speedup={result['measured_serial_speedup']:.2f}x")
@@ -1369,7 +1363,7 @@ def run_fv_batch_benchmark(args):
     started = perf_counter()
     def progress(done, total):
         if not args.quiet:
-            print(f'  sigma_y batch checks {done}/{total}; elapsed={perf_counter()-started:.1f}s', flush=True)
+            print(f'  sigma_y batch checks {done}/{total}; {runtime_text(started, done, total)}', flush=True)
     result = joint_validation.benchmark_sigma_y_batch(record_days=args.days, repeats=args.repeats,
                                                       batch_size=args.batch_size, progress=progress)
     if _source_snapshot() != source:
@@ -1385,9 +1379,13 @@ def run_execution_benchmark(args):
     if args.output is not None and args.output.exists():
         raise FileExistsError(f'Refusing to overwrite {args.output}.')
     started = perf_counter()
+    completed = 0
     def progress(row):
+        nonlocal completed
+        completed += 1
         if not args.quiet:
-            print(f"  repeat={row['repeat']}; {row['parallelism']}: {row['seconds']:.2f}s",flush=True)
+            print(f"  repeat={row['repeat']}; {row['parallelism']}: {row['seconds']:.2f}s; "
+                  f"{runtime_text(started, completed, 2*args.repeats)}",flush=True)
     result = joint_robustness.benchmark_execution(workers=args.workers,repeats=args.repeats,progress=progress)
     _write_likelihood_report(args,result,started)
     print(f"Execution diagnostic speedup={result['speedup']:.2f}x; no population/forecast acceptance.")
@@ -1410,7 +1408,7 @@ def run_joint_grid_diagnosis(args):
     panel = joint_diagnostics.select_spatial_panel(report)
     def progress(done, total):
         if not args.quiet:
-            print(f'  spatial replays {done}/{total}; elapsed={perf_counter()-started:.1f}s', flush=True)
+            print(f'  spatial replays {done}/{total}; {runtime_text(started, done, total)}', flush=True)
     spatial = joint_diagnostics.run_spatial_panel(report, panel, rho_levels=args.rho_levels, progress=progress)
     if _source_snapshot() != source:
         raise ValueError('Source changed during grid diagnosis.')
@@ -1606,14 +1604,26 @@ def run_joint_robustness(args):
         if args.collect_only: pending=[]
         if limit is not None: pending=pending[:limit]
         started=last_printed=perf_counter()
+        replay_count = (joint_robustness.COUNTS[-1] if args.study_stage=='G2b'
+                        else joint_robustness.COUNTS[0])**2
+        costs = {joint_robustness.unit_name(unit):[fv_work(settings, joint_robustness.RECORD_DAYS,
+                         24*joint_robustness.RECORD_DAYS /
+                         (2 if unit[2]=='sampling_2h' else 4 if unit[2]=='sampling_4h' else 1))
+                  for _, settings in joint_robustness._configurations(args.study_stage, unit[0])]
+                 for unit in pending}
+        planned_work = sum(sum(values)*replay_count for values in costs.values())
+        completed_work = 0
+        finished_units = 0
         print(f'{args.study_stage}: {len(pending)} pending units; parallelism={parallelism}; workers={workers}', flush=True)
         def progress(row):
             nonlocal last_printed
             now=perf_counter()
             if not args.quiet and (row['completed'] in (1,row['total']) or now-last_printed>=10):
                 last_printed=now
+                within_unit = sum(min(replay_count, max(0, row['completed']-i*replay_count))*cost
+                                  for i, cost in enumerate(costs[joint_robustness.unit_name(pending[finished_units])]))
                 print(f"  record={row['sequence_id']}; {row['completed']}/{row['total']} replays; "
-                      f"run elapsed={now-started:.1f}s", flush=True)
+                      f"{runtime_text(started, completed_work+within_unit, planned_work, now=now)}", flush=True)
         for unit, result, elapsed in joint_robustness.iter_units(args.study_stage, pending,
                 workers=workers, parallelism=parallelism, progress=progress):
             name = joint_robustness.unit_name(unit)
@@ -1635,8 +1645,13 @@ def run_joint_robustness(args):
             summary = joint_robustness.summarize_units(args.study_stage, records)
             summary.update(unit_sha256=digests, source=source, dependencies=dependencies)
             _atomic_report(args.run_dir/'summary.json', summary, replace_existing=True)
+            completed_work += sum(costs[name])*replay_count
+            finished_units += 1
+            measured_work = (completed_work if parallelism=='hypotheses' or
+                             finished_units >= min(workers, len(pending)) else 0)
+            timing = runtime_text(started, measured_work, planned_work)
             print(f"  saved {destination}; passes={result['passes']}; "
-                  f"complete units={len(records)}/{len(manifest['design']['unit_names'])}", flush=True)
+                  f"complete units={len(records)}/{len(manifest['design']['unit_names'])}; {timing}", flush=True)
             if not result['passes']:
                 print('  Gate failed: stopping new dispatch; retaining submitted units as they finish.', flush=True)
             del result
@@ -1740,6 +1755,21 @@ def run_joint_rectangular_pilot(args):
             _atomic_report(args.run_dir/'summary.json', summary, replace_existing=True)
             return summary
         started = perf_counter(); blocks = 0
+        work_per_replay = {joint_pilot.unit_name(u):fv_work(
+            dict(joint_pilot.configurations(u[0]))[u[2]], joint_pilot.DAYS, 24*joint_pilot.DAYS)
+            for u in pending}
+        remaining_counts = {joint_pilot.unit_name(u):int(np.prod(joint_pilot.GRIDS['__'.join(u[0])][-1]))
+                            for u in pending}
+        if checkpoint is not None:
+            remaining_counts[checkpoint['unit_name']] -= checkpoint['reduction']['completed_hypotheses']
+        planned_work = sum(remaining_counts[name]*cost for name,cost in work_per_replay.items())
+        completed_work = 0
+        initial_runs = summary['conditional_runs'] + (0 if checkpoint is None else
+                       checkpoint['reduction']['completed_hypotheses'])
+        new_runs = 0
+        expected_runs = manifest['design']['expected_conditional_runs']
+        if limit is not None and not args.quiet:
+            print('  ETA covers all pending study work; --limit-chunks can stop this invocation sooner.', flush=True)
         manager = (ProcessPoolExecutor(max_workers=workers, mp_context=get_context('spawn'))
                    if workers>1 and pending else nullcontext(None))
         with manager as pool:
@@ -1754,7 +1784,10 @@ def run_joint_rectangular_pilot(args):
                         nonlocal last_printed
                         now = perf_counter()
                         if not args.quiet and now-last_printed >= 20:
-                            print(f'  {name}: {done}/{total}; block elapsed={now-block_started:.1f}s', flush=True)
+                            work = completed_work+(done-before)*work_per_replay[name]
+                            print(f'  {name}: {done}/{total}; '
+                                  f'study replays={initial_runs+new_runs+done-before}/{expected_runs}; '
+                                  f'{runtime_text(started, work, planned_work, now=now)}', flush=True)
                             last_printed = now
                     joint_pilot.advance(reducer, min(before+chunk, len(group['hypotheses'])), pool,
                                         progress, workers=workers)
@@ -1766,8 +1799,12 @@ def run_joint_rectangular_pilot(args):
                     joint_pilot.RectangularReduction(group).restore(payload['reduction'])
                     _atomic_report(checkpoint_path, payload, replace_existing=True)
                     blocks += 1
+                    new_runs += reducer.seen-before
+                    completed_work += (reducer.seen-before)*work_per_replay[name]
                     print(f'{name}: saved {reducer.seen}/{len(group["hypotheses"])}; '
-                          f'block={payload["last_block"]["seconds_before_storage"]:.2f}s', flush=True)
+                          f'block={payload["last_block"]["seconds_before_storage"]:.2f}s; '
+                          f'study replays={initial_runs+new_runs}/{expected_runs}; '
+                          f'{runtime_text(started, completed_work, planned_work)}', flush=True)
                     if limit is not None and blocks >= limit and reducer.seen < len(group['hypotheses']): break
                 checkpoint = payload if reducer.seen < len(group['hypotheses']) else None
                 if checkpoint is not None: break

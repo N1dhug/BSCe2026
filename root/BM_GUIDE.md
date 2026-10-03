@@ -73,7 +73,31 @@ BM1 entrypoint-mappe. F3-data, WM-kode og `environment.yml` er bevaret.
 
 ## Lange kørsler og reproduktion
 
-Populationen viser nu løbende antal færdige sekvenser, elapsed og grov ETA.
+De lange D/E/F/G-kørsler i `estimate` viser løbende antal færdige opgaver samt
+`elapsed`, `remaining~` og `total~` i timer/minutter/sekunder. Eksempel:
+`elapsed=12m 30s; remaining~1h 10m 00s; total~1h 22m 30s`.
+`total~` er den forventede samlede varighed fra denne kørsels progress-timer,
+ikke summen af tidligere forsøg eller pauser. Python-opstart og endnu ikke
+udført slutreview/output kan ligge udenfor estimatet. Før en hastighed kan
+måles, vises `estimating`; tidlige estimater er særligt usikre.
+
+Estimatet beregnes ved de eksisterende statusopdateringer: konstant arbejde,
+ingen nye modelkørsler, arraykopier eller ekstra filskrivninger. Den rektangulære
+G2a-v2 og G2b/G2c vægter resterende arbejde efter celler, time-step og
+observationsquadrature; øvrige progress-runners bruger gennemførte opgaver.
+Gridvægtene er en grov prisproxy, ikke et løfte om runtime. Ved genoptagelse
+udelades tidligere gemt arbejde fra den aktuelle hastighedsmåling.
+G2a-v2-estimatet dækker **hele det resterende studie**, også ved `--limit-chunks`;
+den afgrænsede invocation kan derfor stoppe tidligere. G2b/G2c-estimatet dækker
+de valgte pending units, inklusive en eventuel `--limit-units`-afgrænsning.
+`units`-parallelism viser først et tal efter den første worker-bølge og opdaterer
+det ved færdige units; workers får ingen nye statuskanaler.
+
+Progress-ændringerne påvirker hverken design, gates, seeds, resultater eller
+checkpoint-format. **Opdatér ikke kildekoden under en igangværende kørsel.**
+Et eksisterende checkpoint kræver fortsat sin oprindelige source-commit ved
+resume, også hvis den nye kode kun ændrer statuslinjer.
+
 `--quiet` skjuler kun progress, ikke slutresultatet. `--output` gemmer hele rapporten,
 alle sekvensrækker, settings, source-commit og dirty-flag i en **ny** JSON-fil;
 eksisterende output overskrives ikke. En `.gz`-endelse vælger tabsfri gzip;

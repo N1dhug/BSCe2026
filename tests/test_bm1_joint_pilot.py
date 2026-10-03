@@ -189,6 +189,20 @@ class RectangularCLITests(unittest.TestCase):
             with self.assertRaises(ValueError):estimate.run_joint_rectangular_pilot(args)
             self.assertEqual(replay.call_count,120)
 
+    def test_resume_eta_measures_new_block_only_and_keeps_full_pending_scope(self):
+        with tempfile.TemporaryDirectory() as directory,self.fixture(), \
+             patch.object(estimate,'runtime_text',wraps=estimate.runtime_text) as timing:
+            args=self.arguments(directory)
+            estimate.run_joint_rectangular_pilot(args)
+            first=timing.call_args.args
+            estimate.run_joint_rectangular_pilot(args)
+            second=timing.call_args.args
+            # Equal four-replay blocks have equal measured work. The second
+            # invocation excludes the first saved block from remaining work.
+            self.assertEqual(first[1],second[1])
+            self.assertAlmostEqual(first[2]-second[2],first[1])
+            self.assertGreater(second[2],second[1])
+
     def test_changed_source_dependency_and_partial_damage_block_resume(self):
         with tempfile.TemporaryDirectory() as directory,self.fixture() as replay:
             args=self.arguments(directory);estimate.run_joint_rectangular_pilot(args)
