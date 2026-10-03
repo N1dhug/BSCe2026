@@ -1686,6 +1686,98 @@ kandidat/reference-pilot skal preregistreres med uændrede tolerancer;
 65x65 eller finere rumgrid er endnu ikke accepteret som kandidat.
 G2b/G2c's nye records bruges ikke til denne diagnose.
 
+\subsection{G2a: posthoc akse- og rumdiagnose på gamle records}
+Den afviste syvdagespilot bevares. På ID1358/1359 undersøges først
+parameterakserne hver for sig uden nye conditional replays. Dette er
+diagnose og designunderlag, ikke en ny G2a-accept.
+For akse $a=1,2$ med $n_a$ jævnt fordelte noder i den oprindelige
+normaliserede prior-koordinat sættes $h_a=1/(n_a-1)$ og
+\[
+ q_i^{(a)}=\int_0^1 H_i^{(a)}(u)\,\dd u
+ =h_a\begin{cases}1/2,&i\in\{0,n_a-1\},\\1,&\text{ellers}.\end{cases}
+\]
+Med den gemte node-likelihood $L_{ij,k}$ ved prefix $k$ er
+\[
+ Z_k=\sum_{i,j}q_i^{(1)}q_j^{(2)}L_{ij,k},\qquad
+ p_k(u,v)=\sum_{i,j}\frac{L_{ij,k}}{Z_k}
+ H_i^{(1)}(u)H_j^{(2)}(v).
+\]
+Dermed er $p_k\ge0$ og $\int p_k=1$. Den oprindelige produktprior
+bevares, også når $n_1\ne n_2$: uniform i rho/Xi og uniform i
+log-koordinaterne for støjparret. Der interpoleres ikke nye likelihoods;
+de grovere rektangler bruger kun noder fra det eksisterende 65x65-grid.
+TV integreres på de to primal-grids' fælles inddeling med samme
+TV-quadrature/refinementkontrol som før. Parametermomenter bruger de
+eksakte integraler af de lineære hats. Der rekonstrueres ingen nye
+conditional state-masser, og parameterdiagnosen giver derfor ingen
+state-mixture-accept.
+
+\begin{center}
+\begin{tabular}{lrrl}
+\toprule
+Akse & Noder & Max TV & Parameterlov, uden state \\
+\midrule
+rho & $9\to17$ & 0.00298330 & består \\
+$\sigma_x$ & $17\to33$ & 0.04267840 & afvist \\
+$\sigma_x$ & $33\to65$ & 0.01112831 & består \\
+Xi & $33\to65$ & 0.04059834 & afvist \\
+$\sigma_y$ & $33\to65$ & 0.03938086 & afvist \\
+\bottomrule
+\end{tabular}
+\end{center}
+TV-maxima gælder alle 168 prefixer og alle fire gemte FV-settings, med
+den anden akse holdt på 65 noder. At rho kan coarsenes, giver ikke samme
+frihed for støjparrets første akse.
+
+
+Det separate rumpanel vælger deterministisk fire støttehjørner, centrum,
+truth-nærmeste node, maksimum-likelihood-noder ved dag 1/3/7 samt de to
+relevante noder, der gav størst gammel rum-log-oddsfejl. Dubletter fjernes.
+Rho bruger fire og støjparret tre rumopløsninger; disse sammenlignes med cached FV, uændret tidsstep og
+likelihood-quadrature. De to oprindelige opløsningers rå conditional scores
+reproduceres mod den oprindelige rapport. Hele syvdageshistorien fortsætter
+uden daglige resets. State-L1 beregnes ved konservativ remapping alene til
+sammenligning; panelets subset-log-odds er ikke en fuld bankkontrol.
+Raw scores gemmes, mens conditional state-historier kasseres efter
+L1-beregning for at begrænse memory/output. Dette begrænser efterfølgende
+uafhængig genberegning af state-L1.
+
+Ren source \texttt{69848458}, BLAS=1: 67 syvdages-replays på 10/9 valgte
+hypoteser, 64 parameterakse-sammenligninger og 183.2609 s før lagring.
+Summeret seriel replaytid er 80.3384 s. Gamle conditional scores reproduceres
+med max afvigelse $8.1713\cdot10^{-14}$; max massefejl er $4.4970\cdot10^{-12}$.
+Rho's panel-log-odds-span er 0.19193739 ved 401/801 celler, 0.10183329 ved
+801/1601 og 0.05277118 ved 1601/3201. Støjparrets span er 0.11634200 ved
+3201/6401 og 0.05891595 ved 6401/12801. Panelets likelihood-vindue bruger
+sit eget maksimum, ikke en fuld banks maksimum. De relevante conditional
+predicted/posterior-L1-maxima ved sidste refinement er 0.007324/0.009424
+for rho/Xi og 0.012035/0.014301 for støjparret. Dette er ikke marginal bank-L1.
+Den første tre-niveau-kørsel på \texttt{e2cb6c75} gav utilstrækkelig rho-margin;
+fjerde niveau er derfor en eksplicit posthoc opfølgning.
+
+Selvstændigt review genberegner designs, gamle scores, panel-log-odds,
+timings og maxima. Ved 16 udvalgte værste parameter-TV-prefixer bruges
+uafhængig long-double Bayes og adaptiv QUADPACK: største afvigelse
+$1.3819\cdot10^{-13}$. De øvrige TV-prefixer og state-L1 er ikke uafhængigt
+genberegnet. Råfilstørrelse/digest og den reproducerbare CLI står i
+F4-status og kodevejledningen.
+
+Et konkret forslag til næste særskilt implementerede pilot er rho/Xi
+$9\times65\to17\times129$ med 1601/3201 rumceller, og støjparret
+$33\times65\to65\times129$ med 6401/12801 celler. Tid og q kontrolleres
+stadig separat på begge grids, med uændrede gates/prior/støtte. 129-noderne
+er ikke evalueret her. Forslaget giver 42312 replays i fire FV-settings mod
+133128 for fuldt $65\times65\to129\times129$ på begge par: 68.22\% færre.
+Dette er workload for et forslag, ikke accepteret konvergens eller speedup.
+En simpel runtime-model med time-fine som to gange middle og q-fine som
+middle giver 25.7588 serielle timer og idealiseret 3.2198 timer på otte workers,
+uden overhead/parallel slowdown eller Windows-forskel. Der gives intet
+walltime-løfte. Næste pilot skal have rektangulær streaming-/råvalidering,
+genoptagelige units og først målt unit-runtime. G2b/G2c forbliver blokeret;
+deres eksisterende 33/65-design er ikke accepteret af dette forslag.
+
+
+
 \subsection{G2b/G2c: parret robusthed og genoptagelig population}
 Disse studier er implementeret, men deres produktionskørsler er betingede af
 råvalideret syvdages-G2a og derefter bestået G2b. G2b bruger ID1360/1361

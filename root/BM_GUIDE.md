@@ -733,6 +733,45 @@ Lokale resultater hører i ignoreret `files/output/bm_1/runs/`, PDF-build i
 `files/output/bm_1/f3_b/` og `files/output/bm_1/real_data/`. Slet ikke brugerens
 lokale arbejde, stashes eller miljøer for at opnå en ren status.
 
+## Posthoc G2a-grid-diagnose efter den negative syvdagespilot
+
+Diagnosen i PR #57 er allerede kørt på Linux fra clean `69848458`, BLAS=1:
+67 syvdages-replays og 64 parameterakse-sammenligninger på de gamle ID1358/1359.
+Samlet 183.2609 s før lagring; detaljer og selvstændigt review står i F4-status.
+**Ingen ny lokal kørsel kræves alene for review/merge af denne PR.**
+
+Forslaget til næste pilot er rho/Xi 9×65→17×129 med 1601/3201 rumceller,
+og støjpar 33×65→65×129 med 6401/12801 celler. Dette er endnu ikke et
+registreret eller accepteret design: den nye streaming-/valideringskontrakt
+skal implementeres særskilt. Den gamle G2a-CLI har fortsat uændret 33/65-design;
+brug ikke dens numerics/counts-overrides som registreret accept.
+
+Følgende er kun reproduktion af diagnosen fra et rent checkout af PR #57
+eller senere merged source. Behold den negative originalfil:
+
+```powershell
+$gridDiagRoot = "files/output/bm_1/runs/estimation"
+$gridDiagOutput = "$gridDiagRoot/f4_g_g2a_grid_diagnosis_v1.json"
+$gridDiagLog = "$gridDiagRoot/f4_g_g2a_grid_diagnosis_v1.txt"
+foreach ($gridDiagPath in @($gridDiagOutput, $gridDiagLog)) {
+    if (Test-Path $gridDiagPath) { throw "Behold eksisterende fil: $gridDiagPath" }
+}
+if (git status --porcelain) { throw "Working tree er ikke ren; behold dine ændringer." }
+New-Item -ItemType Directory -Force -Path $gridDiagRoot | Out-Null
+python -B -m src.exe.run_model.bm_1.estimate joint-bank-grid-diagnose `
+  --g2a-report "$gridDiagRoot/f4_g_g2a_continued_7d_v1.json.gz" `
+  --rho-levels 4 --blas-threads 1 --output $gridDiagOutput `
+  2>&1 | Tee-Object -FilePath $gridDiagLog
+$gridDiagExit = $LASTEXITCODE
+if ($gridDiagExit -ne 0) { throw "Diagnosen fejlede; behold rapport/log til review." }
+```
+
+Output er eksplicit `registered_design=False`, `certifies_g2a=False`.
+Negativ G2a v1 er et tilladt input til denne diagnose; dens acceptance ændres
+ikke. De oprindelige scores/observationer genvalideres, og gamle conditional
+scores reproduceres. State-L1 er diagnostik; conditional state-historier er
+ikke gemt til uafhængig genberegning. G2b/G2c-prerequisites er uændrede.
+
 ## G2b/G2c og hurtigere FV (efter syvdages G2a-review)
 
 **G2a v1 på `86dc765` er færdig, rå-reviewet og numerisk afvist. G2b/G2c er
