@@ -741,14 +741,29 @@ performanceændringer eller manglende terminalhistorik. Den korte backendkontrol
 nedenfor kan udføres på performancebranchen efter brugerens PR-review; den giver
 ingen accept af syvdages numerik. En ny numerisk pilot skal fastlægges særskilt.
 
-En kort backendkontrol på gamle G2a-records måler begge par, fire hjørner og
-centrum, alle fire FV-settings og to gentagelser. Den bruger ikke nye G2b/G2c-records:
+**Windows-backendkontrollen er afsluttet og reviewet** på clean `b5e5e4d`:
+490 tests består, alle 40 parrede kombinationer består med registrerede
+nul-afvigelser, og målt serielt speedup er **3.9103x**. Samlet benchmarktid
+409.82 s. Kør den ikke igen alene for merge af PR #56; resultater og digests
+står i F4-status. G2a v1's numeriske afvisning og G2b/G2c-blokering er uændret.
+
+Følgende er reproduktionsvejledning på de gamle G2a-records, med fire hjørner
+og centrum per par, alle fire FV-settings og to gentagelser. Native Python-output
+fanges eksplicit, da `Start-Transcript` ikke fangede det i brugerens PowerShell:
 
 ```powershell
+$fvWindowsRoot = "files/output/bm_1/runs/estimation"
+$fvWindowsOutput = "$fvWindowsRoot/fv_backend_windows_v1.json"
+$fvWindowsLog = "$fvWindowsRoot/fv_backend_windows_v1.txt"
+foreach ($fvWindowsFile in @($fvWindowsOutput, $fvWindowsLog)) {
+    if (Test-Path -LiteralPath $fvWindowsFile) { throw "Behold eksisterende fil: $fvWindowsFile" }
+}
+New-Item -ItemType Directory -Force -Path $fvWindowsRoot | Out-Null
 python -B -m src.exe.run_model.bm_1.estimate benchmark-fv `
-  --days 7 --repeats 2 --blas-threads 1 `
-  --output files/output/bm_1/runs/estimation/fv_backend_windows_v1.json
-if ($LASTEXITCODE -ne 0) { throw "FV-backendkontrollen fejlede." }
+  --days 7 --repeats 2 --blas-threads 1 --output $fvWindowsOutput `
+  2>&1 | Tee-Object -FilePath $fvWindowsLog
+$fvWindowsExit = $LASTEXITCODE
+if ($fvWindowsExit -ne 0) { throw "FV-backendkontrollen fejlede; behold begge filer." }
 ```
 
 Rapporten måler seriel replaytid. Parallel walltime, opstart, reduktion, råreview

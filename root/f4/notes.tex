@@ -1734,6 +1734,22 @@ Kun ønskede outputmasser gemmes, men den interne integration er uændret.
 Benchmark på gamle G2a-records kontrollerer begge par, støttehjørner/centrum
 og alle fire FV-konfigurationer. Målt seriel hastighed er ikke Windows-walltime.
 
+\paragraph{Registreret Windows-backendkontrol.}
+Ren \texttt{b5e5e4d}, BLAS=1: 490 tests består på 478.222 s.
+På de gamle syvdages-ID1358/1359 består alle 40 kombinationer:
+fem hypoteser per par, fire FV-settings og to gentagelser med skiftende
+backendrækkefølge, i alt 160 replays. Alle registrerede maximum-afvigelser
+for scores, predicted/posterior-masser og faktisk max-step er 0.
+Max registreret massefejl er $3.3679\cdot10^{-12}$ og minimum 0.
+Summen af median-replaytider er 160.422864 s for LAPACK og 41.025685 s
+for cached: målt serielt speedup 3.910303. Samlet Windows-tid er 409.82 s,
+exit 0. Review kontrollerer alle hypoteser/settings og genberegner gates og timings;
+conditional rå arrays er ikke gemt, så nul-afvigelserne rekonstrueres ikke
+uafhængigt fra arrays. Transcriptet mangler native Python-output;
+testresuméet er i brugerens indsatte terminaltekst. Digests står i F4-status.
+Dette accepterer backendpanelet, ikke fuld parallel walltime eller G2a's
+fejlede rum-/parametergrids. G2b/G2c forbliver blokeret.
+
 H-forberedelsen indeholder en punktmålingsadapter med eksplicit population,
 effektenhed, timezone, missing-mask og frossen fysisk/train-only skala.
 State-tid er faktisk UTC-forløbet tid, også over DST. Baseline-referencen er
