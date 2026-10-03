@@ -630,7 +630,7 @@ også hvis en gate fejler. Behold den gamle G1b0-fil uændret. Et bestået G1c0
 gælder alene 33x33-hat-loven på de to records; original dualcelle-accept,
 held-out population, G2 og uge-/månedsruntime følger ikke automatisk.
 
-## Næste lokale kørsel: G2a fortsatte records
+## G2a v1: afsluttet syvdages Windows-kørsel
 
 PR #54 er merged på `main` som `014446c`. G2a udvikles separat på
 **feature/f4-g-robustness-pilot** / PR #55; brugeren merger efter Windows-kørsel
@@ -639,13 +639,20 @@ og rå review. Designet er preregistreret før recordgenerering i `e058299`.
 uafhængigt råreview er afsluttet. Det accepterer kun ét døgn på Linux.
 Læs [F4.md](F4.md) for evidens, låste IDs, truth-/FV-/hat-gates og afgrænsning.
 
+**Windows-resultatet er rå-reviewet:** clean `86dc765`, alle 33.800 replays færdige,
+28646.89 s samlet, truth/raw/probability består, men rum- og hat-gates fejler.
+Exit 1 følger efter lagring af den komplette rapport. **Ingen genkørsel på grund
+af manglende terminalhistorik. G2b/G2c må ikke startes med denne kandidat.**
+Alle kontroller består gennem dag 1; dag 3 og 7 afvises. Bevar originalfilen.
+PowerShell-blokken nedenfor er reproduktionsvejledning, ikke næste kørsel.
+
 Kørslen bruger de **tre eksisterende** G1b0/G1b3/G1c0-rapporter som validerede
 dependencies, uden at gentage deres replays. Nye ID1358/1359 køres med
 **33.800 replays / 16 banker**, 8 workers og BLAS=1. Hver hypotese fortsætter
 egen state gennem midnat. Syv døgn leverer dag 1/3/7 som prefixer.
 
-**Syv døgn estimeres til 6–9 timer på brugerens Windows-maskine.**
-Det er G1b3's målte tid skaleret med længden, ikke et målt G2-resultat.
+**Det oprindelige estimat var 6–9 timer; den afsluttede Windows-kørsel målte
+7 timer og 57 minutter inklusive opstart og output.**
 En valgfri éndagskontrol (`--days 1`, eget nyt outputnavn) estimeres til
 45–90 minutter og certificerer kun ét døgn. Den er ikke påkrævet før en
 direkte syvdageskørsel; særskilte kortere kørsler giver ekstra arbejde.
@@ -728,9 +735,11 @@ lokale arbejde, stashes eller miljøer for at opnå en ren status.
 
 ## G2b/G2c og hurtigere FV (efter syvdages G2a-review)
 
-Den igangværende G2a-kørsel på `86dc765` skal færdiggøre uændret. Ingen ekstra
-fuld G2a-kørsel kræves alene for performanceændringer. Ny kode ligger separat
-fra PR #55 og må først synkroniseres, når Python-kørslen er afsluttet.
+**G2a v1 på `86dc765` er færdig, rå-reviewet og numerisk afvist. G2b/G2c er
+blokeret på denne kandidat.** Der kræves ingen ekstra fuld G2a-kørsel alene for
+performanceændringer eller manglende terminalhistorik. Den korte backendkontrol
+nedenfor kan udføres på performancebranchen efter brugerens PR-review; den giver
+ingen accept af syvdages numerik. En ny numerisk pilot skal fastlægges særskilt.
 
 En kort backendkontrol på gamle G2a-records måler begge par, fire hjørner og
 centrum, alle fire FV-settings og to gentagelser. Den bruger ikke nye G2b/G2c-records:
@@ -747,7 +756,9 @@ og output har også en pris; et speedup-tal er ikke et løfte om samlet Windows-
 `joint-bank-continued-pilot --fv-backend cached` findes til eksplicit sammenligning,
 men default er fortsat den gamle LAPACK-backend.
 
-Efter bestået og råreviewet syvdages G2a kan følgende køres fra et rent checkout
+**De følgende G2b/G2c-blokke er betinget reproduktionsvejledning og må ikke
+startes med den afviste G2a v1-fil.** Efter en bestået og råreviewet syvdages
+G2a-kandidat kan følgende køres fra et rent checkout
 af den nye revision. **Kør først én G2b-unit og review runtime/resultat**, inden
 resten startes. Det samlede G2b-design er ti units; G2c er 560. Det er forsknings-
 studier og indgår ikke i den almindelige testsuite.
