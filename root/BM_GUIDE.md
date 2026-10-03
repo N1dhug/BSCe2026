@@ -1081,3 +1081,70 @@ grupper med `backend='fitted'`, men eksisterende videnskabelige CLI'er beholder
 deres registrerede numerik. Se `root/F4.md` for gamle-data-panel, bevarede
 all-node-fejl og de manglende tids-/quadrature-/parameterkontroller. Færre
 celler er en ny numerisk kandidat, ikke en backendækvivalens fra batchpanelet.
+
+
+## Midlertidigt BM-preview til WM4-sammenligning
+
+Kun på testbranchen `preview/bm-f4-february`; kommandoen kører **kun BM1**.
+Den er ikke en accepteret H-f/g/I/J-leverance. Brug en separat worktree, især
+når en G2a-kørsel skal bevares/genoptages på sin oprindelige source.
+
+Fra din normale repo-mappe i PowerShell, uden branchskift eller `git pull`:
+
+```powershell
+git fetch origin
+if ($LASTEXITCODE -ne 0) { throw "Git fetch fejlede." }
+git worktree add -b test-bm-f4-preview ../BSCe2026-bm-preview origin/preview/bm-f4-february
+if ($LASTEXITCODE -ne 0) { throw "Preview-worktree kunne ikke oprettes." }
+Set-Location ../BSCe2026-bm-preview
+python -B bm_f4_february_preview.py --audit-only
+if ($LASTEXITCODE -ne 0) { throw "Datakontrol fejlede." }
+python -B bm_f4_february_preview.py --week 2022-02-07 --tag MED --workers 2 --observation-contract hourly-point-approximation
+if ($LASTEXITCODE -ne 0) { throw "BM-preview fejlede." }
+```
+
+Workbooks `files/input/data/input.xlsx` og `prices.xlsx` følger repoet. Ved lokale
+ændringer i data skal præcis de samme versioner kopieres til dette checkout og
+bruges i den separate WM4-sammenligning. Ingen internetforbindelse kræves under
+selve BM-kørslen. Brug det eksisterende Python 3.12-miljø med NumPy, SciPy,
+pandas, matplotlib og openpyxl. `--curve-mode auto` er default: TRAIN 1.–30.
+januar, MODEL_SELECTION 31. januar–6. februar, forecast 7.–13. februar 2022.
+Fælles lineære, 2-stykkers og 4-stykkers f/g sammenlignes; valgte kurver fryses.
+`--skip-optimize` udelader kun kontrolscenariet. `--curve-mode linear` er en
+udtrykkelig referencekørsel, der springer det fleksible kurvefit over.
+
+En ny mappe under `files/output/bm_1/runs/f4_bm_preview/` indeholder:
+
+| Fil | Indhold |
+|---|---|
+| `bm_weekly_prediction.png` | Tre paneler: observeret/prognosticeret demand og B-baseline; kendt pris; BM-state X. Timevise kurver og marginalt 90% latent-D-interval. |
+| `hourly_results.csv`, `daily_results.csv` | 168 timer samt daglige MSE/RMSE/MAE/bias for BM og B. Ingen WM-kolonner. |
+| `summary.json` | Fejlmål i normaliserede og rå enheder, parametre, kilde-/datahashes, settings, tider og begrænsninger. |
+| `response_curves.json/.csv/.png` | Fælles f/g-par og de tre undersøgte kurvefamilier. |
+| `curve_validation.csv`, `curve_trials.csv` | Betinget fit, budgetstatus og tidligere modelvalgsperiode; ingen automatisk accept. |
+| `parameter_posterior.csv`, `origin_bank.npz` | Lille diskret rho/Xi-posterior og conditional state ved prognoseorigin. |
+| `control_hourly.csv`, `control.png` | Valgt dag-/nattarif og beregnet demand/state under det særskilte kontrolscenarie. |
+
+WM4-outputtyperne er undersøgt i `src.exe.run_model.wm_4.predict_weekly`: demand
+mod observeret I, baseline, pris, modeltilstand og MSE/RMSE/MAE/bias. BM X er ikke
+WM4 F/R; der fremstilles ingen tilsvarende fiktive WM-states. Filformat og
+panelindhold er BM-specifikt, og timegrafen er grovere end WM4's fine responsgrid.
+WM4 skal køres separat. Sammenlign samme målerpopulation/timer, rå enheder eller
+samme frosne skalaer. `summary.json` angiver BM-skalaerne; gamle WM4-runs med
+helårsnormalisering har ikke direkte sammenlignelige normaliserede fejlmål.
+
+Point-approksimationen er foreløbig, og kontrolscenariet kan ikke vurderes mod
+forbrug målt ved en anden historisk prispolicy. Fysiske parametre/støj er delvist
+faste; kurvefit er betinget; shape-usikkerhed er udeladt; fuld H-f/g-validering er
+stadig obligatorisk. Prognosen er én åben propagation uden målugens I-updates.
+Tidsestimatet er groft og gælder den angivne fase, ikke hele testpakken; det
+beregnes ved statusopdateringer uden ekstra replays/checkpoints.
+
+Små isolerede fixturekontroller (ingen forskningsstudier):
+
+```powershell
+python -B -m unittest discover -s tests -p test_bm_f4_february_preview.py -q
+```
+
+Gem output uden for test-worktree, inden denne midlertidige branch/worktree
+slettes. Dette er ikke en anmodning om merge til `main`.
