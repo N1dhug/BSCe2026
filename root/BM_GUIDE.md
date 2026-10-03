@@ -29,7 +29,7 @@ I/F5/F6-interface, tidlig f/g-pilot og forberedelse af økonomi/sløjfe under fi
   `log_evidence`, `observed`, `total_log_likelihood`, `final_step` og samlede
   numeriske diagnoser. Ingen mellemliggende state-historik lagres. Alle observationer
   og steps beregnes stadig med den eksisterende kernel. E's kandidat-likelihood
-  bruger dette automatisk; en kommende H-f/g-optimizer bør også bruge det.
+  bruger dette automatisk; den nye pooled H-f/g-fitprototype bruger også denne vej.
   Brug default `keep_history=True` til state-/forecast-validering og figurer.
 * `evaluator.evaluate_targets(prices, targets)` på FV-evaluators vurderer hver
   target-række på `evaluator.midpoints` med én fælles propagation ved fast pris.
@@ -155,7 +155,37 @@ kurveobjekt med to/fire stykker, ordnede indre værdier og endpoints 1,-1. Den
 samme f/g eksporteres til `BM1Parameters`, F3 og forecast. Kurvebeskrivelsen
 gemmer kun geometri; det endelige H-artifact skal også deklarere træning,
 population, normalisering, øvrige parametre og modelvalg. Samlet kurvefit,
-ny FV-kurve-numerik og blind validering mangler stadig.
+ny representativ FV-kurve-numerik og blind validering mangler stadig.
+
+Den lille pooled-fitprototype kører i det eksisterende entrypoint:
+
+```powershell
+$curveTag = Get-Date -Format "yyyyMMdd_HHmmss"
+python -B -m src.exe.run_model.bm_1.estimate curve-fit-pilot --blas-threads 1 --output "files/output/bm_1/runs/estimation/h_curve_pilot_$curveTag.json.gz"
+```
+
+Den bruger kun gamle udviklingsrecords ID1326/1327, samme f/g i begge records,
+kendte fysiske parametre og højst 250 forskellige kandidater per familie.
+To og fire stykker sammenlignes med lineær reference; kvartknuderne er faktisk
+implementeret. To-stykkers fit leverer én start til fire-stykkers fit.
+Budgetloftet er samlet over starter, ikke 250 per start. Ved budgetstop gemmes
+bedste evaluerede kandidat og hele scalar-tracen; det markeres ikke som optimizer-
+convergence. Probability-/model-fejl dropper ingen records og skjules ikke som
+en optimeringsomkostning. Alle fremtidige kandidater får korrekt fuldt replay.
+
+`CurveTrainingRecord` accepterer kun TRAIN og eksplicit initiallov/tidsenhed;
+sammenhængende dage skal videreføre state inden for ét record. Objektet afgør
+ikke selv, hvilke data der er lovlige TRAIN-data; dataaudit, split og normalisering
+skal fastlægges først. Logitbounds [-4,4] giver monotone positive fald med sum 2,
+men eksakt flade delstykker er uden for den afgrænsede fitfamilie. Lambda=0.1
+er fast før piloten. Ingen automatisk modelvinder vælges efter træningsscore.
+
+Rapporten gemmer observationer, alle kandidat-koordinater/scalar-scores,
+valgte fælles kurver, record-scores/final states, tids-/rum-/q-diagnoser og
+kilders SHA256. `scientific_acceptance=False` er tilsigtet. Budget-ETA er tid
+til det maksimale fitbudget; early convergence kan forkorte fit, og numeriske
+diagnoser følger bagefter. Piloten er ikke genoptagelig og må ikke bruges som
+en lang produktionstræning. Start ikke ekstra tunge lokale jobs under G2a.
 
 ## Almindelig kontrol fra projektmappen
 

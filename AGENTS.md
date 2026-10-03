@@ -5,7 +5,9 @@ Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tids
 chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
 
 - I-baselinens origin/forecast/F3-integration er implementeret på det afsluttede
-  F-spor; næste udvikling er afgrænset H1/H2-pilot. Obligatorisk H-f/g
+  F-spor; pooled H-f/g-fitprototype og gammel-record budgetpilot er implementeret.
+  Næste udvikling er H1's nye curve-cases/numerik og H's data-/splitkontrakt.
+  Obligatorisk H-f/g
   skal gennemføres før den endelige samlede I/J-leverance. G2b/G2c er en udsat og fortsat
   blokeret udvidelse; markér dem ikke som gennemført.
 - Bevar G2a-v2's kørende checkout og oprindelige kildecommit. Ny kode i en anden
@@ -34,8 +36,11 @@ chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
   Rho-MAP bruger nodens egen conditional posterior. Et gennemsnitligt parameter-
   plug-in kræver nyt replay eller erklæret approksimation. `i-baseline` er kun en
   gammel-record integrationsdemo; ingen forecast- eller H-f/g-accept.
-  `BM1PiecewiseResponse` forbereder H1, men samlet fit og egne numeriske studier
-  mangler. Forbered H1/H2 tidligt, før yderligere I-polering.
+  `BM1PiecewiseResponse` og `src/method/bm_1_response.py` giver kurve-API og
+  pooled replay-fit. Gammel-record prototype er ikke H's endelige fit/accept.
+  Bevar deklarerede kandidatbudgetter og negative budgetstops; ingen automatisk
+  ekstra fitrunde eller modelvinder efter TRAIN-score. Nye kurvecases/numerik,
+  dataaudit, hele deklarerede træning og blind H3 mangler stadig.
 
 Disse kurveregler gælder BM og ændrer ikke WM-modellernes egne fitkontrakter.
 

@@ -669,6 +669,38 @@ på slut-holdout. Et fuldt Cartesian-grid over seks formparametre plus fysiske
 parametre er ikke arbejdsmetoden. Det endelige objective bruger alle observationer
 i den deklarerede træningsperiode; en kort pilot er kun udvikling.
 
+\subsection{Pooled H-kurvefit som udviklingsprototype}
+En afgrænset implementation afprøver ét fælles kurvepar på allerede anvendte
+F3-records ID1326/1327, med kendte fysiske parametre. Ingen holdout-data eller
+truth-state indgår i estimationsobjective. Hver ny kandidat replayes fra hver
+records erklærede initiallov, og predictive log-likelihoods summeres over alle
+observationer og records. Sammenhængende dage skal fortsætte inden for ét record;
+uafhængige initialiseringer må ikke bruges som en skjult daglig state-/kurvetuning.
+
+For $p=2$ eller $p=4$ stykker parameteriseres faldet over hver knudeafstand som
+\[
+ d_i=2\frac{\exp(z_i)}{\sum_{j=1}^p\exp(z_j)},\qquad z_p=0,
+ \quad v_0=1,\quad v_i=1-\sum_{j=1}^i d_j,\quad v_p=-1.
+\]
+Samme construction bruges til $f$ og $g$. Logits begrænses til $[-4,4]$; derfor
+er fald positive, og eksakt flade delstykker er uden for denne afgrænsede fitfamilie.
+L-BFGS-B minimerer negativ pooled likelihood plus $\lambda=0.1$ gange summen
+af kvadrerede indre knudeafvigelser fra $1-2z$. Dette er en deklareret
+koefficientregularisering, ikke en knot-invariant integralnorm.
+To starter og højst 250 forskellige kandidater samlet per familie fastlægges
+før piloten. En eksakt duplicate må genbruge samme scalar score; state fra en
+anden kandidat genbruges aldrig. Den nestede to-stykkers kurve løftes til en
+start for fire stykker. Budgetstop bevarer den bedste evaluerede kandidat og
+tracen, men markeres ikke som optimizerconvergence. Probability-/modelfejl
+skjules ikke ved at droppe records eller erstatte deres objective.
+
+Udviklingspiloten bruger FV401, $h\leq1/768$ dag og Gauss3. Valgte kurver
+genberegnes ved finere tid, rum og likelihood-quadrature som diagnostik; et
+fixed-candidate check certificerer ikke hele optimizerens numerik eller recovery.
+Denne pooled prototype afslutter ikke H1's nye lineære/nonlineære truth-cases,
+den historiske datakontrakt, fuld træning, modelvalg eller blind H3-validering.
+Træningsforbedring på to gamle records afgør ingen endelig modelvinder.
+
 \subsection{Identifikation, numerik og fastlåsning}
 Uden endpoints kan \(f+c,g-c\) give samme sum, og fælles amplitudeskalering kan
 blandes sammen med \(k\). \eqref{eq:endpoints} fjerner disse eksakte friheder,

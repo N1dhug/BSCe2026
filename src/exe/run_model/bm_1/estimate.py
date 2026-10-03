@@ -1431,6 +1431,15 @@ def _source_snapshot():
     return dict(source_commit=revision, working_tree_dirty=bool(dirty))
 
 
+def _development_source_snapshot():
+    """Include source hashes for short I/H development reports, even when dirty."""
+    snapshot = _source_snapshot()
+    snapshot['source_sha256'] = {
+        path.relative_to(ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted((ROOT / 'src').rglob('*.py'))}
+    return snapshot
+
+
 def _atomic_report(path, payload, *, replace_existing=False):
     """Publish only closed complete JSON/gzip files under the exclusive run lock."""
     import gzip
@@ -1844,20 +1853,12 @@ def run_i_baseline(args):
     if args.output is not None and args.output.exists():
         raise FileExistsError(f'Refusing to overwrite {args.output}.')
     started = perf_counter()
-    def source_snapshot():
-        snapshot = _source_snapshot()
-        # Also detect edits within an already dirty development checkout.
-        # These hashes cost no model replays and do not alter old G2a guards.
-        snapshot['source_sha256'] = {
-            path.relative_to(ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted((ROOT / 'src').rglob('*.py'))}
-        return snapshot
-    source = source_snapshot()
+    source = _development_source_snapshot()
     def progress(phase, completed, total, completed_work, total_work):
         print(f'I-baseline {phase}: {completed}/{total} phases; '
               + runtime_text(started, completed_work, total_work), flush=True)
     result = run(progress=None if args.quiet else progress)
-    if source_snapshot() != source:
+    if _development_source_snapshot() != source:
         raise ValueError('Source changed during I-baseline; no result published.')
     result['source_sha256'] = source['source_sha256']
     _write_likelihood_report(args, result, started)
@@ -1866,9 +1867,32 @@ def run_i_baseline(args):
     return result
 
 
+def run_curve_fit_pilot(args):
+    from src.validation.bm_1.response import run_curve_fit_pilot as run
+    if args.output is not None and args.output.exists():
+        raise FileExistsError(f'Refusing to overwrite {args.output}.')
+    source = _development_source_snapshot()
+    started = perf_counter()
+    def progress(completed,total):
+        print(f'H shared fit (budget ETA): {completed}/{total} candidate budget; '
+              + runtime_text(started,completed,total),flush=True)
+    result = run(progress=None if args.quiet else progress)
+    if _development_source_snapshot() != source:
+        raise ValueError('Source changed during curve-fit pilot; no result published.')
+    result['source_sha256'] = source['source_sha256']
+    _write_likelihood_report(args,result,started)
+    print('Shared curve development pilot complete; scientific acceptance=False',flush=True)
+    return result
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
+    curve_fit = subparsers.add_parser('curve-fit-pilot',
+        help='Pooled two/four-piece fit on old TRAIN records; no H scientific acceptance.')
+    curve_fit.add_argument('--output',type=Path)
+    curve_fit.add_argument('--quiet',action='store_true')
+    curve_fit.set_defaults(handler=run_curve_fit_pilot)
     i_baseline = subparsers.add_parser('i-baseline',
         help='Small F-based frozen-origin forecast and F3 handoff; no population acceptance.')
     i_baseline.add_argument('--output', type=Path, help='Optional new JSON/gzip report.')

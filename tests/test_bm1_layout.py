@@ -149,6 +149,7 @@ class ConsolidatedLayoutTests(unittest.TestCase):
         paths = [root / name for name in (
             'src/control/bm_1.py', 'src/control/bm_1_handoff.py',
             'src/control/objective.py', 'src/method/beta_mixture.py',
+            'src/method/bm_1_response.py',
         )]
         self.assertTrue(all(path.is_file() for path in paths))
         for path in paths:
