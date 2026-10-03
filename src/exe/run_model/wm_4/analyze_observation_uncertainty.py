@@ -82,12 +82,15 @@ def _correlation(x, y, method):
     return int(x.size), float(result.statistic), float(result.pvalue)
 
 
-def correlation_metrics(frame):
-    variables = [
-        "mean_I", "mean_U", "mean_abs_U", "std_U",
-        "mean_abs_dI", "mean_abs_dU", "mean_Temp", "std_Temp",
-        "time_sin", "time_cos",
-    ]
+def correlation_metrics(frame, variables=None):
+    if variables is None:
+        variables = [
+            "mean_I", "mean_U", "mean_abs_U", "std_U",
+            "mean_abs_dI", "mean_abs_dU", "mean_Temp", "std_Temp",
+            "time_sin", "time_cos",
+        ]
+    missing = [variable for variable in variables if variable not in frame.columns]
+    if missing: raise ValueError("Missing correlation variables: " + ", ".join(missing))
     rows = []
     for variable in variables:
         n_p, pearson_r, pearson_p = _correlation(frame["s_I"], frame[variable], "pearson")
