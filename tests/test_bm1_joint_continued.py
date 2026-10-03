@@ -194,7 +194,10 @@ class ContinuedCLITests(unittest.TestCase):
         from tests.test_bm1_joint_hat import JointHatDependencyTests
         # This is a dependency/reconstruction test with mocked constant
         # conditionals; production-size state grids add no numerical coverage.
-        with patch.object(fv,'G1A_NUMERICS',TINY_LEVELS):
+        # Uniform cell density transfers exactly between the tiny spatial grids;
+        # a coarse Beta cell histogram would introduce unrelated FV error.
+        with patch.object(fv,'G1A_NUMERICS',TINY_LEVELS), \
+             patch('tests.test_bm1_joint_hat.constant_replay', side_effect=flat_replay):
             JointHatDependencyTests.setUpClass();dense=JointHatDependencyTests.report
         with patch.object(fv,'G1A_NUMERICS',TINY_LEVELS),patch.object(grid,'G1B3_COUNTS',JointHatDependencyTests.counts):
             hat=grid.run_joint_parameter_reconstruction(dense)
