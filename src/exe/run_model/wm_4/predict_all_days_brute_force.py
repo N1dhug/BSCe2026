@@ -71,7 +71,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
         "best_F0": float(np.median(f0)),
         "training_F0_mean": float(np.mean(f0)), "training_F0_std": float(np.std(f0)),
         "training_F0_median": float(np.median(f0)), "training_F0_min": float(np.min(f0)), "training_F0_max": float(np.max(f0)),
-        "r_F": r[0], "r_U": r[1], "r_R": r[2], "r_0": r[3],
+        "r_F": r[0], "r_U": r[1], "r_R": r[2],
         "training_R0_mean": float(np.mean(training_states[:, 1])),
         "training_R0_std": float(np.std(training_states[:, 1])),
         "training_R0_median": float(np.median(training_states[:, 1])),
@@ -168,7 +168,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
             training_frames.append(training); profile_frames.append(profile)
             print(
                 f"{day:%Y-%m-%d} | training_F0_median={daily['training_F0_median']:.6f} | "
-                f"r=[{daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}, {daily['r_0']:.6f}] | "
+                f"r=[{daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}] | "
                 f"initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | QP={daily['qp_loss']:.8g} | "
                 f"WM4 MSE={daily['wm4_mse']:.8f} | O MSE={daily['O_mse']:.8f}"
             )
