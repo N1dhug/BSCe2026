@@ -11,15 +11,15 @@ ROOT = Path(__file__).resolve().parents[4]
 INPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end"
 OUTPUT = INPUT / "initial_state_parameter_analysis"
 TARGETS = ("F_0", "R_0")
-PARAMETERS = ("r_F", "r_U", "r_R")
+PARAMETERS = ("r_F", "r_U", "r_R", "r_0")
 FEATURE_SETS = {
-    "raw": ("r_F", "r_U", "r_R"),
-    "raw_U0": ("r_F", "r_U", "r_R", "U0"),
-    "derived": ("equilibrium_gain", "natural_frequency", "damping_ratio", "U0", "equilibrium_F0"),
+    "raw": ("r_F", "r_U", "r_R", "r_0"),
+    "raw_U0": ("r_F", "r_U", "r_R", "r_0", "U0"),
+    "derived": ("equilibrium_gain", "equilibrium_offset", "natural_frequency", "damping_ratio", "U0", "equilibrium_F0"),
 }
 CORRELATION_FEATURES = (
-    "r_F", "r_U", "r_R", "U0",
-    "equilibrium_gain", "natural_frequency", "damping_ratio", "equilibrium_F0",
+    "r_F", "r_U", "r_R", "r_0", "U0",
+    "equilibrium_gain", "equilibrium_offset", "natural_frequency", "damping_ratio", "equilibrium_F0",
 )
 
 
@@ -29,6 +29,7 @@ def load_results(root):
     if not daily_path.exists(): raise FileNotFoundError(f"Missing {daily_path}. Run the optimized top-end predictor first.")
     if not hourly_path.exists(): raise FileNotFoundError(f"Missing {hourly_path}. Run the optimized top-end predictor first.")
     daily = pd.read_csv(daily_path, parse_dates=["day"])
+    if "r_0" not in daily.columns: daily["r_0"] = 0.0
     hourly = pd.read_csv(hourly_path)
     required_daily = {"day", "F_0", "R_0", *PARAMETERS}
     missing = sorted(required_daily.difference(daily.columns))
@@ -48,6 +49,7 @@ def add_derived(frame):
     r_F = result["r_F"].to_numpy(dtype=float)
     r_U = result["r_U"].to_numpy(dtype=float)
     r_R = result["r_R"].to_numpy(dtype=float)
+    r_0 = result["r_0"].to_numpy(dtype=float)
     U0 = result["U0"].to_numpy(dtype=float)
     F0 = result["F_0"].to_numpy(dtype=float)
     R0 = result["R_0"].to_numpy(dtype=float)
@@ -55,12 +57,14 @@ def add_derived(frame):
     natural_frequency = np.full(len(result), np.nan)
     natural_frequency[valid] = np.sqrt(-r_F[valid])
     equilibrium_gain = np.divide(-r_U, r_F, out=np.full(len(result), np.nan), where=np.abs(r_F) > 1e-12)
+    equilibrium_offset = np.divide(-r_0, r_F, out=np.full(len(result), np.nan), where=np.abs(r_F) > 1e-12)
     damping_ratio = np.divide(-r_R, 2.0 * natural_frequency, out=np.full(len(result), np.nan), where=natural_frequency > 1e-12)
     result["equilibrium_gain"] = equilibrium_gain
+    result["equilibrium_offset"] = equilibrium_offset
     result["natural_frequency"] = natural_frequency
     result["damping_ratio"] = damping_ratio
-    result["equilibrium_F0"] = equilibrium_gain * U0
-    result["initial_dR"] = r_F * F0 + r_U * U0 + r_R * R0
+    result["equilibrium_F0"] = equilibrium_offset + equilibrium_gain * U0
+    result["initial_dR"] = r_0 + r_F * F0 + r_U * U0 + r_R * R0
     result["F0_equilibrium_residual"] = F0 - result["equilibrium_F0"]
     return result
 

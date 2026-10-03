@@ -178,7 +178,7 @@ def main():
     print(f"WM4 parameter trajectories: {fit_days}")
     print(f"O training={output_fit['fit_start']} -> {output_fit['fit_end']}, samples={output_fit['samples']}, MSE={output_fit['mse']:.8f}")
     r = fit["r"]
-    print(f"r = [r_F={r[0]:.8f}, r_U={r[1]:.8f}, r_R={r[2]:.8f}]")
+    print(f"r = [r_F={r[0]:.8f}, r_U={r[1]:.8f}, r_R={r[2]:.8f}, r_0={r[3]:.8f}]")
     if not args.deterministic: print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"initial_cond = [{init[0]:.8f}, {init[1]:.8f}], optimized_from_prediction_day = {str(args.optimize_prediction_state).lower()}")
     print()

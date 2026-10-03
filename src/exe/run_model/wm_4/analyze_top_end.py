@@ -10,14 +10,14 @@ ROOT = Path(__file__).resolve().parents[4]
 WARMUP = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_top_end"
 OPTIMIZED = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_optimized_top_end"
 OUTPUT = OPTIMIZED / "top_end_analysis"
-PARAMETERS = ("r_F", "r_U", "r_R")
+PARAMETERS = ("r_F", "r_U", "r_R", "r_0")
 
 
 def load_daily(root):
     path = Path(root) / "daily_metrics.csv"
     if not path.exists(): raise FileNotFoundError(f"Missing {path}. Run the corresponding top-end predictor first.")
     frame = pd.read_csv(path, parse_dates=["day"])
-    if "r_0" in frame.columns: raise RuntimeError(f"{path} contains legacy WM4 results with r_0; rerun that predictor with the current signed WM4.")
+    if "r_0" not in frame.columns: frame["r_0"] = 0.0
     return frame
 
 

@@ -141,7 +141,7 @@ def print_result(start, end, total_start, output_fit, fit, model, plot_path, ste
     print(f"O training: {output_fit['fit_start']} -> {output_fit['fit_end']}, samples={output_fit['samples']}, features={output_fit['features']}, MSE={output_fit['mse']:.8f}, MAE={output_fit['mae']:.8f}")
     print(f"O temperature range=[{output_fit['temperature_min']:.3f}, {output_fit['temperature_max']:.3f}] C, heating base={output_fit['base_temperature']:.1f} C")
     r = fit["r"]
-    print(f"coefficients: r_F={r[0]:.8f}, r_U={r[1]:.8f}, r_R={r[2]:.8f}")
+    print(f"coefficients: r_F={r[0]:.8f}, r_U={r[1]:.8f}, r_R={r[2]:.8f}, r_0={r[3]:.8f}")
     print(f"damping: branch={fit['damping_branch']}, zeta={fit['damping_ratio']:.8f}")
     print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"fitted initial [F0,R0]={np.array2string(fit['init_cond'], precision=8)}")

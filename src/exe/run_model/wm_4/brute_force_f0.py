@@ -82,7 +82,7 @@ def save_results(predict_day, output_fit, fit, output):
         "best_F0": float(fit["F0"]),
         "qp_loss": float(fit["qp_loss"]),
         "deterministic_loss": float(fit["deterministic_loss"]),
-        "r_F": r[0], "r_U": r[1], "r_R": r[2],
+        "r_F": r[0], "r_U": r[1], "r_R": r[2], "r_0": r[3],
         "R0_mean": float(np.mean(states[:, 1])),
         "R0_std": float(np.std(states[:, 1])),
         "candidates": int(fit["brute_force_candidates"]),
@@ -99,7 +99,7 @@ def print_results(profile, summary):
     print(f"best shared F0={row['best_F0']:.8f}")
     print(f"QP rate-transition loss={row['qp_loss']:.10f}")
     print(f"free-run deterministic loss={row['deterministic_loss']:.10f}")
-    print(f"r=[r_F={row['r_F']:.8f}, r_U={row['r_U']:.8f}, r_R={row['r_R']:.8f}]")
+    print(f"r=[r_F={row['r_F']:.8f}, r_U={row['r_U']:.8f}, r_R={row['r_R']:.8f}, r_0={row['r_0']:.8f}]")
     print(f"R0 mean={row['R0_mean']:.8f}, std={row['R0_std']:.8f}")
     print(f"feasible F0 candidates={int(row['feasible_candidates'])}/{int(row['candidates'])}")
     successful = profile.loc[profile["success"].astype(bool)]

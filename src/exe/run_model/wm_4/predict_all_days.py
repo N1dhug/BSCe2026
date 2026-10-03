@@ -40,7 +40,7 @@ def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deter
     daily = {
         "day": start, "weekday": start.day_name(), "optimized": bool(optimize_prediction_state),
         "prediction_state_fit_mse": init_fit_mse,
-        "r_F": r[0], "r_U": r[1], "r_R": r[2],
+        "r_F": r[0], "r_U": r[1], "r_R": r[2], "r_0": r[3],
         "F_0": init[0], "R_0": init[1],
         "sigma_0": np.nan if deterministic else fit["sigma_0"],
         "sigma_I": np.nan if deterministic else fit["sigma_I"],
@@ -113,7 +113,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
                 save_daily_plots=save_daily_plots, output_root=output_root, **fit_kwargs,
             )
             daily_rows.append(daily); hourly_frames.append(hourly)
-            print(f"{day:%Y-%m-%d} | r=[{daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}] | initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | WM4 MSE={daily['wm4_mse']:.8f} | O MSE={daily['O_mse']:.8f}")
+            print(f"{day:%Y-%m-%d} | r=[{daily['r_F']:.6f}, {daily['r_U']:.6f}, {daily['r_R']:.6f}, {daily['r_0']:.6f}] | initial_cond=[{daily['F_0']:.6f}, {daily['R_0']:.6f}] | WM4 MSE={daily['wm4_mse']:.8f} | O MSE={daily['O_mse']:.8f}")
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
             if fail_fast: raise
             skipped.append((day, str(exc)))

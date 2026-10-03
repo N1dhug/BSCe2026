@@ -10,11 +10,11 @@ from src.validation.model.wm_4 import wm_4_validation
 class wm_4(wm):
     """Water Model 4 with signed flexibility and price domains.
 
-    P_R = [F, U, R], dR/dt = r @ P_R
+    P_R = [F, U, R, 1], dR/dt = r @ P_R
     O = O(Time)
 
     dF = R dt
-    dR = (r_F F + r_U U + r_R R) dt + (sigma_0 + sigma_I I) dW
+    dR = (r_F F + r_U U + r_R R + r_0) dt + (sigma_0 + sigma_I I) dW
     I = O + R
 
     F, U in [-1, 1], with F = U = 0 as the neutral point.
@@ -33,7 +33,9 @@ class wm_4(wm):
         self.fp = wm_fokker_planc()
 
     def dR(self, P_R, r):
-        P_R = wm_4_validation.vector(P_R, 3, "P_R")
+        values = np.asarray(P_R, dtype=float).reshape(-1)
+        if values.size == 3: values = np.concatenate((values, np.array([1.0])))
+        P_R = wm_4_validation.vector(values, 4, "P_R")
         r = wm_4_validation.r_coefficients(r)
         return r @ P_R
 
@@ -57,7 +59,7 @@ class wm_4(wm):
     def expected_equilibrium(cls, U, r):
         U = wm_4_validation.signal_value(U, "U")
         r = wm_4_validation.r_coefficients(r)
-        return -(r[1] * U) / r[0]
+        return -(r[3] + r[1] * U) / r[0]
 
     @staticmethod
     def drift(F, R, U, r):
@@ -65,7 +67,7 @@ class wm_4(wm):
         R = wm_4_validation._finite_scalar(R, "R")
         U = wm_4_validation.signal_value(U, "U")
         r = wm_4_validation.r_coefficients(r)
-        return np.array([R, r @ np.array([F, U, R], dtype=float)], dtype=float)
+        return np.array([R, r @ np.array([F, U, R, 1.0], dtype=float)], dtype=float)
 
     @staticmethod
     def diffusion(I, sigma_0, sigma_I):
@@ -91,16 +93,17 @@ class wm_4(wm):
         F, R, R_dot = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
         I, Q = np.empty(self.t_steps), np.empty(self.t_steps)
         A = np.full(self.t_steps, np.nan)
-        P_R = np.empty((self.t_steps, 3))
+        P_R = np.empty((self.t_steps, 4))
         P_A = np.full((self.t_steps, 4), np.nan)
         r = wm_4_validation.r_coefficients(r)
         q, kappa_R = self.equivalent_q(r)
+        q_0 = float(r[3] / kappa_R)
         F[0], R[0] = init_cond
 
         for k in range(self.t_steps):
-            P_R[k] = np.array([F[k], U[k], R[k]], dtype=float)
+            P_R[k] = np.array([F[k], U[k], R[k], 1.0], dtype=float)
             R_dot[k] = r @ P_R[k]
-            Q[k] = q @ np.array([F[k], U[k]], dtype=float)
+            Q[k] = q_0 + q @ np.array([F[k], U[k]], dtype=float)
             I[k] = O[k] + R[k]
             if gamma is not None:
                 P_A[k] = np.array([1.0 - U[k], I[k], F[k], 1.0 - PE[k]], dtype=float)
@@ -114,7 +117,7 @@ class wm_4(wm):
             "U": np.asarray(U, dtype=float).copy(), "PE": np.asarray(PE, dtype=float).copy(),
             "Time": np.asarray(Time, dtype=float).copy(), "O": np.asarray(O, dtype=float).copy(),
             "P_R": P_R, "P_A": P_A, "I": I, "A": A, "r": r.copy(),
-            "Q": Q, "q": q.copy(), "kappa_R": float(kappa_R),
+            "Q": Q, "q": q.copy(), "q_0": q_0, "kappa_R": float(kappa_R),
         }
 
     def deterministic_solver(self, init_cond, parameters):
@@ -136,7 +139,7 @@ class wm_4(wm):
 
         def drift_r(time, F, R):
             U, _ = fields(time)
-            return r[0] * F + r[1] * U + r[2] * R
+            return r[0] * F + r[1] * U + r[2] * R + r[3]
 
         def diffusion_r(time, F, R):
             _, O = fields(time)
