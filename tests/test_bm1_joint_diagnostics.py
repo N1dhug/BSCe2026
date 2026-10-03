@@ -82,8 +82,8 @@ class DiagnosisCommandTests(unittest.TestCase):
                 type('Sequence',(),{'observations':object()})(),dict(passes=True))), \
              patch.object(diagnosis.fv,'_candidate_replay',side_effect=replay):
             result = diagnosis.run_spatial_panel(report,panel)
-        self.assertEqual(seen,[3,5,9])
-        self.assertEqual(result['conditional_runs'],3)
+        self.assertEqual(seen,[3,5,9,17])
+        self.assertEqual(result['conditional_runs'],4)
         self.assertFalse(report['passes'])
         self.assertFalse(result['stored_conditional_states'])
         for row in result['refinement_comparisons']:

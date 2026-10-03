@@ -1375,13 +1375,14 @@ def run_joint_grid_diagnosis(args):
     def progress(done, total):
         if not args.quiet:
             print(f'  spatial replays {done}/{total}; elapsed={perf_counter()-started:.1f}s', flush=True)
-    spatial = joint_diagnostics.run_spatial_panel(report, panel, progress=progress)
+    spatial = joint_diagnostics.run_spatial_panel(report, panel, rho_levels=args.rho_levels, progress=progress)
     if _source_snapshot() != source:
         raise ValueError('Source changed during grid diagnosis.')
     result = dict(stage='G2a-grid-diagnosis', registered_design=False, certifies_g2a=False,
         completed=True, sequence_ids=list(joint_grid.G2A_IDS), record_days=7,
         input_g2a=dict(sha256=digest, source_commit=report['source_commit'], passes=report['passes']),
         axis_diagnosis=axes, spatial_panel=panel, spatial_diagnosis=spatial,
+        rho_spatial_levels=args.rho_levels,
         conditional_runs=spatial['conditional_runs'],
         interpretation='Posthoc diagnosis on old records. Axis comparisons use saved conditional scores; state-mixture convergence is not inferred. Spatial checks use a selected conditional subset, not a complete bank. No new G2 acceptance.')
     _write_likelihood_report(args, result, started)
@@ -1618,9 +1619,11 @@ def build_parser():
     benchmark.add_argument('--quiet', action='store_true')
     benchmark.set_defaults(handler=run_fv_benchmark)
     diagnosis = subparsers.add_parser('joint-bank-grid-diagnose',
-        help='Posthoc axis/three-level spatial diagnosis on a complete old seven-day G2a report.')
+        help='Posthoc axis/spatial diagnosis on a complete old seven-day G2a report.')
     diagnosis.add_argument('--g2a-report', type=Path, required=True)
     diagnosis.add_argument('--output', type=Path, required=True)
+    diagnosis.add_argument('--rho-levels', type=int, choices=(3,4), default=4,
+        help='Rho/Xi spatial levels; four also checks 1601 to 3201 cells. Noise uses three.')
     diagnosis.add_argument('--quiet', action='store_true')
     diagnosis.set_defaults(handler=run_joint_grid_diagnosis)
     for command_name, stage in (('joint-bank-robustness-pilot','G2b'), ('joint-bank-robustness-population','G2c')):

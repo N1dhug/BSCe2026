@@ -164,15 +164,18 @@ def _state_difference(left, right):
     return result
 
 
-def run_spatial_panel(report, panel, *, progress=None):
-    """Serial three-level conditional panel with exact cached FV and timing.
+def run_spatial_panel(report, panel, *, rho_levels=4, progress=None):
+    """Serial conditional panel with exact cached FV and timing.
 
     Raw scores are retained. Conditional state histories are used to compute
     L1 diagnostics, then discarded to bound memory/output size. A subset can
     reveal a failure, but cannot certify a complete parameter bank.
     """
+    rho_levels = checks.positive_integer(rho_levels, 'rho spatial levels')
+    if rho_levels not in (3,4):
+        raise ValueError('Rho spatial levels must be 3 or 4.')
     rows, comparisons = [], []
-    total = 3*sum(len(p['selected_indices']) for p in panel)
+    total = sum((rho_levels if p['coordinates'][0]=='rho' else 3)*len(p['selected_indices']) for p in panel)
     completed = 0
     for selection in panel:
         pair, sid = tuple(selection['coordinates']), selection['sequence_id']
@@ -182,9 +185,10 @@ def run_spatial_panel(report, panel, *, progress=None):
         originals = {r['fv_label']: r for r in report['rows']
                      if tuple(r['coordinates']) == pair and r['parameter_nodes_per_axis'] == 65}
         base_cells = originals['middle']['settings']['x_steps']
-        levels = (base_cells, 2*base_cells-1, 4*base_cells-3)
+        level_count = rho_levels if pair[0]=='rho' else 3
+        levels = tuple(2**level*(base_cells-1)+1 for level in range(level_count))
         scores_by_level = [[] for _ in levels]
-        state_errors = [[], []]
+        state_errors = [[] for _ in range(level_count-1)]
         for original_index, hypothesis in zip(selection['selected_indices'], selection['hypotheses']):
             previous = None
             for level, cells in enumerate(levels):
@@ -213,7 +217,7 @@ def run_spatial_panel(report, panel, *, progress=None):
                 completed += 1
                 if progress is not None:
                     progress(completed, total)
-        for level in (0, 1):
+        for level in range(level_count-1):
             a, b = [np.cumsum(np.column_stack(s), axis=0) for s in scores_by_level[level:level+2]]
             window = (a >= a.max(axis=1)[:,None]-5) | (b >= b.max(axis=1)[:,None]-5)
             delta = b-a
