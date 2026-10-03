@@ -132,6 +132,8 @@ def main(argv=None):
     result = export_distribution_outputs(path, **values)
     print(f'Saved BM1 outputs to {path.resolve()} ({perf_counter() - started:.2f} s).')
     print('Figures: bm_state_density.png, bm_response.png, bm_demand.png')
+    if result['daily_figures']:
+        print(f"Daily comparison figures: {len(result['daily_figures'])} in {path.resolve() / 'daily'}")
     print('Raw data: moments.csv, distribution.npz, summary.json')
     print(result['metadata']['interpretation'])
 

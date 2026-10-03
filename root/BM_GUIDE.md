@@ -1083,6 +1083,42 @@ all-node-fejl og de manglende tids-/quadrature-/parameterkontroller. Færre
 celler er en ny numerisk kandidat, ikke en backendækvivalens fra batchpanelet.
 
 
+### Målt demand og én figur pr. dag
+
+Når `timestamps` følger de gemte slices, tilføjer eksporten automatisk
+`daily/bm_demand_YYYY-MM-DD.png`: én figur pr. lokal kalenderdato. Februar-
+previewets 168 timer giver syv figurer. Demandpanelet viser **Observed demand I**
+(sort), **Predicted demand E[D]** (blå), B-baseline og det latente 5–95%-bånd;
+pris og state vises nedenunder. Alle dagsfigurer fra samme eksport bruger samme
+demand-skala. Målingerne vises også i `bm_response.png`. `moments.csv` indeholder
+`observed` og `D_mean` på de samme timestamps.
+
+Dette er syv udsnit af **den samme frosne ugeprognose**, ikke syv nye daglige
+fits eller prognoser. Manglende målinger forbliver NaN. Båndet omfatter fortsat
+latent D, ikke målestøj. Tidsstempler skal være ISO-datetimes og stemme med den
+gemte numeriske tidsakse; gentagne offset-aware klokketimer bevares. Et
+kontrafaktisk kontrolforløb får ikke spotprisforløbets målte demand som overlay.
+
+For en allerede færdig februar-preview: opdatér den eksisterende preview-mappe,
+og tegn dens `forecast_distribution` igen. Eksempel for den gemte lokale kørsel:
+
+```powershell
+Set-Location -LiteralPath "C:\Users\jvils\OneDrive\Skrivebord\Til VS\fag\7 semester\BSCe2026-bm-preview" -ErrorAction Stop
+git pull --ff-only origin preview/bm-f4-february
+if ($LASTEXITCODE -ne 0) { throw "Preview-opdatering fejlede." }
+
+$bmRun = ".\files\output\bm_1\runs\f4_bm_preview\2022-02-07_20261003T181009354096Z"
+$bmFigures = Join-Path $bmRun ("daily_review_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+python -B -m src.exe.run_model.bm_1.outputs redraw --input (Join-Path $bmRun "forecast_distribution") --output-dir $bmFigures
+if ($LASTEXITCODE -ne 0) { throw "Figureksport fejlede." }
+Invoke-Item -LiteralPath (Join-Path $bmFigures "daily")
+```
+
+Ingen workbook-genimport, FV-solver eller optimizer køres ved `redraw`; målinger,
+prognose, parametervægte og f/g genbruges fra NPZ. Originalrun og rådata overskrives
+ikke. Nye preview-kørsler får dagsfigurerne direkte under deres
+`forecast_distribution/daily/`.
+
 ## Midlertidigt BM-preview til WM4-sammenligning
 
 Kun på testbranchen `preview/bm-f4-february`; kommandoen kører **kun BM1**.

@@ -2,6 +2,7 @@
 
 from argparse import Namespace
 import csv
+from datetime import datetime, timedelta
 import json
 from pathlib import Path
 import tempfile
@@ -10,7 +11,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from src.tools.bm_1_outputs import export_distribution_outputs, summarize_distribution
+from src.tools.bm_1_outputs import _calendar_days, export_distribution_outputs, summarize_distribution
 from src.exe.run_model.bm_1.outputs import main, run_i_report
 
 
@@ -93,6 +94,69 @@ class BMOutputTests(unittest.TestCase):
                     metadata=dict(interpretation='test', demand_unit='Normalized demand'),
                     observations=[1., 1., 1.])
             self.assertFalse(folder.exists())
+
+    def test_weekly_redraw_adds_seven_observed_daily_views_without_replay(self):
+        from matplotlib.figure import Figure
+        values = self.inputs()
+        values['times'] = np.arange(168, dtype=float) / 24
+        for field in ('joint_mass', 'demand_values'):
+            values[field] = np.repeat(values[field][:, :1, :], 168, axis=1)
+        values['baseline'] = np.full(168, .5)
+        values['price'] = np.tile(np.r_[np.full(12, .25), np.full(12, .75)], 7)
+        values['observations'] = 2 + .2 * np.sin(np.arange(168) / 4)
+        values['observations'][76] = np.nan
+        values['timestamps'] = np.array([(datetime(2022, 2, 7) + timedelta(hours=i)).isoformat()
+                                          for i in range(168)])
+        views = {}
+        original = Figure.savefig
+        def capture(fig, path, *args, **kwargs):
+            axis = fig.axes[-1] if Path(path).name == 'bm_response.png' else fig.axes[0]
+            lines = {line.get_label(): line.get_ydata().copy() for line in axis.lines}
+            views[str(path)] = (lines, axis.get_ylim())
+            return original(fig, path, *args, **kwargs)
+        with tempfile.TemporaryDirectory() as temp:
+            source, target = Path(temp) / 'first', Path(temp) / 'redraw'
+            export_distribution_outputs(source, **values, mode='fixed_origin_forecast',
+                metadata=dict(interpretation='one frozen forecast', demand_unit='Normalized demand'))
+            with patch('src.model.bm_1.bm_1.fokker_planc_reference_solver', side_effect=AssertionError('FV replay')), \
+                 patch('src.model.bm_1.bm_1.deterministic_solver', side_effect=AssertionError('ODE replay')), \
+                 patch.object(Figure, 'savefig', capture):
+                main(['redraw', '--input', str(source), '--output-dir', str(target)])
+            summary = json.loads((target / 'summary.json').read_text())
+            self.assertEqual(len(summary['daily_figures']), 7)
+            limits = []
+            for day, name in enumerate(summary['daily_figures']):
+                self.assertTrue((target / name).is_file())
+                self.assertIn(f'2022-02-{7+day:02d}', name)
+                lines, scale = views[str(target / name)]
+                np.testing.assert_array_equal(lines['Observed demand I'], values['observations'][day*24:(day+1)*24])
+                np.testing.assert_array_equal(lines['Predicted demand E[D]'], np.full(24, 2.25))
+                limits.append(scale)
+            self.assertEqual(len(set(limits)), 1)
+            np.testing.assert_array_equal(views[str(target / 'bm_response.png')][0]['Observed demand I'],
+                                          values['observations'])
+            with np.load(source / 'distribution.npz', allow_pickle=False) as a, \
+                 np.load(target / 'distribution.npz', allow_pickle=False) as b:
+                for key in a.files:
+                    np.testing.assert_array_equal(a[key], b[key])
+
+    def test_daily_dates_must_match_times_before_creating_outputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            for stamps in (['bad'] * 3, ['2022-02-07T00:00', '2022-02-07T01:00', '2022-02-08T00:00']):
+                folder = Path(temp) / 'bad'
+                with self.assertRaisesRegex(ValueError, 'timestamps'):
+                    export_distribution_outputs(folder, **self.inputs(), timestamps=stamps,
+                        mode='fixed_origin_forecast', metadata=dict(interpretation='test', demand_unit='Normalized demand'))
+                self.assertFalse(folder.exists())
+
+    def test_daily_grouping_preserves_repeated_offset_aware_clock_hour(self):
+        stamps = ['2022-10-30T01:00:00+02:00', '2022-10-30T02:00:00+02:00',
+                  '2022-10-30T02:00:00+01:00', '2022-10-30T03:00:00+01:00']
+        days = _calendar_days(stamps, np.arange(4, dtype=float))
+        self.assertEqual(len(days), 1)
+        self.assertEqual(days[0][0], '2022-10-30')
+        np.testing.assert_array_equal(days[0][1], np.arange(4))
+        np.testing.assert_array_equal(days[0][2], [1., 2., 3., 4.])
 
     def test_sparse_slices_preserve_full_declared_price_plan_and_origin(self):
         from matplotlib.axes import Axes
