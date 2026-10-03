@@ -3,7 +3,7 @@
 **F4-status og næste opgave:** [F4.md](F4.md).
 Den aktive prioritering fra 3. oktober 2026 er I-baseline på det afsluttede
 F-spor (integration nu implementeret), derefter obligatorisk H-f/g inden den endelige samlede I/J-leverance;
-G2b/G2c er fortsat blokeret og udsat fra den kritiske vej. Bevar kørende G2a-v2
+G2b/G2c er fortsat blokeret og udsat fra den kritiske vej. Bevar arkiveret G2a-v2
 på dens oprindelige kildecommit; nyt arbejde kræver et separat checkout/worktree.
 **Sammenhængende matematik:** [f4/main.tex](f4/main.tex) + [f4/notes.tex](f4/notes.tex).
 **Afsluttet F1–F3-evidens:** [BM_REFERENCE.md](BM_REFERENCE.md).
@@ -996,6 +996,13 @@ ikke gemt til uafhængig genberegning. G2b/G2c-prerequisites er uændrede.
 
 ## Genoptagelig rektangulær G2a v2
 
+**Afsluttet 3. oktober 2026:** Windows-run
+`f4_g_g2a_rectangular_v2_20261003_135421` på ren `01c7c153` er komplet og
+rå-reviewet: 8/8 units, 16 banker, 42.312 replays, alle 14 kontroller bestået,
+exit=0. Ingen ny G-kørsel er nødvendig. De følgende start/resume-kommandoer er
+reproduktionsvejledning; det afsluttede run-arkiv og dets source bevares.
+Næste aktive arbejde er H1 og H's datakontrakt; G2b/G2c forbliver blokeret.
+
 Designet er fastlagt efter den negative v1 og diagnosen. CLI'en låser rho/Xi
 9×65→17×129 på 1601/3201 rumceller og støjpar 33×65→65×129 på 6401/12801
 celler; h=1/1536 mod 1/3072 og q=3 mod 5 kontrolleres på begge grids.
@@ -1057,9 +1064,34 @@ skrivere. Store v1-rådata genvalideres ved hver invocation; opstart kan derfor
 være længere end selve den første blok.
 
 Linux-kilde `502d0506` har målt to blokke med reel restore (256 hypoteser),
-men ingen fuld unit eller bestået v2. Detaljer i F4-status. Dette er ikke en
-Windows-tidsprognose. **G2b/G2c forbliver blokeret**, også hvis v2 senere består,
+men denne tidlige Linux-måling gav ingen fuld unit eller accept. Det komplette
+Windows-resultat er nu registreret i F4-status. **G2b/G2c forbliver blokeret**, selv om v2 består,
 indtil deres grid/settings og dependency-kontrakt er registreret særskilt.
+
+Det præcise slutresumé er gemt som
+`files/output/bm_1/runs/estimation/g2a_rectangular_windows_v2_summary.json.gz`;
+det uafhængige review hedder `g2a_rectangular_windows_v2_raw_review.json`.
+Råreviewets 510 arraykontroller og alle 168 prefixer kræver nul nye FV-replays.
+De otte NPZ-hashes står i reviewet; behold også originalt manifest og terminalfil.
+Den uploadede gamle `summary.json` og partial checkpoint er overhalet af de
+komplette units og må ikke bruges som slutstatus. Sidste fortsættelses ydre
+timer var 144.75 min; totalen på tværs af alle invocations er ikke registreret.
+
+Kun hvis reviewet skal reproduceres, kan følgende køres fra ny `main` med adgang
+til det **uændrede afsluttede arkiv**. Scriptet er afgrænset til dette registrerede
+Windows-resultat på `01c7c153`; output må ikke findes i forvejen. Det reproducerer
+truth/observationer og råaritmetik, uden conditional FV-replays eller ændringer
+i run-mappen. Individuelle conditional state-historier er ikke gemt og kan
+derfor ikke rekonstrueres fra arkivet alene.
+
+```powershell
+python -B root/f4/review_g2a_rectangular.py `
+  --run-dir "files/output/bm_1/runs/estimation/f4_g_g2a_rectangular_v2_20261003_135421" `
+  --v1-report "files/output/bm_1/runs/estimation/f4_g_g2a_continued_7d_v1.json.gz" `
+  --log "files/output/bm_1/runs/estimation/f4_g_g2a_rectangular_v2_20261003_135421.txt" `
+  --output "files/output/bm_1/runs/estimation/g2a_rectangular_windows_v2_raw_review_reproduced.json"
+if ($LASTEXITCODE -ne 0) { throw "Råreview fejlede; behold alle originalfiler." }
+```
 
 ## G2b/G2c og hurtigere FV (efter syvdages G2a-review)
 

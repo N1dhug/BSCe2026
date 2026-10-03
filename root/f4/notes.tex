@@ -1991,14 +1991,70 @@ var \textbf{12.8889 / 12.6950 s}; samlede kommandoer
 Det dækker kun rho/Xi middle ved lave rho-noder. Det er hverken full-bank
 accept eller et tidsløfte for støjparrets finere settings og Windows.
 Long-double partial normalisatorer/massesummer og udvalgte friske scores
-blev kontrolleret uafhængigt. Alle numeriske v2-gates skal stadig evalueres
-på den komplette pilot. 11 nye tests kontrollerer matematik, reel spawn,
+blev kontrolleret uafhængigt. På dette tidlige tidspunkt manglede evaluering
+af alle gates på den komplette pilot. 11 nye tests kontrollerer matematik, reel spawn,
 restore, beskadigede data, forkert source/dependency og nedbrud før
 final-publicering; den fulde regression køres i PR-CI.
 
 \textbf{G2b/G2c er stadig blokeret.} Selv bestået v2 vil kræve særskilt
 registrering af deres rektangulære grids/settings og dependency-kontrakt;
 den eksisterende kvadratiske 33/65-kørsel frigives ikke af denne pilot.
+
+\paragraph{Afsluttet syvdages Windows-resultat og uafhængigt råreview.}
+Run \texttt{f4\_g\_g2a\_rectangular\_v2\_20261003\_135421} er komplet på
+ren source \texttt{01c7c153}: \textbf{8/8 units, 16 bankreduktioner,
+42312 conditional replays, alle 14 kontroller bestået og exit=0}.
+Alle otte råfilers SHA256 matcher slutresuméet. Source, design og dependency
+matcher det oprindelige manifest; v1-filens digest og negative accept bevares.
+Alle maxima nedenfor er over 168 observationsprefixer og, for FV-kolonnerne,
+begge parametergrids samt tid-, rum- og q-kontrollerne.
+
+\begin{center}\small
+\begin{tabular}{lrrrr}
+\toprule
+Par & FV aktive odds & FV weight TV & FV evidensfejl & FV state L1 \\
+\midrule
+$(\rho,\Xi)$ & 0.0540768 & 0.00397978 & 0.0193239 & 0.00557173 \\
+$(\sigma_x,\sigma_y)$ & 0.0565491 & 0.00188787 & 0.00831028 & 0.00292391 \\
+Uændret gate & 0.1 & 0.01 & 0.1 & 0.02 \\
+\bottomrule
+\end{tabular}\end{center}
+
+Alle 12 FV-kontroller består, inklusive faktisk step-refinement.
+Kontinuerte parameter-hat-TV-maxima er \textbf{0.0102194 / 0.0178465}
+mod 0.02 med $10^{-8}$ margin. Successiv TV-kvadraturforskel er højst
+$1.8325741\cdot10^{-9}$ mod $10^{-8}$; mean/sd-, evidens- og state-gates
+består også. Dette er numerisk konvergens, ikke recovery. Kandidat-hatens
+normalized rho-SD er stadig \textbf{0.250075} efter syv døgn.
+
+Det separate script
+\texttt{root/f4/review\_g2a\_rectangular.py} reproducerer koblet truth og
+observationer én gang per par og genbygger alle 16 banker og hele resuméet
+fra råfilerne, med \textbf{nul nye FV-replays}. Long-double Bayes-aritmetik,
+fysiske momenter, marginaler og intervaller kontrolleres uafhængigt.
+State-remap og aktiv-window-odds reproducerer 12 FV-kontroller.
+Hat-momenter integreres direkte med Gauss-reglen, mens TV kontrolleres
+med separat SciPy-interpolation og adaptiv integration af absolut bilineær
+forskel på alle prefixer. Adaptive TV-maxima er
+\textbf{0.0102193713337175 / 0.0178464850011745}; alle \textbf{510 arraykontroller}
+består. Største gemte state-massefejl er $2.62457\cdot10^{-13}$,
+største conditional fejl $7.32414\cdot10^{-12}$, mindste cellemasse nul.
+Ingen lov repareres eller normaliseres. Individuelle conditional state-historier
+er ikke gemt; reviewet rekonstruerer derfor ikke hver state-numerator
+uafhængigt. Et gammelt partial checkpoint er overhalet af de otte komplette units.
+
+Evidensen er registreret i estimation-output som
+\texttt{g2a\_rectangular\_windows\_v2\_summary.json.gz} og
+\texttt{g2a\_rectangular\_windows\_v2\_raw\_review.json}; sidstnævnte indeholder
+råfil-hashes. Originalt manifest, NPZ-units og log bevares i run-arkivet.
+Sidste fortsatte invocation tog \textbf{8599.6915 s} internt og
+\textbf{144.75 min} på ydre timer. Dette er sidste fortsættelse med opsamling,
+ikke samlet walltime over alle invocations.
+
+\textbf{G2a-v2 afsluttes med numerisk udviklingsaccept på samme gamle records.}
+Det certificerer ikke oprindelig dual-cell-lov, eksisterende kvadratiske
+G2b/G2c-settings, held-out recovery, historisk H-fit eller forecast.
+G2b/G2c forbliver blokeret og udsat; H1 og H's datakontrakt er næste aktive arbejde.
 
 \subsection{G2b/G2c: parret robusthed og genoptagelig population}
 Studiernes matematiske definition nedenfor bevares, mens deres prioritet i

@@ -1,0 +1,581 @@
+{
+  "stage": "G2a-rectangular-v2-uploaded-raw-review",
+  "review_date": "2026-10-03",
+  "completed": true,
+  "passes": true,
+  "completed_units": 8,
+  "bank_reductions": 16,
+  "conditional_runs": 42312,
+  "new_fv_replays": 0,
+  "review_script_sha256": "6b5f5e2b50cf921248a8dca7c1384fbe3a8a735d7ae3c4a1ec9e0b3e0ece3010",
+  "original_source": {
+    "source_commit": "01c7c1532ea1b686d3ba47a2fca725d082ea4ca2",
+    "working_tree_dirty": false
+  },
+  "dependencies": {
+    "g2a_v1": {
+      "sha256": "c63d418bf58b34182bad575137c8b58bbad535a2532a2746856f9dad638121b6",
+      "source_commit": "86dc765023e8781d341db3bda9156a5d83465ad3",
+      "dependencies": {
+        "g1c0": {
+          "sha256": "5d5ef69d07ff719bfb79a354da07ee2a59d076bd740fce6b597980bb1f045b78",
+          "source_commit": "1336e358b72e1ea1cc33bb4a2fed52cdad39d6f8",
+          "g1b3": {
+            "sha256": "80e3067ae1cfd8c6a00e4a6c8ae9473d382ce9804ca1a3db05bf025b467357d1",
+            "source_commit": "1336e358b72e1ea1cc33bb4a2fed52cdad39d6f8",
+            "g1b0": {
+              "sha256": "dabb7ba1fed859fed1318119e7610a1ec24c4b1591510536537f8a2fc0d97f38",
+              "source_commit": "990b0508884cbb54b345121a277642bd22d6e05e",
+              "g1a": {
+                "sha256": "6fe109ff256f84cc33aaec7cd36ef988aefbf11def689108a11f17a5c031e8f4",
+                "source_commit": "de6fcd5e6f2f0c8fa715f98d0e46fb0370806401",
+                "g0": {
+                  "sha256": "4b27720cd4f44bf9e851a70cafca755ccceae9d4e291931e0b0167739f749f04",
+                  "source_commit": "66709699bad937ab0b36d89f8bbf7bcb12dbc3c1"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "files": {
+    "manifest": {
+      "sha256": "0c0f346e680411a200f4735e60268fa91296ad197ed3c3a55549d6eb6eee598d"
+    },
+    "final_summary": {
+      "uploaded_name": "summary(1).json",
+      "sha256": "fdf5554d97ced6eb8a0e5ecf3d87a7a4a04ba1e68aa8f669b996eb693cde438d"
+    },
+    "terminal_log": {
+      "name": "f4_g_g2a_rectangular_v2_20261003_135421.txt",
+      "sha256": "91b7d76acca8b4503fb743d625603c043a492f34bec2706fe3e09ff73cfb4d44"
+    },
+    "g2a_v1": {
+      "sha256": "c63d418bf58b34182bad575137c8b58bbad535a2532a2746856f9dad638121b6"
+    }
+  },
+  "raw_units": [
+    {
+      "name": "rho_Xi_1358_middle",
+      "sha256": "0295d92e221ea84df76cf5a6d865412080a63f1c041c538da9f12706a3cd791a",
+      "bytes": 16018637
+    },
+    {
+      "name": "rho_Xi_1358_time_fine",
+      "sha256": "d02a5ff8ce49e0470ab95163626e8d696084429de91cfe31ed402706fb2ae70a",
+      "bytes": 16020322
+    },
+    {
+      "name": "rho_Xi_1358_spatial_fine",
+      "sha256": "1b93ad7297d098d347d232bb01a4c1d721467674b1c027781088da32346d3e5c",
+      "bytes": 24542091
+    },
+    {
+      "name": "rho_Xi_1358_quadrature_fine",
+      "sha256": "5259222f4b8fad101accb546906a0bdb22ff3a897a91741ce10a4f3638c567ff",
+      "bytes": 16014735
+    },
+    {
+      "name": "sigma_x_sigma_y_1359_middle",
+      "sha256": "e8c04fb667e89ed2c1ec028176bcbf1ecbd251d9c47754c4ec82ff8c209e720b",
+      "bytes": 60980362
+    },
+    {
+      "name": "sigma_x_sigma_y_1359_time_fine",
+      "sha256": "744df1098029a7afc9e6988c89dcfa4793a90bb15592037735584bbe04bd5327",
+      "bytes": 60984920
+    },
+    {
+      "name": "sigma_x_sigma_y_1359_spatial_fine",
+      "sha256": "d39027f58f2bd9603cee1d54bdbac7067c917bd444d7aca7b8857f348b045ef3",
+      "bytes": 94146591
+    },
+    {
+      "name": "sigma_x_sigma_y_1359_quadrature_fine",
+      "sha256": "00fcee155206440377286336da414a211c0b73215cbbe87f9a713a9672aebd1f",
+      "bytes": 60963821
+    }
+  ],
+  "checks": {
+    "production_raw_validation": true,
+    "source_dependency_design_identity": true,
+    "exact_unit_sha256": true,
+    "independent_long_double_bayes": true,
+    "independent_fv_comparisons": 12,
+    "independent_adaptive_hat_comparisons": 2,
+    "observation_prefixes_per_comparison": 168,
+    "independent_day_checkpoints": 6,
+    "rebuilt_summary_matches": true,
+    "terminal_exit": 0
+  },
+  "maximum_abs_saved_state_mass_error": 2.62456723021387e-13,
+  "maximum_conditional_mass_error": 7.324141293452158e-12,
+  "minimum_conditional_cell_mass": 0.0,
+  "independent_array_checks": 510,
+  "maximum_absolute_arithmetic_errors": {
+    "prior": 7.225123277443402e-16,
+    "Bayes_log_weights": 3.5800251652062798e-12,
+    "Bayes_evidence": 1.8299251003384143e-13,
+    "Bayes_increments": 1.4328815911568427e-15,
+    "weight_normalization": 1.3986208025063007e-17,
+    "physical_moments": 1.0924692140507064e-15,
+    "boundary_weights": 2.8175703957467046e-16,
+    "effective_hypotheses": 5.849187800777145e-11,
+    "marginal_values": 0.0,
+    "marginal_weights": 5.129360478028921e-16,
+    "marginal_endpoints": 2.461138931542095e-16,
+    "discrete_intervals": 0.0,
+    "independent_FV_controls": 8.548717289613705e-13,
+    "independent_hat_mass": 6.217248937900877e-15,
+    "independent_hat_moments": 3.105071755271638e-11,
+    "independent_hat_controls": 6.538738300809754e-12,
+    "independent_checkpoints": 4.589766067208956e-13
+  },
+  "adaptive_parameter_tv": [
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "maximum_parameter_tv": 0.010219371333717522,
+      "quadrature_error_estimate": 9.805492473782909e-17
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "maximum_parameter_tv": 0.017846485001174514,
+      "quadrature_error_estimate": 4.547220228938614e-16
+    }
+  ],
+  "comparisons": [
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "sequence_id": 1358,
+      "kind": "FV_time",
+      "parameter_grid_shape": [
+        9,
+        65
+      ],
+      "left": "9x65/middle/quadrature",
+      "right": "9x65/time_fine/quadrature",
+      "maximum_log_odds_error": 0.008098525216553298,
+      "maximum_all_node_log_odds_error": 0.23938646686355014,
+      "maximum_weight_tv": 0.00045712502501639365,
+      "maximum_cumulative_evidence_error": 0.009734412650232116,
+      "maximum_predicted_l1": 0.003779263320660662,
+      "maximum_posterior_l1": 0.005570937610094183,
+      "passes": true,
+      "actual_step_refined": true
+    },
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "sequence_id": 1358,
+      "kind": "FV_spatial",
+      "parameter_grid_shape": [
+        9,
+        65
+      ],
+      "left": "9x65/middle/quadrature",
+      "right": "9x65/spatial_fine/quadrature",
+      "maximum_log_odds_error": 0.0528756160183832,
+      "maximum_all_node_log_odds_error": 0.29960268394257383,
+      "maximum_weight_tv": 0.003979778464911021,
+      "maximum_cumulative_evidence_error": 0.019287807846154692,
+      "maximum_predicted_l1": 0.002839244648790688,
+      "maximum_posterior_l1": 0.003282279436282536,
+      "passes": true
+    },
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "sequence_id": 1358,
+      "kind": "FV_quadrature",
+      "parameter_grid_shape": [
+        9,
+        65
+      ],
+      "left": "9x65/middle/quadrature",
+      "right": "9x65/quadrature_fine/quadrature",
+      "maximum_log_odds_error": 2.2737367544323206e-13,
+      "maximum_all_node_log_odds_error": 7.958078640513122e-13,
+      "maximum_weight_tv": 2.2943353190108376e-15,
+      "maximum_cumulative_evidence_error": 5.684341886080802e-14,
+      "maximum_predicted_l1": 2.207071132708803e-15,
+      "maximum_posterior_l1": 2.2731564313808303e-15,
+      "passes": true
+    },
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "sequence_id": 1358,
+      "kind": "FV_time",
+      "parameter_grid_shape": [
+        17,
+        129
+      ],
+      "left": "17x129/middle/quadrature",
+      "right": "17x129/time_fine/quadrature",
+      "maximum_log_odds_error": 0.008923642770923834,
+      "maximum_all_node_log_odds_error": 0.23948500877983747,
+      "maximum_weight_tv": 0.00045296059682691035,
+      "maximum_cumulative_evidence_error": 0.00973526833587357,
+      "maximum_predicted_l1": 0.0037796872384235278,
+      "maximum_posterior_l1": 0.0055717280359731305,
+      "passes": true,
+      "actual_step_refined": true
+    },
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "sequence_id": 1358,
+      "kind": "FV_spatial",
+      "parameter_grid_shape": [
+        17,
+        129
+      ],
+      "left": "17x129/middle/quadrature",
+      "right": "17x129/spatial_fine/quadrature",
+      "maximum_log_odds_error": 0.05407682365034816,
+      "maximum_all_node_log_odds_error": 0.29960268394257383,
+      "maximum_weight_tv": 0.003956311186459177,
+      "maximum_cumulative_evidence_error": 0.019323926424803517,
+      "maximum_predicted_l1": 0.002885898722531757,
+      "maximum_posterior_l1": 0.0033293976417761674,
+      "passes": true
+    },
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "sequence_id": 1358,
+      "kind": "FV_quadrature",
+      "parameter_grid_shape": [
+        17,
+        129
+      ],
+      "left": "17x129/middle/quadrature",
+      "right": "17x129/quadrature_fine/quadrature",
+      "maximum_log_odds_error": 2.8421709430404007e-13,
+      "maximum_all_node_log_odds_error": 9.094947017729282e-13,
+      "maximum_weight_tv": 2.7306688274443085e-15,
+      "maximum_cumulative_evidence_error": 2.842170943040401e-14,
+      "maximum_predicted_l1": 2.4176384116430603e-15,
+      "maximum_posterior_l1": 2.3574530463420965e-15,
+      "passes": true
+    },
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "sequence_id": 1358,
+      "kind": "parameter_hat",
+      "left": "9x65/middle/quadrature",
+      "right": "17x129/middle/quadrature",
+      "maximum_parameter_tv": 0.010219371333715773,
+      "maximum_unit_mean_error": 0.0013354761405920401,
+      "maximum_unit_sd_error": 0.0007009371088769201,
+      "maximum_cumulative_evidence_error": 0.010188343577894443,
+      "maximum_tv_quadrature_refinement": 3.469446951953614e-18,
+      "maximum_predicted_l1": 0.004759989658387669,
+      "maximum_posterior_l1": 0.004179077238376437,
+      "passes": true
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "sequence_id": 1359,
+      "kind": "FV_time",
+      "parameter_grid_shape": [
+        33,
+        65
+      ],
+      "left": "33x65/middle/quadrature",
+      "right": "33x65/time_fine/quadrature",
+      "maximum_log_odds_error": 0.045240706012933174,
+      "maximum_all_node_log_odds_error": 11.2941032824329,
+      "maximum_weight_tv": 0.00124853595940827,
+      "maximum_cumulative_evidence_error": 0.008310280404487003,
+      "maximum_predicted_l1": 0.0023186402599308775,
+      "maximum_posterior_l1": 0.002923912116510303,
+      "passes": true,
+      "actual_step_refined": true
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "sequence_id": 1359,
+      "kind": "FV_spatial",
+      "parameter_grid_shape": [
+        33,
+        65
+      ],
+      "left": "33x65/middle/quadrature",
+      "right": "33x65/spatial_fine/quadrature",
+      "maximum_log_odds_error": 0.05523534689302778,
+      "maximum_all_node_log_odds_error": 4.896826816335704,
+      "maximum_weight_tv": 0.0018878172422514103,
+      "maximum_cumulative_evidence_error": 0.0027177112529557235,
+      "maximum_predicted_l1": 0.0012709692736601983,
+      "maximum_posterior_l1": 0.0012674264103257843,
+      "passes": true
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "sequence_id": 1359,
+      "kind": "FV_quadrature",
+      "parameter_grid_shape": [
+        33,
+        65
+      ],
+      "left": "33x65/middle/quadrature",
+      "right": "33x65/quadrature_fine/quadrature",
+      "maximum_log_odds_error": 3.410605131648481e-13,
+      "maximum_all_node_log_odds_error": 2.7853275241795927e-11,
+      "maximum_weight_tv": 2.5862571765858148e-15,
+      "maximum_cumulative_evidence_error": 1.1368683772161603e-13,
+      "maximum_predicted_l1": 1.5497856259118714e-15,
+      "maximum_posterior_l1": 1.5423676529825011e-15,
+      "passes": true
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "sequence_id": 1359,
+      "kind": "FV_time",
+      "parameter_grid_shape": [
+        65,
+        129
+      ],
+      "left": "65x129/middle/quadrature",
+      "right": "65x129/time_fine/quadrature",
+      "maximum_log_odds_error": 0.04716664304798712,
+      "maximum_all_node_log_odds_error": 11.294996780243594,
+      "maximum_weight_tv": 0.0012487531967104977,
+      "maximum_cumulative_evidence_error": 0.008310280407158643,
+      "maximum_predicted_l1": 0.002318640257776422,
+      "maximum_posterior_l1": 0.0029239121148571887,
+      "passes": true,
+      "actual_step_refined": true
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "sequence_id": 1359,
+      "kind": "FV_spatial",
+      "parameter_grid_shape": [
+        65,
+        129
+      ],
+      "left": "65x129/middle/quadrature",
+      "right": "65x129/spatial_fine/quadrature",
+      "maximum_log_odds_error": 0.05654908535113634,
+      "maximum_all_node_log_odds_error": 4.896826816854855,
+      "maximum_weight_tv": 0.0018878663696280124,
+      "maximum_cumulative_evidence_error": 0.002717791447764739,
+      "maximum_predicted_l1": 0.0012698095806480485,
+      "maximum_posterior_l1": 0.0012674245137080217,
+      "passes": true
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "sequence_id": 1359,
+      "kind": "FV_quadrature",
+      "parameter_grid_shape": [
+        65,
+        129
+      ],
+      "left": "65x129/middle/quadrature",
+      "right": "65x129/quadrature_fine/quadrature",
+      "maximum_log_odds_error": 3.979039320256561e-13,
+      "maximum_all_node_log_odds_error": 2.7853275241795927e-11,
+      "maximum_weight_tv": 3.3533968426162463e-15,
+      "maximum_cumulative_evidence_error": 5.684341886080802e-14,
+      "maximum_predicted_l1": 1.869122570309806e-15,
+      "maximum_posterior_l1": 1.9765028034863463e-15,
+      "passes": true
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "sequence_id": 1359,
+      "kind": "parameter_hat",
+      "left": "33x65/middle/quadrature",
+      "right": "65x129/middle/quadrature",
+      "maximum_parameter_tv": 0.017846485001043844,
+      "maximum_unit_mean_error": 0.0001309128119979519,
+      "maximum_unit_sd_error": 0.0010311316518690425,
+      "maximum_cumulative_evidence_error": 0.00029714947470083075,
+      "maximum_tv_quadrature_refinement": 1.8325740959446168e-09,
+      "maximum_predicted_l1": 0.00029185032480920646,
+      "maximum_posterior_l1": 0.00019334276410544097,
+      "passes": true
+    }
+  ],
+  "checkpoints": [
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "sequence_id": 1358,
+      "days": 1,
+      "observation_count": 24,
+      "hat_unit_mean": [
+        0.39676116149314844,
+        0.8126198056963865
+      ],
+      "hat_unit_sd": [
+        0.2718954278985239,
+        0.06442584058615822
+      ],
+      "hat_unit_covariance": 0.0009181087668795329,
+      "cumulative_log_evidence": 41.669533706637544,
+      "mean_predictive_y_log_score": 1.7362305711098978
+    },
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "sequence_id": 1358,
+      "days": 3,
+      "observation_count": 72,
+      "hat_unit_mean": [
+        0.3654656487279783,
+        0.8033134597432874
+      ],
+      "hat_unit_sd": [
+        0.2486171477402547,
+        0.04117332123696328
+      ],
+      "hat_unit_covariance": 4.791041708729349e-05,
+      "cumulative_log_evidence": 119.18580298889282,
+      "mean_predictive_y_log_score": 1.6553583748457337
+    },
+    {
+      "coordinates": [
+        "rho",
+        "Xi"
+      ],
+      "sequence_id": 1358,
+      "days": 7,
+      "observation_count": 168,
+      "hat_unit_mean": [
+        0.4243085788931387,
+        0.7832828416181374
+      ],
+      "hat_unit_sd": [
+        0.2500750653478409,
+        0.02818019301617881
+      ],
+      "hat_unit_covariance": -0.00023185927349533841,
+      "cumulative_log_evidence": 290.60290833803555,
+      "mean_predictive_y_log_score": 1.7297792162978307
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "sequence_id": 1359,
+      "days": 1,
+      "observation_count": 24,
+      "hat_unit_mean": [
+        0.3844151498357565,
+        0.5061072765061344
+      ],
+      "hat_unit_sd": [
+        0.1888319620913417,
+        0.10333971757370218
+      ],
+      "hat_unit_covariance": -0.01126728037009056,
+      "cumulative_log_evidence": 39.643232353359174,
+      "mean_predictive_y_log_score": 1.6518013480566323
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "sequence_id": 1359,
+      "days": 3,
+      "observation_count": 72,
+      "hat_unit_mean": [
+        0.438806273125926,
+        0.538115641474475
+      ],
+      "hat_unit_sd": [
+        0.08946238355816151,
+        0.04452661954955525
+      ],
+      "hat_unit_covariance": -0.0016745882276312796,
+      "cumulative_log_evidence": 119.03724352186262,
+      "mean_predictive_y_log_score": 1.6532950489147586
+    },
+    {
+      "coordinates": [
+        "sigma_x",
+        "sigma_y"
+      ],
+      "sequence_id": 1359,
+      "days": 7,
+      "observation_count": 168,
+      "hat_unit_mean": [
+        0.45062486608928654,
+        0.522833569727776
+      ],
+      "hat_unit_sd": [
+        0.061435064968326486,
+        0.03208726262532718
+      ],
+      "hat_unit_covariance": -0.000980261842995933,
+      "cumulative_log_evidence": 285.597215733692,
+      "mean_predictive_y_log_score": 1.699983426986262
+    }
+  ],
+  "final_invocation_seconds": 8599.691523099784,
+  "final_invocation_external_minutes": 144.75,
+  "all_invocations_total_seconds": null,
+  "releases_existing_g2b_g2c": false,
+  "interpretation": "Same-record numerical development acceptance only; original negative v1 and blocked square G2b/G2c are preserved.",
+  "limitations": [
+    "Conditional state histories are not stored; individual state-mixture numerators cannot be independently reconstructed without new FV replays.",
+    "The separately uploaded old partial checkpoint is superseded by eight complete units and is not needed for final acceptance.",
+    "No held-out recovery, robustness population, historic-data fit or forecast acceptance."
+  ],
+  "review_seconds": 58.883896386993
+}

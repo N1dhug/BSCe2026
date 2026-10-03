@@ -10,8 +10,10 @@ chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
   Obligatorisk H-f/g
   skal gennemføres før den endelige samlede I/J-leverance. G2b/G2c er en udsat og fortsat
   blokeret udvidelse; markér dem ikke som gennemført.
-- Bevar G2a-v2's kørende checkout og oprindelige kildecommit. Ny kode i en anden
-  worktree må ikke ændre kilden under en kørsel eller løsne resume-kontrollen.
+- G2a-v2 er komplet, rå-reviewet og numerisk bestået på ren `01c7c153`:
+  8 units, 42.312 replays, 14 kontroller; nul nye FV-replays i råreviewet.
+  Bevar original source og arkiv; løs ikke resume-kontrollen. Det frigiver
+  hverken G2b/G2c eller recovery/forecast. Næste aktive arbejde er H1/H's datakontrakt.
 - Metode og forsøgsdefinitioner: `root/f4/notes.tex`; kommandoer: `root/BM_GUIDE.md`.
   Opdatér fælles status i `root/F4.md` sammen med en leverance.
 - Genbrug F1–F3-interfaces og gennemført evidens. Bevar grids, seeds, observationers
