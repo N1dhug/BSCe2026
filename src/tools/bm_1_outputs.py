@@ -6,6 +6,7 @@ The exporter never replaces this joint law by demand at a mean parameter/state.
 """
 
 import csv
+from datetime import datetime
 import json
 from pathlib import Path
 
@@ -14,6 +15,41 @@ import numpy as np
 
 MODES = ('reference_simulation', 'fixed_origin_forecast', 'predictive_filter',
          'posterior_filter', 'retrospective_fit', 'counterfactual_control')
+
+
+def _calendar_days(timestamps, hours):
+    """Group exact slices by their declared local date, retaining elapsed time.
+
+    ISO timestamps must agree with the numeric time grid. An offset-aware
+    repeated clock hour remains two separate samples; missing hours stay absent.
+    """
+    try:
+        stamps = [datetime.fromisoformat(stamp) for stamp in timestamps]
+        elapsed = np.array([(stamp - stamps[0]).total_seconds() / 3600 for stamp in stamps])
+    except (ValueError, TypeError) as exc:
+        raise ValueError('timestamps must be consistent ISO datetimes.') from exc
+    if not np.allclose(elapsed, hours - hours[0], rtol=0, atol=1e-8):
+        raise ValueError('timestamps must align with the stored numeric time grid.')
+    dates = np.array([stamp.date().isoformat() for stamp in stamps])
+    days = []
+    for date in dict.fromkeys(dates):
+        indices = np.flatnonzero(dates == date)
+        midnight = stamps[indices[0]].replace(hour=0, minute=0, second=0, microsecond=0)
+        day_hours = np.array([(stamps[i] - midnight).total_seconds() / 3600 for i in indices])
+        days.append((date, indices, day_hours))
+    return days
+
+
+def _plot_demand(axis, hours, result, moments, indices=slice(None)):
+    """Use the same stored predictions, measured values and bands in all views."""
+    axis.fill_between(hours, moments['p05'][indices], moments['p95'][indices],
+                      color='tab:blue', alpha=.2, label='Latent D: pointwise 5–95%')
+    axis.plot(hours, moments['mean'][indices], color='tab:blue', linewidth=1.8,
+              label='Predicted demand E[D]')
+    axis.plot(hours, result['baseline'][indices], '--', color='tab:orange', label='Baseline B')
+    if np.isfinite(result['observations']).any():
+        axis.plot(hours, result['observations'][indices], 'o-', color='black',
+                  markersize=3, linewidth=1.3, label='Observed demand I')
 
 
 def _moments(values, masses):
@@ -93,13 +129,15 @@ def export_distribution_outputs(directory, *, times, x_edges, joint_mass, demand
                                 observations=None, timestamps=None, deterministic_state=None,
                                 deterministic_demand=None, time_origin=None,
                                 price_edges=None, price_levels=None):
-    """Save three figures, moments CSV, full joint NPZ and interpretation JSON.
+    """Save overview figures, dated daily comparisons, CSV, NPZ and metadata.
 
 Bands are pointwise 5--95% quantiles of latent X/D, on the stored discrete
 supports. They exclude observation noise and simultaneous trajectory coverage.
 The caller must declare units, information set and omitted uncertainty in metadata.
 An existing destination is never overwritten. Plotting uses stored time slices;
 it does not refine sparse forecasts or change the model's output/time grid.
+ISO timestamps additionally create one daily figure per represented local date.
+All daily demand panels share a vertical scale; missing observations stay NaN.
 """
     if mode not in MODES:
         raise ValueError(f'mode must be one of {MODES}.')
@@ -148,6 +186,7 @@ it does not refine sparse forecasts or change the model's output/time grid.
         timestamps = np.asarray(timestamps, dtype=str)
         if timestamps.shape != times.shape:
             raise ValueError('timestamps must match times.')
+    calendar_days = [] if timestamps is None else _calendar_days(timestamps, hours)
     X, D = result['X'], result['D']
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=False)
@@ -184,9 +223,7 @@ it does not refine sparse forecasts or change the model's output/time grid.
     axes[1].plot(hours, D['mean'] - result['baseline'], label='E[D] − B: net charging demand')
     axes[1].axhline(0, color='grey', linewidth=.7)
     axes[1].set_ylabel(unit)
-    axes[2].fill_between(hours, D['p05'], D['p95'], alpha=.2, label='Latent D: pointwise 5–95%')
-    axes[2].plot(hours, D['mean'], label='E[D]')
-    axes[2].plot(hours, result['baseline'], label='Baseline B', linestyle='--')
+    _plot_demand(axes[2], hours, result, D)
     if 'deterministic_demand' in optional:
         axes[2].plot(hours, optional['deterministic_demand'], label='Deterministic D', linestyle=':')
     axes[2].set(ylabel=unit, xlabel='Hours from declared time origin')
@@ -196,11 +233,7 @@ it does not refine sparse forecasts or change the model's output/time grid.
     save(fig, 'bm_response.png')
 
     fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
-    axes[0].fill_between(hours, D['p05'], D['p95'], alpha=.2, label='Latent D: pointwise 5–95%')
-    axes[0].plot(hours, D['mean'], label='BM1 E[D]')
-    axes[0].plot(hours, result['baseline'], '--', label='Baseline B')
-    if np.isfinite(result['observations']).any():
-        axes[0].plot(hours, result['observations'], 'o-', markersize=3, label='Observed demand')
+    _plot_demand(axes[0], hours, result, D)
     axes[0].set(title='BM1 demand — ' + title, ylabel=unit)
     axes[1].step(price_hours, price_plot, where='post', label='Normalized price U')
     axes[1].set_ylabel('Price U')
@@ -211,6 +244,36 @@ it does not refine sparse forecasts or change the model's output/time grid.
         ax.grid(True, alpha=.25)
         ax.legend(loc='best')
     save(fig, 'bm_demand.png')
+
+    daily_files = []
+    if calendar_days:
+        (directory / 'daily').mkdir()
+        demand_range = np.r_[D['mean'], D['p05'], D['p95'], result['baseline'], result['observations']]
+        low, high = np.nanmin(demand_range), np.nanmax(demand_range)
+        padding = .05 * max(high - low, .01)
+        for date, indices, day_hours in calendar_days:
+            fig, axes = plt.subplots(3, 1, figsize=(11, 8), sharex=True)
+            _plot_demand(axes[0], day_hours, result, D, indices)
+            axes[0].set(title=f'BM1 demand — {date}\n{title}', ylabel=unit,
+                        ylim=(low - padding, high + padding))
+            # Retain full declared price changes, even between sparse slices.
+            midnight_hours = hours[indices[0]] - day_hours[0]
+            axes[1].step(price_hours - midnight_hours, price_plot, where='post',
+                         label='Normalized price U', color='tab:orange')
+            axes[1].set(ylabel='Price U', ylim=(-.05, 1.05))
+            axes[2].fill_between(day_hours, X['p05'][indices], X['p95'][indices],
+                                 color='tab:blue', alpha=.2, label='Latent X: pointwise 5–95%')
+            axes[2].plot(day_hours, X['mean'][indices], label='BM1 E[X]', color='tab:blue')
+            axes[2].set(ylabel='State X', ylim=(0, 1),
+                        xlabel='Elapsed hours from this day’s midnight',
+                        xlim=(0, max(24, float(np.ceil(day_hours[-1] + .5)))))
+            axes[2].set_xticks(np.arange(0, 25, 3))
+            for ax in axes:
+                ax.grid(True, alpha=.25)
+                ax.legend(loc='best')
+            name = f'daily/bm_demand_{date}.png'
+            save(fig, name)
+            daily_files.append(name)
 
     columns = dict(time=times, elapsed_hours=hours, baseline=result['baseline'], price=result['price'],
                    observed=result['observations'], net_charging_demand=D['mean'] - result['baseline'])
@@ -235,7 +298,9 @@ it does not refine sparse forecasts or change the model's output/time grid.
                    metrics=result['metrics'], bias_convention='prediction minus observation',
                    uncertainty='Pointwise latent X/D 5–95% discrete-support quantiles; observation noise and simultaneous path coverage excluded. See metadata for omitted parameter/curve uncertainty.',
                    density_display='Each stored time slice occupies its nearest-time bin; no intermediate law is computed.',
+                   daily_figures=daily_files,
+                   daily_display='Exact stored slices grouped by ISO local date; common demand scale; no daily refit, reset or observation update.',
                    files=['bm_state_density.png', 'bm_response.png', 'bm_demand.png',
-                          'moments.csv', 'distribution.npz', 'summary.json'])
+                          'moments.csv', 'distribution.npz', 'summary.json'] + daily_files)
     (directory / 'summary.json').write_text(json.dumps(summary, indent=2, allow_nan=False) + '\n', encoding='utf-8')
     return summary
