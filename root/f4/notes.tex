@@ -1779,8 +1779,10 @@ deres eksisterende 33/65-design er ikke accepteret af dette forslag.
 
 
 \subsection{G2a v2: fastlagt rektangulær pilot og atomiske blokke}
-Forslaget ovenfor er nu implementeret særskilt i \texttt{joint\_pilot.py}
-og CLI \texttt{joint-bank-rectangular-pilot}, kilde \texttt{502d0506}.
+Forslaget ovenfor er nu implementeret særskilt i \texttt{joint\_pilot.py}.
+Den nye CLI hedder
+\texttt{joint-bank-\allowbreak{}rectangular-\allowbreak{}pilot};
+kilde \texttt{502d0506}.
 Designet er frosset før v2-replays: 42312 conditional kørsler, otte FV-units,
 16 reducerede banker og 14 aktive kontroller. Samme syvdages-records
 ID1358/1359 giver alle 168 prefixer uden reset. Dette er data-informeret
@@ -1810,7 +1812,7 @@ hvor $J$ er de allerede reducerede noder, $p$ er prediction/posterior,
 og $L_{\mathrm{pred},k}=L_{k-1}$, $L_{\mathrm{post},k}=L_k$.
 Restore genberegner $s,D$ fra rawscores og kontrollerer
 $N/D$ som ikke-negative normaliserede state-masser. Først når alle
-registreredes noder er med, er dette den færdige bank, som råvalideres.
+registrerede noder er med, er dette den færdige bank, som råvalideres.
 Conditional state-historier gemmes ikke; derfor beviser raw-validatoren
 ikke en uafhængig rekonstruktion af hver numerator.
 
