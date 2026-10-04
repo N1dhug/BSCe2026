@@ -153,6 +153,31 @@ try {
     }
     Assert-Night $failed "Dirty checkout was accepted."
     Assert-Night ($global:nightLauncherCalls.Count -eq 8) "Dirty checkout launched Python."
+
+    # The real recovery loads this newer launcher and then checks out an older
+    # calculation source whose launcher file differs. Its loaded AST must survive.
+    $legacyCheckout = Join-Path $testRoot "legacy source checkout"
+    Test-Git clone $testOrigin $legacyCheckout | Out-Null
+    Set-Location -LiteralPath $legacyCheckout
+    Test-Git config user.name "Launcher test"
+    Test-Git config user.email "launcher-test@example.invalid"
+    Test-Git switch -c legacy-fixture
+    "# Old launcher placeholder" | Set-Content root/f4/run_g2b_night.ps1
+    Test-Git add root/f4/run_g2b_night.ps1
+    Test-Git commit -m "Older calculation source" | Out-Null
+    $legacySource = Test-Git rev-parse HEAD
+    Test-Git switch main
+    New-Item -ItemType Directory -Force -Path $g2a, $runDirectory | Out-Null
+    "{}" | Set-Content "$g2a/manifest.json"
+    "stub" | Set-Content "$output/f4_g_g2a_continued_7d_v1.json.gz"
+    @{source = @{source_commit = $legacySource}} | ConvertTo-Json -Depth 4 |
+        Set-Content -LiteralPath "$runDirectory/manifest.json" -Encoding UTF8
+    $global:nightLauncherExit = 0
+    & ./root/f4/run_g2b_night.ps1 -LimitChunks 1
+    Assert-Night ($global:nightLauncherCalls.Count -eq 9) "New launcher did not run the older pinned source."
+    Assert-Night ((Test-Git rev-parse HEAD) -eq $legacySource) "Legacy source was changed."
+    Assert-Night ((Get-Content root/f4/run_g2b_night.ps1 -Raw) -like "*Old launcher placeholder*") "Fixture did not replace the launcher file."
+    Assert-Night ($global:nightLauncherSources[8] -eq $legacySource) "Python did not see the old source."
     Write-Host "Windows launcher: source-pinned retries, shared budget, separate logs and failure guards passed."
 } finally {
     Set-Location -LiteralPath $testOriginalLocation
