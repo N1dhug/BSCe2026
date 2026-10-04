@@ -1,5 +1,6 @@
 """Transient locks preserve published files and permit Windows cleanup retries."""
 import ctypes
+import importlib.util
 import os
 from pathlib import Path
 import tempfile
@@ -7,7 +8,12 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from src.tools import checkpoint_io as io
+# Load this stdlib-only helper directly: src/__init__.py also imports numerical
+# packages, which the cheap Windows file-handle CI job does not need to install.
+_spec = importlib.util.spec_from_file_location(
+    'checkpoint_io_under_test', Path(__file__).resolve().parents[1]/'src/tools/checkpoint_io.py')
+io = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(io)
 
 
 def sharing_error(code=32):
