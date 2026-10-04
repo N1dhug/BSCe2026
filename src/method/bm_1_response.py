@@ -7,6 +7,7 @@ or an entire contiguous stream, rather than daily resets of the same stream.
 """
 
 from dataclasses import dataclass
+from copy import deepcopy
 from time import perf_counter
 
 import numpy as np
@@ -132,7 +133,7 @@ def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
 
 
 def pooled_curve_log_likelihood(records, f, g, *, cells=401, max_step=1/768,
-                                quadrature_order=3):
+                                quadrature_order=3, backend="upwind"):
     """Whole-record pooled score, with one identical f/g pair in every replay."""
     records = tuple(records)
     if (not records or any(not isinstance(r, CurveTrainingRecord) for r in records)
@@ -142,7 +143,7 @@ def pooled_curve_log_likelihood(records, f, g, *, cells=401, max_step=1/768,
     outputs = []
     for record in records:
         result = replay_curve_record(record, f, g, cells=cells, max_step=max_step,
-                                     quadrature_order=quadrature_order)
+                                     quadrature_order=quadrature_order, backend=backend)
         if result.maximum_abs_mass_error > 1e-10 or result.minimum_cell_mass < 0.:
             raise RuntimeError('Curve candidate probability control failed; no candidate/record dropped.')
         outputs.append(dict(record_id=record.record_id, log_likelihood=result.total_log_likelihood,
@@ -155,20 +156,27 @@ def pooled_curve_log_likelihood(records, f, g, *, cells=401, max_step=1/768,
 
 def fit_shared_curve_pair(records, *, pieces, starts, regularization,
                           max_evaluations, max_iterations=40, logit_bound=4.,
-                          cells=401, max_step=1/768, quadrature_order=3, progress=None):
+                          cells=401, max_step=1/768, quadrature_order=3, progress=None,
+                          backend="upwind", resume_trace=None, checkpoint=None,
+                          max_new_evaluations=None, should_pause=None):
     """Bounded development optimizer, with one total distinct-candidate budget.
 
     Regularization is lambda times squared inner-knot departure from 1-2z.
     Logit bounds exclude exact flat pieces; report that approximation explicitly.
     Budget exhaustion preserves the best evaluated candidate and is not optimizer
     success. No exception from a model/probability failure is converted to a cost.
+    Resume restarts the same deterministic optimizer with saved scalar objectives,
+    not saved conditional states; the best cached candidate gets one fresh replay
+    when needed for its returned posterior. The caller must match the checkpoint
+    to source/data/numerics first. A per-invocation pause never expands the total
+    candidate budget or claims optimizer success.
     """
     # Validate the family and all starts before doing any likelihood work.
     pieces = checks.positive_integer(pieces, 'pieces', minimum=2)
     curve_pair_from_logits(np.zeros(2*(pieces-1)), pieces)
     if np.iscomplexobj(starts):
         raise ValueError('starts must be real.')
-    starts = np.asarray(starts, dtype=float)
+    starts = np.asarray(starts, dtype=float).copy()
     if (starts.ndim != 2 or not starts.shape[0] or starts.shape[1] != 2*(pieces-1)
             or np.any(~np.isfinite(starts))):
         raise ValueError('Declare a finite nonempty set of curve-logit starts.')
@@ -179,12 +187,57 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
     budget = checks.positive_integer(max_evaluations, 'max_evaluations')
     max_iterations = checks.positive_integer(max_iterations, 'max_iterations')
     records = tuple(records)
+    if (not records or any(not isinstance(r, CurveTrainingRecord) for r in records)
+            or len({r.record_id for r in records}) != len(records)
+            or len({r.observations.time_unit for r in records}) != 1):
+        raise ValueError('Declare distinct TRAIN records with one common time unit.')
+    if backend not in ('upwind', 'fitted'):
+        raise ValueError('Curve FV backend must be upwind or fitted.')
+    if checkpoint is not None and not callable(checkpoint):
+        raise TypeError('checkpoint must be callable.')
+    if should_pause is not None and not callable(should_pause):
+        raise TypeError('should_pause must be callable.')
+    new_limit = (None if max_new_evaluations is None else
+                 checks.positive_integer(max_new_evaluations, 'max_new_evaluations'))
     trace, memo, results = [], {}, []
     best = None
     begun = perf_counter()
 
     class BudgetReached(Exception):
         pass
+
+    class InvocationPaused(Exception):
+        pass
+
+    # The execution layer must first match source, numerical settings, data
+    # hashes and optimizer versions. Here validate the cached objective algebra.
+    for row in ([] if resume_trace is None else deepcopy(list(resume_trace))):
+        logits = checks.finite_vector(row['logits'], 'saved logits')
+        if logits.size != starts.shape[1] or np.any(np.abs(logits) > bound):
+            raise ValueError('Saved candidate lies outside this curve family/bound.')
+        key = tuple(float(v) for v in logits)
+        if key in memo or len(trace) >= budget:
+            raise ValueError('Saved trace contains duplicates or exceeds the total budget.')
+        f, g = curve_pair_from_logits(logits, pieces)
+        linear = 1.-2.*f.knots[1:-1]
+        penalty = regularization*sum(np.sum((c.values[1:-1]-linear)**2) for c in (f, g))
+        record_scores = row['record_log_likelihoods']
+        if set(record_scores) != {r.record_id for r in records}:
+            raise ValueError('Saved trace belongs to other training records.')
+        scores = checks.finite_vector(list(record_scores.values()), 'saved record scores')
+        total = checks.finite_scalar(row['log_likelihood'], 'saved likelihood')
+        cost = checks.finite_scalar(row['objective'], 'saved objective')
+        saved_penalty = checks.finite_scalar(row['penalty'], 'saved penalty')
+        error = checks.finite_scalar(row['maximum_abs_mass_error'], 'saved mass error')
+        if (abs(float(sum(scores))-total) > 1e-10 or abs(saved_penalty-penalty) > 1e-10
+                or abs(cost-(-total+penalty)) > 1e-10 or not 0. <= error <= 1e-10):
+            raise ValueError('Saved curve objective or probability diagnostics are inconsistent.')
+        trace.append(row)
+        memo[key] = cost
+        if best is None or cost < best['objective']:
+            best = dict(logits=logits.copy(), f=f, g=g, objective=cost,
+                        log_likelihood=total, replay=None)
+    resumed = len(trace)
 
     def evaluate(logits):
         nonlocal best
@@ -193,9 +246,12 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
             return memo[key]
         if len(trace) >= budget:
             raise BudgetReached()
+        if ((new_limit is not None and len(trace)-resumed >= new_limit)
+                or (should_pause is not None and should_pause())):
+            raise InvocationPaused()
         f, g = curve_pair_from_logits(logits, pieces)
         replay = pooled_curve_log_likelihood(records, f, g, cells=cells,
-            max_step=max_step, quadrature_order=quadrature_order)
+            max_step=max_step, quadrature_order=quadrature_order, backend=backend)
         linear = 1. - 2.*f.knots[1:-1]
         penalty = regularization * sum(np.sum((curve.values[1:-1]-linear)**2) for curve in (f,g))
         objective = -replay['log_likelihood'] + penalty
@@ -209,11 +265,14 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
         if best is None or objective < best['objective']:
             best = dict(logits=np.asarray(logits).copy(), f=f, g=g, objective=float(objective),
                         log_likelihood=replay['log_likelihood'], replay=replay)
+        if checkpoint is not None:
+            checkpoint(deepcopy(trace))
         if progress is not None and (len(trace) == 1 or len(trace)%10 == 0):
             progress(len(trace), budget)
         return float(objective)
 
     exhausted = False
+    paused = False
     attempted = 0
     for start in starts:
         attempted += 1
@@ -225,10 +284,21 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
         except BudgetReached:
             exhausted = True
             break
+        except InvocationPaused:
+            paused = True
+            break
     if best is None:
         raise RuntimeError('No curve candidate was evaluated.')
+    restored_replay = best['replay'] is None
+    if restored_replay:
+        best['replay'] = pooled_curve_log_likelihood(records, best['f'], best['g'], cells=cells,
+            max_step=max_step, quadrature_order=quadrature_order, backend=backend)
+        if abs(best['replay']['log_likelihood']-best['log_likelihood']) > 1e-10:
+            raise ValueError('Restored best candidate no longer reproduces its saved score.')
     return dict(**best, trace=trace, optimizer_results=results,
-                budget_exhausted=exhausted, distinct_evaluations=len(trace),
+                budget_exhausted=exhausted, paused=paused, distinct_evaluations=len(trace),
+                resumed_evaluations=resumed, new_evaluations=len(trace)-resumed,
+                restored_best_replay=restored_replay, backend=backend,
                 starts_attempted=attempted, starts_completed=len(results),
                 max_evaluations=budget, starts=starts.copy(), pieces=pieces,
                 regularization=regularization, logit_bound=bound,

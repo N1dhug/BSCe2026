@@ -165,8 +165,8 @@ V2-kørslen og det uafhængige arrayreview bestod på original `cfde153` i
 sessionen, men råmapperne skal gendannes eller reproduceres før næste
 dependency-gate. Genoptag eksisterende rådata på deres oprindelige source;
 en anden source kræver en ny run-mappe, uden ændring af gamle manifests.
-Den lokale H1b-`fit`-kommando og datakontrakt er endnu ikke publiceret;
-brug ikke en antaget fit-kommando fra dette kodecheckpoint.
+H1b-`fit` og den historiske datakontrakt er gendannet på recovery-branchen.
+H1b kræver komplette råvaliderede v2-units; et sessionsresumé er utilstrækkeligt.
 Den tidligere layoutfejl er rettet i denne integration. Se F4-status for
 testresultater og præcis genoptagelsesrækkefølge.
 
@@ -203,6 +203,42 @@ afvist panel giver exit=2 og bevarer alle negative resultater. State-L1 beregnes
 på begge grids' samlede cellekanter, så forskelle ikke skjules ved grov remapping.
 Send `summary.json` og behold hele mappen til råreview. En bestået screening
 accepterer kun det faste panel, ikke hele optimizerboksen, recovery eller H3.
+
+## H1b: genoptageligt pooled fit
+
+Kør først den registrerede H1a-v2-pilot og fortsæt på **samme rene source**:
+
+```powershell
+$hNumerics = "files/output/bm_1/runs/estimation/h1_v2_recovery"
+python -B -m src.exe.run_model.bm_1.curves numerics --design v2 --run-dir $hNumerics --limit-units 1 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "H1a-pilot fejlede." }
+python -B -m src.exe.run_model.bm_1.curves numerics --design v2 --run-dir $hNumerics --resume --max-hours 8 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "H1a fejlede." }
+```
+
+Start kun H1b efter `completed=True` og `numerical_panel_passes=True`:
+
+```powershell
+$hFit = "files/output/bm_1/runs/estimation/h1_fit_recovery"
+python -B -m src.exe.run_model.bm_1.curves fit --numerics-run $hNumerics --run-dir $hFit --limit-candidates 3 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "H1b-pilot fejlede." }
+python -B -m src.exe.run_model.bm_1.curves fit --numerics-run $hNumerics --run-dir $hFit --resume --max-hours 8 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "H1b fejlede." }
+```
+
+Fitteren er sekventiel; `--workers` understøttes ikke i denne version.
+BLAS=1 bevares. Pause er exit=0 og `paused=True`, aldrig convergence/accept.
+Alle 96 numeriske råunits valideres ved hver invocation uden nye FV-replays.
+Fitmanifestet låser source, dependency-hashes, Python/NumPy/SciPy, numerik og
+optimizerbudget. Gemte kandidater genbruges som scalar-scores, ikke som state
+for nye kurver. Trace gemmes efter hver kandidat. De seks familier får hver
+højst 250 forskellige kandidater samlet over deres to erklærede starter.
+Valgte kurver kræver egne tid/rum/q-kontroller; TRAIN-gevinst vælger ikke model.
+
+Gem `manifest.json`, `summary.json`, `*_trace.json.gz`, `*_result.json.gz` og
+H1a's `units/*.npz` sammen med source-commit og filhashes. Send komplette
+artefakter, ikke kun terminalteksten. Historiske H2/H3-kørsler er ikke frigivet;
+dataklassen er en kontrakt, ikke dokumentation af de faktiske målerdata.
 
 ## I-baseline og H1-forberedelse
 

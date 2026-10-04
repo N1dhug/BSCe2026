@@ -369,3 +369,61 @@ def select_representative_days(
                 used.add(day)
                 break
     return selected
+
+
+def prepare_historical_curve_training(measurements, baseline, prices, *, contract,
+                                      parameters, sigma_y, initial_mass_builder):
+    """Build one complete contiguous TRAIN stream for a declared population.
+
+    Inputs are explicit hourly point readings and held exogenous signals. No
+    rows outside TRAIN are accepted, and missing meter values are never filled.
+    Scales may be fitted on all TRAIN for an offline fit; this does not claim a
+    prequential baseline/scale estimate within TRAIN. t=0 is prior-only.
+    """
+    from src.control.bm_1 import BM1Parameters
+    from src.method.bm_1_response import CurveTrainingRecord
+    from src.params.bm_1 import BM1ObservationSeries
+    from src.params.bm_1_history import BM1HistoricalCurveContract
+    if not isinstance(contract, BM1HistoricalCurveContract):
+        raise TypeError('Declare the historical curve contract before preparing data.')
+    if not isinstance(parameters, BM1Parameters):
+        raise TypeError('Physical parameters must be BM1Parameters in day units.')
+    if not isinstance(measurements, pd.DataFrame) or not isinstance(measurements.index, pd.DatetimeIndex):
+        raise TypeError('Measurements must be an explicitly selected timestamped DataFrame.')
+    if tuple(measurements.columns) != contract.measurement_columns:
+        raise ValueError('Measurement columns/order differ from the frozen population.')
+    split = contract.split
+    expected = pd.date_range(split.train_start, split.selection_start, freq='h', inclusive='left')
+    if len(expected) < 2 or not measurements.index.equals(expected):
+        raise ValueError('Supply the whole hourly TRAIN index, with explicit NaN for missing values and no other roles.')
+    # UTC elapsed hours handle both DST folds and spring gaps without daily resets.
+    seconds = (expected.tz_convert('UTC')-expected[0].tz_convert('UTC')).total_seconds().to_numpy()
+    end = (split.selection_start.tz_convert('UTC')-expected[0].tz_convert('UTC')).total_seconds()
+    if end-seconds[-1] != 3600.:
+        raise ValueError('TRAIN boundaries must align with the hourly grid.')
+    selected = pd.concat([_aware_series(measurements[c], c) for c in contract.measurement_columns], axis=1)
+    aggregate = selected.mean(axis=1).where(selected.notna().all(axis=1))
+    baseline = _aware_series(baseline, 'baseline')
+    prices = _aware_series(prices, 'prices')
+    if not baseline.index.equals(expected) or not prices.index.equals(expected):
+        raise ValueError('Baseline and prices must cover exactly the same complete TRAIN index.')
+    b = baseline.to_numpy()/contract.power_scale
+    if np.any(~np.isfinite(b)) or np.any(b < 0.) or np.any(b > 1.):
+        raise ValueError('Complete baseline must remain within the frozen power scale.')
+    u = contract.normalize_prices(prices.to_numpy())
+    edges = np.r_[seconds, end]/86400.
+    B = input_builder.price_intervals((edges, b))
+    U = input_builder.price_intervals((edges, u))
+    observed = aggregate.iloc[1:].notna().to_numpy()
+    observations = BM1ObservationSeries(edges[1:-1], aggregate.iloc[1:].to_numpy()/contract.power_scale,
+        'day', observed, 'point', 'right')
+    record = CurveTrainingRecord(contract.population_id, 'TRAIN', B, (0., float(edges[-1])),
+        (U, parameters.state_response, parameters.price_response, parameters.C, parameters.k, parameters.Xi),
+        parameters.sigma_x, sigma_y, initial_mass_builder, observations, edges[1:-1])
+    metadata = dict(contract=contract.to_record(), origin=expected[0].isoformat(),
+        timestamps=[t.isoformat() for t in expected], initial_observation_excluded=True,
+        midnight_resets=0, training_rows=len(expected), scored_observations=int(observed.sum()),
+        missing_aggregate_rows=int(aggregate.isna().sum()),
+        terminal_posterior_time=expected[-1].isoformat(),
+        parameter_time_unit='day', baseline_availability='caller-declared offline TRAIN input; no automatic causal baseline claim')
+    return record, metadata
