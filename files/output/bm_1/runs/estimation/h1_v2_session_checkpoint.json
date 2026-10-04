@@ -1,0 +1,62 @@
+{
+  "stage": "H1-v2 session recovery checkpoint",
+  "source_commit": "cfde153cbd7aa84a0b51528515996b8de3d94f03",
+  "raw_evidence_availability": "unconfirmed after prior checkout disappeared and execution-server disconnected",
+  "not_a_raw_dependency": true,
+  "numerics": {
+    "completed_units": 96,
+    "total_units": 96,
+    "fv_replays": 384,
+    "all_registered_panel_checks_passed": true,
+    "approximate_elapsed_seconds": 903,
+    "max_time": {
+      "prefix": 0.09523739980068946,
+      "centered_prefix": 0.08447684499296804,
+      "posterior_l1": 0.00934659630561867
+    },
+    "max_space": {
+      "prefix": 0.046332376434444544,
+      "centered_prefix": 0.04584516069141875,
+      "posterior_l1": 0.01130511820587356
+    },
+    "max_quadrature": {
+      "prefix": 0.0000066050236897652326,
+      "centered_prefix": 0.000006605023697314749,
+      "posterior_l1": 0.000004364075991343544
+    },
+    "max_xi_zero_score_error": 4.6629367034256575e-14
+  },
+  "saved_array_audit": {
+    "updates_checked": 18432,
+    "conditional_fv_replays": 0,
+    "max_score_error": 2.437286483747414e-15,
+    "max_posterior_error": 2.547604054797814e-16,
+    "elapsed_seconds": 87.90420346999599
+  },
+  "tests": {
+    "original_main": {
+      "tests": 582,
+      "passed": true
+    },
+    "published_h_code": {
+      "tests": 589,
+      "failures": 1,
+      "failure": "repository layout rejects curves.py and reports.py in execution directory"
+    },
+    "later_unpublished_local_code": {
+      "targeted_tests": 80,
+      "passed": true,
+      "elapsed_seconds": 37.308,
+      "full_suite_run": false
+    }
+  },
+  "h1b_full_fit_run": false,
+  "historical_acceptance": false,
+  "forecast_acceptance": false,
+  "next_step": "Recover local staging and raw evidence, complete code publication and regression, then execute registered H1b with selected-curve numerical checks.",
+  "limits": [
+    "This summary does not substitute for raw NPZ evidence or unlock dependency gates.",
+    "No historical metadata or blind holdout has been validated.",
+    "No H1b fit command exists in the published checkpoint."
+  ]
+}

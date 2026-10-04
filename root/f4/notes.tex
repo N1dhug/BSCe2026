@@ -730,6 +730,62 @@ $(0.125,0.375,0.625,0.875)$ giver derimod rang 3 i den indre basis og er
 et forslag til en separat H1-pilot. Dette er en nødvendig supportkontrol,
 ikke bevis for fælles f/g-recovery eller praktisk identifikation af latent state.
 
+\subsection{Nyt H1-udviklingsdesign, 3.--4. oktober}
+H1-v1 registrerer lineære ID1762/1763, ikke-lineære ID1764/1765 og
+$\Xi=0$-kontrol ID1766/1767. Hvert par er to uafhængige todøgnsforløb
+med priorer $\Beta(2,8)$ og $\Beta(8,2)$, 48 timeobservationer,
+$C=0.5,k=2,\Xi=0.75,\sigma_X=0.5,\sigma_Y=0.03$ (kontrol: $\Xi=0$).
+Priserne i otte kvartdøgn er $(.125,.875,.375,.625,.875,.125,.625,.375)$.
+Ikke-lineær truth bruger kvartknuder med indre værdier
+$f:(.8,.2,-.7)$ og $g:(.7,-.15,-.8)$. Eksisterende EM-generator og RNG-rødder
+bevares; koblede trin er $1/2304$ og $1/4608$ dag, uden boundary-repair.
+Ingen truth-state bruges i estimationens initiallov.
+
+Et fast panel indeholder lineær/nonlineær form, $\pm1$ langs hver af seks
+logitakser og $\pm(4,-4,4,-4,4,-4)$. Base FV801/$h=1/1536$/Gauss3
+sammenlignes separat med FV1601, $h=1/3072$ og Gauss5.
+Prefix-evidens og dens forskel fra lineær reference må ændres højst $0.1$;
+posteriorers stykvist konstante tætheder sammenlignes i $L^1$ med grænse $0.02$.
+Koblet truth må afvige højst $0.002$ i state og $0.003$ i demand.
+En negativ kontrol skal desuden reproducere den eksakte Gaussian-score ved
+$D=B$, uanset kurve. Dette er et deklareret, endeligt panel og ingen garanti
+for alle mulige optimizerkandidater. Alle records er udviklingsdata; H2/H3
+og populations-/forecastaccept følger ikke af H1a-screeningen.
+
+\paragraph{Negativ v1 og særskilt v2-opfølgning.}
+Alle 96 v1-units blev gennemført; 42 afvises ved de registrerede grænser.
+Maksimal rumfejl er $3.5570$ i prefix-evidens og $0.41955$ i posterior-$L^1$;
+kvadratur og $\Xi=0$-kontrollen består. Dette er bevaret negativ evidens.
+En posthoc diagnose af samme data motiverer v2 med eksisterende fitted-flux,
+FV3201/$h=1/12288$/Gauss3 og separate kontroller FV6401,
+$h=1/24576$, Gauss5. Tre kurver på ID1765 består i en smal prøve (26.14 s),
+men hele panelet skal kontrolleres særskilt. Ingen cases, frø eller tolerancer
+ændres, og v2 er udviklingsopfølgning, ikke blind validering eller ændring af
+A--G's upwind-design. Standardkurvefit beholder upwind indtil et specifikt
+numerisk accepteret fitdesign er valgt.
+
+\paragraph{Gennemført v2 og afbrudt videre arbejde.}
+På ren kilde \texttt{cfde153} gennemførtes 96 units og 384 replays på
+cirka 903 s. Alle registrerede panelkontroller bestod.
+Maksimal tidsfejl var $0.09523740$ i prefix-evidens,
+$0.08447684$ i lineært centreret evidens og $0.00934660$ i posterior-$L^1$;
+rumkontrollen gav $0.04633238$, $0.04584516$ og $0.01130512$.
+Et separat long-double-review af de gemte arrays kontrollerede 18\,432
+Bayes-opdateringer uden nye FV-replays, med maksimale score- og
+posteriorafvigelser $2.4373\cdot10^{-15}$ og $2.5477\cdot10^{-16}$.
+Dette accepterer kun det deklarerede numeriske panel.
+
+En efterfølgende miljøafbrydelse gjorde den tidligere checkout utilgængelig.
+Råfilerne er endnu ikke bekræftet varigt bevaret; gendan og verificér dem,
+eller reproducer studiet på registreret source, før de bruges som dependency.
+Sessionsresuméet erstatter ikke råevidens. Lokalt forberedt H1b-fit og
+historiske datakontrakter er endnu ikke publiceret, og det fulde fit er
+ikke kørt. Valgte fitkurver kræver egen numerik. H2/H3, identifikation og
+forecast er fortsat uafsluttede. Se den aktuelle arbejdsplan for
+genoptagelsesrækkefølge. Integrationen 5. oktober retter repository-layoutet
+og bevarer Windows-sikker checkpointpublicering i den fælles I/O-hjælper;
+den ændrer ikke studiets matematik, numerik eller evidensstatus.
+
 \subsection{Identifikation, numerik og fastlåsning}
 Uden endpoints kan \(f+c,g-c\) give samme sum, og fælles amplitudeskalering kan
 blandes sammen med \(k\). \eqref{eq:endpoints} fjerner disse eksakte friheder,

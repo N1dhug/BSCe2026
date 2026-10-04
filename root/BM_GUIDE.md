@@ -156,6 +156,54 @@ prognose, parametervægte og f/g genbruges fra NPZ. Originalrun og rådata overs
 ikke. Nye preview-kørsler får dagsfigurerne direkte under deres
 `forecast_distribution/daily/`.
 
+## H1: nye kurver og numerisk kontrol
+
+**Integration og genoptagelse, 5. oktober:** Denne version samler H1-koden
+med de efterfølgende Windows-checkpointrettelser. Report-I/O ligger i
+`src/tools/bm_1_reports.py`, og `curves.py` er registreret som entrypoint.
+V2-kørslen og det uafhængige arrayreview bestod på original `cfde153` i
+sessionen, men råmapperne skal gendannes eller reproduceres før næste
+dependency-gate. Genoptag eksisterende rådata på deres oprindelige source;
+en anden source kræver en ny run-mappe, uden ændring af gamle manifests.
+Den lokale H1b-`fit`-kommando og datakontrakt er endnu ikke publiceret;
+brug ikke en antaget fit-kommando fra dette kodecheckpoint.
+Den tidligere layoutfejl er rettet i denne integration. Se F4-status for
+testresultater og præcis genoptagelsesrækkefølge.
+
+
+Det nye entrypoint holder H adskilt fra den store G-CLI og genbruger samme
+atomiske checkpoint-I/O. Kør fra en **ren branch**, uden at ændre source under
+kørslen. Gemte G-resultater er ikke en dependency. Lav først én kort unit:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.curves numerics --run-dir files/output/bm_1/runs/estimation/h1_numerics_v1 --limit-units 1 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "H1-piloten fejlede." }
+```
+
+Fortsæt samme kilde og samme mappe:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.curves numerics --run-dir files/output/bm_1/runs/estimation/h1_numerics_v1 --resume --max-hours 8 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "H1-kørslen fejlede eller panelets numerik blev afvist; behold output." }
+```
+
+V1 er gennemført og **afvist** (se F4-status). En særskilt v2-opfølgning bruger
+samme cases og grænser med eksisterende fitted-flux og finere tid/rum. Start i
+en ny mappe med `--design v2`; samme flag skal bruges ved resume:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.curves numerics --design v2 --run-dir files/output/bm_1/runs/estimation/h1_numerics_v2 --blas-threads 1
+```
+
+96 units à fire FV-replays gemmes som komprimeret NPZ. `manifest.json` fastlåser
+source, kurver, records, numerik og grænser; `summary.json` giver alle prefix-
+kontroller og SHA256 for hver råunit. Resume verificerer rådata og genkører
+ikke færdige units. En pause er `completed=false` og ikke accept. Et komplet
+afvist panel giver exit=2 og bevarer alle negative resultater. State-L1 beregnes
+på begge grids' samlede cellekanter, så forskelle ikke skjules ved grov remapping.
+Send `summary.json` og behold hele mappen til råreview. En bestået screening
+accepterer kun det faste panel, ikke hele optimizerboksen, recovery eller H3.
+
 ## I-baseline og H1-forberedelse
 
 Den lille integration bruger gammelt F3-ID1326, ikke en ny population. Kendt
