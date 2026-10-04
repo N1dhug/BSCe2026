@@ -12,6 +12,8 @@ from pathlib import Path
 
 import numpy as np
 
+from src.tools.checkpoint_io import discard_file, replace_file
+
 
 def _atomic_report(path, payload, *, replace_existing=False):
     """Publish only closed complete JSON/gzip files under the exclusive run lock."""
@@ -33,9 +35,9 @@ def _atomic_report(path, payload, *, replace_existing=False):
                 handle.write('\n')
         if path.exists() and not replace_existing:
             raise FileExistsError(f'Refusing to overwrite {path}.')
-        os.replace(temporary, path)
+        replace_file(temporary, path)
     finally:
-        temporary.unlink(missing_ok=True)
+        discard_file(temporary)
 
 
 def _write_array_checkpoint(path, report):

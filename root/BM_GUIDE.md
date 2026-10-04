@@ -158,14 +158,17 @@ ikke. Nye preview-kørsler får dagsfigurerne direkte under deres
 
 ## H1: nye kurver og numerisk kontrol
 
-**Genoptagelsesstatus efter miljøafbrydelsen:** Koden er publiceret til
-`feature/f4-h-overnight-review` ved `cfde153`; main er ikke ændret.
-V2-kørslen og det uafhængige arrayreview bestod i sessionen, men råmapperne
-skal gendannes eller reproduceres før næste dependency-gate.
+**Integration og genoptagelse, 5. oktober:** Denne version samler H1-koden
+med de efterfølgende Windows-checkpointrettelser. Report-I/O ligger i
+`src/tools/bm_1_reports.py`, og `curves.py` er registreret som entrypoint.
+V2-kørslen og det uafhængige arrayreview bestod på original `cfde153` i
+sessionen, men råmapperne skal gendannes eller reproduceres før næste
+dependency-gate. Genoptag eksisterende rådata på deres oprindelige source;
+en anden source kræver en ny run-mappe, uden ændring af gamle manifests.
 Den lokale H1b-`fit`-kommando og datakontrakt er endnu ikke publiceret;
 brug ikke en antaget fit-kommando fra dette kodecheckpoint.
-Fuld regression havde én kendt layoutfejl, hvis lokale rettelse også
-mangler publicering. Se F4-status for præcis genoptagelsesrækkefølge.
+Den tidligere layoutfejl er rettet i denne integration. Se F4-status for
+testresultater og præcis genoptagelsesrækkefølge.
 
 
 Det nye entrypoint holder H adskilt fra den store G-CLI og genbruger samme
@@ -1196,17 +1199,26 @@ accepteres ikke. Første opstart kan derfor tage nogle minutter.
 undlad flaget for fuld afvikling. En enkelt blok tester lokal afvikling, ikke numerisk
 G2b-accept. Default `--chunk-size 64` giver regelmæssige checkpoints.
 
-**Gentag samme natkommando hver nat**, fra dit eksisterende hovedrepo. Ved første
-invocation oprettes kun en lokal `night/g2b-v2`-branch. Ved resume hentes source
-fra manifestet, så main kan udvikles mellem natkørslerne. Der oprettes intet
-worktree. Skift eller pull aldrig under en aktiv Python-kørsel.
+**Indlæs launcheren fra opdateret main**, efter den tidligere Python-kørsel er
+stoppet. Scriptet opretter kun en lokal `night/g2b-v2`-branch ved første invocation;
+ved resume skifter det til manifestets oprindelige source før Python. Dermed kan
+nyere launcher-rettelser bruges uden at ændre eksisterende beregninger, manifests
+eller råunits. Der oprettes intet worktree. Skift eller pull aldrig under en
+aktiv Python-kørsel. Kommandoen nedenfor er en fuld 7,5-timers fortsættelse med
+12 workers; tilføj `-LimitChunks 1` til sidste kommando for en kort pilot.
 
 ```powershell
-# Første gang: en kort lokal afviklingspilot, som gemmes til senere resume.
-& ./root/f4/run_g2b_night.ps1 -LimitChunks 1
+& {
+    if (git status --porcelain) { throw "Lokale ændringer fundet; behold dem." }
+    git switch main
+    if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+    git pull --ff-only origin main
+    if ($LASTEXITCODE -ne 0) { throw "Git pull fejlede." }
 
-# Derefter: cirka otte timer. Brug denne samme linje ved kommende nætter.
-& ./root/f4/run_g2b_night.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass `
+        -File .\root\f4\run_g2b_night.ps1 -MaxHours 7.5 -Workers 12
+    if ($LASTEXITCODE -ne 0) { throw "Kørslen fejlede; behold alle filer og logs." }
+}
 ```
 
 Efter en pause viser summary normalt `completed=False`, `passes=False` og
@@ -1217,6 +1229,15 @@ Behold manifest, summary, checkpoint, log og alle units. En ny invocation
 starter ved første ikke-gemte hypotese. Ved hård afbrydelse kan den igangværende
 ikke-publicerede blok skulle gentages. Otte timer kan overskrides af sidste
 blok, lagring og slutopsamling; computeren slukkes ikke automatisk.
+
+Ved Windows sharing violations (32/33) på checkpointet kan den nye launcher
+starte den samme pinned source igen, højst tre ekstra gange (`-MaxIoRetries`).
+Der genvalideres før nyt arbejde, gemte blokke genbruges, alle forsøg har egne
+logs, og det resterende fælles budget bruges. En pilots allerede gemte blokke
+tælles med i `-LimitChunks`; retry giver ikke et nyt blokbudget. Andre fejl
+genstartes ikke automatisk. Nye beregningsversioner bruger korte I/O-retries
+og tillader udsat oprydning af et overflødigt fuldt checkpoint efter sikker
+publicering; et delvist checkpoint eller en fejlet publicering droppes aldrig.
 
 Når Python er stoppet, kan dagsarbejdet fortsætte på main:
 

@@ -1,11 +1,11 @@
 # Fælles projektkontekst
 
-**Afbrudt H-session:** Se afsnittet om miljøafbrydelse i `root/F4.md`.
-Sidste publicerede H-kode er `cfde153` på
-`feature/f4-h-overnight-review`; H1-v2 blev kørt og rå-reviewet, men
-råmapper skal gendannes/verificeres før H1b. Senere lokale fit-/datakontrakt-
-og layoutrettelser er endnu ikke publiceret. Fuld regression havde én
-layoutfejl; main er ikke opdateret. Gendan og test før videre publicering.
+**H-integration, 5. oktober:** H1-kode og sessionscheckpoint fra den afbrudte
+nattebranch er samlet med Windows-rettelserne fra PR #60. Fælles report-I/O
+ligger i `src/tools/bm_1_reports.py`; layoutfejlen er rettet. H1-v2 blev kørt
+og rå-reviewet på original `cfde153`, men råmapper skal stadig gendannes og
+verificeres eller studiet reproduceres før H1b. Senere lokale fit-/datakontrakt-
+ændringer er endnu ikke sikret. Se aktuel status og evidensgrænse i `root/F4.md`.
 
 Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tidsreduktion,
 3. oktober 2026**. Det er den autoritative fælles status og to-do-liste; ældre
@@ -25,7 +25,8 @@ chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
   kørsel bruger mappen. Reglen gælder også WM-arbejde.
 - I-baselinens origin/forecast/F3-integration er implementeret på det afsluttede
   F-spor; pooled H-f/g-fitprototype og gammel-record budgetpilot er implementeret.
-  Næste udvikling er H1's nye curve-cases/numerik og H's data-/splitkontrakt.
+  H1-cases/numerik er implementeret; næste arbejde er sikring af H1-v2-rådata,
+  H1b-fit og H's data-/splitkontrakt.
   Obligatorisk H-f/g
   skal gennemføres før den endelige samlede I/J-leverance. G2b-v2 er valgfrit
   nat-sidearbejde; G2c er kun en mulig opfølgning efter G2b-accept. Ingen af dem

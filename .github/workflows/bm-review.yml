@@ -30,6 +30,9 @@ jobs:
       - name: Check night launcher on Windows PowerShell 5.1
         shell: powershell
         run: ./tests/check_g2b_night_launcher.ps1
+      - name: Check actual Windows file-sharing locks
+        shell: powershell
+        run: python -B -m unittest tests.test_checkpoint_io -v
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 15

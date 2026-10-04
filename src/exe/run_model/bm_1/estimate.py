@@ -50,7 +50,8 @@ from src.validation.bm_1 import joint_diagnostics
 from src.validation.bm_1 import joint_pilot
 from src.validation.bm_1 import joint_night
 from src.exe.run_model.progress import fv_work, runtime_text
-from src.exe.run_model.bm_1.reports import (
+from src.tools.checkpoint_io import discard_file
+from src.tools.bm_1_reports import (
     _atomic_report, _write_array_checkpoint, _read_array_checkpoint,
     _read_likelihood_report, _RunLock,
 )
@@ -1703,7 +1704,8 @@ def _run_rectangular_blocks(args, source, dependencies, truth_cache, *, study=jo
                 # Crash after publishing a final unit but before removing its rolling checkpoint.
                 if restored.seen != len(restored.group['hypotheses']):
                     raise ValueError('Final unit conflicts with an incomplete checkpoint.')
-                if not args.collect_only: checkpoint_path.unlink()
+                if not args.collect_only:
+                    discard_file(checkpoint_path)
                 checkpoint = None
             elif not pending or unit != pending[0]:
                 raise ValueError('Checkpoint does not belong to the first incomplete unit.')
@@ -1785,7 +1787,7 @@ def _run_rectangular_blocks(args, source, dependencies, truth_cache, *, study=jo
                     result['raw_validation'] = dict(passes=False, error=str(exc))
                 destination = args.run_dir/'units'/(name+'.npz')
                 _atomic_report(destination, result)
-                checkpoint_path.unlink(missing_ok=True)
+                discard_file(checkpoint_path)
                 if not result['raw_validation']['passes']:
                     raise RuntimeError('Completed rectangular raw unit failed; available data retained.')
                 rows.extend(result['rows']); summary['unit_sha256'][name] = hashlib.sha256(destination.read_bytes()).hexdigest()

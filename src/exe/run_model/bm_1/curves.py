@@ -30,7 +30,7 @@ if __name__ == '__main__':
 
 import numpy as np
 
-from src.exe.run_model.bm_1.reports import _RunLock, _atomic_report, _read_likelihood_report
+from src.tools.bm_1_reports import _RunLock, _atomic_report, _read_likelihood_report
 from src.exe.run_model.progress import runtime_text
 from src.validation.bm_1.response_cases import (
     H1_IDS, H1_NUMERICS, H1_V2_NUMERICS, h1_design, h1_candidate_panel, h1_training_records, response_price_support,
