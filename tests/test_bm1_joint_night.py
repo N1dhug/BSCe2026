@@ -202,6 +202,27 @@ class NightExecutionTests(unittest.TestCase):
             result=self.run_blocks(args,truth)
             self.assertEqual(result['completed_units'],2);self.assertEqual(replay.call_count,30)
 
+    def test_locked_completed_checkpoint_is_replaced_and_collected_without_reruns(self):
+        from tests.test_checkpoint_io import sharing_error
+        with tempfile.TemporaryDirectory() as directory,self.fixture() as (truth,replay):
+            args=self.arguments(directory);args.chunk_size=15
+            unlink=Path.unlink
+            def locked(path,*a,**k):
+                if path.name=='checkpoint.npz': raise sharing_error()
+                return unlink(path,*a,**k)
+            with patch.object(Path,'unlink',new=locked), patch('src.tools.checkpoint_io.sleep'):
+                result=self.run_blocks(args,truth)
+                self.assertTrue(result['completed']);self.assertTrue(result['passes'])
+                self.assertEqual(result['conditional_runs'],600);self.assertEqual(replay.call_count,600)
+                self.assertTrue((args.run_dir/'checkpoint.npz').exists())
+                args.collect_only=True
+                collected=self.run_blocks(args,truth)
+                self.assertIsNone(collected['partial_unit'])
+                self.assertEqual(collected['conditional_runs'],600)
+                args.collect_only=False
+                self.run_blocks(args,truth)
+                self.assertEqual(replay.call_count,600)
+
     def test_interrupted_block_keeps_its_predecessor_for_replay(self):
         with tempfile.TemporaryDirectory() as directory,self.fixture() as (truth,replay):
             args=self.arguments(directory);args.limit_chunks=1
