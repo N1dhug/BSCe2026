@@ -11,19 +11,23 @@ def _sharing_violation(error):
     return getattr(error, 'winerror', None) in (32, 33)
 
 
-def _retry(operation, *args, **kwargs):
+def _retry(operation, *args, retry_codes=(32, 33), **kwargs):
     for attempt in range(len(_RETRY_DELAYS) + 1):
         try:
             return operation(*args, **kwargs)
         except OSError as error:
-            if not _sharing_violation(error) or attempt == len(_RETRY_DELAYS):
+            if getattr(error, 'winerror', None) not in retry_codes or attempt == len(_RETRY_DELAYS):
                 raise
             sleep(_RETRY_DELAYS[attempt])
 
 
 def replace_file(source, destination):
-    """Replace only with a fully written file; retain atomic rename semantics."""
-    return _retry(os.replace, source, destination)
+    """Replace only with a fully written file; retain atomic rename semantics.
+
+    Windows can report a destination reader without delete sharing as error 5.
+    Retry that ambiguous access denial here only; never suppress it on failure.
+    """
+    return _retry(os.replace, source, destination, retry_codes=(5, 32, 33))
 
 
 def discard_file(path):

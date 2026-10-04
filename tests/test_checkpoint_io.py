@@ -49,10 +49,10 @@ class CheckpointIOTests(unittest.TestCase):
             self.assertEqual(source.read_bytes(), b'next')
             self.assertEqual(target.read_bytes(), b'previous')
 
-    def test_other_permissions_are_not_retried_or_ignored(self):
+    def test_non_windows_permission_denial_is_not_retried_or_ignored(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)/'checkpoint.npz'; path.write_bytes(b'saved')
-            denied = PermissionError(13, 'Denied'); denied.winerror = 5
+            denied = PermissionError(13, 'Denied')
             with patch.object(io.os, 'replace', side_effect=denied), patch.object(io, 'sleep') as pause:
                 with self.assertRaises(PermissionError): io.replace_file(path, path.with_name('new'))
                 pause.assert_not_called()
@@ -60,6 +60,22 @@ class CheckpointIOTests(unittest.TestCase):
                 with self.assertRaises(PermissionError): io.discard_file(path)
                 pause.assert_not_called()
             self.assertEqual(path.read_bytes(), b'saved')
+
+    def test_windows_access_denial_has_bounded_replace_retries_but_no_cleanup_deferral(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source, target = Path(directory)/'new', Path(directory)/'checkpoint.npz'
+            source.write_bytes(b'next'); target.write_bytes(b'previous')
+            denied = PermissionError(13, 'Denied'); denied.winerror = 5
+            with patch.object(io.os, 'replace', side_effect=denied) as replace, \
+                 patch.object(io, 'sleep') as pause:
+                with self.assertRaises(PermissionError): io.replace_file(source, target)
+                self.assertEqual(replace.call_count, len(io._RETRY_DELAYS) + 1)
+                self.assertEqual(pause.call_count, len(io._RETRY_DELAYS))
+            with patch.object(Path, 'unlink', side_effect=denied), patch.object(io, 'sleep') as pause:
+                with self.assertRaises(PermissionError): io.discard_file(target)
+                pause.assert_not_called()
+            self.assertEqual(source.read_bytes(), b'next')
+            self.assertEqual(target.read_bytes(), b'previous')
 
     def test_only_redundant_cleanup_can_be_deferred(self):
         with tempfile.TemporaryDirectory() as directory:
