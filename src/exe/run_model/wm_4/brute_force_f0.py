@@ -121,7 +121,6 @@ def main():
     parser.add_argument("--f0-steps", type=int, default=81)
     parser.add_argument("--max-state-iter", type=int, default=25)
     parser.add_argument("--state-tol", type=float, default=1e-8)
-    parser.add_argument("--fit-diffusion", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -130,7 +129,7 @@ def main():
     _, output_fit, fit, _ = fit_history_brute_force(
         frame, predict_day, args.baseline_weeks, args.steps_per_hour,
         f0_min=args.f0_min, f0_max=args.f0_max, f0_steps=args.f0_steps,
-        deterministic=not args.fit_diffusion, max_state_iter=args.max_state_iter,
+        max_state_iter=args.max_state_iter,
         state_tol=args.state_tol, verbose=args.verbose,
     )
     output = OUTPUT / f"{predict_day:%Y-%m-%d}"
