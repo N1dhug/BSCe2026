@@ -8,6 +8,12 @@ ugeprognose → sammenligning med baseline og WM4. Grundlaget er den eksisterend
 BM1, ikke en ny model med WM's ligninger. Processtøj, filtre, parameterbanker og
 fordelingspropagation indgår ikke i første G-leverance.
 
+**Præcisering fra Johan, 5. oktober kl. 12:56: WM4 er fælles standard dér,
+hvor modellerne kan gøre det samme.** Genbrug konkret baselineimplementation,
+fit/predict-protokoller, evalueringsdefinitioner og rapportstruktur. Afvigelser
+skal skyldes modellernes matematik eller en eksplicit fælles datakorrektion og
+registreres i manifestet; en særskilt BM-baseline er ikke default.
+
 **Navne:** Skriv altid `G-plan/G0` ... `G-plan/G6` i status og henvisninger.
 `F4-G`, `F4-G2a`, `F4-G2b` og `F4-G2c` er fortsat de gamle stokastiske studier.
 G kræver ikke, at disse studier eller H-f/g afsluttes. G overtager heller ikke
@@ -30,6 +36,66 @@ ikke F-sporets aftalte rækkefølge eller dets senere prognosediagnose.
 Stokastisk udvidelse parkeres efter disse leverancer. Bevar muligheden gennem
 samme model-/kurvekontrakter, men implementér eller kør ikke stokastik i G nu.
 Ingen stor arkitekturomskrivning eller komplet ny F1–F4-valideringsserie.
+
+### 1a. Bindende genbrug fra WM4
+
+| Område | Konkret WM4-reference | G-planens valg |
+|---|---|---|
+| Baseline | `output_model.py`: `statistical_output.fit/predict`, `output_callable` | Samme implementation, indstillinger, historik, cutoff og features. Fit én gang per origin; samme fitted baselineforløb gives til begge modeller efter eksplicit enhedsomregning: B=O. |
+| Ugeprotokol | `predict_weekly.py`: én fituge, 24 timers warm-up, næste 168 timer | Første standardbenchmark for begge modeller. 28 træningsdage er kun en senere fælles variant. |
+| Dagsprotokol | `predict_daily.py`: fem tidligere matchende ugedage, 24 timers warm-up | Samme observationsudvalg og cutoff ved et særskilt dagsbenchmark. Daglig opdatering og en uges åben prognose holdes adskilt. |
+| Fejlmål | `deviation_metrics` | Samme MSE, RMSE, MAE og bias=prediction−observation på identiske observationer og i fælles enheder. |
+| Performanceanalyse | `analyze_performance.py`: `metric_gain`, `analyze`, `summary_table`, `weekday_summary` | Samme baselinegevinst, procentvis MSE-forbedring, bedre/lige/dårligere dage, gennemsnit/median, ugedagsopdeling og bedste/værste dage. |
+| Figurer | `save_plot` i dags-/ugekørslerne | Samme datoakse, observationsmarkører, baseline, prognose og pris. Sammenlignelige paneler med korrekte modelnavne/enheder. |
+| Eksport | Daglige metrics-CSV og performance-CSV | Samme metriknavne/suffikser og baselinekolonner; BM får eget modelnavn. Fælles evaluator accepterer modelnavn og bevarer kompatibilitet med WM4-output. |
+| Diagnostik | Baselinegevinst, residualer og initial-state-følsomhed | Samme spørgsmål/informationsgrænse; modelspecifik beregning. WM's dæmpningsratio og acceleratorstate kopieres ikke til BM. |
+
+Baselinen bruger aktuelt døgn-/sæsonharmoniske led, ugedag, temperatur og
+interaktioner, med robust ridge/Huber-fit. Defaults er base_temperature=18,
+hour_harmonics=4, season_harmonics=2, ridge=1e-3, huber_delta=1.5, max_iter=50.
+De versionsfastlåses; samme fitted objekt eller serialiserede parametre bruges
+for BM/WM. Et fem-ugers timegennemsnit erstatter ikke denne baseline: fem
+matchende ugedage er her WM4's dynamiske træningsudvalg.
+
+`statistical_output.predict` og `output_callable` begrænser aktuelt baseline
+til [0,1]. Det er en eksplicit del af fælles baselinekontrakt: gem policy og
+antal/rå overskridelser i en audit. Ingen ekstra BM-specifik klipning af
+baseline, observationer eller state. Nødvendige datakorrektioner, fx en anden
+normalisering, gælder begge modeller og versionsmærkes; original WM4 under en
+anden kontrakt står særskilt. Dette præciserer planens regel mod skjult clipping.
+
+WM's baseline interpoleres aktuelt lineært mellem dens fine samples.
+Hovedsammenligningen genbruger dette tidsforløb. Den eksakte BM-intervalvej
+bruges kun, når dens konstant-input-forudsætninger gælder. En held-baseline-
+variant kræver samme ændring for WM og separat resultatlabel. Samme outputgrid
+kræver ikke samme interne solver eller 60 ODE-substeps per time i BM.
+
+Genbrug kode direkte, hvor API'et passer; ellers udtræk små modeluafhængige
+helpers med bagudkompatible WM-wrappers og numerisk paritetstest. Ingen kopier
+af baseline-/metricskode, der senere udvikler sig forskelligt. WM's QP-fitter
+erstatter ikke BM's nonlinear fit. Predict-setup, der kræver fremtidigt observed
+I, opdeles i inputforberedelse og efterfølgende scoring for begge modeller.
+
+Performancekonvention: gain=baseline_error−model_error; for bias bruges
+|baseline_bias|−|model_bias|. Procentgevinst er 100*gain/baseline_MSE og NaN
+ved baseline_MSE≤1e-12 som i WM. Better/equal-tolerancen 1e-12 genbruges til
+kompatibel rapportering, men er ikke statistisk signifikans eller praktisk
+modelvalg; G's numeriske/praktiske tolerance rapporteres separat. Vis både
+WM's gennemsnit af dagsmål og pooled fejl over observationer med tydelige
+labels: gennemsnitlig dags-RMSE er ikke pooled RMSE. Bedste/værste dage er
+visninger af den samlede rapport, ikke udvælgelse af testdata.
+
+Figurerne skal vise, om korrektionen forbedrer baseline, hvornår den hjælper
+eller skader, og hvor stor den er. Vis D−B for BM og I−O=R for WM i samme
+forbrugsenhed. BM's x og eventuelt dx/dt vises separat fra WM's F/R;
+WM's dR/dt er ikke BM's dx/dt. Der tilføjes ingen stokastiske bånd nu.
+Billige dags-/ugedagsanalyser bruger gemte prognoser uden nye fits. Øvrige
+WM-diagnoser tilføjes kun ved relevans og inden for eksisterende G-budget.
+
+G0 leverer en kompatibilitetsmatrix med kildecommit, genbrugt helper, nødvendig
+adapter og begrundelse for hver forskel. G3 kontrollerer identisk baseline på
+fælles timestamps og identiske metrics for samme predictions. G5 leverer
+fælles dag-/ugefigurer, metrics og WM-lignende performanceanalyse.
 
 ## 2. Matematik: samme BM1, uden processtøj
 
@@ -134,12 +200,15 @@ Sammenlign begge modellers held-out forbrugsscore, ikke deres interne fitmål.
 
 ## 4. Data, initialisering og retfærdig WM4-sammenligning
 
-Standardforslag er én population (først MED), 28 sammenhængende historiske
-kalenderdage til dynamisk fit og en prognose på 168 fysiske timer. Forlæng
-baselinehistorikken efter den fælles statistiske models behov. Datoer og
-tilgængelig historik fastlægges i G0. Første integration bruger en lille
-udviklingsuge; fuld træning køres inden den tilhørende sluttest. Afvigelser
-fra 24 timer per lokalt døgn håndteres eksplicit ved DST.
+Standard er WM4's ugeprotokol: én population (først MED), én historisk fituge
+med 24 timers warm-up og en prognose på næste 168 fysiske timer. Baselinefit
+bruger samme tilgængelige historik før origin som WM4. Datoer og historik
+fastlægges i G0. Et 28-dages fit er en senere fælles variant, ikke BM-default.
+Et eventuelt dagsbenchmark bruger samme fem matchende ugedage som WM4 og
+rapporteres særskilt. Kurver er fælles på tværs af de historiske træningsdage
+og fastlåste under forecast. Første integration bruger en lille udviklingsuge;
+fuld deklareret træning køres inden den tilhørende sluttest. Afvigelser fra
+24 timer per lokalt døgn håndteres eksplicit ved DST.
 
 Der bruges en tidsmæssig TRAIN/DEVELOPMENT/TEST-opdeling. Februar-eksempler,
 som allerede er inspiceret, er udviklingsdata. Holdout er en særskilt endnu
@@ -154,7 +223,7 @@ G0-manifestet fastlåser:
    timestamp-side og timezone hver observation har. Gaps maskeres eksplicit;
    gap-perioder kræver kendte inputforløb for statepropagation eller separate
    segmenter med deklareret initialisering. Ingen fremtidig udfyldning.
-2. Fælles baseline B=O, estimeret uden data efter forecast-origin. Baselinens
+2. Fælles WM4-baseline B=O fra `statistical_output`, estimeret uden data efter forecast-origin. Baselinens
    egen træningshistorik og in-sample/cross-fit-konvention gemmes. Udvid ikke
    til en ny baseline-modelsøgning i G. En baseline uden dynamisk pris som
    feature er ikke i sig selv bevis for en kausalt prisfri baseline.
