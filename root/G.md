@@ -1,5 +1,8 @@
 # G-plan — deterministisk BM-kerne, stokastisk udvidelse og WM4-sammenligning
 
+**Nyeste prognoseudvikling, 6. oktober 2026:** Johans fem-matchende-ugedage-protokol er gennemført for 7.–27. februar: 21 rolling-origin døgnprognoser og 504/504 målte timer. G4 uden straf har MSE 0.1639224439 mod 0.1666013393 med lambda=0.001; straffen øger samlet MSE med 1.6342 %. Uden straf slår samme origins' WM-baseline med 3.8626 %. Valget for denne protokol er lambda=0, baseret på DEVELOPMENT-forecastfejl. Det historiske januarvalg bevares og gælder den gamle protokol. Dette er daglige refits, ikke tre frosne 168-timers forecasts. Se [matematik, kodereview og resultater](G4_WEEKDAY_DEVELOPMENT_REVIEW.md). To fokuserede tests samt alle 42 valgte kandidaters 60/120-kontrol består. Ingen lokal kørsel kræves nu; G6b→G8→G7 består som næste obligatoriske kæde.
+
+
 **G4-resultat, 5. oktober:** Januar-pilot og begge frosne februarprognoser er nu
 kørt og rå-reviewet. 206 residualkald, ca. 83 s inklusive eksport/figurer.
 Bedste fleksible g forbedrer DEVELOPMENT-MSE med 0.01504 %; lineær BM
