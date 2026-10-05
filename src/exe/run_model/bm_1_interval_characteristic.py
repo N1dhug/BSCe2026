@@ -12,6 +12,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--development-report', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--time-refinement-reference', type=Path,
+        help='Reuse the completed balanced spatial panel for two fixed-state time controls.')
     parser.add_argument('--blas-threads', type=int, default=1)
     args = parser.parse_args(argv)
     if args.blas_threads < 1:
@@ -23,15 +25,22 @@ def main(argv=None):
     from src.exe.run_model.bm_1.curves import source_snapshot
     from src.exe.run_model.progress import runtime_text
     from src.tools.bm_1_reports import _atomic_report
-    from src.validation.bm_1.interval_characteristic import run_characteristic_control
+    from src.validation.bm_1.interval_characteristic import run_characteristic_control, run_characteristic_time_control
     source = source_snapshot()
     data = args.development_report.read_bytes()
     clock = perf_counter()
     def progress(done, total):
         print('Characteristic control: '+runtime_text(clock,done,total),flush=True)
-    result = run_characteristic_control(json.loads(data),progress=progress)
+    reference = args.time_refinement_reference.read_bytes() if args.time_refinement_reference else None
+    if reference is None:
+        result = run_characteristic_control(json.loads(data),progress=progress)
+    else:
+        result = run_characteristic_time_control(json.loads(data),json.loads(reference),progress=progress)
+        result['time_refinement_reference_sha256'] = hashlib.sha256(reference).hexdigest()
     if source != source_snapshot() or args.development_report.read_bytes() != data:
         raise ValueError('Source or input changed during control; no evidence published.')
+    if reference is not None and args.time_refinement_reference.read_bytes() != reference:
+        raise ValueError('Time-refinement reference changed during control; no evidence published.')
     result.update(source=source, development_report_sha256=hashlib.sha256(data).hexdigest())
     _atomic_report(args.output,result)
     print(f'Characteristic development control: {args.output}; no historical acceptance.',flush=True)

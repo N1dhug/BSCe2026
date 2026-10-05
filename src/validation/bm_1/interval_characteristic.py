@@ -397,3 +397,57 @@ def run_characteristic_control(report, *, progress=None):
             'Same frozen-left FV state scheme; exact reward phases. '
             'Periodic/Fourier truncation and positivity guards are checked, with heuristic roundoff allowance. '
             'Not a historical fitter, production backend, proof of continuous-state accuracy or H2/H3 acceptance.')
+
+
+def run_characteristic_time_control(report, reference, *, progress=None):
+    """Two declared time refinements at fixed state/frequency resolution.
+
+    Reuses completed spatial controls; no optimizer or repeated spatial panel.
+    The second replay tests time error independently of the saved spatial grid.
+    """
+    if (reference.get('schema') != 'bm1-interval-characteristic-control-v2'
+            or reference.get('fixed_development_design') != report.get('declared_design')
+            or reference.get('historical_observation_values_read') != 0
+            or not reference.get('fine_reference_available')):
+        raise ValueError('Use a completed balanced control on the identical synthetic design.')
+    saved = reference['replays']
+    baseline, spatial = saved[3], saved[5]
+    for row, expected in ((baseline,(1281,1/6144,64)),(spatial,(2561,1/12288,96))):
+        if (row.get('status') != 'completed' or not row.get('balanced_transform')
+                or (row['cells'],row['max_step'],row['frequencies']) != expected):
+            raise ValueError('Saved reference settings differ from the declared control.')
+    clock = perf_counter()
+    record = record_from_development_report(report)
+    outputs = []
+    for index, h in enumerate((1/12288,1/24576)):
+        begun = perf_counter()
+        try:
+            row = replay_characteristic(record,cells=1281,max_step=h,frequencies=64)
+        except CharacteristicNumericalError as exc:
+            row = dict(status='numerical_guard_failed',cells=1281,max_step=h,frequencies=64,
+                reason=str(exc),diagnostics=exc.diagnostics,scientific_acceptance=False)
+        row['elapsed_seconds'] = perf_counter()-begun
+        outputs.append(row)
+        if progress is not None:
+            progress((1.,3.)[index],3.)
+    def compare(name, a, b):
+        if a['status'] != 'completed' or b['status'] != 'completed':
+            return dict(name=name,available=False)
+        mass = conservative_mass_transfer(a['x_edges'],a['final_posterior_mass'],b['x_edges'])
+        errors = dict(total_log_likelihood=abs(a['log_likelihood']-b['log_likelihood']),
+            final_state_mean=abs(a['posterior_state_means'][-1]-b['posterior_state_means'][-1]),
+            final_mass_l1=float(np.abs(mass-b['final_posterior_mass']).sum()))
+        return dict(name=name,available=True,errors=errors,
+            development_tolerances_pass=all(errors[k] <= report['development_tolerances'][k] for k in errors))
+    return dict(schema='bm1-interval-characteristic-time-control-v1',
+        fixed_development_design=report['declared_design'],replays=outputs,
+        saved_baseline=baseline,saved_spatial_reference=spatial,
+        comparisons=[compare('fixed_state_h6144_h12288',baseline,outputs[0]),
+            compare('fixed_state_h12288_h24576',outputs[0],outputs[1]),
+            compare('same_time_1281_2561',outputs[0],spatial)],
+        development_tolerances=report['development_tolerances'],elapsed_seconds=perf_counter()-clock,
+        historical_observation_values_read=0,numerical_acceptance=False,scientific_acceptance=False,
+        interpretation='Two predeclared time controls on the same synthetic day, not a fit. '
+            'Spatial comparison reuses the saved 2561-cell result at the same time step; '
+            'its 96 frequencies differ from 64 (the saved frequency change is reported separately). '
+            'Passing one spatial comparison does not establish time convergence or historical readiness.')
