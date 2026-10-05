@@ -1,6 +1,7 @@
 from time import perf_counter
 
 import numpy as np
+from scipy.optimize import LinearConstraint, minimize
 from src.validation.model.wm_4 import wm_4_validation
 
 
@@ -431,11 +432,33 @@ class time_diffusion_qp:
         constant_q = max(constant_q, 10.0 * positivity_eps)
         x0 = np.array([constant_q, 0.0, 0.0, 0.0, 0.0], dtype=float)
 
-        beta = self.model._least_squares_qp(
-            X, y,
-            A_ub=-Phi, b_ub=-positivity_eps * np.ones(Phi.shape[0], dtype=float),
-            ridge=self.model._FIT_RIDGE, x0=x0,
+        # This QP has only five variables but one positivity inequality
+        # per fine-grid time point. The generic active-set solver is intended
+        # for small/medium working sets and can cycle on these highly redundant
+        # harmonic constraints. Solve the same convex QP with SLSQP using the
+        # exact quadratic objective and linear constraints.
+        scale = max(1e-8, float(np.sqrt(np.mean(y ** 2))))
+        X_scaled, y_scaled = X / scale, y / scale
+        n = max(1, X_scaled.shape[0])
+        H = 2.0 * (X_scaled.T @ X_scaled) / n + self.model._FIT_RIDGE * np.eye(X_scaled.shape[1])
+        f = -2.0 * (X_scaled.T @ y_scaled) / n
+
+        def objective(beta): return 0.5 * float(beta @ H @ beta) + float(f @ beta)
+        def gradient(beta): return H @ beta + f
+
+        constraint = LinearConstraint(Phi, positivity_eps, np.inf)
+        solve = minimize(
+            objective, x0, jac=gradient, constraints=(constraint,),
+            method="SLSQP", options={"ftol": 1e-12, "maxiter": 5000, "disp": False},
         )
+        beta = np.asarray(solve.x, dtype=float)
+        min_q = float(np.min(Phi @ beta))
+        feasibility_tol = max(1e-10, 100.0 * positivity_eps)
+        if not solve.success or not np.all(np.isfinite(beta)) or min_q < positivity_eps - feasibility_tol:
+            raise RuntimeError(
+                f"Time-diffusion convex QP failed: {solve.message}; "
+                f"minimum q={min_q:.3e}, required >= {positivity_eps:.3e}."
+            )
 
         instantaneous_variance = np.maximum(Phi @ beta, 0.0)
         process_variance = np.maximum(propagated_design @ beta, 0.0)
