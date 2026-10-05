@@ -42,7 +42,9 @@ def _frozen_terminal_reference(raw, inputs_sha256, source, expected_design):
     if digest != 'b35a376d28659e221c2ee65ca9b8ddee98e5d9c0ca2a57ab3642d5cb0b45676c':
         raise ValueError('Terminal reference differs from the archived PR #81 day.')
     saved = json.loads(raw)
-    if (saved['design'] != expected_design or saved['inputs_sha256'] != inputs_sha256
+    normalized_inputs = {p.replace('\\', '/'): sha for p, sha in inputs_sha256.items()}
+    saved_inputs = {p.replace('\\', '/'): sha for p, sha in saved['inputs_sha256'].items()}
+    if (saved['design'] != expected_design or saved_inputs != normalized_inputs
             or saved['stage'] != 'day' or saved['status'] != 'completed'):
         raise ValueError('Terminal reference fixture or inputs changed.')
     exceptions = {'src/exe/run_model/bm_1_interval_terminal_tilt.py',

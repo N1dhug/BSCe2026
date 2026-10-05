@@ -220,6 +220,14 @@ checkpoint were retained locally. Historical observations read: zero.
 
 ### Next bounded task
 
+**Update after Sol's completed cross replay:** the control below is finished;
+do not repeat it. Time score difference .00216009 passes, spatial difference
+.08538749 fails. The next bounded reference is 2561 cells at h=1/49152 day,
+with 900 s invocations/checkpoints and an estimated 28-minute day. Positivity
+precludes using h=1/24576 at that grid. See the measured decomposition,
+admissibility audit and runtime limits in
+[H2_TERMINAL_TILT_CROSS_CONTROL.md](H2_TERMINAL_TILT_CROSS_CONTROL.md).
+
 The cancellation diagnosis and scoped method review are complete. Routine
 implementation can continue on Sol with this explicit experiment: add **one**
 cross-resolution replay of the same day at 1281 cells and h=1/24576 day,

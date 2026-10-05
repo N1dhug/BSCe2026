@@ -24,6 +24,8 @@ class TerminalTiltTests(unittest.TestCase):
         reused, proof = _frozen_terminal_reference(raw, *args)
         self.assertEqual(reused['comparison'], saved['comparison'])
         self.assertIn('src/solver/finite_volume.py', proof['unchanged_dependency_paths'])
+        windows_inputs = {p.replace('/', '\\'): sha for p, sha in args[0].items()}
+        _frozen_terminal_reference(raw, windows_inputs, *args[1:])
         with self.assertRaisesRegex(ValueError, 'archived'):
             _frozen_terminal_reference(gzip.decompress(raw)+b' ', *args)
         with self.assertRaisesRegex(ValueError, 'inputs changed'):

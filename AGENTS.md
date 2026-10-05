@@ -123,10 +123,18 @@ og gennemfører det smalle cases to døgn-replays. Tre fokuserede nye tests best
 Hele døgnet fejler fortsat den uændrede scoregate: .08754758 > .05;
 slut-mean/L1 består. Runtime 225.70/630.87 s; faktisk log-state-pause/resume
 er kontrolleret. Dette er kun en pilot, med heuristisk roundoffguard og et
-analytisk modeksempel på universel tilt-dækning. Næste Sol-opgave er ét
-1281-cellers replay med h=1/24576 på samme fixture, sammenholdt med de to
-gemte replays for at skelne tids- og rumfejl. Budget <=900 s, samme gates;
-genkør ikke de gemte replays. Historisk backend og fælles kerner er uændrede.
+analytisk modeksempel på universel tilt-dækning. Sols krydsreplay er nu færdigt
+på 433.43 s: tids-scoreforskel .00216009 består; rum-scoreforskel .08538749
+fejler .05. Mean/L1 består begge; gamle døgn er genbrugt uden replay. Én ny
+fokuseret genbrugstest består; den uændrede terminal-kernel og 35 relevante
+BM-kildehashes er kontrolleret uden at koble uvedkommende G/WM-kode til F.
+Læs `root/H2_TERMINAL_TILT_CROSS_CONTROL.md`. Næste afgrænsede reference:
+2561 celler, h=1/49152 på samme fixture, genbrug det gemte 1921-cellers døgn.
+Generatoraudit viser, at h=1/24576 bryder CN-positiviteten ved 2561 celler.
+Estimeret døgnruntime ca. 28 min; <=900 s per invocation med log-checkpoints
+og resume. Ingen stor panelkørsel, løsere gate eller historisk fit-readiness.
+Efter tilstrækkelig præcision kræves en praktisk runtime-/adapterløsning.
+Historisk backend og fælles kerner er uændrede.
 Eksakt operatorgenbrug er testet; en parret én-time-median viser 1.23x, ikke et
 historisk fit-speedup. Faktisk tidsvariation og historisk log-state-checkpointadapter er
 stadig åbne. H2/H3-readiness forbliver falsk; historisk fitter er uændret.

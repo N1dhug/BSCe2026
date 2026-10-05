@@ -9,10 +9,14 @@ Den samlede tids-/rumforskel er dog .08754758 i log-likelihood mod grænsen .05;
 mean/L1 består. Der er fortsat ingen historisk fit-readiness eller H2/H3-accept.
 Den endelige rårapport er bevaret, inklusive det negative præcisionsresultat.
 
-**Næste afgrænsede Sol-opgave:** ét krydsreplay med 1281 celler og h=1/24576
-på præcis den samme fixture, højst 900 s per invocation. Sammenlign med de
-to gemte replays for at isolere tidsfejl og rumfejl; genkør ikke dem. Derefter
-vælges en begrundet, lille præcision/runtime-korrektion. Historisk integration,
+**Sol-krydskontrollen er nu færdig:** 1281 celler ved h=1/24576 tog 433.43 s.
+Tids-scoreforskel .00216009 består; rum-scoreforskel .08538749 fejler .05.
+Slut-mean/L1 består begge; begge gamle døgn er genbrugt uden genberegning.
+Næste: én 2561-cellers reference ved h=1/49152 på samme fixture, sammenholdt
+med det gemte 1921-cellers døgn. h=1/24576 bryder CN-positivitet på det nye
+grid. Forvent cirka 28 min med <=900 s invocations og log-state-resume;
+se [resultat og afgrænset design](H2_TERMINAL_TILT_CROSS_CONTROL.md).
+Det er en udviklingsreference før praktisk runtime/backend-valg. Historisk integration,
 tidsvariation/breakpoints og data-/split-/baselinevalg er stadig åbne.
 Tilting har ingen universel garanti for adskilte betingede blandinger, og
 roundoffguard er heuristisk; se det konkrete analytiske modeksempel i reviewet.
