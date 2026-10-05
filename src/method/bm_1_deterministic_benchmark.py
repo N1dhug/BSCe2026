@@ -19,9 +19,14 @@ def matched_wm_fit(train, forecast, warmup_hours, steps_per_hour):
     """Existing constrained WM QP and forward model; no oracle state fit."""
     n = len(train['time'])
     obs = np.zeros(n, dtype=bool)
-    obs[warmup_hours*steps_per_hour: n-1:steps_per_hour] = True
-    transition = np.zeros(n-1, dtype=bool)
-    transition[warmup_hours*steps_per_hour:] = True
+    measured = train['observation_mask']
+    obs[:-1:steps_per_hour] = measured
+    obs[:warmup_hours*steps_per_hour] = False
+    # WM needs a dense reconstructed state, but gaps must not create extra
+    # measured transitions in its QP objective.
+    adjacent = measured & np.r_[measured[1:],measured[-1]]
+    transition = np.repeat(adjacent,steps_per_hour)
+    transition[:warmup_hours*steps_per_hour] = False
     data = {'I': train['fine_observed'], 'U': train['price'], 'Time': train['time'],
             'O': train['baseline'], 'observation_mask': obs, 'transition_mask': transition}
     model = wm_4((0., train['time'][-1]/24), n, output_callable(train['fine_index'], train['baseline']))
@@ -43,17 +48,21 @@ def performance_rows(predictions):
     """Reuse WM analysis by adapting its model prefix, then restore the name."""
     rows = []
     for day, group in predictions.groupby(predictions.index.normalize()):
-        row = {'day': day, 'weekday': day.day_name(), 'samples': len(group)}
+        measured = group.loc[np.isfinite(group.observed)]
+        row = {'day': day, 'weekday': day.day_name(), 'samples': len(measured),
+               'missing_demand_hours':len(group)-len(measured)}
         for name in ('O','bm1','wm4'):
             if name not in predictions: continue
-            row.update({f'{name}_{k}': v for k,v in deviation_metrics(group.observed, group[name]).items()})
+            metrics = deviation_metrics(measured.observed,measured[name]) if len(measured) else dict.fromkeys(('mse','rmse','mae','bias'),np.nan)
+            row.update({f'{name}_{k}':v for k,v in metrics.items()})
         rows.append(row)
     daily = pd.DataFrame(rows)
+    scored = daily.loc[daily.samples>0].copy()
     performance = {}
     if 'wm4' in predictions:
-        performance['wm4'] = analyze(daily.copy())
+        performance['wm4'] = analyze(scored.copy())
     bm_columns = {k: k.replace('bm1_', 'wm4_') for k in daily if k.startswith('bm1_')}
-    bm = analyze(daily.drop(columns=[k for k in daily if k.startswith('wm4_')]).rename(columns=bm_columns))
+    bm = analyze(scored.drop(columns=[k for k in scored if k.startswith('wm4_')]).rename(columns=bm_columns))
     bm = bm.rename(columns=lambda k: k.replace('wm4_', 'bm1_'))
     performance['bm1'] = bm
     return daily, performance
@@ -61,7 +70,7 @@ def performance_rows(predictions):
 
 def demand_units(normalized, scales):
     result = normalized.copy()
-    for key in ('observed','O','bm1','wm4','R'):
+    for key in ('observed','demand_input','O','bm1','wm4','R'):
         if key not in result: continue
         result[key] *= scales['demand_scale']
         if key != 'R': result[key] += scales['demand_min']
@@ -69,6 +78,9 @@ def demand_units(normalized, scales):
 
 
 def model_metrics(predictions):
+    predictions = predictions.loc[np.isfinite(predictions.observed)]
+    if predictions.empty:
+        raise ValueError('Metrics require at least one measured demand sample.')
     metrics = {key: deviation_metrics(predictions.observed, predictions[key])
                for key in ('O','bm1','wm4') if key in predictions}
     for key in ('bm1','wm4'):
@@ -93,7 +105,7 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
     forecast = common_inputs(frame, baseline, train_end, forecast_end, steps_per_hour=wm_steps_per_hour) if forecast_hours else None
     inputs = BM1DeterministicInputs(train['time'], train['baseline'], (train['price_hour']+1)/2,
                                     train['observed'], warmup_hours=warmup_hours,
-                                    steps_per_hour=config.steps_per_hour)
+                                    steps_per_hour=config.steps_per_hour, observation_mask=train['observation_mask'])
     manifest = {'stage': 'G0-G3', 'training_start': str(train_start), 'training_end_exclusive': str(train_end),
                 'forecast_start': str(train_end), 'forecast_end_exclusive': str(forecast_end),
                 'warmup_hours': warmup_hours, 'time_unit': 'hours', 'scales': scales,
@@ -101,6 +113,12 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
                 'observation_contract': 'hourly-point-approximation; raw interval semantics unresolved',
                 'evidence': 'in-sample development fit with realized prices/temperature' if forecast is None else 'development conditional forecast with realized prices/temperature',
                 'fit_only': forecast is None,
+                'gap_handling': {'audit':frame.attrs['gap_audit'],
+                                 'helper':'src.tools.import_data.import_input.interpolate_time_gaps',
+                                 'scope':'training window only; aggregate demand and temperature',
+                                 'scoring':'measured demand hours only; baseline, BM and WM share the same mask',
+                                 'wm_reconstruction':'interpolated demand; QP transitions across missing hourly endpoints excluded',
+                                 'wm_initial_demand_imputed':bool(not train['observation_mask'][0])},
                 'initialization': {'bm': 'joint training x0 fit' if config.fixed_x0 is None else 'fixed state before parameter fit',
                                    'fixed_x0': config.fixed_x0,
                                    'wm': 'fit_daily.fitted_initial_condition: F0=INIT_F, R0=I0-O0',
@@ -153,7 +171,8 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
     wm_fit, wm_prediction = None, None
     try:
         wm_fit, wm_prediction = matched_wm_fit(train, forecast, warmup_hours, wm_steps_per_hour)
-        result['wm_fit'] = {'r': wm_fit['r'].tolist(), 'qp_loss': wm_fit['qp_loss'],
+        result['wm_fit'] = {'observed_samples':int(wm_fit['observation_mask'].sum()),
+                           'transition_samples':int(wm_fit['transition_mask'].sum()), 'r': wm_fit['r'].tolist(), 'qp_loss': wm_fit['qp_loss'],
                            'deterministic_loss': wm_fit['deterministic_loss'], 'seconds': wm_fit['qp_fit_time'],
                            'init_cond': wm_fit['init_cond'].tolist(),
                            'damping_branch': wm_fit['damping_branch'], 'damping_ratio': wm_fit['damping_ratio']}
@@ -161,7 +180,9 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
         result['wm_failure'] = {'type': type(exc).__name__, 'message': str(exc)}
     # Export the selected training trajectory, not a second fitted model.
     fit_hourly = np.arange(len(train['index']))*wm_steps_per_hour
-    fitted = pd.DataFrame({'observed': train['observed'], 'O': train['baseline'][fit_hourly],
+    fitted = pd.DataFrame({'observed': train['observed'], 'demand_input':train['demand_input'],
+                           'demand_imputed':~train['observation_mask'],
+                           'temperature_imputed':train['temperature_imputed'], 'O': train['baseline'][fit_hourly],
                            'bm1': trajectory['demand'], 'U': train['price_hour'],
                            'Price_DKK_MWh': raw.reindex(train['index']).Price.to_numpy(dtype=float),
                            'x': trajectory['state'][:-1]},index=train['index'])
@@ -185,7 +206,7 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
     result.update(fit_predictions=fit_raw, fit_normalized=fitted, fit_signals=signals,
                   fit_daily_metrics=fit_daily, fit_performance=fit_performance,
                   fit_metrics=model_metrics(fit_raw), fit_metrics_normalized=model_metrics(fitted),
-                  training_metrics=deviation_metrics(fitted.observed,fitted.bm1),
+                  training_metrics=model_metrics(fitted)['bm1'],
                   x_forecast_origin=float(trajectory['state'][-1]))
     if forecast is None:
         result.update(status='complete' if wm_fit is not None else 'wm-rejected', seconds=perf_counter()-started)

@@ -15,6 +15,13 @@ DK1-priser og kræver ingen februardata. Standard-x0 er fast (1-INIT_F)/2=0.5
 fra WM's neutrale INIT_F=0; kun C,k,Xi fittes. `--initial-state fit` bevarer
 den tidligere x0-estimation. Fit.png/ugesnit, CSV og WM-metrics viser in-sample
 januarfit, ikke forecast-accept. Ingen historisk kørsel er udført i chatten.
+G-januar håndterer nu manglende demand/temperatur med den eksisterende import-
+interpolation afgrænset til TRAIN. Rå demand beholdes som NaN; baseline/BM-fit
+og fælles BM/WM-fejlmål bruger kun målte timer. WM-tilstandsrekonstruktion bruger
+udfyldt demand; QP-overgange over manglende endpoints maskeres. G kræver stadig
+168 målte demand-timer og komplette importerede priser. 10 tests består;
+én syntetisk januar med 27 demandhuller og 3 temperaturhuller gennemført
+på ca. 19 s (717 målte timer for begge modeller). Historisk fit mangler stadig.
 G4–G7 er fortsat planlagt.
 Ved almindelige G0–G3-ændringer er standardkontrollen kun de 10 tests i
 `python -B -m unittest tests.test_bm1_deterministic_fit -q`. Dette erstatter

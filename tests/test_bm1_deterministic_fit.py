@@ -6,7 +6,7 @@ from src.model.bm_1 import bm_1
 from src.params.bm_1_deterministic import BM1DeterministicConfig
 from src.method.bm_1_deterministic_fit import (BM1DeterministicInputs, fit_deterministic,
                                             exact_linear_interval, BudgetStop)
-from src.tools.bm_1_deterministic_data import prepare_frame, common_inputs
+from src.tools.bm_1_deterministic_data import prepare_frame,common_inputs,training_data_audit
 from src.exe.run_model.wm_4.output_model import statistical_output
 
 
@@ -66,9 +66,12 @@ class DeterministicFitTests(unittest.TestCase):
         self.assertGreater(fit['counts']['residual_calls'],5)
         self.assertEqual(fit['counts']['forward_solves'],fit['counts']['residual_calls'])
         # Fixing x0 removes its optimizer coordinate, even when the seed differs.
+        data.observation_mask[10] = False
+        data.observations[10] = 1e6  # A masked target must not affect the fit.
         fixed = fit_deterministic(data,BM1DeterministicConfig(starts=((12.,1.,.4,.8),),
                                                             fixed_x0=truth[3],max_calls=250))
         self.assertEqual(fixed['status'],'converged')
+        self.assertEqual(fixed['observed_samples'],119)
         np.testing.assert_allclose(fixed['best_converged']['parameters'],truth,rtol=.01,atol=.001)
         self.assertEqual(fixed['best_converged']['parameters'][3],truth[3])
         self.assertEqual(fixed['optimized_coordinates'],['log_C_hours','log_k','Xi'])
@@ -122,8 +125,28 @@ class DataCutoffTests(unittest.TestCase):
 
     def test_gaps_and_future_price_domain_fail_without_clipping(self):
         raw = self.raw()
-        with self.assertRaises(ValueError):
-            prepare_frame(raw.drop(raw.index[4]),'2022-01-01','2022-01-09')
+        missing = raw.copy(); missing.loc[raw.index[4],'Demand'] = np.nan
+        audit = training_data_audit(missing,'2022-01-01','2022-01-09')
+        self.assertTrue(audit['fit_ready'])
+        self.assertFalse(audit['raw_complete'])
+        self.assertEqual(audit['complete_hours'],191)
+        self.assertEqual(audit['columns']['Demand']['first_missing'],['2022-01-01 04:00:00'])
+        self.assertEqual(audit['columns']['Price']['missing_hours'],0)
+        missing.loc[raw.index[[0,191]],['Demand','Temp']] = np.nan
+        frame,_ = prepare_frame(missing,'2022-01-01','2022-01-09')
+        model = statistical_output().fit(frame,'2022-01-09')
+        common = common_inputs(frame,model,'2022-01-01','2022-01-09',observations=True)
+        self.assertEqual(common['observation_mask'].sum(),189)
+        self.assertTrue(np.isnan(common['observed'][4]))
+        self.assertTrue(np.isfinite(common['demand_input']).all())
+        self.assertEqual(common['demand_input'][0],common['demand_input'][1])
+        self.assertEqual(common['demand_input'][-1],common['demand_input'][-2])
+        self.assertEqual(common['temperature_imputed'].sum(),2)
+        missing.loc[raw.index[4],'Price'] = np.nan
+        with self.assertRaisesRegex(ValueError,'Price: missing=1'):
+            prepare_frame(missing,'2022-01-01','2022-01-09')
+        dropped = training_data_audit(raw.drop(raw.index[4]),'2022-01-01','2022-01-09')
+        self.assertEqual(dropped['columns']['Temp']['missing_hours'],1)
         frame,_ = prepare_frame(raw,'2022-01-01','2022-01-09')
         model = statistical_output().fit(frame,'2022-01-09')
         frame.loc[frame.index>=pd.Timestamp('2022-01-09'),'U'] = 1.1
@@ -142,7 +165,7 @@ class DataCutoffTests(unittest.TestCase):
             return pd.Series(5.,index=idx)
         cutoff = pd.Timestamp('2022-01-09')
         with patch(module+'input_data'),patch(module+'spot_price_data'),patch(module+'weather_data'), \
-             patch(module+'consumption_series',return_value=raw.Demand), \
+             patch(module+'consumption_series',return_value=raw.Demand.iloc[1:]), \
              patch(module+'price_series',return_value=raw.Price),patch(module+'temperature_series',side_effect=temperatures):
             load_raw_frame('.',raw.index[0],'2022-01-11',cutoff=cutoff)
             load_raw_frame('.',raw.index[0],cutoff,cutoff=cutoff)
@@ -152,17 +175,21 @@ class DataCutoffTests(unittest.TestCase):
         from unittest.mock import patch
         from src.method.bm_1_deterministic_benchmark import run_benchmark
         raw = self.raw()
+        raw.loc[raw.index[[0,4,191]],['Demand','Temp']] = np.nan
         changed = raw.copy()
+        changed.loc[changed.index>=pd.Timestamp('2022-01-09'),'Temp'] += 100
         changed.loc[changed.index>=pd.Timestamp('2022-01-09'),'Demand'] += 10
         config = BM1DeterministicConfig(starts=((12.,2.,0.,.5),),max_calls=150)
         with patch('src.method.bm_1_deterministic_benchmark.matched_wm_fit',side_effect=ValueError('WM rejection')):
             results = [run_benchmark(r,'2022-01-01','2022-01-09',forecast_hours=48,config=config) for r in (raw,changed)]
         self.assertEqual(results[0]['manifest']['scales'],results[1]['manifest']['scales'])
-        np.testing.assert_array_equal(results[0]['predictions'].O,results[1]['predictions'].O)
+        np.testing.assert_array_equal(results[0]['fit_predictions'].O,results[1]['fit_predictions'].O)
         self.assertEqual(results[0]['status'],'wm-rejected')
+        self.assertEqual(results[0]['fit']['observed_samples'],189)
+        self.assertEqual(results[0]['fit_predictions'].observed.isna().sum(),3)
         self.assertNotIn('wm4',results[0]['metrics'])
         self.assertEqual(results[0]['fit']['best_converged']['parameters'],results[1]['fit']['best_converged']['parameters'])
-        np.testing.assert_array_equal(results[0]['predictions'].bm1,results[1]['predictions'].bm1)
+        np.testing.assert_array_equal(results[0]['fit_predictions'].bm1,results[1]['fit_predictions'].bm1)
 
 
 if __name__=='__main__': unittest.main()

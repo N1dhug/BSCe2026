@@ -41,6 +41,10 @@ def save_fit_plots(directory, result):
         fig, axes = plt.subplots(4,1,figsize=(15,12),sharex=True)
         axes[0].plot(points.index,points.observed,color='black',alpha=.55,label='Observed hourly aggregate input I')
         axes[0].scatter(points.index,points.observed,s=10,color='black')
+        filled = points.loc[points.demand_imputed]
+        if len(filled):
+            axes[0].scatter(filled.index,filled.demand_input,s=20,marker='x',color='gray',
+                            label='Interpolated demand: excluded from fit scores')
         axes[0].plot(curves.index,curves.bm1,label='Fitted BM1 input D')
         if 'wm4' in curves: axes[0].plot(curves.index,curves.wm4,label='Fitted WM4 input I=O+R')
         axes[0].plot(curves.index,curves.O,alpha=.7,label='Shared weather-aware baseline O=B')
@@ -156,7 +160,8 @@ def main(argv=None):
     from src.params.bm_1_deterministic import BM1DeterministicConfig
     from src.exe.run_model.wm_4.fit_daily import INIT_F
     from src.method.bm_1_deterministic_benchmark import run_benchmark
-    from src.tools.bm_1_deterministic_data import load_raw_frame, raw_csv, prepare_frame
+    from src.tools.bm_1_deterministic_data import (load_raw_frame,raw_csv,prepare_frame,
+                                                 training_data_audit,training_audit_text)
     from src.tools.bm_1_reports import _RunLock, _atomic_report
     from src.exe.run_model.progress import runtime_text
     from time import perf_counter
@@ -199,15 +204,19 @@ def main(argv=None):
                 raw = synthetic_january()
             else:
                 raw = raw_csv(args.input_csv) if args.input_csv else load_raw_frame(args.data_directory,start-pd.Timedelta(hours=warmup),data_end,args.tag,cutoff=end)
+            coverage = training_data_audit(raw,start,end)
+            _atomic_report(directory/'data_audit.json',coverage)
+            print(training_audit_text(coverage),flush=True)
+            if args.audit_only:
+                print(f'Data audit saved: {directory}; no parameter fit performed.',flush=True)
+                return 0
             frame, scales = prepare_frame(raw,start,end,price_bounds=args.price_bounds)
             audit = {'training_start':str(start),'training_end_exclusive':str(end),'scales':scales,
-                     'samples':int((end-start).total_seconds()/3600),'tag':args.tag,
+                     'samples':int((end-start).total_seconds()/3600),'tag':args.tag,'coverage':coverage,
+                     'observed_demand_samples':coverage['columns']['Demand']['valid_hours'],
                      'contract':'hourly-point-approximation, metadata unresolved',
                      'raw_fingerprint':hashlib.sha256(pd.util.hash_pandas_object(raw,index=True).values.tobytes()).hexdigest()}
             _atomic_report(directory/'audit.json',audit)
-            if args.audit_only:
-                print(f'Audit saved: {directory}',flush=True)
-                return 0
             result = run_benchmark(raw,start,end,config=config,warmup_hours=warmup,
                                    forecast_hours=forecast_hours,
                                    wm_steps_per_hour=args.wm_steps_per_hour,price_bounds=args.price_bounds,
@@ -221,7 +230,7 @@ def main(argv=None):
                             'src/params/bm_1_deterministic.py','src/tools/bm_1_deterministic_data.py',
                             'src/model/base/bm.py','src/model/wm_4.py','src/params/wm_4.py',
                             'src/exe/run_model/wm_4/output_model.py','src/exe/run_model/wm_4/fit_daily.py',
-                            'src/exe/run_model/bm_1/deterministic.py']
+                            'src/exe/run_model/bm_1/deterministic.py','src/tools/import_data/import_input.py']
             result['manifest']['source_sha256'] = {p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in source_paths}
             write_result(directory,result)
             print(f"status={result['status']}; output={directory}",flush=True)
