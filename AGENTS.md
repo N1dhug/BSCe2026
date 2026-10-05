@@ -1,5 +1,20 @@
 # Fælles projektkontekst
 
+## F4-H beregningsbudget, Johan 6. oktober 2026
+
+Samlet resterende H-beregning skal planlægges mod 4–6 timer og holde sig under
+10 timer inklusive piloter, fits og nødvendige kontroller. Budgettet følger
+forløbet på tværs af resumes; de tidligere cirka 90 timer er afvist.
+Næste opgave er højst 15 minutters gennemførlighedsprøve af billig
+intervalbaseret kandidatsøgning mod den præcise terminal-tilt-reference.
+Dette erstatter den isolerede Fourier-runtimekontrol som næste prioritet.
+De gamle grove grids fejlede numerik; de må ikke genindføres som accepteret
+likelihood. Kontroller kandidatforskelle og valgte løsninger, og stop ved
+utilstrækkelig præcision eller budget. Genbrug fitter/data/checkpoints og
+timeholdte B/U-inputs. Brede profiler/bootstrap/robusthedspaneler er udsat;
+fælles f/g, datakontrakt, modelvalg og frosset slutvalidering bevares.
+Se den nye budgetbeslutning øverst i root/F4.md. Budgetmål er ikke målt runtime.
+
 ## Arbejdsregel fra Johan, 5. oktober: adskil G/F og minimér kontrolarbejdet
 
 G er den deterministiske BM-kæde med et senere sandsynlighedslag; F er den
