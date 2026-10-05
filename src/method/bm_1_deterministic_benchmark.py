@@ -4,6 +4,7 @@ from time import perf_counter
 import numpy as np
 import pandas as pd
 from src.exe.run_model.wm_4.output_model import statistical_output, output_callable
+from src.exe.run_model.wm_4.fit_daily import fitted_initial_condition
 from src.exe.run_model.wm_4.predict_weekly import deviation_metrics
 from src.exe.run_model.wm_4.analyze_performance import analyze, summary_table, weekday_summary
 from src.model.wm_4 import wm_4
@@ -24,8 +25,10 @@ def matched_wm_fit(train, forecast, warmup_hours, steps_per_hour):
     data = {'I': train['fine_observed'], 'U': train['price'], 'Time': train['time'],
             'O': train['baseline'], 'observation_mask': obs, 'transition_mask': transition}
     model = wm_4((0., train['time'][-1]/24), n, output_callable(train['fine_index'], train['baseline']))
-    init = np.array([0., data['I'][0]-data['O'][0]])
-    fit = qp_params(model).fit(data, init)
+    init = fitted_initial_condition(data)
+    fit = qp_params(model).fit(data, init, verbose=False)
+    if forecast is None:
+        return fit, None
     last = fit['deterministic_state']
     next_init = np.array([last['F'][-1], last['R'][-1]])
     wm_4_validation.initial_condition(next_init)
@@ -56,9 +59,29 @@ def performance_rows(predictions):
     return daily, performance
 
 
+def demand_units(normalized, scales):
+    result = normalized.copy()
+    for key in ('observed','O','bm1','wm4','R'):
+        if key not in result: continue
+        result[key] *= scales['demand_scale']
+        if key != 'R': result[key] += scales['demand_min']
+    return result
+
+
+def model_metrics(predictions):
+    metrics = {key: deviation_metrics(predictions.observed, predictions[key])
+               for key in ('O','bm1','wm4') if key in predictions}
+    for key in ('bm1','wm4'):
+        if key in metrics: metrics[key]['mse_gain'] = metrics['O']['mse']-metrics[key]['mse']
+    return metrics
+
+
 def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
                   forecast_hours=168, wm_steps_per_hour=60, price_bounds=None, checkpoint=None, progress=None):
     config = config or BM1DeterministicConfig()
+    if isinstance(forecast_hours,bool) or int(forecast_hours) != forecast_hours or forecast_hours < 0:
+        raise ValueError('forecast_hours must be a nonnegative integer; zero is fit-only.')
+    forecast_hours = int(forecast_hours)
     started = perf_counter()
     train_start, train_end = pd.Timestamp(train_start), pd.Timestamp(train_end)
     origin = train_start-pd.Timedelta(hours=warmup_hours)
@@ -67,7 +90,7 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
     # Fit once with cutoff at forecast origin; exactly the same baseline object.
     baseline = statistical_output().fit(frame, train_end)
     train = common_inputs(frame, baseline, origin, train_end, observations=True, steps_per_hour=wm_steps_per_hour)
-    forecast = common_inputs(frame, baseline, train_end, forecast_end, steps_per_hour=wm_steps_per_hour)
+    forecast = common_inputs(frame, baseline, train_end, forecast_end, steps_per_hour=wm_steps_per_hour) if forecast_hours else None
     inputs = BM1DeterministicInputs(train['time'], train['baseline'], (train['price_hour']+1)/2,
                                     train['observed'], warmup_hours=warmup_hours,
                                     steps_per_hour=config.steps_per_hour)
@@ -76,12 +99,17 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
                 'warmup_hours': warmup_hours, 'time_unit': 'hours', 'scales': scales,
                 'normalization': 'train-only affine, shared BM/WM; no held-out rescaling',
                 'observation_contract': 'hourly-point-approximation; raw interval semantics unresolved',
-                'evidence': 'development conditional forecast with realized prices/temperature',
+                'evidence': 'in-sample development fit with realized prices/temperature' if forecast is None else 'development conditional forecast with realized prices/temperature',
+                'fit_only': forecast is None,
+                'initialization': {'bm': 'joint training x0 fit' if config.fixed_x0 is None else 'fixed state before parameter fit',
+                                   'fixed_x0': config.fixed_x0,
+                                   'wm': 'fit_daily.fitted_initial_condition: F0=INIT_F, R0=I0-O0',
+                                   'forecast': 'carry training terminal state, no reset'},
                 'baseline': {'implementation': 'statistical_output', 'metadata': baseline.metadata,
                              'coef': baseline.coef.tolist(), 'feature_mean': baseline.feature_mean.tolist(),
                              'feature_scale': baseline.feature_scale.tolist(),
                              'train_clipped_samples': train['baseline_clipped_samples'],
-                             'forecast_clipped_samples': forecast['baseline_clipped_samples'],
+                             'forecast_clipped_samples': forecast['baseline_clipped_samples'] if forecast is not None else None,
                              'interpolation': 'linear between shared fine samples'},
                 'bm_solver': 'scalar BM1 RK4, restart held price each hour, no state clipping',
                 'wm_solver': 'existing qp_params and discrete deterministic WM4',
@@ -103,29 +131,65 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
     p = np.asarray(fit['best_converged']['parameters'])
     # Final scoring and two time-refinement solves have a separate 60-second quota.
     final_deadline = perf_counter()+60.
-    trajectory = inputs.solve(p, deadline=final_deadline)
+    trajectory = inputs.solve(p, deadline=final_deadline, keep_fine=True)
     refined = inputs.refined().solve(p, deadline=final_deadline)
     error = float(np.max(np.abs(trajectory['demand']-refined['demand'])))
-    future = BM1DeterministicInputs(forecast['time'], forecast['baseline'], (forecast['price_hour']+1)/2,
-                                   steps_per_hour=config.steps_per_hour)
-    future_p = np.r_[p[:3], trajectory['state'][-1]]
-    prediction = future.solve(future_p, deadline=final_deadline)
-    future_refined = future.refined().solve(future_p, deadline=final_deadline)
-    error = max(error, float(np.max(np.abs(prediction['demand']-future_refined['demand']))))
+    final_solves = [trajectory,refined]
+    if forecast is not None:
+        future = BM1DeterministicInputs(forecast['time'], forecast['baseline'], (forecast['price_hour']+1)/2,
+                                       steps_per_hour=config.steps_per_hour)
+        future_p = np.r_[p[:3], trajectory['state'][-1]]
+        prediction = future.solve(future_p, deadline=final_deadline)
+        future_refined = future.refined().solve(future_p, deadline=final_deadline)
+        error = max(error, float(np.max(np.abs(prediction['demand']-future_refined['demand']))))
+        final_solves += [prediction,future_refined]
     result['numerics'] = {'max_demand_refinement_error': error, 'tolerance': config.numerical_tolerance,
-                           'forward_solves': 4,
-                           'rhs_evaluations': sum(v['rhs_evaluations'] for v in (trajectory,refined,prediction,future_refined)),
+                           'forward_solves': len(final_solves),
+                           'rhs_evaluations': sum(v['rhs_evaluations'] for v in final_solves),
                            'passed': error <= config.numerical_tolerance}
     if not result['numerics']['passed']:
         result['status'] = 'numerics-rejected'
         return result
-    wm_prediction = None
+    wm_fit, wm_prediction = None, None
     try:
         wm_fit, wm_prediction = matched_wm_fit(train, forecast, warmup_hours, wm_steps_per_hour)
         result['wm_fit'] = {'r': wm_fit['r'].tolist(), 'qp_loss': wm_fit['qp_loss'],
-                           'deterministic_loss': wm_fit['deterministic_loss'], 'seconds': wm_fit['qp_fit_time']}
+                           'deterministic_loss': wm_fit['deterministic_loss'], 'seconds': wm_fit['qp_fit_time'],
+                           'init_cond': wm_fit['init_cond'].tolist(),
+                           'damping_branch': wm_fit['damping_branch'], 'damping_ratio': wm_fit['damping_ratio']}
     except (ValueError, RuntimeError) as exc:
         result['wm_failure'] = {'type': type(exc).__name__, 'message': str(exc)}
+    # Export the selected training trajectory, not a second fitted model.
+    fit_hourly = np.arange(len(train['index']))*wm_steps_per_hour
+    fitted = pd.DataFrame({'observed': train['observed'], 'O': train['baseline'][fit_hourly],
+                           'bm1': trajectory['demand'], 'U': train['price_hour'],
+                           'Price_DKK_MWh': raw.reindex(train['index']).Price.to_numpy(dtype=float),
+                           'x': trajectory['state'][:-1]},index=train['index'])
+    signals = pd.DataFrame({'O': train['baseline'], 'U': train['price'],
+                            'bm1': np.interp(train['time'],trajectory['fine_time'],trajectory['fine_demand']),
+                            'x': np.interp(train['time'],trajectory['fine_time'],trajectory['fine_state'])},index=train['fine_index'])
+    signals['bm_correction'] = signals.bm1-signals.O
+    signals['bm_x_dot_per_hour'] = signals.bm_correction/p[0]
+    signals['bm_signed_state'] = 1-2*signals.x
+    signals['Price_DKK_MWh'] = scales['price_min']+(signals.U+1)*scales['price_scale']/2
+    if wm_fit is not None:
+        state = wm_fit['deterministic_state']
+        for key in ('I','F','R','R_dot'):
+            name = 'wm4' if key == 'I' else key
+            fitted[name] = state[key][fit_hourly]
+            signals[name] = state[key]
+    fitted = fitted.loc[fitted.index >= train_start]
+    signals = signals.loc[signals.index >= train_start]
+    fit_raw = demand_units(fitted, scales)
+    fit_daily, fit_performance = performance_rows(fit_raw)
+    result.update(fit_predictions=fit_raw, fit_normalized=fitted, fit_signals=signals,
+                  fit_daily_metrics=fit_daily, fit_performance=fit_performance,
+                  fit_metrics=model_metrics(fit_raw), fit_metrics_normalized=model_metrics(fitted),
+                  training_metrics=deviation_metrics(fitted.observed,fitted.bm1),
+                  x_forecast_origin=float(trajectory['state'][-1]))
+    if forecast is None:
+        result.update(status='complete' if wm_fit is not None else 'wm-rejected', seconds=perf_counter()-started)
+        return result
     idx = forecast['index']
     # Scoring is separate; no future observations were passed to either forward model.
     actual = frame.reindex(idx)['I'].to_numpy(dtype=float)
@@ -134,23 +198,16 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
     hourly = np.arange(forecast_hours)*wm_steps_per_hour
     normalized = pd.DataFrame({'observed': actual, 'O': forecast['baseline'][hourly],
                                'bm1': prediction['demand'],
-                               'U': forecast['price_hour'], 'x': prediction['state'][:-1]}, index=idx)
+                               'U': forecast['price_hour'], 'x': prediction['state'][:-1],
+                               'Price_DKK_MWh': raw.reindex(idx).Price.to_numpy(dtype=float)}, index=idx)
     if wm_prediction is not None:
         normalized['wm4'] = wm_prediction['I'][hourly]
         normalized['F'] = wm_prediction['F'][hourly]
         normalized['R'] = wm_prediction['R'][hourly]
-    predictions = normalized.copy()
-    for key in ('observed','O','bm1','wm4','R'):
-        if key not in predictions: continue
-        predictions[key] *= scales['demand_scale']
-        if key != 'R': predictions[key] += scales['demand_min']
-    metrics = {key: deviation_metrics(predictions.observed, predictions[key]) for key in ('O','bm1','wm4') if key in predictions}
-    for key in ('bm1','wm4'):
-        if key not in metrics: continue
-        metrics[key]['mse_gain'] = metrics['O']['mse']-metrics[key]['mse']
+    predictions = demand_units(normalized, scales)
+    metrics = model_metrics(predictions)
     daily, performance = performance_rows(predictions)
     result.update(status='complete' if wm_prediction is not None else 'wm-rejected', predictions=predictions, normalized_predictions=normalized,
                   daily_metrics=daily, performance=performance, metrics=metrics,
-                  training_metrics=deviation_metrics(inputs.observations[warmup_hours:], trajectory['demand'][warmup_hours:]),
                   x_forecast_origin=float(trajectory['state'][-1]), seconds=perf_counter()-started)
     return result

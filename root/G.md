@@ -27,7 +27,9 @@ ikke F-sporets aftalte rækkefølge eller dets senere prognosediagnose.
 
 Johan har bestilt **parameterfit over hele januar**. Første konkrete månedsvariant
 bruger 1. januar 2022 kl. 00 til 1. februar kl. 00 (744 timer), ét fælles
-(C_hours,k,Xi,x0), og derefter 168 timer til 8. februar. BM og WM bruger begge
+(C_hours,k,Xi), fast WM-neutral x0=0.5, og derefter valgfrit 168 timer til
+8. februar. `--initial-state fit` bevarer det tidligere fit af x0.
+`--fit-only` viser januar uden februardata. BM og WM bruger begge
 den fulde fitmåned. Månedsvarianten har warm-up=0 for at score hele januar;
 ugevarianten bevarer WM's 24 timer og én fituge. Ingen daglige state-resets.
 
@@ -272,8 +274,11 @@ G0-manifestet fastlåser:
 5. Finite parameterbounds, starter, numerik, modelvarianter, stopregler,
    kriterium for kompleksitet og både per-fit- og samlet beregningsbudget.
 
-Kausal initialisering: fit højst ét x0 ved begyndelsen af et sammenhængende
-træningsforløb og viderefør den simulerede sluttilstand til forecast-origin.
+Kausal initialisering: standarden er fast neutral x0=(1-INIT_F)/2=0.5,
+parallelt med WM4's aktuelle INIT_F=0 og R0=I0-O0. BM/WM-states har
+forskellig fysisk betydning; det fælles er neutral signed koordinat.
+Alternativt fit højst ét x0 på træningen med `--initial-state fit`.
+Viderefør den simulerede sluttilstand til forecast-origin.
 En deklareret warm-up før det scorede træningsvindue kan bruges. Ingen frie
 daglige state-resets og ingen fit af x0 til fremtidige y. WM4 anvender samme
 informationsgrænse med sin egen state-dimension. Hvis en state-only opdatering
@@ -376,7 +381,7 @@ G0–G3-kode er oprettet; G6-koden nedenfor er fortsat planlagt:
   optimizerbudget og fit; en generaliseret eksakt overgang placeres som genbrugelig
   numerisk helper efter inspektion af eksisterende solverstruktur.
 - `src/exe/run_model/bm_1/deterministic.py`: tynd indgang til audit, fit,
-  predict-week og compare; måneds-/ugekørsel og audit-only er nu kørbare.
+  predict-week og compare; måneds-/ugekørsel, fit-only og audit-only er nu kørbare.
 - `src/validation/bm_1/deterministic_fit.py` og fokuserede tests: små syntetiske
   regressioner og cutoff-kontroller, ingen lange forskningsstudier i CI.
 - G6 tilføjer en lille særskilt usikkerhedsmodul/indgang efter inspektion af

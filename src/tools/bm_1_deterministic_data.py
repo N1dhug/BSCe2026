@@ -21,8 +21,10 @@ def load_raw_frame(data_directory, start, end, tag='MED', *, cutoff=None):
     # The existing weather importer interpolates gaps. Separate requests prevent
     # any forecast temperature being used to fill a training-boundary gap.
     historical = temperature_series(weather, history_start, cutoff)
-    future = temperature_series(weather, cutoff, end)
-    temp = pd.concat((historical,future)).sort_index()
+    pieces = [historical]
+    if pd.Timestamp(end) > pd.Timestamp(cutoff):
+        pieces.append(temperature_series(weather, cutoff, end))
+    temp = pd.concat(pieces).sort_index()
     return pd.concat((demand.rename('Demand'), price.rename('Price'), temp.rename('Temp')), axis=1).sort_index()
 
 
