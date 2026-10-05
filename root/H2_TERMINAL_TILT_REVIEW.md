@@ -222,14 +222,16 @@ checkpoint were retained locally. Historical observations read: zero.
 
 **Update after Sol's completed cross replay:** the control below is finished;
 do not repeat it. Time score difference .00216009 passes, spatial difference
-.08538749 fails. The next bounded reference is 2561 cells at h=1/49152 day,
-with 900 s invocations/checkpoints and an estimated 28-minute day. Positivity
-precludes using h=1/24576 at that grid. See the measured decomposition,
-admissibility audit and runtime limits in
-[H2_TERMINAL_TILT_CROSS_CONTROL.md](H2_TERMINAL_TILT_CROSS_CONTROL.md).
+.08538749 fails. The subsequent 2561-cell reference at h=1/49152 is also
+complete: score .03055462, final mean .00001396 and mass L1 .00117516 all
+pass their unchanged gates against the saved 1921-cell day. Runtime 1503.30 s;
+15 saved hours were resumed without changing their log-state fingerprint.
+This is joint time/state development evidence, not historical fit readiness.
+Next is one paired-hour representation/runtime control; see
+[H2_TERMINAL_TILT_FINE_REFERENCE.md](H2_TERMINAL_TILT_FINE_REFERENCE.md).
 
 The cancellation diagnosis and scoped method review are complete. Routine
-implementation can continue on Sol with this explicit experiment: add **one**
+implementation continued on Sol with this completed experiment: add **one**
 cross-resolution replay of the same day at 1281 cells and h=1/24576 day,
 keeping the prior, observations, f/g, noise, contours and frequency/period fixed.
 Compare it with the two saved replays, without recomputing either: coarse vs

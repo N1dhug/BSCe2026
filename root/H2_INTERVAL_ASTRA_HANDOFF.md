@@ -12,10 +12,13 @@ Den endelige rårapport er bevaret, inklusive det negative præcisionsresultat.
 **Sol-krydskontrollen er nu færdig:** 1281 celler ved h=1/24576 tog 433.43 s.
 Tids-scoreforskel .00216009 består; rum-scoreforskel .08538749 fejler .05.
 Slut-mean/L1 består begge; begge gamle døgn er genbrugt uden genberegning.
-Næste: én 2561-cellers reference ved h=1/49152 på samme fixture, sammenholdt
-med det gemte 1921-cellers døgn. h=1/24576 bryder CN-positivitet på det nye
-grid. Forvent cirka 28 min med <=900 s invocations og log-state-resume;
-se [resultat og afgrænset design](H2_TERMINAL_TILT_CROSS_CONTROL.md).
+Den ene 2561-cellers reference ved h=1/49152 er nu færdig: sammenligningen
+med det gemte 1921-cellers døgn består score .03055462, slut-mean .00001396
+og masse-L1 .00117516 mod .05/.002/.05. Runtime 1503.30 s; 15 timer er
+genbrugt efter budgetpause med identisk log-state-fingerprint. Genkør ikke
+denne reference. Næste er én parret timekontrol af 48 frekvenser/periode 1.5
+versus 64/2 på det gemte 1921-grid, med samme guards; Sol er tilstrækkelig.
+Se [råresultat og det afgrænsede næste trin](H2_TERMINAL_TILT_FINE_REFERENCE.md).
 Det er en udviklingsreference før praktisk runtime/backend-valg. Historisk integration,
 tidsvariation/breakpoints og data-/split-/baselinevalg er stadig åbne.
 Tilting har ingen universel garanti for adskilte betingede blandinger, og

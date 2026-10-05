@@ -119,9 +119,17 @@ python -B -m src.exe.run_model.bm_1_interval_terminal_tilt --stage cross \
 
 This command is for reproduction, not a request to repeat the completed study.
 
-## Next bounded choice and cost
+## Subsequent bounded choice and cost (now completed)
 
-Next, use one 2561-cell reference with h=1/49152 day on the identical fixture,
+The single reference declared below is now complete. C/D passes: score
+.03055462, final mean .00001396 and mass L1 .00117516, with unchanged gates.
+Runtime was 1503.30 s; 15 saved hours were resumed with identical log-state
+fingerprint. Do not repeat this reference. The next task is one paired-hour
+representation/runtime control, not another day/grid panel. See
+[raw result, scope and next declaration](H2_TERMINAL_TILT_FINE_REFERENCE.md).
+The original pre-run design and estimate follow for provenance.
+
+The declared task was one 2561-cell reference with h=1/49152 day on the identical fixture,
 compared with saved C; do not rerun A/B/C. Keep 64 frequencies, period 2,
 the same contours and all three gates. A smaller time step is necessary to
 retain positive CN at that spatial resolution; it is not silent adaptation.
