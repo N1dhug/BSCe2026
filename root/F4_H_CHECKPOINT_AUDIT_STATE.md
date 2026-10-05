@@ -6,8 +6,10 @@ Updated 2026-10-05. Branch `feature/f4-h-checkpoint-audit`, PR #64 targets
 
 ## Repository and ownership
 
-- Last verified published code: `e398a5a07460361d0ee0126ada32f8d1f001bf35`.
-  This checkpoint adds recovered fixes and the completed study handoff.
+- Last verified published H code: `928c1f3b58d067b478129cef788b6d9fe3672ac8`.
+  This checkpoint also preserves the new main delta through `06942cf5cd29d457f595e611d5564b5c94bb9fdc`
+  (PR #63) by applying its reviewed patch without changing the original worktree.
+  Main and PR #62 remain untouched; Johan retains both PR merge decisions.
   The status file's containing commit identifies its current HEAD (a commit
   cannot contain its own hash). Verify with `git log -1 --oneline` and remote.
 - Audit checkout: `/workspace/scratch/f4ee44dd2d5b/h-review`.
@@ -32,9 +34,9 @@ Updated 2026-10-05. Branch `feature/f4-h-checkpoint-audit`, PR #64 targets
 | Selected-fit numerics | DONE on e398a5a; 12 units / 48 replays; every registered gate passed |
 | Selected raw arithmetic review | DONE; 2,304 updates; score <=1.203e-15, posterior L1 <=2.232e-15; no FV |
 | Checkpoint audit fixes | DONE and published on e398a5a; full local + CI verified |
-| Previously staged TRAIN / array-index / completed-fit fixes | Recovered and targeted-tested in this checkpoint; new full CI pending |
+| Previously staged TRAIN / array-index / completed-fit fixes | DONE on 928c1f3; 619-test CI run 324 passed |
 | H2 / H3 | BLOCKED on actual metadata, explicit consumer-price/proxy interpretation and exposure audit |
-| Windows study | No new mandatory long Windows run; existing Windows checkpoint CI passed on e398a5a |
+| Windows study | No new mandatory long Windows run; Windows checkpoint CI passed on 928c1f3 |
 | I/J final acceptance, demand-hop diagnosis, F5/F6 | Not advanced by these development studies |
 
 ## Recovery events and exact commands
@@ -100,8 +102,12 @@ Original v1 rejection and v2 numerical history remain preserved.
   — 45 tests, 19.213 s, exit 0, 2 Windows-only skips.
 - `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -B -m unittest discover -s tests -p test_bm1_data.py -q`
   — 16 tests, 0.551 s, exit 0.
-- `git diff --check` passes. Full regression on the recovered-fix commit must
-  be distinguished from the prior complete e398a5a run; new CI is pending.
+- 928c1f3: GitHub run 324 (`37250598670`) ran the complete regression on its
+  PR merge ref: **619 tests in 658.565 s, OK, 2 platform skips**. Windows
+  launcher/actual locks and notes also passed. The reviewed PR head was 928c1f3.
+- Main-integration targeted tests and final combined full CI are recorded in
+  the next handoff checkpoint; do not infer their result from run 324.
+- `git diff --check` passes.
 
 ## Review ledger
 
@@ -143,13 +149,19 @@ would change that dependency even if no FV work were repeated.
 
 ## Next concrete actions
 
-1. Verify/publish this checkpoint and check full CI; inspect PR #64's diff
-   against the current PR #62 branch. Leave both merges to Johan.
+1. Verify/publish this checkpoint and check full combined CI. PR #64 includes
+   the current main G2 delta so it preserves PR #63 alongside H; it still targets
+   PR #62's branch. Leave both PR merges to Johan.
 2. Resolve actual H2 metadata without accessing FINAL_HOLDOUT observations:
    population/meter membership, physical units/scale, point vs interval meaning,
    baseline provenance, consumer tariff vs declared proxy, timezone/missingness,
    chronological TRAIN/MODEL_SELECTION split and exposure-audited final holdout.
    A metadata-reference string or an old preview is not proof of these facts.
+   Code-only preflight found that legacy input/price constructors read the whole
+   workbook/series and interpolate/ffill/bfill before date selection; reusing
+   their processed output can leak across a split. Supply raw TRAIN-only inputs
+   before preprocessing through a separate H contract, preserving WM/F3 semantics.
+   No historical observations or FINAL_HOLDOUT values were opened for this audit.
 3. Only after those inputs are documented, freeze H2 normalization, regularization,
    optimizer budgets and model-selection protocol; fit one shared f/g pair across
    all declared TRAIN streams. Keep FINAL_HOLDOUT inaccessible until model and

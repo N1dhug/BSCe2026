@@ -33,9 +33,20 @@ jobs:
       - name: Check actual Windows file-sharing locks
         shell: powershell
         run: python -B -m unittest tests.test_checkpoint_io -v
+      - name: Install distributed runner test dependencies
+        run: python -m pip install numpy scipy matplotlib pandas openpyxl
+      - name: Check portable split bundles on Windows
+        shell: powershell
+        run: python -B -m unittest tests.test_run_bundle -v
+      - name: Check distributed resume and real spawned workers on Windows
+        shell: powershell
+        env:
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+        run: python -B -m unittest tests.test_bm1_distributed -v
   review:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         shell: bash
