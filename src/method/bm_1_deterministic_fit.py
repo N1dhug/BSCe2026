@@ -100,7 +100,7 @@ class BM1DeterministicInputs:
                                      observation_contract=self.contract, warmup_hours=self.warmup,
                                      steps_per_hour=2 * self.steps)
 
-    def solve(self, parameters, *, deadline=None):
+    def solve(self, parameters, *, deadline=None, keep_fine=False):
         self.last_rhs_evaluations = 0
         C, k, xi, x = _parameters(parameters)
         # Conservative RK4 stability guard at maximum local restoring slope.
@@ -108,6 +108,8 @@ class BM1DeterministicInputs:
             raise ValueError('Refine the declared RK4 grid for these bounds.')
         states = np.empty(self.n_hours + 1)
         states[0] = x
+        fine_states = np.empty(len(self.u_step)+1) if keep_fine else None
+        if keep_fine: fine_states[0] = x
         h = self.h
         for j, u in enumerate(self.u_step):
             if j % (24 * self.steps) == 0 and deadline is not None and perf_counter() >= deadline:
@@ -122,14 +124,21 @@ class BM1DeterministicInputs:
             x += h * (v1 + 2*v2 + 2*v3 + v4) / 6
             if not np.isfinite(x) or not 0 <= x <= 1:
                 raise ValueError('RK4 state left [0,1]; no clipping is applied.')
+            if keep_fine: fine_states[j+1] = x
             if (j+1) % self.steps == 0:
                 states[(j+1)//self.steps] = x
         point_b = np.interp(np.arange(self.n_hours), self.time, self.baseline)
         point = np.array([linear_demand(x, u, b, k, xi) for x, u, b in zip(states[:-1], self.prices, point_b)])
         mean = self.b_mean + C * np.diff(states)
         demand = point if self.contract == 'hourly-point' else mean
-        return {'state': states, 'demand': demand, 'point_demand': point,
-                'mean_demand': mean, 'rhs_evaluations': 4*len(self.u_step)}
+        result = {'state': states, 'demand': demand, 'point_demand': point,
+                  'mean_demand': mean, 'rhs_evaluations': 4*len(self.u_step)}
+        if keep_fine:
+            fine_u = np.r_[self.u_step, self.prices[-1]]
+            result.update(fine_time=np.arange(len(fine_states))*self.h, fine_state=fine_states,
+                          fine_demand=np.array([linear_demand(x,u,b,k,xi)
+                                                for x,u,b in zip(fine_states,fine_u,self.b_edge)]))
+        return result
 
 
 def fit_deterministic(inputs, config=None, *, checkpoint=None, progress=None):
@@ -145,12 +154,17 @@ def fit_deterministic(inputs, config=None, *, checkpoint=None, progress=None):
     mask = slice(inputs.warmup, None)
     lower, upper = np.array(config.lower), np.array(config.upper)
     # log C/log k; amplitudes/state remain in their bounded physical domains.
-    def pack(p): return np.r_[np.log(p[:2]), p[2:]]
-    def unpack(p): return np.r_[np.exp(p[:2]), p[2:]]
+    active = 4 if config.fixed_x0 is None else 3
+    coordinate_names = ['log_C_hours','log_k','Xi','x0'][:active]
+    def pack(p): return np.r_[np.log(p[:2]), p[2:active]]
+    def unpack(p):
+        values = np.r_[np.exp(p[:2]), p[2:]]
+        return values if active == 4 else np.r_[values, config.fixed_x0]
 
     def snapshot(status):
         return {'status': status, 'counts': dict(counts), 'seconds': perf_counter()-started,
-                'starts': list(completed), 'best_converged': best, 'best_provisional': provisional}
+                'starts': list(completed), 'best_converged': best, 'best_provisional': provisional,
+                'optimized_coordinates': coordinate_names, 'fixed_x0': config.fixed_x0}
 
     for start_index, start in enumerate(config.starts):
         begin_calls = counts['residual_calls']

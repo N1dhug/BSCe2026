@@ -65,6 +65,14 @@ class DeterministicFitTests(unittest.TestCase):
         self.assertLess(fit['best_converged']['mse'],1e-10)
         self.assertGreater(fit['counts']['residual_calls'],5)
         self.assertEqual(fit['counts']['forward_solves'],fit['counts']['residual_calls'])
+        # Fixing x0 removes its optimizer coordinate, even when the seed differs.
+        fixed = fit_deterministic(data,BM1DeterministicConfig(starts=((12.,1.,.4,.8),),
+                                                            fixed_x0=truth[3],max_calls=250))
+        self.assertEqual(fixed['status'],'converged')
+        np.testing.assert_allclose(fixed['best_converged']['parameters'],truth,rtol=.01,atol=.001)
+        self.assertEqual(fixed['best_converged']['parameters'][3],truth[3])
+        self.assertEqual(fixed['optimized_coordinates'],['log_C_hours','log_k','Xi'])
+        self.assertEqual(len(fixed['best_converged']['scaled_jacobian_singular_values']),3)
 
     def test_unidentifiable_zero_xi_reports_low_rank(self):
         data = inputs(24)
@@ -95,11 +103,22 @@ class DataCutoffTests(unittest.TestCase):
                              'Price':100+30*np.sin(t/4),'Temp':5+np.cos(t/8)},index=idx)
 
     def test_missing_future_demand_does_not_block_prediction_setup(self):
+        from unittest.mock import patch
+        from src.method.bm_1_deterministic_benchmark import run_benchmark
         raw = self.raw()
         frame,_ = prepare_frame(raw,'2022-01-01','2022-01-09')
         model = statistical_output().fit(frame,'2022-01-09')
         frame.loc[frame.index>=pd.Timestamp('2022-01-09'),'I'] = np.nan
         self.assertEqual(len(common_inputs(frame,model,'2022-01-09','2022-01-11')['index']),48)
+        # The fit-only pipeline must work with no forecast rows of any kind.
+        config = BM1DeterministicConfig(starts=((12.,2.,0.,.5),),fixed_x0=.5,max_calls=150)
+        with patch('src.method.bm_1_deterministic_benchmark.matched_wm_fit',side_effect=ValueError('WM rejection')):
+            result = run_benchmark(raw.loc[raw.index < '2022-01-09'],'2022-01-01','2022-01-09',
+                                   forecast_hours=0,config=config)
+        self.assertNotIn('predictions',result)
+        self.assertEqual(len(result['fit_predictions']),192)
+        self.assertEqual(result['numerics']['forward_solves'],2)
+        np.testing.assert_array_equal(result['fit_predictions'].Price_DKK_MWh,raw.Price.iloc[:192])
 
     def test_gaps_and_future_price_domain_fail_without_clipping(self):
         raw = self.raw()
@@ -126,7 +145,8 @@ class DataCutoffTests(unittest.TestCase):
              patch(module+'consumption_series',return_value=raw.Demand), \
              patch(module+'price_series',return_value=raw.Price),patch(module+'temperature_series',side_effect=temperatures):
             load_raw_frame('.',raw.index[0],'2022-01-11',cutoff=cutoff)
-        self.assertEqual(requests,[(raw.index[0],cutoff),(cutoff,pd.Timestamp('2022-01-11'))])
+            load_raw_frame('.',raw.index[0],cutoff,cutoff=cutoff)
+        self.assertEqual(requests,[(raw.index[0],cutoff),(cutoff,pd.Timestamp('2022-01-11')),(raw.index[0],cutoff)])
 
     def test_end_to_end_cutoff_and_wm_failure_preserves_bm(self):
         from unittest.mock import patch

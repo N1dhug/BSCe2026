@@ -10,6 +10,11 @@ G som helhed er ikke rent deterministisk. F4-status og dets
 obligatoriske H-f/g-krav bevares. G0–G3 er implementeret og syntetisk kontrolleret; historisk januar-fit mangler.
 Johan har bestilt hele januar 2022 som fælles BM/WM-fitmåned; næste 168 timer
 forudsiges med faste parametre. Læs [januarvejledningen](root/G_JANUARY.md).
+Ny januarvisning: `--fit-only --initial-state wm-neutral` bruger de virkelige
+DK1-priser og kræver ingen februardata. Standard-x0 er fast (1-INIT_F)/2=0.5
+fra WM's neutrale INIT_F=0; kun C,k,Xi fittes. `--initial-state fit` bevarer
+den tidligere x0-estimation. Fit.png/ugesnit, CSV og WM-metrics viser in-sample
+januarfit, ikke forecast-accept. Ingen historisk kørsel er udført i chatten.
 G4–G7 er fortsat planlagt.
 Ved almindelige G0–G3-ændringer er standardkontrollen kun de 10 tests i
 `python -B -m unittest tests.test_bm1_deterministic_fit -q`. Dette erstatter

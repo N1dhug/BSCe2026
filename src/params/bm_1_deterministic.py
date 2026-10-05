@@ -15,6 +15,8 @@ class BM1DeterministicConfig:
     max_calls: int = 1000
     seconds: float = 300.
     numerical_tolerance: float = 1e-5
+    # None retains the original joint x0 fit. The CLI defaults to WM-neutral x0.
+    fixed_x0: float | None = None
 
     def __post_init__(self):
         if len(self.lower) != 4 or len(self.upper) != 4:
@@ -27,6 +29,8 @@ class BM1DeterministicConfig:
             raise ValueError('C and k must be positive.')
         if self.lower[2] < 0 or self.lower[3] < 0 or self.upper[2] > 1 or self.upper[3] > 1:
             raise ValueError('Xi/x0 bounds must lie in [0,1].')
+        if self.fixed_x0 is not None and not self.lower[3] <= self.fixed_x0 <= self.upper[3]:
+            raise ValueError('Fixed x0 must be finite and inside its bounds.')
         if not 1 <= len(self.starts) <= 4:
             raise ValueError('Declare one to four starts.')
         for start in self.starts:
