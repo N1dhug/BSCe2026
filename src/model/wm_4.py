@@ -101,8 +101,7 @@ class wm_4(wm):
             F = np.asarray(F, dtype=float)
             if not np.all(np.isfinite(F)) or np.any(F < -1.0) or np.any(F > 1.0): raise ValueError("H4 requires finite F in [-1, 1].")
             sigma_0, sigma_F = map(float, theta)
-            if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
-            if abs(sigma_F) >= sigma_0: raise ValueError("H4 requires |sigma_F| < sigma_0 so g remains positive for F in [-1, 1].")
+            if not 0.0 <= sigma_F <= sigma_0 <= 1.0: raise ValueError("H4 requires 0 <= sigma_F <= sigma_0 <= 1.")
             g = sigma_0 + sigma_F * F
         else:
             if np.any(U < -1.0) or np.any(U > 1.0): raise ValueError("wm_4 diffusion hypotheses require U in [-1, 1].")
@@ -143,7 +142,7 @@ class wm_4(wm):
 
         shape = np.broadcast(time_hours, I, U, *(tuple() if F is None else (F,))).shape
         g = np.broadcast_to(np.asarray(g, dtype=float), shape).astype(float, copy=False)
-        if not np.all(np.isfinite(g)) or np.any(g <= 0.0): raise ValueError("Diffusion hypothesis must remain finite and strictly positive over the trajectory.")
+        if not np.all(np.isfinite(g)) or np.any(g < 0.0): raise ValueError("Diffusion hypothesis must remain finite and nonnegative over the trajectory.")
         return g
 
     def process_uncertainty(self, state, hypothesis, theta):
