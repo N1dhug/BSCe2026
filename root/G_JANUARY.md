@@ -19,7 +19,8 @@ if ($LASTEXITCODE -ne 0) { throw 'G-kørslen er uafsluttet eller afvist; se chec
 
 Ingen nye worktrees. Input er eksisterende `files/input/data/input.xlsx` og
 `prices.xlsx`, plus DMI-timevis temperatur/cache. DMI-fetch omfatter tilgængelig
-historik før origin og forecastperioden, ikke hele sæsonen. Ekstern hentning og
+historik før origin og forecastperioden i separate requests, så eventuel
+weather-imputation ikke krydser cutoff; ikke hele sæsonen. Ekstern hentning og
 workbooklæsning har eget setup; femminuttersloftet gælder BM-parameterfit,
 ikke netværksventetid. Input-workbookens rå observed_data bruges før imputation.
 

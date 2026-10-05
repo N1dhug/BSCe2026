@@ -148,6 +148,23 @@ class DataCutoffTests(unittest.TestCase):
         self.assertEqual(scales['price_scale_source'],'declared-ex-ante')
         self.assertTrue(np.all(np.abs(frame.U)<1))
 
+    def test_weather_requests_do_not_cross_training_cutoff(self):
+        from unittest.mock import patch
+        from src.tools.bm_1_deterministic_data import load_raw_frame
+        raw = self.raw()
+        module = 'src.tools.bm_1_deterministic_data.'
+        requests = []
+        def temperatures(weather,start,end):
+            requests.append((pd.Timestamp(start),pd.Timestamp(end)))
+            idx = pd.date_range(start,end,freq='h',inclusive='left')
+            return pd.Series(5.,index=idx)
+        cutoff = pd.Timestamp('2022-01-09')
+        with patch(module+'input_data'),patch(module+'spot_price_data'),patch(module+'weather_data'), \
+             patch(module+'consumption_series',return_value=raw.Demand), \
+             patch(module+'price_series',return_value=raw.Price),patch(module+'temperature_series',side_effect=temperatures):
+            load_raw_frame('.',raw.index[0],'2022-01-11',cutoff=cutoff)
+        self.assertEqual(requests,[(raw.index[0],cutoff),(cutoff,pd.Timestamp('2022-01-11'))])
+
     def test_end_to_end_cutoff_and_wm_failure_preserves_bm(self):
         from unittest.mock import patch
         from src.method.bm_1_deterministic_benchmark import run_benchmark

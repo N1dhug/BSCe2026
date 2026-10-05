@@ -8,14 +8,21 @@ from src.tools.import_data.import_prices import spot_price_data
 from src.tools.import_data.import_weather import weather_data
 
 
-def load_raw_frame(data_directory, start, end, tag='MED'):
+def load_raw_frame(data_directory, start, end, tag='MED', *, cutoff=None):
     directory = Path(data_directory)
     # observed_data retains missing observations: never use the importer's
     # season-wide imputation or WM's season-wide min/max for this experiment.
     demand = consumption_series(input_data(directory/'input.xlsx'), tag)
     price = price_series(spot_price_data(directory/'prices.xlsx', price_area='DK1'))
     history_start = max(demand.index.min(),price.index.min())
-    temp = temperature_series(weather_data(cache_dir=directory/'weather_cache'), history_start, end)
+    weather = weather_data(cache_dir=directory/'weather_cache')
+    if cutoff is None:
+        raise ValueError('Declare forecast cutoff before fetching/imputing weather.')
+    # The existing weather importer interpolates gaps. Separate requests prevent
+    # any forecast temperature being used to fill a training-boundary gap.
+    historical = temperature_series(weather, history_start, cutoff)
+    future = temperature_series(weather, cutoff, end)
+    temp = pd.concat((historical,future)).sort_index()
     return pd.concat((demand.rename('Demand'), price.rename('Price'), temp.rename('Temp')), axis=1).sort_index()
 
 

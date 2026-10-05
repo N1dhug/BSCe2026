@@ -16,13 +16,14 @@ from src.params.wm_4 import optimized_qp_params
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "uncertainty" / "diffusion_hypotheses"
-HYPOTHESES = ("H0", "H1", "H2", "H3")
+HYPOTHESES = ("H0", "H1", "H2", "H3", "H4")
 ALPHA = 0.05
 PARAMETER_NAMES = {
     "H0": ("sigma_0", "sigma_t", "phase_h"),
     "H1": ("sigma_0", "sigma_t", "phase_h", "sigma_I"),
     "H2": ("sigma_0", "sigma_t", "phase_h", "sigma_I", "sigma_U"),
     "H3": ("sigma_0", "sigma_I"),
+    "H4": ("sigma_0", "sigma_F"),
 }
 
 
@@ -76,6 +77,9 @@ def _initial_starts(hypothesis, records):
     if hypothesis == "H3":
         base = max(1e-4, 0.5 * mean_sigma)
         return [np.array([base, sigma_I], dtype=float) for sigma_I in (0.50, 0.75, 0.90, 0.97, 0.995)]
+    if hypothesis == "H4":
+        base = max(1e-4, mean_sigma)
+        return [np.array([base, rho_F], dtype=float) for rho_F in (-0.75, -0.25, 0.0, 0.25, 0.75)]
 
     peak_hours = [int(np.argmax(record["observed_sigma"])) for record in records]
     phase = float(np.median(peak_hours))
@@ -95,6 +99,8 @@ def _initial_starts(hypothesis, records):
 def _bounds(hypothesis):
     if hypothesis == "H3":
         return np.array([1e-8, 0.0], dtype=float), np.array([np.inf, 1.0], dtype=float)
+    if hypothesis == "H4":
+        return np.array([1e-8, -0.999999], dtype=float), np.array([np.inf, 0.999999], dtype=float)
 
     lower = [1e-8, 0.0, 0.0]
     upper = [np.inf, np.inf, 24.0]
@@ -103,10 +109,19 @@ def _bounds(hypothesis):
     return np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)
 
 
+def _model_theta(hypothesis, theta):
+    theta = np.asarray(theta, dtype=float)
+    if hypothesis == "H4":
+        sigma_0, rho_F = map(float, theta)
+        return np.array([sigma_0, sigma_0 * rho_F], dtype=float)
+    return theta
+
+
 def predicted_sigma(record, hypothesis, theta):
     state = record["state"]
+    model_theta = _model_theta(hypothesis, theta)
     g = record["model"].diffusion_hypothesis(
-        hypothesis, state["Time"], state["I"], state["U"], theta,
+        hypothesis, state["Time"], state["I"], state["U"], model_theta, F=state["F"],
     )
     variance = record["process_kernel"] @ (np.asarray(g, dtype=float) ** 2)
     return np.sqrt(np.maximum(variance, 0.0))
@@ -147,7 +162,7 @@ def fit_hypothesis_deterministic(hypothesis, records):
         detail = failures[0] if failures else "no finite candidate"
         raise RuntimeError(f"{hypothesis} diffusion fit failed: {detail}")
     fit = min(candidates, key=lambda item: float(np.mean(item.fun ** 2)))
-    return np.asarray(fit.x, dtype=float), float(np.mean(fit.fun ** 2))
+    return _model_theta(hypothesis, fit.x), float(np.mean(fit.fun ** 2))
 
 
 def interval_score(y, lower, upper, alpha=0.05):
@@ -258,12 +273,13 @@ def print_summary(summary, train_days, test_days, skipped):
     print()
     print("WM4 diffusion hypothesis comparison")
     print("deterministic WM4 coefficient fit + oracle prediction state; initial-state/parameter sensitivity excluded (P0=0)")
-    print("H0-H3 coefficients are fitted deterministically by least squares to rolling observed s_I on the training dates.")
+    print("H0-H4 coefficients are fitted deterministically by least squares to rolling observed s_I on the training dates.")
     print(f"train days={train_days}, test days={test_days}, skipped={len(skipped)}")
     print("H0 = time-periodic diffusion")
     print("H1 = H0 + sigma_I * I")
     print("H2 = H1 + sigma_U * |U|")
     print("H3 = sigma_0 + (1 - sigma_I) * I")
+    print("H4 = sigma_0 + sigma_F * F")
     print()
     columns = [
         "hypothesis", "coverage_h1_23_pct", "coverage_error_95_h1_23_pct_points",
@@ -294,7 +310,7 @@ def print_summary(summary, train_days, test_days, skipped):
 
 
 def main():
-    parser = ArgumentParser(description="Fit and compare WM4 H0-H3 SDE diffusion hypotheses against rolling observed input uncertainty.")
+    parser = ArgumentParser(description="Fit and compare WM4 H0-H4 SDE diffusion hypotheses against rolling observed input uncertainty.")
     parser.add_argument("--start-day", default=START_DAY)
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--weeks", type=int, default=DEFAULT_WEEKS)

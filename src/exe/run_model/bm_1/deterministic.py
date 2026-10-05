@@ -121,7 +121,7 @@ def main(argv=None):
                 from src.validation.bm_1.deterministic_fit import synthetic_january
                 raw = synthetic_january()
             else:
-                raw = raw_csv(args.input_csv) if args.input_csv else load_raw_frame(args.data_directory,start-pd.Timedelta(hours=warmup),end+pd.Timedelta(hours=169),args.tag)
+                raw = raw_csv(args.input_csv) if args.input_csv else load_raw_frame(args.data_directory,start-pd.Timedelta(hours=warmup),end+pd.Timedelta(hours=169),args.tag,cutoff=end)
             frame, scales = prepare_frame(raw,start,end,price_bounds=args.price_bounds)
             audit = {'training_start':str(start),'training_end_exclusive':str(end),'scales':scales,
                      'samples':int((end-start).total_seconds()/3600),'tag':args.tag,
