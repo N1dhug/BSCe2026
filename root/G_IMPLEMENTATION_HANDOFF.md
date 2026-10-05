@@ -2,7 +2,7 @@
 
 Forberedt 5. oktober 2026 mod `main` ved
 `d9f95a0513605d58f0fe01464067e8f0a2a0eeeb` efter PR #69/#70.
-**Implementation 5. oktober:** P1/P2 er nu implementeret og syntetisk
+**Implementeringsstatus 5. oktober:** P1/P2 er nu implementeret og syntetisk
 kontrolleret: `deterministic --from-fit`, versioneret JSON-snapshot og
 kontrolleret 07fad9f-import. Fælles BM/WM/origin/baseline og varig eksport før
 optional scoring er verificeret. 20 G-tests plus tre relevante layout/import-
@@ -153,7 +153,7 @@ kommando og output står i januarvejledningen.
   O/B-samples, held-price-forløb og enhedsomregning som den oprindelige kæde.
 - Skriv predictions, states, inputaudit, provenance og numerisk status atomisk
   før optional scoring. Et scoringproblem må ikke slette en gyldig prognose.
-- `score_forecast(predictions, observations)` bruger fælles målte timer for
+- `score_forecast(result, observations)` bruger fælles målte timer for
   BM/WM/O. Ingen udfyldt demand tæller som måling. Gem expected/observed/scored
   samples, coverage, maske og årsag til eksklusion. Døgn uden målinger får
   samples=0 og NaN-metrics; nul observationer giver `not-scored`, ikke fiasko
@@ -162,8 +162,9 @@ kommando og output står i januarvejledningen.
 - Genbrug WM's MSE/RMSE/MAE/bias og performanceopgørelser, og hold pooled score
   adskilt fra gennemsnitlige dagsscorer. Kræv samme maske for sammenligning;
   hvis WM mangler, rapporteres BM særskilt uden matched-accept.
-- Manifest adskiller `fit_status`, `forecast_status`, `numerics_status`,
-  `scoring_status` og `evidence_scope`. En færdig prognose er ikke automatisk
+- Resultat og statusfiler adskiller `fit_status`, `forecast_status`,
+  `numerics.passed` og `scoring.status`; manifestet angiver udviklingskontrakt
+  og evidens. En færdig prognose er ikke automatisk
   historisk/videnskabelig accept. `status=complete` fra et gammelt fit bevares
   i originalen og fortolkes i sin oprindelige betydning.
 

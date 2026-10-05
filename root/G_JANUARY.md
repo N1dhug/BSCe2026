@@ -54,13 +54,13 @@ udviklingsfit med en anden deklareret skala er en særskilt beslutning.
 
 Rawreview mangler fortsat. G's nuværende forbrugsgennemsnit bruger de
 målerkolonner, som er tilgængelige i hver time. 624 aggregerede måletimer er
-ikke bevis for 624 komplette timer for alle 13 MED-huse. Fast population,
-Johan har nu deklareret timeforbrug, foreløbigt kWh og hour-start som arbejds-
+ikke bevis for 624 komplette timer for alle 13 MED-huse. Fast population
+mangler fortsat afklaring. Johan har nu deklareret timeforbrug, foreløbigt kWh og hour-start som arbejds-
 antagelser. G3-snapshot viderefører fortsat punktapproksimationen; H2's
 separate interval-likelihood er ikke numerisk fit-ready. Kontrakt og population
 skal afklares før historisk validering;
-legacy-resultatet bevarer sin oprindelige udviklingskontrakt. En nødvendigt
-ændret kontrakt kan kræve et særskilt nyt fit, som ikke erstatter originalen.
+legacy-resultatet bevarer sin oprindelige udviklingskontrakt. En ændret
+datakontrakt kan kræve et særskilt nyt fit, som ikke erstatter originalen.
 
 ## Vis fittet for januar
 
