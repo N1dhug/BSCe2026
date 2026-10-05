@@ -143,7 +143,6 @@ def print_result(start, end, total_start, output_fit, fit, model, plot_path, ste
     r = fit["r"]
     print(f"coefficients: r_F={r[0]:.8f}, r_U={r[1]:.8f}, r_R={r[2]:.8f}")
     print(f"damping: branch={fit['damping_branch']}, zeta={fit['damping_ratio']:.8f}")
-    print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"fitted initial [F0,R0]={np.array2string(fit['init_cond'], precision=8)}")
     print(f"target-day initial state [F,R]=[{state['F'][target_index]:.8f}, {state['R'][target_index]:.8f}]")
     print(f"QP transition loss={fit['qp_loss']:.10f}, free-run deterministic loss={fit['deterministic_loss']:.10f}")
@@ -157,7 +156,7 @@ def fit_day(frame, start, warmup_hours=24, steps_per_hour=60, **kwargs):
     output_model, output_fit = fit_expected_output(frame, start)
     data, fine_index, total_start, model_T = model_input(frame, start, steps_per_hour, warmup_hours, output_model)
     model = wm_4(model_T, len(fine_index), model_output(data, fine_index))
-    fit = qp_params(model).fit(data, fitted_initial_condition(data), fit_diffusion=True, verbose=False, **kwargs)
+    fit = qp_params(model).fit(data, fitted_initial_condition(data), verbose=False, **kwargs)
     return end, day, output_fit, fit, model, fine_index, total_start
 
 
