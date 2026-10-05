@@ -369,6 +369,9 @@ class time_diffusion_qp:
     hours and held constant within each hour during fine-grid covariance
     propagation. Starting from K=0, the fitter increments K until the relative
     reduction in propagated hourly variance MSE falls below a supplied border.
+    Orders through min_order are always fitted and accepted before the stopping
+    rule is applied, allowing K=2 or higher to be tested even when K=1 gives
+    little improvement over the constant baseline.
     """
 
     def __init__(self, model): self.model = model
@@ -480,13 +483,14 @@ class time_diffusion_qp:
         result.update(self.amplitude_phase(beta))
         return result
 
-    def fit(self, process_kernel, diffusion_time_hours, observed_variance, initial_variance=None, fit_mask=None, max_order=11, min_relative_improvement=0.05):
+    def fit(self, process_kernel, diffusion_time_hours, observed_variance, initial_variance=None, fit_mask=None, min_order=1, max_order=11, min_relative_improvement=0.05):
         process_kernel, diffusion_time_hours, observed_variance, initial_variance, fit_mask = self._validate_fit_inputs(
             process_kernel, diffusion_time_hours, observed_variance, initial_variance, fit_mask,
         )
-        max_order = int(max_order)
+        min_order, max_order = int(min_order), int(max_order)
         min_relative_improvement = float(min_relative_improvement)
         if max_order < 1 or max_order > 11: raise ValueError("max_order must lie in [1, 11].")
+        if min_order < 0 or min_order > max_order: raise ValueError("min_order must lie in [0, max_order].")
         if not 0.0 <= min_relative_improvement < 1.0: raise ValueError("min_relative_improvement must lie in [0, 1).")
 
         selected = self._fit_order(0, process_kernel, diffusion_time_hours, observed_variance, initial_variance, fit_mask)
@@ -509,18 +513,21 @@ class time_diffusion_qp:
                     "variance_mse": np.nan, "variance_rmse": np.nan, "std_rmse": np.nan,
                     "relative_improvement": np.nan, "accepted": False, "reason": f"solver failed: {exc}",
                 })
+                if order <= min_order:
+                    raise RuntimeError(f"Required minimum harmonic order K={order} could not be fitted: {exc}") from exc
                 stop_reason = f"stopped at K={order}: solver failed"
                 break
 
             denominator = max(previous["variance_mse"], np.finfo(float).eps)
             relative_improvement = float((previous["variance_mse"] - candidate["variance_mse"]) / denominator)
-            accepted = relative_improvement >= min_relative_improvement
+            forced = order <= min_order
+            accepted = forced or relative_improvement >= min_relative_improvement
             history.append({
                 "order": order, "parameters": 1 + 2 * order,
                 "variance_mse": candidate["variance_mse"], "variance_rmse": candidate["variance_rmse"],
                 "std_rmse": candidate["std_rmse"], "relative_improvement": relative_improvement,
                 "accepted": bool(accepted),
-                "reason": "accepted" if accepted else f"relative improvement < {min_relative_improvement:.6g}",
+                "reason": f"required by min_order={min_order}" if forced else "accepted" if accepted else f"relative improvement < {min_relative_improvement:.6g}",
             })
             if not accepted:
                 stop_reason = f"stopped before K={order}: relative improvement {relative_improvement:.6g} < {min_relative_improvement:.6g}"
@@ -533,6 +540,7 @@ class time_diffusion_qp:
         selected["selected_order"] = int(selected["order"])
         selected["selection_history"] = history
         selected["min_relative_improvement"] = min_relative_improvement
+        selected["min_order"] = min_order
         selected["max_order"] = max_order
         selected["stop_reason"] = stop_reason
         return selected
