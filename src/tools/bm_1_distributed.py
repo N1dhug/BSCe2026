@@ -236,7 +236,10 @@ def _import_state(root, dependencies, source):
 
 
 def _job_dir(root, plan, name):
-    return root/'shards'/str(plan['assignment'][name])/'jobs'/name
+    # Short stable directories leave room for atomic temporary filenames on
+    # Windows/OneDrive; full scientific names remain in the immutable plan/files.
+    index = sorted(plan['assignment']).index(name)
+    return root/'shards'/str(plan['assignment'][name])/'jobs'/f'{index:04d}'
 
 
 def _runtime_dependencies(plan):

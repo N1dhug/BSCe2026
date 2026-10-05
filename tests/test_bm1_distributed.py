@@ -60,6 +60,12 @@ class DistributedTests(unittest.TestCase):
         self.assertEqual(design['paired_robustness_size_per_pair'], 20)
         self.assertEqual(design['population_starts'], [1362, 1562])
         self.assertLess(max(u[1] for u in population.units()), 1762)
+        root = Path('C:/Users/jvils/OneDrive/Skrivebord/Til VS/fag/7 semester/BSCe2026/'
+                    'files/output/bm_1/runs/estimation/g2b_distributed_cloud_return_001')
+        plan = dict(assignment=dist.assignments(night, 2))
+        paths = [dist._job_dir(root, plan, name)/'units'/(night.unit_name(u)+'.npz.abcdefgh.partial')
+                 for name, units in jobs(night).items() for u in units]
+        self.assertLess(max(len(str(path)) for path in paths), 250)
 
     def test_scientific_fingerprint_follows_imports_and_ignores_execution_only_changes(self):
         with tempfile.TemporaryDirectory() as directory:
