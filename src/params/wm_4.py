@@ -352,45 +352,57 @@ class optimized_qp_params(qp_params):
 
 
 
+
 class time_diffusion_qp:
-    """Convex local QP for a strictly time-dependent WM4 diffusion variance.
+    """Convex local QP for an automatically selected harmonic diffusion variance.
 
-    The instantaneous process variance is represented by a single harmonic,
+    For harmonic order K,
 
-        q(t) = g(t)^2
-             = beta_0 + beta_c*cos(w*t) + beta_s*sin(w*t),
+        q_K(t) = g(t)^2
+               = beta_0
+               + sum_{k=1}^K [
+                   beta_c,k*cos(2*pi*k*t/24)
+                   + beta_s,k*sin(2*pi*k*t/24)
+                 ].
 
-    with w = 2*pi/24 h. For fixed deterministic coefficients r, WM4 covariance
-    propagation is linear in q and therefore linear in beta. The QP fits the
-    propagated hourly Var(I) directly to the empirical hourly variance from the
-    corresponding historical weekdays, while enforcing q(t) >= 0.
+    The empirical target is hourly, so q_K is evaluated on the 24 physical
+    hours and held constant within each hour during fine-grid covariance
+    propagation. Starting from K=0, the fitter increments K until the relative
+    reduction in propagated hourly variance MSE falls below a supplied border.
     """
 
     def __init__(self, model): self.model = model
 
     @staticmethod
-    def design(time_hours):
+    def design(time_hours, order):
         time_hours = np.asarray(time_hours, dtype=float).reshape(-1)
+        order = int(order)
         if time_hours.size < 1 or not np.all(np.isfinite(time_hours)): raise ValueError("time_hours must contain finite values.")
+        if order < 0 or order > 11: raise ValueError("harmonic order must lie in [0, 11] for 24 hourly samples.")
         omega = 2.0 * np.pi / 24.0
-        return np.column_stack((
-            np.ones(time_hours.size, dtype=float),
-            np.cos(omega * time_hours), np.sin(omega * time_hours),
-        ))
+        columns = [np.ones(time_hours.size, dtype=float)]
+        for k in range(1, order + 1):
+            columns.extend((np.cos(k * omega * time_hours), np.sin(k * omega * time_hours)))
+        return np.column_stack(columns)
 
     @staticmethod
     def amplitude_phase(beta):
         beta = np.asarray(beta, dtype=float).reshape(-1)
-        if beta.size != 3 or not np.all(np.isfinite(beta)): raise ValueError("beta must contain three finite single-harmonic coefficients.")
+        if beta.size < 1 or beta.size % 2 != 1 or not np.all(np.isfinite(beta)): raise ValueError("beta must contain 1+2K finite harmonic coefficients.")
+        order = (beta.size - 1) // 2
         omega = 2.0 * np.pi / 24.0
-        amplitude = float(np.hypot(beta[1], beta[2]))
-        phase = float(np.mod(np.arctan2(beta[2], beta[1]) / omega, 24.0))
-        return {
-            "variance_baseline": float(beta[0]),
-            "variance_amplitude": amplitude, "phase_h": phase,
-        }
+        harmonics = []
+        for k in range(1, order + 1):
+            beta_c, beta_s = float(beta[2 * k - 1]), float(beta[2 * k])
+            harmonics.append({
+                "order": k,
+                "amplitude": float(np.hypot(beta_c, beta_s)),
+                "phase_h": float(np.mod(np.arctan2(beta_s, beta_c) / (k * omega), 24.0 / k)),
+            })
+        return {"variance_baseline": float(beta[0]), "harmonics": harmonics}
 
-    def fit(self, process_kernel, diffusion_time_hours, observed_variance, initial_variance=None, fit_mask=None):
+    @staticmethod
+    def _validate_fit_inputs(process_kernel, diffusion_time_hours, observed_variance, initial_variance, fit_mask):
         process_kernel = np.asarray(process_kernel, dtype=float)
         diffusion_time_hours = np.asarray(diffusion_time_hours, dtype=float).reshape(-1)
         observed_variance = np.asarray(observed_variance, dtype=float).reshape(-1)
@@ -399,46 +411,44 @@ class time_diffusion_qp:
         if process_kernel.shape[1] != diffusion_time_hours.size: raise ValueError("process_kernel columns must match diffusion_time_hours.")
         if not np.all(np.isfinite(process_kernel)): raise ValueError("process_kernel must contain finite values.")
         if not np.all(np.isfinite(observed_variance)) or np.any(observed_variance < 0.0): raise ValueError("observed_variance must contain finite nonnegative values.")
-        if initial_variance is None:
-            initial_variance = np.zeros_like(observed_variance)
+
+        if initial_variance is None: initial_variance = np.zeros_like(observed_variance)
         initial_variance = np.asarray(initial_variance, dtype=float).reshape(-1)
         if initial_variance.size != observed_variance.size or not np.all(np.isfinite(initial_variance)) or np.any(initial_variance < 0.0): raise ValueError("initial_variance must match observed_variance and be finite and nonnegative.")
 
-        # The empirical target is hourly, so fit the single harmonic on the
-        # 24 physical hours only. During fine-grid covariance propagation the
-        # fitted hourly q values are held constant within each hour. This keeps
-        # the deterministic WM4 propagation at its original resolution while
-        # reducing positivity constraints from ~1441 redundant rows to 24.
+        if fit_mask is None: fit_mask = np.ones(observed_variance.size, dtype=bool)
+        fit_mask = np.asarray(fit_mask, dtype=bool).reshape(-1)
+        if fit_mask.size != observed_variance.size or np.count_nonzero(fit_mask) < 3: raise ValueError("fit_mask must select at least three observed variance samples.")
+        return process_kernel, diffusion_time_hours, observed_variance, initial_variance, fit_mask
+
+    def _fit_order(self, order, process_kernel, diffusion_time_hours, observed_variance, initial_variance, fit_mask):
+        order = int(order)
         hour_nodes = np.arange(24, dtype=float)
-        Phi_hour = self.design(hour_nodes)
+        Phi_hour = self.design(hour_nodes, order)
         hour_bin = np.floor(np.mod(diffusion_time_hours, 24.0) + 1e-12).astype(int)
         hour_bin = np.clip(hour_bin, 0, 23)
         Phi_fine = Phi_hour[hour_bin]
         propagated_design = process_kernel @ Phi_fine
-        if fit_mask is None:
-            fit_mask = np.ones(observed_variance.size, dtype=bool)
-        fit_mask = np.asarray(fit_mask, dtype=bool).reshape(-1)
-        if fit_mask.size != observed_variance.size or np.count_nonzero(fit_mask) < 3: raise ValueError("fit_mask must select at least three observed variance samples.")
-
         X = propagated_design[fit_mask]
         y = (observed_variance - initial_variance)[fit_mask]
 
-        # Start strictly inside q_h >= 0 using the best constant hourly process
-        # variance. With only 24 linear constraints the generic active-set QP
-        # solver is well matched to this problem.
         constant_response = propagated_design[:, 0]
         response_fit = constant_response[fit_mask]
         denominator = float(response_fit @ response_fit)
         constant_q = float((response_fit @ y) / denominator) if denominator > 0.0 else float(np.mean(y))
         positivity_eps = max(1e-12, 1e-10 * max(1.0, abs(constant_q)))
         constant_q = max(constant_q, 10.0 * positivity_eps)
-        x0 = np.array([constant_q, 0.0, 0.0], dtype=float)
 
-        beta = self.model._least_squares_qp(
-            X, y,
-            A_ub=-Phi_hour, b_ub=-positivity_eps * np.ones(Phi_hour.shape[0], dtype=float),
-            ridge=self.model._FIT_RIDGE, x0=x0,
-        )
+        if order == 0:
+            beta = np.array([constant_q], dtype=float)
+        else:
+            x0 = np.zeros(1 + 2 * order, dtype=float)
+            x0[0] = constant_q
+            beta = self.model._least_squares_qp(
+                X, y,
+                A_ub=-Phi_hour, b_ub=-positivity_eps * np.ones(Phi_hour.shape[0], dtype=float),
+                ridge=self.model._FIT_RIDGE, x0=x0,
+            )
 
         hourly_variance = np.maximum(Phi_hour @ beta, 0.0)
         instantaneous_variance = hourly_variance[hour_bin]
@@ -450,8 +460,9 @@ class time_diffusion_qp:
         std_residual = propagated_std - observed_std
         fit_variance_residual = variance_residual[fit_mask]
         fit_std_residual = std_residual[fit_mask]
+
         result = {
-            "beta": np.asarray(beta, dtype=float),
+            "order": order, "beta": np.asarray(beta, dtype=float),
             "hourly_process_variance": hourly_variance,
             "instantaneous_variance": instantaneous_variance,
             "diffusion": np.sqrt(instantaneous_variance),
@@ -469,15 +480,74 @@ class time_diffusion_qp:
         result.update(self.amplitude_phase(beta))
         return result
 
+    def fit(self, process_kernel, diffusion_time_hours, observed_variance, initial_variance=None, fit_mask=None, max_order=11, min_relative_improvement=0.05):
+        process_kernel, diffusion_time_hours, observed_variance, initial_variance, fit_mask = self._validate_fit_inputs(
+            process_kernel, diffusion_time_hours, observed_variance, initial_variance, fit_mask,
+        )
+        max_order = int(max_order)
+        min_relative_improvement = float(min_relative_improvement)
+        if max_order < 1 or max_order > 11: raise ValueError("max_order must lie in [1, 11].")
+        if not 0.0 <= min_relative_improvement < 1.0: raise ValueError("min_relative_improvement must lie in [0, 1).")
+
+        selected = self._fit_order(0, process_kernel, diffusion_time_hours, observed_variance, initial_variance, fit_mask)
+        selected["relative_improvement"] = np.nan
+        selected["accepted"] = True
+        history = [{
+            "order": 0, "parameters": 1, "variance_mse": selected["variance_mse"],
+            "variance_rmse": selected["variance_rmse"], "std_rmse": selected["std_rmse"],
+            "relative_improvement": np.nan, "accepted": True, "reason": "constant baseline",
+        }]
+        previous = selected
+        stop_reason = f"reached max_order={max_order}"
+
+        for order in range(1, max_order + 1):
+            try:
+                candidate = self._fit_order(order, process_kernel, diffusion_time_hours, observed_variance, initial_variance, fit_mask)
+            except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
+                history.append({
+                    "order": order, "parameters": 1 + 2 * order,
+                    "variance_mse": np.nan, "variance_rmse": np.nan, "std_rmse": np.nan,
+                    "relative_improvement": np.nan, "accepted": False, "reason": f"solver failed: {exc}",
+                })
+                stop_reason = f"stopped at K={order}: solver failed"
+                break
+
+            denominator = max(previous["variance_mse"], np.finfo(float).eps)
+            relative_improvement = float((previous["variance_mse"] - candidate["variance_mse"]) / denominator)
+            accepted = relative_improvement >= min_relative_improvement
+            history.append({
+                "order": order, "parameters": 1 + 2 * order,
+                "variance_mse": candidate["variance_mse"], "variance_rmse": candidate["variance_rmse"],
+                "std_rmse": candidate["std_rmse"], "relative_improvement": relative_improvement,
+                "accepted": bool(accepted),
+                "reason": "accepted" if accepted else f"relative improvement < {min_relative_improvement:.6g}",
+            })
+            if not accepted:
+                stop_reason = f"stopped before K={order}: relative improvement {relative_improvement:.6g} < {min_relative_improvement:.6g}"
+                break
+
+            candidate["relative_improvement"] = relative_improvement
+            candidate["accepted"] = True
+            selected, previous = candidate, candidate
+
+        selected["selected_order"] = int(selected["order"])
+        selected["selection_history"] = history
+        selected["min_relative_improvement"] = min_relative_improvement
+        selected["max_order"] = max_order
+        selected["stop_reason"] = stop_reason
+        return selected
+
     def evaluate(self, time_hours, beta):
         time_hours = np.asarray(time_hours, dtype=float).reshape(-1)
-        Phi_hour = self.design(np.arange(24, dtype=float))
+        beta = np.asarray(beta, dtype=float).reshape(-1)
+        if beta.size < 1 or beta.size % 2 != 1: raise ValueError("beta must contain 1+2K coefficients.")
+        order = (beta.size - 1) // 2
+        Phi_hour = self.design(np.arange(24, dtype=float), order)
         hour_bin = np.floor(np.mod(time_hours, 24.0) + 1e-12).astype(int)
         hour_bin = np.clip(hour_bin, 0, 23)
-        hourly_variance = np.maximum(Phi_hour @ np.asarray(beta, dtype=float).reshape(3), 0.0)
+        hourly_variance = np.maximum(Phi_hour @ beta, 0.0)
         q = hourly_variance[hour_bin]
-        return {"variance": q, "std": np.sqrt(q), "hourly_variance": hourly_variance}
-
+        return {"variance": q, "std": np.sqrt(q), "hourly_variance": hourly_variance, "order": order}
 
 
 class brute_force_params(qp_params):
