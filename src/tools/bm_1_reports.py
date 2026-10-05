@@ -73,7 +73,7 @@ def _read_array_checkpoint(raw):
         def decode(value):
             if isinstance(value,dict) and set(value)=={'__npy__'}:
                 name=value['__npy__']
-                if not isinstance(name,str) or not re.fullmatch(r'array_[0-9]{4}\.npy',name) or name in used:
+                if not isinstance(name,str) or not re.fullmatch(r'array_[0-9]{4,}\.npy',name) or name in used:
                     raise ValueError('Invalid or duplicate checkpoint array reference.')
                 used.add(name)
                 with archive.open(name) as member: array=np.lib.format.read_array(member,allow_pickle=False)

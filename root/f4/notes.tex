@@ -797,6 +797,20 @@ kan beregnes parallelt med uændret numerik og efterfølgende ordnet publicering
 Ingen nye videnskabelige resultater eller historisk holdout-accept følger alene
 af disse implementationsændringer.
 
+\paragraph{Gennemført betinget H1b og selected-curve-numerik, 5. oktober.}
+På fastholdt kilde \texttt{e7d9089} er alle seks deklarerede fits gennemført
+med samlet 675 forskellige kandidater. Begge responsive fire-stykkers fits
+når loftet 250; budgetstop er ikke konvergens. Den ikke-lineære cases
+TRAIN-log-likelihood forbedres med 8.754 (to stykker) og 30.599 (fire)
+i forhold til den lineære reference; $\Xi=0$ giver præcis nul gevinst.
+Disse tal vælger ikke en model. De 12 valgte-kurve-units med 48 FV-replays
+består egen numerik på \texttt{e398a5a}; maksimal prefix-scorefejl er
+0.005095, lineært centreret fejl 0.012305 og posterior-$L^1$ 0.005009.
+Et uafhængigt råreview reproducerer 2\,304 Bayes-opdateringer uden FV,
+med maksimal posterior-$L^1$-afvigelse $2.232\cdot10^{-15}$.
+H2/H3 afventer dokumenterede metadata og eksponeringsaudit. Råarkiver,
+genoptagelsesbevis og præcise kilde-/testgrænser findes i den aktuelle F4-status.
+
 \subsection{Identifikation, numerik og fastlåsning}
 Uden endpoints kan \(f+c,g-c\) give samme sum, og fælles amplitudeskalering kan
 blandes sammen med \(k\). \eqref{eq:endpoints} fjerner disse eksakte friheder,
@@ -2147,7 +2161,31 @@ Dag 1/3/7 bruger den kontinuerte rektangulære hat-lovs fysiske momenter og
 intervaller; sampling-scores sammenlignes kun på fælles målingstidspunkter.
 En delkørsel er aldrig accept, og en numerisk afvisning bevares og stopper
 nye scenarier. Ét record per par dokumenterer ingen populationskalibrering.
-G2c kræver et senere kompatibelt design og bestået G2b; H-f/g udskydes ikke.
+G2c kræver det særskilte kompatible design nedenfor og bestået G2b;
+H-f/g udskydes ikke.
+
+\subsection{Fordelt afvikling og rektangulær G2c-v2, registreret 5. oktober}
+G2b-v2 fordeles som ti hele record/scenarie-jobs med fire FV-units i hvert.
+Hver jobejer reducerer hypoteser i den oprindelige orden; ingen delsummer
+fra forskellige maskiner blandes. En fælles uforanderlig plan låser source,
+design, rådependencies og disjunkt opgavefordeling. Samling kontrollerer alle
+råbanker og kræver fortsat samtlige 70 numeriske kontroller. Identiske
+transportdubletter tæller én gang; modstridende råfiler afvises. Gamle gemte
+G2b-hypoteser importeres kun efter råkontrol og identisk numerisk Python-kilde;
+originalfiler, source og hashes bevares som særskilt proveniens.
+
+Det nye G2c-v2-design er fastlagt før nye populationsresultater og kræver
+komplet råaccept af G2b-v2. Kandidaterne er $9\times65$ for $\rho/\Xi$ og
+$33\times65$ for $\sigma_x/\sigma_y$, med henholdsvis FV1601 og FV6401,
+$h=1/1536$ og $q=3$. Der bruges 200 matched records per par, ID1362--1561
+og ID1562--1761. De første 20 per par får alle fem parrede scenarier.
+Dermed er der $2[200+20(5-1)]=560$ jobs og
+$280(9\cdot65+33\cdot65)=764400$ conditional replays. Truth/RNG,
+fælles støj og observationssubsets, prediction/posterior-vægte, fysisk
+hat-rekonstruktion samt dag 1/3/7-statistik bevares. Numerikken er støttet
+af piloten, ikke bevist konvergent på hvert populationsrecord. Der tilføjes
+intet recovery-pass-target, ingen seedudskiftning og ingen forecast-accept.
+Delvise nat-/chatkørsler er alene bevaret fremdrift; H/I/J er stadig hovedsporet.
 
 \subsection{G2b/G2c: parret robusthed og genoptagelig population}
 Studiernes matematiske definition nedenfor bevares, mens deres prioritet i

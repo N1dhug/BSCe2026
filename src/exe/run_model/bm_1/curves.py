@@ -332,8 +332,11 @@ def _fit_cases(args, case_names, source, design, begun, settings):
                 if (saved['logits'] != best['logits'] or saved['objective'] != best['objective']
                         or saved['f'] != f.to_record() or saved['g'] != g.to_record()):
                     raise ValueError('Completed curve geometry differs from its best evaluated candidate.')
-                previous = dict(f=BM1PiecewiseResponse.from_record(saved['f']),
-                                g=BM1PiecewiseResponse.from_record(saved['g']))
+                # Validate completed checkpoints before downstream family reuse.
+                from src.validation.bm_1.response_fit_checks import validate_fit_result
+                f, g = validate_fit_result(saved, trace, case=name, pieces=pieces,
+                    record_ids=[record.record_id for record in records])
+                previous = dict(f=f, g=g)
                 reports.append(saved)
                 continue
             if (args.limit_candidates is not None and new_total >= args.limit_candidates
@@ -448,7 +451,8 @@ def run_fit(args):
 def run_fit_checks(args):
     """Recompute selected-curve numerics; preserve failures and resume raw units."""
     from src.validation.bm_1.response_fit_checks import (
-        validate_fit_result, selected_curve_unit, curve_recovery_description)
+        validate_fit_result, selected_curve_unit, curve_recovery_description,
+        validate_selected_replay)
     begun=perf_counter()
     if not np.isfinite(args.max_hours) or args.max_hours <= 0.:
         raise ValueError('max-hours must be finite and positive.')
@@ -509,8 +513,7 @@ def run_fit_checks(args):
                     _atomic_report(path,payload);_,digest=_read_likelihood_report(path);fresh+=1
                 # Recompute every acceptance flag from raw laws, including on resume.
                 linear,_=_read_likelihood_report(args.numerics_run/'units'/f'{case}_{record.record_id}_linear.npz')
-                for level,settings in H1_V2_NUMERICS.items():
-                    validate_filter_arrays(payload['rows'][level],record,cells=settings['cells'])
+                validate_selected_replay(payload['rows'], record, fit_record)
                 controls=compare_numerical_unit(payload['rows'],linear['rows'])
                 units.append(dict(unit=unit,sha256=digest,controls=controls,
                     numerical_passes=all(v['passes'] for v in controls.values()),
@@ -532,6 +535,23 @@ def run_fit_checks(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
+    inspect = sub.add_parser('history-inspect', help='Inspect H2 workbook headers without reading observations or fitting.')
+    inspect.add_argument('--data-dir', type=Path, default=Path('files/input/data'))
+    inspect.add_argument('--output', type=Path, default=Path('files/output/bm_1/runs/estimation/h2_header_inspection.json'))
+    inspect.add_argument('--blas-threads', type=int, default=1)
+    config = sub.add_parser('history-config', help='Write an incomplete H2 pilot configuration; no observations read.')
+    config.add_argument('--output', type=Path, required=True)
+    config.add_argument('--blas-threads', type=int, default=1)
+    history = sub.add_parser('history-fit', help='Prepare or run a bounded conditional TRAIN-only H2 pilot.')
+    history.add_argument('--config', type=Path, required=True)
+    history.add_argument('--input-root', type=Path, default=ROOT)
+    history.add_argument('--run-dir', type=Path, required=True)
+    history.add_argument('--prepare-only', action='store_true')
+    history.add_argument('--resume', action='store_true')
+    history.add_argument('--limit-candidates', type=int)
+    history.add_argument('--max-seconds', type=float, default=300.)
+    history.add_argument('--blas-threads', type=int, default=1)
+    history.add_argument('--quiet', action='store_true')
     numerics = sub.add_parser('numerics', help='Run/review the fixed H1 numerical panel.')
     numerics.add_argument('--design', choices=('v1', 'v2'), default='v1')
     numerics.add_argument('--run-dir', type=Path, required=True)
@@ -559,6 +579,24 @@ def main(argv=None):
     verify.add_argument('--blas-threads', type=int, default=1)
     verify.add_argument('--quiet', action='store_true')
     args = parser.parse_args(argv)
+    if args.command == 'history-config':
+        from src.exe.run_model.bm_1_history import configuration_template
+        _atomic_report(args.output, configuration_template())
+        print(f'H2 configuration template: {args.output}; resolve metadata before fitting.', flush=True)
+        return 0
+    if args.command == 'history-fit':
+        from src.exe.run_model.bm_1_history import run_pilot
+        result = run_pilot(args)
+        print(f'H2 pilot: completed={result.get("completed", False)}, paused={result.get("paused", False)}; no scientific acceptance.', flush=True)
+        return 0
+    if args.command == 'history-inspect':
+        from src.tools.bm_1_history_io import inspect_history_workbooks
+        result = inspect_history_workbooks(args.data_dir/'input.xlsx', args.data_dir/'prices.xlsx')
+        # This metadata-only report may be refreshed; it is not a study checkpoint.
+        _atomic_report(args.output, result, replace_existing=True)
+        print(f"H2 headers inspected; no observations read, no fit run. Report: {args.output}", flush=True)
+        print(f"Measurement columns: {len(result['input']['measurement_columns'])}. Metadata/split decisions remain required.", flush=True)
+        return 0
     if args.command == 'validate-fit':
         result = run_fit_checks(args)
         return 2 if result['completed'] and not result['selected_numerical_passes'] else 0

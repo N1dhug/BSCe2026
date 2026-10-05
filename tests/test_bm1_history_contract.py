@@ -23,8 +23,9 @@ class HistoryContractTests(unittest.TestCase):
         contract = self.contract()
         times = pd.date_range(contract.split.train_start, contract.split.selection_start, freq='h', inclusive='left')
         readings = pd.DataFrame({'a': np.full(len(times), 4.), 'b': np.full(len(times), 6.)}, index=times)
-        baseline = pd.Series(5., index=times)
-        prices = pd.Series(0., index=times)
+        inputs = pd.date_range(times[0]-pd.Timedelta(hours=1), times[-1], freq='h')
+        baseline = pd.Series(5., index=inputs)
+        prices = pd.Series(0., index=inputs)
         curve = BM1PiecewiseResponse.linear()
         parameters = BM1Parameters(curve, curve, 1., 2., .75, .5)
         return contract, readings, baseline, prices, parameters
@@ -34,16 +35,18 @@ class HistoryContractTests(unittest.TestCase):
         data.iloc[5, 0] = np.nan
         data.iloc[8] = 12.  # Gaussian Y is not clipped to the latent demand range.
         record, metadata = prepare_historical_curve_training(data, baseline, price,
-            contract=contract, parameters=parameters, sigma_y=.03, initial_mass_builder=np.diff)
+            contract=contract, parameters=parameters, sigma_y=.03, initial_mass_builder=np.diff, origin=baseline.index[0])
         self.assertEqual(len(data), 49)  # The autumn day contains 25 elapsed hours.
-        np.testing.assert_array_equal(record.observations.times, np.arange(1, 49)/24)
-        self.assertFalse(record.observations.observed[4])
-        self.assertTrue(np.isnan(record.observations.values[4]))
-        self.assertEqual(record.observations.values[7], 1.2)
+        np.testing.assert_array_equal(record.observations.times, np.arange(1, 50)/24)
+        self.assertFalse(record.observations.observed[5])
+        self.assertTrue(np.isnan(record.observations.values[5]))
+        self.assertEqual(record.observations.values[8], 1.2)
         self.assertEqual(metadata['midnight_resets'], 0)
+        self.assertFalse(metadata['initial_observation_excluded'])
+        self.assertEqual(metadata['scored_observations'], 48)
         self.assertEqual(metadata['training_rows'], 49)
         self.assertEqual(metadata['missing_aggregate_rows'], 1)
-        self.assertEqual(record.horizon, (0., 49/24))
+        self.assertEqual(record.horizon, (0., 50/24))
         self.assertEqual(metadata['terminal_posterior_time'], data.index[-1].isoformat())
         data.iloc[:] = 999.
         self.assertEqual(record.observations.values[0], .5)
@@ -72,11 +75,24 @@ class HistoryContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'no clipping'): contract.normalize_prices([0., 101.])
         np.testing.assert_array_equal(contract.normalize_prices([-100., 100.]), [0., 1.])
 
+    def test_first_training_point_is_scored_and_prior_inputs_are_explicit(self):
+        contract, data, baseline, prices, parameters = self.data()
+        def prepare(origin, b=baseline, p=prices):
+            return prepare_historical_curve_training(data, b, p, contract=contract,
+                parameters=parameters, sigma_y=.03, initial_mass_builder=np.diff, origin=origin)
+        record, _ = prepare(baseline.index[0])
+        self.assertEqual(len(record.observations.times), len(data))
+        self.assertEqual(record.observations.times[0], 1/24)
+        self.assertEqual(record.observations.values[0], .5)
+        with self.assertRaisesRegex(ValueError, 'strictly before'): prepare(data.index[0])
+        with self.assertRaisesRegex(ValueError, 'hourly input'): prepare(baseline.index[0]-pd.Timedelta(minutes=30))
+        with self.assertRaisesRegex(ValueError, 'explicitly cover'): prepare(baseline.index[0], baseline.iloc[1:], prices.iloc[1:])
+
     def test_whole_declared_training_only_without_silent_subsets_or_population_changes(self):
         contract, data, baseline, prices, parameters = self.data()
         def prepare(d=data, b=baseline, p=prices):
             return prepare_historical_curve_training(d, b, p, contract=contract,
-                parameters=parameters, sigma_y=.03, initial_mass_builder=np.diff)
+                parameters=parameters, sigma_y=.03, initial_mass_builder=np.diff, origin=baseline.index[0])
         for bad in (data.iloc[:-1], data.iloc[1:], data[['b', 'a']],
                     data.set_axis(data.index.tz_localize(None))):
             with self.assertRaises(ValueError): prepare(d=bad)

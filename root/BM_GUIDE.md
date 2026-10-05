@@ -1,10 +1,27 @@
 # BM — arbejdsvejviser
 
+**H2 pilot, 5. oktober:** `curves history-config --output PATH` skriver en
+ufuldstændig datakonfiguration. `curves history-fit --config PATH --run-dir PATH
+--prepare-only` klargør hele den erklærede TRAIN, når metadata er dokumenteret.
+Derefter bruges `--resume --limit-candidates 3 --max-seconds 300` til den første
+afgrænsede runtimepilot. Samme fælles f/g gælder alle træningsdage; ingen daglige
+fits eller ekstra parametergrid. Pause/genoptagelse og budgetscope står i
+[H2_DATA_CONTRACT.md](H2_DATA_CONTRACT.md). Faktisk historisk fitting afventer
+datagrundlaget og er ikke videnskabeligt accepteret.
+
+**H2 rådata, 5. oktober:** Kør `python -B -m
+src.exe.run_model.bm_1.curves history-inspect --blas-threads 1` for en kort
+ark-/headerkontrol uden observationslæsning eller fitting. Rapport:
+`files/output/bm_1/runs/estimation/h2_header_inspection.json`. Den nye separate
+TRAIN-indlæsning bruger eksplicit population/tidszone/spot-proxy-kontrakt,
+bevarer manglende data og bruger ikke convenience-loadernes interpolation.
+Se [H2_DATA_CONTRACT.md](H2_DATA_CONTRACT.md) for forudsætninger og næste pilot.
+
 **F4-status og næste opgave:** [F4.md](F4.md).
 Den aktive prioritering fra 3. oktober 2026 er I-baseline på det afsluttede
 F-spor (integration nu implementeret), derefter obligatorisk H-f/g inden den endelige samlede I/J-leverance;
-G2b-v2 er særskilt nat-sidearbejde uden for den kritiske vej; G2c kræver en ny
-kompatibel registrering og G2b-accept. Bevar arkiveret G2a-v2
+G2b-v2 er særskilt nat-sidearbejde uden for den kritiske vej; det nye rektangulære
+G2c-v2-design kræver komplet råvalideret G2b-accept. Bevar arkiveret G2a-v2
 på dens oprindelige kildecommit. Nyt arbejde bruger branches i eksisterende
 checkout; opret kun et worktree, hvis det er strengt nødvendigt. Bevar aktive
 kørselsmapper og nødvendige ignorerede rådata/logs før oprydning. Se `AGENTS.md`
@@ -24,6 +41,114 @@ Kandidaten med fire argumentintervaller `[0,0.25]`, `[0.25,0.5]`, `[0.5,0.75]`,
 den sammenlignes med en enklere to-stykkers og den lineære reference.
 Frosne kurver/skalaer bruges ved validering og forecast. Det eksisterende G-design
 forbliver den lineære reference; denne beslutning ændrer ikke gamle run/checkpoints.
+
+## G2b/G2c fordelt mellem PC og chat
+
+Én plan, faste opgaveejere og samme rene sourcecommit på begge maskiner.
+PC bruger shard 0, chat shard 1. Opret **ikke** to uafhængige planer for samme
+studie. Git distribuerer kode; lokale ignorerede rådata skal overføres særskilt.
+En anden chat skal have repoet, den låste commit med Git-historik og datapakken.
+Flere chats er ikke i sig selv ekstra CPU eller en garanti for lang køretid.
+
+**Før overgang:** vent på, at den eksisterende natkørsel er stoppet. Bevar dens
+mappe og den gamle natbranch. Skift derefter til opdateret main og opret en
+ny branch i samme checkout til den nye afvikling. Pull/skift aldrig under
+beregning. Kommandoerne nedenfor køres fra repoets rod på den publicerede kode.
+
+Første forberedelse (PowerShell; ny mappe, kør kun én gang):
+
+```powershell
+$gRoot = "files/output/bm_1/runs/estimation"
+$gRun = "$gRoot/g2b_distributed_v1"
+python -B -m src.exe.run_model.bm_1.estimate joint-distributed-prepare `
+  --stage G2b --shards 2 --run-dir $gRun `
+  --g2a-report "$gRoot/f4_g_g2a_continued_7d_v1.json.gz" `
+  --g2a-run-dir "$gRoot/f4_g_g2a_rectangular_v2_20261003_135421" `
+  --resume-from "$gRoot/f4_g_g2b_rectangular_v2_nights" --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "Forberedelse stoppede; behold originalerne." }
+
+python -B -m src.exe.run_model.bm_1.estimate joint-distributed-export `
+  --run-dir $gRun --shard 1 --output "$gRoot/g2b_chat_initial.json" --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "Eksport stoppede; behold alle filer." }
+```
+
+`prepare` skriver `plan.json` sidst. Fejlet forberedelse giver ingen kørbar plan;
+bevar mappen til review og vælg et nyt navn ved et korrigeret forsøg. Importen
+genskaber/validerer råreduktioner uden nye FV-replays og bevarer også gemte
+delhypoteser. Hvis gammel Git-historik mangler, hent historikken; løs ikke
+fingerprintkontrollen. Originalerne slettes eller omskrives aldrig.
+
+Upload **indeksfilen og samtlige `.partNNNN`-filer med samme præfiks**.
+Hver del er højst 24 MiB. Store råstudier kan kræve mange dele; den første
+pakke omfatter prerequisites og importerede originaler. Hver del og hele
+arkivet kontrolleres med SHA256. Pakken er en transportkopi, ikke en ny tildeling.
+
+PC: kort pilot før første lange kørsel:
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate joint-distributed-run `
+  --run-dir $gRun --shard 0 --workers 12 --chunk-size 64 `
+  --max-hours 7.5 --limit-chunks 1 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "Pilot stoppede; behold checkpoint og output." }
+```
+
+Fjern kun `--limit-chunks 1` for næste invocation på samme `$gRun` og shard.
+`--max-hours 7.5` omfatter setup og alle jobs; budgettet nulstilles ikke per job.
+En igangværende blok og publicering kan give et mindre overskridelsesrum.
+Begge maskiner viser samlet vægtet ETA for **deres egen tildelte restopgave**;
+ETA omfatter ikke usynlig fremdrift på den anden maskine og er ikke en deadline.
+Gem terminaloutput med `Start-Transcript`/`Stop-Transcript` omkring kommandoen.
+
+Rolig pause: opret filen `$gRun/shards/0/STOP` fra en anden terminal.
+Processen stopper ved næste gemte blokgrænse. Bevar den indtil processen er
+afsluttet, og fjern kun denne stopmarkør før genoptagelse. Ved hård afbrydelse
+bevares det senest atomisk publicerede checkpoint; den ufærdige blok kan gentages.
+
+Chat/Linux, efter checkout af `plan.json`'s `source.source_commit` i en ren
+branch (samme repo, ingen nye worktrees):
+
+```bash
+python -B -m src.exe.run_model.bm_1.estimate joint-distributed-unpack \
+  --bundle /path/to/g2b_chat_initial.json \
+  --run-dir files/output/bm_1/runs/estimation/g2b_chat --blas-threads 1
+python -B -m src.exe.run_model.bm_1.estimate joint-distributed-run \
+  --run-dir files/output/bm_1/runs/estimation/g2b_chat --shard 1 \
+  --workers 2 --chunk-size 64 --max-hours 0.1 --limit-chunks 2 --blas-threads 1
+python -B -m src.exe.run_model.bm_1.estimate joint-distributed-export \
+  --run-dir files/output/bm_1/runs/estimation/g2b_chat --shard 1 \
+  --output files/output/bm_1/runs/estimation/g2b_chat_return_001.json --blas-threads 1
+```
+
+Mål først cloudtempo og tilgængelig RAM; længere eksplicitte delkørsler kan følge.
+Eksportér efter hver chatsession og bevar delene vedvarende. Efter sessionstab
+udpakkes seneste pakke i en **ny** mappe og samme shard genoptages; kopien må
+ikke samtidig køre andetsteds. Flytning af ejerskab kræver stop, afsluttet proces
+og overførsel af seneste checkpoint. Ingen automatisk baggrundsberegning loves.
+
+Samling på PC (udpak chatreturen i ny mappe, derefter):
+
+```powershell
+python -B -m src.exe.run_model.bm_1.estimate joint-distributed-collect `
+  --run-dir $gRun --from-run "$gRoot/g2b_chat_return_001" `
+  --output "$gRoot/g2b_collected_001" --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "Samling afvist; behold råmapperne." }
+```
+
+Brug `joint-distributed-unpack --bundle ... --run-dir ...` til udpakningen.
+Saml kun pauserede shards. Collector kopierer færdige units til en ny mappe,
+råvaliderer dem og genberegner alle kontroller/statistikker. Identiske dubletter
+er idempotente; forskellige filer for samme unit afvises. Delvise checkpoints
+forbliver hos deres ejer og fusioneres ikke. Manglende arbejde giver
+`complete=False; passes=False`, aldrig accept. Brug et nyt outputnavn ved hver
+samling. Bevar både de aktive shardmapper og originalarkiverne.
+
+**G2c efter G2b-accept:** brug samme `prepare` med `--stage G2c`, en ny
+`--run-dir`, de samme G2a-stier og
+`--g2b-run-dir "$gRoot/g2b_collected_001"`; udelad `--resume-from`.
+Der kontrolleres komplette G2b-råfiler og alle 70 gates før G2c-truth/FV-arbejde.
+G2c har 560 jobs, 764.400 replays, 200 matched records og 20 parrede robustness-
+records per parameterpar. Fordeling, checkpoint, budget, eksport og samling
+bruger derefter de samme kommandoer. Gamle kvadratiske G2c-kommandoer frigives ikke.
 
 ## Genbrug i F4–F6
 
@@ -162,8 +287,9 @@ ikke. Nye preview-kørsler får dagsfigurerne direkte under deres
 med de efterfølgende Windows-checkpointrettelser. Report-I/O ligger i
 `src/tools/bm_1_reports.py`, og `curves.py` er registreret som entrypoint.
 V2-kørslen og det uafhængige arrayreview bestod på original `cfde153` i
-sessionen, men råmapperne skal gendannes eller reproduceres før næste
-dependency-gate. Genoptag eksisterende rådata på deres oprindelige source;
+sessionen; de tabte råmapper er siden reproduceret på `90211e4` og arkiveret.
+H1b's seks betingede udviklingsfits og egen numerik er nu gennemført; se F4-status.
+Genoptag eksisterende rådata på deres oprindelige source;
 en anden source kræver en ny run-mappe, uden ændring af gamle manifests.
 H1b-`fit` og den historiske datakontrakt er gendannet på recovery-branchen.
 H1b kræver komplette råvaliderede v2-units; et sessionsresumé er utilstrækkeligt.
@@ -206,7 +332,9 @@ accepterer kun det faste panel, ikke hele optimizerboksen, recovery eller H3.
 
 ## H1b: genoptageligt pooled fit
 
-Kør først den registrerede H1a-v2-pilot og fortsæt på **samme rene source**:
+Nedenstående er reproduktionskommandoer. De allerede arkiverede H1a/H1b-resultater
+skal ikke genkøres alene på grund af kodecleanup. Ved en ny reproduktion: kør
+først den registrerede H1a-v2-pilot og fortsæt på **samme rene source**:
 
 ```powershell
 $hNumerics = "files/output/bm_1/runs/estimation/h1_v2_recovery"
@@ -253,6 +381,19 @@ if ($LASTEXITCODE -ne 0) { throw "Valgte H1-kurver fejlede deres numeriske kontr
 Denne kommando gemmer 12 nye råunits med alle prefixer på base/tid/rum/q.
 Resume bruger `--resume` og samme source. Den ændrer ingen fitkurver efter
 kontrollerne. Budgetstoppede fits forbliver budgetstoppede, og H2/H3 frigives ikke.
+
+Selected-check-resume sammenholder hver råunits base-scorer og slutposterior
+med det valgte fit, også hvis et crash efterlod en atomisk råfil uden slutresumé.
+Ugyldige totalscorer, ikke-boolske observationsmasker og fejlede sandsynligheds-
+diagnoser afvises. Beståede refinement-forskelle alene dokumenterer ikke, at
+råfilen tilhører det valgte fit. Gyldige råunits kræver ingen nye FV-replays.
+
+`prepare_historical_curve_training` kræver en eksplicit timezone-aware `origin`
+før første TRAIN-punkt, på samme timegrid. Baseline og pris skal dække hele
+intervallet fra denne prior-origin til TRAIN-slut; alle deklarerede TRAIN-
+observationer medtages, inklusive den første. Adapteren opfinder ingen tidligere
+inputværdi. Missing-masken og den faste population bevares. Dette forbereder H2,
+men etablerer hverken datakildens faktiske semantik eller et blindt holdout.
 
 ## I-baseline og H1-forberedelse
 

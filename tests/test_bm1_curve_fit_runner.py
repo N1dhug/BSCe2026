@@ -46,6 +46,12 @@ class CurveFitRunnerTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'changed'): curves.run_fit(args)
             path = args.run_dir/'linear_2_result.json.gz'
             payload, _ = curves._read_likelihood_report(path)
+            original_score = payload['log_likelihood']
+            payload['log_likelihood'] += 1.
+            curves._atomic_report(path, payload, replace_existing=True)
+            with self.assertRaisesRegex(ValueError, 'Selected curve differs'):
+                curves.run_fit(args)
+            payload['log_likelihood'] = original_score
             payload['f']['values'][1] = .2
             curves._atomic_report(path, payload, replace_existing=True)
             with self.assertRaisesRegex(ValueError, 'geometry differs'): curves.run_fit(args)
