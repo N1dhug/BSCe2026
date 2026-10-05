@@ -19,6 +19,17 @@ Læs nyeste `AGENTS.md`, [G.md](G.md) og [G_JANUARY.md](G_JANUARY.md)
 ved genoptagelse af G. Læs kun F-dokumenter, når en konkret fælles grænseflade
 skal genbruges eller ændres. F4-H2 tilhører F-chatten; bevar samtidige F/WM-ændringer.
 
+## Ny beslutning: langt fit og genbrug af WM's ugeprognose
+
+Johan har 5. oktober valgt WM's fit→frys→viderefør cutoff-state→168 timers
+forecast som G's princip, med fælles helårsfit hvis data tillader det.
+G3/G4 har allerede forward/snapshot-grundlaget. Nødvendige udvidelser
+implementeres ved den relevante etape; ingen ny forecast-solver nu.
+Se beslutningsafsnittet i [G.md](G.md) for verificeret WM-kode,
+origin-tilgængelige inputs, årsfit/testsplit og skel til oracle-dagsstate.
+Dette ændrer den planlagte lange variants træningsvindue, ikke januararkivet
+eller G4-pilotens budget. Langt fit er ikke en gate for G6b→G8→G7.
+
 ## Opgaven og det allerede kendte
 
 Bachelorens projekt 111866 handler om at optimere prissignaler, så en gruppes
