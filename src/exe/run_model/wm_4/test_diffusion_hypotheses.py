@@ -31,7 +31,7 @@ def build_record(frame, prediction_day, weeks, steps_per_hour, max_state_iter, s
 
     output_model, _, fit, _ = fit_history_optimized(
         frame, prediction_day, weeks, steps_per_hour,
-        deterministic=True, max_state_iter=max_state_iter, state_tol=state_tol,
+        max_state_iter=max_state_iter, state_tol=state_tol,
     )
     _, actual, U, Time, model, _ = prediction_setup(frame, prediction_day, output_model, steps_per_hour)
     prediction_data, _, _, _ = model_input(frame, prediction_day, steps_per_hour, 0, output_model)
@@ -97,7 +97,7 @@ def predicted_sigma(record, hypothesis, theta):
     return np.asarray(result["input_std"], dtype=float)[record["hourly_index"]]
 
 
-def fit_hypothesis(hypothesis, records):
+def fit_hypothesis_deterministic(hypothesis, records):
     hypothesis = str(hypothesis).upper()
     if hypothesis not in HYPOTHESES: raise ValueError("Unknown diffusion hypothesis.")
     lower, upper = _bounds(hypothesis)
@@ -200,6 +200,8 @@ def evaluate_hypothesis(hypothesis, theta, records, alpha=0.05):
         "sigma_rmse_all_hours": float(np.sqrt(np.mean(all_error ** 2))),
         "coverage_h1_23_pct": 100.0 * float(np.mean(covered_process)),
         "coverage_all_pct": 100.0 * float(np.mean(covered_full)),
+        "coverage_error_95_h1_23_pct_points": abs(100.0 * float(np.mean(covered_process)) - 95.0),
+        "coverage_error_95_all_pct_points": abs(100.0 * float(np.mean(covered_full)) - 95.0),
         "mean_interval_width": float(np.mean(width)),
         "mean_interval_score": float(np.mean(score)),
     }
@@ -240,21 +242,28 @@ def save_plot(hourly_summary, path):
 def print_summary(summary, train_days, test_days, skipped):
     print()
     print("WM4 diffusion hypothesis comparison")
-    print(f"oracle prediction state used; initial-state/parameter sensitivity excluded (P0=0)")
+    print("deterministic WM4 coefficient fit + oracle prediction state; initial-state/parameter sensitivity excluded (P0=0)")
+    print("H0-H2 coefficients are fitted deterministically by least squares to rolling observed s_I on the training dates.")
     print(f"train days={train_days}, test days={test_days}, skipped={len(skipped)}")
     print("H0 = time-periodic diffusion")
     print("H1 = H0 + sigma_I * I")
     print("H2 = H1 + sigma_U * |U|")
     print()
     columns = [
-        "hypothesis", "sigma_rmse_h1_23", "sigma_mae_h1_23", "sigma_correlation_h1_23",
-        "coverage_h1_23_pct", "coverage_all_pct", "mean_interval_width", "mean_interval_score",
+        "hypothesis", "coverage_h1_23_pct", "coverage_error_95_h1_23_pct_points",
+        "coverage_all_pct", "sigma_rmse_h1_23", "sigma_correlation_h1_23",
+        "mean_interval_width", "mean_interval_score",
     ]
-    print(summary[columns].sort_values("sigma_rmse_h1_23").to_string(index=False, float_format=lambda value: f"{value:.6f}"))
+    ranked = summary[columns].sort_values(["coverage_error_95_h1_23_pct_points", "mean_interval_score"])
+    print(ranked.to_string(index=False, float_format=lambda value: f"{value:.6f}"))
 
+    best_coverage = summary.sort_values(["coverage_error_95_h1_23_pct_points", "mean_interval_score"]).iloc[0]
     best_sigma = summary.sort_values("sigma_rmse_h1_23").iloc[0]
     best_score = summary.sort_values("mean_interval_score").iloc[0]
     print()
+    print(f"best held-out 95% coverage calibration: {best_coverage['hypothesis']} "
+          f"(coverage={best_coverage['coverage_h1_23_pct']:.2f}%, "
+          f"error={best_coverage['coverage_error_95_h1_23_pct_points']:.2f} percentage points)")
     print(f"lowest held-out diffusion RMSE: {best_sigma['hypothesis']} ({best_sigma['sigma_rmse_h1_23']:.8f})")
     print(f"lowest held-out 95% interval score: {best_score['hypothesis']} ({best_score['mean_interval_score']:.8f})")
     print()
@@ -297,7 +306,7 @@ def main():
 
     summaries, daily_frames, hourly_frames = [], [], []
     for hypothesis in HYPOTHESES:
-        theta, train_loss = fit_hypothesis(hypothesis, train)
+        theta, train_loss = fit_hypothesis_deterministic(hypothesis, train)
         summary, daily, hourly = evaluate_hypothesis(hypothesis, theta, test, alpha=args.alpha)
         summary["train_sigma_mse_h1_23"] = train_loss
         summaries.append(summary); daily_frames.append(daily); hourly_frames.append(hourly)
