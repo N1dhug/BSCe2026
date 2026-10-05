@@ -1,6 +1,10 @@
 """Small independent references for the F4-H2 terminal-contour prototype."""
 
 import unittest
+import gzip
+import json
+from copy import deepcopy
+from pathlib import Path
 
 import numpy as np
 from scipy.special import logsumexp, roots_legendre
@@ -12,6 +16,29 @@ from src.validation.bm_1.interval_terminal_tilt import terminal_tilt_update
 
 
 class TerminalTiltTests(unittest.TestCase):
+    def test_cross_reuse_rejects_changed_evidence_inputs_or_numerical_source(self):
+        from src.exe.run_model.bm_1_interval_terminal_tilt import _frozen_terminal_reference
+        raw = Path('files/output/bm_1/runs/estimation/f4_h2_terminal_tilt_day_20261005.json.gz').read_bytes()
+        saved = json.loads(gzip.decompress(raw))
+        args = (saved['inputs_sha256'], saved['source'], saved['design'])
+        reused, proof = _frozen_terminal_reference(raw, *args)
+        self.assertEqual(reused['comparison'], saved['comparison'])
+        self.assertIn('src/solver/finite_volume.py', proof['unchanged_dependency_paths'])
+        windows_inputs = {p.replace('/', '\\'): sha for p, sha in args[0].items()}
+        _frozen_terminal_reference(raw, windows_inputs, *args[1:])
+        with self.assertRaisesRegex(ValueError, 'archived'):
+            _frozen_terminal_reference(gzip.decompress(raw)+b' ', *args)
+        with self.assertRaisesRegex(ValueError, 'inputs changed'):
+            _frozen_terminal_reference(raw, {}, *args[1:])
+        source = deepcopy(saved['source'])
+        source['sha256']['src/solver/finite_volume.py'] = 'changed'
+        with self.assertRaisesRegex(ValueError, 'dependencies changed'):
+            _frozen_terminal_reference(raw, args[0], source, args[2])
+        source = deepcopy(saved['source'])
+        source['sha256']['src/model/wm_4.py'] = 'unrelated WM change'
+        source['sha256']['src/exe/run_model/bm_1/deterministic.py'] = 'unrelated G change'
+        _frozen_terminal_reference(raw, args[0], source, args[2])
+
     def test_exact_gaussian_tails_and_recursive_revival_below_float_range(self):
         solver = finite_volume_1d_fitted()
         zero = lambda t, x: np.zeros(x.shape)
