@@ -1,5 +1,14 @@
 # G0–G4: januar-fit, frosset ugeprognose og lille kurvepilot
 
+**G4-resultat, 5. oktober:** Januar-pilot og begge frosne februarprognoser er nu
+kørt og rå-reviewet. 206 residualkald, ca. 83 s inklusive eksport/figurer.
+Bedste fleksible g forbedrer DEVELOPMENT-MSE med 0.01504 %; lineær BM
+beholdes efter den låste 1 %-regel. Baseline har stadig lavest MSE.
+Se [G4-reviewet](G4_JANUARY_PILOT_REVIEW.md) og dets rå benchmark.
+Dette er udviklingsvalg på legacy-punktkontrakten, ikke blind validering.
+Ældre beskrivelser af manglende G4-pilot nedenfor er historisk status;
+den aktuelle næste handling står i reviewet.
+
 Status 5. oktober 2026: Johan har rapporteret historisk januar-fit som
 `complete` på `07fad9f`, run `g_january_fit_20261005_154824`.
 624 målte/744 timer; 120 manglende demand-timer; pris/temperatur komplette efter import.
@@ -11,7 +20,7 @@ Genkør ikke fit alene for dokumentationsopdatering. [G-planen](G.md) indeholder
 nu obligatorisk FP/mixture/EM (G6b), stokastisk single-shooting-kontrol (G7)
 og rekursiv estimation (G8), baseret på eksisterende F-arbejde.
 
-## Aktuelt næste trin: G4 fra original TRAIN-eksport
+## G4 fra original TRAIN-eksport — gennemført pilot og bevarede kommandoer
 
 G3's rapporterede fejlmål i rå workbook-enheder:
 

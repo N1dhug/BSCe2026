@@ -1,5 +1,14 @@
 # G3 og frem — grundlag og overdragelse til Sol
 
+**G4-resultat, 5. oktober:** Januar-pilot og begge frosne februarprognoser er nu
+kørt og rå-reviewet. 206 residualkald, ca. 83 s inklusive eksport/figurer.
+Bedste fleksible g forbedrer DEVELOPMENT-MSE med 0.01504 %; lineær BM
+beholdes efter den låste 1 %-regel. Baseline har stadig lavest MSE.
+Se [G4-reviewet](G4_JANUARY_PILOT_REVIEW.md) og dets rå benchmark.
+Dette er udviklingsvalg på legacy-punktkontrakten, ikke blind validering.
+Ældre beskrivelser af manglende G4-pilot nedenfor er historisk status;
+den aktuelle næste handling står i reviewet.
+
 Forberedt 5. oktober 2026 mod `main` ved
 `d9f95a0513605d58f0fe01464067e8f0a2a0eeeb` efter PR #69/#70.
 **Implementeringsstatus 5. oktober:** P1/P2 er nu implementeret og syntetisk

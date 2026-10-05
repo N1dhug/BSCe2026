@@ -1,5 +1,14 @@
 # G-plan — deterministisk BM-kerne, stokastisk udvidelse og WM4-sammenligning
 
+**G4-resultat, 5. oktober:** Januar-pilot og begge frosne februarprognoser er nu
+kørt og rå-reviewet. 206 residualkald, ca. 83 s inklusive eksport/figurer.
+Bedste fleksible g forbedrer DEVELOPMENT-MSE med 0.01504 %; lineær BM
+beholdes efter den låste 1 %-regel. Baseline har stadig lavest MSE.
+Se [G4-reviewet](G4_JANUARY_PILOT_REVIEW.md) og dets rå benchmark.
+Dette er udviklingsvalg på legacy-punktkontrakten, ikke blind validering.
+Ældre beskrivelser af manglende G4-pilot nedenfor er historisk status;
+den aktuelle næste handling står i reviewet.
+
 
 ## Arbejdsregel fra Johan, 5. oktober: adskil G/F og minimér kontrolarbejdet
 
@@ -902,11 +911,11 @@ andres samtidige arbejde og brug branch i eksisterende checkout, ikke nye worktr
   bounds/TRF, numerisk Jacobian og separate tællinger af derivativevalueringer.
   Kontrollér installeret SciPy før eventuel brug af nyere callback/workers-API.
 
-**Næste opgave:** G3 er rapporteret complete lokalt; P3/G4-adapter og kort
-LS/arkiv-kontrol er implementeret. Kør den afgrænsede G4-pilot fra den
-oprindelige januarmappe og sammenlign eksportérbare kandidater på den allerede
-eksponerede februaruge mod frosset lineær BM/O/WM. Behold lineær model ved
-utilstrækkelig udviklingsgevinst/identifikation. Frys valget før G6b→G8→G7.
+**Næste opgave:** Den afgrænsede G4-januarpilot og februarreview er gennemført;
+lineær BM er valgt efter den forudfastlagte regel. Genbrug originalt G3-fit
+uden refit. Undersøg datadækning/split og nødvendig adapter til fælles langt
+fit, eventuelt helår, med senere testuger. G6b→G8→G7 kan fortsætte fra det
+frosne lineære valg; årsfit er ingen ny gate. Se G4-reviewet for råresultater.
 Review de gemte januar-/februarartefakter, når de er tilgængelige; ingen
 genkørsel af det oprindelige G2-fit. En pris uden for frossent TRAIN-domæne
 afvises uden refit.
