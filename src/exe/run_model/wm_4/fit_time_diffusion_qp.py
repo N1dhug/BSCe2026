@@ -38,9 +38,16 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
     hourly_index = np.arange(DAY_HOURS, dtype=int) * steps_per_hour
     diffusion_time = np.asarray(prediction_state["Time"], dtype=float)
     process_kernel = prediction_model.process_variance_kernel({"r": fit["r"]}, hourly_index)
-    fit_mask = np.arange(DAY_HOURS, dtype=int) > 0
+
+    P0 = np.array([[0.0, 0.0], [0.0, observed_variance[0]]], dtype=float)
+    sensitivity = prediction_model.sensitivity(fit["r"])["input"][hourly_index]
+    initial_variance = np.einsum("ni,ij,nj->n", sensitivity, P0, sensitivity)
+    initial_variance = np.maximum(initial_variance, 0.0)
+
+    fit_mask = np.ones(DAY_HOURS, dtype=bool)
     qp = time_diffusion_qp(prediction_model).fit(
-        process_kernel, diffusion_time, observed_variance, fit_mask=fit_mask,
+        process_kernel, diffusion_time, observed_variance,
+        initial_variance=initial_variance, fit_mask=fit_mask,
     )
 
     fine_diffusion = time_diffusion_qp(prediction_model).evaluate(diffusion_time, qp["beta"])
@@ -50,12 +57,17 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
     unit_q = np.ones(diffusion_time.size, dtype=float)
     constant_kernel = process_kernel @ unit_q
     constant_design = constant_kernel[fit_mask, None]
+    constant_target = (observed_variance - initial_variance)[fit_mask]
+    denominator = float(constant_design[:, 0] @ constant_design[:, 0])
+    constant_seed = max(1e-12, float((constant_design[:, 0] @ constant_target) / denominator) if denominator > 0.0 else 1e-12)
     constant_beta = prediction_model._least_squares_qp(
-        constant_design, observed_variance[fit_mask],
+        constant_design, constant_target,
         lb=np.array([0.0], dtype=float), ridge=prediction_model._FIT_RIDGE,
+        x0=np.array([constant_seed], dtype=float),
     )
     constant_q = float(constant_beta[0])
-    constant_propagated_variance = np.maximum(constant_kernel * constant_q, 0.0)
+    constant_process_variance = np.maximum(constant_kernel * constant_q, 0.0)
+    constant_propagated_variance = np.maximum(initial_variance + constant_process_variance, 0.0)
     constant_propagated_std = np.sqrt(constant_propagated_variance)
     variance_rmse_constant = float(np.sqrt(np.mean((constant_propagated_variance[fit_mask] - observed_variance[fit_mask]) ** 2)))
     std_rmse_constant = float(np.sqrt(np.mean((constant_propagated_std[fit_mask] - observed_std[fit_mask]) ** 2)))
@@ -63,6 +75,8 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
     r2 = np.nan if var_scale <= 0.0 else 1.0 - qp["variance_mse"] / var_scale
 
     hourly = empirical[["hour", "var_I", "s_I"]].copy()
+    hourly["initial_variance"] = initial_variance
+    hourly["fitted_process_variance"] = qp["process_variance"]
     hourly["fitted_propagated_variance"] = hourly_variance
     hourly["fitted_propagated_std"] = hourly_std
     hourly["constant_propagated_variance"] = constant_propagated_variance
@@ -75,6 +89,7 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
         "variance_amplitude_1": qp["variance_amplitude_1"], "phase_1_h": qp["phase_1_h"],
         "variance_amplitude_2": qp["variance_amplitude_2"], "phase_2_h": qp["phase_2_h"],
         "variance_rmse": qp["variance_rmse"], "std_rmse": qp["std_rmse"], "std_mae": qp["std_mae"], "r2": r2,
+        "P0": P0, "initial_variance": initial_variance,
         "constant_q": constant_q,
         "constant_variance_rmse": variance_rmse_constant, "constant_std_rmse": std_rmse_constant,
         "hourly": hourly, "prediction_state": prediction_state,
@@ -125,7 +140,8 @@ def print_result(result, plot_path, csv_path):
     print(f"constant process variance q={result['constant_q']:.10f}, variance RMSE={result['constant_variance_rmse']:.10f}")
     print(f"constant diffusion g={np.sqrt(max(result['constant_q'], 0.0)):.10f}, std RMSE={result['constant_std_rmse']:.10f}")
     print()
-    print("Hours 1-23 are fitted to the empirical hourly variances; hour 0 is excluded because P0=0 gives zero process variance initially.")
+    print(f"P0=[[0,0],[0,{result['P0'][1,1]:.10f}]] from the empirical hour-0 variance.")
+    print("All 24 hourly variances are included; hour 0 is matched exactly by the empirical initial covariance.")
     print("The resulting additive time-only Ito diffusion has zero mean, so E[I_stochastic]=I_deterministic for the same initial mean.")
     print(f"hourly={csv_path}")
     print(f"plot={plot_path}")
