@@ -18,7 +18,7 @@ class wm_4(wm):
     I = O + R
 
     The structural fit is deterministic. Stochastic uncertainty is added only
-    through explicit H0-H2 diffusion hypotheses after the deterministic fit.
+    through explicit H0-H3 diffusion hypotheses after the deterministic fit.
 
     F, U in [-1, 1], with F = U = 0 as the neutral point.
     """
@@ -72,42 +72,44 @@ class wm_4(wm):
 
     @staticmethod
     def diffusion_hypothesis(hypothesis, time_hours, I, U, theta):
-        """Evaluate exploratory WM4 diffusion hypotheses H0-H2.
+        """Evaluate exploratory WM4 diffusion hypotheses H0-H3.
 
         H0: g = sigma_0 + sigma_t * (1 + cos(2*pi*(t-phase)/24)) / 2
         H1: H0 + sigma_I * I
         H2: H1 + sigma_U * |U|
-
-        sigma_0, sigma_t, sigma_I and sigma_U are nonnegative. The periodic
-        term gives H0 a simple positive 24-hour uncertainty profile without
-        using O(t). phase is measured in physical hours.
+        H3: g = sigma_0 + (1 - sigma_I) * I
         """
         hypothesis = str(hypothesis).strip().upper()
-        if hypothesis not in ("H0", "H1", "H2"): raise ValueError("hypothesis must be one of H0, H1 or H2.")
+        if hypothesis not in ("H0", "H1", "H2", "H3"): raise ValueError("hypothesis must be one of H0, H1, H2 or H3.")
         theta = np.asarray(theta, dtype=float).reshape(-1)
-        expected = {"H0": 3, "H1": 4, "H2": 5}[hypothesis]
+        expected = {"H0": 3, "H1": 4, "H2": 5, "H3": 2}[hypothesis]
         if theta.size != expected or not np.all(np.isfinite(theta)): raise ValueError(f"{hypothesis} theta must contain exactly {expected} finite values.")
-
-        sigma_0, sigma_t, phase = map(float, theta[:3])
-        if sigma_0 <= 0.0 or sigma_t < 0.0: raise ValueError("sigma_0 must be positive and sigma_t must be nonnegative.")
-        if not 0.0 <= phase <= 24.0: raise ValueError("diffusion phase must lie in [0, 24] physical hours.")
 
         time_hours = np.asarray(time_hours, dtype=float)
         I, U = np.asarray(I, dtype=float), np.asarray(U, dtype=float)
-        if not np.all(np.isfinite(time_hours)) or not np.all(np.isfinite(U)): raise ValueError("diffusion time and price inputs must be finite.")
+        if not np.all(np.isfinite(time_hours)) or not np.all(np.isfinite(I)) or not np.all(np.isfinite(U)): raise ValueError("diffusion inputs must be finite.")
         if np.any(U < -1.0) or np.any(U > 1.0): raise ValueError("wm_4 diffusion hypotheses require U in [-1, 1].")
 
-        periodic = 0.5 * (1.0 + np.cos(2.0 * np.pi * (time_hours - phase) / 24.0))
-        g = sigma_0 + sigma_t * periodic
-        if hypothesis in ("H1", "H2"):
-            if not np.all(np.isfinite(I)): raise ValueError("H1/H2 diffusion input I must be finite.")
-            sigma_I = float(theta[3])
-            if sigma_I < 0.0: raise ValueError("sigma_I must be nonnegative.")
-            g = g + sigma_I * I
-        if hypothesis == "H2":
-            sigma_U = float(theta[4])
-            if sigma_U < 0.0: raise ValueError("sigma_U must be nonnegative.")
-            g = g + sigma_U * np.abs(U)
+        if hypothesis == "H3":
+            sigma_0, sigma_I = map(float, theta)
+            if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
+            if not 0.0 <= sigma_I <= 1.0: raise ValueError("H3 requires sigma_I in [0, 1].")
+            g = sigma_0 + (1.0 - sigma_I) * I
+        else:
+            sigma_0, sigma_t, phase = map(float, theta[:3])
+            if sigma_0 <= 0.0 or sigma_t < 0.0: raise ValueError("sigma_0 must be positive and sigma_t must be nonnegative.")
+            if not 0.0 <= phase <= 24.0: raise ValueError("diffusion phase must lie in [0, 24] physical hours.")
+            periodic = 0.5 * (1.0 + np.cos(2.0 * np.pi * (time_hours - phase) / 24.0))
+            g = sigma_0 + sigma_t * periodic
+            if hypothesis in ("H1", "H2"):
+                sigma_I = float(theta[3])
+                if sigma_I < 0.0: raise ValueError("sigma_I must be nonnegative.")
+                g = g + sigma_I * I
+            if hypothesis == "H2":
+                sigma_U = float(theta[4])
+                if sigma_U < 0.0: raise ValueError("sigma_U must be nonnegative.")
+                g = g + sigma_U * np.abs(U)
+
         shape = np.broadcast(time_hours, I, U).shape
         g = np.broadcast_to(np.asarray(g, dtype=float), shape).astype(float, copy=False)
         if not np.all(np.isfinite(g)) or np.any(g <= 0.0): raise ValueError("Diffusion hypothesis must remain finite and strictly positive over the trajectory.")
@@ -148,6 +150,29 @@ class wm_4(wm):
             "hypothesis": str(hypothesis).strip().upper(),
             "theta": np.asarray(theta, dtype=float).copy(),
         }
+
+    def process_variance_kernel(self, state, sample_indices):
+        """Exact Euler kernel mapping fine-grid g^2 to sampled Var(I)=Var(R), with P0=0."""
+        if "r" not in state: raise ValueError("state is missing required entry 'r'.")
+        r = wm_4_validation.r_coefficients(state["r"])
+        indices = np.asarray(sample_indices, dtype=int).reshape(-1)
+        if indices.size < 1 or np.any(indices < 0) or np.any(indices >= self.t_steps): raise ValueError("sample_indices must lie in [0, t_steps).")
+
+        transition = np.array([
+            [1.0, self.dt],
+            [self.dt * r[0], 1.0 + self.dt * r[2]],
+        ], dtype=float)
+        max_index = int(np.max(indices))
+        impulse = np.empty(max_index, dtype=float)
+        response = np.array([0.0, 1.0], dtype=float)
+        for lag in range(max_index):
+            impulse[lag] = response[1]
+            response = transition @ response
+
+        kernel = np.zeros((indices.size, self.t_steps), dtype=float)
+        for row, index in enumerate(indices):
+            if index > 0: kernel[row, :index] = self.dt * impulse[:index][::-1] ** 2
+        return kernel
 
     def sensitivity(self, parameters):
         """Euler sensitivity of [F,R] and I=O+R to the initial state [F0,R0]."""

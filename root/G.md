@@ -1,6 +1,6 @@
 # G-plan — deterministisk BM-kerne, stokastisk udvidelse og WM4-sammenligning
 
-**Beslutning fra Johan: 5. oktober 2026. Status: planlagt, ikke implementeret eller valideret som samlet G-leverance.**
+**Beslutning fra Johan: 5. oktober 2026. Status: G0–G3-kode implementeret og syntetisk udviklingskørsel gennemført; historisk januar-fit afventer lokale inputs. G4–G7 er planlagt.**
 
 G er et selvstændigt spor ved siden af F-planen. Formålet er en enkel, hurtig
 BM-arbejdsgang: historiske data → deterministisk parameterfit → fastlåst
@@ -22,6 +22,27 @@ G kræver ikke, at disse studier eller H-f/g afsluttes. G overtager heller ikke
 deres evidens eller afslutter deres krav. F-sporets status står i [F4.md](F4.md).
 Brugerens nye G-bestilling tillader dette deterministiske spor nu; den ophæver
 ikke F-sporets aftalte rækkefølge eller dets senere prognosediagnose.
+
+## Aktuel G0–G3-leverance, 5. oktober
+
+Johan har bestilt **parameterfit over hele januar**. Første konkrete månedsvariant
+bruger 1. januar 2022 kl. 00 til 1. februar kl. 00 (744 timer), ét fælles
+(C_hours,k,Xi,x0), og derefter 168 timer til 8. februar. BM og WM bruger begge
+den fulde fitmåned. Månedsvarianten har warm-up=0 for at score hele januar;
+ugevarianten bevarer WM's 24 timer og én fituge. Ingen daglige state-resets.
+
+Implementationen omfatter dataaudit, træningsfast fælles skalering, genbrugt
+WM-baseline, lineær BM1-forwardmodel, bounded SciPy-TRF, checkpoints, cutoff,
+tidsforfining og fælles WM/BM-rapporter. Se [G_JANUARY.md](G_JANUARY.md) for
+kommandoer, bounds, numerik og begrænsninger. Måletype/enhed er endnu ikke
+afklaret nok til et historisk videnskabeligt acceptclaim; kørslen mærkes
+hourly-point-approximation og development.
+
+En syntetisk 744+168-timers kæde med to starter er gennemført på cirka 22 s,
+130 residualkald og bestået tidsforfining. Det er implementerings-/runtimeevidens,
+ikke historisk januar-estimation eller en retfærdig modelrangering: data er
+genereret med BM1. Den store historiske input-workbook kunne ikke materialiseres
+gennem denne chats connector. Lokal januarkørsel mangler stadig.
 
 ## 1. Leverancer og rækkefølge
 
@@ -158,8 +179,13 @@ af et inputskift. Intervalgrænser opdeles ved alle B/u-skift.
 
 En konstant-timebaseline må ikke indføres alene for at bruge formlen, hvis
 den aftalte WM-sammenligning kræver en kontinuerlig baseline. G0 fastlåser
-inputrepræsentationen for begge modeller. Ved varierende B eller stykvise f/g
-genbruges den segmenterede `solve_ivp`-vej og den samme observationsoperator.
+inputrepræsentationen for begge modeller. G0–G3 bruger ved varierende B en billig skalær RK4-vej med de samme BM1-
+ligninger, verificeret mod eksisterende segmenteret `solve_ivp`. Første fit har
+60 trin/time for at ramme knækkene i WM's fine, lineært interpolerede baseline;
+120 trin/time er numerikkontrollen. Et grovere grid afviste en syntetisk kandidat
+under uændret præcisionsgrænse. Dette er en kontrolleret numerisk specialisering,
+ikke en konstant-baseline-ændring. Stykvise f/g er endnu ikke implementeret i
+G-fitteren; den eksisterende ODE-vej er fortsat tilgængelig.
 
 ## 3. Parameterestimation
 
@@ -342,7 +368,7 @@ Genbrug eksisterende matematik i `src/model/base/bm.py`, ODE i
 ikke overskrives med G-fitteren. Den eksisterende punkt-observationscontainer
 må heller ikke mærkes som intervalmodel; et intervalinterface kræver egen kontrakt.
 
-Foreslået ny kode, **endnu ikke oprettet**:
+G0–G3-kode er oprettet; G6-koden nedenfor er fortsat planlagt:
 
 - `src/params/bm_1_deterministic.py`: lille fitkonfiguration, fitresultat og
   public API til deterministisk estimation.
@@ -350,7 +376,7 @@ Foreslået ny kode, **endnu ikke oprettet**:
   optimizerbudget og fit; en generaliseret eksakt overgang placeres som genbrugelig
   numerisk helper efter inspektion af eksisterende solverstruktur.
 - `src/exe/run_model/bm_1/deterministic.py`: tynd indgang til audit, fit,
-  predict-week og compare; disse er foreslåede kommandoer, ikke kørbare nu.
+  predict-week og compare; måneds-/ugekørsel og audit-only er nu kørbare.
 - `src/validation/bm_1/deterministic_fit.py` og fokuserede tests: små syntetiske
   regressioner og cutoff-kontroller, ingen lange forskningsstudier i CI.
 - G6 tilføjer en lille særskilt usikkerhedsmodul/indgang efter inspektion af
@@ -478,7 +504,9 @@ andres samtidige arbejde og brug branch i eksisterende checkout, ikke nye worktr
   bounds/TRF, numerisk Jacobian og separate tællinger af derivativevalueringer.
   Kontrollér installeret SciPy før eventuel brug af nyere callback/workers-API.
 
-**Næste opgave:** G-plan/G0, derefter G-plan/G1 og den korte runtimepilot.
+**Næste opgave:** Kør den historiske januarkommando i G_JANUARY.md og gennemgå
+fit, numerik, baselinegevinst, domæneproblemer og runtime.
 Første målsætning er G0–G3 med faste lineære kurver. Start ikke G4 eller en
 fuld månedskørsel, før denne kæde fungerer og dens målinger passer til budgettet.
-Denne bestilling leverer planen; G-implementation og nye studier er ikke kørt.
+G0–G3 er implementeret og syntetisk kontrolleret. Historisk januar-fit, G4–G7
+og videnskabelig accept er ikke gennemført.

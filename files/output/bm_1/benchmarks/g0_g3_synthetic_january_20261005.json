@@ -1,0 +1,57 @@
+{
+  "kind": "synthetic-development-only",
+  "historical_january_fit": "not-run: large input workbook cannot be materialized by current connector",
+  "seed": 43,
+  "training_hours": 744,
+  "forecast_hours": 168,
+  "starts": 2,
+  "residual_calls": 130,
+  "fit_seconds": 21.001283109000724,
+  "total_seconds": 22.185863630998938,
+  "max_demand_refinement_error": 4.285460875053104e-14,
+  "parameters": [
+    12.954011517679977,
+    1.608047570308764,
+    0.9999999959882732,
+    0.44238086180429975
+  ],
+  "metrics": {
+    "O": {
+      "mse": 0.0859746536105446,
+      "rmse": 0.29321434755234027,
+      "mae": 0.254560230729631,
+      "bias": -0.06691574772374143
+    },
+    "bm1": {
+      "mse": 0.008892018070766085,
+      "rmse": 0.09429749769090422,
+      "mae": 0.0806330311100934,
+      "bias": -0.0549073617092105,
+      "mse_gain": 0.07708263553977851
+    },
+    "wm4": {
+      "mse": 0.08597462381903995,
+      "rmse": 0.2932142967507552,
+      "mae": 0.2545601860835121,
+      "bias": -0.06691573602668158,
+      "mse_gain": 2.979150465209912e-08
+    }
+  },
+  "source_sha256": {
+    "src/method/bm_1_deterministic_fit.py": "a5db5055426158ba095ef6bb33f8fa771477e76e631dd0564a10d702fbf6aa60",
+    "src/method/bm_1_deterministic_benchmark.py": "f16bc4ca5f426d783049337876c1432d7407fcc66ebc491302d4cbbd3970fdcf",
+    "src/params/bm_1_deterministic.py": "4f86e4d877ab9e4faf72fdf4f2276689fd3c58bbaa372323fbc7e6790527af4f",
+    "src/tools/bm_1_deterministic_data.py": "89ff9fc3821461680f760390f89086504aaadf875f6e3143fd1c449698635ed3",
+    "src/model/base/bm.py": "3c0066ca559898c1c5b15ff433a3cd902b01fbd99438745aabcac76344282522",
+    "src/model/wm_4.py": "0f0afb03a71c31de95ae728ecf5cc190737e133b979a673c41ecd003bac8b327",
+    "src/params/wm_4.py": "b7a9ed38f316620eb83db8c376b169beb671aec8ebd079fcb520f102a9c7cbe3",
+    "src/exe/run_model/wm_4/output_model.py": "6c53acdd9a05cc72ae96576e3e07dc79fdd23ef7af89f485ca8b4571d079b2b3"
+  },
+  "data_fingerprint": "087ee8db8cc74d1696be97a1825f56b279f5f2145c4020887d3a7d2194b1638e",
+  "limitations": [
+    "synthetic data generated with BM1, unsuitable for ranking BM vs WM",
+    "point-observation approximation",
+    "structural bounds are development choices",
+    "full historical validation pending"
+  ]
+}

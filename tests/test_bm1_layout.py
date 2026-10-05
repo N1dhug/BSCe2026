@@ -128,7 +128,7 @@ class ConsolidatedLayoutTests(unittest.TestCase):
     def test_expected_bm_entrypoints(self):
         root = Path(__file__).resolve().parents[1]
         actual = {p.name for p in (root / 'src/exe/run_model/bm_1').glob('*.py')}
-        self.assertEqual(actual, {'verify.py', 'optimize.py', 'refine.py', 'real_data.py', 'estimate.py', 'outputs.py', 'curves.py'})
+        self.assertEqual(actual, {'verify.py', 'optimize.py', 'refine.py', 'real_data.py', 'estimate.py', 'outputs.py', 'curves.py', 'deterministic.py'})
         for retired in (
             'src/method/bm_1_control.py', 'src/method/bm_1_objective.py',
             'src/method/bm_1_mixture.py', 'src/validation/method/bm_1.py',
