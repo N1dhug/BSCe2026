@@ -7,14 +7,14 @@ import numpy as np
 from src.method.bm_1_deterministic_response import BM1ResponseInputs
 
 
-class BM1WeekdayInputs(BM1ResponseInputs):
+class BM1PooledInputs(BM1ResponseInputs):
     def __init__(self, trajectories):
         self.trajectories = tuple(trajectories)
-        if len(self.trajectories) != 5 or not all(isinstance(t, BM1ResponseInputs) for t in self.trajectories):
-            raise ValueError('Require exactly five independent G4 trajectories.')
+        if not self.trajectories or not all(isinstance(t, BM1ResponseInputs) for t in self.trajectories):
+            raise ValueError('Require independent G4 trajectories.')
         first = self.trajectories[0]
-        if any(t.n_hours != 48 or t.warmup != 24 or t.observations is None for t in self.trajectories):
-            raise ValueError('Each history needs 24 h warm-up and a 24 h target.')
+        if any(t.n_hours not in (47,48) or t.warmup != 24 or t.observations is None for t in self.trajectories):
+            raise ValueError('Each history needs 24 h warm-up and a 23/24 h target.')
         super().__init__(first.time, first.baseline, first.prices,
                          state_response=first.state_response, steps_per_hour=first.steps)
         self.observations = np.concatenate([t.observations for t in self.trajectories])
@@ -40,4 +40,12 @@ class BM1WeekdayInputs(BM1ResponseInputs):
                 'rhs_evaluations': self.last_rhs_evaluations}
 
     def refined(self):
-        return BM1WeekdayInputs([t.refined() for t in self.trajectories])
+        return type(self)([t.refined() for t in self.trajectories])
+
+
+class BM1WeekdayInputs(BM1PooledInputs):
+    def __init__(self, trajectories):
+        trajectories = tuple(trajectories)
+        if len(trajectories) != 5:
+            raise ValueError('Require exactly five independent G4 trajectories.')
+        super().__init__(trajectories)

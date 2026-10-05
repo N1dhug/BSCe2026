@@ -1,0 +1,879 @@
+{
+  "study": {
+    "status": "complete",
+    "protocol": {
+      "weeks_start": "2022-01-03 00:00:00",
+      "end_exclusive": "2022-03-28 00:00:00",
+      "test_origins": [
+        "2022-02-07 00:00:00",
+        "2022-02-14 00:00:00",
+        "2022-02-21 00:00:00",
+        "2022-02-28 00:00:00",
+        "2022-03-07 00:00:00",
+        "2022-03-14 00:00:00",
+        "2022-03-21 00:00:00"
+      ],
+      "scales": {
+        "demand_min": 0.4023076923076923,
+        "demand_scale": 2.4399999999999995,
+        "price_min": -500.0,
+        "price_scale": 6500.0,
+        "price_scale_source": "declared-ex-ante"
+      },
+      "price_domain": "fixed engineering scenario bounds [-500,6000], declared before fits; not future min/max",
+      "penalties": [
+        0.0,
+        0.001
+      ],
+      "workers": 8,
+      "blas_threads": 1,
+      "baseline_cutoff": "Monday origin shared by all seven forecasts",
+      "history": "independent daily trajectories; neutral x=.5 plus 24 h warm-up; same-weekday median forecast states",
+      "numerics": {
+        "baseline_samples_per_hour": 60,
+        "fit_grids": [
+          12,
+          24,
+          48
+        ],
+        "check": "twice the ODE resolution; max demand error <=1e-5",
+        "calls_per_start": 750,
+        "seconds_per_task_all_grids": 600,
+        "per_paired_task_max_calls_all_grids": 3000
+      },
+      "strategy_1": "retrospective full-12-week C,k,Xi fit with g linear; rolling weekday a-only",
+      "strategy_2": "rolling weekday C,k,Xi,a joint fits; 5 same weekdays each",
+      "strategy_3": "rolling shared C,k,Xi,a joint fit; all 35 days",
+      "day_2022_03_27": "23 physical hours; nonexistent raw local 02:00 row excluded, no fabricated price/weather",
+      "evidence": "conditional DEVELOPMENT, legacy hourly-point approximation; physical units/population not revalidated",
+      "raw_fingerprint": "c245e5f3a092296022910469406ab89e987f6dd506786604a1493ea8361adc93",
+      "reference_seed": [
+        1.6349238174094938,
+        0.22688550696235388,
+        0.2312064791761644,
+        0.5
+      ]
+    },
+    "pooled_scores": {
+      "O": {
+        "samples": 1175,
+        "mse": 0.2076682236266608,
+        "rmse": 0.4557062909667375,
+        "mae": 0.35509136005208447,
+        "bias": 0.017662166955080938
+      },
+      "s1_without_penalty": {
+        "samples": 1175,
+        "mse": 0.20728950643421873,
+        "rmse": 0.4552905736276765,
+        "mae": 0.3544677959491884,
+        "bias": 0.02299679076202087
+      },
+      "s1_with_penalty": {
+        "samples": 1175,
+        "mse": 0.2071932665842264,
+        "rmse": 0.4551848707769475,
+        "mae": 0.35418758881921303,
+        "bias": 0.025221477156954244
+      },
+      "s2_without_penalty": {
+        "samples": 1175,
+        "mse": 0.2358689857401898,
+        "rmse": 0.4856634490469607,
+        "mae": 0.37080924293355816,
+        "bias": 0.02665587878049556
+      },
+      "s2_with_penalty": {
+        "samples": 1175,
+        "mse": 0.21447860381437792,
+        "rmse": 0.4631183475250985,
+        "mae": 0.3577462875891856,
+        "bias": 0.029025866440534252
+      },
+      "s3_without_penalty": {
+        "samples": 1175,
+        "mse": 0.2065071887512074,
+        "rmse": 0.4544306203934847,
+        "mae": 0.3532369035399404,
+        "bias": 0.029215409699681175
+      },
+      "s3_with_penalty": {
+        "samples": 1175,
+        "mse": 0.20522534677841195,
+        "rmse": 0.45301804244247484,
+        "mae": 0.35209613988634725,
+        "bias": 0.02479061404970416
+      }
+    },
+    "weekly_scores": [
+      {
+        "week": 6,
+        "origin": "2022-02-07 00:00:00",
+        "scores": {
+          "O": {
+            "samples": 168,
+            "mse": 0.14302002481328,
+            "rmse": 0.3781798841996755,
+            "mae": 0.28431698751746265,
+            "bias": 0.06279129223472336
+          },
+          "s1_without_penalty": {
+            "samples": 168,
+            "mse": 0.14322890462056231,
+            "rmse": 0.3784559480581093,
+            "mae": 0.28479610080667855,
+            "bias": 0.06782127656380216
+          },
+          "s1_with_penalty": {
+            "samples": 168,
+            "mse": 0.14382705987043282,
+            "rmse": 0.3792453821346185,
+            "mae": 0.2857798168532334,
+            "bias": 0.07197369663202804
+          },
+          "s2_without_penalty": {
+            "samples": 168,
+            "mse": 0.1413123074001125,
+            "rmse": 0.3759152928521431,
+            "mae": 0.28259806673901666,
+            "bias": 0.0699576060148112
+          },
+          "s2_with_penalty": {
+            "samples": 168,
+            "mse": 0.14052288341674424,
+            "rmse": 0.37486381982894035,
+            "mae": 0.2823265959203078,
+            "bias": 0.06826849582872552
+          },
+          "s3_without_penalty": {
+            "samples": 168,
+            "mse": 0.1424570698714985,
+            "rmse": 0.3774348551359539,
+            "mae": 0.2838759379975245,
+            "bias": 0.06601986041570386
+          },
+          "s3_with_penalty": {
+            "samples": 168,
+            "mse": 0.14268865983960483,
+            "rmse": 0.3777415251724449,
+            "mae": 0.2843863983332787,
+            "bias": 0.0708959378514234
+          }
+        }
+      },
+      {
+        "week": 7,
+        "origin": "2022-02-14 00:00:00",
+        "scores": {
+          "O": {
+            "samples": 168,
+            "mse": 0.16508852900944745,
+            "rmse": 0.40631087729649507,
+            "mae": 0.3351058301795665,
+            "bias": -0.16752563961638786
+          },
+          "s1_without_penalty": {
+            "samples": 168,
+            "mse": 0.16204336828733565,
+            "rmse": 0.4025461070328909,
+            "mae": 0.3311906419925391,
+            "bias": -0.15905677279195002
+          },
+          "s1_with_penalty": {
+            "samples": 168,
+            "mse": 0.16017062801691714,
+            "rmse": 0.40021322818832106,
+            "mae": 0.32912001290040227,
+            "bias": -0.1552693198170467
+          },
+          "s2_without_penalty": {
+            "samples": 168,
+            "mse": 0.15425502466223295,
+            "rmse": 0.3927531345033836,
+            "mae": 0.31897117748833775,
+            "bias": -0.14125166206118722
+          },
+          "s2_with_penalty": {
+            "samples": 168,
+            "mse": 0.158018352140803,
+            "rmse": 0.3975152225271417,
+            "mae": 0.3237160984769612,
+            "bias": -0.1492513878103708
+          },
+          "s3_without_penalty": {
+            "samples": 168,
+            "mse": 0.1557789455529439,
+            "rmse": 0.3946884157825561,
+            "mae": 0.322623938554022,
+            "bias": -0.15062373230777326
+          },
+          "s3_with_penalty": {
+            "samples": 168,
+            "mse": 0.1557943109587705,
+            "rmse": 0.3947078805379625,
+            "mae": 0.3223121510320684,
+            "bias": -0.15208178641511955
+          }
+        }
+      },
+      {
+        "week": 8,
+        "origin": "2022-02-21 00:00:00",
+        "scores": {
+          "O": {
+            "samples": 168,
+            "mse": 0.41627940389325485,
+            "rmse": 0.6451971821801881,
+            "mae": 0.5232399746474636,
+            "bias": 0.35334111067815777
+          },
+          "s1_without_penalty": {
+            "samples": 168,
+            "mse": 0.41470486324374956,
+            "rmse": 0.6439758250460568,
+            "mae": 0.5229589871401485,
+            "bias": 0.35611092110958686
+          },
+          "s1_with_penalty": {
+            "samples": 168,
+            "mse": 0.41941633998721267,
+            "rmse": 0.6476236098129937,
+            "mae": 0.5259063592309339,
+            "bias": 0.36026692046413894
+          },
+          "s2_without_penalty": {
+            "samples": 168,
+            "mse": 0.40532409224293725,
+            "rmse": 0.6366506830617064,
+            "mae": 0.5146555075510145,
+            "bias": 0.3535354601513002
+          },
+          "s2_with_penalty": {
+            "samples": 168,
+            "mse": 0.4101672951635539,
+            "rmse": 0.6404430459951563,
+            "mae": 0.5166872025619369,
+            "bias": 0.35296029652656535
+          },
+          "s3_without_penalty": {
+            "samples": 168,
+            "mse": 0.4062292520152318,
+            "rmse": 0.6373611629329416,
+            "mae": 0.5162325836140454,
+            "bias": 0.3500188254200507
+          },
+          "s3_with_penalty": {
+            "samples": 168,
+            "mse": 0.4114236213949494,
+            "rmse": 0.6414231219678236,
+            "mae": 0.5198158511976603,
+            "bias": 0.354981999939716
+          }
+        }
+      },
+      {
+        "week": 9,
+        "origin": "2022-02-28 00:00:00",
+        "scores": {
+          "O": {
+            "samples": 168,
+            "mse": 0.20936745815337754,
+            "rmse": 0.4575668892668891,
+            "mae": 0.34367813224825927,
+            "bias": 0.1308483478691486
+          },
+          "s1_without_penalty": {
+            "samples": 168,
+            "mse": 0.21205020781904443,
+            "rmse": 0.46048909630852763,
+            "mae": 0.3460320518089701,
+            "bias": 0.13387644005157615
+          },
+          "s1_with_penalty": {
+            "samples": 168,
+            "mse": 0.21069582353283212,
+            "rmse": 0.45901614735522334,
+            "mae": 0.3445951646081097,
+            "bias": 0.13374261557536493
+          },
+          "s2_without_penalty": {
+            "samples": 168,
+            "mse": 0.21182751233078762,
+            "rmse": 0.46024722957426656,
+            "mae": 0.34858503615020114,
+            "bias": 0.11810584394019465
+          },
+          "s2_with_penalty": {
+            "samples": 168,
+            "mse": 0.21929192171725553,
+            "rmse": 0.4682861536680916,
+            "mae": 0.3532403500687118,
+            "bias": 0.11067781971889999
+          },
+          "s3_without_penalty": {
+            "samples": 168,
+            "mse": 0.21243030955351955,
+            "rmse": 0.46090162676380253,
+            "mae": 0.347267473012768,
+            "bias": 0.14519067461543256
+          },
+          "s3_with_penalty": {
+            "samples": 168,
+            "mse": 0.21115576339615916,
+            "rmse": 0.4595168804256914,
+            "mae": 0.34588847053850574,
+            "bias": 0.10339940070207868
+          }
+        }
+      },
+      {
+        "week": 10,
+        "origin": "2022-03-07 00:00:00",
+        "scores": {
+          "O": {
+            "samples": 168,
+            "mse": 0.20934307014975065,
+            "rmse": 0.45754023883124273,
+            "mae": 0.3839685745860107,
+            "bias": -0.13558242434412307
+          },
+          "s1_without_penalty": {
+            "samples": 168,
+            "mse": 0.20772977912399934,
+            "rmse": 0.45577382452703374,
+            "mae": 0.3809701498075999,
+            "bias": -0.13079037798746262
+          },
+          "s1_with_penalty": {
+            "samples": 168,
+            "mse": 0.20720200696352567,
+            "rmse": 0.455194471587173,
+            "mae": 0.38101856415100277,
+            "bias": -0.12940650295991601
+          },
+          "s2_without_penalty": {
+            "samples": 168,
+            "mse": 0.4244198133421535,
+            "rmse": 0.6514751056964138,
+            "mae": 0.5175399765463502,
+            "bias": -0.12860954009643358
+          },
+          "s2_with_penalty": {
+            "samples": 168,
+            "mse": 0.27013635759253224,
+            "rmse": 0.5197464358632315,
+            "mae": 0.4233207828847035,
+            "bias": -0.12064913589765555
+          },
+          "s3_without_penalty": {
+            "samples": 168,
+            "mse": 0.21989361498529,
+            "rmse": 0.468928155462316,
+            "mae": 0.391672949852937,
+            "bias": -0.11632798516319702
+          },
+          "s3_with_penalty": {
+            "samples": 168,
+            "mse": 0.20745576430046495,
+            "rmse": 0.45547312138090534,
+            "mae": 0.3817829221741755,
+            "bias": -0.1321905788918726
+          }
+        }
+      },
+      {
+        "week": 11,
+        "origin": "2022-03-14 00:00:00",
+        "scores": {
+          "O": {
+            "samples": 168,
+            "mse": 0.1600090533830414,
+            "rmse": 0.40001131656872085,
+            "mae": 0.3153650497933842,
+            "bias": -0.20478691169039334
+          },
+          "s1_without_penalty": {
+            "samples": 168,
+            "mse": 0.15817670732568148,
+            "rmse": 0.39771435393468196,
+            "mae": 0.3125560404397494,
+            "bias": -0.19809984181532445
+          },
+          "s1_with_penalty": {
+            "samples": 168,
+            "mse": 0.15666371293845321,
+            "rmse": 0.39580767165184305,
+            "mae": 0.310270131103994,
+            "bias": -0.19638307170597502
+          },
+          "s2_without_penalty": {
+            "samples": 168,
+            "mse": 0.1512511703945527,
+            "rmse": 0.38891023436591726,
+            "mae": 0.3043986581482932,
+            "bias": -0.1756526601502309
+          },
+          "s2_with_penalty": {
+            "samples": 168,
+            "mse": 0.1421988508923051,
+            "rmse": 0.377092629061223,
+            "mae": 0.29402215621491506,
+            "bias": -0.1645055504017269
+          },
+          "s3_without_penalty": {
+            "samples": 168,
+            "mse": 0.15311372204246487,
+            "rmse": 0.3912974853515735,
+            "mae": 0.30539094654111426,
+            "bias": -0.18756297113690282
+          },
+          "s3_with_penalty": {
+            "samples": 168,
+            "mse": 0.15045633652085957,
+            "rmse": 0.38788701514856044,
+            "mae": 0.3010575223175995,
+            "bias": -0.17950890653365445
+          }
+        }
+      },
+      {
+        "week": 12,
+        "origin": "2022-03-21 00:00:00",
+        "scores": {
+          "O": {
+            "samples": 167,
+            "mse": 0.15022812060937055,
+            "rmse": 0.38759272517601584,
+            "mae": 0.29963487325675786,
+            "bias": 0.08494991586940737
+          },
+          "s1_without_penalty": {
+            "samples": 167,
+            "mse": 0.15276818293164288,
+            "rmse": 0.3908557060241578,
+            "mae": 0.3024610355989298,
+            "bias": 0.0915237890029714
+          },
+          "s1_with_penalty": {
+            "samples": 167,
+            "mse": 0.1520490554280915,
+            "rmse": 0.3899346809763034,
+            "mae": 0.3023143033303341,
+            "bias": 0.09202363379483483
+          },
+          "s2_without_penalty": {
+            "samples": 167,
+            "mse": 0.16225480013231489,
+            "rmse": 0.40280863959492585,
+            "mae": 0.3085456613546765,
+            "bias": 0.09088844034096986
+          },
+          "s2_with_penalty": {
+            "samples": 167,
+            "mse": 0.1606944218371105,
+            "rmse": 0.4008670874954821,
+            "mae": 0.3106303751369282,
+            "bias": 0.10613953706348642
+          },
+          "s3_without_penalty": {
+            "samples": 167,
+            "mse": 0.15534285764760083,
+            "rmse": 0.39413558282347566,
+            "mae": 0.30530921132493943,
+            "bias": 0.09820384148172834
+          },
+          "s3_with_penalty": {
+            "samples": 167,
+            "mse": 0.15731780711148657,
+            "rmse": 0.396633088775365,
+            "mae": 0.30917417572925526,
+            "bias": 0.10853672042377475
+          }
+        }
+      }
+    ],
+    "parallel_seconds": 0.8807142809964716,
+    "global_seconds": 15.690173866001714,
+    "global_parameters": [
+      743.9884942502384,
+      0.052104677967731,
+      0.4049450236830987,
+      0.5
+    ],
+    "tasks": 105,
+    "new_tasks_this_invocation": 1,
+    "reused_tasks": 104,
+    "matched_hours": 1175,
+    "timing_note": "parallel_seconds is the final resume invocation only; aggregate optimizer wall time is reported in analysis.json."
+  },
+  "paired_analysis": {
+    "description": "Paired descriptive development analysis; no independent-week significance claim.",
+    "strategies": {
+      "s1": {
+        "penalty_mse_reduction_percent": 0.0464277481517672,
+        "penalized_mse_reduction_vs_baseline_percent": 0.22870954166210877,
+        "penalty_weekly_wins": 5,
+        "penalty_daily_wins": 25,
+        "weekly_mse_penalized_minus_unpenalized": {
+          "6": 0.0005981552498705023,
+          "7": -0.0018727402704185048,
+          "8": 0.004711476743463117,
+          "9": -0.0013543842862122901,
+          "10": -0.0005277721604736718,
+          "11": -0.001512994387228267,
+          "12": -0.0007191275035514089
+        },
+        "leave_one_week_out_penalty_reduction_percent": {
+          "6": 0.09729807060039342,
+          "7": -0.09315743109377106,
+          "8": 0.520205412097352,
+          "9": -0.055041998510785284,
+          "10": 0.01170101234367893,
+          "11": -0.06502616195502853,
+          "12": -0.0032159489199434788
+        },
+        "tasks": 49,
+        "selected_candidates": 98,
+        "optimizer_starts": 196,
+        "converged_starts": 196,
+        "sum_optimizer_fit_seconds": 39.32807635997597,
+        "max_normalized_numerical_error": 8.43705660891203e-11,
+        "final_steps_per_hour": [
+          12
+        ],
+        "max_residual_calls_per_paired_task": 81,
+        "selected_parameter_diagnostics": {
+          "0.0": {
+            "median_abs_a": 0.9989631102607711,
+            "a_range": [
+              -0.999998199043565,
+              0.9999700138182095
+            ],
+            "abs_a_above_0.99": 28,
+            "any_active_optimizer_bound": 0,
+            "data_local_ranks": [
+              1
+            ]
+          },
+          "0.001": {
+            "median_abs_a": 0.025993342373329096,
+            "a_range": [
+              -0.1316874046157278,
+              0.07879891810438547
+            ],
+            "abs_a_above_0.99": 0,
+            "any_active_optimizer_bound": 0,
+            "data_local_ranks": [
+              1
+            ]
+          }
+        }
+      },
+      "s2": {
+        "penalty_mse_reduction_percent": 9.068755630879533,
+        "penalized_mse_reduction_vs_baseline_percent": -3.2794522285511496,
+        "penalty_weekly_wins": 4,
+        "penalty_daily_wins": 21,
+        "weekly_mse_penalized_minus_unpenalized": {
+          "6": -0.0007894239833682315,
+          "7": 0.0037633274785700555,
+          "8": 0.004843202920616629,
+          "9": 0.007464409386467891,
+          "10": -0.1542834557496212,
+          "11": -0.00905231950224758,
+          "12": -0.0015603782952044454
+        },
+        "leave_one_week_out_penalty_reduction_percent": {
+          "6": 9.8660315560831,
+          "7": 10.255866442146132,
+          "8": 12.411938258051435,
+          "9": 10.923921521545044,
+          "10": -0.3818054444665986,
+          "11": 9.380033871472005,
+          "12": 9.947276410774231
+        },
+        "tasks": 49,
+        "selected_candidates": 98,
+        "optimizer_starts": 197,
+        "converged_starts": 188,
+        "sum_optimizer_fit_seconds": 644.5384339039883,
+        "max_normalized_numerical_error": 8.411493344295806e-06,
+        "final_steps_per_hour": [
+          12
+        ],
+        "max_residual_calls_per_paired_task": 2278,
+        "selected_parameter_diagnostics": {
+          "0.0": {
+            "median_abs_a": 0.9999981532559185,
+            "a_range": [
+              -0.9999999999999999,
+              0.9999999999999999
+            ],
+            "abs_a_above_0.99": 28,
+            "any_active_optimizer_bound": 27,
+            "data_local_ranks": [
+              2,
+              3,
+              4
+            ]
+          },
+          "0.001": {
+            "median_abs_a": 0.04428105156453392,
+            "a_range": [
+              -0.6250085261879695,
+              0.9999999890988663
+            ],
+            "abs_a_above_0.99": 1,
+            "any_active_optimizer_bound": 22,
+            "data_local_ranks": [
+              1,
+              2,
+              3,
+              4
+            ]
+          }
+        }
+      },
+      "s3": {
+        "penalty_mse_reduction_percent": 0.6207251091582044,
+        "penalized_mse_reduction_vs_baseline_percent": 1.1763363723092168,
+        "penalty_weekly_wins": 3,
+        "penalty_daily_wins": 21,
+        "weekly_mse_penalized_minus_unpenalized": {
+          "6": 0.00023158996810634935,
+          "7": 1.5365405826611722e-05,
+          "8": 0.005194369379717567,
+          "9": -0.0012745461573604178,
+          "10": -0.012437850684825058,
+          "11": -0.0026573855216053266,
+          "12": 0.0019749494638857112
+        },
+        "leave_one_week_out_penalty_reduction_percent": {
+          "6": 0.7064373444324201,
+          "7": 0.6969604440494992,
+          "8": 1.3640058000702004,
+          "9": 0.624301896436763,
+          "10": -0.2836090251181922,
+          "11": 0.4885255712017589,
+          "12": 0.8472310195868582
+        },
+        "tasks": 7,
+        "selected_candidates": 14,
+        "optimizer_starts": 28,
+        "converged_starts": 28,
+        "sum_optimizer_fit_seconds": 508.44040697600576,
+        "max_normalized_numerical_error": 2.2329664033926555e-06,
+        "final_steps_per_hour": [
+          12
+        ],
+        "max_residual_calls_per_paired_task": 663,
+        "selected_parameter_diagnostics": {
+          "0.0": {
+            "median_abs_a": 0.7537583364901387,
+            "a_range": [
+              -0.9999825821203442,
+              0.9999999850839837
+            ],
+            "abs_a_above_0.99": 2,
+            "any_active_optimizer_bound": 2,
+            "data_local_ranks": [
+              4
+            ]
+          },
+          "0.001": {
+            "median_abs_a": 0.0143333607985363,
+            "a_range": [
+              -0.19300005910933407,
+              0.03871675027926241
+            ],
+            "abs_a_above_0.99": 0,
+            "any_active_optimizer_bound": 4,
+            "data_local_ranks": [
+              4
+            ]
+          }
+        }
+      }
+    },
+    "scored_csv_sha256": "c4cd3112da47193c473febf6d82052d86ec5d5cd1958c86b91c8ca01b3bffe24"
+  },
+  "provenance": {
+    "source_commit": "086c460b2d12734657a4911223966265bfc8e72e",
+    "workbook_blob_sha": {
+      "input.xlsx": "373f924089b3c2f603a8e88bff1018e06616bfa1",
+      "prices.xlsx": "36224ea1521a00d18614e221f41e8ee82bbc6f1e"
+    },
+    "dmi_features": 2063,
+    "coverage": {
+      "Demand": 1944,
+      "Price": 2063,
+      "Temp": 2063
+    },
+    "price_range": [
+      -141.699997,
+      5207.439941
+    ],
+    "dst_rows": [
+      {
+        "Datetime": "2022-03-27 00:00:00",
+        "Demand": "0.8330769230769233",
+        "Price": "1748.280029",
+        "Temp": "2.1"
+      },
+      {
+        "Datetime": "2022-03-27 01:00:00",
+        "Demand": "0.793076923076923",
+        "Price": "1651.050049",
+        "Temp": "1.6"
+      },
+      {
+        "Datetime": "2022-03-27 02:00:00",
+        "Demand": "0.716153846153846",
+        "Price": "nan",
+        "Temp": "nan"
+      },
+      {
+        "Datetime": "2022-03-27 03:00:00",
+        "Demand": "0.9384615384615383",
+        "Price": "1592.189941",
+        "Temp": "1.2"
+      },
+      {
+        "Datetime": "2022-03-27 04:00:00",
+        "Demand": "0.8061538461538462",
+        "Price": "1577.189941",
+        "Temp": "0.8"
+      },
+      {
+        "Datetime": "2022-03-27 05:00:00",
+        "Demand": "1.0253846153846151",
+        "Price": "1570.400024",
+        "Temp": "0.5"
+      },
+      {
+        "Datetime": "2022-03-27 06:00:00",
+        "Demand": "1.783076923076923",
+        "Price": "1564.599976",
+        "Temp": "0.8"
+      },
+      {
+        "Datetime": "2022-03-27 07:00:00",
+        "Demand": "1.6515384615384616",
+        "Price": "1592.280029",
+        "Temp": "1.2"
+      },
+      {
+        "Datetime": "2022-03-27 08:00:00",
+        "Demand": "1.2769230769230768",
+        "Price": "1592.660034",
+        "Temp": "3.1"
+      },
+      {
+        "Datetime": "2022-03-27 09:00:00",
+        "Demand": "0.6330769230769231",
+        "Price": "1592.599976",
+        "Temp": "5.8"
+      },
+      {
+        "Datetime": "2022-03-27 10:00:00",
+        "Demand": "0.0176923076923077",
+        "Price": "1525.23999",
+        "Temp": "7.5"
+      },
+      {
+        "Datetime": "2022-03-27 11:00:00",
+        "Demand": "-0.3330769230769231",
+        "Price": "1431.099976",
+        "Temp": "8.4"
+      },
+      {
+        "Datetime": "2022-03-27 12:00:00",
+        "Demand": "0.9323076923076924",
+        "Price": "1201.439941",
+        "Temp": "9.1"
+      },
+      {
+        "Datetime": "2022-03-27 13:00:00",
+        "Demand": "0.3669230769230769",
+        "Price": "668.820007",
+        "Temp": "9.7"
+      },
+      {
+        "Datetime": "2022-03-27 14:00:00",
+        "Demand": "0.4499999999999999",
+        "Price": "580.090027",
+        "Temp": "10.2"
+      },
+      {
+        "Datetime": "2022-03-27 15:00:00",
+        "Demand": "0.8569230769230768",
+        "Price": "684.400024",
+        "Temp": "10.4"
+      },
+      {
+        "Datetime": "2022-03-27 16:00:00",
+        "Demand": "0.8276923076923078",
+        "Price": "1053.339966",
+        "Temp": "10.4"
+      },
+      {
+        "Datetime": "2022-03-27 17:00:00",
+        "Demand": "1.136153846153846",
+        "Price": "1449.439941",
+        "Temp": "9.9"
+      },
+      {
+        "Datetime": "2022-03-27 18:00:00",
+        "Demand": "1.1007692307692307",
+        "Price": "1636.689941",
+        "Temp": "9.1"
+      },
+      {
+        "Datetime": "2022-03-27 19:00:00",
+        "Demand": "1.4623076923076923",
+        "Price": "1487.790039",
+        "Temp": "7.9"
+      },
+      {
+        "Datetime": "2022-03-27 20:00:00",
+        "Demand": "1.050769230769231",
+        "Price": "1462.25",
+        "Temp": "6.8"
+      },
+      {
+        "Datetime": "2022-03-27 21:00:00",
+        "Demand": "0.9492307692307692",
+        "Price": "1440.209961",
+        "Temp": "6.1"
+      },
+      {
+        "Datetime": "2022-03-27 22:00:00",
+        "Demand": "0.7576923076923077",
+        "Price": "1418.099976",
+        "Temp": "5.6"
+      },
+      {
+        "Datetime": "2022-03-27 23:00:00",
+        "Demand": "0.6499999999999999",
+        "Price": "1417.339966",
+        "Temp": "5.4"
+      }
+    ]
+  },
+  "limitations": [
+    "S1 retrospective full-12-week fit; not prospective validation.",
+    "Realized future prices and temperature; conditional demand forecasts.",
+    "Development period, legacy hourly point approximation; seven overlapping rolling windows."
+  ],
+  "validation": {
+    "new_test_methods": 3,
+    "existing_weekday_tests": 2,
+    "max_normalized_temporal_error": 8.411493344295806e-06,
+    "selected_paired_candidates": 210,
+    "converged_paired_starts": 412,
+    "paired_starts_including_continuation": 421,
+    "complete_tasks": 105,
+    "refitted_finer_grid_tasks": 0
+  },
+  "raw_archive": "G4_12_uger_strategier_raaresultater_20261006.zip"
+}
