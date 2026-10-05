@@ -162,8 +162,9 @@ ikke. Nye preview-kørsler får dagsfigurerne direkte under deres
 med de efterfølgende Windows-checkpointrettelser. Report-I/O ligger i
 `src/tools/bm_1_reports.py`, og `curves.py` er registreret som entrypoint.
 V2-kørslen og det uafhængige arrayreview bestod på original `cfde153` i
-sessionen, men råmapperne skal gendannes eller reproduceres før næste
-dependency-gate. Genoptag eksisterende rådata på deres oprindelige source;
+sessionen; de tabte råmapper er siden reproduceret på `90211e4` og arkiveret.
+H1b's seks betingede udviklingsfits og egen numerik er nu gennemført; se F4-status.
+Genoptag eksisterende rådata på deres oprindelige source;
 en anden source kræver en ny run-mappe, uden ændring af gamle manifests.
 H1b-`fit` og den historiske datakontrakt er gendannet på recovery-branchen.
 H1b kræver komplette råvaliderede v2-units; et sessionsresumé er utilstrækkeligt.
@@ -206,7 +207,9 @@ accepterer kun det faste panel, ikke hele optimizerboksen, recovery eller H3.
 
 ## H1b: genoptageligt pooled fit
 
-Kør først den registrerede H1a-v2-pilot og fortsæt på **samme rene source**:
+Nedenstående er reproduktionskommandoer. De allerede arkiverede H1a/H1b-resultater
+skal ikke genkøres alene på grund af kodecleanup. Ved en ny reproduktion: kør
+først den registrerede H1a-v2-pilot og fortsæt på **samme rene source**:
 
 ```powershell
 $hNumerics = "files/output/bm_1/runs/estimation/h1_v2_recovery"
@@ -259,6 +262,13 @@ med det valgte fit, også hvis et crash efterlod en atomisk råfil uden slutresu
 Ugyldige totalscorer, ikke-boolske observationsmasker og fejlede sandsynligheds-
 diagnoser afvises. Beståede refinement-forskelle alene dokumenterer ikke, at
 råfilen tilhører det valgte fit. Gyldige råunits kræver ingen nye FV-replays.
+
+`prepare_historical_curve_training` kræver en eksplicit timezone-aware `origin`
+før første TRAIN-punkt, på samme timegrid. Baseline og pris skal dække hele
+intervallet fra denne prior-origin til TRAIN-slut; alle deklarerede TRAIN-
+observationer medtages, inklusive den første. Adapteren opfinder ingen tidligere
+inputværdi. Missing-masken og den faste population bevares. Dette forbereder H2,
+men etablerer hverken datakildens faktiske semantik eller et blindt holdout.
 
 ## I-baseline og H1-forberedelse
 

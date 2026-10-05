@@ -1,11 +1,13 @@
 # Fælles projektkontekst
 
-**H-integration, 5. oktober:** H1-kode og sessionscheckpoint fra den afbrudte
-nattebranch er samlet med Windows-rettelserne fra PR #60. Fælles report-I/O
-ligger i `src/tools/bm_1_reports.py`; layoutfejlen er rettet. H1-v2 blev kørt
-og rå-reviewet på original `cfde153`, men råmapper skal stadig gendannes og
-verificeres eller studiet reproduceres før H1b. Senere lokale fit-/datakontrakt-
-ændringer er endnu ikke sikret. Se aktuel status og evidensgrænse i `root/F4.md`.
+**H-recovery, 5. oktober:** H1a-v2 er reproduceret på `90211e4` og råarkiveret.
+Alle seks betingede H1b-fits er nu færdige på `e7d9089`; to responsive
+fire-stykkers fits nåede kandidatloftet. De valgte kurvers 12 units / 48 replays
+består egen numerik på `e398a5a`, og 2.304 Bayes-opdateringer er rå-reviewet.
+PR #64 supplerer PR #62 med checkpointvalidering og genfundne I/O-/TRAIN-fixes.
+Dette er udviklingsevidens, ikke modelvalg, joint recovery eller H2/H3-accept.
+Historisk metadata og dokumenteret blindt split mangler fortsat.
+Recovery, råartefakter og næste trin: `root/F4_H_CHECKPOINT_AUDIT_STATE.md`.
 
 Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tidsreduktion,
 3. oktober 2026**. Det er den autoritative fælles status og to-do-liste; ældre
@@ -25,8 +27,9 @@ chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
   kørsel bruger mappen. Reglen gælder også WM-arbejde.
 - I-baselinens origin/forecast/F3-integration er implementeret på det afsluttede
   F-spor; pooled H-f/g-fitprototype og gammel-record budgetpilot er implementeret.
-  H1-cases/numerik er implementeret; næste arbejde er sikring af H1-v2-rådata,
-  H1b-fit og H's data-/splitkontrakt.
+  H1-cases/numerik, H1b-fit og H's data-/splitkontrakt er implementeret.
+  H1a/H1b-udviklingsrådata er sikret; næste arbejde er faktiske metadata,
+  eksponeringsaudit og H2/H3-design før historisk modelvalg.
   Obligatorisk H-f/g
   skal gennemføres før den endelige samlede I/J-leverance. G2b-v2 er valgfrit
   nat-sidearbejde; G2c er kun en mulig opfølgning efter G2b-accept. Ingen af dem
@@ -70,15 +73,16 @@ chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
   `BM1PiecewiseResponse` og `src/method/bm_1_response.py` giver kurve-API og
   pooled replay-fit. Gammel-record prototype er ikke H's endelige fit/accept.
   Bevar deklarerede kandidatbudgetter og negative budgetstops; ingen automatisk
-  ekstra fitrunde eller modelvinder efter TRAIN-score. Nye kurvecases/numerik,
-  dataaudit, hele deklarerede træning og blind H3 mangler stadig.
+  ekstra fitrunde eller modelvinder efter TRAIN-score. H1's udviklingscases og
+  valgte-kurve-numerik er gennemført; faktisk dataaudit, hele den historiske
+  træning og blind H3 mangler stadig.
 
 Disse kurveregler gælder BM og ændrer ikke WM-modellernes egne fitkontrakter.
 
 ## Beslutning fra Johan, 3. oktober 2026
 
 - Estimation og validering af fleksible `f(x)`/`g(u)` er en **obligatorisk H-f/g-leverance**,
-  endnu ikke afsluttet; udviklingsestimatoren er implementeret, fuldt fit og
+  endnu ikke afsluttet; udviklingsfit er gennemført, mens historisk fit og
   videnskabelig validering mangler. Den må ikke igen klassificeres som en valgfri udvidelse.
 - Ét fælles kurvepar skal bestemmes samlet på tværs af træningsdage for en erklæret
   population/gruppe og holdes fast ved validering/forecast. Ingen f/g-fit per dag.

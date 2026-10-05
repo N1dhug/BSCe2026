@@ -20,6 +20,16 @@ def sharing_error():
 
 
 class ReportPublicationTests(unittest.TestCase):
+    def test_array_checkpoint_roundtrips_more_than_four_digit_indices(self):
+        from src.tools.bm_1_reports import _atomic_report
+        with TemporaryDirectory() as folder:
+            path = Path(folder)/'many_arrays.npz'
+            arrays = [np.array([i], dtype=np.int64) for i in range(10001)]
+            _atomic_report(path, {'arrays': arrays})
+            report, _ = _read_likelihood_report(path)
+            self.assertEqual(len(report['arrays']), 10001)
+            np.testing.assert_array_equal(np.concatenate(report['arrays']), np.arange(10001))
+
     def test_both_entrypoints_retry_before_publishing_complete_arrays(self):
         replace = os.replace
         for writer in (estimate._atomic_report, curves._atomic_report):

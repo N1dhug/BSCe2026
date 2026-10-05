@@ -332,8 +332,11 @@ def _fit_cases(args, case_names, source, design, begun, settings):
                 if (saved['logits'] != best['logits'] or saved['objective'] != best['objective']
                         or saved['f'] != f.to_record() or saved['g'] != g.to_record()):
                     raise ValueError('Completed curve geometry differs from its best evaluated candidate.')
-                previous = dict(f=BM1PiecewiseResponse.from_record(saved['f']),
-                                g=BM1PiecewiseResponse.from_record(saved['g']))
+                # Validate completed checkpoints before downstream family reuse.
+                from src.validation.bm_1.response_fit_checks import validate_fit_result
+                f, g = validate_fit_result(saved, trace, case=name, pieces=pieces,
+                    record_ids=[record.record_id for record in records])
+                previous = dict(f=f, g=g)
                 reports.append(saved)
                 continue
             if (args.limit_candidates is not None and new_total >= args.limit_candidates
