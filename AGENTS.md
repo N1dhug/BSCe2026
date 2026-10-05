@@ -10,6 +10,12 @@ single-shooting-prisstyring; G8 er rekursiv tilstands-/parameterestimation.
 Bachelorens projekt 111866 kræver disse sammenhænge. Genbrug F2/F3/F4-kode
 og evidens; G6a's varianslag og G2's batch-LS er ikke erstatninger.
 Se kravmatrix, WM-kodereview og små forsøgsbudgetter i G-planens afsnit 0/8.
+Grundarbejdet fra G3 ligger i [Sol-overdragelsen](root/G_IMPLEMENTATION_HANDOFF.md):
+P1/P2 implementerer gemt-fit→forecast uden ny optimering og eksport før scoring;
+derefter lille G4→G6b→G8→G7. Disse nye adaptere er planlagt, ikke implementeret.
+G's legacy-aggregering bruger tilgængelige målere per time; fast population og
+punkt/interval/enheder skal afklares før historisk validering. Ommærk ikke
+januarfittet til en ny datakontrakt. Syntetisk adapterarbejde kan begynde nu.
 G som helhed er ikke rent deterministisk. F4-status og dets
 obligatoriske H-f/g-krav bevares. G0–G3 er implementeret og syntetisk kontrolleret; Johan har rapporteret historisk januarfit som complete på 07fad9f;
 råreview og historisk G3-prognose mangler.
@@ -24,7 +30,7 @@ G-januar håndterer nu manglende demand/temperatur med den eksisterende import-
 interpolation afgrænset til TRAIN. Rå demand beholdes som NaN; baseline/BM-fit
 og fælles BM/WM-fejlmål bruger kun målte timer. WM-tilstandsrekonstruktion bruger
 udfyldt demand; QP-overgange over manglende endpoints maskeres. G kræver stadig
-168 målte demand-timer og komplette importerede priser. 10 tests består;
+mindst 168 målte demand-timer i TRAIN og komplette importerede priser. 10 tests består;
 én syntetisk januar med 27 demandhuller og 3 temperaturhuller gennemført
 på ca. 19 s (717 målte timer for begge modeller). Historisk fit er nu rapporteret gennemført lokalt; råreview mangler.
 G4–G8 er fortsat planlagt. En lille G4-udvikling følges af G6b→G8→G7;

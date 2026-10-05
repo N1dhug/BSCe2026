@@ -1,5 +1,13 @@
 # BM — arbejdsvejviser
 
+**G-plan, 5. oktober:** [G_IMPLEMENTATION_HANDOFF.md](G_IMPLEMENTATION_HANDOFF.md)
+er Sol-overdragelsen fra G3: gemt-fit-snapshot og forecast uden ny optimering,
+derefter lille G4, FP/mixture/EM, rekursiv estimation og single-shooting-kontrol.
+Interfaces, datamangler, budgetter og korte acceptkontroller er kortlagt.
+Snapshot-/forecast-only-kommandoen er endnu ikke implementeret. Januarstatus
+og eksisterende fitkommandoer: [G_JANUARY.md](G_JANUARY.md). G-planens fulde
+krav: [G.md](G.md); denne forberedelse giver ingen ny forsøgsaccept.
+
 **H2 pilot, 5. oktober:** `curves history-config --output PATH` skriver en
 ufuldstændig datakonfiguration. `curves history-fit --config PATH --run-dir PATH
 --prepare-only` klargør hele den erklærede TRAIN, når metadata er dokumenteret.
