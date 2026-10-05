@@ -58,7 +58,53 @@ def _observation_digest(record):
     return h.hexdigest()
 
 
+
+class _NumericalJobs:
+    """Bounded process queue; drain admitted units before a time-budget pause.
+
+    Workers return raw arrays only. The parent validates and atomically publishes
+    in registered order. At most workers units are in flight, and a hard crash
+    can lose those unpublished units, never an already-published unit.
+    """
+    def __init__(self, specs, workers, deadline):
+        from concurrent.futures import ProcessPoolExecutor
+        import multiprocessing
+        self.specs = iter(specs)
+        self.deadline = deadline
+        self.pending = []
+        self.executor = ProcessPoolExecutor(max_workers=workers,
+            mp_context=multiprocessing.get_context('spawn'))
+        for _ in range(workers):
+            self._submit()
+
+    def _submit(self):
+        from src.validation.bm_1.response_jobs import run_h1_job
+        if perf_counter() >= self.deadline:
+            return
+        spec = next(self.specs, None)
+        if spec is not None:
+            self.pending.append((spec['unit'], self.executor.submit(run_h1_job, spec)))
+
+    def take(self, unit):
+        if not self.pending:
+            raise StopIteration
+        expected, future = self.pending.pop(0)
+        if unit != expected:
+            raise ValueError('Parallel H1 job order differs from registered unit order.')
+        value = future.result()
+        self._submit()
+        return value
+
+    def close(self):
+        for _, future in self.pending:
+            future.cancel()
+        self.executor.shutdown(wait=True, cancel_futures=True)
+
+
 def run_numerics(args):
+    from contextlib import ExitStack
+    from src.validation.estimation import positive_integer
+    workers = positive_integer(getattr(args, 'workers', 1), 'workers')
     begun = perf_counter()
     if args.limit_units is not None and args.limit_units < 1:
         raise ValueError('limit-units must be positive.')
@@ -78,7 +124,7 @@ def run_numerics(args):
     manifest = dict(schema='bm1-h1-numerics-run-v1', source=source, design=design)
     completed, fresh, rows = 0, 0, []
     total = sum(map(len, H1_IDS.values()))*len(h1_candidate_panel())
-    with _RunLock(directory):
+    with _RunLock(directory), ExitStack() as stack:
         manifest_path = directory/'manifest.json'
         if args.resume:
             saved, _ = _read_likelihood_report(manifest_path)
@@ -91,6 +137,23 @@ def run_numerics(args):
         if summary_path.exists():
             old_summary, _ = _read_likelihood_report(summary_path)
             old_hashes = {row['unit']: row['sha256'] for row in old_summary['units']}
+        jobs = None
+        if workers > 1:
+            # Read raw-file existence only; no score/candidate selection affects scheduling.
+            specs = []
+            for case_name, ids in H1_IDS.items():
+                for index, sid in enumerate(ids):
+                    for candidate_name, _, _ in h1_candidate_panel():
+                        unit = f'{case_name}_{sid}_{candidate_name}'
+                        if not (directory/'units'/f'{unit}.npz').exists():
+                            if unit in old_hashes:
+                                raise ValueError('A previously checkpointed H1 unit is missing.')
+                            specs.append(dict(unit=unit, case=case_name, record_index=index,
+                                              candidate=candidate_name, numerics=numerics, backend=backend))
+            if args.limit_units is not None:
+                specs = specs[:args.limit_units]
+            jobs = _NumericalJobs(specs, workers, begun+args.max_hours*3600)
+            stack.callback(jobs.close)
         stop = None
         for case_name in H1_IDS:
             records, truths = h1_training_records(case_name)
@@ -113,10 +176,17 @@ def run_numerics(args):
                         if unit in old_hashes:
                             raise ValueError('A previously checkpointed H1 unit is missing.')
                         if ((args.limit_units is not None and fresh >= args.limit_units)
-                                or perf_counter()-begun >= args.max_hours*3600):
+                                or (jobs is None and perf_counter()-begun >= args.max_hours*3600)):
                             stop = 'unit_budget' if args.limit_units is not None and fresh >= args.limit_units else 'time_budget'
                             break
-                        values = run_numerical_unit(record, f, g, numerics=numerics, backend=backend)
+                        if jobs is None:
+                            values = run_numerical_unit(record, f, g, numerics=numerics, backend=backend)
+                        else:
+                            try:
+                                values = jobs.take(unit)
+                            except StopIteration:
+                                stop = 'time_budget'
+                                break
                         if source_snapshot() != source:
                             raise ValueError('Source changed during H1; no new unit published.')
                         _atomic_report(path, dict(identity=identity, rows=values))
@@ -147,7 +217,7 @@ def run_numerics(args):
             completed=completed == total, completed_units=completed, expected_units=total,
             new_units=fresh, units=rows, stop_reason=stop,
             numerical_panel_passes=completed == total and all(row['passes'] for row in rows),
-            scientific_acceptance=False, elapsed_seconds=perf_counter()-begun,
+            scientific_acceptance=False, workers=workers, elapsed_seconds=perf_counter()-begun,
             price_support=response_price_support([.125, .375, .625, .875]),
             interpretation='Development fixed-candidate panel only; no optimizer-wide, recovery, historical or forecast acceptance.')
         if source_snapshot() != source:
@@ -348,6 +418,90 @@ def run_fit(args):
     print(f"H1 fit: {len(reports)}/6 families; paused={paused}; {directory/'summary.json'}", flush=True)
     return summary
 
+def run_fit_checks(args):
+    """Recompute selected-curve numerics; preserve failures and resume raw units."""
+    from src.validation.bm_1.response_fit_checks import (
+        validate_fit_result, selected_curve_unit, curve_recovery_description)
+    begun=perf_counter()
+    if not np.isfinite(args.max_hours) or args.max_hours <= 0.:
+        raise ValueError('max-hours must be finite and positive.')
+    source=source_snapshot()
+    if source['dirty']:
+        raise ValueError('Selected-curve checks require clean pinned source.')
+    dependency=read_numerical_dependency(args.numerics_run)
+    fit_manifest,fit_manifest_hash=_read_likelihood_report(args.fit_run/'manifest.json')
+    fit_summary,fit_summary_hash=_read_likelihood_report(args.fit_run/'summary.json')
+    if (fit_manifest['dependency'] != dependency or fit_summary.get('completed') is not True
+            or fit_summary['source'] != fit_manifest['source'] or fit_manifest['source'].get('dirty') is not False):
+        raise ValueError('Require the complete fit and its original raw numerical dependency.')
+    inputs=[]
+    for case in H1_IDS:
+        records,_=h1_training_records(case)
+        for pieces in (2,4):
+            result,rhash=_read_likelihood_report(args.fit_run/f'{case}_{pieces}_result.json.gz')
+            trace,thash=_read_likelihood_report(args.fit_run/f'{case}_{pieces}_trace.json.gz')
+            f,g=validate_fit_result(result,trace,case=case,pieces=pieces,record_ids=[r.record_id for r in records])
+            inputs.append((case,pieces,records,result,f,g,rhash,thash))
+    manifest=dict(schema='bm1-h1-selected-checks-v1',source=source,dependency=dependency,
+        fit_manifest_sha256=fit_manifest_hash,fit_summary_sha256=fit_summary_hash,
+        fits=[dict(case=c,pieces=p,result_sha256=rh,trace_sha256=th) for c,p,_,_,_,_,rh,th in inputs])
+    directory=args.run_dir
+    if directory.exists() != args.resume:
+        raise ValueError('Use a new selected-check directory or resume the same source.')
+    units=[];fresh=0;stop=None
+    with _RunLock(directory):
+        mpath=directory/'manifest.json'
+        if args.resume:
+            saved,_=_read_likelihood_report(mpath)
+            if saved != manifest:
+                raise ValueError('Selected-check source or inputs changed.')
+        else:
+            _atomic_report(mpath,manifest)
+        old={}
+        if (directory/'summary.json').exists():
+            saved,_=_read_likelihood_report(directory/'summary.json')
+            old={r['unit']:r['sha256'] for r in saved['units']}
+        for case,pieces,records,result,f,g,_,_ in inputs:
+            for record,fit_record in zip(records,result['replay']['records']):
+                unit=f'{case}_{pieces}_{record.record_id}'
+                path=directory/'units'/f'{unit}.npz'
+                identity=dict(unit=unit,f=f.to_record(),g=g.to_record(),observation_sha256=_observation_digest(record))
+                if path.exists():
+                    payload,digest=_read_likelihood_report(path)
+                    if payload['identity'] != identity or (unit in old and digest != old[unit]):
+                        raise ValueError('Selected raw unit changed.')
+                else:
+                    if unit in old:
+                        raise ValueError('Selected raw unit is missing.')
+                    if perf_counter()-begun >= args.max_hours*3600:
+                        stop='time_budget';break
+                    linear,_=_read_likelihood_report(args.numerics_run/'units'/f'{case}_{record.record_id}_linear.npz')
+                    payload=dict(identity=identity,**selected_curve_unit(record,f,g,linear['rows'],fit_record))
+                    if source_snapshot() != source:
+                        raise ValueError('Selected-check source changed before publication.')
+                    _atomic_report(path,payload);_,digest=_read_likelihood_report(path);fresh+=1
+                # Recompute every acceptance flag from raw laws, including on resume.
+                linear,_=_read_likelihood_report(args.numerics_run/'units'/f'{case}_{record.record_id}_linear.npz')
+                for level,settings in H1_V2_NUMERICS.items():
+                    validate_filter_arrays(payload['rows'][level],record,cells=settings['cells'])
+                controls=compare_numerical_unit(payload['rows'],linear['rows'])
+                units.append(dict(unit=unit,sha256=digest,controls=controls,
+                    numerical_passes=all(v['passes'] for v in controls.values()),
+                    recovery=curve_recovery_description(case,f,g)))
+                if not args.quiet:
+                    print(f'H1 selected checks: {len(units)}/12; '+runtime_text(begun,fresh,12-(len(units)-fresh)),flush=True)
+            if stop:break
+        summary=dict(schema='bm1-h1-selected-summary-v1',source=source,units=units,
+            completed=len(units)==12,stop_reason=stop,new_units=fresh,
+            selected_numerical_passes=len(units)==12 and all(r['numerical_passes'] for r in units),
+            scientific_acceptance=False,elapsed_seconds=perf_counter()-begun,
+            interpretation='Selected development curves only. No H2/H3, joint recovery or forecast acceptance.')
+        if source_snapshot() != source:
+            raise ValueError('Selected-check source changed before summary publication.')
+        path=directory/'summary.json';_atomic_report(path,summary,replace_existing=path.exists())
+    return summary
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -359,6 +513,7 @@ def main(argv=None):
     numerics.add_argument('--max-hours', type=float, default=8.)
     numerics.add_argument('--blas-threads', type=int, default=1)
     numerics.add_argument('--quiet', action='store_true')
+    numerics.add_argument('--workers', type=int, default=1)
     fit = sub.add_parser('fit', help='Run resumable conditional H1b shared fits.')
     fit.add_argument('--numerics-run', type=Path, required=True)
     fit.add_argument('--run-dir', type=Path, required=True)
@@ -367,7 +522,18 @@ def main(argv=None):
     fit.add_argument('--max-hours', type=float, default=8.)
     fit.add_argument('--blas-threads', type=int, default=1)
     fit.add_argument('--quiet', action='store_true')
+    verify = sub.add_parser('validate-fit', help='Check exact selected curves on time/space/quadrature refinements.')
+    verify.add_argument('--numerics-run', type=Path, required=True)
+    verify.add_argument('--fit-run', type=Path, required=True)
+    verify.add_argument('--run-dir', type=Path, required=True)
+    verify.add_argument('--resume', action='store_true')
+    verify.add_argument('--max-hours', type=float, default=8.)
+    verify.add_argument('--blas-threads', type=int, default=1)
+    verify.add_argument('--quiet', action='store_true')
     args = parser.parse_args(argv)
+    if args.command == 'validate-fit':
+        result = run_fit_checks(args)
+        return 2 if result['completed'] and not result['selected_numerical_passes'] else 0
     if args.command == 'fit':
         run_fit(args)
         return 0

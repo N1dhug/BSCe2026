@@ -212,7 +212,7 @@ Kør først den registrerede H1a-v2-pilot og fortsæt på **samme rene source**:
 $hNumerics = "files/output/bm_1/runs/estimation/h1_v2_recovery"
 python -B -m src.exe.run_model.bm_1.curves numerics --design v2 --run-dir $hNumerics --limit-units 1 --blas-threads 1
 if ($LASTEXITCODE -ne 0) { throw "H1a-pilot fejlede." }
-python -B -m src.exe.run_model.bm_1.curves numerics --design v2 --run-dir $hNumerics --resume --max-hours 8 --blas-threads 1
+python -B -m src.exe.run_model.bm_1.curves numerics --design v2 --run-dir $hNumerics --resume --max-hours 8 --workers 8 --blas-threads 1
 if ($LASTEXITCODE -ne 0) { throw "H1a fejlede." }
 ```
 
@@ -226,7 +226,8 @@ python -B -m src.exe.run_model.bm_1.curves fit --numerics-run $hNumerics --run-d
 if ($LASTEXITCODE -ne 0) { throw "H1b fejlede." }
 ```
 
-Fitteren er sekventiel; `--workers` understøttes ikke i denne version.
+H1a understøtter `--workers 8` med bounded spawn-pool og BLAS=1.
+Fitteren er fortsat sekventiel; `--workers` gælder kun `numerics`.
 BLAS=1 bevares. Pause er exit=0 og `paused=True`, aldrig convergence/accept.
 Alle 96 numeriske råunits valideres ved hver invocation uden nye FV-replays.
 Fitmanifestet låser source, dependency-hashes, Python/NumPy/SciPy, numerik og
@@ -239,6 +240,17 @@ Gem `manifest.json`, `summary.json`, `*_trace.json.gz`, `*_result.json.gz` og
 H1a's `units/*.npz` sammen med source-commit og filhashes. Send komplette
 artefakter, ikke kun terminalteksten. Historiske H2/H3-kørsler er ikke frigivet;
 dataklassen er en kontrakt, ikke dokumentation af de faktiske målerdata.
+
+Når de seks fitfamilier er afsluttet (budgetstop må gerne være et negativt resultat):
+
+```powershell
+python -B -m src.exe.run_model.bm_1.curves validate-fit --numerics-run $hNumerics --fit-run $hFit --run-dir files/output/bm_1/runs/estimation/h1_selected_checks --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "Valgte H1-kurver fejlede deres numeriske kontrol." }
+```
+
+Denne kommando gemmer 12 nye råunits med alle prefixer på base/tid/rum/q.
+Resume bruger `--resume` og samme source. Den ændrer ingen fitkurver efter
+kontrollerne. Budgetstoppede fits forbliver budgetstoppede, og H2/H3 frigives ikke.
 
 ## I-baseline og H1-forberedelse
 
