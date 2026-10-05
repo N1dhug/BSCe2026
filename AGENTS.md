@@ -40,8 +40,11 @@ chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
   Brug den særskilt registrerede `joint-bank-rectangular-robustness` (G2b-v2),
   som råvaliderer alle otte beståede G2a-v2-units før nyt arbejde. Tidsstop er
   en pause, ikke accept; bevarede hypoteser genkøres ikke. Gamle kvadratiske
-  G2b/G2c-prerequisites løsnes ikke. G2c kræver et nyt kompatibelt design og
-  G2b-accept. Fastlås nat-source i en branch i samme checkout; skift/pull aldrig
+  G2b/G2c-prerequisites løsnes ikke. Det rektangulære G2c-v2-design er nu
+  registreret, men kræver komplet råvalideret G2b-accept. Fordelt PC/chat-kørsel
+  bruger én fælles plan og én ejer per shard; se BM_GUIDE. Importeret G2b-arbejde
+  kræver identisk numerisk kilde og bevarer originalfiler/source.
+  Fastlås nat-source i en branch i samme checkout; skift/pull aldrig
   under en aktiv kørsel. H1/H2/H3 og endelig I/J er fortsat hovedsporet.
 - Metode og forsøgsdefinitioner: `root/f4/notes.tex`; kommandoer: `root/BM_GUIDE.md`.
   Opdatér fælles status i `root/F4.md` sammen med en leverance.

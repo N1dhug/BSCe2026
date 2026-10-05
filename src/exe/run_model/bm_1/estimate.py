@@ -1599,7 +1599,7 @@ def _collect_rectangular(directory, manifest, truth_cache, study=joint_pilot):
     summary = study.summarize(rows)
     summary.update(source=source, dependencies=manifest['dependencies'], unit_sha256=digests,
         completed_units=len(digests), expected_units=len(expected),
-        conditional_runs=sum(np.prod(study.GRIDS['__'.join(u[0])][1]).item()
+        conditional_runs=sum(np.prod(study.GRIDS['__'.join(u[0])][-1]).item()
             for u in study.units() if study.unit_name(u) in digests))
     return rows, summary
 
@@ -1640,31 +1640,36 @@ def run_joint_night_pilot(args):
         raise ValueError('Commit source changes before starting or resuming G2b-v2 evidence.')
     if not args.quiet:
         print('G2b-v2: checking the original G2a dependency and all eight G2a-v2 raw units; no FV reruns.', flush=True)
-    previous, digest = _read_bank_dependency(args.g2a_report, joint_pilot.require_previous)
-    old_dependency = dict(g2a_v1=dict(sha256=digest, source_commit=previous['source_commit'],
-                                    dependencies=previous['dependencies']))
-    del previous
-    old_truth = {pair:joint_grid._g2a_truth_record(pair, sid, joint_pilot.DAYS)
-                 for pair, sid in zip(synthetic.F4_G_PAIRS, joint_grid.G2A_IDS)}
-    with _RunLock(args.g2a_run_dir):
-        manifest, manifest_digest = _read_likelihood_report(args.g2a_run_dir/'manifest.json')
-        joint_grid._check_recorded(manifest['stage'], joint_pilot.STAGE, 'G2a-v2 stage')
-        joint_grid._check_recorded(manifest['dependencies'], old_dependency, 'G2a-v2 dependency')
-        _, accepted = _collect_rectangular(args.g2a_run_dir, manifest, old_truth)
-        if not accepted['completed'] or not accepted['passes']:
-            raise ValueError('G2b-v2 requires all eight complete, raw-validated passing G2a-v2 units.')
-    dependencies = dict(g2a_v2=dict(manifest_sha256=manifest_digest,
-        source_commit=manifest['source']['source_commit'], unit_sha256=accepted['unit_sha256'],
-        dependencies=old_dependency))
-    del accepted, old_truth
+    dependencies = _night_dependencies(args.g2a_report, args.g2a_run_dir)
     truth_cache = {pair:joint_grid._g2a_truth_record(pair, sid, joint_night.DAYS)
                    for pair, sid in zip(synthetic.F4_G_PAIRS, joint_night.PILOT_IDS)}
     return _run_rectangular_blocks(args, source, dependencies, truth_cache,
                                    study=joint_night, invocation_started=started)
 
 
+def _night_dependencies(g2a_report, g2a_run_dir):
+    """Revalidate the original report and all eight G2a raw units; no FV replays."""
+    previous, digest = _read_bank_dependency(g2a_report, joint_pilot.require_previous)
+    old_dependency = dict(g2a_v1=dict(sha256=digest, source_commit=previous['source_commit'],
+                                    dependencies=previous['dependencies']))
+    del previous
+    old_truth = {pair:joint_grid._g2a_truth_record(pair, sid, joint_pilot.DAYS)
+                 for pair, sid in zip(synthetic.F4_G_PAIRS, joint_grid.G2A_IDS)}
+    with _RunLock(g2a_run_dir):
+        manifest, manifest_digest = _read_likelihood_report(g2a_run_dir/'manifest.json')
+        joint_grid._check_recorded(manifest['stage'], joint_pilot.STAGE, 'G2a-v2 stage')
+        joint_grid._check_recorded(manifest['dependencies'], old_dependency, 'G2a-v2 dependency')
+        _, accepted = _collect_rectangular(g2a_run_dir, manifest, old_truth)
+        if not accepted['completed'] or not accepted['passes']:
+            raise ValueError('G2b-v2 requires all eight complete, raw-validated passing G2a-v2 units.')
+    dependencies = dict(g2a_v2=dict(manifest_sha256=manifest_digest,
+        source_commit=manifest['source']['source_commit'], unit_sha256=accepted['unit_sha256'],
+        dependencies=old_dependency))
+    return dependencies
+
+
 def _run_rectangular_blocks(args, source, dependencies, truth_cache, *, study=joint_pilot,
-                            invocation_started=None):
+                            invocation_started=None, on_saved=None, stop_requested=None):
     """Shared ordered checkpoint runner; the study adapter fixes scientific scope."""
     from concurrent.futures import ProcessPoolExecutor
     from contextlib import nullcontext
@@ -1729,7 +1734,8 @@ def _run_rectangular_blocks(args, source, dependencies, truth_cache, *, study=jo
         initial_runs = summary['conditional_runs'] + (0 if checkpoint is None else
                        checkpoint['reduction']['completed_hypotheses'])
         new_runs = 0
-        expected_runs = manifest['design']['expected_conditional_runs']
+        expected_runs = getattr(study, 'execution_runs', manifest['design']['expected_conditional_runs'])
+        counter_label = getattr(study, 'counter_label', 'study')
         if limit is not None and not args.quiet:
             print('  ETA covers all pending study work; --limit-chunks can stop this invocation sooner.', flush=True)
         if hours is not None and not args.quiet:
@@ -1745,6 +1751,9 @@ def _run_rectangular_blocks(args, source, dependencies, truth_cache, *, study=jo
                 name = study.unit_name(unit)
                 payload = checkpoint
                 while reducer.seen < len(group['hypotheses']):
+                    if stop_requested is not None and stop_requested():
+                        stop_reason = 'stop_requested'
+                        break
                     if deadline is not None and perf_counter() >= deadline:
                         stop_reason = 'time_budget'
                         break
@@ -1755,7 +1764,7 @@ def _run_rectangular_blocks(args, source, dependencies, truth_cache, *, study=jo
                         if not args.quiet and now-last_printed >= 20:
                             work = completed_work+(done-before)*work_per_replay[name]
                             print(f'  {name}: {done}/{total}; '
-                                  f'study replays={initial_runs+new_runs+done-before}/{expected_runs}; '
+                                  f'{counter_label} replays={initial_runs+new_runs+done-before}/{expected_runs}; '
                                   f'{runtime_text(started, work, planned_work, now=now)}', flush=True)
                             last_printed = now
                     study.advance(reducer, min(before+chunk, len(group['hypotheses'])), pool,
@@ -1772,8 +1781,10 @@ def _run_rectangular_blocks(args, source, dependencies, truth_cache, *, study=jo
                     completed_work += (reducer.seen-before)*work_per_replay[name]
                     print(f'{name}: saved {reducer.seen}/{len(group["hypotheses"])}; '
                           f'block={payload["last_block"]["seconds_before_storage"]:.2f}s; '
-                          f'study replays={initial_runs+new_runs}/{expected_runs}; '
+                          f'{counter_label} replays={initial_runs+new_runs}/{expected_runs}; '
                           f'{runtime_text(started, completed_work, planned_work)}', flush=True)
+                    if on_saved is not None:
+                        on_saved(unit, reducer.seen-before)
                     if limit is not None and blocks >= limit and reducer.seen < len(group['hypotheses']):
                         stop_reason = 'block_limit'
                         break
@@ -1805,7 +1816,7 @@ def _run_rectangular_blocks(args, source, dependencies, truth_cache, *, study=jo
         digests = summary['unit_sha256']; summary = study.summarize(rows)
         summary.update(source=source, dependencies=dependencies, unit_sha256=digests,
             completed_units=len(digests), expected_units=len(study.units()),
-            conditional_runs=sum(np.prod(study.GRIDS['__'.join(u[0])][1]).item()
+            conditional_runs=sum(np.prod(study.GRIDS['__'.join(u[0])][-1]).item()
                 for u in study.units() if study.unit_name(u) in digests),
             partial_unit=None if checkpoint is None else dict(unit_name=checkpoint['unit_name'],
                 completed_hypotheses=checkpoint['reduction']['completed_hypotheses']),
@@ -1862,6 +1873,8 @@ def run_curve_fit_pilot(args):
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest='command', required=True)
+    from src.tools.bm_1_distributed import add_commands
+    add_commands(subparsers)
     curve_fit = subparsers.add_parser('curve-fit-pilot',
         help='Pooled two/four-piece fit on old TRAIN records; no H scientific acceptance.')
     curve_fit.add_argument('--output',type=Path)
