@@ -384,9 +384,9 @@ rapporteret G3 complete på main 607dcd7: 168/168 scored timer, BM-MSE
 ugen er nu eksponeret DEVELOPMENT. Originale CSV/plots er ikke modtaget,
 og P0/råreview er stadig åbent. P3's adapter/LS er nu implementeret og
 syntetisk kontrolleret; næste skridt er lokal lille G4-pilot/udviklingsvalg
-med kommandoerne i G_JANUARY. Derefter P4→P5→P6 på frosset model. G's standard
-er de 20 små tests i fit- og snapshotmodulet; kør kun berørte ekstra suites ved delte
-interfaces. Ingen fuld test-discovery, historisk månedssmoke eller F1–F4-
+med kommandoerne i G_JANUARY. Derefter P4→P5→P6 på frosset model. G har ingen fast standardpakke: vælg kun den mindste eksisterende test, der
+dækker ændringen. F er et selvstændigt spor; kun en faktisk ændret fælles
+kontrakt begrunder checks i begge spor. Se den bindende regel i AGENTS.md. Ingen fuld test-discovery, historisk månedssmoke eller F1–F4-
 genkørsel alene for dokumentation. Lange studier er ikke unit-tests.
 
 Ved hver kodeleverance: opdatér G-status, januarvejledning og den korte
