@@ -73,8 +73,15 @@ Særskilt H2-characteristic/CN-udviklingskontrol er nu gennemført på samme
 syntetiske døgn: log-amplituder løser de små tails; tre positive CN-rum-/tidschecks
 består de eksisterende tolerancer. Se `root/H2_INTERVAL_CHARACTERISTIC_CONTROL.md`.
 Kun dette faste lineære case er kontrolleret; historisk fitter/reference er uændret.
-Fleksible kurver/støj, faktisk tidsvariation, log-checkpointadapter og runtime skal
-stadig kontrolleres før historisk anvendelse. H2/H3-readiness forbliver falsk.
+Ny intervalkontrol: fire-stykkers f/g med sigma_y=0.16 består fem tids-/rum-/
+frekvens-/periodechecks; to-stykkers f/g med sigma_y=0.04 fejler alle fem på
+første times betingede Fourier-tætheder. Log-amplituder løser ikke cancellation
+i selve inversionen; eksakte tre-state-kontroller bekræfter dette uden FV-fejl.
+Genbrug de gemte positive og negative råresultater; ingen ny stor panelkørsel.
+Præcis næste matematikopgave til Astra XHigh: `root/H2_INTERVAL_ASTRA_HANDOFF.md`.
+Eksakt operatorgenbrug er testet; en parret én-time-median viser 1.23x, ikke et
+historisk fit-speedup. Faktisk tidsvariation og log-state-checkpointadapter er
+stadig åbne. H2/H3-readiness forbliver falsk; historisk fitter er uændret.
 Recovery, råartefakter og næste trin: `root/F4_H_CHECKPOINT_AUDIT_STATE.md`.
 
 Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tidsreduktion,

@@ -35,12 +35,12 @@ jobs:
         run: python -B -m unittest tests.test_checkpoint_io -v
       - name: Install distributed runner test dependencies
         run: python -m pip install numpy scipy matplotlib pandas openpyxl
-      - name: Check hourly characteristic and positive CN controls on Windows
+      - name: Check hourly characteristic, positive CN and curve-control checkpoints on Windows
         shell: powershell
         env:
           OPENBLAS_NUM_THREADS: '1'
           OMP_NUM_THREADS: '1'
-        run: python -B -m unittest tests.test_bm1_interval_characteristic -v
+        run: python -B -m unittest tests.test_bm1_interval_characteristic tests.test_bm1_interval_curve_control -v
       - name: Check portable split bundles on Windows
         shell: powershell
         run: python -B -m unittest tests.test_run_bundle -v

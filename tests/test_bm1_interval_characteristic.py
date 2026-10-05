@@ -140,6 +140,54 @@ class CharacteristicIntervalTests(unittest.TestCase):
         self.assertGreater(errors[1]/errors[2],3.5)
         self.assertLess(errors[-1],1e-4)
 
+    def test_exact_operator_reuse_preserves_changing_fields_and_reward(self):
+        solver,prior,drift,diffusion,_,_ = self.fields()
+        for varying_state in (False,True):
+            calls = {'drift':0,'reward':0}
+            def a(t,x):
+                calls['drift'] += 1
+                return drift(t,x)+(t*.02 if varying_state else 0.)
+            def reward(t,x):
+                calls['reward'] += 1
+                # More than sixteen distinct phases exercises cache eviction.
+                return np.array([.15,.5,.85])+.02*np.sin(19.*t)
+            key = None if varying_state else lambda t:0
+            kwargs = dict(max_step=1/64,frequencies=12,coefficient_key=key,
+                          state_scheme='positive_crank_nicolson',tilt=3.,center=.55)
+            cached = balanced_characteristic_prediction(solver,[0.,1.],prior,a,diffusion,reward,**kwargs)
+            cached_calls = calls.copy()
+            calls.update(drift=0,reward=0)
+            plain = balanced_characteristic_prediction(solver,[0.,1.],prior,a,diffusion,reward,
+                reuse_frozen_operators=False,**kwargs)
+            for name in ('cf','log_amplitude','predicted_mass'):
+                np.testing.assert_array_equal(cached[name],plain[name])
+            self.assertEqual(calls,cached_calls)
+            self.assertEqual(calls['reward'],64)
+            self.assertEqual(cached['operator_reuse']['phase_builds'],64)
+            if varying_state:
+                self.assertEqual(cached['operator_reuse']['factor_builds'],64)
+            else:
+                self.assertEqual(cached['operator_reuse']['factor_builds'],1)
+                self.assertEqual(cached['operator_reuse']['factor_hits'],63)
+
+    def test_narrow_exact_phase_tails_fail_existing_guards_without_state_error(self):
+        # No time integration or FV error: constant state rewards give exact
+        # Gaussian likelihoods. A negligible truncation bound cannot eliminate
+        # floating-point cancellation of the tiny conditional densities.
+        rewards,prior = np.array([.05,.5,.95]),np.array([.2,.5,.3])
+        value,center,sigma = .6,.5,.04
+        tilt = (value-center)/sigma**2
+        omega = 2.*np.pi*np.arange(129)/2.
+        exact_log_density = gaussian_log_likelihood(center,rewards,sigma)
+        self.assertTrue(np.all(exact_log_density[[0,2]] < -60.))
+        prediction = dict(cf=np.exp(1j*(rewards-center)[:,None]*omega),
+            log_amplitude=np.log(prior)+tilt*(rewards-center),frequencies=omega,
+            span=2.,tilt=tilt,center=center)
+        original = prediction['cf'].copy()
+        with self.assertRaises(CharacteristicNumericalError):
+            characteristic_gaussian_update(prediction,value,sigma)
+        np.testing.assert_array_equal(prediction['cf'],original)
+
 
 if __name__ == '__main__':
     unittest.main()

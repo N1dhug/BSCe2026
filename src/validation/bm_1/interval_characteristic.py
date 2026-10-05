@@ -7,6 +7,7 @@ Positivity and finite-series guards abort unresolved calculations; no clipping,
 cost substitution or production fallback is introduced.
 """
 
+from collections import OrderedDict
 from time import perf_counter
 
 import numpy as np
@@ -47,14 +48,8 @@ def _log_scan(values, weights):
     return result
 
 
-def _balanced_state_step(log_amplitude, conditional_cf, lower, diagonal, upper):
-    """The SAME implicit FV equation, with positive diagonal row scaling.
-
-    A positive Thomas solve in log space supplies a scale for each row. The
-    real LAPACK solver then solves D^-1 M D for the conditional transforms.
-    Its zero-frequency column gives the actual amplitude correction; retaining
-    that correction is an algebraic representation, not mass normalization.
-    """
+def _positive_implicit_factors(lower, diagonal, upper):
+    """Positive Thomas factors for one exact tridiagonal matrix."""
     pivots = diagonal.copy()
     multipliers = np.empty_like(lower)
     for j in range(1, len(diagonal)):
@@ -63,6 +58,33 @@ def _balanced_state_step(log_amplitude, conditional_cf, lower, diagonal, upper):
     if (np.any(pivots <= 0.) or not np.isfinite(pivots).all()
             or np.any(lower > 0.) or np.any(upper > 0.)):
         raise CharacteristicNumericalError('Positive implicit factorization failed.')
+    return pivots, multipliers
+
+
+def _bounded_reuse(cache, key, builder, counts, kind):
+    """Interval-local exact-byte reuse, limited to sixteen entries."""
+    if key in cache:
+        cache.move_to_end(key)
+        counts[kind+'_hits'] += 1
+        return cache[key]
+    result = builder()
+    counts[kind+'_builds'] += 1
+    cache[key] = result
+    if len(cache) > 16:
+        cache.popitem(last=False)
+    return result
+
+
+def _balanced_state_step(log_amplitude, conditional_cf, lower, diagonal, upper, *, factors=None):
+    """The SAME implicit FV equation, with positive diagonal row scaling.
+
+    A positive Thomas solve in log space supplies a scale for each row. The
+    real LAPACK solver then solves D^-1 M D for the conditional transforms.
+    Its zero-frequency column gives the actual amplitude correction; retaining
+    that correction is an algebraic representation, not mass normalization.
+    """
+    pivots, multipliers = (_positive_implicit_factors(lower, diagonal, upper)
+                          if factors is None else factors)
     forward = _log_scan(log_amplitude, multipliers)
     scale = _log_scan((forward-np.log(pivots))[::-1],
         (-upper/pivots[:-1])[::-1])[::-1]
@@ -117,7 +139,8 @@ def _positive_explicit_step(log_amplitude, cf, lower, diagonal, upper):
 
 def balanced_characteristic_prediction(solver, interval, prior, drift, diffusion, reward, *,
         max_step, frequencies=64, span=4., breakpoints=None, coefficient_key=None,
-        tilt=0., center=0., log_prior=None, state_scheme='implicit_euler'):
+        tilt=0., center=0., log_prior=None, state_scheme='implicit_euler',
+        reuse_frozen_operators=True):
     """Row-scaled transform control preserving arbitrarily small amplitudes."""
     from src.validation.solver.finite_volume import finite_volume_1d_validation as fv_checks
     prior = checks.probability_mass(prior)
@@ -146,22 +169,35 @@ def balanced_characteristic_prediction(solver, interval, prior, drift, diffusion
     neutral = prior.copy()
     cf = np.ones((len(prior), frequencies+1), dtype=complex)
     maximum_error = 0.
-    generators = {}
+    generators, factor_cache, phase_cache = OrderedDict(), OrderedDict(), OrderedDict()
+    counts = {kind+'_'+action:0 for kind in ('factor','phase','generator')
+              for action in ('hits','builds')}
     for start, end in zip(grid[:-1], grid[1:]):
         h = float(end-start)
         r = np.broadcast_to(np.asarray(reward(float(start), x), dtype=float), x.shape)
         if not np.isfinite(r).all() or np.any(r < 0.) or np.any(r > 1.):
             raise ValueError('Reward must remain finite in [0,1].')
-        phase = np.exp(1j*(r-center)[:, None]*omega[None, :]*h/(2.*(interval[1]-interval[0])))
-        shift = tilt*(r-center)*h/(2.*(interval[1]-interval[0]))
+        def build_phase():
+            phase = np.exp(1j*(r-center)[:, None]*omega[None, :]*h/(2.*(interval[1]-interval[0])))
+            shift = tilt*(r-center)*h/(2.*(interval[1]-interval[0]))
+            return phase, shift
+        if reuse_frozen_operators:
+            phase, shift = _bounded_reuse(phase_cache, (h,r.tobytes()), build_phase, counts, 'phase')
+        else:
+            phase, shift = build_phase()
+            counts['phase_builds'] += 1
         cf *= phase
         log_amplitude += shift
         key = coefficient_key(float(start)) if coefficient_key is not None else None
-        if key not in generators or coefficient_key is None:
+        def build_generator():
             a = fv_checks.field(drift(float(start), edges[1:-1]), edges[1:-1].shape, 'drift')
             b = fv_checks.field(diffusion(float(start), x), x.shape, 'diffusion')
-            generators[key] = solver.generator_tridiagonal(dx, a, b)[:3]
-        lo, di, up = generators[key]
+            return solver.generator_tridiagonal(dx, a, b)[:3]
+        if coefficient_key is None:
+            lo, di, up = build_generator()
+            counts['generator_builds'] += 1
+        else:
+            lo, di, up = _bounded_reuse(generators,key,build_generator,counts,'generator')
         state_h = h/2. if state_scheme == 'positive_crank_nicolson' else h
         if state_scheme == 'positive_crank_nicolson':
             explicit_diagonal = 1.+state_h*di
@@ -171,7 +207,17 @@ def balanced_characteristic_prediction(solver, interval, prior, drift, diffusion
             explicit_neutral[1:] += state_h*lo*neutral[:-1]
             explicit_neutral[:-1] += state_h*up*neutral[1:]
             neutral = explicit_neutral
-        log_amplitude, cf = _balanced_state_step(log_amplitude, cf, -state_h*lo, 1.-state_h*di, -state_h*up)
+        lower, diagonal, upper = -state_h*lo, 1.-state_h*di, -state_h*up
+        factors = None
+        if reuse_frozen_operators:
+            # Actual bands and exact step are encoded in these bytes. No rounded
+            # time key or assumption about constant callbacks enters this cache.
+            factor_key = (lower.tobytes(),diagonal.tobytes(),upper.tobytes())
+            factors = _bounded_reuse(factor_cache, factor_key,
+                lambda:_positive_implicit_factors(lower,diagonal,upper),counts,'factor')
+        else:
+            counts['factor_builds'] += 1
+        log_amplitude, cf = _balanced_state_step(log_amplitude, cf, lower, diagonal, upper, factors=factors)
         cf *= phase
         log_amplitude += shift
         neutral, _ = advance(neutral, float(start), state_h)
@@ -184,7 +230,7 @@ def balanced_characteristic_prediction(solver, interval, prior, drift, diffusion
         maximum_error = max(maximum_error, error)
     return dict(cf=cf, log_amplitude=log_amplitude, frequencies=omega, span=span,
         predicted_mass=neutral, tilt=tilt, center=center, x_edges=edges, x_grid=x,
-        maximum_abs_mass_error=maximum_error)
+        maximum_abs_mass_error=maximum_error, operator_reuse=counts)
 
 
 def characteristic_prediction(solver, interval, prior, drift, diffusion, reward, *,
@@ -318,7 +364,8 @@ def record_from_development_report(report):
 
 
 def replay_characteristic(record, *, cells, max_step, frequencies=64, span=4., exponential_tilt=True,
-                          balanced_transform=True, state_scheme='implicit_euler'):
+                          balanced_transform=True, state_scheme='implicit_euler',
+                          reuse_frozen_operators=True):
     """Development replay only, accepting the registered 24-hour interval case."""
     if not isinstance(record.observations, BM1IntervalObservationSeries) or len(record.observations.times) != 24:
         raise ValueError('Only the registered synthetic interval case enters this experiment.')
@@ -331,6 +378,7 @@ def replay_characteristic(record, *, cells, max_step, frequencies=64, span=4., e
         log_current = np.log(current)
     scores, posterior, guards = [], [], []
     maximum_error = 0.
+    operator_reuse = {}
     for start, end, value, seen in zip(record.observations.starts, record.observations.ends,
                                      record.observations.values, record.observations.observed):
         breaks = record.breakpoints[(record.breakpoints > start) & (record.breakpoints < end)]
@@ -349,11 +397,14 @@ def replay_characteristic(record, *, cells, max_step, frequencies=64, span=4., e
             prediction_fn = balanced_characteristic_prediction if balanced_transform else characteristic_prediction
             if not balanced_transform and state_scheme != 'implicit_euler':
                 raise ValueError('The new time scheme requires the balanced transform.')
-            extra = dict(log_prior=log_current,state_scheme=state_scheme) if balanced_transform else {}
+            extra = dict(log_prior=log_current,state_scheme=state_scheme,
+                         reuse_frozen_operators=reuse_frozen_operators) if balanced_transform else {}
             prediction = prediction_fn(solver, [start, end], current, drift, diffusion,
                 reward, max_step=max_step, frequencies=frequencies, span=span, breakpoints=breaks,
                 tilt=tilt, center=center, **extra, **options)
             maximum_error = max(maximum_error, prediction['maximum_abs_mass_error'])
+            for key, count in prediction.get('operator_reuse', {}).items():
+                operator_reuse[key] = operator_reuse.get(key,0)+count
             if seen:
                 update = characteristic_gaussian_update(prediction, value, record.sigma_y)
                 current = update['posterior_mass']
@@ -375,6 +426,7 @@ def replay_characteristic(record, *, cells, max_step, frequencies=64, span=4., e
         x_edges=edges.tolist(), final_posterior_mass=current.tolist(),
         posterior_state_means=list(map(float, np.asarray(posterior) @ x)),
         maximum_abs_mass_error=maximum_error, maximum_relative_series_guard=max(guards),
+        operator_reuse=operator_reuse, reuse_frozen_operators=reuse_frozen_operators,
         used_clipping=False, scientific_acceptance=False)
 
 
