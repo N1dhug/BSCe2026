@@ -83,7 +83,7 @@ class BM1HistoricalCurveContract:
     """One population and fixed scales for all training/validation days.
 
     Spot prices may be declared as a proxy, but do not establish consumer price
-    response. Interval data are rejected until a distinct likelihood is supplied.
+    response. Energy/average measurements use a distinct interval likelihood.
     """
     population_id: str
     measurement_columns: tuple
@@ -98,6 +98,9 @@ class BM1HistoricalCurveContract:
     metadata_reference: str
     baseline_reference: str
     scale_fitted_before: object = None
+    measurement_unit: object = None
+    timestamp_label: object = None
+    metadata_status: str = 'declared'
 
     def __post_init__(self):
         for name in ('population_id', 'price_unit', 'metadata_reference', 'baseline_reference'):
@@ -112,8 +115,19 @@ class BM1HistoricalCurveContract:
             raise TypeError('An explicit chronological split is required.')
         if self.power_unit not in ('W', 'kW', 'MW'):
             raise ValueError('Declare power units; interval energy is not a point-power observation.')
-        if self.observation_kind != 'point':
-            raise NotImplementedError('Historical curve fitting requires established point observations; interval likelihood is separate.')
+        if self.observation_kind not in ('point', 'interval_energy', 'interval_average'):
+            raise NotImplementedError('Declare point, interval_energy or interval_average observations.')
+        if self.metadata_status not in ('declared', 'working_assumptions'):
+            raise ValueError('Metadata status must be declared or working_assumptions; neither is proof.')
+        if self.observation_kind == 'point':
+            if self.measurement_unit not in (None, self.power_unit) or self.timestamp_label is not None:
+                raise ValueError('Point measurements use the declared power unit and no interval label.')
+        else:
+            if self.timestamp_label != 'hour_start':
+                raise ValueError('The hourly interval adapter requires explicit hour_start labels.')
+            allowed = ('Wh', 'kWh', 'MWh') if self.observation_kind == 'interval_energy' else (self.power_unit,)
+            if self.measurement_unit not in allowed:
+                raise ValueError('Declare the interval measurement unit separately from the power scale unit.')
         if self.price_role not in ('consumer_price', 'spot_proxy'):
             raise ValueError('Declare consumer_price or spot_proxy; do not infer a tariff from spot prices.')
         power = checks.finite_scalar(self.power_scale, 'power_scale', positive=True)
@@ -136,12 +150,30 @@ class BM1HistoricalCurveContract:
             raise ValueError('Prices exceed frozen bounds; no clipping or holdout-driven rescaling.')
         return normalized
 
+    def normalize_measurements(self, values, *, duration_hours):
+        """Energy / elapsed hours / power scale, or power / power scale.
+
+        sigma_y must separately be supplied in NORMALIZED AVERAGE POWER units.
+        No missing values are filled and Gaussian observations are not clipped.
+        """
+        values = np.asarray(values, dtype=float)
+        durations = np.asarray(duration_hours, dtype=float)
+        if np.any(~np.isfinite(durations)) or np.any(durations <= 0.):
+            raise ValueError('Interval durations must be finite positive elapsed hours.')
+        if self.observation_kind == 'interval_energy':
+            watts = dict(W=1., kW=1000., MW=1e6)
+            watt_hours = dict(Wh=1., kWh=1000., MWh=1e6)
+            values = values*watt_hours[self.measurement_unit]/watts[self.power_unit]/durations
+        return values/self.power_scale
+
     def to_record(self):
         return dict(schema='bm1-historical-curve-contract-v1', population_id=self.population_id,
             measurement_columns=list(self.measurement_columns), split=self.split.to_record(),
             power_unit=self.power_unit, power_scale=self.power_scale,
             price_low=self.price_low, price_high=self.price_high, price_unit=self.price_unit,
             price_role=self.price_role, observation_kind=self.observation_kind,
+            measurement_unit=self.measurement_unit, timestamp_label=self.timestamp_label,
+            metadata_status=self.metadata_status,
             metadata_reference=self.metadata_reference, baseline_reference=self.baseline_reference,
             scale_fitted_before=None if self.scale_fitted_before is None else self.scale_fitted_before.isoformat(),
             aggregation='fixed-population mean; any missing meter makes aggregate missing',

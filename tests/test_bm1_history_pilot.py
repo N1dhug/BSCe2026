@@ -69,6 +69,33 @@ class HistoryPilotTests(unittest.TestCase):
         with self.assertRaises(NotImplementedError):
             history.validate_configuration(invalid)
 
+    def test_hourly_assumptions_remain_incomplete_and_interval_resume_is_identical(self):
+        config = history.configuration_template(hourly_assumptions=True)
+        self.assertEqual(config['contract']['measurement_unit'], 'kWh')
+        self.assertEqual(config['contract']['timestamp_label'], 'hour_start')
+        self.assertEqual(config['contract']['metadata_status'], 'working_assumptions')
+        self.assertIsNone(config['contract']['power_scale'])
+        with self.assertRaisesRegex(ValueError, 'evidence.population'):
+            history.validate_configuration(config)
+        config = self.config()
+        config['contract'].update(observation_kind='interval_energy', measurement_unit='kWh',
+            timestamp_label='hour_start', metadata_status='working_assumptions')
+        config['numerics'].update(accumulator_spacing=1/64, max_accumulator_nodes=256)
+        whole = self.run_config(config, self.root/'interval-whole')
+        paused = self.run_config(config, self.root/'interval-resume', limit_candidates=2)
+        self.assertTrue(paused['paused'])
+        resumed = self.run_config(config, self.root/'interval-resume', resume=True)
+        self.assertEqual(whole['completed'], resumed['completed'])
+        for a, b in zip(whole['families'], resumed['families']):
+            self.assertEqual(a['trace'], b['trace'])
+            self.assertEqual(a['replay'], b['replay'])
+        manifest = json.loads((self.root/'interval-whole'/'manifest.json').read_text())
+        self.assertEqual(manifest['training']['prepared']['terminal_posterior_time'], self.end.isoformat())
+        invalid = deepcopy(config)
+        invalid['numerics'].pop('accumulator_spacing')
+        with self.assertRaises((TypeError, ValueError)):
+            history.validate_configuration(invalid)
+
     def test_prepare_only_keeps_complete_train_and_reads_no_holdout_measurements(self):
         config = self.config()
         with patch.object(history, 'pooled_curve_log_likelihood', side_effect=AssertionError('fitting')):

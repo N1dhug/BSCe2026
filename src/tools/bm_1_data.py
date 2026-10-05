@@ -375,13 +375,14 @@ def prepare_historical_curve_training(measurements, baseline, prices, *, contrac
                                       parameters, sigma_y, initial_mass_builder, origin):
     """Build the entire TRAIN likelihood from an explicitly earlier prior time.
 
-    Every declared TRAIN point is scored (unless explicitly missing). Baseline
+    Every declared TRAIN point/interval is scored (unless explicitly missing). Baseline
     and prices must also cover the caller-declared pre-observation interval;
     the adapter never invents an input value or discards the first TRAIN point.
     """
     from src.control.bm_1 import BM1Parameters
     from src.method.bm_1_response import CurveTrainingRecord
     from src.params.bm_1 import BM1ObservationSeries
+    from src.params.bm_1_interval import BM1IntervalObservationSeries
     from src.params.bm_1_history import BM1HistoricalCurveContract
     if not isinstance(contract, BM1HistoricalCurveContract):
         raise TypeError('Declare the historical curve contract before preparing data.')
@@ -422,8 +423,16 @@ def prepare_historical_curve_training(measurements, baseline, prices, *, contrac
     U = input_builder.price_intervals((edges, u))
     observed = aggregate.notna().to_numpy()
     observation_times = (expected.tz_convert('UTC')-origin.tz_convert('UTC')).total_seconds().to_numpy()/86400.
-    observations = BM1ObservationSeries(observation_times, aggregate.to_numpy()/contract.power_scale,
-        'day', observed, 'point', 'right')
+    if contract.observation_kind == 'point':
+        observations = BM1ObservationSeries(observation_times, aggregate.to_numpy()/contract.power_scale,
+            'day', observed, 'point', 'right')
+        terminal = expected[-1]
+    else:
+        end_stamps = expected+pd.Timedelta(hours=1)
+        interval_ends = (end_stamps.tz_convert('UTC')-origin.tz_convert('UTC')).total_seconds().to_numpy()/86400.
+        values = contract.normalize_measurements(aggregate.to_numpy(), duration_hours=1.)
+        observations = BM1IntervalObservationSeries(observation_times, interval_ends, values, 'day', observed)
+        terminal = end_stamps[-1]
     record = CurveTrainingRecord(contract.population_id, 'TRAIN', B, (0., float(edges[-1])),
         (U, parameters.state_response, parameters.price_response, parameters.C, parameters.k, parameters.Xi),
         parameters.sigma_x, sigma_y, initial_mass_builder, observations, edges[1:-1])
@@ -431,6 +440,9 @@ def prepare_historical_curve_training(measurements, baseline, prices, *, contrac
         timestamps=[t.isoformat() for t in expected], initial_observation_excluded=False,
         midnight_resets=0, training_rows=len(expected), scored_observations=int(observed.sum()),
         missing_aggregate_rows=int(aggregate.isna().sum()),
-        terminal_posterior_time=expected[-1].isoformat(),
+        terminal_posterior_time=terminal.isoformat(),
+        observation_model=observations.observation_kind,
+        observation_noise_unit='normalized average power' if contract.observation_kind != 'point' else 'normalized point power',
+        observation_available_at='interval end' if contract.observation_kind != 'point' else 'point timestamp',
         parameter_time_unit='day', baseline_availability='caller-declared offline TRAIN input plus explicit pre-observation inputs; no causal baseline claim')
     return record, metadata

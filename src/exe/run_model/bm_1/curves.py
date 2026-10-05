@@ -53,6 +53,8 @@ def source_snapshot():
 
 def _observation_digest(record):
     h = hashlib.sha256()
+    if hasattr(record.observations, 'starts'):
+        h.update(np.asarray(record.observations.starts).tobytes())
     for values in (record.observations.times, record.observations.values, record.observations.observed):
         h.update(np.asarray(values).tobytes())
     return h.hexdigest()
@@ -541,7 +543,14 @@ def main(argv=None):
     inspect.add_argument('--blas-threads', type=int, default=1)
     config = sub.add_parser('history-config', help='Write an incomplete H2 pilot configuration; no observations read.')
     config.add_argument('--output', type=Path, required=True)
+    config.add_argument('--hourly-assumptions', action='store_true',
+        help='Record Johan\'s provisional kWh/hour-start contract; other prerequisites stay unresolved.')
     config.add_argument('--blas-threads', type=int, default=1)
+    interval = sub.add_parser('interval-pilot', help='Run small synthetic interval controls and numerical comparisons.')
+    interval.add_argument('--output', type=Path, required=True)
+    interval.add_argument('--blas-threads', type=int, default=1)
+    interval.add_argument('--refine', action='store_true',
+        help='Use the declared 321/641/1281-cell refinement panel; no curve optimization.')
     history = sub.add_parser('history-fit', help='Prepare or run a bounded conditional TRAIN-only H2 pilot.')
     history.add_argument('--config', type=Path, required=True)
     history.add_argument('--input-root', type=Path, default=ROOT)
@@ -579,9 +588,24 @@ def main(argv=None):
     verify.add_argument('--blas-threads', type=int, default=1)
     verify.add_argument('--quiet', action='store_true')
     args = parser.parse_args(argv)
+    if args.command == 'interval-pilot':
+        from src.validation.bm_1.interval import run_interval_pilot
+        if args.output.exists():
+            raise FileExistsError('Preserve the existing interval pilot; use a new output path.')
+        source = source_snapshot()
+        clock = perf_counter()
+        def interval_progress(done, total):
+            print('Interval development: '+runtime_text(clock, done, total), flush=True)
+        result = run_interval_pilot(refine=args.refine, progress=interval_progress)
+        if source != source_snapshot():
+            raise ValueError('Source changed during interval pilot; no report published.')
+        result['source'] = source
+        _atomic_report(args.output, result)
+        print(f'Interval development pilot: {args.output}; no historical or scientific acceptance.', flush=True)
+        return 0
     if args.command == 'history-config':
         from src.exe.run_model.bm_1_history import configuration_template
-        _atomic_report(args.output, configuration_template())
+        _atomic_report(args.output, configuration_template(hourly_assumptions=args.hourly_assumptions))
         print(f'H2 configuration template: {args.output}; resolve metadata before fitting.', flush=True)
         return 0
     if args.command == 'history-fit':

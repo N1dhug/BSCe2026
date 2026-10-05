@@ -55,8 +55,14 @@ Dette er udviklingsevidens, ikke modelvalg, joint recovery eller H2/H3-accept.
 H2-metadataaudit har nu verificeret alle 13 MED-ID'er som huse med elvarme
 og alle 140 UDEN-ID'er som huse uden elvarme i samme workbook som Johans
 header-rapport. Se `root/H2_DATA_CONTRACT.md`; nul observationsværdier er læst.
-Historiske måleenheder, punkt/interval, tidsbetydning og dokumenteret blindt
-split samt pris/skala/baseline mangler fortsat.
+Johan har senere deklareret timeforbrug, foreløbigt kWh, og hour-start
+(03 betyder [03:00,04:00)); Europe/Copenhagen er en arbejdsantagelse.
+Separat joint state/akkumulator-likelihood og timeenergiadapter er implementeret
+med afgrænset shared f/g-replay. Se `root/H2_HOURLY_INTERVALS.md`.
+De første grove BM-grids fejler udviklingens numeriktolerancer trods bevaret
+masse; anbefal ikke fuldt historisk fit på disse settings. Ingen faktiske
+måleværdier er læst eller historisk/H2/H3-accept opnået. Dokumenteret blindt
+split, populationvalg samt pris/skala/baseline/fysiske parametre mangler stadig.
 Recovery, råartefakter og næste trin: `root/F4_H_CHECKPOINT_AUDIT_STATE.md`.
 
 Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tidsreduktion,

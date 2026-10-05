@@ -32,9 +32,9 @@ from src.validation import estimation as checks
 EVIDENCE = ('population', 'observations', 'timezone', 'price', 'scale', 'baseline', 'exposure')
 
 
-def configuration_template():
+def configuration_template(*, hourly_assumptions=False):
     """Intentionally incomplete: no invented scientific metadata or parameters."""
-    return dict(schema='bm1-h2-pilot-config-v1', evidence={k: None for k in EVIDENCE},
+    config = dict(schema='bm1-h2-pilot-config-v1', evidence={k: None for k in EVIDENCE},
         files=dict(input_workbook='files/input/data/input.xlsx',
                    price_workbook='files/input/data/prices.xlsx', baseline_csv=None),
         timezone=None, price_area=None, origin=None, baseline_fitted_before=None,
@@ -51,6 +51,17 @@ def configuration_template():
         fit=dict(regularization=.1, max_iterations=40, logit_bound=4.,
             families=[dict(pieces=2, starts=[[0., 0.]], max_evaluations=24),
                       dict(pieces=4, starts=[[0.]*6], max_evaluations=48)]))
+    if hourly_assumptions:
+        config['timezone'] = 'Europe/Copenhagen'
+        config['contract'].update(power_unit='kW', measurement_unit='kWh',
+            observation_kind='interval_energy', timestamp_label='hour_start',
+            metadata_status='working_assumptions')
+        config['evidence']['observations'] = ('Johan, 5 October 2026: one-hour energy, '
+            'provisionally kWh; hour 03 means [03:00,04:00). Working assumption, not verified meter documentation.')
+        config['evidence']['timezone'] = ('Denmark; Europe/Copenhagen is a working assumption. '
+            'Ambiguous/nonexistent naive DST labels still fail; no silent inference.')
+        config['numerics'].update(accumulator_spacing=1/512, max_accumulator_nodes=4096)
+    return config
 
 
 def _text(value, name):
@@ -96,6 +107,13 @@ def validate_configuration(config):
     numerics['max_step'] = checks.finite_scalar(numerics['max_step'], 'max_step', positive=True)
     if numerics['backend'] != 'fitted':
         raise ValueError('The H2 pilot uses the fitted FV backend; declare its refinements separately.')
+    if contract.observation_kind != 'point':
+        numerics['accumulator_spacing'] = checks.finite_scalar(
+            numerics.get('accumulator_spacing'), 'accumulator_spacing', positive=True)
+        numerics['max_accumulator_nodes'] = checks.positive_integer(
+            numerics.get('max_accumulator_nodes'), 'max_accumulator_nodes', minimum=2)
+    elif 'accumulator_spacing' in numerics or 'max_accumulator_nodes' in numerics:
+        raise ValueError('Accumulator settings apply only to interval observations.')
     fit = dict(config['fit'])
     fit['regularization'] = checks.finite_scalar(fit['regularization'], 'regularization')
     fit['logit_bound'] = checks.finite_scalar(fit['logit_bound'], 'logit_bound', positive=True)
