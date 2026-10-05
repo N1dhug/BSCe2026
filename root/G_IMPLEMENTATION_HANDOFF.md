@@ -2,7 +2,13 @@
 
 Forberedt 5. oktober 2026 mod `main` ved
 `d9f95a0513605d58f0fe01464067e8f0a2a0eeeb` efter PR #69/#70.
-Dette er design og kodereview, ikke nye implementerede funktioner eller forsøgsresultater.
+**Implementation 5. oktober:** P1/P2 er nu implementeret og syntetisk
+kontrolleret: `deterministic --from-fit`, versioneret JSON-snapshot og
+kontrolleret 07fad9f-import. Fælles BM/WM/origin/baseline og varig eksport før
+optional scoring er verificeret. 20 G-tests plus tre relevante layout/import-
+kontroller består på ca. 6.7 s. Historisk råreview/prognose og G4–G8 mangler.
+Beskrivelsen nedenfor bevarer designet; denne status erstatter ældre formuleringer
+om manglende P1/P2. Kommando: [G_JANUARY.md](G_JANUARY.md).
 Læs nyeste `AGENTS.md`, [G.md](G.md), [G_JANUARY.md](G_JANUARY.md) og den
 aktive status i [F4.md](F4.md) ved genoptagelse. Bevar samtidige H/WM-ændringer.
 
@@ -28,7 +34,7 @@ fælles f/g-leverance eller dens acceptkrav.
 | BM-parametre | C=1.63492382 timer, k=0.22688551, Xi=0.23120648; x0=0.5 fast. Tallene er afrundet terminaloutput, ikke input til genstart. |
 | Normaliseret MSE | BM 0.0066056846, WM 0.0072743310, baseline O 0.0066347027. In-sample; BM's gevinst over O er ca. 0.44 %. |
 | Råartefakter | Run `g_january_fit_20261005_154824` er ikke modtaget/råreviewet her. `fit.png` alene er utilstrækkelig. |
-| G3 | Fit+forecast-vejen findes og har syntetiske kontroller. Historisk prognose samt selvstændig forecast fra gemt fit mangler. |
+| G3 | Selvstændig forecast fra gemt fit er implementeret og syntetisk kontrolleret. Historisk prognose/råreview mangler. |
 | G4/G6/G8/G7 | Ny G-integration er planlagt. Eksisterende F2/F3/F4-kode/evidens genbruges med konkrete kildehenvisninger. |
 
 Arbejd i branch i eksisterende checkout, ikke nyt worktree. Skift/pull ikke
@@ -38,25 +44,25 @@ særskilt fit; det gamle resultat må hverken overskrives eller ommærkes.
 
 ## Fund der skal håndteres før historisk G3-accept
 
-1. `deterministic.py` kalder altid `run_benchmark`, som fitter baseline, BM
-   og WM igen. Der findes endnu ingen forecast-only-indlæsning af fitmappen.
+1. Den oprindelige fit-mode kalder `run_benchmark`. Ny `--from-fit` indlæser
+   fitmappen uden baseline/BM/WM-fit og foretager kun forward propagation.
    `checkpoint.json` er kandidat/status, ikke en genoptagelig SciPy-session.
-2. Forecast-inputs bruger allerede kun pris/temperatur. Men efter simulation
-   kaster `run_benchmark` en fejl ved manglende fremtidig demand; de beregnede
-   prognoser når derfor ikke den normale eksport. Skil eksport og scoring ad.
+2. Forecast-inputs bruger kun pris/temperatur. G3 gemmer nu prognoser før
+   observationslæsning/scoring; manglende demand giver særskilt scoringstatus.
 3. `consumption_series` i `wm_3/fit_weekly.py` bruger `mean(axis=1)` med
    pandas' skip-NaN-adfærd. En delvist observeret time kan få en anden
    population. 624 aggregerede måletimer beviser ikke 624 komplette MED-timer.
 4. H2's metadataaudit har verificeret 13 MED-huse med elvarme og 140 UDEN-huse
-   uden elvarme. Enheder, punkt/interval, tidszone og start/slut på timelabel
-   er stadig uafklarede. Se [H2_DATA_CONTRACT.md](H2_DATA_CONTRACT.md).
+   uden elvarme. Johan har senere deklareret timeforbrug, foreløbigt kWh,
+   hour-start og foreløbig Copenhagen-tid; det er arbejdsantagelser, ikke
+   uafhængig metadata. H2's interval-likelihood er implementeret men endnu
+   ikke numerisk fit-ready. Se [H2_HOURLY_INTERVALS.md](H2_HOURLY_INTERVALS.md).
 5. Prisnormalisering er frosset på TRAIN. Februarpriser uden for domænet
    giver korrekt afvisning; de må ikke klippes eller bruges til efterfølgende
    ændring af januarfittets skala. Faktiske DK1-spotpriser er en deklareret
    proxy, ikke dokumentation for husstandenes faktiske tariff/kausale respons.
-6. Baselinesnapshot mangler eksplicit alle konstruktørindstillinger, og WM's
-   forecast-sluttilstand ligger i finegrid-CSV'en frem for et eget originfelt.
-   Nye snapshots skal gøre dette entydigt og reproducerbart.
+6. Nye snapshots gemmer alle baselineindstillinger og BM/WM-cutoff-states.
+   Legacy-import genskaber dette fra verificeret source og finegrid-CSV.
 
 Historisk G3 kan først mærkes valideret, når den valgte datakontrakt er
 dokumenteret. En videreført legacy-punktapproksimation kan fortsat vises som
@@ -94,12 +100,13 @@ opdigtede metadata, ingen ubegrundet `historical_fit_ready=True`.
 
 ## P1 — gemt fit → frosset forecast-origin
 
-**Foreslået ny fil:** `src/tools/bm_1_deterministic_snapshot.py`.
+**Implementeret fil:** `src/tools/bm_1_deterministic_snapshot.py`.
 **Berørte eksisterende filer:** `src/method/bm_1_deterministic_benchmark.py`,
 `src/exe/run_model/bm_1/deterministic.py`, G's validering og små tests.
-Navnene nedenfor er interfaceforslag, ikke eksisterende kommandoer/API'er.
+Designets schema er implementeret som validerede JSON-data med almindelige
+helpers; der er ikke indført et ekstra solver-/klasseframework.
 
-Indfør versioneret `GDeterministicSnapshot` med følgende kontrakt:
+Det versionerede snapshot har følgende kontrakt:
 
 | Feltgruppe | Skal gemmes og valideres |
 |---|---|
@@ -110,7 +117,7 @@ Indfør versioneret `GDeterministicSnapshot` med følgende kontrakt:
 | WM | Uafrundet r, fitkonvention, modelversion og simuleret F,R ved cutoff. Ingen reset til INIT_F eller I−O ved forecast-start. |
 | Numerik | Grid/trin, tolerance og faktisk kontrolresultat, tids-/priskonvention og endepunktsregel. |
 
-Foreslåede operationer: `export_fit_snapshot(result)`,
+Implementerede operationer: `export_fit_snapshot(result)`,
 `load_fit_snapshot(path)` og eksplicit `migrate_legacy_fit(directory)`.
 Snapshot skal kunne indlæses uden optimizer, workbook eller netværkskald.
 Genskab WM-baselineobjektet med de gemte indstillinger og koefficienter uden
@@ -137,11 +144,10 @@ inkompatibel baseline afvises. Lås kildedata mod utilsigtet overskrivning.
 
 ## P2 — G3-prognose, varig eksport og særskilt scoring
 
-**Design:** træk en `forecast_from_snapshot(snapshot, future_inputs)`-vej ud
-af benchmarkmodulet. Den får kun frosset model og inputs. Tilføj senere en
-entydig CLI-mode for snapshot + input + ny outputmappe; den må ikke acceptere
-fitindstillinger, der ændrer snapshot. Dokumentér først den faktiske kommando,
-når parser, validering og tests findes.
+**Implementeret:** `forecast_from_snapshot(snapshot, raw_inputs)` i
+benchmarkmodulet får kun frosset model og inputs. `deterministic --from-fit`
+vælger denne vej og afviser eksplicitte fitindstillinger. Den faktiske
+kommando og output står i januarvejledningen.
 
 - BM starter med gemt x ved cutoff. WM starter med gemt F/R. Samme fælles
   O/B-samples, held-price-forløb og enhedsomregning som den oprindelige kæde.
@@ -341,13 +347,30 @@ bachelorens centrale FP/estimation/kontrolkæde. Stærk forecastgevinst er
 heller ikke adgangskrav. Bevar skellet implementeret / syntetisk demonstreret /
 numerisk kontrolleret / historisk valideret i alle statusfiler.
 
-Sol starter med P1/P2's lille syntetiske round-trip og bruger P0 som
-forudsætning for historisk review. Udvid G's eksisterende 10 små tests med
-kontroller af den nye adfærd; kør kun berørte ekstra suites ved delte
+P1/P2's syntetiske round-trip og scoringkontroller er nu gennemført. Næste
+skridt er P0/historisk G3 fra Johans originale mappe, derefter P3. G's standard
+er de 20 små tests i fit- og snapshotmodulet; kør kun berørte ekstra suites ved delte
 interfaces. Ingen fuld test-discovery, historisk månedssmoke eller F1–F4-
 genkørsel alene for dokumentation. Lange studier er ikke unit-tests.
 
 Ved hver kodeleverance: opdatér G-status, januarvejledning og den korte
 F4/AGENTS-indgang efter faktisk status, med kildecommit, kommando, budget og
 råartefakter. Genlæs seneste main før publicering. Denne forberedelse har
-ændret dokumentation alene og har ikke kørt fit, forecast eller nye tests.
+oprindeligt ændret dokumentation alene. P1/P2 har nu nye syntetiske tests;
+ingen historisk kørsel eller G4–G8-accept følger af dem.
+
+## Reserveret til senere Astra-review
+
+Johan har bedt om, at opgaver som har fordel af dybere matematisk behandling
+gemmes til senere. Følgende er anbefalinger om reviewniveau, ikke dokumenterede
+modelbenchmarks eller krav om at skifte model for rutineimplementation.
+
+| Opgave | Anbefalet niveau | Konkret afgrænsning |
+|---|---|---|
+| A1: stokastisk timeinterval-likelihood | **Astra XHigh** | Læs H2_HOURLY_INTERVALS og de gemte negative numerikresultater. Forklar likelihoodfejl/akkumulatordispersion og vurder en billigere tilstrækkeligt præcis metode, f.eks. en afgrænset tilted-generator/Feynman–Kac-vej. Bevar korrekt joint state/interval-observation og nuværende tolerancer. Start med design og en lille uafhængig reference; intet fuldt historisk optimizerfit. |
+| A2: posterior → stokastisk prisstyring | **Astra High** | Review parameter–state-afhængighed, mixture/FV-paritet, enheder, forventet kvadratisk tab inklusive varians, posterior-initialiseret EM og cutoff i P4–P6 før samlet metodeaccept. Rutineadaptere kan fortsat implementeres af Sol. |
+
+A1 er nødvendig før historisk intervalbaseret G8/H2-estimation, men blokerer
+ikke G3's eksisterende udviklingskontrakt. A2 foretages når adaptere/resultater
+er konkrete; et nyt stort studie kræves ikke alene for et review. G4's lille
+deterministiske LS-pilot og almindelige kode-/testopgaver kan fortsætte hos Sol.

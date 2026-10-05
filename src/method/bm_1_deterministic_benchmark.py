@@ -59,6 +59,8 @@ def performance_rows(predictions):
     daily = pd.DataFrame(rows)
     scored = daily.loc[daily.samples>0].copy()
     performance = {}
+    if scored.empty:
+        return daily, performance
     if 'wm4' in predictions:
         performance['wm4'] = analyze(scored.copy())
     bm_columns = {k: k.replace('bm1_', 'wm4_') for k in daily if k.startswith('bm1_')}
@@ -86,6 +88,103 @@ def model_metrics(predictions):
     for key in ('bm1','wm4'):
         if key in metrics: metrics[key]['mse_gain'] = metrics['O']['mse']-metrics[key]['mse']
     return metrics
+
+
+def score_forecast(result, observations):
+    """Attach measured-only scores to an already computed forecast.
+
+    The caller can save the input-only forecast before supplying observations.
+    Copy tables so scoring cannot mutate the frozen forecast or its origin.
+    """
+    scored = dict(result)
+    predictions = result['predictions'].copy()
+    if observations is None:
+        actual = np.full(len(predictions), np.nan)
+    else:
+        if not isinstance(observations, pd.Series) or observations.index.has_duplicates:
+            raise ValueError('Scoring observations require a uniquely indexed pandas Series.')
+        actual = pd.to_numeric(observations.reindex(predictions.index), errors='coerce').to_numpy(dtype=float)
+        actual[~np.isfinite(actual)] = np.nan
+    predictions['observed'] = actual
+    models = [name for name in ('O','bm1','wm4') if name in predictions]
+    mask = np.isfinite(actual) & np.isfinite(predictions[models].to_numpy(dtype=float)).all(axis=1)
+    predictions['scored'] = mask
+    count = int(mask.sum())
+    scored['scoring'] = {'status': 'complete' if count == len(predictions) else 'partial' if count else 'not-scored',
+                         'expected_samples': len(predictions), 'observed_samples': int(np.isfinite(actual).sum()),
+                         'scored_samples': count, 'coverage': count/len(predictions),
+                         'models': models, 'matched_wm': 'wm4' in models,
+                         'policy': 'same finite measured-demand mask for all available models; no filling'}
+    normalized = result['normalized_predictions'].copy()
+    scales = result['manifest']['scales']
+    normalized['observed'] = (actual-scales['demand_min'])/scales['demand_scale']
+    normalized['scored'] = mask
+    # Analysis helpers see the shared scoring mask, rather than a model-specific one.
+    analysis = predictions.copy()
+    analysis.loc[~mask, 'observed'] = np.nan
+    daily, performance = performance_rows(analysis)
+    scored.update(predictions=predictions, normalized_predictions=normalized,
+                  metrics=model_metrics(analysis) if count else {},
+                  daily_metrics=daily, performance=performance)
+    return scored
+
+
+def forecast_from_snapshot(snapshot, raw_inputs, *, forecast_hours=168):
+    """G3 forward propagation from frozen fit data; no future demand or fit."""
+    from copy import deepcopy
+    from src.tools.bm_1_deterministic_snapshot import validate_snapshot, restore_baseline
+    from src.tools.bm_1_deterministic_data import prepare_forecast_frame
+    snapshot = validate_snapshot(snapshot)
+    if isinstance(forecast_hours, bool) or int(forecast_hours) != forecast_hours or forecast_hours < 1:
+        raise ValueError('Forecast hours must be a positive integer.')
+    started = perf_counter()
+    origin = pd.Timestamp(snapshot['origin'])
+    end = origin+pd.Timedelta(hours=int(forecast_hours))
+    manifest = deepcopy(snapshot['manifest'])
+    manifest.update(stage='G3-from-fit', fit_only=False, forecast_start=str(origin), forecast_end_exclusive=str(end),
+                    evidence='development conditional forecast from frozen fit; original observation contract',
+                    fit_reused=True, snapshot_provenance=deepcopy(snapshot['provenance']))
+    frame, audit = prepare_forecast_frame(raw_inputs, manifest['scales'], origin, end)
+    baseline = restore_baseline(manifest['baseline'])
+    wm_steps = snapshot['numerics']['wm_steps_per_hour']
+    future = common_inputs(frame, baseline, origin, end, steps_per_hour=wm_steps)
+    inputs = BM1DeterministicInputs(future['time'], future['baseline'], (future['price_hour']+1)/2,
+                                    steps_per_hour=snapshot['numerics']['bm_steps_per_hour'])
+    p = snapshot['fit']['best_converged']['parameters']
+    future_p = [*p[:3], snapshot['bm']['x_origin']]
+    deadline = perf_counter()+60.
+    prediction = inputs.solve(future_p, deadline=deadline)
+    refined = inputs.refined().solve(future_p, deadline=deadline)
+    error = float(np.max(np.abs(prediction['demand']-refined['demand'])))
+    tolerance = snapshot['numerics']['tolerance']
+    manifest['forecast_input_audit'] = audit
+    manifest['baseline']['forecast_clipped_samples'] = future['baseline_clipped_samples']
+    result = dict(manifest=manifest, fit=snapshot['fit'], fit_snapshot=snapshot,
+                  x_forecast_origin=snapshot['bm']['x_origin'],
+                  numerics={'max_demand_refinement_error': error, 'tolerance': tolerance,
+                            'forward_solves': 2, 'rhs_evaluations': prediction['rhs_evaluations']+refined['rhs_evaluations'],
+                            'passed': error <= tolerance}, fit_status='reused', forecast_status='complete',
+                  scoring={'status': 'pending'})
+    hourly = np.arange(int(forecast_hours))*wm_steps
+    normalized = pd.DataFrame({'observed': np.nan, 'O': future['baseline'][hourly],
+                               'bm1': prediction['demand'], 'U': future['price_hour'],
+                               'x': prediction['state'][:-1],
+                               'Price_DKK_MWh': raw_inputs.reindex(future['index']).Price.to_numpy(dtype=float)}, index=future['index'])
+    result['status'] = 'complete' if snapshot['wm'] is not None else 'wm-rejected'
+    if snapshot['wm'] is not None:
+        wm = snapshot['wm']
+        model = wm_4((0., int(forecast_hours)/24), len(future['time']),
+                     output_callable(future['fine_index'], future['baseline']))
+        state = model._solve_deterministic(wm['state_origin'], future['price'], future['price'],
+                                          future['time'], future['baseline'], wm['r'])
+        for name in ('I','F','R'):
+            normalized['wm4' if name == 'I' else name] = state[name][hourly]
+        result['wm_fit'] = snapshot['wm_fit']
+    if not result['numerics']['passed']:
+        result['status'], result['forecast_status'] = 'numerics-rejected', 'numerics-rejected'
+    result.update(predictions=demand_units(normalized, manifest['scales']), normalized_predictions=normalized,
+                  seconds=perf_counter()-started)
+    return result
 
 
 def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
@@ -132,6 +231,9 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
                 'bm_solver': 'scalar BM1 RK4, restart held price each hour, no state clipping',
                 'wm_solver': 'existing qp_params and discrete deterministic WM4',
                 'config': asdict(config)}
+    from src.tools.bm_1_deterministic_snapshot import baseline_settings
+    manifest['baseline']['settings'] = baseline_settings(baseline)
+    manifest['wm_steps_per_hour'] = wm_steps_per_hour
     if checkpoint:
         checkpoint({'manifest': manifest, 'status': 'prepared'})
     # A three-start representative pilot is below the 30-call / 60-second cap.
@@ -175,6 +277,7 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
                            'transition_samples':int(wm_fit['transition_mask'].sum()), 'r': wm_fit['r'].tolist(), 'qp_loss': wm_fit['qp_loss'],
                            'deterministic_loss': wm_fit['deterministic_loss'], 'seconds': wm_fit['qp_fit_time'],
                            'init_cond': wm_fit['init_cond'].tolist(),
+                           'state_forecast_origin': [float(wm_fit['deterministic_state'][key][-1]) for key in ('F','R')],
                            'damping_branch': wm_fit['damping_branch'], 'damping_ratio': wm_fit['damping_ratio']}
     except (ValueError, RuntimeError) as exc:
         result['wm_failure'] = {'type': type(exc).__name__, 'message': str(exc)}
@@ -214,8 +317,6 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
     idx = forecast['index']
     # Scoring is separate; no future observations were passed to either forward model.
     actual = frame.reindex(idx)['I'].to_numpy(dtype=float)
-    if not np.all(np.isfinite(actual)):
-        raise ValueError('Forecast created, but scoring requires complete future observations.')
     hourly = np.arange(forecast_hours)*wm_steps_per_hour
     normalized = pd.DataFrame({'observed': actual, 'O': forecast['baseline'][hourly],
                                'bm1': prediction['demand'],
@@ -226,9 +327,7 @@ def run_benchmark(raw, train_start, train_end, *, config=None, warmup_hours=0,
         normalized['F'] = wm_prediction['F'][hourly]
         normalized['R'] = wm_prediction['R'][hourly]
     predictions = demand_units(normalized, scales)
-    metrics = model_metrics(predictions)
-    daily, performance = performance_rows(predictions)
     result.update(status='complete' if wm_prediction is not None else 'wm-rejected', predictions=predictions, normalized_predictions=normalized,
-                  daily_metrics=daily, performance=performance, metrics=metrics,
+                  fit_status='complete', forecast_status='complete',
                   x_forecast_origin=float(trajectory['state'][-1]), seconds=perf_counter()-started)
-    return result
+    return score_forecast(result, raw.reindex(idx).Demand)
