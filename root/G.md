@@ -1,4 +1,4 @@
-# G-plan — deterministisk BM, parameterfit og sammenligning med WM4
+# G-plan — deterministisk BM-kerne, stokastisk udvidelse og WM4-sammenligning
 
 **Beslutning fra Johan: 5. oktober 2026. Status: planlagt, ikke implementeret eller valideret som samlet G-leverance.**
 
@@ -6,7 +6,9 @@ G er et selvstændigt spor ved siden af F-planen. Formålet er en enkel, hurtig
 BM-arbejdsgang: historiske data → deterministisk parameterfit → fastlåst
 ugeprognose → sammenligning med baseline og WM4. Grundlaget er den eksisterende
 BM1, ikke en ny model med WM's ligninger. Processtøj, filtre, parameterbanker og
-fordelingspropagation indgår ikke i første G-leverance.
+fordelingspropagation indgår ikke i første G-leverance. Derefter er et billigt
+stokastisk usikkerhedslag en obligatorisk G-leverance, ligesom WM's trinvise
+opbygning; G som helhed er altså ikke 100 % deterministisk.
 
 **Præcisering fra Johan, 5. oktober kl. 12:56: WM4 er fælles standard dér,
 hvor modellerne kan gøre det samme.** Genbrug konkret baselineimplementation,
@@ -14,7 +16,7 @@ fit/predict-protokoller, evalueringsdefinitioner og rapportstruktur. Afvigelser
 skal skyldes modellernes matematik eller en eksplicit fælles datakorrektion og
 registreres i manifestet; en særskilt BM-baseline er ikke default.
 
-**Navne:** Skriv altid `G-plan/G0` ... `G-plan/G6` i status og henvisninger.
+**Navne:** Skriv altid `G-plan/G0` ... `G-plan/G7` i status og henvisninger.
 `F4-G`, `F4-G2a`, `F4-G2b` og `F4-G2c` er fortsat de gamle stokastiske studier.
 G kræver ikke, at disse studier eller H-f/g afsluttes. G overtager heller ikke
 deres evidens eller afslutter deres krav. F-sporets status står i [F4.md](F4.md).
@@ -31,10 +33,15 @@ ikke F-sporets aftalte rækkefølge eller dets senere prognosediagnose.
 | G-plan/G3: første ugeprognose | Frys parametre ved origin, viderefør træningens sluttilstand og simulér syv døgn uden observationer fra testugen. Kør matched WM4 og baseline. | Fælles CSV, ugefigur og RMSE/MAE/bias samt baselinegevinst. Resultatet må gerne være negativt. G0–G3 er første brugbare leverance. |
 | G-plan/G4: fælles f/g-kurver | Undersøg først en lille prisresponsudvidelse, derefter eventuelt f; brug eksisterende kontinuerte, monotone kurveobjekter. Ét kurvepar per population og træningsfit. | Afgrænset udviklingssammenligning mod lineære kurver; validering afgør om ekstra fleksibilitet beholdes. Ingen kurver per dag. |
 | G-plan/G5: afsluttende benchmark og dokumentation | Fastlås opskrift og modelvalg før sluttest. Evaluer de på forhånd valgte ugeorigins i én måned med identisk information og rapportér alle uger. | Reproducerbar lille benchmarkpakke med kvalitet, runtime, begrænsninger og klart skel mellem udvikling og sluttest. |
-| G-plan/G6: separat senere prisoptimering | Når forecastdelen er vurderet: genbrug eksisterende deterministisk kontrol med et fælles, eksplicit mål og få prisbeslutninger. | Valgfri efterfølgende leverance. Ingen forudsætning for G0–G5 og ingen fælles estimation af parametre og priser. |
+| G-plan/G6: stokastisk usikkerhed og evaluering | Bevar det deterministiske fit som reference, tilføj BM-processtøj, fit få støjparametre og propagér approksimativ varians. Genbrug WM's usikkerhedsmål og figurer. | Obligatorisk afgrænset pilot og held-out evaluering af dækning, bredde og intervalscore; negative resultater rapporteres. Se afsnit 8. |
+| G-plan/G7: separat senere prisoptimering | Når forecastdelen er vurderet: genbrug eksisterende deterministisk kontrol med et fælles, eksplicit mål og få prisbeslutninger. | Valgfri efterfølgende leverance. Ingen forudsætning for G0–G6 og ingen fælles estimation af parametre og priser. |
 
-Stokastisk udvidelse parkeres efter disse leverancer. Bevar muligheden gennem
-samme model-/kurvekontrakter, men implementér eller kør ikke stokastik i G nu.
+**Præcisering fra Johan, 5. oktober: G skal også indeholde stokastik.**
+G0–G3 er fortsat første deterministiske milepæl; G6 følger det fastlåste
+strukturelle modelvalg i G4–G5 og er del af den samlede G-leverance.
+G5's punktprognosebenchmark afslutter derfor ikke hele G-planen. G6 får eget
+udviklings-/testsplit fastlagt i G0, så allerede inspicerede G5-data ikke
+senere præsenteres som blind sluttest for usikkerhedsmodellen.
 Ingen stor arkitekturomskrivning eller komplet ny F1–F4-valideringsserie.
 
 ### 1a. Bindende genbrug fra WM4
@@ -48,6 +55,7 @@ Ingen stor arkitekturomskrivning eller komplet ny F1–F4-valideringsserie.
 | Performanceanalyse | `analyze_performance.py`: `metric_gain`, `analyze`, `summary_table`, `weekday_summary` | Samme baselinegevinst, procentvis MSE-forbedring, bedre/lige/dårligere dage, gennemsnit/median, ugedagsopdeling og bedste/værste dage. |
 | Figurer | `save_plot` i dags-/ugekørslerne | Samme datoakse, observationsmarkører, baseline, prognose og pris. Sammenlignelige paneler med korrekte modelnavne/enheder. |
 | Eksport | Daglige metrics-CSV og performance-CSV | Samme metriknavne/suffikser og baselinekolonner; BM får eget modelnavn. Fælles evaluator accepterer modelnavn og bevarer kompatibilitet med WM4-output. |
+| Usikkerhed (G6) | `test_diffusion_hypotheses.py`, `process_uncertainty` | Samme nominelle niveau, dækning, intervalbredde, intervalscore og prognosehorisonter; modelspecifik varianspropagation. WM's oracle-initialisering må kun genbruges i særskilt oracle-diagnostik. |
 | Diagnostik | Baselinegevinst, residualer og initial-state-følsomhed | Samme spørgsmål/informationsgrænse; modelspecifik beregning. WM's dæmpningsratio og acceleratorstate kopieres ikke til BM. |
 
 Baselinen bruger aktuelt døgn-/sæsonharmoniske led, ugedag, temperatur og
@@ -88,7 +96,8 @@ visninger af den samlede rapport, ikke udvælgelse af testdata.
 Figurerne skal vise, om korrektionen forbedrer baseline, hvornår den hjælper
 eller skader, og hvor stor den er. Vis D−B for BM og I−O=R for WM i samme
 forbrugsenhed. BM's x og eventuelt dx/dt vises separat fra WM's F/R;
-WM's dR/dt er ikke BM's dx/dt. Der tilføjes ingen stokastiske bånd nu.
+WM's dR/dt er ikke BM's dx/dt. G0–G5 viser punktprognoser; G6 tilføjer tydeligt mærkede approksimative
+stokastiske bånd og fælles usikkerhedsmål.
 Billige dags-/ugedagsanalyser bruger gemte prognoser uden nye fits. Øvrige
 WM-diagnoser tilføjes kun ved relevans og inden for eksisterende G-budget.
 
@@ -97,7 +106,7 @@ adapter og begrundelse for hver forskel. G3 kontrollerer identisk baseline på
 fælles timestamps og identiske metrics for samme predictions. G5 leverer
 fælles dag-/ugefigurer, metrics og WM-lignende performanceanalyse.
 
-## 2. Matematik: samme BM1, uden processtøj
+## 2. Første trin: samme BM1, uden processtøj
 
 Med x i [0,1], normaliseret baseline B og pris u er
 
@@ -123,7 +132,7 @@ for vedvarende baselinebias ubegrænset. Store systematiske residualer skal
 diagnosticeres, før man tilføjer flere kurveparametre. Nul processtøj og et
 bestemt x0 giver én bane; det er generelt ikke middelbanen af den ikke-lineære
 stokastiske BM. Historiske målefejl/residualer kan godt findes, selv om den
-latente dynamik i G er deterministisk.
+latente dynamik i G0–G5 er deterministisk.
 
 ### Eksakt og billig reference for lineære kurver
 
@@ -295,6 +304,7 @@ Det første nåede loft stopper ny beregning; en pause er ikke en bestået fit.
 | G1/G2 runtimepilot | 30 residualkald og højst 60 sekunder | Repræsentativ fuld træningslængde; opvarmning/opsætning måles særskilt. |
 | Ét G2-fit | 4 starter, højst 250 residualkald per start, højst 1.000 samlet, højst 5 minutter | Inklusive numerisk Jacobian; ikke kun optimizerens rapporterede nfev. |
 | G4-kurveundersøgelse | Højst 3.000 residualkald og 10 minutter i alt | Alle familier, starter, strafstyrker og genstarter deler samme loft. |
+| G6-usikkerhedspilot og benchmark | Pilot: højst 60 sekunder/30 varianspropagationer. Derefter højst 500 propagationer og 5 minutter samlet for BM/WM-usikkerhedsfit, numerik og scoring | Højst to støjfamilier, to starter per familie; finite differences tæller med. Genbrug gemte deterministiske baner. Ekstra nødvendige strukturelle fits skal budgetteres inden kørsel. |
 | G5-månedsbenchmark | Højst 20 minutter samlet som første driftsmål/loft | Alle deklarerede ugeorigins, BM-fit, fælles baseline og WM4-fit/forecast; delresultater gemmes. |
 
 Et residualkald kan kræve flere baner, hvis data er opdelt i segmenter. Gem
@@ -343,6 +353,9 @@ Foreslået ny kode, **endnu ikke oprettet**:
   predict-week og compare; disse er foreslåede kommandoer, ikke kørbare nu.
 - `src/validation/bm_1/deterministic_fit.py` og fokuserede tests: små syntetiske
   regressioner og cutoff-kontroller, ingen lange forskningsstudier i CI.
+- G6 tilføjer en lille særskilt usikkerhedsmodul/indgang efter inspektion af
+  WM's helpers; deterministiske API'er bevares. Resultater gemmes under
+  `files/output/bm_1/runs/uncertainty/<run_id>/` med reference til strukturelt fit.
 - `files/output/bm_1/runs/deterministic/<run_id>/`: egne resultater med
   `manifest.json`, `fit.json`, `predictions.csv`, `metrics.json` og ugefigurer.
 
@@ -362,9 +375,80 @@ WM i egne paneler med deres forskellige betydninger. State-værdier er ikke
 direkte sammenlignelige. Statistik fra én måned er beskrivende og dokumenterer
 ikke generel sæsonperformance eller kausal priselasticitet.
 
-## 8. Senere kontrol og stokastisk udvidelse
+## 8. Obligatorisk stokastisk trin G6 og valgfri kontrol G7
 
-G6 holder de fittede parametre/kurver faste og vælger eventuelt få priser:
+### G6: samme trinvise idé som WM, med BM's egen diffusion
+
+Frys først de udviklingsvalgte strukturelle parametre og f/g-kurver. Brug
+derefter den eksisterende BM-diffusionsform:
+
+$$dX_t=a(X_t,t)\,dt+b(X_t,t;\eta)\,dW_t,\qquad
+a(x,t)=\frac{D(x,t)-B(t)}{C},\quad b(x,t;\eta)=s(t;\eta)x(1-x).$$
+
+Første støjfamilie har kun én parameter, s(t)=sigma≥0. Kun hvis udviklingsdata
+begrunder det, prøves én ekstra familie med et fast døgnmønster:
+s(t)=sigma_0+sigma_t[1+cos(2*pi*(t-phi)/24)]/2 med ikke-negative koefficienter.
+phi fastlægges på træningsdata, ikke med en stor phasesøgning; t er her timer.
+Ved dagsskala skal både frekvens og diffusionsenhed omregnes
+(sigma_hour=sigma_day/sqrt(24)). WM's H0/H1/H2 kopieres ikke direkte ind i
+BM: faktoren x(1−x) og BM's randstruktur bevares. Xi og C skalerer ikke
+automatisk den eksisterende BM-diffusion.
+
+Den billige første beregning er en lineær støjapproksimation langs den
+deterministiske bane x_bar:
+
+$$\dot{\bar x}=a(\bar x,t),\qquad
+\dot P=2a_x(\bar x,t)P+b(\bar x,t;\eta)^2,\qquad P(t_0)=0.$$
+
+Det kræver én ekstra skalarligning, ikke en Monte Carlo-population eller
+Fokker–Planck-løsning. P0=0 betyder betinget kendt initialtilstand; parameter-,
+baseline-, fremtidig input- og initialtilstandsusikkerhed er ikke inkluderet.
+Dette er en eksplicit approksimation, ikke den eksakte varians for den
+multiplikative SDE. Den deterministiske bane er heller ikke automatisk dens
+middelværdi. Behandl responsknæk med segmentering og numeriske kontroller.
+
+For punktmålt demand bruges delta-metoden:
+
+$$V_D(t)\approx D_x(\bar x,t)^2P(t),\qquad
+\widehat D(t)\pm1.96\sqrt{V_D(t)}.$$
+
+Båndene er nominelle, approksimative 95 %-procesbånd. De klippes ikke skjult
+til et fysisk interval. Ved stor spredning, randkontakt eller utilstrækkelig
+kalibrering rapporteres begrænsningen; en dyrere metode startes ikke automatisk.
+For intervalmiddel/energi propagéres også kovarians med det integrerede demand
+i et lille udvidet system; gennemsnit af punktvarianser er ikke intervalvariansen.
+Den deterministiske energiformel fra afsnit 2 må ikke bruges til stokastisk
+demand uden støjintegralet i statebalancen.
+
+Fit støjparametrene separat efter strukturelt fit, med samme afgrænsede
+least-squares-idé som WM: match modelberegnet standardafvigelse mod historisk
+timevis spredning fra de fem tidligere matchende ugedage. Brug samme
+observationsoperator, datoer og cutoff for BM/WM. Det er en
+**WM-kompatibel spredningskalibrering**, ikke likelihood-estimation af isoleret
+processtøj: historisk spredning indeholder også variation i baseline, inputs og
+målinger. Derfor er god tilpasning af spredningen alene ikke validering af SDE'en.
+Ingen ekstra målevariansparameter i første pilot; en senere sådan udvidelse
+kræver særskilt identifikations- og observationskontrakt.
+
+Genbrug WM's kode til mål/figurer, hvor muligt: sigma-RMSE/MAE/bias som
+diagnostik samt empirisk dækning, gennemsnitlig intervalbredde og intervalscore
+på tidsmæssigt adskilte prognoser. Rapportér efter horisont og samlet med
+samme nominelle niveau. Vis både alle tidspunkter og den fælles opgørelse uden
+origin med P0=0, som WM gør. Vis punktfejl ved siden af usikkerhedsmålene.
+WM/BM vurderes begge med initialisering og fit fra historik før origin;
+aktuel WM-oracle-kode må ikke levere hovedsammenligningens prognosecenter.
+
+G6 bruger en lille pilot med sigma=0-regression, variansens ikke-negativitet,
+timer/dage-omregning og tidsforfining. Intervaldata kræver kontrol af den
+udvidede kovariansberegning. Gem støjparametre, split, scope for usikkerheden,
+approksimation, stopårsag og dækningstabeller separat fra deterministiske fits.
+Hvis støjlaget ikke giver brugbare bånd inden for budgettet, afsluttes den
+afgrænsede undersøgelse med dette negative resultat; der hævdes ikke kalibrerede
+prognoseintervaller. G6 erstatter ikke F-sporets fulde stokastiske validering.
+
+### G7: separat senere prisoptimering
+
+G7 holder de fittede parametre/kurver faste og vælger eventuelt få priser:
 
 $$\min_{u_0,\ldots,u_{m-1}}\sum_i[\mathcal H_i(D_\theta(u))-a_i]^2,\qquad 0\leq u_j\leq1.$$
 
@@ -372,10 +456,8 @@ Start med 2–6 prisblokke og et fælles fast trackingmål a. Hvis WM bruger en
 endogen købskurve A(u), skal begge modellers objective og constraints først
 gøres sammenlignelige. Trackinggevinst er ikke automatisk økonomisk profit.
 BM's nonlinearitet består også her, så WM's konveksitetsbevis kan ikke kopieres.
-
-En eventuel senere stokastisk udvidelse kan genbruge drift og tilføje BM's
-diffusion, men kræver særskilt estimation og validering. Et G-fit eller en
-G-prognose er ikke dokumentation for kalibreret parameter-/procesusikkerhed.
+Første kontrol er deterministisk; stokastisk risikokontrol er en særskilt senere
+beslutning og er ikke nødvendig for G6's usikkerhedsleverance.
 
 ## 9. Kilder og første konkrete opgave
 
