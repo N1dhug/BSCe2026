@@ -351,19 +351,21 @@ class optimized_qp_params(qp_params):
 
 
 
+
 class time_diffusion_qp:
     """Convex local QP for a strictly time-dependent WM4 diffusion variance.
 
-    The instantaneous variance is represented by a double harmonic,
+    The instantaneous process variance is represented by a double harmonic,
 
         q(t) = g(t)^2
              = beta_0
              + beta_c1*cos(w*t) + beta_s1*sin(w*t)
              + beta_c2*cos(2*w*t) + beta_s2*sin(2*w*t),
 
-    with w = 2*pi/24 h. The coefficients are fitted directly to the empirical
-    hourly variance of I from the corresponding historical weekdays. Positivity
-    q(t) >= 0 is imposed on a supplied time grid, so g(t)=sqrt(q(t)) is real.
+    with w = 2*pi/24 h. For fixed deterministic coefficients r, WM4 covariance
+    propagation is linear in q and therefore linear in beta. The QP fits the
+    propagated hourly Var(I) directly to the empirical hourly variance from the
+    corresponding historical weekdays, while enforcing q(t) >= 0.
     """
 
     def __init__(self, model): self.model = model
@@ -394,34 +396,51 @@ class time_diffusion_qp:
             "variance_amplitude_2": amp_2, "phase_2_h": phase_2,
         }
 
-    def fit(self, time_hours, observed_variance, positivity_time=None):
-        time_hours = np.asarray(time_hours, dtype=float).reshape(-1)
+    def fit(self, process_kernel, diffusion_time_hours, observed_variance, fit_mask=None):
+        process_kernel = np.asarray(process_kernel, dtype=float)
+        diffusion_time_hours = np.asarray(diffusion_time_hours, dtype=float).reshape(-1)
         observed_variance = np.asarray(observed_variance, dtype=float).reshape(-1)
-        if time_hours.size != observed_variance.size or time_hours.size < 5: raise ValueError("time_hours and observed_variance must have the same length with at least five samples.")
+        if process_kernel.ndim != 2: raise ValueError("process_kernel must be a two-dimensional matrix.")
+        if process_kernel.shape[0] != observed_variance.size: raise ValueError("process_kernel rows must match observed_variance.")
+        if process_kernel.shape[1] != diffusion_time_hours.size: raise ValueError("process_kernel columns must match diffusion_time_hours.")
+        if not np.all(np.isfinite(process_kernel)): raise ValueError("process_kernel must contain finite values.")
         if not np.all(np.isfinite(observed_variance)) or np.any(observed_variance < 0.0): raise ValueError("observed_variance must contain finite nonnegative values.")
 
-        X = self.design(time_hours)
-        positivity_time = time_hours if positivity_time is None else np.asarray(positivity_time, dtype=float).reshape(-1)
-        Phi = self.design(positivity_time)
+        Phi = self.design(diffusion_time_hours)
+        propagated_design = process_kernel @ Phi
+        if fit_mask is None:
+            fit_mask = np.linalg.norm(process_kernel, axis=1) > 0.0
+        fit_mask = np.asarray(fit_mask, dtype=bool).reshape(-1)
+        if fit_mask.size != observed_variance.size or np.count_nonzero(fit_mask) < 5: raise ValueError("fit_mask must select at least five observed variance samples.")
+
+        X = propagated_design[fit_mask]
+        y = observed_variance[fit_mask]
         beta = self.model._least_squares_qp(
-            X, observed_variance,
+            X, y,
             A_ub=-Phi, b_ub=np.zeros(Phi.shape[0], dtype=float),
             ridge=self.model._FIT_RIDGE,
         )
-        fitted_variance = X @ beta
-        fitted_variance = np.maximum(fitted_variance, 0.0)
-        fitted_std = np.sqrt(fitted_variance)
+
+        instantaneous_variance = np.maximum(Phi @ beta, 0.0)
+        propagated_variance = np.maximum(propagated_design @ beta, 0.0)
+        propagated_std = np.sqrt(propagated_variance)
         observed_std = np.sqrt(observed_variance)
-        variance_residual = fitted_variance - observed_variance
-        std_residual = fitted_std - observed_std
+        variance_residual = propagated_variance - observed_variance
+        std_residual = propagated_std - observed_std
+        fit_variance_residual = variance_residual[fit_mask]
+        fit_std_residual = std_residual[fit_mask]
         result = {
             "beta": np.asarray(beta, dtype=float),
-            "fitted_variance": fitted_variance, "fitted_std": fitted_std,
+            "instantaneous_variance": instantaneous_variance,
+            "diffusion": np.sqrt(instantaneous_variance),
+            "propagated_variance": propagated_variance,
+            "propagated_std": propagated_std,
+            "fit_mask": fit_mask.copy(),
             "variance_residual": variance_residual, "std_residual": std_residual,
-            "variance_mse": float(np.mean(variance_residual ** 2)),
-            "variance_rmse": float(np.sqrt(np.mean(variance_residual ** 2))),
-            "std_rmse": float(np.sqrt(np.mean(std_residual ** 2))),
-            "std_mae": float(np.mean(np.abs(std_residual))),
+            "variance_mse": float(np.mean(fit_variance_residual ** 2)),
+            "variance_rmse": float(np.sqrt(np.mean(fit_variance_residual ** 2))),
+            "std_rmse": float(np.sqrt(np.mean(fit_std_residual ** 2))),
+            "std_mae": float(np.mean(np.abs(fit_std_residual))),
         }
         result.update(self.amplitude_phase(beta))
         return result
