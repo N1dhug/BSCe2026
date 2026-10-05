@@ -60,6 +60,10 @@ særskilt fit; det gamle resultat må hverken overskrives eller ommærkes.
    hour-start og foreløbig Copenhagen-tid; det er arbejdsantagelser, ikke
    uafhængig metadata. H2's interval-likelihood er implementeret men endnu
    ikke numerisk fit-ready. Se [H2_HOURLY_INTERVALS.md](H2_HOURLY_INTERVALS.md).
+   Samtidigt er [H2's positive CN-kontrol](H2_INTERVAL_CHARACTERISTIC_CONTROL.md)
+   nu bestået på ét fast lineært, syntetisk døgn. Den historiske fitter er
+   fortsat uændret. Genbrug denne evidens ved videre intervalarbejde; der
+   mangler bredere kurve/støj- og tidsfeltkontroller samt runtime/adapter.
 5. Prisnormalisering er frosset på TRAIN. Februarpriser uden for domænet
    giver korrekt afvisning; de må ikke klippes eller bruges til efterfølgende
    ændring af januarfittets skala. Faktiske DK1-spotpriser er en deklareret
@@ -371,7 +375,7 @@ modelbenchmarks eller krav om at skifte model for rutineimplementation.
 
 | Opgave | Anbefalet niveau | Konkret afgrænsning |
 |---|---|---|
-| A1: stokastisk timeinterval-likelihood | **Astra XHigh** | Læs H2_HOURLY_INTERVALS og de gemte negative numerikresultater. Forklar likelihoodfejl/akkumulatordispersion og vurder en billigere tilstrækkeligt præcis metode, f.eks. en afgrænset tilted-generator/Feynman–Kac-vej. Bevar korrekt joint state/interval-observation og nuværende tolerancer. Start med design og en lille uafhængig reference; intet fuldt historisk optimizerfit. |
+| A1: stokastisk timeinterval-likelihood | **Astra XHigh** | Læs H2_HOURLY_INTERVALS og H2_INTERVAL_CHARACTERISTIC_CONTROL. Genbrug det beståede positive CN-panel og de ni uafhængige tests. Review næste kurve/støj-, frekvens/periode- og tidsvarierende baseline/pris-kontroller, log-state-checkpointadapter og et afgrænset runtimebudget. Bevar korrekt joint state/interval-observation og nuværende tolerancer. Små nye referencesammenligninger afklarer konkrete åbne risici; intet fuldt historisk optimizerfit eller genkørsel af det beståede panel alene for review. |
 | A2: posterior → stokastisk prisstyring | **Astra High** | Review parameter–state-afhængighed, mixture/FV-paritet, enheder, forventet kvadratisk tab inklusive varians, posterior-initialiseret EM og cutoff i P4–P6 før samlet metodeaccept. Rutineadaptere kan fortsat implementeres af Sol. |
 
 A1 er nødvendig før historisk intervalbaseret G8/H2-estimation, men blokerer
