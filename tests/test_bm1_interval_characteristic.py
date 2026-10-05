@@ -170,6 +170,24 @@ class CharacteristicIntervalTests(unittest.TestCase):
                 self.assertEqual(cached['operator_reuse']['factor_builds'],1)
                 self.assertEqual(cached['operator_reuse']['factor_hits'],63)
 
+    def test_narrow_exact_phase_tails_fail_existing_guards_without_state_error(self):
+        # No time integration or FV error: constant state rewards give exact
+        # Gaussian likelihoods. A negligible truncation bound cannot eliminate
+        # floating-point cancellation of the tiny conditional densities.
+        rewards,prior = np.array([.05,.5,.95]),np.array([.2,.5,.3])
+        value,center,sigma = .6,.5,.04
+        tilt = (value-center)/sigma**2
+        omega = 2.*np.pi*np.arange(129)/2.
+        exact_log_density = gaussian_log_likelihood(center,rewards,sigma)
+        self.assertTrue(np.all(exact_log_density[[0,2]] < -60.))
+        prediction = dict(cf=np.exp(1j*(rewards-center)[:,None]*omega),
+            log_amplitude=np.log(prior)+tilt*(rewards-center),frequencies=omega,
+            span=2.,tilt=tilt,center=center)
+        original = prediction['cf'].copy()
+        with self.assertRaises(CharacteristicNumericalError):
+            characteristic_gaussian_update(prediction,value,sigma)
+        np.testing.assert_array_equal(prediction['cf'],original)
+
 
 if __name__ == '__main__':
     unittest.main()

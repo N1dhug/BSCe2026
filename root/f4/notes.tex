@@ -108,6 +108,40 @@ For intervalenergi udelades divisionen med \(\Delta_k\). Ingen af disse er autom
 \end{equation}
 og propagerer den fælles lov for \((X,Z)\) inden observation af integralet. Dette er en reel ekstra dimension. En midtpunktsapproksimation er enklere, men skal benævnes og undersøges som en approksimation. F4-0 afviser intervaldata i punktkontrakten frem for at vælge en model i stilhed.
 
+\subsection{H2: særskilt transformkontrol for timegennemsnit}
+Den senere H2-udviklingskode indfører en separat intervalkontrakt; den ændrer
+ikke F4's punktobservationer eller historiske accept. For én time med længde
+\(\Delta\) defineres \(Z_t=\Delta^{-1}\int_{t_0}^t(D_s-c)\dd s\).
+På et fast finite-state FV-grid har den transformerede terminalmasse formen
+\[
+ F_j(q,t)=\mathbb E[e^{qZ_t}\mathbf 1_{\{X_t\in V_j\}}],\qquad
+ \dot F=\left(Q(t)+\frac q\Delta\operatorname{diag}(D(t)-c)\right)F.
+\]
+Gaussian evidence inverteres med en periodisk Fourier-serie og den eksakte
+tilt-identitet, hvor \(s=(y-c)/\sigma_y^2\):
+\[
+ \varphi_{\sigma_y}(y-A)=
+ e^{-(y-c)^2/(2\sigma_y^2)}e^{s(A-c)}\varphi_{\sigma_y}(c-A).
+\]
+Positive amplituder lagres i log-form. Tilstandstrinnet
+\((I-hQ/2)^{-1}(I+hQ/2)\) anvendes kun, når den eksplicitte halvdel er
+ikke-negativ. Symmetriske reward-halvtrin er andenordens ved de registrerede
+konstante B/U inden for hver time; vilkårligt venstrefrosne tidsfelter får
+ingen sådan claim.
+
+Det lineære case og et shared fire-stykkers case med \(\sigma_y=0.16\) består
+de gemte udviklingschecks. Et shared to-stykkers case med \(\sigma_y=0.04\)
+fejler alle fem replays ved første betingede Fourier-inversion, også efter
+finere tid/rum, flere frekvenser og ændret periode. Log-amplituder afhjælper
+underflow, men ikke cancellation i små betingede tætheder. En eksakt tre-state-
+reference uden dynamik og en direkte fase-reference isolerer problemet uden
+FV- eller tidsfejl; de eksisterende guards afviser begge uafklarede tilfælde.
+Ingen clipping, probability floor eller posterior-repair indføres. Råresultater,
+scope og næste matematikreview findes i
+\texttt{root/H2\_INTERVAL\_CHARACTERISTIC\_CONTROL.md} og
+\texttt{root/H2\_INTERVAL\_ASTRA\_HANDOFF.md}. Historisk fitter/reference er
+uændret, og H2/H3-readiness forbliver falsk.
+
 \section{Fokker--Planck-prediction på det eksisterende FV-grid}
 \subsection{Den kontinuerte ligning}
 Mellem målinger følger tæthedens prediction
