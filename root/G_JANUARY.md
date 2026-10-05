@@ -50,16 +50,16 @@ Der er ét parameterfit for måneden, ingen daglige resets eller genfit for figu
 
 ## Kørsel på eksisterende checkout
 
-PR #66 er merged. Januarvisningen tilføjes i den efterfølgende branch
-`feature/g-january-fit-view`. Indtil den er merged, og når ingen aktiv kørsel
-bruger checkoutet, kan den køres direkte:
+PR #66 og #68 er merged. Den efterfølgende datadækning/audit-rettelse ligger
+i `feature/g-january-data-audit`. Når ingen aktiv kørsel bruger checkoutet,
+kan hele januarvisningen med rettelsen køres direkte:
 
 ```powershell
 git fetch origin
 if ($LASTEXITCODE -ne 0) { throw 'Fetch fejlede.' }
-git switch feature/g-january-fit-view
+git switch feature/g-january-data-audit
 if ($LASTEXITCODE -ne 0) { throw 'Branchskift fejlede.' }
-git pull --ff-only origin feature/g-january-fit-view
+git pull --ff-only origin feature/g-january-data-audit
 if ($LASTEXITCODE -ne 0) { throw 'Git-opdatering fejlede.' }
 
 $outputDir = Join-Path 'files/output/bm_1/runs/deterministic' ('g_january_fit_' + (Get-Date -Format 'yyyyMMdd_HHmmss_fff'))
@@ -69,7 +69,7 @@ if (Test-Path (Join-Path $outputDir 'fit.png')) { Start-Process (Join-Path $outp
 if ($fitExitCode -ne 0) { throw 'Fit/sammenligning er uafsluttet eller afvist; BM-figuren åbnes hvis den er tilgængelig. Se den viste outputmappe.' }
 ```
 
-Efter merge af januarvisningen kan den normale fit+prognose køres på main:
+Efter merge af audit-rettelsen kan både fit-only og fit+prognose køres på main:
 
 ```powershell
 git pull --ff-only origin main
@@ -94,8 +94,22 @@ er særskilt én-fitugesvariant med 24 timers warm-up og samme protokol for BM/W
 Kort dataaudit uden fit:
 
 ```powershell
-python -B -m src.exe.run_model.bm_1.deterministic --month 2022-01 --audit-only
+python -B -m src.exe.run_model.bm_1.deterministic --month 2022-01 --tag MED --fit-only --audit-only
 ```
+
+Dataaudit fungerer også når input ikke består fitkravet: `data_audit.json`
+gemmer for Demand/Price/Temp antal manglende timer, de første otte tidspunkter
+og den tilgængelige daterange. Terminalen viser samme korte oversigt.
+`--audit-only` udfører ingen parameterfit og returnerer 0, når rapporten er
+skrevet; `fit_ready` i rapporten afgør, om data er komplette. Den tidligere
+tekst om mindst 168 observationer var misvisende for en 744-timers måned med
+et enkelt hul. Rå huller er stadig ikke erstattet med opdigtede observationer.
+Vejrhentningen dækker nu den ønskede start, også når første rå demand-time
+ligger senere; dette skaber ingen manglende demand-observation.
+
+Pris-workbooken på repoet blev kontrolleret: alle 744 januartimer har en DK1-pris.
+Johans lokale stop 5. oktober vedrører endnu uafklaret Demand/Temp-dækning;
+rapporten skal afklare det før en ændret datakontrakt eller et nyt fit.
 
 Reproducerbar syntetisk integration uden workbook/DMI:
 

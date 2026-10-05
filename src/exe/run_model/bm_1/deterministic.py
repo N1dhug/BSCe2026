@@ -156,7 +156,8 @@ def main(argv=None):
     from src.params.bm_1_deterministic import BM1DeterministicConfig
     from src.exe.run_model.wm_4.fit_daily import INIT_F
     from src.method.bm_1_deterministic_benchmark import run_benchmark
-    from src.tools.bm_1_deterministic_data import load_raw_frame, raw_csv, prepare_frame
+    from src.tools.bm_1_deterministic_data import (load_raw_frame,raw_csv,prepare_frame,
+                                                 training_data_audit,training_audit_text)
     from src.tools.bm_1_reports import _RunLock, _atomic_report
     from src.exe.run_model.progress import runtime_text
     from time import perf_counter
@@ -199,15 +200,18 @@ def main(argv=None):
                 raw = synthetic_january()
             else:
                 raw = raw_csv(args.input_csv) if args.input_csv else load_raw_frame(args.data_directory,start-pd.Timedelta(hours=warmup),data_end,args.tag,cutoff=end)
+            coverage = training_data_audit(raw,start,end)
+            _atomic_report(directory/'data_audit.json',coverage)
+            print(training_audit_text(coverage),flush=True)
+            if args.audit_only:
+                print(f'Data audit saved: {directory}; no parameter fit performed.',flush=True)
+                return 0
             frame, scales = prepare_frame(raw,start,end,price_bounds=args.price_bounds)
             audit = {'training_start':str(start),'training_end_exclusive':str(end),'scales':scales,
-                     'samples':int((end-start).total_seconds()/3600),'tag':args.tag,
+                     'samples':int((end-start).total_seconds()/3600),'tag':args.tag,'coverage':coverage,
                      'contract':'hourly-point-approximation, metadata unresolved',
                      'raw_fingerprint':hashlib.sha256(pd.util.hash_pandas_object(raw,index=True).values.tobytes()).hexdigest()}
             _atomic_report(directory/'audit.json',audit)
-            if args.audit_only:
-                print(f'Audit saved: {directory}',flush=True)
-                return 0
             result = run_benchmark(raw,start,end,config=config,warmup_hours=warmup,
                                    forecast_hours=forecast_hours,
                                    wm_steps_per_hour=args.wm_steps_per_hour,price_bounds=args.price_bounds,

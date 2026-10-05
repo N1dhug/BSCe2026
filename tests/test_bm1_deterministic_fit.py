@@ -6,7 +6,7 @@ from src.model.bm_1 import bm_1
 from src.params.bm_1_deterministic import BM1DeterministicConfig
 from src.method.bm_1_deterministic_fit import (BM1DeterministicInputs, fit_deterministic,
                                             exact_linear_interval, BudgetStop)
-from src.tools.bm_1_deterministic_data import prepare_frame, common_inputs
+from src.tools.bm_1_deterministic_data import prepare_frame,common_inputs,training_data_audit
 from src.exe.run_model.wm_4.output_model import statistical_output
 
 
@@ -122,8 +122,16 @@ class DataCutoffTests(unittest.TestCase):
 
     def test_gaps_and_future_price_domain_fail_without_clipping(self):
         raw = self.raw()
-        with self.assertRaises(ValueError):
-            prepare_frame(raw.drop(raw.index[4]),'2022-01-01','2022-01-09')
+        missing = raw.copy(); missing.loc[raw.index[4],'Demand'] = np.nan
+        audit = training_data_audit(missing,'2022-01-01','2022-01-09')
+        self.assertFalse(audit['fit_ready'])
+        self.assertEqual(audit['complete_hours'],191)
+        self.assertEqual(audit['columns']['Demand']['first_missing'],['2022-01-01 04:00:00'])
+        self.assertEqual(audit['columns']['Price']['missing_hours'],0)
+        with self.assertRaisesRegex(ValueError,'Demand: missing=1'):
+            prepare_frame(missing,'2022-01-01','2022-01-09')
+        dropped = training_data_audit(raw.drop(raw.index[4]),'2022-01-01','2022-01-09')
+        self.assertEqual(dropped['columns']['Temp']['missing_hours'],1)
         frame,_ = prepare_frame(raw,'2022-01-01','2022-01-09')
         model = statistical_output().fit(frame,'2022-01-09')
         frame.loc[frame.index>=pd.Timestamp('2022-01-09'),'U'] = 1.1
@@ -142,7 +150,7 @@ class DataCutoffTests(unittest.TestCase):
             return pd.Series(5.,index=idx)
         cutoff = pd.Timestamp('2022-01-09')
         with patch(module+'input_data'),patch(module+'spot_price_data'),patch(module+'weather_data'), \
-             patch(module+'consumption_series',return_value=raw.Demand), \
+             patch(module+'consumption_series',return_value=raw.Demand.iloc[1:]), \
              patch(module+'price_series',return_value=raw.Price),patch(module+'temperature_series',side_effect=temperatures):
             load_raw_frame('.',raw.index[0],'2022-01-11',cutoff=cutoff)
             load_raw_frame('.',raw.index[0],cutoff,cutoff=cutoff)
