@@ -355,12 +355,10 @@ class optimized_qp_params(qp_params):
 class time_diffusion_qp:
     """Convex local QP for a strictly time-dependent WM4 diffusion variance.
 
-    The instantaneous process variance is represented by a double harmonic,
+    The instantaneous process variance is represented by a single harmonic,
 
         q(t) = g(t)^2
-             = beta_0
-             + beta_c1*cos(w*t) + beta_s1*sin(w*t)
-             + beta_c2*cos(2*w*t) + beta_s2*sin(2*w*t),
+             = beta_0 + beta_c*cos(w*t) + beta_s*sin(w*t),
 
     with w = 2*pi/24 h. For fixed deterministic coefficients r, WM4 covariance
     propagation is linear in q and therefore linear in beta. The QP fits the
@@ -378,22 +376,18 @@ class time_diffusion_qp:
         return np.column_stack((
             np.ones(time_hours.size, dtype=float),
             np.cos(omega * time_hours), np.sin(omega * time_hours),
-            np.cos(2.0 * omega * time_hours), np.sin(2.0 * omega * time_hours),
         ))
 
     @staticmethod
     def amplitude_phase(beta):
         beta = np.asarray(beta, dtype=float).reshape(-1)
-        if beta.size != 5 or not np.all(np.isfinite(beta)): raise ValueError("beta must contain five finite double-harmonic coefficients.")
+        if beta.size != 3 or not np.all(np.isfinite(beta)): raise ValueError("beta must contain three finite single-harmonic coefficients.")
         omega = 2.0 * np.pi / 24.0
-        amp_1 = float(np.hypot(beta[1], beta[2]))
-        amp_2 = float(np.hypot(beta[3], beta[4]))
-        phase_1 = float(np.mod(np.arctan2(beta[2], beta[1]) / omega, 24.0))
-        phase_2 = float(np.mod(np.arctan2(beta[4], beta[3]) / (2.0 * omega), 12.0))
+        amplitude = float(np.hypot(beta[1], beta[2]))
+        phase = float(np.mod(np.arctan2(beta[2], beta[1]) / omega, 24.0))
         return {
             "variance_baseline": float(beta[0]),
-            "variance_amplitude_1": amp_1, "phase_1_h": phase_1,
-            "variance_amplitude_2": amp_2, "phase_2_h": phase_2,
+            "variance_amplitude": amplitude, "phase_h": phase,
         }
 
     def fit(self, process_kernel, diffusion_time_hours, observed_variance, initial_variance=None, fit_mask=None):
@@ -410,7 +404,7 @@ class time_diffusion_qp:
         initial_variance = np.asarray(initial_variance, dtype=float).reshape(-1)
         if initial_variance.size != observed_variance.size or not np.all(np.isfinite(initial_variance)) or np.any(initial_variance < 0.0): raise ValueError("initial_variance must match observed_variance and be finite and nonnegative.")
 
-        # The empirical target is hourly, so fit the double harmonic on the
+        # The empirical target is hourly, so fit the single harmonic on the
         # 24 physical hours only. During fine-grid covariance propagation the
         # fitted hourly q values are held constant within each hour. This keeps
         # the deterministic WM4 propagation at its original resolution while
@@ -424,7 +418,7 @@ class time_diffusion_qp:
         if fit_mask is None:
             fit_mask = np.ones(observed_variance.size, dtype=bool)
         fit_mask = np.asarray(fit_mask, dtype=bool).reshape(-1)
-        if fit_mask.size != observed_variance.size or np.count_nonzero(fit_mask) < 5: raise ValueError("fit_mask must select at least five observed variance samples.")
+        if fit_mask.size != observed_variance.size or np.count_nonzero(fit_mask) < 3: raise ValueError("fit_mask must select at least three observed variance samples.")
 
         X = propagated_design[fit_mask]
         y = (observed_variance - initial_variance)[fit_mask]
@@ -438,7 +432,7 @@ class time_diffusion_qp:
         constant_q = float((response_fit @ y) / denominator) if denominator > 0.0 else float(np.mean(y))
         positivity_eps = max(1e-12, 1e-10 * max(1.0, abs(constant_q)))
         constant_q = max(constant_q, 10.0 * positivity_eps)
-        x0 = np.array([constant_q, 0.0, 0.0, 0.0, 0.0], dtype=float)
+        x0 = np.array([constant_q, 0.0, 0.0], dtype=float)
 
         beta = self.model._least_squares_qp(
             X, y,
@@ -480,7 +474,7 @@ class time_diffusion_qp:
         Phi_hour = self.design(np.arange(24, dtype=float))
         hour_bin = np.floor(np.mod(time_hours, 24.0) + 1e-12).astype(int)
         hour_bin = np.clip(hour_bin, 0, 23)
-        hourly_variance = np.maximum(Phi_hour @ np.asarray(beta, dtype=float).reshape(5), 0.0)
+        hourly_variance = np.maximum(Phi_hour @ np.asarray(beta, dtype=float).reshape(3), 0.0)
         q = hourly_variance[hour_bin]
         return {"variance": q, "std": np.sqrt(q), "hourly_variance": hourly_variance}
 
