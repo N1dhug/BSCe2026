@@ -149,6 +149,29 @@ class wm_4(wm):
             "theta": np.asarray(theta, dtype=float).copy(),
         }
 
+    def process_variance_kernel(self, state, sample_indices):
+        """Exact Euler kernel mapping fine-grid g^2 to sampled Var(I)=Var(R), with P0=0."""
+        if "r" not in state: raise ValueError("state is missing required entry 'r'.")
+        r = wm_4_validation.r_coefficients(state["r"])
+        indices = np.asarray(sample_indices, dtype=int).reshape(-1)
+        if indices.size < 1 or np.any(indices < 0) or np.any(indices >= self.t_steps): raise ValueError("sample_indices must lie in [0, t_steps).")
+
+        transition = np.array([
+            [1.0, self.dt],
+            [self.dt * r[0], 1.0 + self.dt * r[2]],
+        ], dtype=float)
+        max_index = int(np.max(indices))
+        impulse = np.empty(max_index, dtype=float)
+        response = np.array([0.0, 1.0], dtype=float)
+        for lag in range(max_index):
+            impulse[lag] = response[1]
+            response = transition @ response
+
+        kernel = np.zeros((indices.size, self.t_steps), dtype=float)
+        for row, index in enumerate(indices):
+            if index > 0: kernel[row, :index] = self.dt * impulse[:index][::-1] ** 2
+        return kernel
+
     def sensitivity(self, parameters):
         """Euler sensitivity of [F,R] and I=O+R to the initial state [F0,R0]."""
         r = parameters["r"] if isinstance(parameters, dict) else parameters
