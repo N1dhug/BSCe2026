@@ -396,7 +396,7 @@ class time_diffusion_qp:
             "variance_amplitude_2": amp_2, "phase_2_h": phase_2,
         }
 
-    def fit(self, process_kernel, diffusion_time_hours, observed_variance, fit_mask=None):
+    def fit(self, process_kernel, diffusion_time_hours, observed_variance, initial_variance=None, fit_mask=None):
         process_kernel = np.asarray(process_kernel, dtype=float)
         diffusion_time_hours = np.asarray(diffusion_time_hours, dtype=float).reshape(-1)
         observed_variance = np.asarray(observed_variance, dtype=float).reshape(-1)
@@ -405,16 +405,20 @@ class time_diffusion_qp:
         if process_kernel.shape[1] != diffusion_time_hours.size: raise ValueError("process_kernel columns must match diffusion_time_hours.")
         if not np.all(np.isfinite(process_kernel)): raise ValueError("process_kernel must contain finite values.")
         if not np.all(np.isfinite(observed_variance)) or np.any(observed_variance < 0.0): raise ValueError("observed_variance must contain finite nonnegative values.")
+        if initial_variance is None:
+            initial_variance = np.zeros_like(observed_variance)
+        initial_variance = np.asarray(initial_variance, dtype=float).reshape(-1)
+        if initial_variance.size != observed_variance.size or not np.all(np.isfinite(initial_variance)) or np.any(initial_variance < 0.0): raise ValueError("initial_variance must match observed_variance and be finite and nonnegative.")
 
         Phi = self.design(diffusion_time_hours)
         propagated_design = process_kernel @ Phi
         if fit_mask is None:
-            fit_mask = np.linalg.norm(process_kernel, axis=1) > 0.0
+            fit_mask = np.ones(observed_variance.size, dtype=bool)
         fit_mask = np.asarray(fit_mask, dtype=bool).reshape(-1)
         if fit_mask.size != observed_variance.size or np.count_nonzero(fit_mask) < 5: raise ValueError("fit_mask must select at least five observed variance samples.")
 
         X = propagated_design[fit_mask]
-        y = observed_variance[fit_mask]
+        y = (observed_variance - initial_variance)[fit_mask]
 
         # A zero start makes every q(t)>=0 constraint active simultaneously,
         # which is highly degenerate for the active-set solver. Start from the
@@ -434,7 +438,8 @@ class time_diffusion_qp:
         )
 
         instantaneous_variance = np.maximum(Phi @ beta, 0.0)
-        propagated_variance = np.maximum(propagated_design @ beta, 0.0)
+        process_variance = np.maximum(propagated_design @ beta, 0.0)
+        propagated_variance = np.maximum(initial_variance + process_variance, 0.0)
         propagated_std = np.sqrt(propagated_variance)
         observed_std = np.sqrt(observed_variance)
         variance_residual = propagated_variance - observed_variance
@@ -445,6 +450,8 @@ class time_diffusion_qp:
             "beta": np.asarray(beta, dtype=float),
             "instantaneous_variance": instantaneous_variance,
             "diffusion": np.sqrt(instantaneous_variance),
+            "initial_variance": initial_variance.copy(),
+            "process_variance": process_variance,
             "propagated_variance": propagated_variance,
             "propagated_std": propagated_std,
             "fit_mask": fit_mask.copy(),
