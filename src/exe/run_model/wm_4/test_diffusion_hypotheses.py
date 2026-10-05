@@ -17,6 +17,7 @@ from src.params.wm_4 import optimized_qp_params
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "uncertainty" / "diffusion_hypotheses"
 HYPOTHESES = ("H0", "H1", "H2")
+ALPHA = 0.05
 PARAMETER_NAMES = {
     "H0": ("sigma_0", "sigma_t", "phase_h"),
     "H1": ("sigma_0", "sigma_t", "phase_h", "sigma_I"),
@@ -143,7 +144,7 @@ def interval_score(y, lower, upper, alpha=0.05):
     return score
 
 
-def evaluate_hypothesis(hypothesis, theta, records, alpha=0.05):
+def evaluate_hypothesis(hypothesis, theta, records, alpha=ALPHA):
     sigma_errors, sigma_errors_all = [], []
     covered, covered_all, widths, scores = [], [], [], []
     by_hour = []
@@ -192,7 +193,7 @@ def evaluate_hypothesis(hypothesis, theta, records, alpha=0.05):
     correlation = np.corrcoef(observed, predicted)[0, 1] if np.std(observed) > 0.0 and np.std(predicted) > 0.0 else np.nan
 
     summary = {
-        "hypothesis": hypothesis, "test_days": len(records),
+        "hypothesis": hypothesis, "test_days": len(records), "nominal_coverage_pct": 100.0 * (1.0 - alpha),
         "sigma_rmse_h1_23": float(np.sqrt(np.mean(process_error ** 2))),
         "sigma_mae_h1_23": float(np.mean(np.abs(process_error))),
         "sigma_bias_h1_23": float(np.mean(process_error)),
@@ -284,7 +285,6 @@ def main():
     parser.add_argument("--weeks", type=int, default=DEFAULT_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--train-fraction", type=float, default=0.70, help="Chronological fraction of usable prediction days used to fit shared diffusion parameters.")
-    parser.add_argument("--alpha", type=float, default=0.05, help="Prediction interval tail probability; default 0.05 gives 95% intervals.")
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
     parser.add_argument("--fail-fast", action="store_true")
@@ -292,7 +292,6 @@ def main():
     args = parser.parse_args()
 
     if not 0.2 <= args.train_fraction <= 0.9: raise ValueError("train-fraction must lie in [0.2, 0.9].")
-    if not 0.0 < args.alpha < 1.0: raise ValueError("alpha must lie in (0,1).")
 
     frame, _ = aligned_wm4_data("MED")
     records, skipped = build_records(
@@ -307,11 +306,12 @@ def main():
     summaries, daily_frames, hourly_frames = [], [], []
     for hypothesis in HYPOTHESES:
         theta, train_loss = fit_hypothesis_deterministic(hypothesis, train)
-        summary, daily, hourly = evaluate_hypothesis(hypothesis, theta, test, alpha=args.alpha)
+        summary, daily, hourly = evaluate_hypothesis(hypothesis, theta, test, alpha=ALPHA)
         summary["train_sigma_mse_h1_23"] = train_loss
         summaries.append(summary); daily_frames.append(daily); hourly_frames.append(hourly)
 
     summary = pd.DataFrame(summaries)
+    summary["coverage_rank_95"] = summary["coverage_error_95_h1_23_pct_points"].rank(method="min", ascending=True).astype(int)
     daily = pd.concat(daily_frames, ignore_index=True)
     hourly = pd.concat(hourly_frames, ignore_index=True)
     by_hour = hourly_comparison(hourly)
