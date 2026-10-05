@@ -11,23 +11,56 @@ og rekursiv estimation (G8), baseret på eksisterende F-arbejde.
 
 ## Næste trin: G3 fra det gemte januarfit
 
-Se [Sol-overdragelsen, P0–P2](G_IMPLEMENTATION_HANDOFF.md). Den eksisterende
-kommando nedenfor starter et nyt fit; den er **ikke** en fortsættelseskommando
-for `g_january_fit_20261005_154824`. En separat snapshot-/forecast-only-vej
-skal implementeres først. Der er endnu ingen sådan CLI-kommando at køre.
+Se [Sol-overdragelsen, P0–P2](G_IMPLEMENTATION_HANDOFF.md). G3's gemt-fit-vej
+er nu implementeret og syntetisk kontrolleret. Fra repo-roden, når ingen
+kørsel bruger checkoutet, kan Johan fortsætte den originale januarmappe:
+
+```powershell
+git fetch origin
+if ($LASTEXITCODE -ne 0) { throw "Fetch fejlede." }
+git switch main
+if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Pull fejlede." }
+
+$fitDir = "files/output/bm_1/runs/deterministic/g_january_fit_20261005_154824"
+if (-not (Test-Path "$fitDir/result.json")) { throw "Den originale fitmappe mangler." }
+$outputDir = "files/output/bm_1/runs/deterministic/g_january_forecast_" + (Get-Date -Format "yyyyMMdd_HHmmss")
+python -B -m src.exe.run_model.bm_1.deterministic --from-fit $fitDir --output $outputDir
+$forecastExitCode = $LASTEXITCODE
+if (Test-Path "$outputDir/week.png") { Start-Process "$outputDir/week.png" }
+if ($forecastExitCode -ne 0) { throw "Forecast eller scoring er afvist; se outputmappen. Et gemt forecast bevares." }
+```
+
+Ingen januaroptimering udføres. Forecast har 168 timer fra den gemte cutoff;
+baseline, parametre, skala, sluttilstande og numerik er frosne. `--audit-only`
+med samme `--from-fit` og ny outputmappe kontrollerer alene indlæsning/pris/
+temperatur. `--input-csv FILE` kan levere rå `Datetime,Price,Temp` og optional
+Demand; uden Demand bliver status `not-scored`. Default læser først pris/vejr,
+gemmer prognosen og åbner derefter demand-workbooken alene til scoring.
 
 Bevar originalmappen, især manifest/fit/result og finegrid-CSV med WM's F/R
-på cutoff. Den nye vej skal videreføre uafrundede parametre, samme fitted
-baseline/skala og eksakte BM/WM-sluttilstande uden optimering. Prognosen skal
-gemmes før optional scoring; missing future demand må kun begrænse score og
-coverage, ikke fjerne en gyldig simulation. Dette er planlagt adfærd.
+på cutoff. Nye fits skriver `fit_snapshot.json`; import af 07fad9f kontrollerer
+originalfiler/source og bruger det eksakte finegrid-endpoint. LF/CRLF er
+understøttet. WM's senere H5-støjtilføjelse er særskilt reviewed som uændret
+deterministisk numerik; øvrig uverificerbar source afvises uden skjult refit.
+Prognosen gemmes før optional scoring. Delvis/ingen demand begrænser score
+og coverage. `forecast_predictions*.csv`, `forecast_manifest.json` og
+`forecast_status.json` bevares også ved efterfølgende scoringfejl.
+
+Priser uden for januarfittets frosne domæne giver eksplicit afvisning. Vælg
+ikke nye bounds fra februar og læg dem på det gamle fit. Et nødvendigt nyt
+udviklingsfit med en anden deklareret skala er en særskilt beslutning.
 
 Rawreview mangler fortsat. G's nuværende forbrugsgennemsnit bruger de
 målerkolonner, som er tilgængelige i hver time. 624 aggregerede måletimer er
-ikke bevis for 624 komplette timer for alle 13 MED-huse. Fast population,
-enheder og punkt/interval/tidsbetydning skal afklares før historisk validering;
-legacy-resultatet bevarer sin oprindelige udviklingskontrakt. En nødvendigt
-ændret kontrakt kan kræve et særskilt nyt fit, som ikke erstatter originalen.
+ikke bevis for 624 komplette timer for alle 13 MED-huse. Fast population
+mangler fortsat afklaring. Johan har nu deklareret timeforbrug, foreløbigt kWh og hour-start som arbejds-
+antagelser. G3-snapshot viderefører fortsat punktapproksimationen; H2's
+separate interval-likelihood er ikke numerisk fit-ready. Kontrakt og population
+skal afklares før historisk validering;
+legacy-resultatet bevarer sin oprindelige udviklingskontrakt. En ændret
+datakontrakt kan kræve et særskilt nyt fit, som ikke erstatter originalen.
 
 ## Vis fittet for januar
 
@@ -228,10 +261,12 @@ observation, fælles baseline, begge prognoser, korrektion, pris og modelstates.
 
 ### Minimumskontrol for G0–G3
 
-Standardkørslen er 10 små tests (tidligere 16 G-tests plus 32 layouttests):
+Standardkørslen er 20 små tests: de 10 eksisterende G-tests og 10 nye
+snapshot/forecast/scoring-tests. Den gennemførte kørsel med yderligere tre
+berørte layout/importkontroller gav 23 beståede tests på ca. 6.7 s.
 
 ```powershell
-python -B -m unittest tests.test_bm1_deterministic_fit -q
+python -B -m unittest tests.test_bm1_deterministic_fit tests.test_bm1_deterministic_snapshot -q
 ```
 
 | Test | Fejlrisiko |
@@ -246,6 +281,12 @@ python -B -m unittest tests.test_bm1_deterministic_fit -q
 | 8 | Huller i træningsdata eller ugyldige fremtidige priser accepteres. |
 | 9 | Vejrinterpolation krydser trænings-cutoff. |
 | 10 | Fremtidigt forbrug påvirker skala, baseline, fit eller prognose; WM-fejl taber BM-resultat. |
+
+De nye cases kontrollerer round-trip mod eksisterende BM/WM-prognose med
+nonzero BM-respons, præcis origin, ingen optimizerkald, fælles målemaske,
+delvis/ingen scoring, source-/artifact-/schemafejl, frosset prisdomæne,
+07fad9f/H5-kompatibilitet, LF/CRLF, varig eksport før scoringfejl, input-only-
+CSV, afviste fitflags og eksport af nye fits. Lange månedskørsler er ikke tests.
 
 Seks særskilte tests er fjernet: scalar-kernel-paritet, punkt/interval-forskel,
 generelle argumentchecks, separat deadlinecheck, separat baseline/skala-cutoff

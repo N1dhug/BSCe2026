@@ -27,15 +27,19 @@ ikke F-sporets aftalte rækkefølge eller dets senere prognosediagnose.
 ## Grundarbejde til næste implementation, 5. oktober
 
 [Overdragelsen til Sol](G_IMPLEMENTATION_HANDOFF.md) kortlægger aktuelle
-kodeinterfaces, mangler og små acceptkontroller fra G3 til G7/G8. Næste
-kodeopgave er versioneret fit-snapshot og forecast fra gemt fit. Den aktuelle
-CLI fitter stadig på ny; de foreslåede snapshot-/forecast-only-funktioner
-findes endnu ikke. Eksport skal adskilles fra optional scoring, så manglende
-fremtidig demand ikke bortkaster en allerede beregnet prognose.
+kodeinterfaces, mangler og små acceptkontroller fra G3 til G7/G8. P1/P2 er
+nu implementeret: `deterministic --from-fit FITDIR` fortsætter fra et gemt fit
+uden baseline/BM/WM-refit. Nye fits eksporterer `fit_snapshot.json`; den
+oprindelige 07fad9f-mappe importeres med kilde-/endpointkontrol. Forecast gemmes
+før optional scoring. Fælles målte timer, coverage og særskilt scoringstatus
+bevares ved delvis/ingen future demand. 20 G-tests samt tre layout/import-
+kontroller består på ca. 6.7 s; ingen historisk kørsel er udført her.
 
 Datagennemgangen fandt også legacy-gennemsnit over tilgængelige målere frem
-for en garanteret fast population. H2 har verificeret MED/UDEN-medlemskab,
-men enheder, punkt/interval og timestamps er uafklarede. Bevar januarfittets
+for en garanteret fast population. H2 har verificeret MED/UDEN-medlemskab.
+Johan har senere deklareret timeforbrug, foreløbigt kWh og hour-start som
+arbejdsantagelser; H2's interval-likelihood er implementeret men endnu ikke
+tilstrækkeligt numerisk præcis. Bevar januarfittets
 oprindelige kontrakt og auditér før historisk validering. Nye kontrakter
 kræver egne resultater; syntetisk udvikling af adapterne kan begynde nu.
 
@@ -731,10 +735,12 @@ andres samtidige arbejde og brug branch i eksisterende checkout, ikke nye worktr
   bounds/TRF, numerisk Jacobian og separate tællinger af derivativevalueringer.
   Kontrollér installeret SciPy før eventuel brug af nyere callback/workers-API.
 
-**Næste opgave:** Implementér P1/P2 i [G_IMPLEMENTATION_HANDOFF.md](G_IMPLEMENTATION_HANDOFF.md):
-versioneret snapshot, verificeret legacy-import og input-only-forecast med
-varig eksport før scoring. Review derefter de gemte januarresultater uden ny
-fitrunde og udfør den afgrænsede G3-prognose under den verificerede kontrakt.
+**Næste opgave:** P1/P2 i [G_IMPLEMENTATION_HANDOFF.md](G_IMPLEMENTATION_HANDOFF.md)
+er implementeret og syntetisk kontrolleret. Review de gemte januarresultater
+uden ny fitrunde og udfør `--from-fit`-prognosen under den oprindelige
+udviklingskontrakt. En pris uden for frossent TRAIN-domæne afvises uden refit.
+G3-snapshot understøtter endnu kun legacy-hourly-point; en fælles BM/WM-
+timeintervalvariant kræver en særskilt deklareret kontrakt og egne fits.
 P0 beskriver åbne datafelter; P3–P6 har adapterkort, syntetisk forsøgsudkast,
 afhængigheder, budgetter og acceptkontroller for G4/G6b/G8/G7.
 Første målsætning er G0–G3 med faste lineære kurver. Start ikke G4 eller en
@@ -742,6 +748,9 @@ fuld månedskørsel, før denne kæde fungerer og dens målinger passer til budg
 G0–G3 er implementeret og syntetisk kontrolleret. Historisk januarfit er
 rapporteret gennemført lokalt; råreview og historisk prognose mangler.
 G4–G8's nye integration og videnskabelig accept er ikke gennemført.
+Astra XHigh anbefales til den åbne præcision/runtime-opgave for H2's
+stokastiske interval-likelihood; Astra High til senere review af posterior-
+handoff og det stokastiske kontrolobjective. Se afgrænsning i overdragelsen.
 
 ### Januar: håndtering af huller, 5. oktober 2026
 

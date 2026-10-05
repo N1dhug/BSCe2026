@@ -1,5 +1,6 @@
 """G0 data contract: raw aggregates, train-only scales, common WM4 baseline."""
 from pathlib import Path
+import hashlib
 import numpy as np
 import pandas as pd
 from src.exe.run_model.wm_3.fit_weekly import consumption_series, price_series, temperature_series
@@ -30,11 +31,55 @@ def load_raw_frame(data_directory, start, end, tag='MED', *, cutoff=None):
     return pd.concat((demand.rename('Demand'), price.rename('Price'), temp.rename('Temp')), axis=1).sort_index()
 
 
-def raw_csv(path):
+def raw_csv(path, *, require_demand=True):
     frame = pd.read_csv(path, index_col='Datetime', parse_dates=['Datetime'])
-    if set(('Demand', 'Price', 'Temp')) - set(frame):
-        raise ValueError('CSV needs Datetime,Demand,Price,Temp in raw units.')
+    required = ('Demand', 'Price', 'Temp') if require_demand else ('Price', 'Temp')
+    if set(required) - set(frame):
+        raise ValueError('CSV needs Datetime,'+','.join(required)+' in raw units.')
     return frame
+
+
+def load_forecast_inputs(data_directory, start, end):
+    """Price/weather only: no demand workbook or fitting history is opened."""
+    directory = Path(data_directory)
+    price = price_series(spot_price_data(directory/'prices.xlsx', price_area='DK1'))
+    temp = temperature_series(weather_data(cache_dir=directory/'weather_cache'), start, end)
+    index = pd.date_range(start, end, freq='h', inclusive='left')
+    return pd.DataFrame({'Price': price.reindex(index), 'Temp': temp.reindex(index)}, index=index)
+
+
+def load_forecast_observations(data_directory, start, end, tag):
+    """Optional legacy aggregate for scoring only, after predictions are saved."""
+    values = consumption_series(input_data(Path(data_directory)/'input.xlsx'), tag)
+    return values.reindex(pd.date_range(start, end, freq='h', inclusive='left'))
+
+
+def prepare_forecast_frame(raw, scales, start, end):
+    """Apply frozen scales to declared future inputs; never inspect Demand."""
+    if not isinstance(raw.index, pd.DatetimeIndex) or raw.index.has_duplicates or not raw.index.is_monotonic_increasing or raw.index.tz is not None:
+        raise ValueError('Forecast requires sorted unique local-naive DatetimeIndex.')
+    start, end = pd.Timestamp(start), pd.Timestamp(end)
+    if end <= start or start != start.floor('h') or end != end.floor('h'):
+        raise ValueError('Forecast requires ordered hour edges.')
+    if not {'Price', 'Temp'}.issubset(raw):
+        raise ValueError('Forecast requires Price and Temp only, in original raw units.')
+    off_grid = raw.index[(raw.index >= start)&(raw.index < end)&(raw.index != raw.index.floor('h'))]
+    if len(off_grid):
+        raise ValueError('Forecast inputs contain off-hour timestamps.')
+    index = pd.date_range(start, end, freq='h', inclusive='left')
+    inputs = raw.reindex(index)[['Price', 'Temp']].apply(pd.to_numeric, errors='coerce')
+    audit = {'start': str(start), 'end_exclusive': str(end), 'expected_hours': len(index),
+             'valid_hours': {name: int(np.isfinite(inputs[name]).sum()) for name in inputs},
+             'scales': dict(scales), 'demand_used': False,
+             'fingerprint': hashlib.sha256(pd.util.hash_pandas_object(inputs,index=True).values.tobytes()).hexdigest(),
+             'endpoint': 'hold final declared hourly input'}
+    if not np.isfinite(inputs.to_numpy(dtype=float)).all():
+        raise ValueError('Forecast price/temperature inputs must be complete and finite.')
+    frame = pd.DataFrame({'U': 2*(inputs.Price-scales['price_min'])/scales['price_scale']-1,
+                          'Temp': inputs.Temp}, index=index)
+    if np.any(np.abs(frame.U.to_numpy(dtype=float)) > 1):
+        raise ValueError('Price outside frozen training domain; no clipping, future rescaling or refit.')
+    return frame, audit
 
 
 def training_data_audit(raw, train_start, train_end):

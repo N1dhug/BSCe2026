@@ -4,9 +4,12 @@
 er Sol-overdragelsen fra G3: gemt-fit-snapshot og forecast uden ny optimering,
 derefter lille G4, FP/mixture/EM, rekursiv estimation og single-shooting-kontrol.
 Interfaces, datamangler, budgetter og korte acceptkontroller er kortlagt.
-Snapshot-/forecast-only-kommandoen er endnu ikke implementeret. Januarstatus
+`deterministic --from-fit FITDIR --output NEWDIR` er nu implementeret: nye
+snapshots eller kontrolleret 07fad9f-import, ingen refit og forecasteksport
+før optional scoring. 20 G-tests og tre relevante layoutchecks består.
+Historisk G3/råreview mangler fortsat. Januarstatus
 og eksisterende fitkommandoer: [G_JANUARY.md](G_JANUARY.md). G-planens fulde
-krav: [G.md](G.md); denne forberedelse giver ingen ny forsøgsaccept.
+krav: [G.md](G.md); implementationstest giver ingen historisk forsøgsaccept.
 
 **H2 pilot, 5. oktober:** `curves history-config --output PATH` skriver en
 ufuldstændig datakonfiguration. `curves history-fit --config PATH --run-dir PATH

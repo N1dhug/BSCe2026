@@ -3,6 +3,32 @@ from argparse import ArgumentParser
 from datetime import datetime, timezone
 from pathlib import Path
 import os
+import sys
+
+
+def _atomic_csv(path, frame):
+    """Replace only this run's CSV after closing a complete temporary file."""
+    import tempfile
+    fd, name = tempfile.mkstemp(prefix=path.name+'.', suffix='.partial', dir=path.parent)
+    os.close(fd)
+    temporary = Path(name)
+    try:
+        frame.to_csv(temporary, index_label='Datetime')
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def write_forecast(directory, result):
+    """Durable input-only result, before optional observations are opened."""
+    from src.tools.bm_1_reports import _atomic_report
+    for key, name in (('predictions','forecast_predictions.csv'),
+                      ('normalized_predictions','forecast_predictions_normalized.csv')):
+        _atomic_csv(directory/name, result[key].drop(columns=['observed'], errors='ignore'))
+    _atomic_report(directory/'forecast_manifest.json', _jsonable(result['manifest']))
+    _atomic_report(directory/'forecast_status.json', _jsonable({
+        'status': result['status'], 'forecast_status': result['forecast_status'],
+        'numerics': result['numerics'], 'scoring_status': 'pending'}))
 
 
 def _jsonable(value):
@@ -91,10 +117,15 @@ def write_result(directory, result):
     import matplotlib.pyplot as plt
     from src.tools.bm_1_reports import _atomic_report
     tables = {'predictions','normalized_predictions','daily_metrics','performance',
-              'fit_predictions','fit_normalized','fit_signals','fit_daily_metrics','fit_performance'}
+              'fit_predictions','fit_normalized','fit_signals','fit_daily_metrics','fit_performance','fit_snapshot'}
     plain = {k:v for k,v in result.items() if k not in tables}
     _atomic_report(directory/'manifest.json', _jsonable(result['manifest']))
     _atomic_report(directory/'fit.json', _jsonable(result['fit']))
+    if result.get('fit', {}).get('best_converged') is not None and result.get('numerics', {}).get('passed') and 'x_forecast_origin' in result:
+        from src.tools.bm_1_deterministic_snapshot import export_fit_snapshot
+        snapshot = result.get('fit_snapshot') or export_fit_snapshot(result)
+        if not (directory/'fit_snapshot.json').exists():
+            _atomic_report(directory/'fit_snapshot.json', _jsonable(snapshot))
     if 'fit_predictions' in result:
         result['fit_predictions'].to_csv(directory/'fit_predictions.csv',index_label='Datetime')
         result['fit_normalized'].to_csv(directory/'fit_predictions_normalized.csv',index_label='Datetime')
@@ -105,9 +136,10 @@ def write_result(directory, result):
         _atomic_report(directory/'result.json',_jsonable(plain))
         return
     p = result['predictions']
-    p.to_csv(directory/'predictions.csv', index_label='Datetime')
-    result['normalized_predictions'].to_csv(directory/'predictions_normalized.csv', index_label='Datetime')
-    write_performance(directory,'',result['daily_metrics'],result['performance'])
+    _atomic_csv(directory/'predictions.csv', p)
+    _atomic_csv(directory/'predictions_normalized.csv', result['normalized_predictions'])
+    if 'daily_metrics' in result:
+        write_performance(directory,'',result['daily_metrics'],result['performance'])
     fig, axes = plt.subplots(4,1,figsize=(15,11),sharex=True)
     for key in ('observed','O','bm1','wm4'):
         if key in p: axes[0].plot(p.index,p[key],label=key)
@@ -127,11 +159,67 @@ def write_result(directory, result):
     _atomic_report(directory/'result.json',_jsonable(plain))
 
 
+def run_saved_fit(args, parser, root, threads):
+    from src.tools.bm_1_deterministic_snapshot import load_fit_snapshot
+    from src.tools.bm_1_deterministic_data import (raw_csv, load_forecast_inputs,
+                                                 load_forecast_observations, prepare_forecast_frame)
+    from src.method.bm_1_deterministic_benchmark import forecast_from_snapshot, score_forecast
+    from src.tools.bm_1_reports import _RunLock, _atomic_report
+    import pandas as pd
+    directory = args.output or root/'files/output/bm_1/runs/deterministic'/datetime.now(timezone.utc).strftime('g_forecast_%Y%m%dT%H%M%SZ')
+    if directory.exists() and any(directory.iterdir()):
+        parser.error('Forecast output must be new/empty; the original fit is preserved.')
+    directory.mkdir(parents=True, exist_ok=True)
+    with _RunLock(directory), threads:
+        try:
+            snapshot = load_fit_snapshot(args.from_fit)
+            _atomic_report(directory/'fit_snapshot.json', _jsonable(snapshot))
+            origin = pd.Timestamp(snapshot['origin'])
+            end = origin+pd.Timedelta(hours=168)
+            print(f'G3: FIT REUSED; PREDICT={origin} -> {end}; no parameter optimization; BLAS=1', flush=True)
+            if args.synthetic:
+                from src.validation.bm_1.deterministic_fit import synthetic_january
+                raw = synthetic_january()
+            else:
+                raw = raw_csv(args.input_csv, require_demand=False) if args.input_csv else load_forecast_inputs(args.data_directory, origin, end)
+            _, audit = prepare_forecast_frame(raw, snapshot['manifest']['scales'], origin, end)
+            _atomic_report(directory/'data_audit.json', audit)
+            if args.audit_only:
+                print(f'Frozen-input audit saved: {directory}; no forecast or fit performed.', flush=True)
+                return 0
+            result = forecast_from_snapshot(snapshot, raw)
+            write_forecast(directory, result)
+            try:
+                if args.synthetic or args.input_csv:
+                    observations = raw.get('Demand')
+                else:
+                    tag = snapshot['manifest'].get('data_audit', {}).get('tag')
+                    if tag is None:
+                        raise ValueError('Snapshot has no declared population tag for workbook scoring; supply an explicit observation CSV.')
+                    observations = load_forecast_observations(args.data_directory, origin, end, tag)
+                result = score_forecast(result, observations)
+            except Exception as exc:
+                # The completed input-only prediction remains durable and reviewable.
+                result = score_forecast(result, None)
+                result['scoring']['status'] = 'failed'
+                result['scoring_failure'] = {'type': type(exc).__name__, 'message': str(exc)}
+            write_result(directory, result)
+            print(f"status={result['status']}; scoring={result['scoring']['status']}; output={directory}", flush=True)
+            print(result['scoring'], flush=True)
+            if result['metrics']: print(result['metrics'], flush=True)
+            return 0 if result['status']=='complete' and result['scoring']['status']!='failed' else 2
+        except Exception as exc:
+            _atomic_report(directory/'failure.json', {'status':'failed','type':type(exc).__name__,'message':str(exc)}, replace_existing=True)
+            print(f'{type(exc).__name__}: {exc}; output={directory}', flush=True)
+            return 2
+
+
 def main(argv=None):
-    parser = ArgumentParser(description='Budgeted deterministic BM fit with matched WM4; January is training, never test.')
+    parser = ArgumentParser(description='Budgeted deterministic BM fit, or frozen G3 forecast with matched WM4.', allow_abbrev=False)
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--month', help='Entire fit month, default 2022-01; predicts next 168 hours.')
     group.add_argument('--week', help='Monday fit start, matched one-week protocol with 24h warm-up.')
+    group.add_argument('--from-fit', type=Path, help='Reuse fit_snapshot.json or a verified legacy fit directory; forecast 168 hours without refitting.')
     parser.add_argument('--fit-only',action='store_true',help='Plot/score the training fit; no next-week inputs or February data needed.')
     parser.add_argument('--initial-state',choices=('wm-neutral','fit'),default='wm-neutral',
                         help='Default: fixed neutral x0=(1-INIT_F)/2 from WM4; fit jointly estimates x0 on training data.')
@@ -150,7 +238,13 @@ def main(argv=None):
     parser.add_argument('--wm-steps-per-hour', type=int, default=60)
     parser.add_argument('--audit-only', action='store_true')
     parser.add_argument('--output', type=Path)
-    args = parser.parse_args(argv)
+    actual_argv = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(actual_argv)
+    if args.from_fit:
+        forbidden = {'--fit-only','--initial-state','--tag','--price-bounds','--warmup-hours',
+                     '--starts','--max-calls','--seconds','--bm-steps-per-hour','--wm-steps-per-hour'}
+        conflicting = sorted({token.split('=')[0] for token in actual_argv}&forbidden)
+        if conflicting: parser.error('--from-fit freezes fit/scales/numerics; remove '+', '.join(conflicting))
     os.environ.setdefault('MPLBACKEND','Agg')
     for name in ('OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','OMP_NUM_THREADS'):
         os.environ[name] = '1'
@@ -170,6 +264,9 @@ def main(argv=None):
         threads = threadpool_limits(limits=1)
     except ImportError:
         threads = nullcontext()
+    root = Path(__file__).resolve().parents[4]
+    if args.from_fit:
+        return run_saved_fit(args, parser, root, threads)
     if args.week:
         start = pd.Timestamp(args.week).normalize()
         if start.weekday() != 0: parser.error('--week must be Monday.')
@@ -179,7 +276,6 @@ def main(argv=None):
         end, warmup = start+pd.offsets.MonthBegin(1), 0
     if args.warmup_hours is not None: warmup = args.warmup_hours
     if warmup < 0: parser.error('--warmup-hours must be nonnegative.')
-    root = Path(__file__).resolve().parents[4]
     directory = args.output or root/'files/output/bm_1/runs/deterministic'/datetime.now(timezone.utc).strftime('g_january_%Y%m%dT%H%M%SZ')
     if directory.exists() and any(directory.iterdir()):
         parser.error('Output directory must be new/empty; checkpoints are not an exact optimizer resume.')

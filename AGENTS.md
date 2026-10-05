@@ -11,8 +11,11 @@ Bachelorens projekt 111866 kræver disse sammenhænge. Genbrug F2/F3/F4-kode
 og evidens; G6a's varianslag og G2's batch-LS er ikke erstatninger.
 Se kravmatrix, WM-kodereview og små forsøgsbudgetter i G-planens afsnit 0/8.
 Grundarbejdet fra G3 ligger i [Sol-overdragelsen](root/G_IMPLEMENTATION_HANDOFF.md):
-P1/P2 implementerer gemt-fit→forecast uden ny optimering og eksport før scoring;
-derefter lille G4→G6b→G8→G7. Disse nye adaptere er planlagt, ikke implementeret.
+P1/P2 er nu implementeret: `deterministic --from-fit FITDIR` genbruger et gemt
+fit eller kontrolleret legacy-format uden ny optimering og gemmer forecast før
+optional scoring. Nye fits skriver `fit_snapshot.json`. 20 G-tests og tre
+relevante layout/importkontroller består (23 i alt, ca. 6.7 s). Historisk
+råreview/G3-kørsel mangler. Derefter lille G4→G6b→G8→G7 er fortsat planlagt.
 G's legacy-aggregering bruger tilgængelige målere per time; fast population og
 punkt/interval/enheder skal afklares før historisk validering. Ommærk ikke
 januarfittet til en ny datakontrakt. Syntetisk adapterarbejde kan begynde nu.
@@ -36,8 +39,8 @@ på ca. 19 s (717 målte timer for begge modeller). Historisk fit er nu rapporte
 G4–G8 er fortsat planlagt. En lille G4-udvikling følges af G6b→G8→G7;
 G5's brede benchmark og en stor baselinegevinst må ikke blokere kernekravene.
 Nye G-adaptere får egne korte kontroller; F4/H-status og tidligere gates bevares.
-Ved almindelige G0–G3-ændringer er standardkontrollen kun de 10 tests i
-`python -B -m unittest tests.test_bm1_deterministic_fit -q`. Dette erstatter
+Ved almindelige G0–G3-ændringer er standardkontrollen de 20 tests i
+`python -B -m unittest tests.test_bm1_deterministic_fit tests.test_bm1_deterministic_snapshot -q`. Dette erstatter
 fuld test-discovery for dette spor. Kør kun berørte ekstra tests ved ændringer
 i fælles BM/WM-kode eller entrypoints. Gentag ikke månedssmoke eller historisk
 fit alene for dokumentation/testoprydning. Se testpolitikken i januarvejledningen.
@@ -45,6 +48,9 @@ Præcisering kl. 12:56: genbrug WM4's `statistical_output`-baseline, samme
 fit/predict-protokol, metrics, performanceanalyser og rapportlayout dér, hvor
 muligt. Første benchmark følger WM's én-fituges/næste-uges-protokol. Forskelle
 skal begrundes; se den bindende kompatibilitetsmatrix i G-planens afsnit 1a.
+Astra-opgaver er registreret i G-overdragelsen: XHigh til præcision/runtime
+for den stokastiske timeinterval-likelihood; High til senere matematisk
+review af posterior→FP/mixture-kontrol. Ingen af dem blokerer legacy-G3.
 
 **H-recovery, 5. oktober:** H1a-v2 er reproduceret på `90211e4` og råarkiveret.
 Alle seks betingede H1b-fits er nu færdige på `e7d9089`; to responsive
