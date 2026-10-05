@@ -1,0 +1,98 @@
+{
+  "schema": "bm1-h2-pilot-config-v1",
+  "evidence": {
+    "population": null,
+    "observations": "Johan, 5 October 2026: one-hour energy, provisionally kWh; hour 03 means [03:00,04:00). Working assumption, not verified meter documentation.",
+    "timezone": "Denmark; Europe/Copenhagen is a working assumption. Ambiguous/nonexistent naive DST labels still fail; no silent inference.",
+    "price": null,
+    "scale": null,
+    "baseline": null,
+    "exposure": null
+  },
+  "files": {
+    "input_workbook": "files/input/data/input.xlsx",
+    "price_workbook": "files/input/data/prices.xlsx",
+    "baseline_csv": null
+  },
+  "timezone": "Europe/Copenhagen",
+  "price_area": null,
+  "origin": null,
+  "baseline_fitted_before": null,
+  "model_selection_protocol": null,
+  "contract": {
+    "population_id": null,
+    "measurement_columns": [],
+    "split": {
+      "train_start": null,
+      "selection_start": null,
+      "holdout_start": null,
+      "holdout_end": null,
+      "exposure_intervals": [],
+      "holdout_audit_reference": null
+    },
+    "power_unit": "kW",
+    "power_scale": null,
+    "price_low": null,
+    "price_high": null,
+    "price_unit": null,
+    "price_role": null,
+    "observation_kind": "interval_energy",
+    "metadata_reference": null,
+    "baseline_reference": null,
+    "scale_fitted_before": null,
+    "measurement_unit": "kWh",
+    "timestamp_label": "hour_start",
+    "metadata_status": "working_assumptions"
+  },
+  "parameters": {
+    "C": null,
+    "k": null,
+    "Xi": null,
+    "sigma_x": null,
+    "sigma_y": null,
+    "time_unit": "day"
+  },
+  "prior": {
+    "alpha": null,
+    "beta": null
+  },
+  "numerics": {
+    "cells": 401,
+    "max_step": 0.0013020833333333333,
+    "quadrature_order": 3,
+    "backend": "fitted",
+    "accumulator_spacing": 0.001953125,
+    "max_accumulator_nodes": 4096
+  },
+  "fit": {
+    "regularization": 0.1,
+    "max_iterations": 40,
+    "logit_bound": 4.0,
+    "families": [
+      {
+        "pieces": 2,
+        "starts": [
+          [
+            0.0,
+            0.0
+          ]
+        ],
+        "max_evaluations": 24
+      },
+      {
+        "pieces": 4,
+        "starts": [
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "max_evaluations": 48
+      }
+    ]
+  }
+}

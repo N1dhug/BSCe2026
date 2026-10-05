@@ -4,6 +4,28 @@ Updated 5 October 2026. H1a-v2 and all six conditional synthetic H1b fits are
 complete on PR #62/#64. This H2 preparation does not repeat their studies or
 claim historical fitting/validation. See [F4.md](F4.md) for scientific status.
 
+## Hourly continuation, Johan 5 October 2026
+
+Johan now declares one-hour consumption, provisionally kWh, where hour 03
+means [03:00,04:00). These choices and Europe/Copenhagen are working assumptions.
+A separate joint state/accumulator interval likelihood, hour-start energy
+adapter and bounded shared-curve replay are implemented; point observations
+retain their existing path. See [H2_HOURLY_INTERVALS.md](H2_HOURLY_INTERVALS.md)
+for equations, controls and commands. The small synthetic panel conserves mass
+and its independent finite-state control converges, but all initial BM grid
+comparisons fail the declared development tolerances. No real measurements or
+holdout values were read; no historical fit or H2/H3 acceptance is claimed.
+
+Saved reproducible development inputs/results:
+[short panel](../files/output/bm_1/runs/estimation/h2_hourly_interval_development_20261005.json),
+[bounded finer panel](../files/output/bm_1/runs/estimation/h2_hourly_interval_refinement_20261005.json),
+and [incomplete working-assumption config](../files/output/bm_1/runs/estimation/h2_hourly_assumptions_config_20261005.json).
+The finer run took 407.88 s; 641 versus 1281 cells still changes total
+log-likelihood by 0.416 (limit 0.05), while terminal mean/L1 pass their
+development tolerances. Numerical readiness remains false. Next: reduce
+likelihood error at bounded runtime before historical optimization; complete
+the independent split/exposure and frozen-input prerequisites alongside it.
+
 ## Confirmed population metadata, 5 October 2026
 
 A read-only join of the consumption header IDs with `data_installation`
@@ -32,6 +54,7 @@ must still declare the selected fixed population. The inspected metadata sheets
 provide no definition of consumption units, point versus interval measurements,
 demand timezone or hour start/end. The price/proxy decision, chronological
 split/exposure audit, frozen scales and baseline also remain prerequisites.
+Johan's later hourly choices are working assumptions, not workbook evidence.
 `historical_fit_ready=False` and scientific acceptance remain unchanged.
 
 ## Short local inspection
@@ -58,13 +81,13 @@ do not establish physical units or observation semantics.
 | Item | Required evidence/decision |
 |---|---|
 | Fixed population | Meaning of IDs/tags, membership and exact ordered measurement columns. Keep membership fixed; any missing member makes the mean missing. |
-| Observations | Establish power units and point versus hourly average/energy. Current H likelihood accepts documented point power only; interval data require a separate validated likelihood. |
+| Observations | Johan declares hourly energy, provisionally kWh. The separate interval likelihood is implemented; historical numerical validation remains required. Units/labels are working assumptions. |
 | Time | Demand timestamp timezone, meaning of hour labels and DST representation. Duplicate or ambiguous local hours are not silently averaged or inferred. |
 | Price | Actual consumer tariff, or explicitly declared spot proxy plus area. SpotPriceDKK cannot establish a consumer tariff. Document price units. |
 | Split/exposure | Chronological TRAIN / MODEL_SELECTION / FINAL_HOLDOUT and an exposure audit. Existing plots/previews mean blind status cannot be assumed from dates. |
 | Scale/baseline | Fixed physical and price bounds; training-only scale provenance; history-only baseline and sufficient pre-TRAIN history. No holdout-driven scaling/clipping. |
 
-These facts remain unresolved unless backed by actual data documentation.
+Distinguish the working assumptions above from actual data documentation.
 Inspection deliberately reports `historical_fit_ready=False`. Do not replace
 missing evidence with a nonempty citation string in a contract.
 

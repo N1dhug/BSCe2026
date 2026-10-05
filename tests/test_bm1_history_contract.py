@@ -64,6 +64,31 @@ class HistoryContractTests(unittest.TestCase):
         train_seen.require_blind_holdout()
         with self.assertRaises(ValueError): replace(split, selection_start=split.train_start)
 
+    def test_hour_start_energy_preserves_dst_intervals_and_end_posterior(self):
+        from src.params.bm_1_interval import BM1IntervalObservationSeries
+        contract, data, baseline, prices, parameters = self.data()
+        contract = replace(contract, observation_kind='interval_energy', measurement_unit='kWh',
+                           timestamp_label='hour_start', metadata_status='working_assumptions')
+        data.iloc[5, 0] = np.nan
+        def prepare(c=contract, d=data):
+            return prepare_historical_curve_training(d, baseline, prices, contract=c,
+                parameters=parameters, sigma_y=.03, initial_mass_builder=np.diff, origin=baseline.index[0])
+        record, metadata = prepare()
+        self.assertIsInstance(record.observations, BM1IntervalObservationSeries)
+        np.testing.assert_array_equal(record.observations.starts, np.arange(1, 50)/24)
+        np.testing.assert_array_equal(record.observations.ends, np.arange(2, 51)/24)
+        self.assertEqual(record.observations.values[0], .5)
+        self.assertFalse(record.observations.observed[5])
+        self.assertEqual(metadata['terminal_posterior_time'], contract.split.selection_start.isoformat())
+        self.assertEqual(metadata['observation_noise_unit'], 'normalized average power')
+        wh_record, _ = prepare(replace(contract, measurement_unit='Wh'), data*1000.)
+        np.testing.assert_array_equal(record.observations.values, wh_record.observations.values)
+        average, _ = prepare(replace(contract, observation_kind='interval_average', measurement_unit='kW'))
+        np.testing.assert_array_equal(record.observations.values, average.observations.values)
+        self.assertEqual(contract.normalize_measurements([10.], duration_hours=2.)[0], .5)
+        for updates in ({'measurement_unit': None}, {'timestamp_label': 'hour_end'}):
+            with self.assertRaises(ValueError): replace(contract, **updates)
+
     def test_missing_metadata_interval_energy_future_scales_and_clipping_rejected(self):
         contract = self.contract()
         for updates in ({'power_unit': 'kWh'}, {'metadata_reference': ''},

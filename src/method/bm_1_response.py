@@ -17,6 +17,7 @@ from scipy.special import softmax
 from src.method.bm_1_estimation import run_fv_filter
 from src.model.bm_1 import bm_1
 from src.params.bm_1 import BM1ObservationSeries
+from src.params.bm_1_interval import BM1IntervalObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
 from src.solver.finite_volume import finite_volume_1d_cached, finite_volume_1d_fitted
 from src.validation import estimation as checks
@@ -25,7 +26,7 @@ from src.validation.model.bm import bm_validation
 
 @dataclass(frozen=True)
 class CurveTrainingRecord:
-    """Normalized point observations and fixed inputs for one training stream.
+    """Normalized point or interval observations and fixed TRAIN inputs.
 
     Input/initial-law callbacks are pure frozen study inputs. The caller must
     also freeze population, normalization and chronology before constructing
@@ -39,7 +40,7 @@ class CurveTrainingRecord:
     sigma_x: float
     sigma_y: float
     initial_mass_builder: object
-    observations: BM1ObservationSeries
+    observations: object
     breakpoints: object = None
 
     def __post_init__(self):
@@ -52,8 +53,11 @@ class CurveTrainingRecord:
         horizon = checks.increasing_grid(self.horizon, 'horizon')
         if horizon.size != 2:
             raise ValueError('horizon needs exactly start and end.')
-        if not isinstance(self.observations, BM1ObservationSeries):
-            raise TypeError('observations must be BM1ObservationSeries.')
+        if not isinstance(self.observations, (BM1ObservationSeries, BM1IntervalObservationSeries)):
+            raise TypeError('Declare a point or interval observation series.')
+        if (isinstance(self.observations, BM1IntervalObservationSeries)
+                and self.observations.starts[0] < horizon[0]):
+            raise ValueError('Training intervals must start inside the model horizon.')
         if (self.observations.times[0] <= horizon[0]
                 or self.observations.times[-1] > horizon[-1]
                 or not np.any(self.observations.observed)):
@@ -106,7 +110,8 @@ def curve_pair_logits(f, g, *, pieces):
 
 
 def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
-                        quadrature_order=3, keep_history=False, backend="upwind"):
+                        quadrature_order=3, keep_history=False, backend="upwind",
+                        accumulator_spacing=None, max_accumulator_nodes=None):
     """One complete fresh replay, shared by fitting and full-history validation.
 
     B/U callbacks already need NumPy broadcasting for the BM1 forward output.
@@ -126,6 +131,16 @@ def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
     if initial.size != cells:
         raise ValueError('Initial-law builder must supply one mass per requested cell.')
     parameters = [record.parameters[0], f, g, *record.parameters[3:]]
+    if isinstance(record.observations, BM1IntervalObservationSeries):
+        from src.method.bm_1_interval import run_interval_filter
+        if accumulator_spacing is None or max_accumulator_nodes is None:
+            raise ValueError('Interval replay requires explicit accumulator spacing and node budget.')
+        return run_interval_filter(model, parameters, record.sigma_x, record.sigma_y,
+            initial, record.horizon[0], record.observations, breakpoints=record.breakpoints,
+            max_step=max_step, accumulator_spacing=accumulator_spacing,
+            max_accumulator_nodes=max_accumulator_nodes, keep_history=keep_history)
+    if accumulator_spacing is not None or max_accumulator_nodes is not None:
+        raise ValueError('Accumulator settings apply only to interval observations.')
     return run_fv_filter(model, parameters, record.sigma_x, record.sigma_y,
         initial, record.horizon[0], record.observations, breakpoints=record.breakpoints,
         max_step=max_step, likelihood_quadrature_order=quadrature_order,
@@ -133,7 +148,8 @@ def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
 
 
 def pooled_curve_log_likelihood(records, f, g, *, cells=401, max_step=1/768,
-                                quadrature_order=3, backend="upwind"):
+                                quadrature_order=3, backend="upwind",
+                                accumulator_spacing=None, max_accumulator_nodes=None):
     """Whole-record pooled score, with one identical f/g pair in every replay."""
     records = tuple(records)
     if (not records or any(not isinstance(r, CurveTrainingRecord) for r in records)
@@ -143,7 +159,8 @@ def pooled_curve_log_likelihood(records, f, g, *, cells=401, max_step=1/768,
     outputs = []
     for record in records:
         result = replay_curve_record(record, f, g, cells=cells, max_step=max_step,
-                                     quadrature_order=quadrature_order, backend=backend)
+            quadrature_order=quadrature_order, backend=backend,
+            accumulator_spacing=accumulator_spacing, max_accumulator_nodes=max_accumulator_nodes)
         if result.maximum_abs_mass_error > 1e-10 or result.minimum_cell_mass < 0.:
             raise RuntimeError('Curve candidate probability control failed; no candidate/record dropped.')
         outputs.append(dict(record_id=record.record_id, log_likelihood=result.total_log_likelihood,
@@ -158,7 +175,8 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
                           max_evaluations, max_iterations=40, logit_bound=4.,
                           cells=401, max_step=1/768, quadrature_order=3, progress=None,
                           backend="upwind", resume_trace=None, checkpoint=None,
-                          max_new_evaluations=None, should_pause=None):
+                          max_new_evaluations=None, should_pause=None,
+                          accumulator_spacing=None, max_accumulator_nodes=None):
     """Bounded development optimizer, with one total distinct-candidate budget.
 
     Regularization is lambda times squared inner-knot departure from 1-2z.
@@ -251,7 +269,8 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
             raise InvocationPaused()
         f, g = curve_pair_from_logits(logits, pieces)
         replay = pooled_curve_log_likelihood(records, f, g, cells=cells,
-            max_step=max_step, quadrature_order=quadrature_order, backend=backend)
+            max_step=max_step, quadrature_order=quadrature_order, backend=backend,
+            accumulator_spacing=accumulator_spacing, max_accumulator_nodes=max_accumulator_nodes)
         linear = 1. - 2.*f.knots[1:-1]
         penalty = regularization * sum(np.sum((curve.values[1:-1]-linear)**2) for curve in (f,g))
         objective = -replay['log_likelihood'] + penalty
@@ -292,7 +311,8 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
     restored_replay = best['replay'] is None
     if restored_replay:
         best['replay'] = pooled_curve_log_likelihood(records, best['f'], best['g'], cells=cells,
-            max_step=max_step, quadrature_order=quadrature_order, backend=backend)
+            max_step=max_step, quadrature_order=quadrature_order, backend=backend,
+            accumulator_spacing=accumulator_spacing, max_accumulator_nodes=max_accumulator_nodes)
         if abs(best['replay']['log_likelihood']-best['log_likelihood']) > 1e-10:
             raise ValueError('Restored best candidate no longer reproduces its saved score.')
     return dict(**best, trace=trace, optimizer_results=results,
