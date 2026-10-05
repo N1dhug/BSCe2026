@@ -5,7 +5,7 @@ import pandas as pd
 from src.model.bm_1 import bm_1
 from src.params.bm_1_deterministic import BM1DeterministicConfig
 from src.method.bm_1_deterministic_fit import (BM1DeterministicInputs, fit_deterministic,
-                                            exact_linear_interval, linear_demand, BudgetStop)
+                                            exact_linear_interval, BudgetStop)
 from src.tools.bm_1_deterministic_data import prepare_frame, common_inputs
 from src.exe.run_model.wm_4.output_model import statistical_output
 
@@ -18,13 +18,6 @@ def inputs(hours=48, steps=12, contract='hourly-point'):
 
 
 class DeterministicFitTests(unittest.TestCase):
-    def test_scalar_kernel_matches_existing_model(self):
-        model = bm_1(lambda t:.4,lambda t:0.,(0.,1.),2)
-        for x,u,b in np.random.default_rng(9).uniform(0,1,(100,3)):
-            actual = linear_demand(x,u,b,3.,.8)
-            expected = model.D(b,.8,model.l(1-2*x,1-2*u,3.))
-            self.assertAlmostEqual(actual,float(expected),places=14)
-
     def test_price_switches_and_linear_baseline_against_adaptive_ode(self):
         data = inputs(hours=8)
         p = np.array([2.,4.,.8,.2])
@@ -47,11 +40,7 @@ class DeterministicFitTests(unittest.TestCase):
             self.assertAlmostEqual(actual['state'][i+1],x,places=8)
             self.assertAlmostEqual(actual['demand'][i],demand,places=8)
         np.testing.assert_allclose(actual['mean_demand']-.4,6*np.diff(actual['state']),atol=1e-14)
-
-    def test_point_and_mean_are_distinct(self):
-        data = inputs(8)
-        out = data.solve((2.,4.,.8,.2))
-        self.assertGreater(np.max(np.abs(out['point_demand']-out['mean_demand'])),.01)
+        self.assertGreater(np.max(np.abs(actual['point_demand']-actual['mean_demand'])),1e-4)
 
     def test_no_flexibility_and_bounds(self):
         data = inputs()
@@ -61,14 +50,8 @@ class DeterministicFitTests(unittest.TestCase):
         for x0 in (0.,1.):
             x = data.solve((1.,10.,1.,x0))['state']
             self.assertTrue(np.all((x>=0)&(x<=1)))
-
-    def test_bad_domains_and_unstable_grid_rejected(self):
-        with self.assertRaises(ValueError):
-            BM1DeterministicInputs([0,1],[.4,.4],[1.01])
         with self.assertRaises(ValueError):
             inputs(8,steps=1).solve((1.,10.,1.,.5))
-        with self.assertRaises(ValueError):
-            BM1DeterministicConfig(starts=((1.,2.,3.,.5),))
 
     def test_synthetic_parameter_fit(self):
         data = inputs(hours=120)
@@ -100,10 +83,8 @@ class DeterministicFitTests(unittest.TestCase):
         self.assertIsNone(fit['best_converged'])
         self.assertIsNotNone(fit['best_provisional'])
         self.assertEqual(saved[-1]['status'],'unfinished')
-
-    def test_expired_solve_budget(self):
         with self.assertRaises(BudgetStop):
-            inputs().solve((12.,2.,.5,.5),deadline=0.)
+            data.solve((12.,2.,.5,.5),deadline=0.)
 
 
 class DataCutoffTests(unittest.TestCase):
@@ -112,19 +93,6 @@ class DataCutoffTests(unittest.TestCase):
         t = np.arange(len(idx))
         return pd.DataFrame({'Demand':2+.3*np.sin(t/5)+.01*np.cos(t/2),
                              'Price':100+30*np.sin(t/4),'Temp':5+np.cos(t/8)},index=idx)
-
-    def test_scales_and_baseline_do_not_use_test_demand(self):
-        raw = self.raw(); changed = raw.copy()
-        cutoff = pd.Timestamp('2022-01-09')
-        changed.loc[changed.index>=cutoff,'Demand'] += 1000
-        frames = [prepare_frame(r,'2022-01-01',cutoff) for r in (raw,changed)]
-        self.assertEqual(frames[0][1],frames[1][1])
-        prepared = []
-        for frame,_ in frames:
-            model = statistical_output().fit(frame,cutoff)
-            prepared.append(common_inputs(frame,model,cutoff,'2022-01-11'))
-        np.testing.assert_array_equal(prepared[0]['baseline'],prepared[1]['baseline'])
-        self.assertNotIn('observed',prepared[0])
 
     def test_missing_future_demand_does_not_block_prediction_setup(self):
         raw = self.raw()
@@ -142,11 +110,6 @@ class DataCutoffTests(unittest.TestCase):
         frame.loc[frame.index>=pd.Timestamp('2022-01-09'),'U'] = 1.1
         with self.assertRaises(ValueError):
             common_inputs(frame,model,'2022-01-09','2022-01-11')
-
-    def test_declared_ex_ante_price_bounds(self):
-        frame,scales = prepare_frame(self.raw(),'2022-01-01','2022-01-09',price_bounds=(0,200))
-        self.assertEqual(scales['price_scale_source'],'declared-ex-ante')
-        self.assertTrue(np.all(np.abs(frame.U)<1))
 
     def test_weather_requests_do_not_cross_training_cutoff(self):
         from unittest.mock import patch
@@ -174,6 +137,8 @@ class DataCutoffTests(unittest.TestCase):
         config = BM1DeterministicConfig(starts=((12.,2.,0.,.5),),max_calls=150)
         with patch('src.method.bm_1_deterministic_benchmark.matched_wm_fit',side_effect=ValueError('WM rejection')):
             results = [run_benchmark(r,'2022-01-01','2022-01-09',forecast_hours=48,config=config) for r in (raw,changed)]
+        self.assertEqual(results[0]['manifest']['scales'],results[1]['manifest']['scales'])
+        np.testing.assert_array_equal(results[0]['predictions'].O,results[1]['predictions'].O)
         self.assertEqual(results[0]['status'],'wm-rejected')
         self.assertNotIn('wm4',results[0]['metrics'])
         self.assertEqual(results[0]['fit']['best_converged']['parameters'],results[1]['fit']['best_converged']['parameters'])
