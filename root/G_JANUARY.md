@@ -1,15 +1,96 @@
-# G0–G3: januar-fit, WM-lignende start og valgfri ugeprognose
+# G0–G4: januar-fit, frosset ugeprognose og lille kurvepilot
 
 Status 5. oktober 2026: Johan har rapporteret historisk januar-fit som
 `complete` på `07fad9f`, run `g_january_fit_20261005_154824`.
 624 målte/744 timer; 120 manglende demand-timer; pris/temperatur komplette efter import.
 Normaliseret MSE: BM 0.0066056846, baseline 0.0066347027, WM 0.0072743310.
-Dette er terminalevidens; råreview, identifikation og historisk G3-prognose mangler.
+G3 er efterfølgende rapporteret complete på main `607dcd7`, run
+`g_january_forecast_20261005_204059`, med 168/168 scored timer 1.–7. februar.
+Dette er terminalevidens; CSV/plots/råreview og identifikation mangler.
 Genkør ikke fit alene for dokumentationsopdatering. [G-planen](G.md) indeholder
 nu obligatorisk FP/mixture/EM (G6b), stokastisk single-shooting-kontrol (G7)
 og rekursiv estimation (G8), baseret på eksisterende F-arbejde.
 
-## Næste trin: G3 fra det gemte januarfit
+## Aktuelt næste trin: G4 fra original TRAIN-eksport
+
+G3's rapporterede fejlmål i rå workbook-enheder:
+
+| Model | MSE | RMSE | MAE | Bias |
+|---|---:|---:|---:|---:|
+| O | 0.06934621735 | 0.26333669959 | 0.20998114942 | 0.09767430577 |
+| Lineær BM | 0.06951591504 | 0.26365870939 | 0.20888953028 | 0.09952142665 |
+| WM | 0.07099789830 | 0.26645430809 | 0.21142737270 | 0.09888989397 |
+
+BM's MSE er ca. 0.245 % dårligere end baseline og ca. 2.087 % bedre end WM.
+Den fælles positive bias er synlig i alle tre modeller; årsagen er ikke
+fastlagt af terminaloutput. Februarugen er eksponeret DEVELOPMENT, ingen
+blind sluttest. Et negativt baseline-resultat er et gyldigt G3-resultat.
+
+G4-koden er implementeret med ni små syntetiske kontroller. Første lokale
+pilot estimerer C_hours/Xi og én indre g-knude; k, lineær f, baseline, WM,
+skala og x0-policy fra G2 er frosne. Der bruges ét fælles g over hele TRAIN,
+ingen dagsfit/reset. Kandidater: lambda=0 og 0.001, to starter g_mid=0/0.25.
+Samlet højst 3.000 residualkald inklusive Jacobianprober og 600 sekunder
+beregning inklusive arkivreplay og numerisk forfining. Plot/filskrivning
+kommer derefter. Originalt G2-fit udføres ikke igen. Arkivadapteren kræver
+warmup=0, de to komplette TRAIN-CSV'er og verificeret originalt snapshot
+eller legacy-import; den genskaber ikke manglende warmup-data.
+
+Kør først, når ingen anden beregning bruger checkoutet:
+
+```powershell
+git fetch origin
+if ($LASTEXITCODE -ne 0) { throw "Fetch fejlede." }
+git switch main
+if ($LASTEXITCODE -ne 0) { throw "Branchskift fejlede." }
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "Pull fejlede." }
+
+$fitDir = "files/output/bm_1/runs/deterministic/g_january_fit_20261005_154824"
+$pilotDir = "files/output/bm_1/runs/deterministic/g4_january_pilot_" + (Get-Date -Format "yyyyMMdd_HHmmss")
+python -B -m src.exe.run_model.bm_1.deterministic_response --reference-fit $fitDir --output $pilotDir
+$pilotExitCode = $LASTEXITCODE
+if (Test-Path "$pilotDir/variants/lambda_00/fit.png") { Start-Process "$pilotDir/variants/lambda_00/fit.png" }
+if (Test-Path "$pilotDir/variants/lambda_00/response.png") { Start-Process "$pilotDir/variants/lambda_00/response.png" }
+if ($pilotExitCode -ne 0) { throw "G4-piloten er uafsluttet/afvist; se pilot.json og eventuel failure.json. Behold mapperne." }
+
+$forecastRoot = "files/output/bm_1/runs/deterministic/g4_january_development_" + (Get-Date -Format "yyyyMMdd_HHmmss")
+foreach ($variant in @("lambda_00", "lambda_01")) {
+    $variantFit = "$pilotDir/variants/$variant"
+    $variantOutput = "$forecastRoot/$variant"
+    python -B -m src.exe.run_model.bm_1.deterministic_response --from-fit $variantFit --output $variantOutput
+    $variantExitCode = $LASTEXITCODE
+    if (Test-Path "$variantOutput/comparison.png") { Start-Process "$variantOutput/comparison.png" }
+    if ($variantExitCode -ne 0) { throw "G4-prognose/scoring er afvist; se $variantOutput. Gemte input-only-prognoser bevares." }
+}
+```
+
+`pilot.json` adskiller datascore, lambda*g_mid², samlet objective, konvergens,
+budgetstop og eksportstatus. Bedste TRAIN-objective vælges kun mellem starter
+inden for samme lambda. Ingen styrke/model vælges automatisk på TRAIN.
+Et budgetstop kan efterlade en checked kandidat, men hele piloten kaldes ikke
+complete. En kandidat eksporteres kun efter bestået 1e-5-demand-forfining.
+
+Hver variant har eget `fit_snapshot.json`, `fit.json`, TRAIN-CSV'er,
+WM-format `fit.png`/ugesnit og `response.png`. Forecast genbruger kandidatens
+egen sluttilstand og de originale lineære BM/WM/O-referencer. `comparison.png`
+og `metrics.linear_bm1` i `result.json` viser alle fire på samme målte maske;
+`linear_bm1`-kolonnen findes også i CSV. Scoringen har ingen interpolerede
+målinger, og prognosen gemmes før optional workbook-scoring.
+
+Sammenlign lambda-kandidater mod lineær BM og O på DEVELOPMENT; kontrollér
+rank/singularværdier fra **data-Jacobianen uden strafrækken**, active bounds,
+kurveform og bias. Lavere TRAIN-MSE er ikke alene grund til at beholde G4.
+Før G4-forecast åbnes, er første pilots praktiske regel låst: pooled MSE er
+primær metric; behold lineær BM, hvis den er inden for 1 % af bedste checked
+kandidats DEVELOPMENT-MSE, inklusive numerisk fejl. Tolerancen er et
+konservativt praktisk pilotvalg, ingen test for statistisk signifikans. Ved
+større forskel skal identifikation/kurveform samt MAE/bias stadig reviewes;
+reglen og manglende automatisk selection gemmes i pilot/snapshot.
+Frys et begrundet kurvevalg (lineær er tilladt) før G6b→G8→G7. Ni G4-tests
+og eksisterende G-tests er implementeringskontrol, ingen historisk G4-accept.
+
+## G3-kommandoen, bevaret til frosset replay
 
 Se [Sol-overdragelsen, P0–P2](G_IMPLEMENTATION_HANDOFF.md). G3's gemt-fit-vej
 er nu implementeret og syntetisk kontrolleret. Fra repo-roden, når ingen

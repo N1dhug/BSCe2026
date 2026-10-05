@@ -9,7 +9,10 @@ optional scoring er verificeret. 20 G-tests plus tre relevante layout/import-
 kontroller består på ca. 6.7 s. En CI-fundet pandas copy-on-write-fejl i
 scoringen er reproduceret og rettet med en eksplicit observationskopi; de
 samme 23 kontroller består også med copy-on-write aktiveret (ca. 5.3 s).
-Historisk råreview/prognose og G4–G8 mangler.
+G3 er siden rapporteret complete på main 607dcd7 med 168/168 scored timer.
+G4's adapter/LS er implementeret med ni små syntetiske kontroller; sammen med
+de eksisterende 20 G-tests består 29 målrettede kontroller på ca. 13.6 s.
+Historisk råreview, lokalt G4-modelvalg og G6–G8-integration mangler.
 Beskrivelsen nedenfor bevarer designet; denne status erstatter ældre formuleringer
 om manglende P1/P2. Kommando: [G_JANUARY.md](G_JANUARY.md).
 Læs nyeste `AGENTS.md`, [G.md](G.md), [G_JANUARY.md](G_JANUARY.md) og den
@@ -24,8 +27,9 @@ tilstands- **og** parameterestimation er centrale leverancer. EM betyder her
 Euler–Maruyama og bruges til simulation/krydskontrol. Et godt deterministisk
 fit eller forecast afslutter ikke bachelorens metodekrav.
 
-Johan ønsker nu forberedelsen færdig, så Sol kan implementere senere. Start
-med G3's genbrug af gemt fit, ikke en ny januaroptimering eller et stort studie.
+Johan har nu bestilt fortsættelsen og autoriseret merge efter checks. G3's
+genbrug af gemt fit er gennemført lokalt; næste trin er den lille G4-pilot
+fra original TRAIN-eksport, efterfulgt af G6b→G8→G7 på frosset model.
 Den aktive historiske variant er **hele januar 2022 → næste 168 timer**, MED,
 neutral start, nul warm-up; den ældre uge/24-timers-warm-up-protokol er en
 anden deklareret variant. G4's lille forsøg ændrer ikke F4-H's obligatoriske
@@ -37,8 +41,9 @@ fælles f/g-leverance eller dens acceptkrav.
 | BM-parametre | C=1.63492382 timer, k=0.22688551, Xi=0.23120648; x0=0.5 fast. Tallene er afrundet terminaloutput, ikke input til genstart. |
 | Normaliseret MSE | BM 0.0066056846, WM 0.0072743310, baseline O 0.0066347027. In-sample; BM's gevinst over O er ca. 0.44 %. |
 | Råartefakter | Run `g_january_fit_20261005_154824` er ikke modtaget/råreviewet her. `fit.png` alene er utilstrækkelig. |
-| G3 | Selvstændig forecast fra gemt fit er implementeret og syntetisk kontrolleret. Historisk prognose/råreview mangler. |
-| G4/G6/G8/G7 | Ny G-integration er planlagt. Eksisterende F2/F3/F4-kode/evidens genbruges med konkrete kildehenvisninger. |
+| G3 | Rapporteret complete på 607dcd7, run g_january_forecast_20261005_204059; 168/168 scored timer. Råreview mangler. |
+| G4 | Lille to-stykkers g/LS/arkivadapter implementeret og syntetisk kontrolleret. Lokalt historisk udviklingsvalg mangler. |
+| G6/G8/G7 | Ny G-integration er planlagt. Eksisterende F2/F3/F4-kode/evidens genbruges med konkrete kildehenvisninger. |
 
 Arbejd i branch i eksisterende checkout, ikke nyt worktree. Skift/pull ikke
 under aktive kørsler. BLAS=1; ingen ny historisk fitrunde alene for dokumentation.
@@ -190,7 +195,25 @@ negativ baselinegevinst; det udløser ikke automatisk nye fits.
 **Genbrug:** `src/params/bm_1_response.py`, `src/method/bm_1_response.py` og
 `BM1Parameters` i `src/control/bm_1.py`. H's likelihood-fit er ikke G's LS-fit.
 **Adapterarbejde:** `src/method/bm_1_deterministic_fit.py` har en lineær,
-specialiseret kerne. Tilføj en afgrænset kurvevej; lineær default/paritet bevares.
+specialiseret kerne. Den er bevaret uændret, så G3/januararkiver fortsat kan
+indlæses. Den nye afgrænsede kurvevej er implementeret separat i
+`src/method/bm_1_deterministic_response.py`; lineær geometri delegerer præcist
+til den oprindelige kerne.
+
+**Implementeret 5. oktober:** `src/params/bm_1_deterministic_response.py`
+gemmer valideret BM1PiecewiseResponse-geometri og leverer eksisterende
+BM1Parameters med eksplicit hours/days-capacityomregning. `src/tools/
+bm_1_deterministic_response.py` læser/verificerer TRAIN-arkiv, fitter kandidater,
+gemmer nested originalt reference-snapshot og egen cutoff-state, og udfører
+G4-forecast med frosne lineære BM/O/WM-referencer. Runner:
+`python -B -m src.exe.run_model.bm_1.deterministic_response --reference-fit FITDIR
+--output NEWDIR`, derefter `--from-fit NEWDIR/variants/lambda_00`/`lambda_01`.
+Ingen af dem fitter baseline/WM/G2 igen; G4-optimeringen bruger kun TRAIN.
+Ni korte kontroller i `tests.test_bm1_deterministic_response` dækker kurve-
+paritet/boundaries/prisspring/enheder, fælles LS og budgetprober, arkivreplay,
+snapshot, egen origin, kausal scoring og varig forecasteksport ved scoringfejl.
+Kun warmup=0-arkiver understøttes i den første pilot. Denne kodekontrol er
+ikke et historisk G4-valg eller mandatory H-f/g-accept.
 
 1. Et frosset G-modelspec gemmer C_hours,k,Xi, f/g-knuder/værdier, skala,
    observationstype og tidsenhed. Konstant sigma_x tilføjes i G6; sigma_y er
@@ -355,8 +378,13 @@ bachelorens centrale FP/estimation/kontrolkæde. Stærk forecastgevinst er
 heller ikke adgangskrav. Bevar skellet implementeret / syntetisk demonstreret /
 numerisk kontrolleret / historisk valideret i alle statusfiler.
 
-P1/P2's syntetiske round-trip og scoringkontroller er nu gennemført. Næste
-skridt er P0/historisk G3 fra Johans originale mappe, derefter P3. G's standard
+P1/P2's syntetiske round-trip og scoringkontroller er gennemført. Johan har
+rapporteret G3 complete på main 607dcd7: 168/168 scored timer, BM-MSE
+0.06951591504 mod O 0.06934621735 og WM 0.07099789830. Ingen baselinegevinst;
+ugen er nu eksponeret DEVELOPMENT. Originale CSV/plots er ikke modtaget,
+og P0/råreview er stadig åbent. P3's adapter/LS er nu implementeret og
+syntetisk kontrolleret; næste skridt er lokal lille G4-pilot/udviklingsvalg
+med kommandoerne i G_JANUARY. Derefter P4→P5→P6 på frosset model. G's standard
 er de 20 små tests i fit- og snapshotmodulet; kør kun berørte ekstra suites ved delte
 interfaces. Ingen fuld test-discovery, historisk månedssmoke eller F1–F4-
 genkørsel alene for dokumentation. Lange studier er ikke unit-tests.
@@ -365,7 +393,7 @@ Ved hver kodeleverance: opdatér G-status, januarvejledning og den korte
 F4/AGENTS-indgang efter faktisk status, med kildecommit, kommando, budget og
 råartefakter. Genlæs seneste main før publicering. Denne forberedelse har
 oprindeligt ændret dokumentation alene. P1/P2 har nu nye syntetiske tests;
-ingen historisk kørsel eller G4–G8-accept følger af dem.
+ingen historisk kørsel i chatten eller G4–G8-accept følger af dem.
 
 ## Reserveret til senere Astra-review
 
@@ -375,7 +403,7 @@ modelbenchmarks eller krav om at skifte model for rutineimplementation.
 
 | Opgave | Anbefalet niveau | Konkret afgrænsning |
 |---|---|---|
-| A1: stokastisk timeinterval-likelihood | **Astra XHigh** | Læs H2_HOURLY_INTERVALS og H2_INTERVAL_CHARACTERISTIC_CONTROL. Genbrug det beståede positive CN-panel og de ni uafhængige tests. Review næste kurve/støj-, frekvens/periode- og tidsvarierende baseline/pris-kontroller, log-state-checkpointadapter og et afgrænset runtimebudget. Bevar korrekt joint state/interval-observation og nuværende tolerancer. Små nye referencesammenligninger afklarer konkrete åbne risici; intet fuldt historisk optimizerfit eller genkørsel af det beståede panel alene for review. |
+| A1: stokastisk timeinterval-likelihood | **Astra XHigh** | Læs den nye [H2_INTERVAL_ASTRA_HANDOFF.md](H2_INTERVAL_ASTRA_HANDOFF.md) efter merged PR #76/82461f6 samt H2_HOURLY_INTERVALS og H2_INTERVAL_CHARACTERISTIC_CONTROL. Genbrug de gemte positive lineære/brede CN-paneler og den negative smalle kurve/støjkontrol. De analytiske tre-state-referencer isolerer cancellation i Fourier-inversionen; log-amplituder løser ikke dette. Review en stabil/positiv eller certificeret likelihood på de små referencer først. Faktisk tidsvariation, log-state-checkpointadapter og runtime er stadig åbne. Bevar observationskontrakt og tolerancer; ingen tail-clipping, probability floors, fuldt historisk fit eller gentagelse af beståede store paneler alene for review. |
 | A2: posterior → stokastisk prisstyring | **Astra High** | Review parameter–state-afhængighed, mixture/FV-paritet, enheder, forventet kvadratisk tab inklusive varians, posterior-initialiseret EM og cutoff i P4–P6 før samlet metodeaccept. Rutineadaptere kan fortsat implementeres af Sol. |
 
 A1 er nødvendig før historisk intervalbaseret G8/H2-estimation, men blokerer

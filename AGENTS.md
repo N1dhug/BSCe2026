@@ -14,14 +14,15 @@ Grundarbejdet fra G3 ligger i [Sol-overdragelsen](root/G_IMPLEMENTATION_HANDOFF.
 P1/P2 er nu implementeret: `deterministic --from-fit FITDIR` genbruger et gemt
 fit eller kontrolleret legacy-format uden ny optimering og gemmer forecast før
 optional scoring. Nye fits skriver `fit_snapshot.json`. 20 G-tests og tre
-relevante layout/importkontroller består (23 i alt, ca. 6.7 s). Historisk
-råreview/G3-kørsel mangler. Derefter lille G4→G6b→G8→G7 er fortsat planlagt.
+relevante layout/importkontroller består (23 i alt, ca. 6.7 s). G3 er siden
+rapporteret complete lokalt; råreview mangler. G4-adapter/LS er nu implementeret
+med ni korte tests; næste trin er lokalt G4-udviklingsvalg, derefter G6b→G8→G7.
 G's legacy-aggregering bruger tilgængelige målere per time; fast population og
 punkt/interval/enheder skal afklares før historisk validering. Ommærk ikke
 januarfittet til en ny datakontrakt. Syntetisk adapterarbejde kan begynde nu.
 G som helhed er ikke rent deterministisk. F4-status og dets
 obligatoriske H-f/g-krav bevares. G0–G3 er implementeret og syntetisk kontrolleret; Johan har rapporteret historisk januarfit som complete på 07fad9f;
-råreview og historisk G3-prognose mangler.
+G3 er siden rapporteret complete, mens råreview fortsat mangler.
 Johan har bestilt hele januar 2022 som fælles BM/WM-fitmåned; næste 168 timer
 forudsiges med faste parametre. Læs [januarvejledningen](root/G_JANUARY.md).
 Ny januarvisning: `--fit-only --initial-state wm-neutral` bruger de virkelige
@@ -36,7 +37,16 @@ udfyldt demand; QP-overgange over manglende endpoints maskeres. G kræver stadig
 mindst 168 målte demand-timer i TRAIN og komplette importerede priser. 10 tests består;
 én syntetisk januar med 27 demandhuller og 3 temperaturhuller gennemført
 på ca. 19 s (717 målte timer for begge modeller). Historisk fit er nu rapporteret gennemført lokalt; råreview mangler.
-G4–G8 er fortsat planlagt. En lille G4-udvikling følges af G6b→G8→G7;
+G3 er rapporteret complete på main 607dcd7, run g_january_forecast_20261005_204059:
+168/168 scored timer. MSE BM=0.06951591504, O=0.06934621735, WM=0.07099789830;
+ingen baselinegevinst på den eksponerede udviklingsuge. Råreview mangler.
+G4's lille to-stykkers g-adapter/LS er implementeret og syntetisk kontrolleret;
+historisk pilot/udviklingsvalg mangler. Brug `deterministic_response --reference-fit`
+på original TRAIN-eksport, ingen G2/WM/baseline-refit. K er fast; samme x0-policy.
+Lineær G3-kernel er bevaret af hensyn til arkivkompatibilitet. G4 har ni korte
+tests i `tests.test_bm1_deterministic_response`; brug dem ved G4-ændringer.
+Maks. to strafstyrker inkl. nul, 3.000 residualkald/600 s samlet inklusive
+replay/forfining. TRAIN vælger ikke strafstyrke. Derefter G6b→G8→G7;
 G5's brede benchmark og en stor baselinegevinst må ikke blokere kernekravene.
 Nye G-adaptere får egne korte kontroller; F4/H-status og tidligere gates bevares.
 Ved almindelige G0–G3-ændringer er standardkontrollen de 20 tests i

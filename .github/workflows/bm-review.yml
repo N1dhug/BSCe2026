@@ -41,6 +41,13 @@ jobs:
           OPENBLAS_NUM_THREADS: '1'
           OMP_NUM_THREADS: '1'
         run: python -B -m unittest tests.test_bm1_interval_characteristic tests.test_bm1_interval_curve_control -v
+      - name: Check G4 response/archive controls on Windows
+        shell: powershell
+        env:
+          MPLBACKEND: Agg
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+        run: python -B -m unittest tests.test_bm1_deterministic_response -v
       - name: Check portable split bundles on Windows
         shell: powershell
         run: python -B -m unittest tests.test_run_bundle -v

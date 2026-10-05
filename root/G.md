@@ -1,6 +1,6 @@
 # G-plan — deterministisk BM-kerne, stokastisk udvidelse og WM4-sammenligning
 
-**Revideret 5. oktober mod bacheloropgaven, projekt 111866. G0–G3-kode er implementeret; historisk januarfit er rapporteret gennemført lokalt. Råreview og historisk G3-prognose mangler. G4–G8 er planlagt: G6 omfatter nu FP/mixture og EM, G7 obligatorisk stokastisk prisstyring, G8 rekursiv estimation.**
+**Revideret 5. oktober mod bacheloropgaven, projekt 111866. G3 er rapporteret complete lokalt med 168/168 scored timer. G4's lille kurveadapter/LS-pilot er implementeret og syntetisk kontrolleret; historisk G4-valg og råreview mangler. G6–G8 er planlagt: FP/mixture/EM, obligatorisk stokastisk prisstyring og rekursiv estimation.**
 
 G er et selvstændigt spor ved siden af F-planen. Formålet er en enkel, hurtig
 BM-arbejdsgang: historiske data → deterministisk parameterfit → fastlåst
@@ -70,7 +70,28 @@ gennem denne chats connector. Johan har siden kørt januarfittet lokalt på
 Normaliseret MSE: BM 0.0066056846, baseline 0.0066347027, WM 0.0072743310.
 BM's in-sample MSE-gevinst er 0.4374 %. Kilden er terminaloutput; råfiler,
 identifikation, præcis numerikfejl og samlet runtime er endnu ikke uafhængigt
-reviewet. Fit-only dokumenterer ingen ugeprognose. Genkør ikke for denne planrevision.
+reviewet. Genkør ikke januarfit for denne planrevision.
+
+Johan har efterfølgende rapporteret G3 på main `607dcd7`, run
+`g_january_forecast_20261005_204059`: forecast/scoring complete,
+168/168 timer 1.–7. februar, samme målte maske for O/BM/WM, ingen optimering.
+MSE i rå workbook-enheder: O=0.06934621735, BM=0.06951591504,
+WM=0.07099789830. BM er ca. 0.245 % dårligere end O og ca. 2.087 % bedre
+end WM målt på MSE. Det er et negativt baseline-resultat på en eksponeret
+udviklingsuge, ikke et signal om automatisk genfit eller en blind sluttest.
+CSV/plots/råarkiv er ikke modtaget i chatten; uafhængigt råreview mangler.
+
+G4 implementerer nu to-stykkers g i en separat adapter, som genbruger
+`BM1PiecewiseResponse` og kan levere eksisterende `BM1Parameters`.
+Den gamle lineære kernel og G3-snapshot er bevaret. `deterministic_response
+--reference-fit FITDIR` læser kun de oprindelige TRAIN-eksporter, verificerer
+lineær replay, fryser k/baseline/WM/skala og bevarer x0-policy. Standard:
+lambda=0 og 0.001, starter g_mid=0 og 0.25, samlet højst 3.000 residualkald
+og 600 sekunder beregning inklusive replay/forfining. Kandidaterne vælges
+ikke mellem strafstyrker på TRAIN. Kommandoer og status:
+[G_JANUARY.md](G_JANUARY.md). Ni små G4-kontroller dækker paritet, enheder,
+LS/budget, arkiv og kausalt gemt-fit-forecast. Ingen historisk G4-kørsel er
+udført her; endeligt modelvalg afventer DEVELOPMENT-sammenligningen.
 
 
 ## 0. Bachelorens formål og krav
@@ -417,6 +438,15 @@ hvis udviklingsgevinsten ligger inden for den på forhånd fastlagte praktiske
 tolerance, med numerisk fejl medregnet. Pris-/stateintervaller uden tilstrækkelig
 dækning får ingen claim om estimeret kurveform.
 
+Før åbning af de nye G4-forecastresultater låses første pilots praktiske regel:
+pooled MSE på den fælles DEVELOPMENT-målemaske er primær metric. Behold lineær
+BM, hvis dens MSE ligger inden for 1 % af den bedste numerisk checked kandidats
+MSE, inklusive den numeriske fejl. 1 % er et konservativt praktisk valg for
+denne lille pilot, ikke et estimeret signifikansniveau. Ved større forskel
+reviewes identifikation, bounds/kurveform og MAE/bias før et begrundet valg.
+Ingen automatisk vinder eller krav om stor O-gevinst; ændring af reglen efter
+åbning mærkes som ny udviklingsbeslutning. Reglen gemmes i pilot/snapshot.
+
 G4 genbruger H's kurvegeometri, men H's likelihood-fit og stokastiske accept
 er selvstændige. Parametre/kurver overføres ikke ukritisk mellem støjfri og
 stokastisk model. Den eksisterende obligatoriske F4-H-f/g-leverance bevares.
@@ -735,19 +765,21 @@ andres samtidige arbejde og brug branch i eksisterende checkout, ikke nye worktr
   bounds/TRF, numerisk Jacobian og separate tællinger af derivativevalueringer.
   Kontrollér installeret SciPy før eventuel brug af nyere callback/workers-API.
 
-**Næste opgave:** P1/P2 i [G_IMPLEMENTATION_HANDOFF.md](G_IMPLEMENTATION_HANDOFF.md)
-er implementeret og syntetisk kontrolleret. Review de gemte januarresultater
-uden ny fitrunde og udfør `--from-fit`-prognosen under den oprindelige
-udviklingskontrakt. En pris uden for frossent TRAIN-domæne afvises uden refit.
+**Næste opgave:** G3 er rapporteret complete lokalt; P3/G4-adapter og kort
+LS/arkiv-kontrol er implementeret. Kør den afgrænsede G4-pilot fra den
+oprindelige januarmappe og sammenlign eksportérbare kandidater på den allerede
+eksponerede februaruge mod frosset lineær BM/O/WM. Behold lineær model ved
+utilstrækkelig udviklingsgevinst/identifikation. Frys valget før G6b→G8→G7.
+Review de gemte januar-/februarartefakter, når de er tilgængelige; ingen
+genkørsel af det oprindelige G2-fit. En pris uden for frossent TRAIN-domæne
+afvises uden refit.
 G3-snapshot understøtter endnu kun legacy-hourly-point; en fælles BM/WM-
 timeintervalvariant kræver en særskilt deklareret kontrakt og egne fits.
 P0 beskriver åbne datafelter; P3–P6 har adapterkort, syntetisk forsøgsudkast,
 afhængigheder, budgetter og acceptkontroller for G4/G6b/G8/G7.
-Første målsætning er G0–G3 med faste lineære kurver. Start ikke G4 eller en
-fuld månedskørsel, før denne kæde fungerer og dens målinger passer til budgettet.
-G0–G3 er implementeret og syntetisk kontrolleret. Historisk januarfit er
-rapporteret gennemført lokalt; råreview og historisk prognose mangler.
-G4–G8's nye integration og videnskabelig accept er ikke gennemført.
+G0–G3 fungerer i den rapporterede lokale udviklingskæde. G4's kodekontrol
+giver ikke historisk modelaccept. Bred måneds-/sæsonoptimering tilføjes ikke
+automatisk; historisk råreview og G6–G8's nye integration/accept mangler.
 Astra XHigh anbefales til den åbne præcision/runtime-opgave for H2's
 stokastiske interval-likelihood; Astra High til senere review af posterior-
 handoff og det stokastiske kontrolobjective. Se afgrænsning i overdragelsen.
