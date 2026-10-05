@@ -535,6 +535,10 @@ def run_fit_checks(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
+    inspect = sub.add_parser('history-inspect', help='Inspect H2 workbook headers without reading observations or fitting.')
+    inspect.add_argument('--data-dir', type=Path, default=Path('files/input/data'))
+    inspect.add_argument('--output', type=Path, default=Path('files/output/bm_1/runs/estimation/h2_header_inspection.json'))
+    inspect.add_argument('--blas-threads', type=int, default=1)
     numerics = sub.add_parser('numerics', help='Run/review the fixed H1 numerical panel.')
     numerics.add_argument('--design', choices=('v1', 'v2'), default='v1')
     numerics.add_argument('--run-dir', type=Path, required=True)
@@ -562,6 +566,14 @@ def main(argv=None):
     verify.add_argument('--blas-threads', type=int, default=1)
     verify.add_argument('--quiet', action='store_true')
     args = parser.parse_args(argv)
+    if args.command == 'history-inspect':
+        from src.tools.bm_1_history_io import inspect_history_workbooks
+        result = inspect_history_workbooks(args.data_dir/'input.xlsx', args.data_dir/'prices.xlsx')
+        # This metadata-only report may be refreshed; it is not a study checkpoint.
+        _atomic_report(args.output, result, replace_existing=True)
+        print(f"H2 headers inspected; no observations read, no fit run. Report: {args.output}", flush=True)
+        print(f"Measurement columns: {len(result['input']['measurement_columns'])}. Metadata/split decisions remain required.", flush=True)
+        return 0
     if args.command == 'validate-fit':
         result = run_fit_checks(args)
         return 2 if result['completed'] and not result['selected_numerical_passes'] else 0
