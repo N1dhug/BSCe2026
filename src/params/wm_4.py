@@ -415,10 +415,22 @@ class time_diffusion_qp:
 
         X = propagated_design[fit_mask]
         y = observed_variance[fit_mask]
+
+        # A zero start makes every q(t)>=0 constraint active simultaneously,
+        # which is highly degenerate for the active-set solver. Start from the
+        # strictly positive constant-diffusion least-squares solution instead.
+        constant_response = propagated_design[:, 0]
+        response_fit = constant_response[fit_mask]
+        denominator = float(response_fit @ response_fit)
+        constant_q = float((response_fit @ y) / denominator) if denominator > 0.0 else float(np.mean(y))
+        positivity_eps = max(1e-12, 1e-10 * max(1.0, abs(constant_q)))
+        constant_q = max(constant_q, 10.0 * positivity_eps)
+        x0 = np.array([constant_q, 0.0, 0.0, 0.0, 0.0], dtype=float)
+
         beta = self.model._least_squares_qp(
             X, y,
-            A_ub=-Phi, b_ub=np.zeros(Phi.shape[0], dtype=float),
-            ridge=self.model._FIT_RIDGE,
+            A_ub=-Phi, b_ub=-positivity_eps * np.ones(Phi.shape[0], dtype=float),
+            ridge=self.model._FIT_RIDGE, x0=x0,
         )
 
         instantaneous_variance = np.maximum(Phi @ beta, 0.0)
