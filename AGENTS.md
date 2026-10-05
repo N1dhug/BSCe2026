@@ -1,5 +1,27 @@
 # Fælles projektkontekst
 
+## F4-H beregningsbudget, Johan 6. oktober 2026
+
+Samlet resterende H-beregning skal planlægges mod 4–6 timer og holde sig under
+10 timer inklusive piloter, fits og nødvendige kontroller. Budgettet følger
+forløbet på tværs af resumes; de tidligere cirka 90 timer er afvist.
+Den afgrænsede interval-søgeprøve er nu kørt på 415.89 s i alt.
+De første timer kunne bestå, men positiv joint-CN med 321 celler og
+da=1/1024 fejler den genbrugte døgnreference: score 3.58901, maksimal
+endpoint-mean .00822776 og L1 .26784242. Ingen billig backend er godkendt.
+Næste prioritet er et lavere, eksplicit kandidatbudget og parallelle
+HELE TRAIN-replays med den præcise metode, efter datakontrakt og en kort
+repræsentativ runtimepilot. 17 kandidater/7 dage/8 workers er kun en
+budgetillustration, ikke et godkendt run eller et løfte om fitkonvergens.
+Se root/H2_SEARCH_FEASIBILITY.md og root/H2_SEARCH_NEXT_HANDOFF.md.
+Ingen automatisk ny surrogate-/gridpanelrunde eller Fourier-runtimekontrol.
+De gamle grove grids fejlede numerik; de må ikke genindføres som accepteret
+likelihood. Kontroller kandidatforskelle og valgte løsninger, og stop ved
+utilstrækkelig præcision eller budget. Genbrug fitter/data/checkpoints og
+timeholdte B/U-inputs. Brede profiler/bootstrap/robusthedspaneler er udsat;
+fælles f/g, datakontrakt, modelvalg og frosset slutvalidering bevares.
+Se den nye budgetbeslutning øverst i root/F4.md. Budgetmål er ikke målt runtime.
+
 ## Arbejdsregel fra Johan, 5. oktober: adskil G/F og minimér kontrolarbejdet
 
 G er den deterministiske BM-kæde med et senere sandsynlighedslag; F er den
