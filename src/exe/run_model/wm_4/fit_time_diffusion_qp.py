@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "uncertainty" / "time_diffusion_qp"
 
 
-def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hour=60, max_state_iter=50, state_tol=1e-8, max_order=11, min_relative_improvement=0.05):
+def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hour=60, max_state_iter=50, state_tol=1e-8, min_order=1, max_order=11, min_relative_improvement=0.05):
     prediction_day, weeks, steps_per_hour = day_start(prediction_day), int(weeks), int(steps_per_hour)
     if weeks < 2: raise ValueError("weeks must be at least 2.")
     if steps_per_hour < 2: raise ValueError("steps_per_hour must be at least 2.")
@@ -48,7 +48,7 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
     qp = time_diffusion_qp(prediction_model).fit(
         process_kernel, diffusion_time, observed_variance,
         initial_variance=initial_variance, fit_mask=fit_mask,
-        max_order=max_order, min_relative_improvement=min_relative_improvement,
+        min_order=min_order, max_order=max_order, min_relative_improvement=min_relative_improvement,
     )
 
     fine_diffusion = time_diffusion_qp(prediction_model).evaluate(diffusion_time, qp["beta"])
@@ -89,7 +89,7 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
         "beta": qp["beta"], "variance_baseline": qp["variance_baseline"],
         "harmonics": qp["harmonics"], "selected_order": qp["selected_order"],
         "selection_history": qp["selection_history"], "stop_reason": qp["stop_reason"],
-        "min_relative_improvement": qp["min_relative_improvement"], "max_order": qp["max_order"],
+        "min_relative_improvement": qp["min_relative_improvement"], "min_order": qp["min_order"], "max_order": qp["max_order"],
         "variance_rmse": qp["variance_rmse"], "std_rmse": qp["std_rmse"], "std_mae": qp["std_mae"], "r2": r2,
         "P0": P0, "initial_variance": initial_variance,
         "constant_q": constant_q,
@@ -132,7 +132,7 @@ def print_result(result, plot_path, csv_path):
     print("q_K(t)=g(t)^2=beta_0+sum_k[beta_c,k*cos(2*pi*k*t/24)+beta_s,k*sin(2*pi*k*t/24)]")
     print("q_K(h)>=0 is imposed on the 24 hourly nodes; q is held constant within each hour during covariance propagation.")
     print("The QP fits WM4-propagated hourly Var(I), not q(t) itself, to the empirical hourly variance.")
-    print(f"selected K={result['selected_order']} | threshold={result['min_relative_improvement']:.4f} | {result['stop_reason']}")
+    print(f"selected K={result['selected_order']} | min K={result['min_order']} | threshold={result['min_relative_improvement']:.4f} | {result['stop_reason']}")
     print()
     print(f"{'K':>3}{'params':>8}{'var MSE':>16}{'rel improvement':>18}{'accepted':>11}")
     for row in result["selection_history"]:
@@ -163,6 +163,7 @@ def main():
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
+    parser.add_argument("--min-order", type=int, default=1, help="Minimum harmonic order K fitted before the relative-improvement stopping rule is allowed; default 1.")
     parser.add_argument("--max-order", type=int, default=11, help="Maximum harmonic order K; default 11 is the largest non-Nyquist order identifiable from 24 hourly samples.")
     parser.add_argument("--min-relative-improvement", type=float, default=0.05, help="Minimum relative reduction in propagated variance MSE required to accept K+1; default 0.05.")
     parser.add_argument("--output", default=str(OUTPUT))
@@ -172,7 +173,7 @@ def main():
     result = fit_prediction_day(
         frame, args.day, args.weeks, args.steps_per_hour,
         max_state_iter=args.max_state_iter, state_tol=args.state_tol,
-        max_order=args.max_order, min_relative_improvement=args.min_relative_improvement,
+        min_order=args.min_order, max_order=args.max_order, min_relative_improvement=args.min_relative_improvement,
     )
     output = Path(args.output); output.mkdir(parents=True, exist_ok=True)
     stem = f"{result['prediction_day']:%Y-%m-%d}_{int(args.weeks)}_weekdays"
