@@ -11,6 +11,11 @@ obligatoriske H-f/g-krav bevares. G0–G3 er implementeret og syntetisk kontroll
 Johan har bestilt hele januar 2022 som fælles BM/WM-fitmåned; næste 168 timer
 forudsiges med faste parametre. Læs [januarvejledningen](root/G_JANUARY.md).
 G4–G7 er fortsat planlagt.
+Ved almindelige G0–G3-ændringer er standardkontrollen kun de 10 tests i
+`python -B -m unittest tests.test_bm1_deterministic_fit -q`. Dette erstatter
+fuld test-discovery for dette spor. Kør kun berørte ekstra tests ved ændringer
+i fælles BM/WM-kode eller entrypoints. Gentag ikke månedssmoke eller historisk
+fit alene for dokumentation/testoprydning. Se testpolitikken i januarvejledningen.
 Præcisering kl. 12:56: genbrug WM4's `statistical_output`-baseline, samme
 fit/predict-protokol, metrics, performanceanalyser og rapportlayout dér, hvor
 muligt. Første benchmark følger WM's én-fituges/næste-uges-protokol. Forskelle
