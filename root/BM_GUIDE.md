@@ -1,5 +1,22 @@
 # BM — arbejdsvejviser
 
+**H2 pilot, 5. oktober:** `curves history-config --output PATH` skriver en
+ufuldstændig datakonfiguration. `curves history-fit --config PATH --run-dir PATH
+--prepare-only` klargør hele den erklærede TRAIN, når metadata er dokumenteret.
+Derefter bruges `--resume --limit-candidates 3 --max-seconds 300` til den første
+afgrænsede runtimepilot. Samme fælles f/g gælder alle træningsdage; ingen daglige
+fits eller ekstra parametergrid. Pause/genoptagelse og budgetscope står i
+[H2_DATA_CONTRACT.md](H2_DATA_CONTRACT.md). Faktisk historisk fitting afventer
+datagrundlaget og er ikke videnskabeligt accepteret.
+
+**H2 rådata, 5. oktober:** Kør `python -B -m
+src.exe.run_model.bm_1.curves history-inspect --blas-threads 1` for en kort
+ark-/headerkontrol uden observationslæsning eller fitting. Rapport:
+`files/output/bm_1/runs/estimation/h2_header_inspection.json`. Den nye separate
+TRAIN-indlæsning bruger eksplicit population/tidszone/spot-proxy-kontrakt,
+bevarer manglende data og bruger ikke convenience-loadernes interpolation.
+Se [H2_DATA_CONTRACT.md](H2_DATA_CONTRACT.md) for forudsætninger og næste pilot.
+
 **F4-status og næste opgave:** [F4.md](F4.md).
 Den aktive prioritering fra 3. oktober 2026 er I-baseline på det afsluttede
 F-spor (integration nu implementeret), derefter obligatorisk H-f/g inden den endelige samlede I/J-leverance;
