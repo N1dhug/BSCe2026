@@ -7,7 +7,8 @@ from src.params.bm_1 import gaussian_log_likelihood
 from src.solver.finite_volume import finite_volume_1d_fitted
 from src.validation.bm_1.interval import finite_state_gaussian_reference
 from src.validation.bm_1.interval_characteristic import (
-    characteristic_prediction, characteristic_gaussian_update, CharacteristicNumericalError)
+    characteristic_prediction, balanced_characteristic_prediction, characteristic_gaussian_update,
+    _balanced_state_step, CharacteristicNumericalError)
 
 
 class CharacteristicIntervalTests(unittest.TestCase):
@@ -69,6 +70,50 @@ class CharacteristicIntervalTests(unittest.TestCase):
             characteristic_prediction(solver,[0.,1.],prior,zero,zero,
                 lambda t,x:rewards,max_step=1/128,frequencies=128,tilt=tilt,center=center)
         np.testing.assert_array_equal(prior,original)
+
+    def test_balanced_step_matches_dense_matrix_solve_for_complex_columns(self):
+        _,prior,_,_,_,Q = self.fields()
+        h = .08
+        matrix = np.eye(3)-h*Q
+        conditional = np.array([[1., .2+.7j], [1., -.4+.2j], [1., .8-.1j]])
+        expected = np.linalg.solve(matrix, prior[:,None]*conditional)
+        logs, result = _balanced_state_step(np.log(prior), conditional,
+            np.diag(matrix,-1),np.diag(matrix),np.diag(matrix,1))
+        np.testing.assert_allclose(np.exp(logs)[:,None]*result,expected,rtol=3e-15,atol=1e-16)
+
+    def test_balanced_law_matches_independent_reference_and_unscaled_transform(self):
+        solver,prior,drift,diffusion,reward,Q = self.fields()
+        tilt,center = (.62-.55)/.12**2,.55
+        kwargs = dict(max_step=1/512,frequencies=64,span=4.,tilt=tilt,center=center)
+        ordinary = characteristic_prediction(solver,[0.,1.],prior,drift,diffusion,reward,**kwargs)
+        balanced = balanced_characteristic_prediction(solver,[0.,1.],prior,drift,diffusion,reward,**kwargs)
+        np.testing.assert_allclose(np.exp(balanced['log_amplitude'])[:,None]*balanced['cf'],
+            ordinary['cf'],rtol=2e-12,atol=1e-14)
+        actual = characteristic_gaussian_update(balanced,.62,.12)
+        reference = finite_state_gaussian_reference(Q,reward(0.,None),prior,1.,.62,.12,order=160)
+        self.assertLess(abs(actual['log_evidence']-reference['log_evidence']),.002)
+        np.testing.assert_allclose(actual['posterior_mass'],reference['posterior_mass'],atol=.002)
+
+    def test_balanced_transform_preserves_below_float_range_and_disconnected_zeros(self):
+        solver = finite_volume_1d_fitted()
+        logs = np.array([0.,-900.,-950.])
+        prior = np.exp(logs)
+        zero = lambda t,x: np.zeros(x.shape)
+        rewards = np.array([.15,.5,.85])
+        pred = balanced_characteristic_prediction(solver,[0.,1.],prior,zero,zero,
+            lambda t,x: rewards,max_step=1/128,frequencies=128,tilt=4.,center=.4,log_prior=logs)
+        update = characteristic_gaussian_update(pred,.62,.12)
+        expected = logs+gaussian_log_likelihood(.62,rewards,.12)
+        from scipy.special import logsumexp
+        expected -= logsumexp(expected)
+        np.testing.assert_allclose(update['log_posterior_mass'],expected,atol=2e-12)
+        self.assertTrue(np.isfinite(update['log_posterior_mass']).all())
+        # A genuinely zero disconnected state stays zero, without a probability floor.
+        pred = balanced_characteristic_prediction(solver,[0.,1.],[1.,0.,0.],zero,zero,
+            lambda t,x: rewards,max_step=1/32,frequencies=128)
+        update = characteristic_gaussian_update(pred,.62,.12)
+        np.testing.assert_array_equal(update['posterior_mass'],[1.,0.,0.])
+        self.assertTrue(np.isneginf(update['log_posterior_mass'][1:]).all())
 
 
 if __name__ == '__main__':

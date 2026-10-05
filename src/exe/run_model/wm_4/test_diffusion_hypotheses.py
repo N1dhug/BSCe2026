@@ -16,7 +16,7 @@ from src.params.wm_4 import optimized_qp_params
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "uncertainty" / "diffusion_hypotheses"
-HYPOTHESES = ("H0", "H1", "H2", "H3", "H4")
+HYPOTHESES = ("H0", "H1", "H2", "H3", "H4", "H5")
 ALPHA = 0.05
 PARAMETER_NAMES = {
     "H0": ("sigma_0", "sigma_t", "phase_h"),
@@ -24,6 +24,7 @@ PARAMETER_NAMES = {
     "H2": ("sigma_0", "sigma_t", "phase_h", "sigma_I", "sigma_U"),
     "H3": ("sigma_0", "sigma_I"),
     "H4": ("sigma_0", "sigma_F"),
+    "H5": ("sigma_0", "sigma_t", "phase_h", "sigma_F"),
 }
 
 
@@ -85,8 +86,14 @@ def _initial_starts(hypothesis, records):
     phase = float(np.median(peak_hours))
     base = max(1e-4, 0.25 * mean_sigma)
     amplitude = max(1e-4, mean_sigma)
-
     phases = (phase, 0.0, 6.0, 12.0, 18.0)
+
+    if hypothesis == "H5":
+        return [
+            np.array([base, amplitude, candidate_phase, rho_F], dtype=float)
+            for candidate_phase in phases for rho_F in (-0.5, 0.0, 0.5)
+        ]
+
     starts = []
     for candidate_phase in phases:
         theta = [base, amplitude, candidate_phase]
@@ -101,6 +108,11 @@ def _bounds(hypothesis):
         return np.array([1e-8, 0.0], dtype=float), np.array([np.inf, 1.0], dtype=float)
     if hypothesis == "H4":
         return np.array([1e-8, -0.999999], dtype=float), np.array([np.inf, 0.999999], dtype=float)
+    if hypothesis == "H5":
+        return (
+            np.array([1e-8, 0.0, 0.0, -0.999999], dtype=float),
+            np.array([np.inf, np.inf, 24.0, 0.999999], dtype=float),
+        )
 
     lower = [1e-8, 0.0, 0.0]
     upper = [np.inf, np.inf, 24.0]
@@ -114,14 +126,16 @@ def _model_theta(hypothesis, theta):
     if hypothesis == "H4":
         sigma_0, rho_F = map(float, theta)
         return np.array([sigma_0, sigma_0 * rho_F], dtype=float)
+    if hypothesis == "H5":
+        sigma_0, sigma_t, phase, rho_F = map(float, theta)
+        return np.array([sigma_0, sigma_t, phase, sigma_0 * rho_F], dtype=float)
     return theta
 
 
 def predicted_sigma(record, hypothesis, theta):
     state = record["state"]
-    model_theta = _model_theta(hypothesis, theta)
     g = record["model"].diffusion_hypothesis(
-        hypothesis, state["Time"], state["I"], state["U"], model_theta, F=state["F"],
+        hypothesis, state["Time"], state["I"], state["U"], theta, F=state["F"],
     )
     variance = record["process_kernel"] @ (np.asarray(g, dtype=float) ** 2)
     return np.sqrt(np.maximum(variance, 0.0))
@@ -134,8 +148,9 @@ def fit_hypothesis_deterministic(hypothesis, records):
 
     def residual_vector(theta):
         residuals = []
+        model_theta = _model_theta(hypothesis, theta)
         for record in records:
-            prediction = predicted_sigma(record, hypothesis, theta)
+            prediction = predicted_sigma(record, hypothesis, model_theta)
             residual = prediction[1:] - record["observed_sigma"][1:]
             if not np.all(np.isfinite(residual)): raise ValueError(f"{hypothesis} produced non-finite uncertainty residuals.")
             residuals.append(residual)
@@ -273,13 +288,14 @@ def print_summary(summary, train_days, test_days, skipped):
     print()
     print("WM4 diffusion hypothesis comparison")
     print("deterministic WM4 coefficient fit + oracle prediction state; initial-state/parameter sensitivity excluded (P0=0)")
-    print("H0-H4 coefficients are fitted deterministically by least squares to rolling observed s_I on the training dates.")
+    print("H0-H5 coefficients are fitted deterministically by least squares to rolling observed s_I on the training dates.")
     print(f"train days={train_days}, test days={test_days}, skipped={len(skipped)}")
     print("H0 = time-periodic diffusion")
     print("H1 = H0 + sigma_I * I")
     print("H2 = H1 + sigma_U * |U|")
     print("H3 = sigma_0 + (1 - sigma_I) * I")
     print("H4 = sigma_0 + sigma_F * F")
+    print("H5 = H0 + sigma_F * F")
     print()
     columns = [
         "hypothesis", "coverage_h1_23_pct", "coverage_error_95_h1_23_pct_points",
@@ -310,7 +326,7 @@ def print_summary(summary, train_days, test_days, skipped):
 
 
 def main():
-    parser = ArgumentParser(description="Fit and compare WM4 H0-H4 SDE diffusion hypotheses against rolling observed input uncertainty.")
+    parser = ArgumentParser(description="Fit and compare WM4 H0-H5 SDE diffusion hypotheses against rolling observed input uncertainty.")
     parser.add_argument("--start-day", default=START_DAY)
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--weeks", type=int, default=DEFAULT_WEEKS)

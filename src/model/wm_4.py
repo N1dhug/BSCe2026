@@ -18,7 +18,7 @@ class wm_4(wm):
     I = O + R
 
     The structural fit is deterministic. Stochastic uncertainty is added only
-    through explicit H0-H4 diffusion hypotheses after the deterministic fit.
+    through explicit H0-H5 diffusion hypotheses after the deterministic fit.
 
     F, U in [-1, 1], with F = U = 0 as the neutral point.
     """
@@ -72,20 +72,21 @@ class wm_4(wm):
 
     @staticmethod
     def diffusion_hypothesis(hypothesis, time_hours, I, U, theta, F=None):
-        """Evaluate exploratory WM4 diffusion hypotheses H0-H4.
+        """Evaluate exploratory WM4 diffusion hypotheses H0-H5.
 
         H0: g = sigma_0 + sigma_t * (1 + cos(2*pi*(t-phase)/24)) / 2
         H1: H0 + sigma_I * I
         H2: H1 + sigma_U * |U|
         H3: g = sigma_0 + (1 - sigma_I) * I
         H4: g = sigma_0 + sigma_F * F
+        H5: H0 + sigma_F * F
 
-        H4 uses the deterministic flexibility trajectory F directly.
+        H4 and H5 use the deterministic flexibility trajectory F directly.
         """
         hypothesis = str(hypothesis).strip().upper()
-        if hypothesis not in ("H0", "H1", "H2", "H3", "H4"): raise ValueError("hypothesis must be one of H0, H1, H2, H3 or H4.")
+        if hypothesis not in ("H0", "H1", "H2", "H3", "H4", "H5"): raise ValueError("hypothesis must be one of H0, H1, H2, H3, H4 or H5.")
         theta = np.asarray(theta, dtype=float).reshape(-1)
-        expected = {"H0": 3, "H1": 4, "H2": 5, "H3": 2, "H4": 2}[hypothesis]
+        expected = {"H0": 3, "H1": 4, "H2": 5, "H3": 2, "H4": 2, "H5": 4}[hypothesis]
         if theta.size != expected or not np.all(np.isfinite(theta)): raise ValueError(f"{hypothesis} theta must contain exactly {expected} finite values.")
 
         time_hours = np.asarray(time_hours, dtype=float)
@@ -121,6 +122,13 @@ class wm_4(wm):
                     sigma_U = float(theta[4])
                     if sigma_U < 0.0: raise ValueError("sigma_U must be nonnegative.")
                     g = g + sigma_U * np.abs(U)
+                if hypothesis == "H5":
+                    if F is None: raise ValueError("H5 requires the flexibility trajectory F.")
+                    F = np.asarray(F, dtype=float)
+                    if not np.all(np.isfinite(F)) or np.any(F < -1.0) or np.any(F > 1.0): raise ValueError("H5 requires finite F in [-1, 1].")
+                    sigma_F = float(theta[3])
+                    if abs(sigma_F) >= sigma_0: raise ValueError("H5 requires |sigma_F| < sigma_0 so g remains positive for F in [-1, 1].")
+                    g = g + sigma_F * F
 
         shape = np.broadcast(time_hours, I, U, *(tuple() if F is None else (F,))).shape
         g = np.broadcast_to(np.asarray(g, dtype=float), shape).astype(float, copy=False)
