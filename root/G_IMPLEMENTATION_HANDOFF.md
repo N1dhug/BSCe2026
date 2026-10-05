@@ -190,7 +190,25 @@ negativ baselinegevinst; det udløser ikke automatisk nye fits.
 **Genbrug:** `src/params/bm_1_response.py`, `src/method/bm_1_response.py` og
 `BM1Parameters` i `src/control/bm_1.py`. H's likelihood-fit er ikke G's LS-fit.
 **Adapterarbejde:** `src/method/bm_1_deterministic_fit.py` har en lineær,
-specialiseret kerne. Tilføj en afgrænset kurvevej; lineær default/paritet bevares.
+specialiseret kerne. Den er bevaret uændret, så G3/januararkiver fortsat kan
+indlæses. Den nye afgrænsede kurvevej er implementeret separat i
+`src/method/bm_1_deterministic_response.py`; lineær geometri delegerer præcist
+til den oprindelige kerne.
+
+**Implementeret 5. oktober:** `src/params/bm_1_deterministic_response.py`
+gemmer valideret BM1PiecewiseResponse-geometri og leverer eksisterende
+BM1Parameters med eksplicit hours/days-capacityomregning. `src/tools/
+bm_1_deterministic_response.py` læser/verificerer TRAIN-arkiv, fitter kandidater,
+gemmer nested originalt reference-snapshot og egen cutoff-state, og udfører
+G4-forecast med frosne lineære BM/O/WM-referencer. Runner:
+`python -B -m src.exe.run_model.bm_1.deterministic_response --reference-fit FITDIR
+--output NEWDIR`, derefter `--from-fit NEWDIR/variants/lambda_00`/`lambda_01`.
+Ingen af dem fitter baseline/WM/G2 igen; G4-optimeringen bruger kun TRAIN.
+Ni korte kontroller i `tests.test_bm1_deterministic_response` dækker kurve-
+paritet/boundaries/prisspring/enheder, fælles LS og budgetprober, arkivreplay,
+snapshot, egen origin, kausal scoring og varig forecasteksport ved scoringfejl.
+Kun warmup=0-arkiver understøttes i den første pilot. Denne kodekontrol er
+ikke et historisk G4-valg eller mandatory H-f/g-accept.
 
 1. Et frosset G-modelspec gemmer C_hours,k,Xi, f/g-knuder/værdier, skala,
    observationstype og tidsenhed. Konstant sigma_x tilføjes i G6; sigma_y er
@@ -355,8 +373,13 @@ bachelorens centrale FP/estimation/kontrolkæde. Stærk forecastgevinst er
 heller ikke adgangskrav. Bevar skellet implementeret / syntetisk demonstreret /
 numerisk kontrolleret / historisk valideret i alle statusfiler.
 
-P1/P2's syntetiske round-trip og scoringkontroller er nu gennemført. Næste
-skridt er P0/historisk G3 fra Johans originale mappe, derefter P3. G's standard
+P1/P2's syntetiske round-trip og scoringkontroller er gennemført. Johan har
+rapporteret G3 complete på main 607dcd7: 168/168 scored timer, BM-MSE
+0.06951591504 mod O 0.06934621735 og WM 0.07099789830. Ingen baselinegevinst;
+ugen er nu eksponeret DEVELOPMENT. Originale CSV/plots er ikke modtaget,
+og P0/råreview er stadig åbent. P3's adapter/LS er nu implementeret og
+syntetisk kontrolleret; næste skridt er lokal lille G4-pilot/udviklingsvalg
+med kommandoerne i G_JANUARY. Derefter P4→P5→P6 på frosset model. G's standard
 er de 20 små tests i fit- og snapshotmodulet; kør kun berørte ekstra suites ved delte
 interfaces. Ingen fuld test-discovery, historisk månedssmoke eller F1–F4-
 genkørsel alene for dokumentation. Lange studier er ikke unit-tests.
@@ -365,7 +388,7 @@ Ved hver kodeleverance: opdatér G-status, januarvejledning og den korte
 F4/AGENTS-indgang efter faktisk status, med kildecommit, kommando, budget og
 råartefakter. Genlæs seneste main før publicering. Denne forberedelse har
 oprindeligt ændret dokumentation alene. P1/P2 har nu nye syntetiske tests;
-ingen historisk kørsel eller G4–G8-accept følger af dem.
+ingen historisk kørsel i chatten eller G4–G8-accept følger af dem.
 
 ## Reserveret til senere Astra-review
 

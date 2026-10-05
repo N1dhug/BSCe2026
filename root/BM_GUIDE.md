@@ -7,7 +7,13 @@ Interfaces, datamangler, budgetter og korte acceptkontroller er kortlagt.
 `deterministic --from-fit FITDIR --output NEWDIR` er nu implementeret: nye
 snapshots eller kontrolleret 07fad9f-import, ingen refit og forecasteksport
 før optional scoring. 20 G-tests og tre relevante layoutchecks består.
-Historisk G3/råreview mangler fortsat. Januarstatus
+G3 er nu rapporteret complete lokalt med 168/168 scored timer på 607dcd7;
+BM-MSE er ca. 0.245 % dårligere end O og bedre end WM på udviklingsugen.
+Råreview mangler. G4's lille kurve/LS/arkivadapter er implementeret og syntetisk
+kontrolleret: `deterministic_response --reference-fit FITDIR --output NEWDIR`,
+derefter `--from-fit NEWDIR/variants/lambda_00` og den anden eksportérbare
+kandidat. Ingen model vælges på TRAIN; næste trin er lokalt G4-udviklingsvalg.
+Januarstatus
 og eksisterende fitkommandoer: [G_JANUARY.md](G_JANUARY.md). G-planens fulde
 krav: [G.md](G.md); implementationstest giver ingen historisk forsøgsaccept.
 
