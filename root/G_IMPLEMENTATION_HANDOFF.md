@@ -15,8 +15,9 @@ de eksisterende 20 G-tests består 29 målrettede kontroller på ca. 13.6 s.
 Historisk råreview, lokalt G4-modelvalg og G6–G8-integration mangler.
 Beskrivelsen nedenfor bevarer designet; denne status erstatter ældre formuleringer
 om manglende P1/P2. Kommando: [G_JANUARY.md](G_JANUARY.md).
-Læs nyeste `AGENTS.md`, [G.md](G.md), [G_JANUARY.md](G_JANUARY.md) og den
-aktive status i [F4.md](F4.md) ved genoptagelse. Bevar samtidige H/WM-ændringer.
+Læs nyeste `AGENTS.md`, [G.md](G.md) og [G_JANUARY.md](G_JANUARY.md)
+ved genoptagelse af G. Læs kun F-dokumenter, når en konkret fælles grænseflade
+skal genbruges eller ændres. F4-H2 tilhører F-chatten; bevar samtidige F/WM-ændringer.
 
 ## Opgaven og det allerede kendte
 
@@ -60,15 +61,11 @@ særskilt fit; det gamle resultat må hverken overskrives eller ommærkes.
 3. `consumption_series` i `wm_3/fit_weekly.py` bruger `mean(axis=1)` med
    pandas' skip-NaN-adfærd. En delvist observeret time kan få en anden
    population. 624 aggregerede måletimer beviser ikke 624 komplette MED-timer.
-4. H2's metadataaudit har verificeret 13 MED-huse med elvarme og 140 UDEN-huse
-   uden elvarme. Johan har senere deklareret timeforbrug, foreløbigt kWh,
-   hour-start og foreløbig Copenhagen-tid; det er arbejdsantagelser, ikke
-   uafhængig metadata. H2's interval-likelihood er implementeret men endnu
-   ikke numerisk fit-ready. Se [H2_HOURLY_INTERVALS.md](H2_HOURLY_INTERVALS.md).
-   Samtidigt er [H2's positive CN-kontrol](H2_INTERVAL_CHARACTERISTIC_CONTROL.md)
-   nu bestået på ét fast lineært, syntetisk døgn. Den historiske fitter er
-   fortsat uændret. Genbrug denne evidens ved videre intervalarbejde; der
-   mangler bredere kurve/støj- og tidsfeltkontroller samt runtime/adapter.
+4. F4-H2's metadataaudit har verificeret MED/UDEN-medlemskab. G kan citere
+   disse oplysninger i sin egen datakontrakt. Johan har deklareret timeforbrug,
+   foreløbigt kWh, hour-start og foreløbig Copenhagen-tid; arbejdsantagelserne
+   skal fortsat fremgå. F4-H2's intervalsolver og numerikstatus er F-arbejde,
+   ikke en opgave eller acceptgate for G's syntetiske P4–P6.
 5. Prisnormalisering er frosset på TRAIN. Februarpriser uden for domænet
    giver korrekt afvisning; de må ikke klippes eller bruges til efterfølgende
    ændring af januarfittets skala. Faktiske DK1-spotpriser er en deklareret
@@ -79,12 +76,13 @@ særskilt fit; det gamle resultat må hverken overskrives eller ommærkes.
 Historisk G3 kan først mærkes valideret, når den valgte datakontrakt er
 dokumenteret. En videreført legacy-punktapproksimation kan fortsat vises som
 udviklingsdemo med sin oprindelige populations-/observationskontrakt. Den
-afklarer ikke H2. Syntetisk adapterarbejde behøver ikke vente på råmappen.
+afklarer ikke F4-H2. Syntetisk adapterarbejde behøver ikke vente på råmappen.
 
 ## P0 — datakontrakt, fitarkiv og inputaudit
 
 **Filer:** `src/tools/bm_1_deterministic_data.py`, den nye G-snapshot-adapter
-beskrevet under P1, G's manifest; genbrug H2's dokumentation og læsegrænser.
+beskrevet under P1, G's manifest. F4-H2's metadata kan bruges som kilde;
+G fastlægger selv population, eksponering og observationsoperator.
 Ret ikke WM's selvstændige entrypoints som bivirkning.
 
 - Arkivér original `manifest.json`, `fit.json`, `result.json`, audit/checkpoint
@@ -403,10 +401,15 @@ modelbenchmarks eller krav om at skifte model for rutineimplementation.
 
 | Opgave | Anbefalet niveau | Konkret afgrænsning |
 |---|---|---|
-| A1: stokastisk timeinterval-likelihood | **Astra XHigh** | Læs den nye [H2_INTERVAL_ASTRA_HANDOFF.md](H2_INTERVAL_ASTRA_HANDOFF.md) efter merged PR #76/82461f6 samt H2_HOURLY_INTERVALS og H2_INTERVAL_CHARACTERISTIC_CONTROL. Genbrug de gemte positive lineære/brede CN-paneler og den negative smalle kurve/støjkontrol. De analytiske tre-state-referencer isolerer cancellation i Fourier-inversionen; log-amplituder løser ikke dette. Review en stabil/positiv eller certificeret likelihood på de små referencer først. Faktisk tidsvariation, log-state-checkpointadapter og runtime er stadig åbne. Bevar observationskontrakt og tolerancer; ingen tail-clipping, probability floors, fuldt historisk fit eller gentagelse af beståede store paneler alene for review. |
-| A2: posterior → stokastisk prisstyring | **Astra High** | Review parameter–state-afhængighed, mixture/FV-paritet, enheder, forventet kvadratisk tab inklusive varians, posterior-initialiseret EM og cutoff i P4–P6 før samlet metodeaccept. Rutineadaptere kan fortsat implementeres af Sol. |
+| G-review: posterior → stokastisk prisstyring | **Astra High** | Review parameter–state-afhængighed, mixture/FV-paritet, enheder, forventet kvadratisk tab inklusive varians, posterior-initialiseret EM og cutoff i P4–P6 før samlet metodeaccept. Rutineadaptere kan fortsat implementeres af Sol. |
 
-A1 er nødvendig før historisk intervalbaseret G8/H2-estimation, men blokerer
-ikke G3's eksisterende udviklingskontrakt. A2 foretages når adaptere/resultater
-er konkrete; et nyt stort studie kræves ikke alene for et review. G4's lille
-deterministiske LS-pilot og almindelige kode-/testopgaver kan fortsætte hos Sol.
+G-reviewet foretages når adaptere/resultater er konkrete; et nyt stort studie
+kræves ikke alene for review. G4 og den syntetiske G6b→G8→G7-kæde kan
+fortsætte uafhængigt af F4-H2.
+
+F4-H2's interval-likelihood-review (Astra XHigh) hører alene til F-sporet:
+se [F4-H2-overdragelsen](H2_INTERVAL_ASTRA_HANDOFF.md) som ekstern reference.
+Hvis G senere skal assimilere historisk timeenergi, kræves en særskilt valgt
+og kontrolleret intervaloperator. Det kan være genbrug af en egnet F-løsning;
+F4-H2 som helhed er ikke en forudsætning. Syntetiske punktmålinger må ikke
+omdøbes til historisk timeenergi for at springe dette krav over.
