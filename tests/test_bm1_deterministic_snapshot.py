@@ -114,6 +114,7 @@ class FrozenForecastTests(unittest.TestCase):
                      lambda s:s['numerics'].update(wm_steps_per_hour=1),
                      lambda s:s['manifest']['baseline']['feature_scale'].__setitem__(0,0.),
                      lambda s:s['numerics'].update(training_refinement_error=1.),
+                     lambda s:s['numerics'].update(tolerance=1e-3),
                      lambda s:s['forward_source_sha256'].update({'src/model/wm_4.py':'wrong'}),
                      lambda s:s['bm'].update(parameter_order=['k','C_hours','Xi','x0'])]
         for mutate in mutations:

@@ -120,6 +120,8 @@ def validate_snapshot(snapshot):
             raise ValueError('Snapshot step counts must be integers >= 2.')
     tolerance = data['numerics']['tolerance']
     error = data['numerics']['training_refinement_error']
+    if tolerance != manifest['config']['numerical_tolerance']:
+        raise ValueError('Snapshot must preserve the original fit numerical tolerance.')
     if not np.isfinite(tolerance) or tolerance <= 0 or not np.isfinite(error) or error < 0 or error > tolerance:
         raise ValueError('Snapshot must have a passed finite training numerical check.')
     if data['wm'] is not None:
