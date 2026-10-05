@@ -117,9 +117,18 @@ frekvens-/periodechecks; to-stykkers f/g med sigma_y=0.04 fejler alle fem på
 første times betingede Fourier-tætheder. Log-amplituder løser ikke cancellation
 i selve inversionen; eksakte tre-state-kontroller bekræfter dette uden FV-fejl.
 Genbrug de gemte positive og negative råresultater; ingen ny stor panelkørsel.
-Præcis næste matematikopgave til Astra XHigh: `root/H2_INTERVAL_ASTRA_HANDOFF.md`.
+Dette Astra XHigh-review er nu udført; se `root/H2_TERMINAL_TILT_REVIEW.md`.
+Terminalvis eksponentiel tilting består de eksakte og positive springreferencer
+og gennemfører det smalle cases to døgn-replays. Tre fokuserede nye tests består.
+Hele døgnet fejler fortsat den uændrede scoregate: .08754758 > .05;
+slut-mean/L1 består. Runtime 225.70/630.87 s; faktisk log-state-pause/resume
+er kontrolleret. Dette er kun en pilot, med heuristisk roundoffguard og et
+analytisk modeksempel på universel tilt-dækning. Næste Sol-opgave er ét
+1281-cellers replay med h=1/24576 på samme fixture, sammenholdt med de to
+gemte replays for at skelne tids- og rumfejl. Budget <=900 s, samme gates;
+genkør ikke de gemte replays. Historisk backend og fælles kerner er uændrede.
 Eksakt operatorgenbrug er testet; en parret én-time-median viser 1.23x, ikke et
-historisk fit-speedup. Faktisk tidsvariation og log-state-checkpointadapter er
+historisk fit-speedup. Faktisk tidsvariation og historisk log-state-checkpointadapter er
 stadig åbne. H2/H3-readiness forbliver falsk; historisk fitter er uændret.
 Recovery, råartefakter og næste trin: `root/F4_H_CHECKPOINT_AUDIT_STATE.md`.
 
