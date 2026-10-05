@@ -13,6 +13,15 @@ og rekursiv estimation (G8), baseret på eksisterende F-arbejde.
 
 ## Aktuelt næste trin: G4 fra original TRAIN-eksport
 
+Matematik og begrundelse er samlet i [G-planens afsnit 5](G.md#5-fleksible-fg-i-et-lille-ekstra-trin):
+én knude a=g(0.5), lineær f og fælles bounded nonlinear LS for log-C/Xi/a.
+Dokumentationsreview 5. oktober mod main `0da7e2a9`: metoden svarer til den
+eksisterende kode; ingen solverændring eller ny numerisk test er foretaget.
+Den originale januar-fitmappe er ikke tilgængelig i denne chat, og dens to
+TRAIN-CSV'er blev ikke fundet ved fil-søgning. Historisk G4-fit/modelvalg er
+derfor fortsat åbent. Brug originalmappen nedenfor; genskab ikke et nyt G2-fit
+eller parametre fra afrundet terminaloutput for at erstatte arkivet.
+
 G3's rapporterede fejlmål i rå workbook-enheder:
 
 | Model | MSE | RMSE | MAE | Bias |
@@ -47,6 +56,9 @@ git pull --ff-only origin main
 if ($LASTEXITCODE -ne 0) { throw "Pull fejlede." }
 
 $fitDir = "files/output/bm_1/runs/deterministic/g_january_fit_20261005_154824"
+foreach ($name in @("fit_predictions_normalized.csv", "fit_signals_normalized.csv")) {
+    if (-not (Test-Path "$fitDir/$name")) { throw "Original TRAIN-eksport mangler: $fitDir/$name" }
+}
 $pilotDir = "files/output/bm_1/runs/deterministic/g4_january_pilot_" + (Get-Date -Format "yyyyMMdd_HHmmss")
 python -B -m src.exe.run_model.bm_1.deterministic_response --reference-fit $fitDir --output $pilotDir
 $pilotExitCode = $LASTEXITCODE

@@ -465,6 +465,109 @@ ved origin, og behandles først, når sådanne inputs findes.
 
 ## 5. Fleksible f/g i et lille ekstra trin
 
+### Første G4-pilot: matematisk definition og forsvar
+
+**Valget er to stykker i g, lineær f og ét fælles nonlinear least-squares-fit.**
+Koden findes allerede; denne præcisering dokumenterer den implementerede
+metode. Kun én ny kurveparameter tilføjes til den lineære reference:
+$a=g(0.5)\in[-1,1]$. Med normaliseret pris $u\in[0,1]$ sættes
+
+$$
+f(x)=1-2x,\qquad
+g_a(u)=\begin{cases}
+1+2(a-1)u, & 0\le u\le 0.5,\\
+a-2(a+1)(u-0.5), & 0.5\le u\le1.
+\end{cases}
+$$
+
+Begge stykker giver a ved knuden; endpoints er 1 og −1. Hældningerne er
+$2(a-1)$ og $-2(a+1)$, begge ikke-positive præcis når $-1\le a\le1$.
+Dermed giver en enkelt box-bound kontinuitet og monotonicitet uden
+sortering, clipping, splines eller ekstra constraints. $a=0$ genskaber
+præcis $g(u)=1-2u$; referencefamilien er indeholdt i udvidelsen.
+Knuden ligger i **pris**, ikke tid: samme kurve bruges alle januars timer.
+
+Den eksisterende BM1-dynamik bevares, med tid i timer:
+
+$$
+\delta_\theta(t)=\tanh\!\left(\frac{k}{2}[1-2x_\theta(t)+g_a(u(t))]\right),
+$$
+$$
+D_\theta(t)=B(t)+\Xi\delta_\theta(t)
+\begin{cases}1-B(t),&\delta_\theta(t)\ge0,\\B(t),&\delta_\theta(t)<0,\end{cases}
+\qquad \dot x_\theta(t)=\frac{D_\theta(t)-B(t)}{C_{\rm hours}}.
+$$
+
+For $B,\Xi\in[0,1]$ ligger demand i [0,1]. Ved x=0 er f+g≥0,
+så state kan kun bevæge sig indad; ved x=1 er f+g≤0. Det begrunder den
+kontinuerte models stateinterval. Den numeriske solver skal stadig kontrollere
+sine RK4-stadier; den må ikke skjule en for grov tidsdiskretisering med clipping.
+
+**Hvad fittes?** $\theta=(\log C_{\rm hours},\Xi,a)$ over hele det
+sammenhængende TRAIN-forløb. C og Xi tilpasses samtidigt med a, fordi demand
+afhænger af alle tre og af den resulterende statebane. K holdes på originalt
+G2-fit; x0=0.5 er fast i den aktive wm-neutral-variant. Kun hvis originalarkivet
+brugte `initial-state fit`, medtages ét fælles x0 som fjerde koordinat.
+Baseline, WM, skala, tidsgrid, målemaske og observationskontrakt genbruges.
+Standardbounds er C_hours∈[1,744], Xi∈[0,1], a∈[−1,1]; arkivets bounds
+er autoritative. Log-C sikrer positiv kapacitet og er alene et koordinatskift.
+
+Lad I være de målte TRAIN-timer, N=|I| og y_i deres normaliserede demand.
+For den originale hourly-point-approximation er r_i demand ved time-start:
+
+$$
+r_i(\theta)=\frac{D_\theta(t_i)-y_i}{\sqrt N},\qquad
+L_\lambda(\theta)=\sum_{i\in I}r_i(\theta)^2+\lambda a^2.
+$$
+
+SciPy får residualvektoren $(r_i)_{i\in I}$ med én ekstra række
+$\sqrt\lambda a$. Dens interne faktor 1/2 ændrer ikke minimizeren;
+eksporten rapporterer MSE og $\lambda a^2$ hver for sig. Manglende demand
+giver ingen residual, men state simuleres gennem timerne uden dagsreset.
+Division med √N gør datasummen til MSE, så straffens skala ikke afhænger
+direkte af antallet af målte timer. λ=0 er almindelig least squares;
+λ=0.001 trækker den ekstra knude mod den lineære reference a=0.
+Styrken er et forudvalgt pilotvalg, ikke udledt af bogen eller et kendt støjniveau.
+
+**Hvorfor SciPy TRF?** g er lineær i a ved fast u, men hele forwardmodellen
+er nonlinear gennem tanh og statebanen. `numpy.linalg.lstsq` eller
+`scipy.optimize.lsq_linear` kan derfor ikke løse hele fittet direkte.
+`least_squares(method="trf", loss="linear")` håndterer netop residualer
+og box-bounds. Grundideen er den lokale approksimation
+$r(\theta+p)\approx r(\theta)+Jp$: et lille least-squares-delproblem med
+begrænsede skridt, som ikke kræver en egen fuld Hessianimplementation.
+Der bruges den eksisterende two-point-Jacobian og to starter a=0/0.25.
+Konvergens betyder et lokalt numerisk stop, ikke et bevis for globalt optimum
+eller identificerbare fysiske parametre.
+
+**Forsvar og begrænsning.** En ekstra frihedsgrad er den mindste udvidelse,
+der kan skelne prisresponsen under og over 0.5 uden at ændre BM's dynamik.
+Fast k begrænser kompensation mellem responsstyrke og kurveform; det beviser
+ikke identifikation. Data-Jacobianens singularværdier/rang, active bounds og
+prisernes dækning skal læses sammen med forecastet. Straffens residual må
+ikke tælle som ekstra dataevidens for rang. Ved Xi=0 har g ingen effekt;
+ved lille k kan især Xi og k være svære at adskille.
+
+Modellen flytter også energi: $\int_0^T(D-B)\,dt=C[x(T)-x(0)]$, hvis
+absolutværdi er højst C. En mere fleksibel g kan derfor ikke frit rette en
+vedvarende baselinebias. Dette er en kontinuert modelidentitet, ikke en
+intervalvalidering af de gamle punktobservationer. Februarugens positive bias
+beviser ikke i sig selv, hvor fejlen opstår.
+
+Metoden er inspireret af Nocedal & Wright, *Numerical Optimization*, 2. udg.,
+kap. 10.3, især Gauss–Newton s. 254, og Alba Gonzalo Primo, *Adaptive demand-side
+flexibility exploitation through dynamic price signals* (2025), kap. 6.3.1,
+s. 96–98: en enkel responsfamilie og trinvis estimation med fast k i kurvetrinnet.
+Albas EKF/likelihood er ikke dette deterministiske LS-fit, og hendes frie affine
+kurvers skalainvarians overføres ikke direkte til vores faste endpoints.
+[SciPy-dokumentationen](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html)
+beskriver den valgte bounded TRF-metode. Der hævdes ingen konveksitet eller
+historisk gevinst. Implementation: `fit_response` i
+`src/method/bm_1_deterministic_response.py`; arkiv/eksport i
+`src/tools/bm_1_deterministic_response.py`; [kørsel og modelvalg](G_JANUARY.md).
+
+### Afgrænsning og efterfølgende kurvevalg
+
 Genbrug `BM1PiecewiseResponse` med endpoints 1,−1. Undersøg først to stykker
 (indre knude 0.5), og kun ved relevant udviklingsgevinst fire stykker med
 knuder 0,0.25,0.5,0.75,1. Første kurveforsøg udvider g med f lineær; næste
