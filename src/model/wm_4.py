@@ -14,8 +14,11 @@ class wm_4(wm):
     O = O(Time)
 
     dF = R dt
-    dR = (r_F F + r_U U + r_R R) dt + (sigma_0 + sigma_I I) dW
+    dR = (r_F F + r_U U + r_R R) dt + g_H(t,I,U) dW
     I = O + R
+
+    The structural fit is deterministic. Stochastic uncertainty is added only
+    through explicit H0-H2 diffusion hypotheses after the deterministic fit.
 
     F, U in [-1, 1], with F = U = 0 as the neutral point.
     """
@@ -68,16 +71,6 @@ class wm_4(wm):
         return np.array([R, r @ np.array([F, U, R], dtype=float)], dtype=float)
 
     @staticmethod
-    def diffusion(I, sigma_0, sigma_I):
-        I = wm_4_validation._finite_scalar(I, "I")
-        sigma_0 = wm_4_validation._finite_scalar(sigma_0, "sigma_0")
-        sigma_I = wm_4_validation._finite_scalar(sigma_I, "sigma_I")
-        if I < 0.0: raise ValueError("wm_4 requires I >= 0 when evaluating input-dependent diffusion.")
-        if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
-        if sigma_I < 0.0: raise ValueError("sigma_I must be nonnegative.")
-        return np.array([0.0, sigma_0 + sigma_I * I], dtype=float)
-
-    @staticmethod
     def diffusion_hypothesis(hypothesis, time_hours, I, U, theta):
         """Evaluate exploratory WM4 diffusion hypotheses H0-H2.
 
@@ -115,7 +108,8 @@ class wm_4(wm):
             sigma_U = float(theta[4])
             if sigma_U < 0.0: raise ValueError("sigma_U must be nonnegative.")
             g = g + sigma_U * np.abs(U)
-        g = np.asarray(g, dtype=float)
+        shape = np.broadcast(time_hours, I, U).shape
+        g = np.broadcast_to(np.asarray(g, dtype=float), shape).astype(float, copy=False)
         if not np.all(np.isfinite(g)) or np.any(g <= 0.0): raise ValueError("Diffusion hypothesis must remain finite and strictly positive over the trajectory.")
         return g
 
@@ -213,32 +207,33 @@ class wm_4(wm):
         U, PE, Time, O = self._sample_signals(parameters)
         return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["r"], gamma=parameters["gamma"])
 
-    def fokker_planc_solver(self, init_cond, parameters, initial_density, f_bounds=(-1.0, 1.0), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
-        _, parameters = wm_4_validation.fokker_planc_inputs(init_cond, parameters)
+    def fokker_planc_solver(self, init_cond, parameters, initial_density, hypothesis, theta, f_bounds=(-1.0, 1.0), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
+        _, parameters = wm_4_validation.deterministic_inputs(init_cond, parameters)
         r = parameters["r"]
-        sigma_0, sigma_I = parameters["sigma_0"], parameters["sigma_I"]
 
         def fields(time):
             U = float(parameters["U"](time))
-            O = float(self.O(parameters["Time"](time)))
-            return U, O
+            physical_time = float(parameters["Time"](time))
+            O = float(self.O(physical_time))
+            return U, physical_time, O
 
         def drift_f(time, F, R): return R
 
         def drift_r(time, F, R):
-            U, _ = fields(time)
+            U, _, _ = fields(time)
             return r[0] * F + r[1] * U + r[2] * R
 
         def diffusion_r(time, F, R):
-            _, O = fields(time)
+            U, physical_time, O = fields(time)
             I = O + R
-            if np.any(np.asarray(I) < 0.0): raise ValueError("wm_4 produced negative I on the selected numerical domain.")
-            return sigma_0 + sigma_I * I
+            return self.diffusion_hypothesis(hypothesis, physical_time, I, U, theta)
 
         result = self.fp.solve(self.t, initial_density, drift_f, drift_r, diffusion_r, v_bounds=f_bounds, r_bounds=r_bounds, v_steps=f_steps, r_steps=r_steps, cfl=cfl)
         result.update({
             "F_grid": result["v_grid"], "marginal_F": result["marginal_v"],
             "mean_F": result["mean_v"], "var_F": result["var_v"],
+            "diffusion_hypothesis": str(hypothesis).strip().upper(),
+            "diffusion_theta": np.asarray(theta, dtype=float).copy(),
         })
         return result
 
