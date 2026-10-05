@@ -131,7 +131,6 @@ def main():
     parser.add_argument("--week", default="2022-08-08", help="Any date in the fitting week; the following week is predicted.")
     parser.add_argument("--warmup-hours", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=60)
-    parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
     args = parser.parse_args()
 
     frame, _ = aligned_wm4_data("MED")
@@ -142,7 +141,7 @@ def main():
     fit_data, fit_index, fit_origin, _ = fit_input(frame, fit_start, args.steps_per_hour, args.warmup_hours, output_model)
     fit_model = wm_4((0.0, (args.warmup_hours + WEEK_HOURS) / 24.0), len(fit_index), output_callable(fit_index, fit_data["O"]))
     fit_init = np.array([INIT_F, fit_data["I"][0] - fit_data["O"][0]], dtype=float)
-    fit = qp_params(fit_model).fit(fit_data, fit_init, fit_diffusion=not args.deterministic, verbose=False)
+    fit = qp_params(fit_model).fit(fit_data, fit_init, verbose=False)
 
     predict_start = fit_end
     predict_end, actual, U, Time, predict_model, fine_index = prediction_setup(frame, predict_start, args.steps_per_hour, output_model)
@@ -164,7 +163,6 @@ def main():
     r = fit["r"]
     print(f"coefficients: r_F={r[0]:.8f}, r_U={r[1]:.8f}, r_R={r[2]:.8f}")
     print(f"damping: branch={fit['damping_branch']}, zeta={fit['damping_ratio']:.8f}")
-    if not args.deterministic: print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"forecast initial [F,R]={np.array2string(init, precision=8)}")
     print(f"O deviation from actual I: MSE={baseline_metrics['mse']:.10f}, RMSE={baseline_metrics['rmse']:.10f}, MAE={baseline_metrics['mae']:.10f}, bias={baseline_metrics['bias']:.10f}")
     print(f"parametrized I=O+R deviation from actual I: MSE={prediction_metrics['mse']:.10f}, RMSE={prediction_metrics['rmse']:.10f}, MAE={prediction_metrics['mae']:.10f}, bias={prediction_metrics['bias']:.10f}")

@@ -14,8 +14,11 @@ class wm_4(wm):
     O = O(Time)
 
     dF = R dt
-    dR = (r_F F + r_U U + r_R R) dt + (sigma_0 + sigma_I I) dW
+    dR = (r_F F + r_U U + r_R R) dt + g_H(t,I,U) dW
     I = O + R
+
+    The structural fit is deterministic. Stochastic uncertainty is added only
+    through explicit H0-H4 diffusion hypotheses after the deterministic fit.
 
     F, U in [-1, 1], with F = U = 0 as the neutral point.
     """
@@ -68,54 +71,59 @@ class wm_4(wm):
         return np.array([R, r @ np.array([F, U, R], dtype=float)], dtype=float)
 
     @staticmethod
-    def diffusion(I, sigma_0, sigma_I):
-        I = wm_4_validation._finite_scalar(I, "I")
-        sigma_0 = wm_4_validation._finite_scalar(sigma_0, "sigma_0")
-        sigma_I = wm_4_validation._finite_scalar(sigma_I, "sigma_I")
-        if I < 0.0: raise ValueError("wm_4 requires I >= 0 when evaluating input-dependent diffusion.")
-        if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
-        if sigma_I < 0.0: raise ValueError("sigma_I must be nonnegative.")
-        return np.array([0.0, sigma_0 + sigma_I * I], dtype=float)
-
-    @staticmethod
-    def diffusion_hypothesis(hypothesis, time_hours, I, U, theta):
-        """Evaluate exploratory WM4 diffusion hypotheses H0-H2.
+    def diffusion_hypothesis(hypothesis, time_hours, I, U, theta, F=None):
+        """Evaluate exploratory WM4 diffusion hypotheses H0-H4.
 
         H0: g = sigma_0 + sigma_t * (1 + cos(2*pi*(t-phase)/24)) / 2
         H1: H0 + sigma_I * I
         H2: H1 + sigma_U * |U|
+        H3: g = sigma_0 + (1 - sigma_I) * I
+        H4: g = sigma_0 + sigma_F * F
 
-        sigma_0, sigma_t, sigma_I and sigma_U are nonnegative. The periodic
-        term gives H0 a simple positive 24-hour uncertainty profile without
-        using O(t). phase is measured in physical hours.
+        H4 uses the deterministic flexibility trajectory F directly.
         """
         hypothesis = str(hypothesis).strip().upper()
-        if hypothesis not in ("H0", "H1", "H2"): raise ValueError("hypothesis must be one of H0, H1 or H2.")
+        if hypothesis not in ("H0", "H1", "H2", "H3", "H4"): raise ValueError("hypothesis must be one of H0, H1, H2, H3 or H4.")
         theta = np.asarray(theta, dtype=float).reshape(-1)
-        expected = {"H0": 3, "H1": 4, "H2": 5}[hypothesis]
+        expected = {"H0": 3, "H1": 4, "H2": 5, "H3": 2, "H4": 2}[hypothesis]
         if theta.size != expected or not np.all(np.isfinite(theta)): raise ValueError(f"{hypothesis} theta must contain exactly {expected} finite values.")
-
-        sigma_0, sigma_t, phase = map(float, theta[:3])
-        if sigma_0 <= 0.0 or sigma_t < 0.0: raise ValueError("sigma_0 must be positive and sigma_t must be nonnegative.")
-        if not 0.0 <= phase <= 24.0: raise ValueError("diffusion phase must lie in [0, 24] physical hours.")
 
         time_hours = np.asarray(time_hours, dtype=float)
         I, U = np.asarray(I, dtype=float), np.asarray(U, dtype=float)
-        if not np.all(np.isfinite(time_hours)) or not np.all(np.isfinite(U)): raise ValueError("diffusion time and price inputs must be finite.")
-        if np.any(U < -1.0) or np.any(U > 1.0): raise ValueError("wm_4 diffusion hypotheses require U in [-1, 1].")
+        if not np.all(np.isfinite(time_hours)) or not np.all(np.isfinite(I)) or not np.all(np.isfinite(U)): raise ValueError("diffusion inputs must be finite.")
 
-        periodic = 0.5 * (1.0 + np.cos(2.0 * np.pi * (time_hours - phase) / 24.0))
-        g = sigma_0 + sigma_t * periodic
-        if hypothesis in ("H1", "H2"):
-            if not np.all(np.isfinite(I)): raise ValueError("H1/H2 diffusion input I must be finite.")
-            sigma_I = float(theta[3])
-            if sigma_I < 0.0: raise ValueError("sigma_I must be nonnegative.")
-            g = g + sigma_I * I
-        if hypothesis == "H2":
-            sigma_U = float(theta[4])
-            if sigma_U < 0.0: raise ValueError("sigma_U must be nonnegative.")
-            g = g + sigma_U * np.abs(U)
-        g = np.asarray(g, dtype=float)
+        if hypothesis == "H4":
+            if F is None: raise ValueError("H4 requires the flexibility trajectory F.")
+            F = np.asarray(F, dtype=float)
+            if not np.all(np.isfinite(F)) or np.any(F < -1.0) or np.any(F > 1.0): raise ValueError("H4 requires finite F in [-1, 1].")
+            sigma_0, sigma_F = map(float, theta)
+            if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
+            if abs(sigma_F) >= sigma_0: raise ValueError("H4 requires |sigma_F| < sigma_0 so g remains positive for F in [-1, 1].")
+            g = sigma_0 + sigma_F * F
+        else:
+            if np.any(U < -1.0) or np.any(U > 1.0): raise ValueError("wm_4 diffusion hypotheses require U in [-1, 1].")
+            if hypothesis == "H3":
+                sigma_0, sigma_I = map(float, theta)
+                if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
+                if not 0.0 <= sigma_I <= 1.0: raise ValueError("H3 requires sigma_I in [0, 1].")
+                g = sigma_0 + (1.0 - sigma_I) * I
+            else:
+                sigma_0, sigma_t, phase = map(float, theta[:3])
+                if sigma_0 <= 0.0 or sigma_t < 0.0: raise ValueError("sigma_0 must be positive and sigma_t must be nonnegative.")
+                if not 0.0 <= phase <= 24.0: raise ValueError("diffusion phase must lie in [0, 24] physical hours.")
+                periodic = 0.5 * (1.0 + np.cos(2.0 * np.pi * (time_hours - phase) / 24.0))
+                g = sigma_0 + sigma_t * periodic
+                if hypothesis in ("H1", "H2"):
+                    sigma_I = float(theta[3])
+                    if sigma_I < 0.0: raise ValueError("sigma_I must be nonnegative.")
+                    g = g + sigma_I * I
+                if hypothesis == "H2":
+                    sigma_U = float(theta[4])
+                    if sigma_U < 0.0: raise ValueError("sigma_U must be nonnegative.")
+                    g = g + sigma_U * np.abs(U)
+
+        shape = np.broadcast(time_hours, I, U, *(tuple() if F is None else (F,))).shape
+        g = np.broadcast_to(np.asarray(g, dtype=float), shape).astype(float, copy=False)
         if not np.all(np.isfinite(g)) or np.any(g <= 0.0): raise ValueError("Diffusion hypothesis must remain finite and strictly positive over the trajectory.")
         return g
 
@@ -134,7 +142,8 @@ class wm_4(wm):
         if Time.size != self.t_steps or I.size != self.t_steps or U.size != self.t_steps: raise ValueError("state signal lengths must equal wm_4.t_steps.")
         r = wm_4_validation.r_coefficients(state["r"])
 
-        g = self.diffusion_hypothesis(hypothesis, Time, I, U, theta)
+        F = np.asarray(state["F"], dtype=float).reshape(-1) if "F" in state else None
+        g = self.diffusion_hypothesis(hypothesis, Time, I, U, theta, F=F)
         transition = np.array([
             [1.0, self.dt],
             [self.dt * r[0], 1.0 + self.dt * r[2]],
@@ -154,6 +163,29 @@ class wm_4(wm):
             "hypothesis": str(hypothesis).strip().upper(),
             "theta": np.asarray(theta, dtype=float).copy(),
         }
+
+    def process_variance_kernel(self, state, sample_indices):
+        """Exact Euler kernel mapping fine-grid g^2 to sampled Var(I)=Var(R), with P0=0."""
+        if "r" not in state: raise ValueError("state is missing required entry 'r'.")
+        r = wm_4_validation.r_coefficients(state["r"])
+        indices = np.asarray(sample_indices, dtype=int).reshape(-1)
+        if indices.size < 1 or np.any(indices < 0) or np.any(indices >= self.t_steps): raise ValueError("sample_indices must lie in [0, t_steps).")
+
+        transition = np.array([
+            [1.0, self.dt],
+            [self.dt * r[0], 1.0 + self.dt * r[2]],
+        ], dtype=float)
+        max_index = int(np.max(indices))
+        impulse = np.empty(max_index, dtype=float)
+        response = np.array([0.0, 1.0], dtype=float)
+        for lag in range(max_index):
+            impulse[lag] = response[1]
+            response = transition @ response
+
+        kernel = np.zeros((indices.size, self.t_steps), dtype=float)
+        for row, index in enumerate(indices):
+            if index > 0: kernel[row, :index] = self.dt * impulse[:index][::-1] ** 2
+        return kernel
 
     def sensitivity(self, parameters):
         """Euler sensitivity of [F,R] and I=O+R to the initial state [F0,R0]."""
@@ -213,32 +245,33 @@ class wm_4(wm):
         U, PE, Time, O = self._sample_signals(parameters)
         return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["r"], gamma=parameters["gamma"])
 
-    def fokker_planc_solver(self, init_cond, parameters, initial_density, f_bounds=(-1.0, 1.0), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
-        _, parameters = wm_4_validation.fokker_planc_inputs(init_cond, parameters)
+    def fokker_planc_solver(self, init_cond, parameters, initial_density, hypothesis, theta, f_bounds=(-1.0, 1.0), r_bounds=(-1.0, 1.0), f_steps=161, r_steps=161, cfl=0.8):
+        _, parameters = wm_4_validation.deterministic_inputs(init_cond, parameters)
         r = parameters["r"]
-        sigma_0, sigma_I = parameters["sigma_0"], parameters["sigma_I"]
 
         def fields(time):
             U = float(parameters["U"](time))
-            O = float(self.O(parameters["Time"](time)))
-            return U, O
+            physical_time = float(parameters["Time"](time))
+            O = float(self.O(physical_time))
+            return U, physical_time, O
 
         def drift_f(time, F, R): return R
 
         def drift_r(time, F, R):
-            U, _ = fields(time)
+            U, _, _ = fields(time)
             return r[0] * F + r[1] * U + r[2] * R
 
         def diffusion_r(time, F, R):
-            _, O = fields(time)
+            U, physical_time, O = fields(time)
             I = O + R
-            if np.any(np.asarray(I) < 0.0): raise ValueError("wm_4 produced negative I on the selected numerical domain.")
-            return sigma_0 + sigma_I * I
+            return self.diffusion_hypothesis(hypothesis, physical_time, I, U, theta, F=F)
 
         result = self.fp.solve(self.t, initial_density, drift_f, drift_r, diffusion_r, v_bounds=f_bounds, r_bounds=r_bounds, v_steps=f_steps, r_steps=r_steps, cfl=cfl)
         result.update({
             "F_grid": result["v_grid"], "marginal_F": result["marginal_v"],
             "mean_F": result["mean_v"], "var_F": result["var_v"],
+            "diffusion_hypothesis": str(hypothesis).strip().upper(),
+            "diffusion_theta": np.asarray(theta, dtype=float).copy(),
         })
         return result
 

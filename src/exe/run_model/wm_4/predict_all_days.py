@@ -16,10 +16,9 @@ START_DAY = "2022-02-28"
 END_DAY = "2022-08-22"
 
 
-def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deterministic=False, optimize_prediction_state=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
+def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, optimize_prediction_state=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
     output_model, output_fit, fit, _, _, _ = fit_history(
-        frame, start, baseline_weeks, warmup_hours, steps_per_hour,
-        fit_diffusion=not deterministic, **fit_kwargs,
+        frame, start, baseline_weeks, warmup_hours, steps_per_hour, **fit_kwargs,
     )
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
 
@@ -42,8 +41,6 @@ def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, deter
         "prediction_state_fit_mse": init_fit_mse,
         "r_F": r[0], "r_U": r[1], "r_R": r[2],
         "F_0": init[0], "R_0": init[1],
-        "sigma_0": np.nan if deterministic else fit["sigma_0"],
-        "sigma_I": np.nan if deterministic else fit["sigma_I"],
         "O_fit_mse": output_fit["mse"], "O_fit_samples": output_fit["samples"],
         "wm4_mse": wm4_metrics["mse"], "wm4_rmse": wm4_metrics["rmse"],
         "wm4_mae": wm4_metrics["mae"], "wm4_bias": wm4_metrics["bias"],
@@ -100,7 +97,7 @@ def print_summary(hourly, fitted_days, skipped):
         for day, reason in skipped: print(f"{day:%Y-%m-%d}: {reason}")
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, warmup_hours=24, steps_per_hour=60, deterministic=False, optimize_prediction_state=False, save_daily_plots=False, fail_fast=False, output_root=OUTPUT, **fit_kwargs):
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, warmup_hours=24, steps_per_hour=60, optimize_prediction_state=False, save_daily_plots=False, fail_fast=False, output_root=OUTPUT, **fit_kwargs):
     start, end = day_start(start), day_start(end)
     if end < start: raise ValueError("end must be on or after start.")
 
@@ -109,7 +106,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
         try:
             daily, hourly = day_result(
                 frame, day, baseline_weeks, warmup_hours, steps_per_hour,
-                deterministic=deterministic, optimize_prediction_state=optimize_prediction_state,
+                optimize_prediction_state=optimize_prediction_state,
                 save_daily_plots=save_daily_plots, output_root=output_root, **fit_kwargs,
             )
             daily_rows.append(daily); hourly_frames.append(hourly)
@@ -130,7 +127,6 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS, help="Previous matching weekdays fitted jointly for WM4 parameters.")
     parser.add_argument("--warmup-hours", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=60)
-    parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
     parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic only: fit each prediction-day initial state from its observed I.")
     parser.add_argument("--save-daily-plots", action="store_true", help="Also save one prediction plot per fitted day.")
     parser.add_argument("--fail-fast", action="store_true", help="Stop immediately instead of skipping a day that cannot be fitted.")
@@ -140,7 +136,7 @@ def main():
     output_root = TOP_END_OUTPUT if args.optimize_prediction_state else OUTPUT
     daily, hourly, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
-        deterministic=args.deterministic, optimize_prediction_state=args.optimize_prediction_state,
+        optimize_prediction_state=args.optimize_prediction_state,
         save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast, output_root=output_root,
     )
     output_root.mkdir(parents=True, exist_ok=True)

@@ -16,11 +16,14 @@ from src.params.wm_4 import optimized_qp_params
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "uncertainty" / "diffusion_hypotheses"
-HYPOTHESES = ("H0", "H1", "H2")
+HYPOTHESES = ("H0", "H1", "H2", "H3", "H4")
+ALPHA = 0.05
 PARAMETER_NAMES = {
     "H0": ("sigma_0", "sigma_t", "phase_h"),
     "H1": ("sigma_0", "sigma_t", "phase_h", "sigma_I"),
     "H2": ("sigma_0", "sigma_t", "phase_h", "sigma_I", "sigma_U"),
+    "H3": ("sigma_0", "sigma_I"),
+    "H4": ("sigma_0", "sigma_F"),
 }
 
 
@@ -31,7 +34,7 @@ def build_record(frame, prediction_day, weeks, steps_per_hour, max_state_iter, s
 
     output_model, _, fit, _ = fit_history_optimized(
         frame, prediction_day, weeks, steps_per_hour,
-        deterministic=True, max_state_iter=max_state_iter, state_tol=state_tol,
+        max_state_iter=max_state_iter, state_tol=state_tol,
     )
     _, actual, U, Time, model, _ = prediction_setup(frame, prediction_day, output_model, steps_per_hour)
     prediction_data, _, _, _ = model_input(frame, prediction_day, steps_per_hour, 0, output_model)
@@ -41,7 +44,9 @@ def build_record(frame, prediction_day, weeks, steps_per_hour, max_state_iter, s
     hourly_index = np.arange(DAY_HOURS, dtype=int) * int(steps_per_hour)
     return {
         "day": prediction_day, "model": model, "state": oracle_state,
-        "hourly_index": hourly_index, "observed_sigma": observed_sigma,
+        "hourly_index": hourly_index,
+        "process_kernel": model.process_variance_kernel(oracle_state, hourly_index),
+        "observed_sigma": observed_sigma,
         "actual_I": actual["I"].to_numpy(dtype=float),
         "oracle_I": oracle_state["I"][hourly_index],
         "oracle_x": np.asarray(oracle["init_cond"], dtype=float),
@@ -69,6 +74,13 @@ def build_records(frame, start, end, weeks, steps_per_hour, max_state_iter, stat
 
 def _initial_starts(hypothesis, records):
     mean_sigma = float(np.mean([np.mean(record["observed_sigma"][1:]) for record in records]))
+    if hypothesis == "H3":
+        base = max(1e-4, 0.5 * mean_sigma)
+        return [np.array([base, sigma_I], dtype=float) for sigma_I in (0.50, 0.75, 0.90, 0.97, 0.995)]
+    if hypothesis == "H4":
+        base = max(1e-4, mean_sigma)
+        return [np.array([base, rho_F], dtype=float) for rho_F in (-0.75, -0.25, 0.0, 0.25, 0.75)]
+
     peak_hours = [int(np.argmax(record["observed_sigma"])) for record in records]
     phase = float(np.median(peak_hours))
     base = max(1e-4, 0.25 * mean_sigma)
@@ -85,6 +97,11 @@ def _initial_starts(hypothesis, records):
 
 
 def _bounds(hypothesis):
+    if hypothesis == "H3":
+        return np.array([1e-8, 0.0], dtype=float), np.array([np.inf, 1.0], dtype=float)
+    if hypothesis == "H4":
+        return np.array([1e-8, -0.999999], dtype=float), np.array([np.inf, 0.999999], dtype=float)
+
     lower = [1e-8, 0.0, 0.0]
     upper = [np.inf, np.inf, 24.0]
     if hypothesis in ("H1", "H2"): lower.append(0.0); upper.append(np.inf)
@@ -92,12 +109,25 @@ def _bounds(hypothesis):
     return np.asarray(lower, dtype=float), np.asarray(upper, dtype=float)
 
 
+def _model_theta(hypothesis, theta):
+    theta = np.asarray(theta, dtype=float)
+    if hypothesis == "H4":
+        sigma_0, rho_F = map(float, theta)
+        return np.array([sigma_0, sigma_0 * rho_F], dtype=float)
+    return theta
+
+
 def predicted_sigma(record, hypothesis, theta):
-    result = record["model"].process_uncertainty(record["state"], hypothesis, theta)
-    return np.asarray(result["input_std"], dtype=float)[record["hourly_index"]]
+    state = record["state"]
+    model_theta = _model_theta(hypothesis, theta)
+    g = record["model"].diffusion_hypothesis(
+        hypothesis, state["Time"], state["I"], state["U"], model_theta, F=state["F"],
+    )
+    variance = record["process_kernel"] @ (np.asarray(g, dtype=float) ** 2)
+    return np.sqrt(np.maximum(variance, 0.0))
 
 
-def fit_hypothesis(hypothesis, records):
+def fit_hypothesis_deterministic(hypothesis, records):
     hypothesis = str(hypothesis).upper()
     if hypothesis not in HYPOTHESES: raise ValueError("Unknown diffusion hypothesis.")
     lower, upper = _bounds(hypothesis)
@@ -118,8 +148,8 @@ def fit_hypothesis(hypothesis, records):
             if not np.all(np.isfinite(initial_residual)): raise ValueError("non-finite initial residual")
             fit = least_squares(
                 residual_vector, start, bounds=(lower, upper),
-                method="trf", x_scale="jac", max_nfev=4000,
-                ftol=1e-10, xtol=1e-10, gtol=1e-10,
+                method="trf", x_scale="jac", max_nfev=600,
+                ftol=1e-8, xtol=1e-8, gtol=1e-8,
             )
             if fit.success and np.all(np.isfinite(fit.x)) and np.all(np.isfinite(fit.fun)):
                 candidates.append(fit)
@@ -132,7 +162,7 @@ def fit_hypothesis(hypothesis, records):
         detail = failures[0] if failures else "no finite candidate"
         raise RuntimeError(f"{hypothesis} diffusion fit failed: {detail}")
     fit = min(candidates, key=lambda item: float(np.mean(item.fun ** 2)))
-    return np.asarray(fit.x, dtype=float), float(np.mean(fit.fun ** 2))
+    return _model_theta(hypothesis, fit.x), float(np.mean(fit.fun ** 2))
 
 
 def interval_score(y, lower, upper, alpha=0.05):
@@ -143,7 +173,7 @@ def interval_score(y, lower, upper, alpha=0.05):
     return score
 
 
-def evaluate_hypothesis(hypothesis, theta, records, alpha=0.05):
+def evaluate_hypothesis(hypothesis, theta, records, alpha=ALPHA):
     sigma_errors, sigma_errors_all = [], []
     covered, covered_all, widths, scores = [], [], [], []
     by_hour = []
@@ -192,7 +222,7 @@ def evaluate_hypothesis(hypothesis, theta, records, alpha=0.05):
     correlation = np.corrcoef(observed, predicted)[0, 1] if np.std(observed) > 0.0 and np.std(predicted) > 0.0 else np.nan
 
     summary = {
-        "hypothesis": hypothesis, "test_days": len(records),
+        "hypothesis": hypothesis, "test_days": len(records), "nominal_coverage_pct": 100.0 * (1.0 - alpha),
         "sigma_rmse_h1_23": float(np.sqrt(np.mean(process_error ** 2))),
         "sigma_mae_h1_23": float(np.mean(np.abs(process_error))),
         "sigma_bias_h1_23": float(np.mean(process_error)),
@@ -200,6 +230,8 @@ def evaluate_hypothesis(hypothesis, theta, records, alpha=0.05):
         "sigma_rmse_all_hours": float(np.sqrt(np.mean(all_error ** 2))),
         "coverage_h1_23_pct": 100.0 * float(np.mean(covered_process)),
         "coverage_all_pct": 100.0 * float(np.mean(covered_full)),
+        "coverage_error_95_h1_23_pct_points": abs(100.0 * float(np.mean(covered_process)) - 95.0),
+        "coverage_error_95_all_pct_points": abs(100.0 * float(np.mean(covered_full)) - 95.0),
         "mean_interval_width": float(np.mean(width)),
         "mean_interval_score": float(np.mean(score)),
     }
@@ -240,21 +272,30 @@ def save_plot(hourly_summary, path):
 def print_summary(summary, train_days, test_days, skipped):
     print()
     print("WM4 diffusion hypothesis comparison")
-    print(f"oracle prediction state used; initial-state/parameter sensitivity excluded (P0=0)")
+    print("deterministic WM4 coefficient fit + oracle prediction state; initial-state/parameter sensitivity excluded (P0=0)")
+    print("H0-H4 coefficients are fitted deterministically by least squares to rolling observed s_I on the training dates.")
     print(f"train days={train_days}, test days={test_days}, skipped={len(skipped)}")
     print("H0 = time-periodic diffusion")
     print("H1 = H0 + sigma_I * I")
     print("H2 = H1 + sigma_U * |U|")
+    print("H3 = sigma_0 + (1 - sigma_I) * I")
+    print("H4 = sigma_0 + sigma_F * F")
     print()
     columns = [
-        "hypothesis", "sigma_rmse_h1_23", "sigma_mae_h1_23", "sigma_correlation_h1_23",
-        "coverage_h1_23_pct", "coverage_all_pct", "mean_interval_width", "mean_interval_score",
+        "hypothesis", "coverage_h1_23_pct", "coverage_error_95_h1_23_pct_points",
+        "coverage_all_pct", "sigma_rmse_h1_23", "sigma_correlation_h1_23",
+        "mean_interval_width", "mean_interval_score",
     ]
-    print(summary[columns].sort_values("sigma_rmse_h1_23").to_string(index=False, float_format=lambda value: f"{value:.6f}"))
+    ranked = summary[columns].sort_values(["coverage_error_95_h1_23_pct_points", "mean_interval_score"])
+    print(ranked.to_string(index=False, float_format=lambda value: f"{value:.6f}"))
 
+    best_coverage = summary.sort_values(["coverage_error_95_h1_23_pct_points", "mean_interval_score"]).iloc[0]
     best_sigma = summary.sort_values("sigma_rmse_h1_23").iloc[0]
     best_score = summary.sort_values("mean_interval_score").iloc[0]
     print()
+    print(f"best held-out 95% coverage calibration: {best_coverage['hypothesis']} "
+          f"(coverage={best_coverage['coverage_h1_23_pct']:.2f}%, "
+          f"error={best_coverage['coverage_error_95_h1_23_pct_points']:.2f} percentage points)")
     print(f"lowest held-out diffusion RMSE: {best_sigma['hypothesis']} ({best_sigma['sigma_rmse_h1_23']:.8f})")
     print(f"lowest held-out 95% interval score: {best_score['hypothesis']} ({best_score['mean_interval_score']:.8f})")
     print()
@@ -269,13 +310,12 @@ def print_summary(summary, train_days, test_days, skipped):
 
 
 def main():
-    parser = ArgumentParser(description="Fit and compare WM4 H0-H2 SDE diffusion hypotheses against rolling observed input uncertainty.")
+    parser = ArgumentParser(description="Fit and compare WM4 H0-H4 SDE diffusion hypotheses against rolling observed input uncertainty.")
     parser.add_argument("--start-day", default=START_DAY)
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--weeks", type=int, default=DEFAULT_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--train-fraction", type=float, default=0.70, help="Chronological fraction of usable prediction days used to fit shared diffusion parameters.")
-    parser.add_argument("--alpha", type=float, default=0.05, help="Prediction interval tail probability; default 0.05 gives 95% intervals.")
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
     parser.add_argument("--fail-fast", action="store_true")
@@ -283,7 +323,6 @@ def main():
     args = parser.parse_args()
 
     if not 0.2 <= args.train_fraction <= 0.9: raise ValueError("train-fraction must lie in [0.2, 0.9].")
-    if not 0.0 < args.alpha < 1.0: raise ValueError("alpha must lie in (0,1).")
 
     frame, _ = aligned_wm4_data("MED")
     records, skipped = build_records(
@@ -296,13 +335,19 @@ def main():
     train, test = records[:split], records[split:]
 
     summaries, daily_frames, hourly_frames = [], [], []
+    print()
+    print(f"finished building {len(records)} usable oracle records; fitting diffusion hypotheses on {len(train)} training days...")
     for hypothesis in HYPOTHESES:
-        theta, train_loss = fit_hypothesis(hypothesis, train)
-        summary, daily, hourly = evaluate_hypothesis(hypothesis, theta, test, alpha=args.alpha)
+        print(f"{hypothesis} | fitting deterministic diffusion coefficients...", flush=True)
+        theta, train_loss = fit_hypothesis_deterministic(hypothesis, train)
+        theta_text = ", ".join(f"{name}={value:.6g}" for name, value in zip(PARAMETER_NAMES[hypothesis], theta))
+        print(f"{hypothesis} | fit complete | train sigma MSE={train_loss:.8g} | {theta_text}", flush=True)
+        summary, daily, hourly = evaluate_hypothesis(hypothesis, theta, test, alpha=ALPHA)
         summary["train_sigma_mse_h1_23"] = train_loss
         summaries.append(summary); daily_frames.append(daily); hourly_frames.append(hourly)
 
     summary = pd.DataFrame(summaries)
+    summary["coverage_rank_95"] = summary["coverage_error_95_h1_23_pct_points"].rank(method="min", ascending=True).astype(int)
     daily = pd.concat(daily_frames, ignore_index=True)
     hourly = pd.concat(hourly_frames, ignore_index=True)
     by_hour = hourly_comparison(hourly)

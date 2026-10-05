@@ -1,8 +1,6 @@
 from time import perf_counter
 
 import numpy as np
-from scipy.optimize import minimize
-
 from src.validation.model.wm_4 import wm_4_validation
 
 
@@ -17,6 +15,11 @@ class qp_params:
     """
 
     def __init__(self, model): self.model = model
+
+    @staticmethod
+    def _reject_removed_diffusion_kwargs(kwargs):
+        removed = [name for name in ("fit_diffusion", "deterministic") if name in kwargs]
+        if removed: raise TypeError("Legacy WM4 diffusion fitting was removed; delete argument(s): " + ", ".join(removed) + ".")
 
     def _prepare_data(self, input_data):
         data = wm_4_validation.fit_data(input_data, self.model.t_steps)
@@ -92,92 +95,6 @@ class qp_params:
         if full: return state
         return {key: value for key, value in state.items() if key not in ("P_R", "P_A")}
 
-    def _fit_uncertainty_params(self, result, data):
-        observed = self._observed_state(data, result["init_cond"])
-        mask = observed["transition_mask"]
-        R, F, r = observed["R"], observed["F"], np.asarray(result["r"], dtype=float)
-        dt = np.full(np.count_nonzero(mask), self.model.dt, dtype=float)
-        drift = observed["P_R"][:-1] @ r
-        innovation = (np.diff(R) - self.model.dt * drift)[mask]
-        diffusion_I = np.asarray(data["I"][:-1], dtype=float)[mask]
-        if np.any(diffusion_I < 0.0): raise ValueError("wm_4 diffusion fitting requires observed I >= 0.")
-
-        def nll(theta):
-            sigma_0, sigma_I = map(float, theta)
-            g = sigma_0 + sigma_I * diffusion_I
-            if sigma_0 <= 0.0 or sigma_I < 0.0 or np.any(g <= 0.0): return np.inf
-            variance = g * g * dt
-            return 0.5 * float(np.sum(np.log(variance) + innovation * innovation / variance))
-
-        constant = max(self.model._FIT_EPS, float(np.sqrt(np.mean(innovation * innovation / dt))))
-        target = np.abs(innovation) * np.sqrt(np.pi / (2.0 * dt))
-        X = np.column_stack((np.ones(diffusion_I.size), diffusion_I))
-        linear = np.linalg.lstsq(X, target, rcond=None)[0]
-        linear = np.array([max(self.model._FIT_EPS, float(linear[0])), max(0.0, float(linear[1]))])
-        scale = max(float(np.max(diffusion_I)), self.model._FIT_EPS)
-        starts = (np.array([constant, 0.0]), linear, np.array([0.5 * constant, 0.5 * constant / scale]))
-        fits = [minimize(nll, x0, method="L-BFGS-B", bounds=((self.model._FIT_EPS, None), (0.0, None))) for x0 in starts]
-        valid = [fit for fit in fits if fit.success and np.all(np.isfinite(fit.x)) and np.isfinite(fit.fun)]
-        if not valid: raise RuntimeError("wm_4 diffusion maximum-likelihood fit failed.")
-        fit = min(valid, key=lambda item: item.fun)
-        sigma_0, sigma_I = map(float, fit.x)
-        obs = np.asarray(data["observation_mask"], dtype=bool)
-        residual = data["I"][obs] - result["deterministic_state"]["I"][obs]
-        q, kappa_R = self._equivalent_q(r)
-        Q = q[0] * F[:-1] + q[1] * data["U"][:-1]
-        return {
-            **result, "sigma_0": sigma_0, "sigma_I": sigma_I, "residual": residual,
-            "diffusion_innovation": innovation, "diffusion_dt": dt, "diffusion_I": diffusion_I,
-            "diffusion_F": F[:-1][mask], "diffusion_Q": Q[mask], "diffusion_nll": float(fit.fun),
-        }
-
-    def _fit_uncertainty_params_many(self, result, datasets, init_conds):
-        innovations, dts, diffusion_inputs, observed_fs, qs, residuals = [], [], [], [], [], []
-        r = np.asarray(result["r"], dtype=float)
-        q, kappa_R = self._equivalent_q(r)
-        for state, data, init in zip(result["deterministic_states"], datasets, init_conds):
-            observed = self._observed_state(data, init)
-            mask = observed["transition_mask"]
-            R, F = observed["R"], observed["F"]
-            drift = observed["P_R"][:-1] @ r
-            innovation = (np.diff(R) - self.model.dt * drift)[mask]
-            diffusion_I = np.asarray(data["I"][:-1], dtype=float)[mask]
-            if np.any(diffusion_I < 0.0): raise ValueError("wm_4 diffusion fitting requires observed I >= 0.")
-            innovations.append(innovation)
-            dts.append(np.full(np.count_nonzero(mask), self.model.dt, dtype=float))
-            diffusion_inputs.append(diffusion_I)
-            observed_fs.append(F[:-1][mask])
-            qs.append((q[0] * F[:-1] + q[1] * data["U"][:-1])[mask])
-            obs = np.asarray(data["observation_mask"], dtype=bool)
-            residuals.append(data["I"][obs] - state["I"][obs])
-
-        innovation, dt, diffusion_I = np.concatenate(innovations), np.concatenate(dts), np.concatenate(diffusion_inputs)
-
-        def nll(theta):
-            sigma_0, sigma_I = map(float, theta)
-            g = sigma_0 + sigma_I * diffusion_I
-            if sigma_0 <= 0.0 or sigma_I < 0.0 or np.any(g <= 0.0): return np.inf
-            variance = g * g * dt
-            return 0.5 * float(np.sum(np.log(variance) + innovation * innovation / variance))
-
-        constant = max(self.model._FIT_EPS, float(np.sqrt(np.mean(innovation * innovation / dt))))
-        target = np.abs(innovation) * np.sqrt(np.pi / (2.0 * dt))
-        X = np.column_stack((np.ones(diffusion_I.size), diffusion_I))
-        linear = np.linalg.lstsq(X, target, rcond=None)[0]
-        linear = np.array([max(self.model._FIT_EPS, float(linear[0])), max(0.0, float(linear[1]))])
-        scale = max(float(np.max(diffusion_I)), self.model._FIT_EPS)
-        starts = (np.array([constant, 0.0]), linear, np.array([0.5 * constant, 0.5 * constant / scale]))
-        fits = [minimize(nll, x0, method="L-BFGS-B", bounds=((self.model._FIT_EPS, None), (0.0, None))) for x0 in starts]
-        valid = [fit for fit in fits if fit.success and np.all(np.isfinite(fit.x)) and np.isfinite(fit.fun)]
-        if not valid: raise RuntimeError("wm_4 diffusion maximum-likelihood fit failed.")
-        fit = min(valid, key=lambda item: item.fun)
-        sigma_0, sigma_I = map(float, fit.x)
-        return {
-            **result, "sigma_0": sigma_0, "sigma_I": sigma_I, "residual": np.concatenate(residuals),
-            "diffusion_innovation": innovation, "diffusion_dt": dt, "diffusion_I": diffusion_I,
-            "diffusion_F": observed_fs, "diffusion_Q": qs, "diffusion_nll": float(fit.fun),
-        }
-
     def _finish_result(self, result, qp_loss, qp_solve_time, fit_start, stabilize):
         r = np.asarray(result["r"], dtype=float)
         q, kappa_R = self._equivalent_q(r)
@@ -192,7 +109,8 @@ class qp_params:
         })
         return result
 
-    def fit(self, input_data, initial_conditions, *, fit_initial_state=False, fit_diffusion=True, stabilize=True, verbose=False, **_legacy_kwargs):
+    def fit(self, input_data, initial_conditions, *, fit_initial_state=False, stabilize=True, verbose=False, **_legacy_kwargs):
+        self._reject_removed_diffusion_kwargs(_legacy_kwargs)
         if fit_initial_state: raise ValueError("wm_4 QP fitting requires fixed initial [F0, R0]; fit_initial_state is no longer supported.")
         fit_start = perf_counter()
         data = self._prepare_data(input_data)
@@ -209,12 +127,12 @@ class qp_params:
             "recovered_model_loss": deterministic_loss, "deterministic_loss": deterministic_loss,
             "structural_viable": True, "initial_rate_mismatch": observed[0]["initial_rate_mismatch"],
         }
-        result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         if verbose: print(f"[qp] transitions={np.count_nonzero(data['transition_mask'])} loss={qp_loss:.8g} free_run_mse={deterministic_loss:.8g} solve={qp_solve_time:.4f}s")
         return result
 
-    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=False, fit_diffusion=True, stabilize=True, verbose=False, **_legacy_kwargs):
+    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=False, stabilize=True, verbose=False, **_legacy_kwargs):
+        self._reject_removed_diffusion_kwargs(_legacy_kwargs)
         if fit_initial_state: raise ValueError("wm_4 QP fitting requires fixed initial [F0, R0]; fit_initial_state is no longer supported.")
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         fit_start = perf_counter()
@@ -240,7 +158,6 @@ class qp_params:
             "structural_viable": True, "fit_trajectories": len(datasets),
             "initial_rate_mismatch": np.asarray([state["initial_rate_mismatch"] for state in observed], dtype=float),
         }
-        result = self._fit_uncertainty_params_many(result, datasets, init_conds) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         result["fit_method"] = "qp_many"
         if verbose: print(f"[qp] trajectories={len(datasets)} transitions={sum(np.count_nonzero(data['transition_mask']) for data in datasets)} loss={qp_loss:.8g} free_run_mse={deterministic_loss:.8g} solve={qp_solve_time:.4f}s")
@@ -343,9 +260,9 @@ class optimized_qp_params(qp_params):
 
         return r, observed, init_conds, float(qp_loss), float(total_qp_time), history
 
-    def fit(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, deterministic=False, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(-1.0, 1.0), r_bounds=(-np.inf, np.inf), **_legacy_kwargs):
+    def fit(self, input_data, initial_conditions, *, fit_initial_state=True, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(-1.0, 1.0), r_bounds=(-np.inf, np.inf), **_legacy_kwargs):
+        self._reject_removed_diffusion_kwargs(_legacy_kwargs)
         fit_start = perf_counter()
-        if deterministic: fit_diffusion = False
         data = self._prepare_data(input_data)
         seed = wm_4_validation.initial_condition(initial_conditions)
 
@@ -372,18 +289,17 @@ class optimized_qp_params(qp_params):
             "structural_viable": True, "initial_rate_mismatch": observed[0]["initial_rate_mismatch"],
             "state_optimization_history": history, "state_iterations": len(history),
         }
-        result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         result["fit_method"] = "optimized_qp" if fit_initial_state else "qp"
         result["fit_initial_state"] = bool(fit_initial_state)
-        result["deterministic_fit"] = bool(deterministic)
+        result["deterministic_fit"] = True
         if verbose: print(f"[optimized_qp] transitions={np.count_nonzero(data['transition_mask'])} loss={qp_loss:.8g} iterations={len(history)}")
         return result
 
-    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=True, fit_diffusion=True, deterministic=False, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(-1.0, 1.0), r_bounds=(-np.inf, np.inf), **_legacy_kwargs):
+    def fit_many(self, input_data, initial_conditions, *, fit_initial_state=True, stabilize=True, verbose=False, max_state_iter=50, state_tol=1e-8, f_bounds=(-1.0, 1.0), r_bounds=(-np.inf, np.inf), **_legacy_kwargs):
+        self._reject_removed_diffusion_kwargs(_legacy_kwargs)
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         fit_start = perf_counter()
-        if deterministic: fit_diffusion = False
         datasets = [self._prepare_data(data) for data in input_data]
         raw_init = np.asarray(initial_conditions, dtype=float)
         if raw_init.shape == (2,): seeds = [wm_4_validation.initial_condition(raw_init) for _ in datasets]
@@ -425,11 +341,10 @@ class optimized_qp_params(qp_params):
                 "x_hat": prediction_state["x_hat"], "x_cov": prediction_state["covariance"],
                 "x_std": prediction_state["std"], "x_samples": prediction_state["samples"],
             })
-        result = self._fit_uncertainty_params_many(result, datasets, init_conds) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         result["fit_method"] = "optimized_qp_many" if fit_initial_state else "qp_many"
         result["fit_initial_state"] = bool(fit_initial_state)
-        result["deterministic_fit"] = bool(deterministic)
+        result["deterministic_fit"] = True
         if verbose: print(f"[optimized_qp] trajectories={len(datasets)} transitions={sum(np.count_nonzero(data['transition_mask']) for data in datasets)} loss={qp_loss:.8g} iterations={len(history)}")
         return result
 
@@ -540,10 +455,10 @@ class brute_force_params(qp_params):
 
         return r, observed, init_conds, float(qp_loss), float(total_qp_time), history, profiles
 
-    def fit_many(self, input_data, initial_conditions, *, f0_grid=None, f0_min=-1.0, f0_max=1.0, f0_steps=81, fit_diffusion=True, deterministic=False, stabilize=True, max_state_iter=25, state_tol=1e-8, r_bounds=(-np.inf, np.inf), verbose=False, **_legacy_kwargs):
+    def fit_many(self, input_data, initial_conditions, *, f0_grid=None, f0_min=-1.0, f0_max=1.0, f0_steps=81, stabilize=True, max_state_iter=25, state_tol=1e-8, r_bounds=(-np.inf, np.inf), verbose=False, **_legacy_kwargs):
+        self._reject_removed_diffusion_kwargs(_legacy_kwargs)
         if not isinstance(input_data, (list, tuple)) or len(input_data) < 1: raise TypeError("input_data must be a non-empty list or tuple of wm_4 fitting dictionaries.")
         fit_start = perf_counter()
-        if deterministic: fit_diffusion = False
         datasets = [self._prepare_data(data) for data in input_data]
         raw_init = np.asarray(initial_conditions, dtype=float)
         if raw_init.shape == (2,): seeds = [wm_4_validation.initial_condition(raw_init) for _ in datasets]
@@ -576,12 +491,11 @@ class brute_force_params(qp_params):
             "F0": f0_values, "f0_grid": grid.copy(), "f0_profile": profiles,
             "state_optimization_history": history, "state_iterations": len(history),
         }
-        result = self._fit_uncertainty_params_many(result, datasets, init_conds) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         result["fit_method"] = "brute_force_many"
         result["fit_initial_state"] = True
         result["fit_initial_rate"] = True
-        result["deterministic_fit"] = bool(deterministic)
+        result["deterministic_fit"] = True
         result["brute_force_candidates"] = len(grid)
         result["brute_force_feasible_candidates"] = feasible
         result["brute_force_evaluations"] = int(len(grid) * len(datasets) * len(history))

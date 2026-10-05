@@ -22,13 +22,13 @@ def _quantile_bounds(bounds):
     return lower, upper
 
 
-def predict_day(date="2022-08-22", deterministic=True, quantile_bounds=(0.025, 0.975), baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, max_state_iter=50, state_tol=1e-8, output_root=OUTPUT):
+def predict_day(date="2022-08-22", quantile_bounds=(0.025, 0.975), baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, max_state_iter=50, state_tol=1e-8, output_root=OUTPUT):
     start = day_start(date)
     lower_q, upper_q = _quantile_bounds(quantile_bounds)
     frame, _ = aligned_wm4_data("MED")
     output_model, output_fit, fit, _ = fit_history_optimized(
         frame, start, baseline_weeks, steps_per_hour,
-        deterministic=bool(deterministic), max_state_iter=max_state_iter, state_tol=state_tol,
+        max_state_iter=max_state_iter, state_tol=state_tol,
     )
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
 
@@ -90,7 +90,6 @@ def predict_day(date="2022-08-22", deterministic=True, quantile_bounds=(0.025, 0
 def main():
     parser = ArgumentParser(description="Predict one WM4 day from the optimized historical initial-state distribution and propagate its uncertainty by model sensitivity.")
     parser.add_argument("--date", default="2022-08-22")
-    parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting; the plotted interval always represents initial-state uncertainty only.")
     parser.add_argument("--quantile-bounds", type=float, nargs=2, default=(0.025, 0.975), metavar=("LOWER", "UPPER"))
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
@@ -99,7 +98,7 @@ def main():
     args = parser.parse_args()
 
     result = predict_day(
-        date=args.date, deterministic=args.deterministic, quantile_bounds=tuple(args.quantile_bounds),
+        date=args.date, quantile_bounds=tuple(args.quantile_bounds),
         baseline_weeks=args.baseline_weeks, steps_per_hour=args.steps_per_hour,
         max_state_iter=args.max_state_iter, state_tol=args.state_tol,
     )

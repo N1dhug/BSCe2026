@@ -73,17 +73,6 @@ class wm_4_validation(wm_1_validation):
         return validated
 
     @classmethod
-    def diffusion_parameters(cls, parameters):
-        validated = cls.parameters(parameters)
-        missing = [name for name in ("sigma_0", "sigma_I") if name not in parameters]
-        if missing: raise ValueError("parameters is missing required stochastic entries: " + ", ".join(missing) + ".")
-        validated["sigma_0"] = cls._finite_scalar(parameters["sigma_0"], "sigma_0")
-        validated["sigma_I"] = cls._finite_scalar(parameters["sigma_I"], "sigma_I")
-        if validated["sigma_0"] <= 0.0: raise ValueError("sigma_0 must be positive.")
-        if validated["sigma_I"] < 0.0: raise ValueError("sigma_I must be nonnegative.")
-        return validated
-
-    @classmethod
     def initial_condition(cls, init_cond, allow_rate=True):
         values = np.asarray(init_cond, dtype=float).reshape(-1)
         if values.size != 2: raise ValueError("wm_4 init_cond must contain exactly [F0, R0].")
@@ -93,9 +82,6 @@ class wm_4_validation(wm_1_validation):
 
     @classmethod
     def deterministic_inputs(cls, init_cond, parameters): return cls.initial_condition(init_cond), cls.parameters(parameters)
-
-    @classmethod
-    def fokker_planc_inputs(cls, init_cond, parameters): return cls.initial_condition(init_cond), cls.diffusion_parameters(parameters)
 
     @classmethod
     def finite_feature_input(cls, value, name): return cls._finite_scalar(value, name)
