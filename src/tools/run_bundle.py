@@ -19,7 +19,7 @@ def sha256(path):
 
 def _safe_name(name):
     path = PurePosixPath(name)
-    if (not name or path.is_absolute() or '..' in path.parts or '\\' in name
+    if (not name or any(ord(c) < 32 for c in name) or path.is_absolute() or '..' in path.parts or '\\' in name
             or ':' in name or str(path) != name or name.endswith('/')):
         raise ValueError('Unsafe bundle member: '+name)
     devices = {'con', 'prn', 'aux', 'nul'} | {f'{p}{i}' for p in ('com', 'lpt') for i in range(1, 10)}
@@ -88,7 +88,9 @@ def unpack(index_path, destination):
             if len({m.filename.casefold() for m in members}) != len(members):
                 raise ValueError('Duplicate or case-colliding archive members.')
             for member in members:
-                _safe_name(member.filename)
+                # ZipInfo normalizes Windows backslashes and truncates NULs in filename.
+                # Check the original archive spelling before trusting the normalized path.
+                _safe_name(member.orig_filename)
                 mode = member.external_attr >> 16
                 if stat.S_IFMT(mode) not in (0, stat.S_IFREG):
                     raise ValueError('Only regular files are allowed in a bundle.')

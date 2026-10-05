@@ -32,7 +32,11 @@ class BundleTests(unittest.TestCase):
                 root = Path(directory)
                 part = root/'part'
                 with zipfile.ZipFile(part, 'w') as archive:
-                    archive.writestr(name, 'data')
+                    archive.writestr('a/b' if name == 'a\\b' else name, 'data')
+                if name == 'a\\b':
+                    # Windows writers normalize separators. Inject the actual malformed
+                    # filename into both ZIP headers so both platforms read the same bytes.
+                    part.write_bytes(part.read_bytes().replace(b'a/b', b'a\\b'))
                 index = dict(format='bm-data-bundle-v1', archive_sha256=sha256(part),
                     parts=[dict(name='part', bytes=part.stat().st_size, sha256=sha256(part))])
                 (root/'index.json').write_text(json.dumps(index))
