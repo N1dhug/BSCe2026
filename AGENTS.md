@@ -5,9 +5,16 @@
 Samlet resterende H-beregning skal planlægges mod 4–6 timer og holde sig under
 10 timer inklusive piloter, fits og nødvendige kontroller. Budgettet følger
 forløbet på tværs af resumes; de tidligere cirka 90 timer er afvist.
-Næste opgave er højst 15 minutters gennemførlighedsprøve af billig
-intervalbaseret kandidatsøgning mod den præcise terminal-tilt-reference.
-Dette erstatter den isolerede Fourier-runtimekontrol som næste prioritet.
+Den afgrænsede interval-søgeprøve er nu kørt på 415.89 s i alt.
+De første timer kunne bestå, men positiv joint-CN med 321 celler og
+da=1/1024 fejler den genbrugte døgnreference: score 3.58901, maksimal
+endpoint-mean .00822776 og L1 .26784242. Ingen billig backend er godkendt.
+Næste prioritet er et lavere, eksplicit kandidatbudget og parallelle
+HELE TRAIN-replays med den præcise metode, efter datakontrakt og en kort
+repræsentativ runtimepilot. 17 kandidater/7 dage/8 workers er kun en
+budgetillustration, ikke et godkendt run eller et løfte om fitkonvergens.
+Se root/H2_SEARCH_FEASIBILITY.md og root/H2_SEARCH_NEXT_HANDOFF.md.
+Ingen automatisk ny surrogate-/gridpanelrunde eller Fourier-runtimekontrol.
 De gamle grove grids fejlede numerik; de må ikke genindføres som accepteret
 likelihood. Kontroller kandidatforskelle og valgte løsninger, og stop ved
 utilstrækkelig præcision eller budget. Genbrug fitter/data/checkpoints og
