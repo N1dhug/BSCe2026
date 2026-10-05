@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction"
 
 
-def fit_history(frame, predict_start, parameter_weeks, warmup_hours, steps_per_hour, fit_diffusion=True, **kwargs):
+def fit_history(frame, predict_start, parameter_weeks, warmup_hours, steps_per_hour, **kwargs):
     predict_start, parameter_weeks = day_start(predict_start), int(parameter_weeks)
     if parameter_weeks < 1: raise ValueError("parameter_weeks must be at least 1.")
     output_model, output_fit = fit_expected_output(frame, predict_start)
@@ -32,7 +32,7 @@ def fit_history(frame, predict_start, parameter_weeks, warmup_hours, steps_per_h
     model = wm_4(model_T, len(indices[0]), model_output(datasets[0], indices[0]))
     fit = qp_params(model).fit_many(
         datasets, np.vstack(init_conds),
-        fit_diffusion=fit_diffusion, verbose=False, **kwargs,
+        verbose=False, **kwargs,
     )
     fit["training_days"] = fit_days
     fit["fit_trajectories"] = len(datasets)
@@ -143,7 +143,6 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS, help="Previous matching weekdays fitted jointly for WM4 parameters; default 5.")
     parser.add_argument("--warmup-hours", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=60)
-    parser.add_argument("--deterministic", action="store_true", help="Skip diffusion parameter estimation.")
     parser.add_argument("--optimize-prediction-state", action="store_true", help="Diagnostic only: fit prediction-day [F0,R0] from that day's observed I instead of using historical fitted states.")
     args = parser.parse_args()
 
@@ -151,7 +150,6 @@ def main():
     predict_start = day_start(args.day)
     output_model, output_fit, fit, _, _, _ = fit_history(
         frame, predict_start, args.baseline_weeks, args.warmup_hours, args.steps_per_hour,
-        fit_diffusion=not args.deterministic,
     )
     predict_end, actual, U, Time, predict_model, fine_index = prediction_setup(frame, predict_start, output_model, args.steps_per_hour)
 
@@ -179,7 +177,6 @@ def main():
     print(f"O training={output_fit['fit_start']} -> {output_fit['fit_end']}, samples={output_fit['samples']}, MSE={output_fit['mse']:.8f}")
     r = fit["r"]
     print(f"r = [r_F={r[0]:.8f}, r_U={r[1]:.8f}, r_R={r[2]:.8f}]")
-    if not args.deterministic: print(f"diffusion: sigma_0={fit['sigma_0']:.8f}, sigma_I={fit['sigma_I']:.8f}")
     print(f"initial_cond = [{init[0]:.8f}, {init[1]:.8f}], optimized_from_prediction_day = {str(args.optimize_prediction_state).lower()}")
     print()
     print(f"{'':<8}{'MSE':>14}{'RMSE':>14}{'MAE':>14}{'bias':>14}")
