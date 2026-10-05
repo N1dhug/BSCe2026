@@ -42,7 +42,9 @@ def build_record(frame, prediction_day, weeks, steps_per_hour, max_state_iter, s
     hourly_index = np.arange(DAY_HOURS, dtype=int) * int(steps_per_hour)
     return {
         "day": prediction_day, "model": model, "state": oracle_state,
-        "hourly_index": hourly_index, "observed_sigma": observed_sigma,
+        "hourly_index": hourly_index,
+        "process_kernel": model.process_variance_kernel(oracle_state, hourly_index),
+        "observed_sigma": observed_sigma,
         "actual_I": actual["I"].to_numpy(dtype=float),
         "oracle_I": oracle_state["I"][hourly_index],
         "oracle_x": np.asarray(oracle["init_cond"], dtype=float),
@@ -94,8 +96,12 @@ def _bounds(hypothesis):
 
 
 def predicted_sigma(record, hypothesis, theta):
-    result = record["model"].process_uncertainty(record["state"], hypothesis, theta)
-    return np.asarray(result["input_std"], dtype=float)[record["hourly_index"]]
+    state = record["state"]
+    g = record["model"].diffusion_hypothesis(
+        hypothesis, state["Time"], state["I"], state["U"], theta,
+    )
+    variance = record["process_kernel"] @ (np.asarray(g, dtype=float) ** 2)
+    return np.sqrt(np.maximum(variance, 0.0))
 
 
 def fit_hypothesis_deterministic(hypothesis, records):
@@ -119,8 +125,8 @@ def fit_hypothesis_deterministic(hypothesis, records):
             if not np.all(np.isfinite(initial_residual)): raise ValueError("non-finite initial residual")
             fit = least_squares(
                 residual_vector, start, bounds=(lower, upper),
-                method="trf", x_scale="jac", max_nfev=4000,
-                ftol=1e-10, xtol=1e-10, gtol=1e-10,
+                method="trf", x_scale="jac", max_nfev=600,
+                ftol=1e-8, xtol=1e-8, gtol=1e-8,
             )
             if fit.success and np.all(np.isfinite(fit.x)) and np.all(np.isfinite(fit.fun)):
                 candidates.append(fit)
@@ -304,8 +310,13 @@ def main():
     train, test = records[:split], records[split:]
 
     summaries, daily_frames, hourly_frames = [], [], []
+    print()
+    print(f"finished building {len(records)} usable oracle records; fitting diffusion hypotheses on {len(train)} training days...")
     for hypothesis in HYPOTHESES:
+        print(f"{hypothesis} | fitting deterministic diffusion coefficients...", flush=True)
         theta, train_loss = fit_hypothesis_deterministic(hypothesis, train)
+        theta_text = ", ".join(f"{name}={value:.6g}" for name, value in zip(PARAMETER_NAMES[hypothesis], theta))
+        print(f"{hypothesis} | fit complete | train sigma MSE={train_loss:.8g} | {theta_text}", flush=True)
         summary, daily, hourly = evaluate_hypothesis(hypothesis, theta, test, alpha=ALPHA)
         summary["train_sigma_mse_h1_23"] = train_loss
         summaries.append(summary); daily_frames.append(daily); hourly_frames.append(hourly)
