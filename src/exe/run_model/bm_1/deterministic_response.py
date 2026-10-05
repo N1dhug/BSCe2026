@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import sys
+from time import perf_counter
 
 
 def save_response_plot(directory, result):
@@ -54,6 +55,7 @@ def main(argv=None):
     for name in ('OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','OMP_NUM_THREADS'): os.environ[name] = '1'
     from src.exe.run_model.bm_1.deterministic import _jsonable, write_result, write_forecast
     from src.tools.bm_1_reports import _RunLock, _atomic_report
+    from src.exe.run_model.progress import runtime_text
     from src.tools.bm_1_deterministic_response import (fit_training_archive,load_response_snapshot,
         forecast_response,score_response_forecast)
     try:
@@ -69,9 +71,12 @@ def main(argv=None):
         try:
             if args.reference_fit:
                 print('G4: original TRAIN only; baseline/WM/scales/k frozen; no candidate selection; BLAS=1',flush=True)
+                began = perf_counter()
                 def checkpoint(state): _atomic_report(directory/'pilot.json',_jsonable(state),replace_existing=True)
                 def progress(state):
-                    print(f"G4 residual calls={state['counts']['residual_calls']}; elapsed={state['seconds']:.0f}s",flush=True)
+                    calls = state['counts']['residual_calls']
+                    print(f'G4 residual calls={calls}; '+runtime_text(began,calls,args.max_calls)
+                          +f'; call-budget estimate; hard compute cap={args.seconds:g}s',flush=True)
                 report, results = fit_training_archive(args.reference_fit,seconds=args.seconds,
                     regularizations=args.regularizations,starts=args.starts,max_calls=args.max_calls,
                     calls_per_start=args.calls_per_start,checkpoint=checkpoint,progress=progress)
