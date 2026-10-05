@@ -25,6 +25,10 @@ G's senere FP/EM-lag arver kun relevante interfacekrav, ikke hele F's forsøgspr
   Ingen ekstra push-kørsel efter merge. Notér hvilke kontroller der faktisk er kørt.
 
 Denne regel erstatter tidligere standard-testpakker i projektplanerne.
+Ved G-arbejde er G.md/G_IMPLEMENTATION_HANDOFF.md/G_JANUARY.md indgangen;
+F4-H2 læses kun ved konkret grænsefladegenbrug. Skriv altid F4-H2 for F-fasen
+og WM-H2 for vandmodellens støjhypotese; de er ikke G-faser. En chat skal
+holde sit erklærede spor, selv om begge spor findes i samme repository/projekt.
 
 **Nyt selvstændigt spor, Johan 5. oktober: [G-planen](root/G.md).**
 Deterministisk BM1-kerne, afgrænset parameterfit, matched WM4-prognoser og
@@ -81,9 +85,11 @@ Præcisering kl. 12:56: genbrug WM4's `statistical_output`-baseline, samme
 fit/predict-protokol, metrics, performanceanalyser og rapportlayout dér, hvor
 muligt. Første benchmark følger WM's én-fituges/næste-uges-protokol. Forskelle
 skal begrundes; se den bindende kompatibilitetsmatrix i G-planens afsnit 1a.
-Astra-opgaver er registreret i G-overdragelsen: XHigh til præcision/runtime
-for den stokastiske timeinterval-likelihood; High til senere matematisk
-review af posterior→FP/mixture-kontrol. Ingen af dem blokerer legacy-G3.
+G-overdragelsen reserverer et senere matematisk review af G's posterior→
+FP/mixture-kontrol. F4-H2's Astra XHigh-review tilhører F-sporet og står i
+`root/H2_INTERVAL_ASTRA_HANDOFF.md`; det er ikke en G-opgave eller generel
+G-gate. Historisk intervalbaseret G-estimation skal dog have sin egen korrekte
+observationsoperator; den syntetiske punktobservationsdemo dækker ikke dette.
 
 **H-recovery, 5. oktober:** H1a-v2 er reproduceret på `90211e4` og råarkiveret.
 Alle seks betingede H1b-fits er nu færdige på `e7d9089`; to responsive

@@ -63,12 +63,40 @@ bevares ved delvis/ingen future demand. 20 G-tests samt tre layout/import-
 kontroller består på ca. 6.7 s; ingen historisk kørsel er udført her.
 
 Datagennemgangen fandt også legacy-gennemsnit over tilgængelige målere frem
-for en garanteret fast population. H2 har verificeret MED/UDEN-medlemskab.
+for en garanteret fast population. F4-H2 har verificeret MED/UDEN-medlemskab.
 Johan har senere deklareret timeforbrug, foreløbigt kWh og hour-start som
-arbejdsantagelser; H2's interval-likelihood er implementeret men endnu ikke
-tilstrækkeligt numerisk præcis. Bevar januarfittets
+arbejdsantagelser. F4-H2's interval-likelihood er en separat F-opgave.
+G's syntetiske G6b/G8/G7 venter ikke på den. Bevar januarfittets
 oprindelige kontrakt og auditér før historisk validering. Nye kontrakter
 kræver egne resultater; syntetisk udvikling af adapterne kan begynde nu.
+
+## Afgrænsningsreview, 5. oktober 2026
+
+Review mod main `14767314`: G's ti indgangs-/metode-/parameter-/værktøjsmoduler
+og deres 55 statisk fundne kildemoduler matcher denne commit. Ingen af disse
+importveje omfatter F4-H2's intervalmoduler. G4 bruger den fælles kurvegeometri
+`BM1PiecewiseResponse`, sit eget afgrænsede LS-fit og en eksplicit adapter
+til `BM1Parameters` med nul diffusion. Importgenbrug er ikke F-accept.
+
+Den gennemgåede G3/G4-dynamik er fortsat
+$\dot x=(D-B)/C$, med
+$\delta=\tanh(k[f(x)+g(u)]/2)$ og
+$D=B+\Xi\delta[(1-B)\mathbf1_{\delta\geq0}+B\mathbf1_{\delta<0}]$.
+Lineære f/g giver $\delta=\tanh(k(1-x-u))$.
+Deterministisk intervalmiddel er
+$\bar D=\bar B+C(x_{n+1}-x_n)/\Delta t$.
+Ved senere SDE-udvidelse skal støjintegralet fratrækkes i denne baneidentitet;
+endpoint-formlen alene giver ikke stokastisk intervaldemand.
+Kapacitetsadapteren bruger $C_{\rm days}=C_{\rm hours}/24$;
+diffusionsamplituden skal tilsvarende bruge
+$\sigma_{\rm days}=\sqrt{24}\sigma_{\rm hours}$.
+Konstant sigma betyder konstant amplitude i $b(x)=\sigma x(1-x)$.
+
+Den fundne sammenblanding var F4-H2's Astra-opgave og readiness-status i
+G-overdragelsen; dette er fjernet fra G's opgaveliste. Den historiske
+punkt-/interval- og populationsafklaring består som en selvstændig G-opgave.
+Reviewet er kilde-/matematikgennemgang, ikke ny numerisk eller historisk
+validering. Ingen solverændringer, ekstra tests eller modelkørsler.
 
 ## Aktuel G0–G3-leverance, 5. oktober
 
@@ -393,7 +421,7 @@ de må ikke bruges til manuel ændring af modelvalg eller budgetter under testen
 
 **Populationsaudit:** den nuværende G-import genbruger `consumption_series`,
 som gennemsnitter de tilgængelige målere per time med skip-NaN. Det er ikke
-H2's faste populationskontrakt. Gem medlemsliste/antal per time og bevar
+F4-H2's faste populationskontrakt. Gem medlemsliste/antal per time og bevar
 legacy-status. I en ny fast-populationsvariant giver et manglende medlem en
 manglende aggregatmåling for begge modeller. Metadataaudit alene bekræfter
 ikke enheder, måletype eller tidszone; se [H2_DATA_CONTRACT.md](H2_DATA_CONTRACT.md).
@@ -577,7 +605,7 @@ begrunder det, prøves én ekstra familie med et fast døgnmønster:
 s(t)=sigma_0+sigma_t[1+cos(2*pi*(t-phi)/24)]/2 med ikke-negative koefficienter.
 phi fastlægges på træningsdata, ikke med en stor phasesøgning; t er her timer.
 Ved dagsskala skal både frekvens og diffusionsenhed omregnes
-(sigma_hour=sigma_day/sqrt(24)). WM's H0/H1/H2 kopieres ikke direkte ind i
+(sigma_hour=sigma_day/sqrt(24)). WM's støjhypoteser WM-H0/WM-H1/WM-H2 kopieres ikke direkte ind i
 BM: faktoren x(1−x) og BM's randstruktur bevares. Xi og C skalerer ikke
 automatisk den eksisterende BM-diffusion.
 
@@ -685,7 +713,7 @@ Det syntetiske design skal give tilstrækkelig prisvariation; svag identifikatio
 rapporteres frem for automatisk større grids.
 Hver hypotese har sin egen betingede tilstandsfordeling.
 
-For observation y_n og statisk parameter theta:
+For den syntetiske punktobservation y_n og statisk parameter theta:
 
 $$p_n^-(x,\theta)=\int K_\theta(x\mid z,u)p_{n-1}(z,\theta)\,dz,\qquad
 p_n(x,\theta)\propto L(y_n\mid x,\theta)p_n^-(x,\theta).$$
@@ -695,7 +723,11 @@ Ved manglende måling propagéres uden Bayes-opdatering. G's interpolerede input
 må ikke blive observationsmål. Målemodel og sigma_y fastlægges særskilt;
 dag-til-dag-spredning er ikke automatisk ren proces-/måleusikkerhed.
 G0's punkt-/intervalkontrakt skal passe til likelihood-API'et; et nyt
-intervalfilter kræver sin egen observationstilstand/operator.
+intervalfilter kræver sin egen observationstilstand/operator. For timeenergi
+må likelihooden ikke blot afhænge af sluttilstanden: brug en fælles
+intervalkerne K_theta(x,y_n|z,u), så opdateringen er proportional med
+integralet af K_theta(x,y_n|z,u) p_{n-1}(z,theta) over z. Den skal afledes og
+kontrolleres for G's valgte observation; F4-H2 er mulig metodegenbrug.
 
 Demonstrér mindst én komplet lille rekursiv parameterestimation med
 mixture-backend og FV-reference. G2's batch-LS er initialisering/reference,
@@ -776,7 +808,8 @@ numerisk kontrolleret og historisk valideret.
 ## 9. Kilder og første konkrete opgave
 
 Planen er udarbejdet mod main `fe53cce858979afabeaa7ab1e36b9e44874b0fc5`.
-Ved implementation læses nyeste AGENTS/F4/G og aktuelle WM-kode igen; bevar
+Ved implementation læses nyeste AGENTS/G og berørt WM-kode igen; F læses
+kun ved konkret genbrug eller ændring af fælles interfaces. Bevar
 andres samtidige arbejde og brug branch i eksisterende checkout, ikke nye worktrees.
 
 - [BM-reference](BM_REFERENCE.md): ligninger, eksakt F1-løsning, feasibility og enheder.
@@ -807,9 +840,9 @@ afhængigheder, budgetter og acceptkontroller for G4/G6b/G8/G7.
 G0–G3 fungerer i den rapporterede lokale udviklingskæde. G4's kodekontrol
 giver ikke historisk modelaccept. Bred måneds-/sæsonoptimering tilføjes ikke
 automatisk; historisk råreview og G6–G8's nye integration/accept mangler.
-Astra XHigh anbefales til den åbne præcision/runtime-opgave for H2's
-stokastiske interval-likelihood; Astra High til senere review af posterior-
-handoff og det stokastiske kontrolobjective. Se afgrænsning i overdragelsen.
+G's senere posterior-handoff og stokastiske kontrolobjective får et afgrænset
+matematisk review; se G-overdragelsen. F4-H2's Astra XHigh-opgave tilhører
+F-sporet og er ikke næste G-opgave.
 
 ### Januar: håndtering af huller, 5. oktober 2026
 
