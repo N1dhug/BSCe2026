@@ -18,7 +18,7 @@ class wm_4(wm):
     I = O + R
 
     The structural fit is deterministic. Stochastic uncertainty is added only
-    through explicit H0-H5 diffusion hypotheses after the deterministic fit.
+    through explicit H0-H6 diffusion hypotheses after the deterministic fit.
 
     F, U in [-1, 1], with F = U = 0 as the neutral point.
     """
@@ -72,7 +72,7 @@ class wm_4(wm):
 
     @staticmethod
     def diffusion_hypothesis(hypothesis, time_hours, I, U, theta, F=None):
-        """Evaluate exploratory WM4 diffusion hypotheses H0-H5.
+        """Evaluate exploratory WM4 diffusion hypotheses H0-H6.
 
         H0: g = sigma_0 + sigma_t * (1 + cos(2*pi*(t-phase)/24)) / 2
         H1: H0 + sigma_I * I
@@ -80,13 +80,16 @@ class wm_4(wm):
         H3: g = sigma_0 + (1 - sigma_I) * I
         H4: g = sigma_0 + sigma_F * F
         H5: H0 + sigma_F * F
+        H6: sigma_0 + sigma_t1*h1(t,phase_1) + sigma_t2*h2(t,phase_2)
 
-        H4 and H5 use the deterministic flexibility trajectory F directly.
+        where h1 is the positive 24-hour first harmonic and h2 is the positive
+        12-hour second harmonic. H4 and H5 use the deterministic flexibility
+        trajectory F directly.
         """
         hypothesis = str(hypothesis).strip().upper()
-        if hypothesis not in ("H0", "H1", "H2", "H3", "H4", "H5"): raise ValueError("hypothesis must be one of H0, H1, H2, H3, H4 or H5.")
+        if hypothesis not in ("H0", "H1", "H2", "H3", "H4", "H5", "H6"): raise ValueError("hypothesis must be one of H0, H1, H2, H3, H4, H5 or H6.")
         theta = np.asarray(theta, dtype=float).reshape(-1)
-        expected = {"H0": 3, "H1": 4, "H2": 5, "H3": 2, "H4": 2, "H5": 4}[hypothesis]
+        expected = {"H0": 3, "H1": 4, "H2": 5, "H3": 2, "H4": 2, "H5": 4, "H6": 5}[hypothesis]
         if theta.size != expected or not np.all(np.isfinite(theta)): raise ValueError(f"{hypothesis} theta must contain exactly {expected} finite values.")
 
         time_hours = np.asarray(time_hours, dtype=float)
@@ -108,6 +111,14 @@ class wm_4(wm):
                 if sigma_0 <= 0.0: raise ValueError("sigma_0 must be positive.")
                 if not 0.0 <= sigma_I <= 1.0: raise ValueError("H3 requires sigma_I in [0, 1].")
                 g = sigma_0 + (1.0 - sigma_I) * I
+            elif hypothesis == "H6":
+                sigma_0, sigma_t1, phase_1, sigma_t2, phase_2 = map(float, theta)
+                if sigma_0 <= 0.0 or sigma_t1 < 0.0 or sigma_t2 < 0.0: raise ValueError("H6 requires sigma_0 > 0 and nonnegative harmonic amplitudes.")
+                if not 0.0 <= phase_1 <= 24.0: raise ValueError("H6 first-harmonic phase must lie in [0, 24] hours.")
+                if not 0.0 <= phase_2 <= 12.0: raise ValueError("H6 second-harmonic phase must lie in [0, 12] hours.")
+                harmonic_1 = 0.5 * (1.0 + np.cos(2.0 * np.pi * (time_hours - phase_1) / 24.0))
+                harmonic_2 = 0.5 * (1.0 + np.cos(4.0 * np.pi * (time_hours - phase_2) / 24.0))
+                g = sigma_0 + sigma_t1 * harmonic_1 + sigma_t2 * harmonic_2
             else:
                 sigma_0, sigma_t, phase = map(float, theta[:3])
                 if sigma_0 <= 0.0 or sigma_t < 0.0: raise ValueError("sigma_0 must be positive and sigma_t must be nonnegative.")
