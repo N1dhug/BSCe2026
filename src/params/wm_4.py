@@ -350,48 +350,86 @@ class optimized_qp_params(qp_params):
 
 
 
-class flexibility_diffusion_qp:
-    """Convex QP fit for the local WM4 flexibility diffusion law.
 
-    The diffusion standard deviation is
+class time_diffusion_qp:
+    """Convex local QP for a strictly time-dependent WM4 diffusion variance.
 
-        g(F) = sigma_0 + sigma_F * F
+    The instantaneous variance is represented by a double harmonic,
 
-    and is fitted directly to the empirical hourly input standard deviation
-    from the corresponding historical weekdays. With F in [-1, 1], the
-    constraints 0 <= sigma_F <= sigma_0 <= 1 guarantee g(F) >= 0.
+        q(t) = g(t)^2
+             = beta_0
+             + beta_c1*cos(w*t) + beta_s1*sin(w*t)
+             + beta_c2*cos(2*w*t) + beta_s2*sin(2*w*t),
+
+    with w = 2*pi/24 h. The coefficients are fitted directly to the empirical
+    hourly variance of I from the corresponding historical weekdays. Positivity
+    q(t) >= 0 is imposed on a supplied time grid, so g(t)=sqrt(q(t)) is real.
     """
 
     def __init__(self, model): self.model = model
 
-    def fit(self, F, observed_std):
-        F = np.asarray(F, dtype=float).reshape(-1)
-        observed_std = np.asarray(observed_std, dtype=float).reshape(-1)
-        if F.size != observed_std.size or F.size < 2: raise ValueError("F and observed_std must have the same length with at least two samples.")
-        if not np.all(np.isfinite(F)) or np.any(F < -1.0) or np.any(F > 1.0): raise ValueError("F must contain finite values in [-1, 1].")
-        if not np.all(np.isfinite(observed_std)) or np.any(observed_std < 0.0): raise ValueError("observed_std must contain finite nonnegative values.")
+    @staticmethod
+    def design(time_hours):
+        time_hours = np.asarray(time_hours, dtype=float).reshape(-1)
+        if time_hours.size < 1 or not np.all(np.isfinite(time_hours)): raise ValueError("time_hours must contain finite values.")
+        omega = 2.0 * np.pi / 24.0
+        return np.column_stack((
+            np.ones(time_hours.size, dtype=float),
+            np.cos(omega * time_hours), np.sin(omega * time_hours),
+            np.cos(2.0 * omega * time_hours), np.sin(2.0 * omega * time_hours),
+        ))
 
-        X = np.column_stack((np.ones(F.size, dtype=float), F))
-        A_ub = np.array([[-1.0, 1.0]], dtype=float)
-        b_ub = np.array([0.0], dtype=float)
-        theta = self.model._least_squares_qp(
-            X, observed_std,
-            A_ub=A_ub, b_ub=b_ub,
-            lb=np.array([0.0, 0.0], dtype=float),
-            ub=np.array([1.0, 1.0], dtype=float),
+    @staticmethod
+    def amplitude_phase(beta):
+        beta = np.asarray(beta, dtype=float).reshape(-1)
+        if beta.size != 5 or not np.all(np.isfinite(beta)): raise ValueError("beta must contain five finite double-harmonic coefficients.")
+        omega = 2.0 * np.pi / 24.0
+        amp_1 = float(np.hypot(beta[1], beta[2]))
+        amp_2 = float(np.hypot(beta[3], beta[4]))
+        phase_1 = float(np.mod(np.arctan2(beta[2], beta[1]) / omega, 24.0))
+        phase_2 = float(np.mod(np.arctan2(beta[4], beta[3]) / (2.0 * omega), 12.0))
+        return {
+            "variance_baseline": float(beta[0]),
+            "variance_amplitude_1": amp_1, "phase_1_h": phase_1,
+            "variance_amplitude_2": amp_2, "phase_2_h": phase_2,
+        }
+
+    def fit(self, time_hours, observed_variance, positivity_time=None):
+        time_hours = np.asarray(time_hours, dtype=float).reshape(-1)
+        observed_variance = np.asarray(observed_variance, dtype=float).reshape(-1)
+        if time_hours.size != observed_variance.size or time_hours.size < 5: raise ValueError("time_hours and observed_variance must have the same length with at least five samples.")
+        if not np.all(np.isfinite(observed_variance)) or np.any(observed_variance < 0.0): raise ValueError("observed_variance must contain finite nonnegative values.")
+
+        X = self.design(time_hours)
+        positivity_time = time_hours if positivity_time is None else np.asarray(positivity_time, dtype=float).reshape(-1)
+        Phi = self.design(positivity_time)
+        beta = self.model._least_squares_qp(
+            X, observed_variance,
+            A_ub=-Phi, b_ub=np.zeros(Phi.shape[0], dtype=float),
             ridge=self.model._FIT_RIDGE,
         )
-        sigma_0, sigma_F = map(float, theta)
-        fitted = X @ theta
-        residual = fitted - observed_std
-        return {
-            "sigma_0": sigma_0, "sigma_F": sigma_F,
-            "theta": np.asarray(theta, dtype=float),
-            "fitted_std": fitted, "residual": residual,
-            "mse": float(np.mean(residual ** 2)),
-            "rmse": float(np.sqrt(np.mean(residual ** 2))),
-            "mae": float(np.mean(np.abs(residual))),
+        fitted_variance = X @ beta
+        fitted_variance = np.maximum(fitted_variance, 0.0)
+        fitted_std = np.sqrt(fitted_variance)
+        observed_std = np.sqrt(observed_variance)
+        variance_residual = fitted_variance - observed_variance
+        std_residual = fitted_std - observed_std
+        result = {
+            "beta": np.asarray(beta, dtype=float),
+            "fitted_variance": fitted_variance, "fitted_std": fitted_std,
+            "variance_residual": variance_residual, "std_residual": std_residual,
+            "variance_mse": float(np.mean(variance_residual ** 2)),
+            "variance_rmse": float(np.sqrt(np.mean(variance_residual ** 2))),
+            "std_rmse": float(np.sqrt(np.mean(std_residual ** 2))),
+            "std_mae": float(np.mean(np.abs(std_residual))),
         }
+        result.update(self.amplitude_phase(beta))
+        return result
+
+    def evaluate(self, time_hours, beta):
+        q = self.design(time_hours) @ np.asarray(beta, dtype=float).reshape(5)
+        q = np.maximum(q, 0.0)
+        return {"variance": q, "std": np.sqrt(q)}
 
 
 
