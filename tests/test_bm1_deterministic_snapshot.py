@@ -96,7 +96,10 @@ class FrozenForecastTests(unittest.TestCase):
         self.assertTrue(missing['daily_metrics']['samples'].eq(0).all())
         measured = self.raw.Demand.copy()
         measured.loc[first['predictions'].index[:3]] = np.nan
-        scored = score_forecast(first, measured)
+        measured_before = measured.copy(deep=True)
+        with pd.option_context('mode.copy_on_write', True):
+            scored = score_forecast(first, measured)
+        pd.testing.assert_series_equal(measured, measured_before)
         self.assertEqual(scored['scoring']['scored_samples'],21)
         self.assertEqual(scored['scoring']['status'],'partial')
         self.assertEqual(scored['scoring']['models'],['O','bm1','wm4'])

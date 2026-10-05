@@ -103,7 +103,7 @@ def score_forecast(result, observations):
     else:
         if not isinstance(observations, pd.Series) or observations.index.has_duplicates:
             raise ValueError('Scoring observations require a uniquely indexed pandas Series.')
-        actual = pd.to_numeric(observations.reindex(predictions.index), errors='coerce').to_numpy(dtype=float)
+        actual = pd.to_numeric(observations.reindex(predictions.index), errors='coerce').to_numpy(dtype=float, copy=True)
         actual[~np.isfinite(actual)] = np.nan
     predictions['observed'] = actual
     models = [name for name in ('O','bm1','wm4') if name in predictions]

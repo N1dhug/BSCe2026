@@ -6,7 +6,10 @@ Forberedt 5. oktober 2026 mod `main` ved
 kontrolleret: `deterministic --from-fit`, versioneret JSON-snapshot og
 kontrolleret 07fad9f-import. Fælles BM/WM/origin/baseline og varig eksport før
 optional scoring er verificeret. 20 G-tests plus tre relevante layout/import-
-kontroller består på ca. 6.7 s. Historisk råreview/prognose og G4–G8 mangler.
+kontroller består på ca. 6.7 s. En CI-fundet pandas copy-on-write-fejl i
+scoringen er reproduceret og rettet med en eksplicit observationskopi; de
+samme 23 kontroller består også med copy-on-write aktiveret (ca. 5.3 s).
+Historisk råreview/prognose og G4–G8 mangler.
 Beskrivelsen nedenfor bevarer designet; denne status erstatter ældre formuleringer
 om manglende P1/P2. Kommando: [G_JANUARY.md](G_JANUARY.md).
 Læs nyeste `AGENTS.md`, [G.md](G.md), [G_JANUARY.md](G_JANUARY.md) og den
