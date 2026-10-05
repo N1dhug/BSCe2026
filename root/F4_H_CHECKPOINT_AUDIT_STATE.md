@@ -6,9 +6,11 @@ Updated 2026-10-05. Branch `feature/f4-h-checkpoint-audit`, PR #64 targets
 
 ## Repository and ownership
 
-- Last verified published H code: `928c1f3b58d067b478129cef788b6d9fe3672ac8`.
-  This checkpoint also preserves the new main delta through `06942cf5cd29d457f595e611d5564b5c94bb9fdc`
-  (PR #63) by applying its reviewed patch without changing the original worktree.
+- Last verified published combined code: `184563af7a14fbae5dcb88120934c346aa49427a`.
+  It also preserves the new main delta through `06942cf5cd29d457f595e611d5564b5c94bb9fdc`
+  (PR #63) by applying its complete patch without conflict. All changed upstream
+  code/workflow/test files were checked against their exact main Git blob hashes;
+  four documentation files retain both H and G updates. Original worktree unchanged.
   Main and PR #62 remain untouched; Johan retains both PR merge decisions.
   The status file's containing commit identifies its current HEAD (a commit
   cannot contain its own hash). Verify with `git log -1 --oneline` and remote.
@@ -88,6 +90,16 @@ Selected-curve maximum refinement differences: prefix evidence 0.00509427,
 linearly centered evidence 0.01230423, posterior L1 0.00500849.
 Original v1 rejection and v2 numerical history remain preserved.
 
+A read-only quarter-support audit recomputed piecewise-constant cell overlaps
+from every saved refinement level. For nonlinear TRAIN, mean posterior mass in
+state quarters is (58.86%, 32.44%, 8.68%, 0.022%) with two pieces versus
+(2.07%, 60.27%, 30.91%, 6.75%) with four. Maximum mean-quarter refinement
+difference across all units is 1.267e-5. This strong model dependence is why
+posterior occupancy cannot be treated as observed state coverage or proof of
+identifiability. No new FV or historical data were used. Profiles coupling
+curve shape to k/Xi/rho/noise and independent forecast validation remain open;
+the current result is explicitly conditional, not joint recovery.
+
 ## Tests actually run
 
 - e398a5a: `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -B -m unittest discover -s tests -q`
@@ -105,8 +117,17 @@ Original v1 rejection and v2 numerical history remain preserved.
 - 928c1f3: GitHub run 324 (`37250598670`) ran the complete regression on its
   PR merge ref: **619 tests in 658.565 s, OK, 2 platform skips**. Windows
   launcher/actual locks and notes also passed. The reviewed PR head was 928c1f3.
-- Main-integration targeted tests and final combined full CI are recorded in
-  the next handoff checkpoint; do not infer their result from run 324.
+- Combined 184563a targeted command:
+  `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -B -m unittest tests.test_bm1_distributed tests.test_run_bundle tests.test_bm1_selected_resume tests.test_bm1_reports -q`
+  — 17 tests, 51.434 s, OK. This includes real spawned-worker and bundle checks.
+- 184563a: complete CI run 325 (`37251494721`), **632 tests in 715.755 s,
+  OK, 2 platform skips**; Windows launcher/actual locks/distributed workers/
+  portable bundles and LaTeX notes all passed. CI merge ref
+  `0d6f61590cce5ce591e85c9b59aa3e4206aad27e` has exactly the published
+  head tree `287e2362cd908e3d31a4e5fad6f42f3005975ed6`.
+- This final checkpoint edits status documentation only; executable code, tests,
+  workflow and LaTeX are identical to verified 184563a. GitHub may rerun the
+  checks for the documentation commit; PR live checks report their own status.
 - `git diff --check` passes.
 
 ## Review ledger
@@ -119,6 +140,8 @@ Original v1 rejection and v2 numerical history remain preserved.
 | Report NPZ I/O | Recovered writer/reader mismatch at index 10000; preserve archive format and test 10001 arrays |
 | Historical TRAIN adapter | Recovered silent omission of first TRAIN point; explicit earlier hourly prior origin and complete B/U support required |
 | BM/WM structure | Preserved model/params/method/execution/tools separation and existing shared Windows-safe I/O |
+| Pooled replay / optimizer audit | Whole-stream fresh priors, common f/g, exact-key score memoization, scalar-only resume and unchanged total budget confirmed; cached best is replayed |
+| Data / state support | No new historical reads; legacy preprocessing precedes split; saved posterior support is strongly fitted-model-dependent |
 | Broader old F/G cleanup | Not claimed complete; large cosmetic refactors deferred to avoid the H critical path |
 
 ## Durable artifacts
@@ -140,8 +163,13 @@ and ZIP integrity plus every contained file hash were verified before upload.
   `libfile_0435b14bd3e88191bebe8cee6770b42f`,
   `libfile_1e7b0b094bbc81918381dcb72664010e`,
   `libfile_7229c89a8b308191b3a76c363e6824a0`.
-- Consolidated audit script/results/logs index will be linked in the final
-  checkpoint after publication; do not mistake pending evidence for uploaded.
+- Consolidated audit: `F4_H_recovery_audit_20261005.zip`, 26 evidence files,
+  `libfile_9501e3868aa48191a227a92a1b6f25a4`, 71,453 bytes; SHA256
+  `53376ce023906b08533feb3393307ae86d748cd925074c82c5f3c8a54777ca02`.
+  Upload succeeded with local metadata applied. Includes per-file hashes,
+  numerical summaries, independent arithmetic/support scripts, regression and
+  resume logs, pre-fix reproduction, combined CI evidence, H2 code-only audit,
+  and an index resolving all fit/selected-check raw archive parts.
 
 Archives extract beneath `files/output/bm_1/runs/estimation`. Preserve dependency
 summary bytes: its hash is part of the fit manifest; a mutating numerical resume
@@ -149,9 +177,10 @@ would change that dependency even if no FV work were repeated.
 
 ## Next concrete actions
 
-1. Verify/publish this checkpoint and check full combined CI. PR #64 includes
-   the current main G2 delta so it preserves PR #63 alongside H; it still targets
-   PR #62's branch. Leave both PR merges to Johan.
+1. Inspect PR #64 and its checks. It includes the current main G2 delta and
+   targets PR #62's branch. Johan may merge #64 there before #62 to main; if
+   #62 is merged first, retarget #64 to main and recheck the combined diff/CI.
+   No PR was merged in this session. No completed numerical run needs resuming.
 2. Resolve actual H2 metadata without accessing FINAL_HOLDOUT observations:
    population/meter membership, physical units/scale, point vs interval meaning,
    baseline provenance, consumer tariff vs declared proxy, timezone/missingness,
