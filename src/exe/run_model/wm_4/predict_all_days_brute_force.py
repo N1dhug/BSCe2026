@@ -36,10 +36,9 @@ def brute_force_profiles(fit, prediction_day):
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False, optimize_initial_state=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
+def day_result(frame, start, baseline_weeks, steps_per_hour, optimize_initial_state=False, save_daily_plots=False, output_root=OUTPUT, **fit_kwargs):
     output_model, output_fit, fit, _ = fit_history_brute_force(
-        frame, start, baseline_weeks, steps_per_hour,
-        deterministic=deterministic, **fit_kwargs,
+        frame, start, baseline_weeks, steps_per_hour, **fit_kwargs,
     )
     end, actual, U, Time, model, fine_index = prediction_setup(frame, start, output_model, steps_per_hour)
     if optimize_initial_state:
@@ -82,8 +81,6 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, deterministic=False
         "brute_force_feasible_candidates_min": int(np.min(feasible)),
         "brute_force_feasible_candidates_max": int(np.max(feasible)),
         "state_iterations": int(fit["state_iterations"]),
-        "sigma_0": np.nan if deterministic else fit["sigma_0"],
-        "sigma_I": np.nan if deterministic else fit["sigma_I"],
         "O_fit_mse": output_fit["mse"], "O_fit_samples": output_fit["samples"],
         "wm4_mse": wm4_metrics["mse"], "wm4_rmse": wm4_metrics["rmse"],
         "wm4_mae": wm4_metrics["mae"], "wm4_bias": wm4_metrics["bias"],
@@ -151,7 +148,7 @@ def print_summary(hourly, daily, skipped):
         for day, reason in skipped: print(f"{day:%Y-%m-%d}: {reason}")
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, deterministic=False, optimize_initial_state=False, save_daily_plots=False, fail_fast=False, output_root=OUTPUT, **fit_kwargs):
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, optimize_initial_state=False, save_daily_plots=False, fail_fast=False, output_root=OUTPUT, **fit_kwargs):
     start, end = day_start(start), day_start(end)
     if end < start: raise ValueError("end must be on or after start.")
     daily_rows, hourly_frames, training_frames, profile_frames, skipped = [], [], [], [], []
@@ -160,7 +157,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
         try:
             daily, hourly, training, profile = day_result(
                 frame, day, baseline_weeks, steps_per_hour,
-                deterministic=deterministic, optimize_initial_state=optimize_initial_state,
+                optimize_initial_state=optimize_initial_state,
                 save_daily_plots=save_daily_plots,
                 output_root=output_root, **fit_kwargs,
             )
@@ -197,7 +194,6 @@ def main():
     parser.add_argument("--f0-steps", type=int, default=81)
     parser.add_argument("--max-state-iter", type=int, default=25)
     parser.add_argument("--state-tol", type=float, default=1e-8)
-    parser.add_argument("--deterministic", action="store_true", help="Skip diffusion fitting.")
     parser.add_argument("--optimize-initial-state", action="store_true", help="Oracle diagnostic: fit prediction-day [F0,R0] from that day's observed I for top-end fitter comparison.")
     parser.add_argument("--save-daily-plots", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
@@ -208,7 +204,7 @@ def main():
     output_root = TOP_END_OUTPUT if args.optimize_initial_state else OUTPUT
     daily, hourly, training, profiles, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.steps_per_hour,
-        deterministic=args.deterministic, optimize_initial_state=args.optimize_initial_state,
+        optimize_initial_state=args.optimize_initial_state,
         save_daily_plots=args.save_daily_plots, fail_fast=args.fail_fast, output_root=output_root,
         f0_min=args.f0_min, f0_max=args.f0_max, f0_steps=args.f0_steps,
         max_state_iter=args.max_state_iter, state_tol=args.state_tol, verbose=args.verbose,
