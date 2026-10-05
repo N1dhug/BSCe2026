@@ -350,6 +350,51 @@ class optimized_qp_params(qp_params):
 
 
 
+class flexibility_diffusion_qp:
+    """Convex QP fit for the local WM4 flexibility diffusion law.
+
+    The diffusion standard deviation is
+
+        g(F) = sigma_0 + sigma_F * F
+
+    and is fitted directly to the empirical hourly input standard deviation
+    from the corresponding historical weekdays. With F in [-1, 1], the
+    constraints 0 <= sigma_F <= sigma_0 <= 1 guarantee g(F) >= 0.
+    """
+
+    def __init__(self, model): self.model = model
+
+    def fit(self, F, observed_std):
+        F = np.asarray(F, dtype=float).reshape(-1)
+        observed_std = np.asarray(observed_std, dtype=float).reshape(-1)
+        if F.size != observed_std.size or F.size < 2: raise ValueError("F and observed_std must have the same length with at least two samples.")
+        if not np.all(np.isfinite(F)) or np.any(F < -1.0) or np.any(F > 1.0): raise ValueError("F must contain finite values in [-1, 1].")
+        if not np.all(np.isfinite(observed_std)) or np.any(observed_std < 0.0): raise ValueError("observed_std must contain finite nonnegative values.")
+
+        X = np.column_stack((np.ones(F.size, dtype=float), F))
+        A_ub = np.array([[-1.0, 1.0]], dtype=float)
+        b_ub = np.array([0.0], dtype=float)
+        theta = self.model._least_squares_qp(
+            X, observed_std,
+            A_ub=A_ub, b_ub=b_ub,
+            lb=np.array([0.0, 0.0], dtype=float),
+            ub=np.array([1.0, 1.0], dtype=float),
+            ridge=self.model._FIT_RIDGE,
+        )
+        sigma_0, sigma_F = map(float, theta)
+        fitted = X @ theta
+        residual = fitted - observed_std
+        return {
+            "sigma_0": sigma_0, "sigma_F": sigma_F,
+            "theta": np.asarray(theta, dtype=float),
+            "fitted_std": fitted, "residual": residual,
+            "mse": float(np.mean(residual ** 2)),
+            "rmse": float(np.sqrt(np.mean(residual ** 2))),
+            "mae": float(np.mean(np.abs(residual))),
+        }
+
+
+
 class brute_force_params(qp_params):
     """Profile a separate F0 for every wm_4 fitting trajectory.
 
