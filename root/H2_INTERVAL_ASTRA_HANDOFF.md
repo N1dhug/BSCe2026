@@ -1,8 +1,25 @@
 # H2 — konkret Astra XHigh-overdragelse
 
-5. oktober 2026. Næste matematikreview er afgrænset til cancellation i en
-stokastisk timeinterval-likelihood. Johan har bedt om at få at vide, når Astra
-er relevant; de nye negative kontroller giver nu en konkret opgave.
+**Status efter Astra XHigh, 5. oktober 2026:** Opgaven nedenfor er nu behandlet.
+Læs [metode og resultat](H2_TERMINAL_TILT_REVIEW.md) før nyt arbejde.
+Terminalvis eksponentiel tilting består de små uafhængige referencer og
+gennemfører begge smalle BM-døgn uden den oprindelige cancellation-fejl.
+Tre fokuserede tests samt faktisk log-state-pause/resume er kontrolleret.
+Den samlede tids-/rumforskel er dog .08754758 i log-likelihood mod grænsen .05;
+mean/L1 består. Der er fortsat ingen historisk fit-readiness eller H2/H3-accept.
+Den endelige rårapport er bevaret, inklusive det negative præcisionsresultat.
+
+**Næste afgrænsede Sol-opgave:** ét krydsreplay med 1281 celler og h=1/24576
+på præcis den samme fixture, højst 900 s per invocation. Sammenlign med de
+to gemte replays for at isolere tidsfejl og rumfejl; genkør ikke dem. Derefter
+vælges en begrundet, lille præcision/runtime-korrektion. Historisk integration,
+tidsvariation/breakpoints og data-/split-/baselinevalg er stadig åbne.
+Tilting har ingen universel garanti for adskilte betingede blandinger, og
+roundoffguard er heuristisk; se det konkrete analytiske modeksempel i reviewet.
+En ny matematisk metodebeslutning kan kræve Astra, rutineintegrationen gør ikke.
+
+Resten af dokumentet bevarer det oprindelige opdrag og den negative evidens
+fra 5. oktober. Det er ikke en bestilling på at gentage de færdige kontroller.
 
 Læs `AGENTS.md`, den aktuelle top af `root/F4.md`,
 `root/H2_INTERVAL_CHARACTERISTIC_CONTROL.md` og `root/H2_HOURLY_INTERVALS.md`.
@@ -68,7 +85,7 @@ tails. Den eksisterende globale series-guard afviser dette vægtede case med
 0.01397 mod 1e-8; der er ikke accepteret en forkert posterior.
 Se `h2_interval_exact_phase_cancellation_20261005.json`.
 
-## Første Astra-opgave
+## Oprindelig Astra-opgave (behandlet; aktuelt næste trin ovenfor)
 
 1. Review disse to analytiske referencer og skellet mellem samlet evidence-
    error, terminal posterior-error og den rekursive brug af små log-tails.
