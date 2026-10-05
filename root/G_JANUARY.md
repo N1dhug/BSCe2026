@@ -9,6 +9,26 @@ Genkør ikke fit alene for dokumentationsopdatering. [G-planen](G.md) indeholder
 nu obligatorisk FP/mixture/EM (G6b), stokastisk single-shooting-kontrol (G7)
 og rekursiv estimation (G8), baseret på eksisterende F-arbejde.
 
+## Næste trin: G3 fra det gemte januarfit
+
+Se [Sol-overdragelsen, P0–P2](G_IMPLEMENTATION_HANDOFF.md). Den eksisterende
+kommando nedenfor starter et nyt fit; den er **ikke** en fortsættelseskommando
+for `g_january_fit_20261005_154824`. En separat snapshot-/forecast-only-vej
+skal implementeres først. Der er endnu ingen sådan CLI-kommando at køre.
+
+Bevar originalmappen, især manifest/fit/result og finegrid-CSV med WM's F/R
+på cutoff. Den nye vej skal videreføre uafrundede parametre, samme fitted
+baseline/skala og eksakte BM/WM-sluttilstande uden optimering. Prognosen skal
+gemmes før optional scoring; missing future demand må kun begrænse score og
+coverage, ikke fjerne en gyldig simulation. Dette er planlagt adfærd.
+
+Rawreview mangler fortsat. G's nuværende forbrugsgennemsnit bruger de
+målerkolonner, som er tilgængelige i hver time. 624 aggregerede måletimer er
+ikke bevis for 624 komplette timer for alle 13 MED-huse. Fast population,
+enheder og punkt/interval/tidsbetydning skal afklares før historisk validering;
+legacy-resultatet bevarer sin oprindelige udviklingskontrakt. En nødvendigt
+ændret kontrakt kan kræve et særskilt nyt fit, som ikke erstatter originalen.
+
 ## Vis fittet for januar
 
 Seneste bestilling: vis det historiske januar-fit med virkelig DK1-pris og en

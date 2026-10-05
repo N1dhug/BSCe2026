@@ -24,6 +24,21 @@ deres evidens eller afslutter deres krav. F-sporets status står i [F4.md](F4.md
 Brugerens nye G-bestilling tillader dette deterministiske spor nu; den ophæver
 ikke F-sporets aftalte rækkefølge eller dets senere prognosediagnose.
 
+## Grundarbejde til næste implementation, 5. oktober
+
+[Overdragelsen til Sol](G_IMPLEMENTATION_HANDOFF.md) kortlægger aktuelle
+kodeinterfaces, mangler og små acceptkontroller fra G3 til G7/G8. Næste
+kodeopgave er versioneret fit-snapshot og forecast fra gemt fit. Den aktuelle
+CLI fitter stadig på ny; de foreslåede snapshot-/forecast-only-funktioner
+findes endnu ikke. Eksport skal adskilles fra optional scoring, så manglende
+fremtidig demand ikke bortkaster en allerede beregnet prognose.
+
+Datagennemgangen fandt også legacy-gennemsnit over tilgængelige målere frem
+for en garanteret fast population. H2 har verificeret MED/UDEN-medlemskab,
+men enheder, punkt/interval og timestamps er uafklarede. Bevar januarfittets
+oprindelige kontrakt og auditér før historisk validering. Nye kontrakter
+kræver egne resultater; syntetisk udvikling af adapterne kan begynde nu.
+
 ## Aktuel G0–G3-leverance, 5. oktober
 
 Johan har bestilt **parameterfit over hele januar**. Første konkrete månedsvariant
@@ -112,7 +127,7 @@ randstruktur og F-sporets FP/mixture/EM-/estimation-/kontrolkode.
 | G-plan/G0: fælles forsøgsgrundlag | Fastlæg population, WM4-commit, datakontrakt, tidsenhed, fælles baseline, pris-/effektskala, historik, split og runtime-budget i et manifest. | Begge modeller kan få samme fysiske inputs, observationer og information ved samme forecast-origin. Uklar måletype giver kun en mærket udviklingsdemo. |
 | G-plan/G1: deterministisk forwardmodel | Genbrug BM1's ODE og F1-reference. Klargør en lille evaluator med punkt-/intervaloutput, energibalance og en eksakt intervalvej, hvor antagelserne gælder. | Meningsfulde tests af energibalance, randtilfælde, inputskift og enheder; eksakt vej kontrolleret mod uafhængig ODE. |
 | G-plan/G2: parameterfit | Fit fælles C, k og Xi samt højst én initialtilstand for et sammenhængende træningsforløb; først f(x)=1−2x og g(u)=1−2u. Bounded nonlinear least squares med få startpunkter. | Fit-artifact med parametre, score, stopårsag, samtlige solve-kald, runtime, initialisering og lokal identifikationsdiagnose. |
-| G-plan/G3: første ugeprognose | Frys parametre ved origin, viderefør træningens sluttilstand og simulér syv døgn uden observationer fra testugen. Kør matched WM4 og baseline. | Fælles CSV, ugefigur og RMSE/MAE/bias samt baselinegevinst. Resultatet må gerne være negativt. G0–G3 er første brugbare leverance. |
+| G-plan/G3: første ugeprognose | Frys parametre/baseline og eksakte BM/WM-sluttilstande ved origin. Tilføj forecast fra gemt fit uden optimering; simulér syv døgn uden fremtidig demand. | Gem prognose før optional scoring. Fælles målemaske, coverage, CSV/ugefigur og RMSE/MAE/bias mod baseline. Resultatet må gerne være negativt. G0–G3 er første brugbare leverance. |
 | G-plan/G4: fælles f/g-kurver | Undersøg først en lille prisresponsudvidelse, derefter eventuelt f; brug eksisterende kontinuerte, monotone kurveobjekter. Ét kurvepar per population og træningsfit. | Afgrænset udviklingssammenligning mod lineære kurver; validering afgør om ekstra fleksibilitet beholdes. Ingen kurver per dag. |
 | G-plan/G5: afsluttende benchmark og dokumentation | Fastlås opskrift og modelvalg før sluttest. Evaluer de på forhånd valgte ugeorigins i én måned med identisk information og rapportér alle uger. | Reproducerbar lille benchmarkpakke med kvalitet, runtime, begrænsninger og klart skel mellem udvikling og sluttest. |
 | G-plan/G6: stokastik, FP/mixture og EM | G6a: billig variansreference. G6b: FP/FV, dynamisk Beta-mixture og EM på samme lille forsøg. | Numerisk forfining, fordelinger/momenter, EM-usikkerhed og randdiagnoser; variansapproksimation mod FP. |
@@ -302,7 +317,12 @@ Sammenlign begge modellers held-out forbrugsscore, ikke deres interne fitmål.
 
 ## 4. Data, initialisering og retfærdig WM4-sammenligning
 
-Standard er WM4's ugeprotokol: én population (først MED), én historisk fituge
+**Aktiv bestilling:** hele januar 2022 → næste 168 timer, MED, neutral start
+og nul warm-up. Genbrug det rapporterede januarfit, når råfiler/kontrakt er
+verificeret; snapshot-adapteren er en ny opgave. Ugeprotokollen nedenfor er
+den oprindelige reference og vælges ikke automatisk i stedet for månedsfittet.
+
+Den oprindelige standard er WM4's ugeprotokol: én population (først MED), én historisk fituge
 med 24 timers warm-up og en prognose på næste 168 fysiske timer. Baselinefit
 bruger samme tilgængelige historik før origin som WM4. Datoer og historik
 fastlægges i G0. Et 28-dages fit er en senere fælles variant, ikke BM-default.
@@ -318,6 +338,13 @@ uåbnet periode, hvis en sådan findes; ellers kaldes studiet udviklingsbenchmar
 Ved månedlig rolling-origin-test låses hele fitopskriften før første score.
 Tidligere testugers data kan indgå ved senere origins efter den låste opskrift;
 de må ikke bruges til manuel ændring af modelvalg eller budgetter under testen.
+
+**Populationsaudit:** den nuværende G-import genbruger `consumption_series`,
+som gennemsnitter de tilgængelige målere per time med skip-NaN. Det er ikke
+H2's faste populationskontrakt. Gem medlemsliste/antal per time og bevar
+legacy-status. I en ny fast-populationsvariant giver et manglende medlem en
+manglende aggregatmåling for begge modeller. Metadataaudit alene bekræfter
+ikke enheder, måletype eller tidszone; se [H2_DATA_CONTRACT.md](H2_DATA_CONTRACT.md).
 
 G0-manifestet fastlåser:
 
@@ -366,8 +393,9 @@ mulige kombinationer. En negativ to-stykkers pilot kan afslutte G4 med
 lineær reference og en begrundet anbefaling om at stoppe.
 
 Hold k på G2's udviklingsvalgte værdi i den første kurvepilot for at begrænse
-kompensation mellem hældning og kurveform. Fit C, Xi og træningens x0 sammen
-med kurveværdierne. To fire-stykkers kurver giver højst seks ekstra frihedsgrader.
+kompensation mellem hældning og kurveform. Fit C, Xi og kurveværdier samlet;
+bevar G2's initial-state-policy: wm-neutral holder x0=0.5, mens kun varianten
+`initial-state fit` estimerer træningens x0. To fire-stykkers kurver giver højst seks ekstra frihedsgrader.
 Alle stykker indgår samtidigt i samme residualvektor over hele træningen.
 
 Monotonicitet håndhæves ved parameterisering eller en optimizer, der faktisk
@@ -703,9 +731,12 @@ andres samtidige arbejde og brug branch i eksisterende checkout, ikke nye worktr
   bounds/TRF, numerisk Jacobian og separate tællinger af derivativevalueringer.
   Kontrollér installeret SciPy før eventuel brug af nyere callback/workers-API.
 
-**Næste opgave:** Review de gemte januarresultater uden ny fitrunde og færdiggør
-den afgrænsede G3-prognose, når inputkontrakten er afklaret. Forbered samtidig
-G6b/G8/G7's adapterkort og lille syntetiske forsøgsmanifest.
+**Næste opgave:** Implementér P1/P2 i [G_IMPLEMENTATION_HANDOFF.md](G_IMPLEMENTATION_HANDOFF.md):
+versioneret snapshot, verificeret legacy-import og input-only-forecast med
+varig eksport før scoring. Review derefter de gemte januarresultater uden ny
+fitrunde og udfør den afgrænsede G3-prognose under den verificerede kontrakt.
+P0 beskriver åbne datafelter; P3–P6 har adapterkort, syntetisk forsøgsudkast,
+afhængigheder, budgetter og acceptkontroller for G4/G6b/G8/G7.
 Første målsætning er G0–G3 med faste lineære kurver. Start ikke G4 eller en
 fuld månedskørsel, før denne kæde fungerer og dens målinger passer til budgettet.
 G0–G3 er implementeret og syntetisk kontrolleret. Historisk januarfit er
@@ -718,7 +749,7 @@ G-januar håndterer nu manglende demand/temperatur med den eksisterende import-
 interpolation afgrænset til TRAIN. Rå demand beholdes som NaN; baseline/BM-fit
 og fælles BM/WM-fejlmål bruger kun målte timer. WM-tilstandsrekonstruktion bruger
 udfyldt demand; QP-overgange over manglende endpoints maskeres. G kræver stadig
-168 målte demand-timer og komplette importerede priser. 10 tests består;
+mindst 168 målte demand-timer i TRAIN og komplette importerede priser. 10 tests består;
 én syntetisk januar med 27 demandhuller og 3 temperaturhuller gennemført
 på ca. 19 s (717 målte timer for begge modeller). Historisk fit er rapporteret gennemført lokalt; råreview mangler.
 
