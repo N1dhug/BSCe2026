@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 from src.exe.run_model.bm_1.deterministic_strategies import calendar_inputs, input_fingerprint
+from src.exe.run_model.bm_1.deterministic_validation import week_job
 from src.method.bm_1_deterministic_response import BM1ResponseInputs
 from src.method.bm_1_deterministic_weekday import BM1PooledInputs
 from src.method.bm_1_deterministic_strategy import fit_strategy
@@ -36,7 +37,7 @@ class StrategyTests(unittest.TestCase):
         class Baseline:
             def predict(self,index,temperature):
                 return np.full(len(index),.4)
-        index=pd.date_range('2022-03-26','2022-03-28',freq='h',inclusive='left')
+        index=pd.date_range('2022-03-26','2022-03-29',freq='h',inclusive='left')
         frame=pd.DataFrame({'U':0.,'Temp':5.,'I':1e9},index=index)
         inp,times=calendar_inputs(frame[['U','Temp']],Baseline(),'2022-03-27')
         self.assertEqual(inp.n_hours,23)
@@ -45,6 +46,10 @@ class StrategyTests(unittest.TestCase):
         history,_=calendar_inputs(frame,Baseline(),'2022-03-27',history=True)
         self.assertEqual(history.n_hours,47)
         self.assertEqual(history.warmup,24)
+        after_dst,times=calendar_inputs(frame,Baseline(),'2022-03-28',history=True)
+        self.assertEqual(after_dst.n_hours,48)
+        self.assertEqual(times[0],pd.Timestamp('2022-03-26 23:00'))
+        self.assertEqual(times[24],pd.Timestamp('2022-03-28 00:00'))
 
     def test_resume_fingerprint_binds_index_and_all_three_inputs(self):
         frame=pd.DataFrame({'Demand':[1.,np.nan],'Price':[2.,3.],'Temp':[4.,5.]},
@@ -56,6 +61,24 @@ class StrategyTests(unittest.TestCase):
             self.assertNotEqual(original,input_fingerprint(changed))
         shifted=frame.copy();shifted.index+=pd.Timedelta(hours=1)
         self.assertNotEqual(original,input_fingerprint(shifted))
+
+    def test_validation_week_has_shared_35_histories_and_no_future_observations(self):
+        class Baseline:
+            def predict(self,index,temperature):return np.full(len(index),.4)
+        index=pd.date_range('2022-02-20','2022-04-04',freq='h',inclusive='left')
+        frame=pd.DataFrame({'I':.4,'U':.1,'Temp':5.},index=index)
+        origin=pd.Timestamp('2022-03-28');p=[10.,.6,.5,.5]
+        job,baseline=week_job(frame,Baseline(),origin,p,'unused')
+        changed=frame.copy();changed.loc[changed.index>=origin,'I']=1e9
+        alternate,_=week_job(changed,Baseline(),origin,p,'unused')
+        self.assertEqual(len(job['histories']),35)
+        self.assertEqual(len(job['forecasts']),7)
+        self.assertEqual(sorted(sum(job['state_positions'],[])),list(range(35)))
+        self.assertEqual(BM1PooledInputs(job['histories']).observation_mask.sum(),839)
+        for a,b in zip(job['histories'],alternate['histories']):
+            np.testing.assert_array_equal(a.observations,b.observations)
+        for a,_ in job['forecasts']:self.assertIsNone(a.observations)
+        self.assertEqual(sum(len(x) for x in baseline),168)
 
 
 if __name__=='__main__':

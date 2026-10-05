@@ -1,5 +1,8 @@
 # G4: tre rullende strategier og straf på de første 12 uger
 
+**Opfølgning 6. oktober:** Den nye seksugersvalidering har valgt S3 uden straf; den foreløbige strafgevinst nedenfor holdt ikke på uge 13–18. Se [G4-afslutningen](G4_VALIDATION_WEEKS_13_18_REVIEW.md). Det oprindelige forsøgs resultater og fortolkning bevares nedenfor.
+
+
 Gennemført 6. oktober 2026 efter Johans forsøgsdefinition. Strategi 3 med
 lambda=0.001 har lavest samlet forecast-MSE, 0.2052253468, mod baseline
 0.2076682236: 1.1763 % forbedring. Straffen forbedrer strategi 3 med 0.6207 %

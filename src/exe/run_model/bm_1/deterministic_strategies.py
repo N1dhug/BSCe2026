@@ -35,7 +35,8 @@ def calendar_inputs(frame, baseline, day, *, history=False, steps=12):
     ODE grid is refined. No demand values are inspected for forecast creation.
     """
     day = pd.Timestamp(day).normalize()
-    start = (day-pd.Timedelta(days=1) if history else day).tz_localize(ZONE)
+    local_day = day.tz_localize(ZONE)
+    start = local_day-pd.Timedelta(hours=24) if history else local_day
     end = (day+pd.Timedelta(days=1)).tz_localize(ZONE)
     physical = pd.date_range(start, end, freq='h', inclusive='left')
     index = physical.tz_localize(None)
@@ -78,7 +79,7 @@ def checked_task(job):
             previous_calls = sum(a['fit']['counts']['residual_calls'] for a in attempts)
             remaining = 3000-previous_calls
             if remaining < 1:
-                raise RuntimeError('Numerical refit exhausted declared per-strength total budget.')
+                raise RuntimeError('Numerical refit exhausted declared paired-task total budget.')
             matching=[a for a in attempts if a['steps']==steps and a['lambda']==strength]
             cached=matching[-1]['fit'] if matching else None
             if cached is not None and cached['best_converged'] is not None:
