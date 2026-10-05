@@ -95,9 +95,29 @@ def _balanced_state_step(log_amplitude, conditional_cf, lower, diagonal, upper):
     return scale, result
 
 
+def _positive_explicit_step(log_amplitude, cf, lower, diagonal, upper):
+    """Positive tridiagonal product, without exponentiating small masses."""
+    if np.any(diagonal < 0.) or np.any(lower < 0.) or np.any(upper < 0.):
+        raise CharacteristicNumericalError('Crank-Nicolson explicit half is not positive; decrease the declared step.',
+            minimum_explicit_diagonal=float(diagonal.min()))
+    with np.errstate(divide='ignore'):
+        terms = np.full((3,len(log_amplitude)), -np.inf)
+        terms[0] = log_amplitude+np.log(diagonal)
+        terms[1,1:] = log_amplitude[:-1]+np.log(lower)
+        terms[2,:-1] = log_amplitude[1:]+np.log(upper)
+    scale = logsumexp(terms,axis=0)
+    active = np.isfinite(scale)
+    weights = np.zeros_like(terms)
+    weights[:,active] = np.exp(terms[:,active]-scale[active])
+    result = weights[0,:,None]*cf
+    result[1:] += weights[1,1:,None]*cf[:-1]
+    result[:-1] += weights[2,:-1,None]*cf[1:]
+    return scale,result
+
+
 def balanced_characteristic_prediction(solver, interval, prior, drift, diffusion, reward, *,
         max_step, frequencies=64, span=4., breakpoints=None, coefficient_key=None,
-        tilt=0., center=0., log_prior=None):
+        tilt=0., center=0., log_prior=None, state_scheme='implicit_euler'):
     """Row-scaled transform control preserving arbitrarily small amplitudes."""
     from src.validation.solver.finite_volume import finite_volume_1d_validation as fv_checks
     prior = checks.probability_mass(prior)
@@ -107,6 +127,8 @@ def balanced_characteristic_prediction(solver, interval, prior, drift, diffusion
     center = checks.finite_scalar(center, 'center')
     max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
     interval = checks.increasing_grid(interval, 'interval')
+    if state_scheme not in ('implicit_euler','positive_crank_nicolson'):
+        raise ValueError('Declare implicit_euler or positive_crank_nicolson.')
     if interval.size != 2:
         raise ValueError('Supply interval start/end.')
     if log_prior is None:
@@ -140,10 +162,19 @@ def balanced_characteristic_prediction(solver, interval, prior, drift, diffusion
             b = fv_checks.field(diffusion(float(start), x), x.shape, 'diffusion')
             generators[key] = solver.generator_tridiagonal(dx, a, b)[:3]
         lo, di, up = generators[key]
-        log_amplitude, cf = _balanced_state_step(log_amplitude, cf, -h*lo, 1.-h*di, -h*up)
+        state_h = h/2. if state_scheme == 'positive_crank_nicolson' else h
+        if state_scheme == 'positive_crank_nicolson':
+            explicit_diagonal = 1.+state_h*di
+            log_amplitude,cf = _positive_explicit_step(log_amplitude,cf,
+                state_h*lo,explicit_diagonal,state_h*up)
+            explicit_neutral = explicit_diagonal*neutral
+            explicit_neutral[1:] += state_h*lo*neutral[:-1]
+            explicit_neutral[:-1] += state_h*up*neutral[1:]
+            neutral = explicit_neutral
+        log_amplitude, cf = _balanced_state_step(log_amplitude, cf, -state_h*lo, 1.-state_h*di, -state_h*up)
         cf *= phase
         log_amplitude += shift
-        neutral, _ = advance(neutral, float(start), h)
+        neutral, _ = advance(neutral, float(start), state_h)
         error = abs(float(neutral.sum())-1.)
         if (np.any(neutral < 0.) or error > 1e-10 or not np.isfinite(cf).all()
                 or np.isnan(log_amplitude).any() or np.isposinf(log_amplitude).any()
@@ -287,7 +318,7 @@ def record_from_development_report(report):
 
 
 def replay_characteristic(record, *, cells, max_step, frequencies=64, span=4., exponential_tilt=True,
-                          balanced_transform=True):
+                          balanced_transform=True, state_scheme='implicit_euler'):
     """Development replay only, accepting the registered 24-hour interval case."""
     if not isinstance(record.observations, BM1IntervalObservationSeries) or len(record.observations.times) != 24:
         raise ValueError('Only the registered synthetic interval case enters this experiment.')
@@ -316,7 +347,9 @@ def replay_characteristic(record, *, cells, max_step, frequencies=64, span=4., e
         tilt = (float(value)-center)/record.sigma_y**2 if seen and exponential_tilt else 0.
         try:
             prediction_fn = balanced_characteristic_prediction if balanced_transform else characteristic_prediction
-            extra = dict(log_prior=log_current) if balanced_transform else {}
+            if not balanced_transform and state_scheme != 'implicit_euler':
+                raise ValueError('The new time scheme requires the balanced transform.')
+            extra = dict(log_prior=log_current,state_scheme=state_scheme) if balanced_transform else {}
             prediction = prediction_fn(solver, [start, end], current, drift, diffusion,
                 reward, max_step=max_step, frequencies=frequencies, span=span, breakpoints=breaks,
                 tilt=tilt, center=center, **extra, **options)
@@ -337,7 +370,7 @@ def replay_characteristic(record, *, cells, max_step, frequencies=64, span=4., e
             raise
         posterior.append(current.copy())
     return dict(status='completed', cells=cells, max_step=max_step, frequencies=frequencies, span=span,
-        exponential_tilt=exponential_tilt, balanced_transform=balanced_transform,
+        exponential_tilt=exponential_tilt, balanced_transform=balanced_transform,state_scheme=state_scheme,
         log_likelihood=float(sum(y for y in scores if y is not None)), log_evidence=scores,
         x_edges=edges.tolist(), final_posterior_mass=current.tolist(),
         posterior_state_means=list(map(float, np.asarray(posterior) @ x)),
@@ -451,3 +484,52 @@ def run_characteristic_time_control(report, reference, *, progress=None):
             'Spatial comparison reuses the saved 2561-cell result at the same time step; '
             'its 96 frequencies differ from 64 (the saved frequency change is reported separately). '
             'Passing one spatial comparison does not establish time convergence or historical readiness.')
+
+
+def run_characteristic_cn_control(report, *, progress=None):
+    """Fixed three-replay development panel for positive second-order splitting.
+
+    The saved inputs are piecewise constant within every hourly interval. Only
+    under that condition do frozen reward / CN state / frozen reward steps
+    provide the declared second-order time control. General time-dependent
+    fields are not claimed second order and no historical backend is changed.
+    """
+    record = record_from_development_report(report)
+    settings = [(1281,1/12288,64),(1281,1/24576,64),(1921,1/24576,64)]
+    outputs,weights = [],[n/h*k for n,h,k in settings]
+    clock = perf_counter()
+    for n,h,k in settings:
+        begun = perf_counter()
+        try:
+            row = replay_characteristic(record,cells=n,max_step=h,frequencies=k,
+                state_scheme='positive_crank_nicolson')
+        except CharacteristicNumericalError as exc:
+            row = dict(status='numerical_guard_failed',cells=n,max_step=h,frequencies=k,
+                reason=str(exc),diagnostics=exc.diagnostics,scientific_acceptance=False)
+        row['elapsed_seconds'] = perf_counter()-begun
+        outputs.append(row)
+        if progress is not None:
+            progress(sum(weights[:len(outputs)]),sum(weights))
+    comparisons = []
+    for name,i,j in (('fixed_state_time_refinement',0,1),('fixed_time_state_refinement',1,2),
+                     ('combined_candidate_reference',0,2)):
+        a,b = outputs[i],outputs[j]
+        if a['status'] != 'completed' or b['status'] != 'completed':
+            comparisons.append(dict(name=name,available=False))
+            continue
+        mass = conservative_mass_transfer(a['x_edges'],a['final_posterior_mass'],b['x_edges'])
+        errors = dict(total_log_likelihood=abs(a['log_likelihood']-b['log_likelihood']),
+            final_state_mean=abs(a['posterior_state_means'][-1]-b['posterior_state_means'][-1]),
+            final_mass_l1=float(np.abs(mass-b['final_posterior_mass']).sum()))
+        comparisons.append(dict(name=name,available=True,errors=errors,
+            development_tolerances_pass=all(errors[k] <= report['development_tolerances'][k] for k in errors)))
+    return dict(schema='bm1-interval-characteristic-cn-control-v1',
+        fixed_development_design=report['declared_design'],replays=outputs,comparisons=comparisons,
+        development_tolerances=report['development_tolerances'],elapsed_seconds=perf_counter()-clock,
+        historical_observation_values_read=0,
+        development_numerics_pass=all(c.get('development_tolerances_pass',False) for c in comparisons),
+        numerical_acceptance=False,scientific_acceptance=False,
+        interpretation='Declared three-replay synthetic CN panel with explicit-half positivity guard. '
+            'State reference ratio is 1921/1281, not a doubling, and the finest replay is not exact truth. '
+            'Time inputs are constant inside each hour; no general variable-input order claim. '
+            'Not historical readiness, production adoption, model selection or H2/H3 acceptance.')

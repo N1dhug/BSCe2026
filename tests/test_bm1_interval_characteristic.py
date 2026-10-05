@@ -115,6 +115,31 @@ class CharacteristicIntervalTests(unittest.TestCase):
         np.testing.assert_array_equal(update['posterior_mass'],[1.,0.,0.])
         self.assertTrue(np.isneginf(update['log_posterior_mass'][1:]).all())
 
+    def test_cn_state_step_matches_dense_product_and_enforces_positivity(self):
+        solver,prior,drift,diffusion,_,Q = self.fields()
+        h = .1
+        pred = balanced_characteristic_prediction(solver,[0.,h],prior,drift,diffusion,
+            lambda t,x: np.zeros(x.shape),max_step=h,state_scheme='positive_crank_nicolson')
+        expected = np.linalg.solve(np.eye(3)-h/2*Q,(np.eye(3)+h/2*Q) @ prior)
+        np.testing.assert_allclose(pred['predicted_mass'],expected,rtol=3e-15,atol=1e-16)
+        np.testing.assert_allclose(np.exp(pred['log_amplitude']),expected,rtol=3e-15,atol=1e-16)
+        with self.assertRaisesRegex(CharacteristicNumericalError,'explicit half is not positive'):
+            balanced_characteristic_prediction(solver,[0.,10.],prior,drift,diffusion,
+                lambda t,x: np.zeros(x.shape),max_step=10.,state_scheme='positive_crank_nicolson')
+
+    def test_cn_interval_score_converges_quadratically_to_independent_reference(self):
+        solver,prior,drift,diffusion,reward,Q = self.fields()
+        ref = finite_state_gaussian_reference(Q,reward(0.,None),prior,1.,.62,.12,order=160)
+        errors=[]
+        for h in (1/16,1/32,1/64):
+            pred=balanced_characteristic_prediction(solver,[0.,1.],prior,drift,diffusion,reward,
+                max_step=h,state_scheme='positive_crank_nicolson',tilt=(.62-.55)/.12**2,center=.55)
+            result=characteristic_gaussian_update(pred,.62,.12)
+            errors.append(abs(result['log_evidence']-ref['log_evidence']))
+        self.assertGreater(errors[0]/errors[1],3.5)
+        self.assertGreater(errors[1]/errors[2],3.5)
+        self.assertLess(errors[-1],1e-4)
+
 
 if __name__ == '__main__':
     unittest.main()
