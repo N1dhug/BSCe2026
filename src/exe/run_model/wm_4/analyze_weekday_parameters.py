@@ -235,7 +235,7 @@ def main():
     args = parser.parse_args()
 
     frame = load_metrics(args.input)
-    parameters = CORE_PARAMETERS + [name for name in ("sigma_0", "sigma_I") if name in frame.columns and frame[name].notna().sum() >= 3]
+    parameters = CORE_PARAMETERS
     frame = performance_groups(frame)
     weekdays = weekday_summary(frame)
     tests = weekday_tests(frame)
