@@ -86,7 +86,7 @@ weather-imputation ikke krydser cutoff; ikke hele sæsonen. Ekstern hentning og
 workbooklæsning har eget setup; femminuttersloftet gælder BM-parameterfit,
 ikke netværksventetid. Input-workbookens rå observed_data bruges før imputation.
 
-Kørslen scorer alle 744 timer i januar og forudsiger 1.–7. februar (168 timer
+Kørslen propagérer alle 744 timer i januar og scorer de målte timer og forudsiger 1.–7. februar (168 timer
 fra 1. februar kl. 00). Starttilstanden er som standard fast WM-neutral og
 videreføres ved origin; warm-up er 0 i månedsvarianten. `--week 2022-01-24`
 er særskilt én-fitugesvariant med 24 timers warm-up og samme protokol for BM/WM.
@@ -101,15 +101,27 @@ Dataaudit fungerer også når input ikke består fitkravet: `data_audit.json`
 gemmer for Demand/Price/Temp antal manglende timer, de første otte tidspunkter
 og den tilgængelige daterange. Terminalen viser samme korte oversigt.
 `--audit-only` udfører ingen parameterfit og returnerer 0, når rapporten er
-skrevet; `fit_ready` i rapporten afgør, om data er komplette. Den tidligere
+skrevet; `raw_complete` angiver rå komplethed; `fit_ready` angiver tilstrækkelige målte
+forbrugstimer og udfyldelige inputs. Den tidligere
 tekst om mindst 168 observationer var misvisende for en 744-timers måned med
-et enkelt hul. Rå huller er stadig ikke erstattet med opdigtede observationer.
+et enkelt hul. Nu genbruges `import_input.interpolate_time_gaps`: tidsinterpolation
+og ffill/bfill af aggregeret demand og temperatur inden for TRAIN. Ingen
+februarværdier bruges. Mindst 168 målte demand-timer kræves stadig.
+Priser skal være komplette efter den eksisterende prisimport; G tilføjer ingen prisudfyldning.
+Baseline og BM-residualer bruger kun målte demand-timer. WM rekonstruerer sin
+tilstand fra udfyldt demand; QP-overgange med manglende time-endpoints udelades.
+Interpolationen kan derfor påvirke WM-tilstanden, men udfyldte targets scores ikke.
+Begge modeller og baseline får samme evalueringsmaske. Hele døgn uden
+målinger vises med samples=0 og indgår ikke i performance-sammenfatninger.
+CSV bevarer NaN i observed; demand_input, demand_imputed og temperature_imputed
+viser udfyldningen. Figuren markerer udfyldt demand med grå krydser.
 Vejrhentningen dækker nu den ønskede start, også når første rå demand-time
 ligger senere; dette skaber ingen manglende demand-observation.
 
 Pris-workbooken på repoet blev kontrolleret: alle 744 januartimer har en DK1-pris.
 Johans lokale stop 5. oktober vedrører endnu uafklaret Demand/Temp-dækning;
-rapporten skal afklare det før en ændret datakontrakt eller et nyt fit.
+den nye håndtering løser udfyldelige huller og bevarer audittens forklaring
+ved utilstrækkelig datadækning. Historisk fit skal stadig køres lokalt.
 
 Reproducerbar syntetisk integration uden workbook/DMI:
 
@@ -235,3 +247,9 @@ fuldførte modeldelen på 17.54 s (fit 16.44 s); to refinement-solves bestod.
 10 fokuserede tests og 2 berørte import/layoutchecks bestod.
 `files/output/bm_1/benchmarks/g_january_fit_preview_20261005.json` registrerer
 syntetisk evidens; historisk januar er fortsat ikke kørt her.
+
+Gap-regression: 10 fokuserede tests bestået på 2,91 s. Én syntetisk januar-
+integration med 27 demandhuller (inklusive et helt døgn og begge månedsender)
+og 3 temperaturhuller bestod på ca. 19 s: BM og WM scorer begge 717 timer.
+Fælles importers indre/ydre interpolation og measured-only fejlmål er kontrolleret.
+Det er syntetisk integrationsevidens, ikke et historisk januarfit.

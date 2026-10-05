@@ -6,6 +6,11 @@ from pathlib import Path
 import pandas as pd
 
 
+def interpolate_time_gaps(values):
+    """Existing importer policy; callers delimit the permitted time window."""
+    return values.interpolate(method="time", limit_direction="both").ffill().bfill()
+
+
 class input_data:
     """Import/query consumption data from the internal 2022 sheet."""
 
@@ -127,7 +132,7 @@ class input_data:
 
     def _impute_missing(self, data):
         data, cols = data.copy(), [c for c in data.columns if c not in self.META]
-        if cols: data[cols] = data[cols].interpolate(method="time", limit_direction="both").ffill().bfill()
+        if cols: data[cols] = interpolate_time_gaps(data[cols])
         return data
 
     def _select_period(self, start, end):

@@ -53,7 +53,7 @@ class BM1DeterministicInputs:
     are optional: preparing a forecast does not need any future demand.
     """
     def __init__(self, baseline_time, baseline, prices, observations=None, *,
-                 observation_contract='hourly-point', warmup_hours=0, steps_per_hour=12):
+                 observation_contract='hourly-point', warmup_hours=0, steps_per_hour=12, observation_mask=None):
         self.time = np.asarray(baseline_time, dtype=float).copy()
         self.baseline = np.asarray(baseline, dtype=float).copy()
         self.prices = np.asarray(prices, dtype=float).copy()
@@ -79,8 +79,11 @@ class BM1DeterministicInputs:
         self.contract, self.warmup = observation_contract, int(warmup_hours)
         self.steps = int(steps_per_hour)
         self.observations = None if observations is None else np.asarray(observations, dtype=float).copy()
-        if self.observations is not None and (self.observations.shape != self.prices.shape or not np.all(np.isfinite(self.observations))):
-            raise ValueError('One finite observation per hour is required.')
+        self.observation_mask = np.ones(self.n_hours,dtype=bool) if observation_mask is None else np.asarray(observation_mask,dtype=bool).copy()
+        if self.observation_mask.shape != self.prices.shape:
+            raise ValueError('One observation mask value per hour is required.')
+        if self.observations is not None and (self.observations.shape != self.prices.shape or not np.all(np.isfinite(self.observations[self.observation_mask]))):
+            raise ValueError('Scored observations must be finite; mark unmeasured hours explicitly.')
         self.h = 1. / self.steps
         times = np.arange(self.n_hours * self.steps + 1) * self.h
         self.b_edge = np.interp(times, self.time, self.baseline)
@@ -98,7 +101,7 @@ class BM1DeterministicInputs:
     def refined(self):
         return BM1DeterministicInputs(self.time, self.baseline, self.prices, self.observations,
                                      observation_contract=self.contract, warmup_hours=self.warmup,
-                                     steps_per_hour=2 * self.steps)
+                                     steps_per_hour=2 * self.steps, observation_mask=self.observation_mask)
 
     def solve(self, parameters, *, deadline=None, keep_fine=False):
         self.last_rhs_evaluations = 0
@@ -151,7 +154,11 @@ def fit_deterministic(inputs, config=None, *, checkpoint=None, progress=None):
     counts = {'residual_calls': 0, 'forward_solves': 0, 'rhs_evaluations': 0}
     completed, provisional, best = [], None, None
     last_save = started
-    mask = slice(inputs.warmup, None)
+    mask = inputs.observation_mask.copy()
+    mask[:inputs.warmup] = False
+    n_observed = int(mask.sum())
+    if not n_observed or not np.isfinite(inputs.observations[mask]).all():
+        raise ValueError('Fit needs finite measured demand after warm-up.')
     lower, upper = np.array(config.lower), np.array(config.upper)
     # log C/log k; amplitudes/state remain in their bounded physical domains.
     active = 4 if config.fixed_x0 is None else 3
@@ -164,7 +171,8 @@ def fit_deterministic(inputs, config=None, *, checkpoint=None, progress=None):
     def snapshot(status):
         return {'status': status, 'counts': dict(counts), 'seconds': perf_counter()-started,
                 'starts': list(completed), 'best_converged': best, 'best_provisional': provisional,
-                'optimized_coordinates': coordinate_names, 'fixed_x0': config.fixed_x0}
+                'optimized_coordinates': coordinate_names, 'fixed_x0': config.fixed_x0,
+                'observed_samples':n_observed, 'unscored_hours':inputs.n_hours-n_observed}
 
     for start_index, start in enumerate(config.starts):
         begin_calls = counts['residual_calls']
@@ -200,7 +208,7 @@ def fit_deterministic(inputs, config=None, *, checkpoint=None, progress=None):
                                    x_scale='jac', ftol=1e-7, xtol=1e-7, gtol=1e-7,
                                    max_nfev=config.calls_per_start)
             record = {'start': start_index, 'parameters': unpack(result.x).tolist(),
-                      'mse': float(np.mean((result.fun*np.sqrt(inputs.n_hours-inputs.warmup))**2)),
+                      'mse': float(np.mean((result.fun*np.sqrt(n_observed))**2)),
                       'converged': bool(result.success), 'stop': result.message,
                       'residual_calls': counts['residual_calls']-begin_calls,
                       'active_bounds': result.active_mask.tolist()}

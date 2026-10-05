@@ -515,3 +515,19 @@ Første målsætning er G0–G3 med faste lineære kurver. Start ikke G4 eller e
 fuld månedskørsel, før denne kæde fungerer og dens målinger passer til budgettet.
 G0–G3 er implementeret og syntetisk kontrolleret. Historisk januar-fit, G4–G7
 og videnskabelig accept er ikke gennemført.
+
+### Januar: håndtering af huller, 5. oktober 2026
+
+G-januar håndterer nu manglende demand/temperatur med den eksisterende import-
+interpolation afgrænset til TRAIN. Rå demand beholdes som NaN; baseline/BM-fit
+og fælles BM/WM-fejlmål bruger kun målte timer. WM-tilstandsrekonstruktion bruger
+udfyldt demand; QP-overgange over manglende endpoints maskeres. G kræver stadig
+168 målte demand-timer og komplette importerede priser. 10 tests består;
+én syntetisk januar med 27 demandhuller og 3 temperaturhuller gennemført
+på ca. 19 s (717 målte timer for begge modeller). Historisk fit mangler stadig.
+
+Udfyldning bruger `import_input.interpolate_time_gaps` på aggregeret demand og
+temperatur inden for træningsvinduet; februar bruges aldrig til januarhuller.
+CSV og plot markerer udfyldte værdier. Døgn uden målinger får samples=0 og
+udelades fra performance-sammenfatninger. Priser udfyldes ikke yderligere i G.
+Dette er en eksplicit G-adapter; WM4's selvstændige fit-entrypoints ændres ikke.
