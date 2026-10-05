@@ -63,6 +63,12 @@ De første grove BM-grids fejler udviklingens numeriktolerancer trods bevaret
 masse; anbefal ikke fuldt historisk fit på disse settings. Ingen faktiske
 måleværdier er læst eller historisk/H2/H3-accept opnået. Dokumenteret blindt
 split, populationvalg samt pris/skala/baseline/fysiske parametre mangler stadig.
+Særskilt H2-characteristic/CN-udviklingskontrol er nu gennemført på samme
+syntetiske døgn: log-amplituder løser de små tails; tre positive CN-rum-/tidschecks
+består de eksisterende tolerancer. Se `root/H2_INTERVAL_CHARACTERISTIC_CONTROL.md`.
+Kun dette faste lineære case er kontrolleret; historisk fitter/reference er uændret.
+Fleksible kurver/støj, faktisk tidsvariation, log-checkpointadapter og runtime skal
+stadig kontrolleres før historisk anvendelse. H2/H3-readiness forbliver falsk.
 Recovery, råartefakter og næste trin: `root/F4_H_CHECKPOINT_AUDIT_STATE.md`.
 
 Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tidsreduktion,
