@@ -786,6 +786,31 @@ genoptagelsesrækkefølge. Integrationen 5. oktober retter repository-layoutet
 og bevarer Windows-sikker checkpointpublicering i den fælles I/O-hjælper;
 den ændrer ikke studiets matematik, numerik eller evidensstatus.
 
+
+\paragraph{Recovery-implementation, 5. oktober.}
+Det genoptagelige H1b-fit er gendannet efter afbrydelsen. Genoptagelse bruger
+cachede scalar-objectives i den samme deterministiske optimizer under låst
+source/data/numerik og uændret samlet kandidatbudget. Nye kandidater replayes
+fra egne korrekte initiallove. Valgte kurver får selvstændig base/tid/rum/q-kontrol;
+et bestået fast H1a-panel er ikke et certifikat for dem. Uafhængige H1a-units
+kan beregnes parallelt med uændret numerik og efterfølgende ordnet publicering.
+Ingen nye videnskabelige resultater eller historisk holdout-accept følger alene
+af disse implementationsændringer.
+
+\paragraph{Gennemført betinget H1b og selected-curve-numerik, 5. oktober.}
+På fastholdt kilde \texttt{e7d9089} er alle seks deklarerede fits gennemført
+med samlet 675 forskellige kandidater. Begge responsive fire-stykkers fits
+når loftet 250; budgetstop er ikke konvergens. Den ikke-lineære cases
+TRAIN-log-likelihood forbedres med 8.754 (to stykker) og 30.599 (fire)
+i forhold til den lineære reference; $\Xi=0$ giver præcis nul gevinst.
+Disse tal vælger ikke en model. De 12 valgte-kurve-units med 48 FV-replays
+består egen numerik på \texttt{e398a5a}; maksimal prefix-scorefejl er
+0.005095, lineært centreret fejl 0.012305 og posterior-$L^1$ 0.005009.
+Et uafhængigt råreview reproducerer 2\,304 Bayes-opdateringer uden FV,
+med maksimal posterior-$L^1$-afvigelse $2.232\cdot10^{-15}$.
+H2/H3 afventer dokumenterede metadata og eksponeringsaudit. Råarkiver,
+genoptagelsesbevis og præcise kilde-/testgrænser findes i den aktuelle F4-status.
+
 \subsection{Identifikation, numerik og fastlåsning}
 Uden endpoints kan \(f+c,g-c\) give samme sum, og fælles amplitudeskalering kan
 blandes sammen med \(k\). \eqref{eq:endpoints} fjerner disse eksakte friheder,

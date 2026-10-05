@@ -1,5 +1,22 @@
 # BM — arbejdsvejviser
 
+**H2 pilot, 5. oktober:** `curves history-config --output PATH` skriver en
+ufuldstændig datakonfiguration. `curves history-fit --config PATH --run-dir PATH
+--prepare-only` klargør hele den erklærede TRAIN, når metadata er dokumenteret.
+Derefter bruges `--resume --limit-candidates 3 --max-seconds 300` til den første
+afgrænsede runtimepilot. Samme fælles f/g gælder alle træningsdage; ingen daglige
+fits eller ekstra parametergrid. Pause/genoptagelse og budgetscope står i
+[H2_DATA_CONTRACT.md](H2_DATA_CONTRACT.md). Faktisk historisk fitting afventer
+datagrundlaget og er ikke videnskabeligt accepteret.
+
+**H2 rådata, 5. oktober:** Kør `python -B -m
+src.exe.run_model.bm_1.curves history-inspect --blas-threads 1` for en kort
+ark-/headerkontrol uden observationslæsning eller fitting. Rapport:
+`files/output/bm_1/runs/estimation/h2_header_inspection.json`. Den nye separate
+TRAIN-indlæsning bruger eksplicit population/tidszone/spot-proxy-kontrakt,
+bevarer manglende data og bruger ikke convenience-loadernes interpolation.
+Se [H2_DATA_CONTRACT.md](H2_DATA_CONTRACT.md) for forudsætninger og næste pilot.
+
 **F4-status og næste opgave:** [F4.md](F4.md).
 Den aktive prioritering fra 3. oktober 2026 er I-baseline på det afsluttede
 F-spor (integration nu implementeret), derefter obligatorisk H-f/g inden den endelige samlede I/J-leverance;
@@ -270,11 +287,12 @@ ikke. Nye preview-kørsler får dagsfigurerne direkte under deres
 med de efterfølgende Windows-checkpointrettelser. Report-I/O ligger i
 `src/tools/bm_1_reports.py`, og `curves.py` er registreret som entrypoint.
 V2-kørslen og det uafhængige arrayreview bestod på original `cfde153` i
-sessionen, men råmapperne skal gendannes eller reproduceres før næste
-dependency-gate. Genoptag eksisterende rådata på deres oprindelige source;
+sessionen; de tabte råmapper er siden reproduceret på `90211e4` og arkiveret.
+H1b's seks betingede udviklingsfits og egen numerik er nu gennemført; se F4-status.
+Genoptag eksisterende rådata på deres oprindelige source;
 en anden source kræver en ny run-mappe, uden ændring af gamle manifests.
-Den lokale H1b-`fit`-kommando og datakontrakt er endnu ikke publiceret;
-brug ikke en antaget fit-kommando fra dette kodecheckpoint.
+H1b-`fit` og den historiske datakontrakt er gendannet på recovery-branchen.
+H1b kræver komplette råvaliderede v2-units; et sessionsresumé er utilstrækkeligt.
 Den tidligere layoutfejl er rettet i denne integration. Se F4-status for
 testresultater og præcis genoptagelsesrækkefølge.
 
@@ -311,6 +329,71 @@ afvist panel giver exit=2 og bevarer alle negative resultater. State-L1 beregnes
 på begge grids' samlede cellekanter, så forskelle ikke skjules ved grov remapping.
 Send `summary.json` og behold hele mappen til råreview. En bestået screening
 accepterer kun det faste panel, ikke hele optimizerboksen, recovery eller H3.
+
+## H1b: genoptageligt pooled fit
+
+Nedenstående er reproduktionskommandoer. De allerede arkiverede H1a/H1b-resultater
+skal ikke genkøres alene på grund af kodecleanup. Ved en ny reproduktion: kør
+først den registrerede H1a-v2-pilot og fortsæt på **samme rene source**:
+
+```powershell
+$hNumerics = "files/output/bm_1/runs/estimation/h1_v2_recovery"
+python -B -m src.exe.run_model.bm_1.curves numerics --design v2 --run-dir $hNumerics --limit-units 1 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "H1a-pilot fejlede." }
+python -B -m src.exe.run_model.bm_1.curves numerics --design v2 --run-dir $hNumerics --resume --max-hours 8 --workers 8 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "H1a fejlede." }
+```
+
+Start kun H1b efter `completed=True` og `numerical_panel_passes=True`:
+
+```powershell
+$hFit = "files/output/bm_1/runs/estimation/h1_fit_recovery"
+python -B -m src.exe.run_model.bm_1.curves fit --numerics-run $hNumerics --run-dir $hFit --limit-candidates 3 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "H1b-pilot fejlede." }
+python -B -m src.exe.run_model.bm_1.curves fit --numerics-run $hNumerics --run-dir $hFit --resume --max-hours 8 --workers 3 --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "H1b fejlede." }
+```
+
+H1a understøtter `--workers 8` med bounded spawn-pool og BLAS=1.
+H1b understøtter `--workers 3` (eller 8, som begrænses til tre cases).
+To-/fire-stykkers familierne inden for en case køres fortsat i samme rækkefølge.
+`--limit-candidates` kræver `--workers 1`, så pilotens globale loft er entydigt.
+BLAS=1 bevares. Pause er exit=0 og `paused=True`, aldrig convergence/accept.
+Alle 96 numeriske råunits valideres ved hver invocation uden nye FV-replays.
+Fitmanifestet låser source, dependency-hashes, Python/NumPy/SciPy, numerik og
+optimizerbudget. Gemte kandidater genbruges som scalar-scores, ikke som state
+for nye kurver. Trace gemmes efter hver kandidat. De seks familier får hver
+højst 250 forskellige kandidater samlet over deres to erklærede starter.
+Valgte kurver kræver egne tid/rum/q-kontroller; TRAIN-gevinst vælger ikke model.
+
+Gem `manifest.json`, `summary.json`, `*_trace.json.gz`, `*_result.json.gz` og
+H1a's `units/*.npz` sammen med source-commit og filhashes. Send komplette
+artefakter, ikke kun terminalteksten. Historiske H2/H3-kørsler er ikke frigivet;
+dataklassen er en kontrakt, ikke dokumentation af de faktiske målerdata.
+
+Når de seks fitfamilier er afsluttet (budgetstop må gerne være et negativt resultat):
+
+```powershell
+python -B -m src.exe.run_model.bm_1.curves validate-fit --numerics-run $hNumerics --fit-run $hFit --run-dir files/output/bm_1/runs/estimation/h1_selected_checks --blas-threads 1
+if ($LASTEXITCODE -ne 0) { throw "Valgte H1-kurver fejlede deres numeriske kontrol." }
+```
+
+Denne kommando gemmer 12 nye råunits med alle prefixer på base/tid/rum/q.
+Resume bruger `--resume` og samme source. Den ændrer ingen fitkurver efter
+kontrollerne. Budgetstoppede fits forbliver budgetstoppede, og H2/H3 frigives ikke.
+
+Selected-check-resume sammenholder hver råunits base-scorer og slutposterior
+med det valgte fit, også hvis et crash efterlod en atomisk råfil uden slutresumé.
+Ugyldige totalscorer, ikke-boolske observationsmasker og fejlede sandsynligheds-
+diagnoser afvises. Beståede refinement-forskelle alene dokumenterer ikke, at
+råfilen tilhører det valgte fit. Gyldige råunits kræver ingen nye FV-replays.
+
+`prepare_historical_curve_training` kræver en eksplicit timezone-aware `origin`
+før første TRAIN-punkt, på samme timegrid. Baseline og pris skal dække hele
+intervallet fra denne prior-origin til TRAIN-slut; alle deklarerede TRAIN-
+observationer medtages, inklusive den første. Adapteren opfinder ingen tidligere
+inputværdi. Missing-masken og den faste population bevares. Dette forbereder H2,
+men etablerer hverken datakildens faktiske semantik eller et blindt holdout.
 
 ## I-baseline og H1-forberedelse
 
