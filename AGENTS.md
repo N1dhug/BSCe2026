@@ -39,7 +39,11 @@ fire-stykkers fits nåede kandidatloftet. De valgte kurvers 12 units / 48 replay
 består egen numerik på `e398a5a`, og 2.304 Bayes-opdateringer er rå-reviewet.
 PR #64 supplerer PR #62 med checkpointvalidering og genfundne I/O-/TRAIN-fixes.
 Dette er udviklingsevidens, ikke modelvalg, joint recovery eller H2/H3-accept.
-Historisk metadata og dokumenteret blindt split mangler fortsat.
+H2-metadataaudit har nu verificeret alle 13 MED-ID'er som huse med elvarme
+og alle 140 UDEN-ID'er som huse uden elvarme i samme workbook som Johans
+header-rapport. Se `root/H2_DATA_CONTRACT.md`; nul observationsværdier er læst.
+Historiske måleenheder, punkt/interval, tidsbetydning og dokumenteret blindt
+split samt pris/skala/baseline mangler fortsat.
 Recovery, råartefakter og næste trin: `root/F4_H_CHECKPOINT_AUDIT_STATE.md`.
 
 Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tidsreduktion,

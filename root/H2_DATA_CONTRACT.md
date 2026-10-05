@@ -4,6 +4,36 @@ Updated 5 October 2026. H1a-v2 and all six conditional synthetic H1b fits are
 complete on PR #62/#64. This H2 preparation does not repeat their studies or
 claim historical fitting/validation. See [F4.md](F4.md) for scientific status.
 
+## Confirmed population metadata, 5 October 2026
+
+A read-only join of the consumption header IDs with `data_installation`
+establishes the workbook's labels:
+
+- **MED:** all 13 installation IDs are categorised as
+  `Parcel-, række- m.v. huse med elvarme` (houses with electric heating).
+- **UDEN:** 140 installation IDs are categorised as houses without electric
+  heating: 126 `Parcel-, række- m.v. huse uden elvarme` and 14
+  `Parcelhuse u/elvarme`.
+- The two NULL, seven ?, one postal/telecommunications and one street-lighting
+  columns remain separate categories; they are not members of the MED group.
+
+The exact MED members are saved in the
+[metadata audit](../files/output/bm_1/runs/estimation/h2_workbook_metadata_audit_20261005.json). All 164 header IDs were
+matched against installation metadata. The audited input workbook SHA256 is
+`3ce534b533e0da472cd72ae599916fa6209eccd10ad4c021a76ac5cfba3586d4`,
+identical to Johan's earlier header-inspection report. Only `Labels 2022`,
+`data_installation`, installation IDs and the two demand header rows were
+decoded; **zero observation values were read**. The audit is reproducible
+from commit `9de6d0d2e6f878ff9611f12acb776cdfb9ceae47` and
+[its successful run](https://github.com/N1dhug/BSCe2026/actions/runs/37322217260).
+
+This resolves the meaning and membership of those tags. A fitting contract
+must still declare the selected fixed population. The inspected metadata sheets
+provide no definition of consumption units, point versus interval measurements,
+demand timezone or hour start/end. The price/proxy decision, chronological
+split/exposure audit, frozen scales and baseline also remain prerequisites.
+`historical_fit_ready=False` and scientific acceptance remain unchanged.
+
 ## Short local inspection
 
 When no calculation is using this checkout, select the H2 branch (or main after
