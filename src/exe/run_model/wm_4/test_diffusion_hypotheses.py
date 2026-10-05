@@ -16,12 +16,13 @@ from src.params.wm_4 import optimized_qp_params
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "uncertainty" / "diffusion_hypotheses"
-HYPOTHESES = ("H0", "H1", "H2")
+HYPOTHESES = ("H0", "H1", "H2", "H3")
 ALPHA = 0.05
 PARAMETER_NAMES = {
     "H0": ("sigma_0", "sigma_t", "phase_h"),
     "H1": ("sigma_0", "sigma_t", "phase_h", "sigma_I"),
     "H2": ("sigma_0", "sigma_t", "phase_h", "sigma_I", "sigma_U"),
+    "H3": ("sigma_0", "sigma_I"),
 }
 
 
@@ -72,6 +73,10 @@ def build_records(frame, start, end, weeks, steps_per_hour, max_state_iter, stat
 
 def _initial_starts(hypothesis, records):
     mean_sigma = float(np.mean([np.mean(record["observed_sigma"][1:]) for record in records]))
+    if hypothesis == "H3":
+        base = max(1e-4, 0.5 * mean_sigma)
+        return [np.array([base, sigma_I], dtype=float) for sigma_I in (0.50, 0.75, 0.90, 0.97, 0.995)]
+
     peak_hours = [int(np.argmax(record["observed_sigma"])) for record in records]
     phase = float(np.median(peak_hours))
     base = max(1e-4, 0.25 * mean_sigma)
@@ -88,6 +93,9 @@ def _initial_starts(hypothesis, records):
 
 
 def _bounds(hypothesis):
+    if hypothesis == "H3":
+        return np.array([1e-8, 0.0], dtype=float), np.array([np.inf, 1.0], dtype=float)
+
     lower = [1e-8, 0.0, 0.0]
     upper = [np.inf, np.inf, 24.0]
     if hypothesis in ("H1", "H2"): lower.append(0.0); upper.append(np.inf)
@@ -250,11 +258,12 @@ def print_summary(summary, train_days, test_days, skipped):
     print()
     print("WM4 diffusion hypothesis comparison")
     print("deterministic WM4 coefficient fit + oracle prediction state; initial-state/parameter sensitivity excluded (P0=0)")
-    print("H0-H2 coefficients are fitted deterministically by least squares to rolling observed s_I on the training dates.")
+    print("H0-H3 coefficients are fitted deterministically by least squares to rolling observed s_I on the training dates.")
     print(f"train days={train_days}, test days={test_days}, skipped={len(skipped)}")
     print("H0 = time-periodic diffusion")
     print("H1 = H0 + sigma_I * I")
     print("H2 = H1 + sigma_U * |U|")
+    print("H3 = sigma_0 + (1 - sigma_I) * I")
     print()
     columns = [
         "hypothesis", "coverage_h1_23_pct", "coverage_error_95_h1_23_pct_points",
@@ -285,7 +294,7 @@ def print_summary(summary, train_days, test_days, skipped):
 
 
 def main():
-    parser = ArgumentParser(description="Fit and compare WM4 H0-H2 SDE diffusion hypotheses against rolling observed input uncertainty.")
+    parser = ArgumentParser(description="Fit and compare WM4 H0-H3 SDE diffusion hypotheses against rolling observed input uncertainty.")
     parser.add_argument("--start-day", default=START_DAY)
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--weeks", type=int, default=DEFAULT_WEEKS)
