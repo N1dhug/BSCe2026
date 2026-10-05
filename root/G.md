@@ -438,6 +438,15 @@ hvis udviklingsgevinsten ligger inden for den på forhånd fastlagte praktiske
 tolerance, med numerisk fejl medregnet. Pris-/stateintervaller uden tilstrækkelig
 dækning får ingen claim om estimeret kurveform.
 
+Før åbning af de nye G4-forecastresultater låses første pilots praktiske regel:
+pooled MSE på den fælles DEVELOPMENT-målemaske er primær metric. Behold lineær
+BM, hvis dens MSE ligger inden for 1 % af den bedste numerisk checked kandidats
+MSE, inklusive den numeriske fejl. 1 % er et konservativt praktisk valg for
+denne lille pilot, ikke et estimeret signifikansniveau. Ved større forskel
+reviewes identifikation, bounds/kurveform og MAE/bias før et begrundet valg.
+Ingen automatisk vinder eller krav om stor O-gevinst; ændring af reglen efter
+åbning mærkes som ny udviklingsbeslutning. Reglen gemmes i pilot/snapshot.
+
 G4 genbruger H's kurvegeometri, men H's likelihood-fit og stokastiske accept
 er selvstændige. Parametre/kurver overføres ikke ukritisk mellem støjfri og
 stokastisk model. Den eksisterende obligatoriske F4-H-f/g-leverance bevares.

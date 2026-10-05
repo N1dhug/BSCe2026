@@ -81,6 +81,12 @@ målinger, og prognosen gemmes før optional workbook-scoring.
 Sammenlign lambda-kandidater mod lineær BM og O på DEVELOPMENT; kontrollér
 rank/singularværdier fra **data-Jacobianen uden strafrækken**, active bounds,
 kurveform og bias. Lavere TRAIN-MSE er ikke alene grund til at beholde G4.
+Før G4-forecast åbnes, er første pilots praktiske regel låst: pooled MSE er
+primær metric; behold lineær BM, hvis den er inden for 1 % af bedste checked
+kandidats DEVELOPMENT-MSE, inklusive numerisk fejl. Tolerancen er et
+konservativt praktisk pilotvalg, ingen test for statistisk signifikans. Ved
+større forskel skal identifikation/kurveform samt MAE/bias stadig reviewes;
+reglen og manglende automatisk selection gemmes i pilot/snapshot.
 Frys et begrundet kurvevalg (lineær er tilladt) før G6b→G8→G7. Ni G4-tests
 og eksisterende G-tests er implementeringskontrol, ingen historisk G4-accept.
 

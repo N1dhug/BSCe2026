@@ -22,6 +22,12 @@ SOURCES = ('src/params/bm_1_response.py', 'src/params/bm_1_deterministic_respons
            'src/tools/bm_1_deterministic_data.py', 'src/tools/bm_1_deterministic_snapshot.py',
            'src/method/bm_1_deterministic_benchmark.py')
 
+DEVELOPMENT_POLICY = {'primary_metric':'pooled measured-demand MSE',
+    'reference':'linear_bm1', 'practical_relative_tolerance':.01,
+    'automatic_selection':False,
+    'rule':'prefer linear within 1% of best checked development MSE; include numerical error and diagnose identification',
+    'evidence':'development choice only; no statistical significance or causal-response claim'}
+
 
 def source_hashes():
     return {name: hashlib.sha256((ROOT/name).read_bytes().replace(b'\r\n', b'\n')).hexdigest() for name in SOURCES}
@@ -51,7 +57,7 @@ def read_training_archive(directory, *, deadline=None):
             or not np.allclose(elapsed,3600*canonical_time,rtol=0,atol=1e-6)):
         raise ValueError('Archive must contain the exact complete hourly/fine TRAIN grids and cutoff.')
     required = ['O','U','bm1','x','demand_input','Price_DKK_MWh']
-    if not set(required+['observed','demand_imputed','temperature_imputed']).issubset(hourly) or not {'O','U','x'}.issubset(fine):
+    if not set(required+['observed','demand_imputed','temperature_imputed']).issubset(hourly) or not {'O','U','x','bm1'}.issubset(fine):
         raise ValueError('Training archive fields are missing.')
     if not np.isfinite(hourly[required].to_numpy(dtype=float)).all() or not np.isfinite(fine[['O','U','x']].to_numpy(dtype=float)).all():
         raise ValueError('Archived model inputs/states must be finite.')
@@ -88,6 +94,8 @@ def validate_response_snapshot(snapshot):
     reference = validate_snapshot(data['reference'])
     if data['forward_source_sha256'] != source_hashes():
         raise ValueError('G4 numerical sources are incompatible; an explicit migration is required.')
+    if data.get('development_policy') != DEVELOPMENT_POLICY:
+        raise ValueError('The first G4 pilot must preserve its declared development-choice rule.')
     model = BM1ResponseModel.from_record(data['model'])
     best = data['fit']['best_converged']
     original = reference['fit']['best_converged']['parameters']
@@ -141,6 +149,7 @@ def fit_training_archive(directory, *, seconds=600., checkpoint=None, progress=N
         Xi_bounds=(config['lower'][2],config['upper'][2]), x0_bounds=(config['lower'][3],config['upper'][3]),
         seconds=remaining-reserve, checkpoint=checkpoint, progress=progress, **options)
     report['total_seconds_cap'] = seconds
+    report['development_policy'] = deepcopy(DEVELOPMENT_POLICY)
     report['archive_sha256'] = hashes
     report['counts']['archive_replay_forward_solves'] = 1
     report['counts']['archive_replay_rhs_evaluations'] = replay_rhs
@@ -169,6 +178,7 @@ def fit_training_archive(directory, *, seconds=600., checkpoint=None, progress=N
         if error > tolerance: item['export_status'] = 'numerics-rejected'; continue
         fit = dict(best_converged=deepcopy(best),fixed_x0=report['fixed_x0'],fixed_k=report['fixed_k'],regularization=item['regularization'])
         snapshot = dict(schema_version=1,kind='G4-deterministic-fit',reference=reference,
+            development_policy=deepcopy(DEVELOPMENT_POLICY),
             model=model.to_record(),fit=fit,origin=reference['origin'],x_origin=float(solved['state'][-1]),
             numerics={'steps_per_hour':inputs.steps,'tolerance':tolerance,'training_refinement_error':error},
             forward_source_sha256=source_hashes(), provenance={'training_artifact_sha256':hashes,

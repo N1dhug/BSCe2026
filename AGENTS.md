@@ -14,14 +14,15 @@ Grundarbejdet fra G3 ligger i [Sol-overdragelsen](root/G_IMPLEMENTATION_HANDOFF.
 P1/P2 er nu implementeret: `deterministic --from-fit FITDIR` genbruger et gemt
 fit eller kontrolleret legacy-format uden ny optimering og gemmer forecast før
 optional scoring. Nye fits skriver `fit_snapshot.json`. 20 G-tests og tre
-relevante layout/importkontroller består (23 i alt, ca. 6.7 s). Historisk
-råreview/G3-kørsel mangler. Derefter lille G4→G6b→G8→G7 er fortsat planlagt.
+relevante layout/importkontroller består (23 i alt, ca. 6.7 s). G3 er siden
+rapporteret complete lokalt; råreview mangler. G4-adapter/LS er nu implementeret
+med ni korte tests; næste trin er lokalt G4-udviklingsvalg, derefter G6b→G8→G7.
 G's legacy-aggregering bruger tilgængelige målere per time; fast population og
 punkt/interval/enheder skal afklares før historisk validering. Ommærk ikke
 januarfittet til en ny datakontrakt. Syntetisk adapterarbejde kan begynde nu.
 G som helhed er ikke rent deterministisk. F4-status og dets
 obligatoriske H-f/g-krav bevares. G0–G3 er implementeret og syntetisk kontrolleret; Johan har rapporteret historisk januarfit som complete på 07fad9f;
-råreview og historisk G3-prognose mangler.
+G3 er siden rapporteret complete, mens råreview fortsat mangler.
 Johan har bestilt hele januar 2022 som fælles BM/WM-fitmåned; næste 168 timer
 forudsiges med faste parametre. Læs [januarvejledningen](root/G_JANUARY.md).
 Ny januarvisning: `--fit-only --initial-state wm-neutral` bruger de virkelige
@@ -82,8 +83,15 @@ Særskilt H2-characteristic/CN-udviklingskontrol er nu gennemført på samme
 syntetiske døgn: log-amplituder løser de små tails; tre positive CN-rum-/tidschecks
 består de eksisterende tolerancer. Se `root/H2_INTERVAL_CHARACTERISTIC_CONTROL.md`.
 Kun dette faste lineære case er kontrolleret; historisk fitter/reference er uændret.
-Fleksible kurver/støj, faktisk tidsvariation, log-checkpointadapter og runtime skal
-stadig kontrolleres før historisk anvendelse. H2/H3-readiness forbliver falsk.
+Ny intervalkontrol: fire-stykkers f/g med sigma_y=0.16 består fem tids-/rum-/
+frekvens-/periodechecks; to-stykkers f/g med sigma_y=0.04 fejler alle fem på
+første times betingede Fourier-tætheder. Log-amplituder løser ikke cancellation
+i selve inversionen; eksakte tre-state-kontroller bekræfter dette uden FV-fejl.
+Genbrug de gemte positive og negative råresultater; ingen ny stor panelkørsel.
+Præcis næste matematikopgave til Astra XHigh: `root/H2_INTERVAL_ASTRA_HANDOFF.md`.
+Eksakt operatorgenbrug er testet; en parret én-time-median viser 1.23x, ikke et
+historisk fit-speedup. Faktisk tidsvariation og log-state-checkpointadapter er
+stadig åbne. H2/H3-readiness forbliver falsk; historisk fitter er uændret.
 Recovery, råartefakter og næste trin: `root/F4_H_CHECKPOINT_AUDIT_STATE.md`.
 
 Ved BM/F4-arbejde: læs først `root/F4.md`, især **Aktiv prioritering — tidsreduktion,

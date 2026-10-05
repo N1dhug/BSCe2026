@@ -1,7 +1,8 @@
 # H2 interval characteristic controls
 
-Updated 5 October 2026. The optional synthetic control is implemented and its
-first positive Crank–Nicolson panel passes the existing development tolerances.
+Updated 5 October 2026. Positive CN passes the original linear and new
+four-piece/wide-noise fixtures. The two-piece/narrow-noise fixture fails all
+five declared replays because conditional Fourier densities cancel.
 Historical fitting remains blocked. The historical fitter still uses the
 conservative joint state/accumulator implementation from PR #72.
 
@@ -97,14 +98,91 @@ truth. This is one constructed 24-hour stream with fixed physical/noise
 parameters and linear f/g, not simulated recovery or historical validation.
 No accepted speedup against an equally accurate historical backend is claimed.
 
+## Exact operator reuse and bounded new controls
+
+Interval-local LRU caches hold at most sixteen exact implicit factorizations
+and reward phases. Factor keys contain the actual three matrix bands; phase
+keys contain the actual time step and reward bytes. There is no rounded step
+or assumption that the generator key also describes the reward. Reward and
+unkeyed state fields are still evaluated at every original frozen-left time.
+The existing explicit generator-key contract is retained with bounded storage.
+Disabling the new reuse provides the same-arithmetic reference.
+
+Three paired one-hour measurements, with alternating order and BLAS=1, give
+median 4.8893 s without reuse and 3.9805 s with reuse (1.23x). Every conditional
+transform, log-amplitude and neutral mass array is bitwise identical. One pair
+was slower with reuse; this is a small timing sample, not whole-day or historical
+fit throughput. [Raw timing](../files/output/bm_1/runs/estimation/h2_interval_operator_runtime_20261005.json).
+
+The linear case at period 2 / 32 frequencies matches the saved period 4 / 64
+candidate: score difference 8.53e-14, terminal mean 1.11e-16, L1 7.25e-16.
+Its replay took 51.07 s; both period and column count changed, so this is not a
+matched operator-cache timing. [Raw period control](../files/output/bm_1/runs/estimation/h2_interval_period_control_20261005.json).
+
+Two predeclared joint curve/noise fixtures reuse the 24 observations and missing
+mask, physical parameters, hourly B/U and Beta(2,3). One shared curve pair is
+fixed throughout each replay; no optimizer or day-specific curve selection.
+The fixtures do not isolate the effect of curve shape from noise width.
+
+| Fixture | f values | g values | sigma_y | Base period/frequencies |
+|---|---|---|---:|---|
+| Two pieces, knots 0,.5,1 | 1,.3,-1 | 1,-.25,-1 | .04 | 2 / 64 |
+| Four pieces, knots 0,.25,.5,.75,1 | 1,.7,.2,-.55,-1 | 1,.45,-.1,-.8,-1 | .16 | 3 / 48 |
+
+Each has five replays: candidate 1281/h12288, fixed-state h24576, fixed-time
+1921/h24576, doubled frequency at candidate resolution, and period 4 at the same
+maximum frequency. Existing score/mean/L1 limits remain .05/.002/.05.
+
+All five wide-noise comparisons pass:
+
+| Comparison | Score difference | Terminal mean difference | Terminal mass L1 |
+|---|---:|---:|---:|
+| Fixed state, time | 0.000004166 | 1.30e-10 | 3.89e-7 |
+| Fixed time, state | 0.002234488 | 3.19e-6 | 0.001858843 |
+| Combined | 0.002238654 | 3.19e-6 | 0.001858841 |
+| Frequencies 48/96 | 0 | 0 | 0 |
+| Periods 3/4, frequencies 48/64 | 2.19e-14 | 0 | 2.41e-15 |
+
+Maximum mass error 1.74e-13 and relative-series guard 3.47e-14. The candidate
+took 65.78 s; all five replays 574.48 s.
+[Raw wide-noise control](../files/output/bm_1/runs/estimation/h2_interval_four_wide_control_20261005.json).
+
+All five narrow-noise replays abort in the first hour before any observation
+update: conditional densities have 184–304 negative cells and minima about
+-1e-14 to -1e-13. Finer grids, doubled frequencies and the larger period do not
+resolve it. The panel took 38.89 s. No failed comparison is relabeled a pass.
+[Raw narrow-noise control](../files/output/bm_1/runs/estimation/h2_interval_two_narrow_control_20261005.json).
+
+An analytic three-state witness with zero dynamics confirms exact Gaussian
+conditional tails about 3.28e-27 while the integrated Fourier densities are
+negative about -6.66e-15. Direct closed-form phases with 128 frequencies and
+period 2 remove state/time error and reduce the truncation bound to 9.94e-58;
+computed tails are positive about 1e-15 and inaccurate. The existing relative
+guard rejects that weighted case (0.01397 > 1e-8). Log-amplitude storage solves
+underflow, not conditional Fourier cancellation; increasing frequencies alone
+does not fix floating-point cancellation.
+The [integrated witness](../files/output/bm_1/runs/estimation/h2_interval_cancellation_witness_20261005.json)
+and [exact-phase witness](../files/output/bm_1/runs/estimation/h2_interval_exact_phase_cancellation_20261005.json)
+are preserved. The concrete next review is [Astra XHigh](H2_INTERVAL_ASTRA_HANDOFF.md).
+
+The new control CLI checkpoints after each whole replay under an exclusive
+lock, preserving numerical failures. Resume checks source, design, environment,
+input fingerprints and the saved-row checksum, and skips completed units.
+It does not export production log-state checkpoints or portable cross-source
+resume. Completed raw reports are immutable. Matching experiment source for
+local snapshot 77cc66b is [ecbb8d9](https://github.com/N1dhug/BSCe2026/commit/ecbb8d972de7d8d40a84e25846c50955736a7319).
+
 ## Tests, source and next work
 
-Nine short tests cover the independent finite-state matrix-exponential/Fourier
+Eleven short transform tests cover the independent finite-state matrix-exponential/Fourier
 reference, plain/tilted identity, rare Gaussian evidence, strict failure guards,
 dense implicit/CN matrix identities, below-float-range amplitudes, true zeros,
-and second-order CN score convergence. The 31 focused interval/history tests
-pass. The nine controls also pass with float64 log scans; Windows CI runs them
-on its native numerical stack.
+and second-order CN score convergence, bitwise cache parity with changing
+fields/rewards and eviction, and the exact-phase narrow-tail failure. Three
+runner tests cover frozen registration, persisted failures and pause/resume
+without duplicated work or corrupted checkpoint reuse. All 36 focused
+interval/history tests pass. Windows CI runs all fourteen new controls on its
+native numerical stack; the earlier nine also passed float64 log scans.
 
 Raw reports retain their local source snapshots and SHA256 maps. Matching
 experiment kernel/CLI/test blobs are archived in the following repository
@@ -120,15 +198,29 @@ The [original negative control](../files/output/bm_1/runs/estimation/h2_interval
 is preserved. Plain unshifted Fourier inversion still fails its rare-evidence
 relative-series guard; the guards have not been weakened.
 
-Next: small flexible-curve/noise controls and frequency/period controls; a
-bounded runtime check and an interval adapter that preserves log-state
-checkpoint information and actual time-varying fields. Population,
+Next: resolve conditional Fourier cancellation using the saved analytic
+references before another large panel or optimizer. An interval adapter must
+preserve log-state checkpoint information and actual time-varying fields. Population,
 split/exposure audit and frozen historical price/scale/baseline/prior/physical
 parameters also remain prerequisites. No historical observations or holdout
 values were read, no optimizer was run, and no H2/H3, model-selection or
 forecast acceptance is claimed.
 
 ## Reproduction
+
+The new fixtures and analytic witnesses are saved; no rerun is needed for
+review. A new bounded invocation uses a new output path and frozen source:
+
+```bash
+python -B -m src.exe.run_model.bm_1_interval_curve_control \
+  --development-report files/output/bm_1/runs/estimation/h2_hourly_interval_development_20261005.json \
+  --cn-reference files/output/bm_1/runs/estimation/h2_interval_positive_cn_control_20261005.json \
+  --case four-wide --output NEW_REPORT.json --blas-threads 1
+```
+
+Other cases: runtime, linear-period, two-narrow. `--resume` requires the original
+checkpoint and unchanged source/input/environment. Exit 2 records a declared
+numerical failure; it does not trigger a retry or historical fallback.
 
 Use a new output path for each invocation. These commands are synthetic controls.
 
