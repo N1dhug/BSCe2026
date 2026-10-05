@@ -1,9 +1,12 @@
 # Fælles projektkontekst
 
 **Nyt selvstændigt spor, Johan 5. oktober: [G-planen](root/G.md).**
-Deterministisk BM1, afgrænset least-squares-parameterfit og matched WM4-prognoser.
-Læs G-planen ved dette arbejde; `G-plan/G0`–`G-plan/G6` er ikke `F4-G2a/b/c`.
-G0–G3 er første leverance; ingen stokastiske studier i G nu. F4-status og dets
+Deterministisk BM1-kerne, afgrænset parameterfit, matched WM4-prognoser og
+et efterfølgende billigt stokastisk usikkerhedslag.
+Læs G-planen ved dette arbejde; `G-plan/G0`–`G-plan/G7` er ikke `F4-G2a/b/c`.
+G0–G3 er første deterministiske leverance. G6 er en obligatorisk senere
+stokastisk pilot/evaluering med WM-lignende usikkerhedsmål; G7 er valgfri kontrol.
+G som helhed er ikke rent deterministisk. F4-status og dets
 obligatoriske H-f/g-krav bevares. G-planen er planlagt, ikke samlet implementeret.
 Præcisering kl. 12:56: genbrug WM4's `statistical_output`-baseline, samme
 fit/predict-protokol, metrics, performanceanalyser og rapportlayout dér, hvor
