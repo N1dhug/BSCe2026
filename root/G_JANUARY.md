@@ -112,14 +112,42 @@ Forbrugsmetrics vises i rå workbookenheder; normaliserede resultater gemmes ogs
 Pooled fejl og gennemsnit af dagsmål er forskellige opgørelser. Figurer viser
 observation, fælles baseline, begge prognoser, korrektion, pris og modelstates.
 
-Fokuserede regressionschecks:
+### Minimumskontrol for G0–G3
+
+Standardkørslen er 10 små tests (tidligere 16 G-tests plus 32 layouttests):
 
 ```powershell
-python -B -m unittest tests.test_bm1_deterministic_fit tests.test_bm1_layout -q
+python -B -m unittest tests.test_bm1_deterministic_fit -q
 ```
 
-De kontrollerer modelparitet, adaptive-ODE-reference, konstant intervalreference,
-energibalance, rande, punkt/interval, syntetisk parameterfit, svag identifikation,
-budgetstop inklusive afledte, historisk cutoff og bevaret BM-resultat ved WM-fejl.
+| Test | Fejlrisiko |
+| --- | --- |
+| 1 | Dynamik og prisskift afviger fra eksisterende adaptiv BM-solver. |
+| 2 | Konstantinterval-reference, energibalance eller punkt/interval-operator er forkert. |
+| 3 | Nul fleksibilitet, tilstandsgrænser eller stabilitetsværn brydes. |
+| 4 | Fit kan ikke genfinde kendte syntetiske parametre. |
+| 5 | Svag identifikation skjules som fire identificerede parametre. |
+| 6 | Kald-/tidsbudget overskrides uden korrekt stop/checkpoint. |
+| 7 | Prognose kræver fremtidigt observeret forbrug. |
+| 8 | Huller i træningsdata eller ugyldige fremtidige priser accepteres. |
+| 9 | Vejrinterpolation krydser trænings-cutoff. |
+| 10 | Fremtidigt forbrug påvirker skala, baseline, fit eller prognose; WM-fejl taber BM-resultat. |
+
+Seks særskilte tests er fjernet: scalar-kernel-paritet, punkt/interval-forskel,
+generelle argumentchecks, separat deadlinecheck, separat baseline/skala-cutoff
+og ex-ante-skalaens happy path. De væsentlige overlappende assertions dækkes
+i ovenstående cases; overflødige gentagne setup/solves er fjernet.
+
+Layouttests køres kun ved ændringer i entrypoints/importstruktur. Ved ændringer
+i fælles BM/WM-kode køres derudover de berørte regressioner. Fuld projekt-suite
+er ikke en standardgate for G. F4-tests bevares til F4-arbejde.
+Den tidligere fulde suite tog cirka otte minutter; G-testene er små, så det er
+primært den smallere standardkørsel, der sparer tid.
+
+Gentag ikke det syntetiske månedsforsøg eller historisk januar-fit ved rene
+tekst-/testændringer. Ved ændret solver, fit eller tidsopdeling køres ét
+syntetisk integrationsforsøg; historisk fit køres kun når nye estimater er
+nødvendige. Numerisk refinement, datavalidering og budgetværn inde i selve
+januarkørslen bevares: de afgør, om dens resultater kan accepteres.
 Det syntetiske januarforsøg tog cirka 22 s med to starter og 130 kald i denne
 Linux-session; ingen garanti om samme tid/konvergens på historiske Windows-data.
