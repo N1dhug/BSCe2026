@@ -1,6 +1,6 @@
 """Small conditional physical-parameter pilot; no replacement for F4 banks.
 
-Run as a module with --output pointing to a new directory. Only old synthetic
+Run via src.exe.run_model.bm_1_parameter_pilot with a new output directory. Only old synthetic
 DEVELOPMENT records are used. The registered design is written before fitting.
 Every method gets its own cache and a strict count of full TRAIN evaluations,
 including finite differences; two starts share a fixed, reserved budget.
@@ -11,14 +11,12 @@ from hashlib import sha256
 from itertools import product
 from pathlib import Path
 from time import perf_counter
-import argparse
 import platform
 
 import numpy as np
 import scipy
 from scipy.optimize import minimize, least_squares
 
-from src.exe.run_model.progress import runtime_text
 from src.method.bm_1_estimation import fv_filter_step, _observation_demand
 from src.solver.finite_volume import finite_volume_1d_cached
 from src.tools.bm_1_reports import _atomic_report
@@ -172,7 +170,7 @@ def source_hashes():
             for path in sorted((root/'src').rglob('*.py'))}
 
 
-def run(output, *, max_seconds=600.):
+def run(output, *, max_seconds=600., progress=None):
     output = Path(output)
     if output.exists():
         raise FileExistsError(output)
@@ -270,8 +268,8 @@ def run(output, *, max_seconds=600.):
                 completed.append(label+'_'+method)
                 _atomic_report(output/'summary.json',dict(completed=False,scientific_acceptance=False,
                     methods_completed=completed,rows=summaries),replace_existing=True)
-                print(label,method,'candidates',len(evaluate.trace),
-                      runtime_text(begun,len(completed),total_methods),flush=True)
+                if progress is not None:
+                    progress(label, method, len(evaluate.trace), begun, len(completed), total_methods)
         if source_hashes()!=hashes:
             raise RuntimeError('Source changed during pilot.')
         report = dict(completed=True,scientific_acceptance=False,methods_completed=completed,
@@ -282,10 +280,3 @@ def run(output, *, max_seconds=600.):
     _atomic_report(output/'summary.json',report,replace_existing=True)
     return report
 
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output',type=Path,required=True)
-    parser.add_argument('--max-seconds',type=float,default=600.)
-    args = parser.parse_args()
-    run(args.output,max_seconds=args.max_seconds)

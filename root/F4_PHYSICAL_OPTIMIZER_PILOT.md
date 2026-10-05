@@ -148,12 +148,17 @@ Dette er målrettet pilotverifikation; fuld repo-regression er ikke kørt lokalt
 
 ## Reproduktion og råfiler
 
+Ved integration er CLI og runtime-udskrift flyttet til
+`src/exe/run_model/bm_1_parameter_pilot.py`; forsøgsmodulet har en valgfri
+progress-callback og importerer ikke længere execution-laget. Den numeriske
+scorer, optimizer, budgetter og de arkiverede originale resultater er uændrede.
+
 ```powershell
 $env:OPENBLAS_NUM_THREADS = "1"
 $env:OMP_NUM_THREADS = "1"
 $env:MKL_NUM_THREADS = "1"
 python -B -m unittest discover -s tests -p test_bm1_parameter_optimization.py -v
-python -B -m src.validation.bm_1.parameter_optimization --output files/output/bm_1/runs/estimation/physical_optimizer_reproduction --max-seconds 600
+python -B -m src.exe.run_model.bm_1_parameter_pilot --output files/output/bm_1/runs/estimation/physical_optimizer_reproduction --max-seconds 600
 ```
 
 Rå design, observationer, kandidatspor, optimeringsstatus og refinement er i
