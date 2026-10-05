@@ -86,8 +86,7 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
         "prediction_day": prediction_day, "history_days": history_days,
         "r": np.asarray(fit["r"], dtype=float), "init": np.asarray(init, dtype=float),
         "beta": qp["beta"], "variance_baseline": qp["variance_baseline"],
-        "variance_amplitude_1": qp["variance_amplitude_1"], "phase_1_h": qp["phase_1_h"],
-        "variance_amplitude_2": qp["variance_amplitude_2"], "phase_2_h": qp["phase_2_h"],
+        "variance_amplitude": qp["variance_amplitude"], "phase_h": qp["phase_h"],
         "variance_rmse": qp["variance_rmse"], "std_rmse": qp["std_rmse"], "std_mae": qp["std_mae"], "r2": r2,
         "P0": P0, "initial_variance": initial_variance,
         "constant_q": constant_q,
@@ -103,19 +102,19 @@ def save_plot(result, path):
     fig, axes = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
 
     axes[0].plot(hourly["hour"], hourly["var_I"], marker="o", label="Observed 5-week hourly variance $s_I^2$")
-    axes[0].plot(hourly["hour"], hourly["fitted_propagated_variance"], marker="o", label="WM4 propagated variance from double-harmonic $q(t)$")
+    axes[0].plot(hourly["hour"], hourly["fitted_propagated_variance"], marker="o", label="WM4 propagated variance from single-harmonic $q(t)$")
     axes[0].plot(hourly["hour"], hourly["constant_propagated_variance"], linestyle="--", label="WM4 propagated variance from constant $q$")
     axes[0].set_ylabel("Variance")
     axes[0].grid(True, alpha=0.25); axes[0].legend()
 
     axes[1].plot(hourly["hour"], hourly["s_I"], marker="o", label="Observed 5-week $s_I$")
-    axes[1].plot(hourly["hour"], hourly["fitted_propagated_std"], marker="o", label="WM4 propagated std from double-harmonic $g(t)$")
+    axes[1].plot(hourly["hour"], hourly["fitted_propagated_std"], marker="o", label="WM4 propagated std from single-harmonic $g(t)$")
     axes[1].plot(hourly["hour"], hourly["constant_propagated_std"], linestyle="--", label="WM4 propagated std from constant $g$")
     axes[1].set_xlabel("Hour of day"); axes[1].set_ylabel("Standard deviation / diffusion")
     axes[1].set_xticks(np.arange(0, DAY_HOURS, 2))
     axes[1].grid(True, alpha=0.25); axes[1].legend()
 
-    fig.suptitle(f"WM4 local double-harmonic time diffusion QP | prediction {result['prediction_day']:%Y-%m-%d}")
+    fig.suptitle(f"WM4 local single-harmonic time diffusion QP | prediction {result['prediction_day']:%Y-%m-%d}")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -127,14 +126,12 @@ def print_result(result, plot_path, csv_path):
     print(f"deterministic r=[{r[0]:.8f}, {r[1]:.8f}, {r[2]:.8f}]")
     print()
     print("local convex time-diffusion QP")
-    print("q(t)=g(t)^2=beta_0+beta_c1*cos(wt)+beta_s1*sin(wt)+beta_c2*cos(2wt)+beta_s2*sin(2wt)")
+    print("q(t)=g(t)^2=beta_0+beta_c*cos(wt)+beta_s*sin(wt)")
     print("w=2*pi/24 h; q(t)>=0 imposed over the full prediction-day numerical grid")
     print("The QP fits WM4-propagated hourly Var(I), not q(t) itself, to the empirical hourly variance.")
     print(f"beta_0={beta[0]:.10f}")
-    print(f"beta_c1={beta[1]:.10f}, beta_s1={beta[2]:.10f}")
-    print(f"beta_c2={beta[3]:.10f}, beta_s2={beta[4]:.10f}")
-    print(f"first harmonic variance amplitude={result['variance_amplitude_1']:.10f}, phase={result['phase_1_h']:.6f} h")
-    print(f"second harmonic variance amplitude={result['variance_amplitude_2']:.10f}, phase={result['phase_2_h']:.6f} h")
+    print(f"beta_c={beta[1]:.10f}, beta_s={beta[2]:.10f}")
+    print(f"harmonic variance amplitude={result['variance_amplitude']:.10f}, phase={result['phase_h']:.6f} h")
     print(f"variance RMSE={result['variance_rmse']:.10f}, R2={result['r2']:.8f}")
     print(f"std RMSE after sqrt={result['std_rmse']:.10f}, MAE={result['std_mae']:.10f}")
     print(f"constant process variance q={result['constant_q']:.10f}, variance RMSE={result['constant_variance_rmse']:.10f}")
@@ -148,7 +145,7 @@ def print_result(result, plot_path, csv_path):
 
 
 def main():
-    parser = ArgumentParser(description="Fit one prediction day's strictly time-dependent double-harmonic WM4 diffusion variance by convex QP.")
+    parser = ArgumentParser(description="Fit one prediction day's strictly time-dependent single-harmonic WM4 diffusion variance by convex QP.")
     parser.add_argument("--day", default="2022-08-22")
     parser.add_argument("--weeks", type=int, default=DEFAULT_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
