@@ -805,6 +805,83 @@ parameterbanker, hele sæsoner eller natkørsler.
 Skeln i slutrapporten mellem implementeret, syntetisk demonstreret,
 numerisk kontrolleret og historisk valideret.
 
+## Beslutning 5. oktober: genbrug WM's ugeprognose med fælles langt fit
+
+Johan ønsker WM's enkle ugeprognoseprincip genbrugt i G og et fælles
+fit over et helt år, hvis datadækningen tillader det. Implementér kun
+yderligere dele, når de er nødvendige i den aktuelle G-etape.
+Dette ændrer den planlagte hovedvariants træningsvindue; det gamle
+januarforsøg og WM's oprindelige én-fituges-variant bevares som særskilte
+udviklingsreferencer. G4's lille januarbudget udvides ikke af denne beslutning.
+
+### Det konkrete WM-princip og genbrug
+
+Reviewet i main's src/exe/run_model/wm_4/predict_weekly.py:
+1. statistical_output.fit(frame, fit_end) fitter O på tilgængelig historik
+   før cutoff; O's historik er ikke begrænset til dynamikkens ene fituge.
+2. qp_params.fit fitter WM-dynamikken på én uge med 24 timers warm-up.
+3. F/R fra den simulerede fitbanes præcise slutpunkt bruges som prognosestart.
+4. O og r fryses, og deterministic_solver simulerer næste 168 timer.
+   Næste uges demand indgår ikke i selve forward-ligningerne.
+5. Observeret demand anvendes bagefter til fejlmål og figurer.
+
+WM's deterministiske ligninger er dF/dt=R, dR/dt=r_F F+r_U U+r_R R,
+I=O+R, med tid i dage. G genbruger princippet, baselineimplementationen,
+cutoff/historik, metrics og rapportering, mens BM beholder egne ligninger,
+state x, timer, normalisering og LS-estimator. Overtag ikke WM's F/R-state
+eller QP-regression som BM-state/estimator.
+
+G3's snapshot/forecast og G4's response-snapshot implementerer allerede
+frysning og videreføring af egen cutoff-state. Ingen ny forecast-solver
+eller kopi af WM-runneren er nødvendig for at genbruge princippet.
+Baseline B=O skal være samme frosne objekt/forløb for matched BM/WM.
+
+### Informationsgrænsen i ugeprognosen
+
+WM's prediction_setup læser historiske fremtidige U/Temp og kræver også
+I til sin combined setup/scoring, selv om I ikke indgår i forward-solve.
+Det er en betinget historisk prognose, ikke en estimator af fremtidig pris
+eller temperatur. G beholder sin allerede implementerede adskillelse af
+forecast-input og optional scoring; forecast skal kunne gemmes uden fremtidig y.
+
+Ved origin t0 beregnes Bhat(t|t0)=b_beta(kalender(t),That(t|t0)),
+og BM propagerer sin gemte x(t0) med frosne theta og uhat(t|t0) i 168 timer.
+For en virkelig ugeprognose bruges kun origin-tilgængelig prisplan,
+prisprognose/scenarie og temperaturprognose. Registrér inputtype og
+tilgængelighedstid; observerede fremtidige inputs mærkes conditional.
+Der indføres endnu ingen ny pris-/vejrestimator. En dagligt opdateret
+prognose er et særskilt forsøg, ikke en frosset ugeprognose.
+
+WM's dagsvariant --optimize-prediction-state fitter initialstate med
+målte observationer fra selve måldagen. Den er oracle-diagnostik og
+overføres ikke til G's egentlige prognose.
+
+### Hvornår yderligere implementation bliver nødvendig
+
+- Nu: færdiggør den afgrænsede G4-pilot med fælles C/Xi/g-midterværdi,
+  lineær f og fast k; genbrug eksisterende gemt-fit-forecast.
+- Før langt fit: kontrollér fast population, målebetydning, pris/temperatur/
+  demanddækning og fastlæg TRAIN, DEVELOPMENT og senere TEST.
+  Januararkivets audit angiver demand til 2. november 2022; et fuldt år
+  er endnu ikke dokumenteret. Hold skalaerne TRAIN-only.
+- Lang variant: udvid først dato-/arkivadapter og nødvendige runtimeindstillinger,
+  hvis eksisterende entrypoints ikke kan udtrykke vinduet. Fit baseline og
+  lineær BM-reference på samme erklærede lange historik; brug reference-k
+  fast i det efterfølgende fælles kurvefit. Ingen automatisk arvet januar-k.
+  Ét fælles kurvepar og én kontinuerlig statebane, ingen daglige resets.
+- Ugetest: træningsåret skal ligge før testugerne. Hvis kun ét års data findes,
+  bruges et kortere forudgående træningsvindue med senere uger holdt ude;
+  fit på hele året er ellers kun in-sample analyse.
+  BM/WM sammenlignes med samme lange træningsvindue i den matched variant.
+  WM's oprindelige korte dynamikfit rapporteres separat.
+- Senere: rullende vindue, kausal state-opdatering og G6/G8/G7 genbruger
+  den samme origin/handoff-idé. Årsfit og bred prognosebenchmark bliver
+  ikke en ny gate, der blokerer G6b→G8→G7.
+
+Dette er en dokumenteret beslutning og kodereview, ikke et udført årsfit
+eller ny prognosevalidering. Ingen numeriske tests/kørsler kræves for
+denne rene planændring.
+
 ## 9. Kilder og første konkrete opgave
 
 Planen er udarbejdet mod main `fe53cce858979afabeaa7ab1e36b9e44874b0fc5`.
