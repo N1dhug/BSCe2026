@@ -1,5 +1,26 @@
 # Fælles projektkontekst
 
+**Nyt selvstændigt spor, Johan 5. oktober: [G-planen](root/G.md).**
+Deterministisk BM1-kerne, afgrænset parameterfit, matched WM4-prognoser og
+et efterfølgende billigt stokastisk usikkerhedslag.
+Læs G-planen ved dette arbejde; `G-plan/G0`–`G-plan/G7` er ikke `F4-G2a/b/c`.
+G0–G3 er første deterministiske leverance. G6 er en obligatorisk senere
+stokastisk pilot/evaluering med WM-lignende usikkerhedsmål; G7 er valgfri kontrol.
+G som helhed er ikke rent deterministisk. F4-status og dets
+obligatoriske H-f/g-krav bevares. G0–G3 er implementeret og syntetisk kontrolleret; historisk januar-fit mangler.
+Johan har bestilt hele januar 2022 som fælles BM/WM-fitmåned; næste 168 timer
+forudsiges med faste parametre. Læs [januarvejledningen](root/G_JANUARY.md).
+G4–G7 er fortsat planlagt.
+Ved almindelige G0–G3-ændringer er standardkontrollen kun de 10 tests i
+`python -B -m unittest tests.test_bm1_deterministic_fit -q`. Dette erstatter
+fuld test-discovery for dette spor. Kør kun berørte ekstra tests ved ændringer
+i fælles BM/WM-kode eller entrypoints. Gentag ikke månedssmoke eller historisk
+fit alene for dokumentation/testoprydning. Se testpolitikken i januarvejledningen.
+Præcisering kl. 12:56: genbrug WM4's `statistical_output`-baseline, samme
+fit/predict-protokol, metrics, performanceanalyser og rapportlayout dér, hvor
+muligt. Første benchmark følger WM's én-fituges/næste-uges-protokol. Forskelle
+skal begrundes; se den bindende kompatibilitetsmatrix i G-planens afsnit 1a.
+
 **H-integration, 5. oktober:** H1-kode og sessionscheckpoint fra den afbrudte
 nattebranch er samlet med Windows-rettelserne fra PR #60. Fælles report-I/O
 ligger i `src/tools/bm_1_reports.py`; layoutfejlen er rettet. H1-v2 blev kørt
