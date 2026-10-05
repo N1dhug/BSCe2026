@@ -448,7 +448,8 @@ def run_fit(args):
 def run_fit_checks(args):
     """Recompute selected-curve numerics; preserve failures and resume raw units."""
     from src.validation.bm_1.response_fit_checks import (
-        validate_fit_result, selected_curve_unit, curve_recovery_description)
+        validate_fit_result, selected_curve_unit, curve_recovery_description,
+        validate_selected_replay)
     begun=perf_counter()
     if not np.isfinite(args.max_hours) or args.max_hours <= 0.:
         raise ValueError('max-hours must be finite and positive.')
@@ -509,8 +510,7 @@ def run_fit_checks(args):
                     _atomic_report(path,payload);_,digest=_read_likelihood_report(path);fresh+=1
                 # Recompute every acceptance flag from raw laws, including on resume.
                 linear,_=_read_likelihood_report(args.numerics_run/'units'/f'{case}_{record.record_id}_linear.npz')
-                for level,settings in H1_V2_NUMERICS.items():
-                    validate_filter_arrays(payload['rows'][level],record,cells=settings['cells'])
+                validate_selected_replay(payload['rows'], record, fit_record)
                 controls=compare_numerical_unit(payload['rows'],linear['rows'])
                 units.append(dict(unit=unit,sha256=digest,controls=controls,
                     numerical_passes=all(v['passes'] for v in controls.values()),

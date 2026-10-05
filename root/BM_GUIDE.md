@@ -254,6 +254,12 @@ Denne kommando gemmer 12 nye råunits med alle prefixer på base/tid/rum/q.
 Resume bruger `--resume` og samme source. Den ændrer ingen fitkurver efter
 kontrollerne. Budgetstoppede fits forbliver budgetstoppede, og H2/H3 frigives ikke.
 
+Selected-check-resume sammenholder hver råunits base-scorer og slutposterior
+med det valgte fit, også hvis et crash efterlod en atomisk råfil uden slutresumé.
+Ugyldige totalscorer, ikke-boolske observationsmasker og fejlede sandsynligheds-
+diagnoser afvises. Beståede refinement-forskelle alene dokumenterer ikke, at
+råfilen tilhører det valgte fit. Gyldige råunits kræver ingen nye FV-replays.
+
 ## I-baseline og H1-forberedelse
 
 Den lille integration bruger gammelt F3-ID1326, ikke en ny population. Kendt

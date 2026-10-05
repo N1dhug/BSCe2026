@@ -43,4 +43,35 @@ class SelectedCurveTests(unittest.TestCase):
             bad=deepcopy(payload['replay']['records'][0]);bad['log_evidence'][0]+=1
             with self.assertRaises(ValueError):checks.selected_curve_unit(record,fit['f'],fit['g'],linear,bad)
 
+    def test_nonfinite_replay_totals_and_probability_guards_are_rejected(self):
+        _, fit, payload = self.fixture()
+        with patch.dict(checks.H1_V2_NUMERICS, {'base': dict(cells=11, max_step=.25, quadrature_order=1)}, clear=True):
+            for target, field, value in (
+                ('replay', 'log_likelihood', float('nan')),
+                ('record', 'log_likelihood', float('nan')),
+                ('record', 'maximum_abs_mass_error', float('nan')),
+                ('record', 'maximum_abs_mass_error', 1e-3),
+                ('record', 'minimum_cell_mass', -1e-3),
+            ):
+                with self.subTest(target=target, field=field, value=value):
+                    bad = deepcopy(payload)
+                    row = bad['replay'] if target == 'replay' else bad['replay']['records'][0]
+                    row[field] = value
+                    with self.assertRaises((TypeError, ValueError)):
+                        checks.validate_fit_result(bad, fit['trace'], case='no_response', pieces=2, record_ids=['a'])
+
+    def test_replay_mask_must_be_boolean_and_scores_one_dimensional(self):
+        _, fit, payload = self.fixture()
+        with patch.dict(checks.H1_V2_NUMERICS, {'base': dict(cells=11, max_step=.25, quadrature_order=1)}, clear=True):
+            bad = deepcopy(payload)
+            bad['replay']['records'][0]['observed'] = ['False', 'False']
+            with self.assertRaises(ValueError):
+                checks.validate_fit_result(bad, fit['trace'], case='no_response', pieces=2, record_ids=['a'])
+            bad = deepcopy(payload)
+            row = bad['replay']['records'][0]
+            row['observed'] = [row['observed']]
+            row['log_evidence'] = [row['log_evidence']]
+            with self.assertRaises(ValueError):
+                checks.validate_fit_result(bad, fit['trace'], case='no_response', pieces=2, record_ids=['a'])
+
 if __name__=='__main__':unittest.main()

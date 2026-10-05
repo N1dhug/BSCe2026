@@ -9,7 +9,25 @@ from src.method.bm_1_response import curve_pair_from_logits
 from src.params.bm_1_response import BM1PiecewiseResponse
 from src.validation import estimation as checks
 from src.validation.bm_1.response_cases import H1_V2_NUMERICS, build_h1_case
-from src.validation.bm_1.response_numerics import run_numerical_unit, compare_numerical_unit
+from src.validation.bm_1.response_numerics import (
+    run_numerical_unit, compare_numerical_unit, validate_filter_arrays,
+)
+
+
+def _replay_scores(row):
+    """Read an explicit boolean mask and JSON scores without truthy coercion."""
+    observed = np.asarray(row['observed'])
+    if observed.ndim != 1 or observed.size == 0 or observed.dtype.kind != 'b':
+        raise ValueError('Selected replay observed mask must be a boolean vector.')
+    values = row['log_evidence']
+    if np.iscomplexobj(values):
+        raise ValueError('Selected replay scores must be real.')
+    scores = np.asarray(values, dtype=float)
+    if (scores.shape != observed.shape or not np.any(observed)
+            or np.any(~np.isfinite(scores[observed]))
+            or np.any(~np.isnan(scores[~observed]))):
+        raise ValueError('Selected replay observations/scores are invalid.')
+    return observed, scores
 
 
 def validate_fit_result(result, trace, *, case, pieces, record_ids):
@@ -51,29 +69,54 @@ def validate_fit_result(result, trace, *, case, pieces, record_ids):
         raise ValueError('Selected replay population/order changed.')
     pooled = 0.
     for row in rows:
-        observed = np.asarray(row['observed'], dtype=bool)
-        scores = np.asarray([v if v is not None else np.nan for v in row['log_evidence']])
-        if scores.shape != observed.shape or np.any(~np.isfinite(scores[observed])):
-            raise ValueError('Selected replay observations/scores are invalid.')
+        observed, scores = _replay_scores(row)
         total = float(scores[observed].sum())
-        if abs(total-row['log_likelihood']) > 1e-10 or abs(total-best['record_log_likelihoods'][row['record_id']]) > 1e-10:
+        saved_total = checks.finite_scalar(row['log_likelihood'], 'selected record likelihood')
+        if abs(total-saved_total) > 1e-10 or abs(total-best['record_log_likelihoods'][row['record_id']]) > 1e-10:
             raise ValueError('Selected replay does not reproduce its candidate score.')
+        error = checks.finite_scalar(row['maximum_abs_mass_error'], 'selected mass error')
+        minimum = checks.finite_scalar(row['minimum_cell_mass'], 'selected minimum mass')
+        if not 0. <= error <= 1e-10 or minimum < 0.:
+            raise ValueError('Selected replay probability guard failed.')
         edges=checks.increasing_grid(row['x_edges'],'selected edges')
         mass=checks.probability_mass(row['final_posterior_mass'],'selected posterior')
         if len(mass)+1 != len(edges) or not np.array_equal(edges,np.linspace(0,1,H1_V2_NUMERICS['base']['cells']+1)):
             raise ValueError('Selected posterior grid differs from registered numerics.')
         pooled += total
-    if abs(pooled-replay['log_likelihood']) > 1e-10 or abs(pooled-best['log_likelihood']) > 1e-10:
+    saved_pooled = checks.finite_scalar(replay['log_likelihood'], 'selected pooled likelihood')
+    if abs(pooled-saved_pooled) > 1e-10 or abs(pooled-best['log_likelihood']) > 1e-10:
         raise ValueError('Selected pooled score differs from record scores.')
     return f,g
 
 
+def validate_selected_replay(rows, record, selected_replay):
+    """Bind fresh or recovered raw laws to the selected fit, with no FV work.
+
+    A crash can leave valid atomically written units without a summary hash.
+    Refinement differences alone cannot establish which fit those units test.
+    Recheck the base scores and final posterior on every recovery path.
+    """
+    if set(rows) != set(H1_V2_NUMERICS):
+        raise ValueError('Selected raw unit differs from the registered numerical levels.')
+    for level, settings in H1_V2_NUMERICS.items():
+        validate_filter_arrays(rows[level], record, cells=settings['cells'])
+    base = rows['base']
+    observed, scores = _replay_scores(selected_replay)
+    mass = checks.probability_mass(selected_replay['final_posterior_mass'], 'selected posterior')
+    if (selected_replay['record_id'] != record.record_id
+            or not np.array_equal(observed, record.observations.observed)
+            or scores.shape != np.asarray(base['log_evidence']).shape
+            or not np.array_equal(selected_replay['x_edges'], base['x_edges'])
+            or mass.shape != np.asarray(base['posterior_mass'][-1]).shape
+            or not np.allclose(np.asarray(base['log_evidence'])[observed], scores[observed], rtol=0, atol=1e-10)
+            or not np.allclose(base['posterior_mass'][-1], mass, rtol=0, atol=1e-12)):
+        raise ValueError('Selected-curve replay differs from stored fit result.')
+
+
 def selected_curve_unit(record, f, g, linear_rows, selected_replay):
     rows=run_numerical_unit(record,f,g,numerics=H1_V2_NUMERICS,backend='fitted')
+    validate_selected_replay(rows, record, selected_replay)
     base=rows['base']
-    if (not np.allclose(base['log_evidence'],selected_replay['log_evidence'],rtol=0,atol=1e-10)
-            or not np.allclose(base['posterior_mass'][-1],selected_replay['final_posterior_mass'],rtol=0,atol=1e-12)):
-        raise ValueError('Fresh selected-curve replay differs from stored fit result.')
     controls=compare_numerical_unit(rows,linear_rows)
     # Posterior mass in each quarter is descriptive support, never observed truth.
     edges=base['x_edges']; widths=np.diff(edges)

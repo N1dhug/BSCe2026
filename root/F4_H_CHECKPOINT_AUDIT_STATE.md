@@ -11,15 +11,21 @@ Independent recovery review, 2026-10-05. This complements PR #62; Johan merges.
 
 ## Task status
 - DONE: locate and preserve the ongoing H1b run; verify current PR metadata and published source.
-- IN_PROGRESS: inspect selected-fit checkpoint validation and replay linkage, without rerunning the active fits.
-- TODO: reproduce concrete validation defects, implement focused fixes, run tests, publish reviewable changes.
+- DONE: reproduce missing nonfinite-score/mask/probability checks and missing selected-fit linkage after a crash before summary publication.
+- DONE: implement focused validation and real tiny-fit recovery tests. Correct orphaned raw units resume with zero new FV replays; changed scores/posteriors are rejected.
+- IN_PROGRESS: publish the tested fix and run the full regression before declaring the PR ready.
 - BLOCKED: historical H2/H3 scientific claims still require actual metadata and a documented blind split.
 
 ## Existing evidence (not rerun in this session)
 PR #62 reports H1a-v2 96 units / 384 replays, durable raw archives and exact responsive 3+3 vs 6 candidate resume parity. The parity file and raw H1a directory are present locally. This session has not independently revalidated the complete evidence yet. Existing work also stages report-array and TRAIN-origin fixes outside the locked checkout; avoid duplicating those edits.
 
 ## Tests / artifacts
-No new tests or numerical studies have run in this audit checkpoint. No new raw outputs yet. The original H session owns its active fit files and their archival. See `root/F4.md` and PR #62 for the verified preexisting evidence index.
+Verified pushed parent: `2265e2f558496ed003290d23da7a3037f727b43b` (initial session state).
+On that parent plus this patch: 32 targeted tests passed in 20.334 s, exit 0.
+Command: `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -B -c "import unittest; s=unittest.TestSuite(unittest.defaultTestLoader.discover('tests',pattern=p) for p in ['test_bm1_selected*.py','test_bm1_curve*.py','test_bm1_response*.py','test_bm1_reports.py']); r=unittest.TextTestRunner().run(s); raise SystemExit(not r.wasSuccessful())"`.
+Full regression has not yet run on this patch. `git diff --check` passes.
+Before the fixes, targeted tests reproduced six invalid-metadata acceptance failures and acceptance of shifted raw evidence after orphan-unit recovery. New tests use small actual synthetic fits only; they do not read historical data.
+No new scientific runs or claims. The original H session owns its active fit files and their archival. See `root/F4.md` and PR #62 for preexisting evidence indices.
 
 ## Next concrete action
-Review `src/validation/bm_1/response_fit_checks.py` and the `run_fit_checks` resume path. Add regression reproductions for nonfinite checkpoint metadata and consistency of recovered numerical units with the exact selected fit, then implement validation using existing contracts. Keep all changes on this branch; do not mutate the primary run checkout.
+Publish this checkpoint, run `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -B -m unittest discover -s tests -q`, then create a small follow-up PR targeting the H recovery branch. Verify latest upstream before publication. This patch is independent of the primary session's staged report-array, completed-family and TRAIN-origin fixes. Do not change the primary source-locked run, resume its calculations on this new source, or edit existing source manifests. A new selected-check run may read the old fit as an immutable dependency after fitting finishes.
