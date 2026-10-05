@@ -1,7 +1,6 @@
 from time import perf_counter
 
 import numpy as np
-from scipy.optimize import LinearConstraint, minimize
 from src.validation.model.wm_4 import wm_4_validation
 
 
@@ -411,8 +410,17 @@ class time_diffusion_qp:
         initial_variance = np.asarray(initial_variance, dtype=float).reshape(-1)
         if initial_variance.size != observed_variance.size or not np.all(np.isfinite(initial_variance)) or np.any(initial_variance < 0.0): raise ValueError("initial_variance must match observed_variance and be finite and nonnegative.")
 
-        Phi = self.design(diffusion_time_hours)
-        propagated_design = process_kernel @ Phi
+        # The empirical target is hourly, so fit the double harmonic on the
+        # 24 physical hours only. During fine-grid covariance propagation the
+        # fitted hourly q values are held constant within each hour. This keeps
+        # the deterministic WM4 propagation at its original resolution while
+        # reducing positivity constraints from ~1441 redundant rows to 24.
+        hour_nodes = np.arange(24, dtype=float)
+        Phi_hour = self.design(hour_nodes)
+        hour_bin = np.floor(np.mod(diffusion_time_hours, 24.0) + 1e-12).astype(int)
+        hour_bin = np.clip(hour_bin, 0, 23)
+        Phi_fine = Phi_hour[hour_bin]
+        propagated_design = process_kernel @ Phi_fine
         if fit_mask is None:
             fit_mask = np.ones(observed_variance.size, dtype=bool)
         fit_mask = np.asarray(fit_mask, dtype=bool).reshape(-1)
@@ -421,9 +429,9 @@ class time_diffusion_qp:
         X = propagated_design[fit_mask]
         y = (observed_variance - initial_variance)[fit_mask]
 
-        # A zero start makes every q(t)>=0 constraint active simultaneously,
-        # which is highly degenerate for the active-set solver. Start from the
-        # strictly positive constant-diffusion least-squares solution instead.
+        # Start strictly inside q_h >= 0 using the best constant hourly process
+        # variance. With only 24 linear constraints the generic active-set QP
+        # solver is well matched to this problem.
         constant_response = propagated_design[:, 0]
         response_fit = constant_response[fit_mask]
         denominator = float(response_fit @ response_fit)
@@ -432,35 +440,14 @@ class time_diffusion_qp:
         constant_q = max(constant_q, 10.0 * positivity_eps)
         x0 = np.array([constant_q, 0.0, 0.0, 0.0, 0.0], dtype=float)
 
-        # This QP has only five variables but one positivity inequality
-        # per fine-grid time point. The generic active-set solver is intended
-        # for small/medium working sets and can cycle on these highly redundant
-        # harmonic constraints. Solve the same convex QP with SLSQP using the
-        # exact quadratic objective and linear constraints.
-        scale = max(1e-8, float(np.sqrt(np.mean(y ** 2))))
-        X_scaled, y_scaled = X / scale, y / scale
-        n = max(1, X_scaled.shape[0])
-        H = 2.0 * (X_scaled.T @ X_scaled) / n + self.model._FIT_RIDGE * np.eye(X_scaled.shape[1])
-        f = -2.0 * (X_scaled.T @ y_scaled) / n
-
-        def objective(beta): return 0.5 * float(beta @ H @ beta) + float(f @ beta)
-        def gradient(beta): return H @ beta + f
-
-        constraint = LinearConstraint(Phi, positivity_eps, np.inf)
-        solve = minimize(
-            objective, x0, jac=gradient, constraints=(constraint,),
-            method="SLSQP", options={"ftol": 1e-12, "maxiter": 5000, "disp": False},
+        beta = self.model._least_squares_qp(
+            X, y,
+            A_ub=-Phi_hour, b_ub=-positivity_eps * np.ones(Phi_hour.shape[0], dtype=float),
+            ridge=self.model._FIT_RIDGE, x0=x0,
         )
-        beta = np.asarray(solve.x, dtype=float)
-        min_q = float(np.min(Phi @ beta))
-        feasibility_tol = max(1e-10, 100.0 * positivity_eps)
-        if not solve.success or not np.all(np.isfinite(beta)) or min_q < positivity_eps - feasibility_tol:
-            raise RuntimeError(
-                f"Time-diffusion convex QP failed: {solve.message}; "
-                f"minimum q={min_q:.3e}, required >= {positivity_eps:.3e}."
-            )
 
-        instantaneous_variance = np.maximum(Phi @ beta, 0.0)
+        hourly_variance = np.maximum(Phi_hour @ beta, 0.0)
+        instantaneous_variance = hourly_variance[hour_bin]
         process_variance = np.maximum(propagated_design @ beta, 0.0)
         propagated_variance = np.maximum(initial_variance + process_variance, 0.0)
         propagated_std = np.sqrt(propagated_variance)
@@ -471,6 +458,7 @@ class time_diffusion_qp:
         fit_std_residual = std_residual[fit_mask]
         result = {
             "beta": np.asarray(beta, dtype=float),
+            "hourly_process_variance": hourly_variance,
             "instantaneous_variance": instantaneous_variance,
             "diffusion": np.sqrt(instantaneous_variance),
             "initial_variance": initial_variance.copy(),
@@ -488,9 +476,13 @@ class time_diffusion_qp:
         return result
 
     def evaluate(self, time_hours, beta):
-        q = self.design(time_hours) @ np.asarray(beta, dtype=float).reshape(5)
-        q = np.maximum(q, 0.0)
-        return {"variance": q, "std": np.sqrt(q)}
+        time_hours = np.asarray(time_hours, dtype=float).reshape(-1)
+        Phi_hour = self.design(np.arange(24, dtype=float))
+        hour_bin = np.floor(np.mod(time_hours, 24.0) + 1e-12).astype(int)
+        hour_bin = np.clip(hour_bin, 0, 23)
+        hourly_variance = np.maximum(Phi_hour @ np.asarray(beta, dtype=float).reshape(5), 0.0)
+        q = hourly_variance[hour_bin]
+        return {"variance": q, "std": np.sqrt(q), "hourly_variance": hourly_variance}
 
 
 
