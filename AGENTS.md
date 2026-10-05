@@ -3,11 +3,16 @@
 **Nyt selvstændigt spor, Johan 5. oktober: [G-planen](root/G.md).**
 Deterministisk BM1-kerne, afgrænset parameterfit, matched WM4-prognoser og
 et efterfølgende billigt stokastisk usikkerhedslag.
-Læs G-planen ved dette arbejde; `G-plan/G0`–`G-plan/G7` er ikke `F4-G2a/b/c`.
+Læs G-planen ved dette arbejde; `G-plan/G0`–`G-plan/G8` er ikke `F4-G2a/b/c`.
 G0–G3 er første deterministiske leverance. G6 er en obligatorisk senere
-stokastisk pilot/evaluering med WM-lignende usikkerhedsmål; G7 er valgfri kontrol.
+stokastisk pilot med FP/mixture og EM; G7 er obligatorisk stokastisk
+single-shooting-prisstyring; G8 er rekursiv tilstands-/parameterestimation.
+Bachelorens projekt 111866 kræver disse sammenhænge. Genbrug F2/F3/F4-kode
+og evidens; G6a's varianslag og G2's batch-LS er ikke erstatninger.
+Se kravmatrix, WM-kodereview og små forsøgsbudgetter i G-planens afsnit 0/8.
 G som helhed er ikke rent deterministisk. F4-status og dets
-obligatoriske H-f/g-krav bevares. G0–G3 er implementeret og syntetisk kontrolleret; historisk januar-fit mangler.
+obligatoriske H-f/g-krav bevares. G0–G3 er implementeret og syntetisk kontrolleret; Johan har rapporteret historisk januarfit som complete på 07fad9f;
+råreview og historisk G3-prognose mangler.
 Johan har bestilt hele januar 2022 som fælles BM/WM-fitmåned; næste 168 timer
 forudsiges med faste parametre. Læs [januarvejledningen](root/G_JANUARY.md).
 Ny januarvisning: `--fit-only --initial-state wm-neutral` bruger de virkelige
@@ -21,8 +26,10 @@ og fælles BM/WM-fejlmål bruger kun målte timer. WM-tilstandsrekonstruktion br
 udfyldt demand; QP-overgange over manglende endpoints maskeres. G kræver stadig
 168 målte demand-timer og komplette importerede priser. 10 tests består;
 én syntetisk januar med 27 demandhuller og 3 temperaturhuller gennemført
-på ca. 19 s (717 målte timer for begge modeller). Historisk fit mangler stadig.
-G4–G7 er fortsat planlagt.
+på ca. 19 s (717 målte timer for begge modeller). Historisk fit er nu rapporteret gennemført lokalt; råreview mangler.
+G4–G8 er fortsat planlagt. En lille G4-udvikling følges af G6b→G8→G7;
+G5's brede benchmark og en stor baselinegevinst må ikke blokere kernekravene.
+Nye G-adaptere får egne korte kontroller; F4/H-status og tidligere gates bevares.
 Ved almindelige G0–G3-ændringer er standardkontrollen kun de 10 tests i
 `python -B -m unittest tests.test_bm1_deterministic_fit -q`. Dette erstatter
 fuld test-discovery for dette spor. Kør kun berørte ekstra tests ved ændringer

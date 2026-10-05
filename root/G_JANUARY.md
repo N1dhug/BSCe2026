@@ -1,9 +1,13 @@
 # G0–G3: januar-fit, WM-lignende start og valgfri ugeprognose
 
-Status 5. oktober 2026: kode implementeret, fokuserede tests består, syntetisk
-månedsintegration gennemført. Historisk januar-fit er ikke kørt her: connectoren
-gav ikke adgang til bytes i den store `input.xlsx`. Det er et datatilgængeligheds-
-problem, ikke et negativt numerisk fitresultat. [G-planen](G.md) er det samlede spor.
+Status 5. oktober 2026: Johan har rapporteret historisk januar-fit som
+`complete` på `07fad9f`, run `g_january_fit_20261005_154824`.
+624 målte/744 timer; 120 manglende demand-timer; pris/temperatur komplette efter import.
+Normaliseret MSE: BM 0.0066056846, baseline 0.0066347027, WM 0.0072743310.
+Dette er terminalevidens; råreview, identifikation og historisk G3-prognose mangler.
+Genkør ikke fit alene for dokumentationsopdatering. [G-planen](G.md) indeholder
+nu obligatorisk FP/mixture/EM (G6b), stokastisk single-shooting-kontrol (G7)
+og rekursiv estimation (G8), baseret på eksisterende F-arbejde.
 
 ## Vis fittet for januar
 
@@ -50,16 +54,16 @@ Der er ét parameterfit for måneden, ingen daglige resets eller genfit for figu
 
 ## Kørsel på eksisterende checkout
 
-PR #66 og #68 er merged. Den efterfølgende datadækning/audit-rettelse ligger
-i `feature/g-january-data-audit`. Når ingen aktiv kørsel bruger checkoutet,
-kan hele januarvisningen med rettelsen køres direkte:
+PR #66, #68 og #69 er merged. Kommandoen nedenfor er til en nødvendig ny
+kørsel, ikke til gentagelse af den afsluttede januarkørsel. Når ingen aktiv
+kørsel bruger checkoutet, findes rettelsen på `main`:
 
 ```powershell
 git fetch origin
 if ($LASTEXITCODE -ne 0) { throw 'Fetch fejlede.' }
-git switch feature/g-january-data-audit
+git switch main
 if ($LASTEXITCODE -ne 0) { throw 'Branchskift fejlede.' }
-git pull --ff-only origin feature/g-january-data-audit
+git pull --ff-only origin main
 if ($LASTEXITCODE -ne 0) { throw 'Git-opdatering fejlede.' }
 
 $outputDir = Join-Path 'files/output/bm_1/runs/deterministic' ('g_january_fit_' + (Get-Date -Format 'yyyyMMdd_HHmmss_fff'))
@@ -121,7 +125,7 @@ ligger senere; dette skaber ingen manglende demand-observation.
 Pris-workbooken på repoet blev kontrolleret: alle 744 januartimer har en DK1-pris.
 Johans lokale stop 5. oktober vedrører endnu uafklaret Demand/Temp-dækning;
 den nye håndtering løser udfyldelige huller og bevarer audittens forklaring
-ved utilstrækkelig datadækning. Historisk fit skal stadig køres lokalt.
+ved utilstrækkelig datadækning. Historisk fit er siden rapporteret gennemført lokalt; råreview mangler.
 
 Reproducerbar syntetisk integration uden workbook/DMI:
 

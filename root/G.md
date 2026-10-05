@@ -1,14 +1,15 @@
 # G-plan — deterministisk BM-kerne, stokastisk udvidelse og WM4-sammenligning
 
-**Beslutning fra Johan: 5. oktober 2026. Status: G0–G3-kode implementeret og syntetisk udviklingskørsel gennemført; historisk januar-fit afventer lokale inputs. G4–G7 er planlagt.**
+**Revideret 5. oktober mod bacheloropgaven, projekt 111866. G0–G3-kode er implementeret; historisk januarfit er rapporteret gennemført lokalt. Råreview og historisk G3-prognose mangler. G4–G8 er planlagt: G6 omfatter nu FP/mixture og EM, G7 obligatorisk stokastisk prisstyring, G8 rekursiv estimation.**
 
 G er et selvstændigt spor ved siden af F-planen. Formålet er en enkel, hurtig
 BM-arbejdsgang: historiske data → deterministisk parameterfit → fastlåst
 ugeprognose → sammenligning med baseline og WM4. Grundlaget er den eksisterende
 BM1, ikke en ny model med WM's ligninger. Processtøj, filtre, parameterbanker og
 fordelingspropagation indgår ikke i første G-leverance. Derefter er et billigt
-stokastisk usikkerhedslag en obligatorisk G-leverance, ligesom WM's trinvise
-opbygning; G som helhed er altså ikke 100 % deterministisk.
+stokastisk trin en obligatorisk G-leverance. Den hurtige deterministiske kerne
+kobles til eksisterende FP/mixture, EM, rekursiv estimation og stokastisk
+prisstyring; et varianslag alene opfylder ikke bachelorens formål.
 
 **Præcisering fra Johan, 5. oktober kl. 12:56: WM4 er fælles standard dér,
 hvor modellerne kan gøre det samme.** Genbrug konkret baselineimplementation,
@@ -16,7 +17,7 @@ fit/predict-protokoller, evalueringsdefinitioner og rapportstruktur. Afvigelser
 skal skyldes modellernes matematik eller en eksplicit fælles datakorrektion og
 registreres i manifestet; en særskilt BM-baseline er ikke default.
 
-**Navne:** Skriv altid `G-plan/G0` ... `G-plan/G7` i status og henvisninger.
+**Navne:** Skriv altid `G-plan/G0` ... `G-plan/G8` i status og henvisninger.
 `F4-G`, `F4-G2a`, `F4-G2b` og `F4-G2c` er fortsat de gamle stokastiske studier.
 G kræver ikke, at disse studier eller H-f/g afsluttes. G overtager heller ikke
 deres evidens eller afslutter deres krav. F-sporets status står i [F4.md](F4.md).
@@ -44,7 +45,65 @@ En syntetisk 744+168-timers kæde med to starter er gennemført på cirka 22 s,
 130 residualkald og bestået tidsforfining. Det er implementerings-/runtimeevidens,
 ikke historisk januar-estimation eller en retfærdig modelrangering: data er
 genereret med BM1. Den store historiske input-workbook kunne ikke materialiseres
-gennem denne chats connector. Lokal januarkørsel mangler stadig.
+gennem denne chats connector. Johan har siden kørt januarfittet lokalt på
+`07fad9f`, run `g_january_fit_20261005_154824`, med `status=complete`:
+624 målte timer, 120 manglende demand-timer, komplette importerede pris-/temperaturinputs.
+Normaliseret MSE: BM 0.0066056846, baseline 0.0066347027, WM 0.0072743310.
+BM's in-sample MSE-gevinst er 0.4374 %. Kilden er terminaloutput; råfiler,
+identifikation, præcis numerikfejl og samlet runtime er endnu ikke uafhængigt
+reviewet. Fit-only dokumenterer ingen ugeprognose. Genkør ikke for denne planrevision.
+
+
+## 0. Bachelorens formål og krav
+
+Autoritativ kilde: Johans screenshot af den registrerede projektbeskrivelse,
+projekt-ID **111866**, **Stokastisk optimal regulering og estimering til
+udnyttelse af forbrugerfleksibilitet** (Screenshot 2026-09-19 230718.png,
+genlæst 5. oktober). Formålet er at finde prissignaler, som får en
+forbrugergruppes samlede forbrug til at nærme sig en forudbestemt målprofil.
+Responsen beskrives med SDE'er; mixture-approksimation af Fokker–Planck
+indgår udtrykkeligt. Forecast-kvalitet er et hjælpemål, ikke hele formålet.
+
+| Formelt arbejde | Eksisterende genbrug | G-leverance / kobling |
+|---|---|---|
+| Approksimere FP med mixture-metoder | F2/F3: BM FP/FV og dynamisk Beta-mixture | G6b: samme SDE og initiallov i FP, mixture og EM; fordelinger, momenter, runtime. |
+| Formulere stokastisk optimalt kontrolproblem | F3's fælles trackingproblem | G7: fast målprofil, prisbounds, forventet trackingtab og deklarerede øvrige led. |
+| Løse kontrolproblemet med single shooting og FP | F3's forward-evaluatorer og prisoptimering, inklusive mixture | G7: prisvektor → fordeling → objective → optimizer; krydsevaluér politikker. |
+| Rekursiv tilstands- og parameterestimation baseret på FP | F4's FV/mixture-filtre og parameterbanker | G8: sekventielle Bayes-opdateringer og posterior-handoff til G7. Batch-LS alene er utilstrækkeligt. |
+| Rapport og mundtligt forsvar | F1–F4-noter og gemt evidens | G5 og slutrapport: krav→kode→forsøg→resultat→begrænsning, også negative resultater. |
+
+EM betyder **Euler–Maruyama**, som på vejledertavlen, ikke
+expectation-maximization. EM simulerer SDE-baner og giver numerisk kontrol;
+den erstatter hverken FP/mixture eller rekursiv estimation. EM er ikke et
+selvstændigt nummereret STADS-krav, men indgår eksplicit i G6b/G7.
+
+Kravene gælder det samlede projekt. Gennemført F-arbejde kan dække et krav
+med præcis kilde og begrænsninger; gentag ikke hele F1–F4. Nye parametre,
+kurver og initiallove kræver dog en lille kontrol af den genbrugte numerik.
+G var før revisionen ufuldstændig som selvstændig bachelorplan: FP/mixture
+og rekursiv estimation manglede, og prisstyring var valgfri.
+
+### Hvad WM faktisk gør
+
+Kildecommit for review: 9da2777fddefd32c870c1d66c0a07373796cf489.
+
+- WM1 bruger en én-dimensional FP-vej via bm_1_fokker_planc med
+  Beta-mixture-projektion. WM2/WM3/WM4 bruger wm_fokker_planc, hvis backend
+  er finite_volume_2d; det er ikke automatisk en mixture-metode.
+- WM4 har fokker_planc_solver for fordelingen af F og R. At metoden findes
+  betyder ikke, at den kaldes af den deterministiske fit/prognose.
+- WM4's process_uncertainty og process_variance_kernel propagérer
+  kovarians for Euler-diskretiseret lineær dynamik. De beregner ikke en fuld
+  FP-tæthed og simulerer ikke EM-baner. Stateafhængig diffusion evalueret langs
+  den deterministiske bane er en approksimation til den fulde model.
+- wm_4/test_diffusion_hypotheses.py bruger varianskernen. build_record
+  optimerer initialtilstanden mod prognosedagen (oracle). Genbrug metrics
+  og figurer, men ikke den initialisering som en kausal prognose.
+- De gennemgåede WM1–WM4-modelklasser har ingen særskilt EM-banesolver.
+  BM har allerede bm_1.euler_maruyama_solver og Brownian-hjælpere.
+
+Genbrug WM's trinvise fit→stokastik og rapportering, men BM's egen SDE,
+randstruktur og F-sporets FP/mixture/EM-/estimation-/kontrolkode.
 
 ## 1. Leverancer og rækkefølge
 
@@ -56,13 +115,19 @@ gennem denne chats connector. Lokal januarkørsel mangler stadig.
 | G-plan/G3: første ugeprognose | Frys parametre ved origin, viderefør træningens sluttilstand og simulér syv døgn uden observationer fra testugen. Kør matched WM4 og baseline. | Fælles CSV, ugefigur og RMSE/MAE/bias samt baselinegevinst. Resultatet må gerne være negativt. G0–G3 er første brugbare leverance. |
 | G-plan/G4: fælles f/g-kurver | Undersøg først en lille prisresponsudvidelse, derefter eventuelt f; brug eksisterende kontinuerte, monotone kurveobjekter. Ét kurvepar per population og træningsfit. | Afgrænset udviklingssammenligning mod lineære kurver; validering afgør om ekstra fleksibilitet beholdes. Ingen kurver per dag. |
 | G-plan/G5: afsluttende benchmark og dokumentation | Fastlås opskrift og modelvalg før sluttest. Evaluer de på forhånd valgte ugeorigins i én måned med identisk information og rapportér alle uger. | Reproducerbar lille benchmarkpakke med kvalitet, runtime, begrænsninger og klart skel mellem udvikling og sluttest. |
-| G-plan/G6: stokastisk usikkerhed og evaluering | Bevar det deterministiske fit som reference, tilføj BM-processtøj, fit få støjparametre og propagér approksimativ varians. Genbrug WM's usikkerhedsmål og figurer. | Obligatorisk afgrænset pilot og held-out evaluering af dækning, bredde og intervalscore; negative resultater rapporteres. Se afsnit 8. |
-| G-plan/G7: separat senere prisoptimering | Når forecastdelen er vurderet: genbrug eksisterende deterministisk kontrol med et fælles, eksplicit mål og få prisbeslutninger. | Valgfri efterfølgende leverance. Ingen forudsætning for G0–G6 og ingen fælles estimation af parametre og priser. |
+| G-plan/G6: stokastik, FP/mixture og EM | G6a: billig variansreference. G6b: FP/FV, dynamisk Beta-mixture og EM på samme lille forsøg. | Numerisk forfining, fordelinger/momenter, EM-usikkerhed og randdiagnoser; variansapproksimation mod FP. |
+| G-plan/G7: obligatorisk stokastisk prisstyring | F3's single shooting med FP/mixture, få prisblokke og fast målprofil; deterministisk kontrol som reference. | Fælles stokastisk objective, finere FP/mixture og parret EM-evaluering; G8-posterior overføres til kontrol. |
+| G-plan/G8: rekursiv tilstands- og parameterestimation | F4's FP/mixture-filtre og lille én-parameterbank med egne conditional states. | Sekventiel opdatering, syntetisk identifikationskontrol og posterior→G7-handoff; øvrige parametre eksplicit faste. |
 
 **Præcisering fra Johan, 5. oktober: G skal også indeholde stokastik.**
-G0–G3 er fortsat første deterministiske milepæl; G6 følger det fastlåste
-strukturelle modelvalg i G4–G5 og er del af den samlede G-leverance.
-G5's punktprognosebenchmark afslutter derfor ikke hele G-planen. G6 får eget
+G0–G3 er første deterministiske milepæl. Efter et afgrænset G4-valg låses
+strukturen til G6b, derefter G8 og G7. G6a er billig reference. G7 kan
+forberedes med kendt syntetisk initiallov før G8; samlet kræves også handoffet.
+G5's brede månedsbenchmark må ikke blokere kernekravene; slutrapportering
+følger G6/G8/G7. Stor baselinegevinst er ikke en adgangsgate.
+G5's punktprognosebenchmark afslutter ikke G. G6–G8 er obligatoriske
+integrationstrin. Økonomisk profit-/indkøbsoptimering er fortsat en mulig
+senere udvidelse ud over den krævede målprofilstyring. G6 får eget
 udviklings-/testsplit fastlagt i G0, så allerede inspicerede G5-data ikke
 senere præsenteres som blind sluttest for usikkerhedsmodellen.
 Ingen stor arkitekturomskrivning eller komplet ny F1–F4-valideringsserie.
@@ -335,7 +400,7 @@ Det første nåede loft stopper ny beregning; en pause er ikke en bestået fit.
 | G1/G2 runtimepilot | 30 residualkald og højst 60 sekunder | Repræsentativ fuld træningslængde; opvarmning/opsætning måles særskilt. |
 | Ét G2-fit | 4 starter, højst 250 residualkald per start, højst 1.000 samlet, højst 5 minutter | Inklusive numerisk Jacobian; ikke kun optimizerens rapporterede nfev. |
 | G4-kurveundersøgelse | Højst 3.000 residualkald og 10 minutter i alt | Alle familier, starter, strafstyrker og genstarter deler samme loft. |
-| G6-usikkerhedspilot og benchmark | Pilot: højst 60 sekunder/30 varianspropagationer. Derefter højst 500 propagationer og 5 minutter samlet for BM/WM-usikkerhedsfit, numerik og scoring | Højst to støjfamilier, to starter per familie; finite differences tæller med. Genbrug gemte deterministiske baner. Ekstra nødvendige strukturelle fits skal budgetteres inden kørsel. |
+| G6a-varianspilot og benchmark | Pilot: højst 60 sekunder/30 varianspropagationer. Derefter højst 500 propagationer og 5 minutter samlet for BM/WM-usikkerhedsfit, numerik og scoring | Højst to støjfamilier, to starter per familie; finite differences tæller med. Genbrug gemte deterministiske baner. Ekstra nødvendige strukturelle fits skal budgetteres inden kørsel. |
 | G5-månedsbenchmark | Højst 20 minutter samlet som første driftsmål/loft | Alle deklarerede ugeorigins, BM-fit, fælles baseline og WM4-fit/forecast; delresultater gemmes. |
 
 Et residualkald kan kræve flere baner, hvis data er opdelt i segmenter. Gem
@@ -351,8 +416,9 @@ Cache ikke tilstandsbaner på tværs af forskellige parametre. Kun hvis målt
 overhead tillader det, bruges op til 8 workers på uafhængige starter/ugeorigins
 med BLAS=1 og fælles samlet budget; ingen nested parallelisering.
 
-Undgå Cartesian-grids, Monte Carlo, FV/mixtures, tusindvis af tilfældige starter,
-hel sæson før pilot og brede gentagelser af F-studier. Brug den eksakte vej
+G0–G5's deterministiske fitloop bruger ikke Monte Carlo eller FV/mixtures.
+G6b/G7/G8 bruger dem eksplicit på små forsøg. Undgå store Cartesian-grids,
+tusindvis af starter, hel sæson før pilot og brede gentagelser af F-studier. Brug den eksakte vej
 hvor kontrakten tillader det. Ellers genbrug ODE og forfin kun et lille
 deklareret numerikpanel plus den valgte kandidat. Numeriske præcisionstolerancer
 tilpasses ikke efter et ønsket vinderresultat. Hvis budgettet ikke rækker,
@@ -373,7 +439,8 @@ Genbrug eksisterende matematik i `src/model/base/bm.py`, ODE i
 ikke overskrives med G-fitteren. Den eksisterende punkt-observationscontainer
 må heller ikke mærkes som intervalmodel; et intervalinterface kræver egen kontrakt.
 
-G0–G3-kode er oprettet; G6-koden nedenfor er fortsat planlagt:
+G0–G3-kode er oprettet; G6a's variansmodul og G6b/G7/G8's adaptere er fortsat
+planlagt. De eksisterende F-solvere/filtre/kontrolevaluatorer er genbrug, ikke ny kode:
 
 - `src/params/bm_1_deterministic.py`: lille fitkonfiguration, fitresultat og
   public API til deterministisk estimation.
@@ -406,9 +473,9 @@ WM i egne paneler med deres forskellige betydninger. State-værdier er ikke
 direkte sammenlignelige. Statistik fra én måned er beskrivende og dokumenterer
 ikke generel sæsonperformance eller kausal priselasticitet.
 
-## 8. Obligatorisk stokastisk trin G6 og valgfri kontrol G7
+## 8. Obligatorisk stokastik, kontrol og rekursiv estimation
 
-### G6: samme trinvise idé som WM, med BM's egen diffusion
+### G6a: billig variansreference med BM's egen diffusion
 
 Frys først de udviklingsvalgte strukturelle parametre og f/g-kurver. Brug
 derefter den eksisterende BM-diffusionsform:
@@ -477,18 +544,145 @@ Hvis støjlaget ikke giver brugbare bånd inden for budgettet, afsluttes den
 afgrænsede undersøgelse med dette negative resultat; der hævdes ikke kalibrerede
 prognoseintervaller. G6 erstatter ikke F-sporets fulde stokastiske validering.
 
-### G7: separat senere prisoptimering
 
-G7 holder de fittede parametre/kurver faste og vælger eventuelt få priser:
+### G6b: Fokker–Planck, Beta-mixture og Euler–Maruyama
 
-$$\min_{u_0,\ldots,u_{m-1}}\sum_i[\mathcal H_i(D_\theta(u))-a_i]^2,\qquad 0\leq u_j\leq1.$$
+Brug samme a, b, baseline, prisforløb, initiallov og tidsenhed:
 
-Start med 2–6 prisblokke og et fælles fast trackingmål a. Hvis WM bruger en
-endogen købskurve A(u), skal begge modellers objective og constraints først
-gøres sammenlignelige. Trackinggevinst er ikke automatisk økonomisk profit.
-BM's nonlinearitet består også her, så WM's konveksitetsbevis kan ikke kopieres.
-Første kontrol er deterministisk; stokastisk risikokontrol er en særskilt senere
-beslutning og er ikke nødvendig for G6's usikkerhedsleverance.
+$$\partial_t p=-\partial_x(ap)+\tfrac12\partial_{xx}(b^2p),\qquad
+p(t,x)\approx\sum_{m=0}^{M}c_m(t)\varphi_m(x),\quad c_m\geq0,\ \sum_m c_m=1.$$
+
+Første panel bruger konstant sigma_x, som de eksisterende FP/mixture-/kontrol-
+interfaces understøtter. Tidsvarierende støj kræver særskilt adapterparitet
+på alle beregningsveje før sammenligning.
+Genbrug BM's nul-flux FP/FV-reference, beta_mixture.py og F2/F3's dynamiske
+mixture-evaluatorer. Beskriv den faktiske metode: FV-transport og
+mixture-projektion, ikke en påstået gridfri koefficient-ODE. Kontrollér
+masse, positivitet, projektionstab, middel/varians og demand-integraler.
+Nye f/g får egen lille kontrol.
+
+EM simulerer samme SDE:
+
+$$X_{n+1}=X_n+a(X_n,t_n)\Delta t+
+b(X_n,t_n)\sqrt{\Delta t}\,Z_n,\qquad Z_n\sim N(0,1).$$
+
+Genbrug bm_1.euler_maruyama_solver, seedede increments og
+coarsen_brownian_increments. Fin/grov EM kobles med summerede increments;
+politikker sammenlignes med fælles tilfældige tal.
+Kontinuerlig intervalinvarians garanterer ikke invariant rå EM. Registrér
+rå randoverskridelser før enhver korrektion; reflektion/clipping må ikke
+skjule numeriske fejl eller kaldes validering af den ukorrigerede SDE.
+Genbrug F3's boundary='none'-kontrol hvor gyldig; stop/refinér det lille
+panel ved overskridelser.
+
+Begynd med én syntetisk 24-timerscase, derefter højst én historisk
+udviklingscase. Match initialloven: en Beta-approksimation til en punktmasse
+har endelig spredning og er ikke identisk med EM's præcise punktstart.
+Opgør initialfejl særskilt. Sammenlign FP/FV, mixture og EM på state-/demand-
+middel, varians, udvalgte CDF/kvantiler og trackingtab. Rapportér EM's
+samplingusikkerhed sammen med tidsdiskretiseringsfejl.
+Integrér det ikke-lineære D over fordelingen; D(E[X]) er ikke generelt E[D].
+G6a's varianslag er reference, ikke erstatning for dette trin.
+
+### G8: rekursiv estimation og handoff til kontrol
+
+Genbrug run_fv_filter, run_mixture_filter og run_parameter_bank i
+src/method/bm_1_estimation.py. Start med kendte parametre og tilstandsfilter;
+fortsæt med rho=1/C og 5–9 hypoteser inden for
+udviklingsfastlagte bounds. Den eksisterende én-parameterbank understøtter
+rho eller sigma_x; k kræver en ny adapter og er ikke første pilot.
+Øvrige parametre holdes eksplicit faste.
+Det syntetiske design skal give tilstrækkelig prisvariation; svag identifikation
+rapporteres frem for automatisk større grids.
+Hver hypotese har sin egen betingede tilstandsfordeling.
+
+For observation y_n og statisk parameter theta:
+
+$$p_n^-(x,\theta)=\int K_\theta(x\mid z,u)p_{n-1}(z,\theta)\,dz,\qquad
+p_n(x,\theta)\propto L(y_n\mid x,\theta)p_n^-(x,\theta).$$
+
+FP/mixture giver prædiktion; likelihood og normalisering giver opdateringen.
+Ved manglende måling propagéres uden Bayes-opdatering. G's interpolerede input
+må ikke blive observationsmål. Målemodel og sigma_y fastlægges særskilt;
+dag-til-dag-spredning er ikke automatisk ren proces-/måleusikkerhed.
+G0's punkt-/intervalkontrakt skal passe til likelihood-API'et; et nyt
+intervalfilter kræver sin egen observationstilstand/operator.
+
+Demonstrér mindst én komplet lille rekursiv parameterestimation med
+mixture-backend og FV-reference. G2's batch-LS er initialisering/reference,
+ikke dette krav. Genbrug F4-evidens med konkrete filer/commits, og lav kun
+en kort ny integration for den valgte G-model.
+
+Gem p(x,theta | y_1:n) og cutoff ved origin. Genbrug BM1ForecastOrigin og
+control_problem hvor API'et passer. Det eksisterende rho-bank-handoff er
+ikke automatisk generelt parameterbank-handoff; en lille adapter eller
+hypotesevis evaluering kræves. Bevar parameter–state-afhængigheden i kontrol.
+Et billigere MAP-valg bruger nodens egen conditional posterior og mærkes
+som betinget approksimation. Gennemsnitsparametre må ikke kombineres med
+en fremmed statefordeling.
+Vis estimation→frosset origin→kontrol→ny observation på et kort syntetisk
+forløb. En omfattende økonomisk closed-loop-undersøgelse er ikke ekstra gate.
+
+### G7: obligatorisk stokastisk prisstyring med single shooting
+
+Fastlås målprofil A, parametre/parameterposterior, initiallov, baseline og
+prisdomæne før optimering. Begynd med ét døgn og 2–6 prisblokke:
+
+$$\min_{0\leq u_j\leq1}J(u)
+=\int_{t_0}^{T}\mathbb E[(D(X_t,u_t)-A(t))^2]\,dt
++J_{\mathrm{terminal}}+J_{\mathrm{prisglathed}}.$$
+
+Øvrige led kan være nul; vægte og enheder deklareres.
+E[(D-A)^2]=(E[D]-A)^2+Var(D): middelbanens fejl alene er et andet objective.
+Ved parameterusikkerhed vægtes over hypotesernes egne conditional states.
+
+Genbrug BM1ControlProblem, DynamicMixturePriceEvaluator,
+FVStochasticPriceEvaluator/FastFVStochasticPriceEvaluator og multistart_powell
+i src/control/bm_1.py. **Single shooting:** kun prisvektoren optimeres;
+fordelingen fremadpropageres fra samme initiallov ved hvert objective-kald.
+En deterministisk referencepolitik og en mixture/FP-optimeret stokastisk
+politik indgår. Kontrollér inputinterpolation, kurve-API og enheder:
+C_days=C_hours/24, sigma_days=sqrt(24)*sigma_hours.
+
+Sammenlign neutral/fast referencepris, observeret pris hvis relevant,
+deterministisk optimum og stokastisk optimum under samme stokastiske
+evalueringsproblem. Genbrug finere FP/mixture og parret EM med
+samplingusikkerhed for de få valgte politikker. Rapportér trackingtab,
+priser, forventet demand, usikkerhed, randdiagnoser og runtime.
+Lokalt optimizerstop er ikke bevis for global optimalitet.
+
+A vælges ex ante med hensyn til modellens praktiske fleksibilitet.
+Syntetisk kontrol kan dokumentere algoritmen, selv hvis historisk
+prisrespons ikke er identificeret. Historisk fit alene dokumenterer ikke
+kausal effekt af nye priser eller økonomisk profit.
+Indkøb/profit er en mulig senere udvidelse; målprofilstyring er obligatorisk.
+WM-kontrol sammenlignes kun med fælles objective, information, enheder og
+constraints; ellers rapporteres resultaterne separat.
+
+### Små budgetter og afslutningskriterier
+
+Følgende er foreslåede loftværdier, ikke målte tider eller ændringer af F-gates.
+Design og tolerancer fastlægges før kørsel.
+
+- G6b: 60 sekunders runtimepilot; først 256 EM-baner, højst 2.048 parrede
+  baner på to tidsniveauer. Højst to FP-grids og to mixture-niveauer på de
+  højst to cases; samlet første loft 10 minutter.
+- G8: 24 timer, 5–9 parameterhypoteser og én parameter; højst 10 minutter
+  inklusive FV/mixture-sammenligning og kort handoff-kontrol.
+- G7: højst to starter per politikfit, 100 objective-kald og fem minutters
+  optimering samlet for begge politikfits; højst fem yderligere minutter
+  til fælles FP/mixture-/EM-krydsevaluering. Alle forward-solves tælles.
+- Samlet G6b/G8/G7-panel: højst 30 minutter plus højst tre 60-sekunders
+  runtimepiloter. G6a beholder sit særskilte femminuttersloft.
+  BLAS=1; op til 8 workers kun ved målte uafhængige opgaver.
+
+Genbrug råresultater og checkpoints. Numerisk fejl, EM-standardfejl og
+faktisk runtime afgør, om piloten er tilstrækkelig.
+Budgetstop er uafsluttet/negativt forsøg, ikke automatisk opfyldt bachelorkrav.
+Afgræns næste forsøg efter evidensen; ingen automatisk eskalering til store
+parameterbanker, hele sæsoner eller natkørsler.
+Skeln i slutrapporten mellem implementeret, syntetisk demonstreret,
+numerisk kontrolleret og historisk valideret.
 
 ## 9. Kilder og første konkrete opgave
 
@@ -509,12 +703,14 @@ andres samtidige arbejde og brug branch i eksisterende checkout, ikke nye worktr
   bounds/TRF, numerisk Jacobian og separate tællinger af derivativevalueringer.
   Kontrollér installeret SciPy før eventuel brug af nyere callback/workers-API.
 
-**Næste opgave:** Kør den historiske januarkommando i G_JANUARY.md og gennemgå
-fit, numerik, baselinegevinst, domæneproblemer og runtime.
+**Næste opgave:** Review de gemte januarresultater uden ny fitrunde og færdiggør
+den afgrænsede G3-prognose, når inputkontrakten er afklaret. Forbered samtidig
+G6b/G8/G7's adapterkort og lille syntetiske forsøgsmanifest.
 Første målsætning er G0–G3 med faste lineære kurver. Start ikke G4 eller en
 fuld månedskørsel, før denne kæde fungerer og dens målinger passer til budgettet.
-G0–G3 er implementeret og syntetisk kontrolleret. Historisk januar-fit, G4–G7
-og videnskabelig accept er ikke gennemført.
+G0–G3 er implementeret og syntetisk kontrolleret. Historisk januarfit er
+rapporteret gennemført lokalt; råreview og historisk prognose mangler.
+G4–G8's nye integration og videnskabelig accept er ikke gennemført.
 
 ### Januar: håndtering af huller, 5. oktober 2026
 
@@ -524,7 +720,7 @@ og fælles BM/WM-fejlmål bruger kun målte timer. WM-tilstandsrekonstruktion br
 udfyldt demand; QP-overgange over manglende endpoints maskeres. G kræver stadig
 168 målte demand-timer og komplette importerede priser. 10 tests består;
 én syntetisk januar med 27 demandhuller og 3 temperaturhuller gennemført
-på ca. 19 s (717 målte timer for begge modeller). Historisk fit mangler stadig.
+på ca. 19 s (717 målte timer for begge modeller). Historisk fit er rapporteret gennemført lokalt; råreview mangler.
 
 Udfyldning bruger `import_input.interpolate_time_gaps` på aggregeret demand og
 temperatur inden for træningsvinduet; februar bruges aldrig til januarhuller.
