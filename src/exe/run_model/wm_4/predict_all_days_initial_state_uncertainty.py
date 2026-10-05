@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_initial_state_uncertainty"
 
 
-def day_result(frame, start, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, deterministic=True, quantile_bounds=(0.025, 0.975), max_state_iter=50, state_tol=1e-8, oracle_comparison=False):
+def day_result(frame, start, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, quantile_bounds=(0.025, 0.975), max_state_iter=50, state_tol=1e-8, oracle_comparison=False):
     start = day_start(start)
     lower_q, upper_q = _quantile_bounds(quantile_bounds)
     output_model, output_fit, fit, _ = fit_history_optimized(
         frame, start, baseline_weeks, steps_per_hour,
-        deterministic=bool(deterministic), max_state_iter=max_state_iter, state_tol=state_tol,
+        max_state_iter=max_state_iter, state_tol=state_tol,
     )
     _, actual, U, Time, model, _ = prediction_setup(frame, start, output_model, steps_per_hour)
 
@@ -193,7 +193,7 @@ def overall_summary(daily, hourly, skipped, quantile_bounds):
     return pd.DataFrame(result)
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, deterministic=True, quantile_bounds=(0.025, 0.975), max_state_iter=50, state_tol=1e-8, fail_fast=False, oracle_comparison=False):
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, quantile_bounds=(0.025, 0.975), max_state_iter=50, state_tol=1e-8, fail_fast=False, oracle_comparison=False):
     start, end = day_start(start), day_start(end)
     if end < start: raise ValueError("end must be on or after start.")
     daily_rows, hourly_frames, skipped = [], [], []
@@ -202,7 +202,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
         try:
             daily, hourly = day_result(
                 frame, day, baseline_weeks=baseline_weeks, steps_per_hour=steps_per_hour,
-                deterministic=deterministic, quantile_bounds=quantile_bounds,
+                quantile_bounds=quantile_bounds,
                 max_state_iter=max_state_iter, state_tol=state_tol, oracle_comparison=oracle_comparison,
             )
             daily_rows.append(daily); hourly_frames.append(hourly)
@@ -265,9 +265,6 @@ def main():
     parser.add_argument("--quantile-bounds", type=float, nargs=2, default=(0.025, 0.975), metavar=("LOWER", "UPPER"))
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
-    parser.add_argument("--deterministic", dest="deterministic", action="store_true", help="Skip diffusion fitting. This is the default because the interval isolates initial-state uncertainty.")
-    parser.add_argument("--fit-diffusion", dest="deterministic", action="store_false", help="Also fit WM4 diffusion parameters; they are not included in the plotted interval.")
-    parser.set_defaults(deterministic=True)
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
     parser.add_argument("--fail-fast", action="store_true")
@@ -280,7 +277,7 @@ def main():
     daily, hourly, skipped = run_all_days(
         frame, start=args.start_day, end=args.end_day,
         baseline_weeks=args.baseline_weeks, steps_per_hour=args.steps_per_hour,
-        deterministic=args.deterministic, quantile_bounds=quantile_bounds,
+        quantile_bounds=quantile_bounds,
         max_state_iter=args.max_state_iter, state_tol=args.state_tol, fail_fast=args.fail_fast,
         oracle_comparison=args.oracle_comparison,
     )
