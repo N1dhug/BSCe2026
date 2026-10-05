@@ -289,7 +289,6 @@ class optimized_qp_params(qp_params):
             "structural_viable": True, "initial_rate_mismatch": observed[0]["initial_rate_mismatch"],
             "state_optimization_history": history, "state_iterations": len(history),
         }
-        result = self._fit_uncertainty_params(result, data) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         result["fit_method"] = "optimized_qp" if fit_initial_state else "qp"
         result["fit_initial_state"] = bool(fit_initial_state)
@@ -342,7 +341,6 @@ class optimized_qp_params(qp_params):
                 "x_hat": prediction_state["x_hat"], "x_cov": prediction_state["covariance"],
                 "x_std": prediction_state["std"], "x_samples": prediction_state["samples"],
             })
-        result = self._fit_uncertainty_params_many(result, datasets, init_conds) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         result["fit_method"] = "optimized_qp_many" if fit_initial_state else "qp_many"
         result["fit_initial_state"] = bool(fit_initial_state)
@@ -493,7 +491,6 @@ class brute_force_params(qp_params):
             "F0": f0_values, "f0_grid": grid.copy(), "f0_profile": profiles,
             "state_optimization_history": history, "state_iterations": len(history),
         }
-        result = self._fit_uncertainty_params_many(result, datasets, init_conds) if fit_diffusion else {**result, "sigma_0": self.model._FIT_EPS, "sigma_I": 0.0}
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         result["fit_method"] = "brute_force_many"
         result["fit_initial_state"] = True
