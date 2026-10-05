@@ -128,12 +128,19 @@ på 433.43 s: tids-scoreforskel .00216009 består; rum-scoreforskel .08538749
 fejler .05. Mean/L1 består begge; gamle døgn er genbrugt uden replay. Én ny
 fokuseret genbrugstest består; den uændrede terminal-kernel og 35 relevante
 BM-kildehashes er kontrolleret uden at koble uvedkommende G/WM-kode til F.
-Læs `root/H2_TERMINAL_TILT_CROSS_CONTROL.md`. Næste afgrænsede reference:
-2561 celler, h=1/49152 på samme fixture, genbrug det gemte 1921-cellers døgn.
-Generatoraudit viser, at h=1/24576 bryder CN-positiviteten ved 2561 celler.
-Estimeret døgnruntime ca. 28 min; <=900 s per invocation med log-checkpoints
-og resume. Ingen stor panelkørsel, løsere gate eller historisk fit-readiness.
-Efter tilstrækkelig præcision kræves en praktisk runtime-/adapterløsning.
+Læs `root/H2_TERMINAL_TILT_CROSS_CONTROL.md`. Den ene finere reference er nu
+færdig: 2561 celler, h=1/49152, samme fixture og genbrugt 1921-cellers døgn.
+Scoreforskel .03055462, slut-mean .00001396 og masse-L1 .00117516 består
+de uændrede .05/.002/.05-grænser. Runtime 1503.30 s (25.1 min); 15 gemte
+timer er genbrugt efter budgetpause med identisk log-state-fingerprint.
+Dette er fælles tids-/rumforfining, ingen kontinuumsfejlgaranti eller historisk
+fit-readiness. Se `root/H2_TERMINAL_TILT_FINE_REFERENCE.md` for rådata og scope.
+Næste er én parret runtimekontrol af den gemte 1921-cellers time med svagest
+conditional guard, 48 frekvenser/periode 1.5 versus 64/2; behold alle guards.
+Ingen ny døgn-/gridpanelkørsel eller løsere gate. Sol er tilstrækkelig til
+denne deklarerede repræsentations-/runtimekontrol. Det kontrollerede
+1921-cellers døgn tager stadig 10.5 min; praktisk runtime-/adapterløsning,
+tidsvariation og frosne historiske data-/split-/baselinevalg mangler.
 Historisk backend og fælles kerner er uændrede.
 Eksakt operatorgenbrug er testet; en parret én-time-median viser 1.23x, ikke et
 historisk fit-speedup. Faktisk tidsvariation og historisk log-state-checkpointadapter er

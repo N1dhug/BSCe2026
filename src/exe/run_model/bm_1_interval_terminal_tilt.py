@@ -67,7 +67,7 @@ def _frozen_terminal_reference(raw, inputs_sha256, source, expected_design):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--stage', choices=('references', 'hour', 'day', 'cross'), required=True)
+    parser.add_argument('--stage', choices=('references', 'hour', 'day', 'cross', 'fine'), required=True)
     parser.add_argument('--development-report', type=Path)
     parser.add_argument('--cn-reference', type=Path)
     parser.add_argument('--terminal-reference', type=Path)
@@ -78,9 +78,9 @@ def main(argv=None):
     if not 0. < args.seconds <= 900.:
         parser.error('Declare a positive invocation budget <= 900 seconds.')
     if args.stage != 'references' and (args.development_report is None or args.cn_reference is None):
-        parser.error('Hour/day/cross require both frozen reference files.')
-    if (args.stage == 'cross') != (args.terminal_reference is not None):
-        parser.error('Only cross requires --terminal-reference (the archived PR #81 day).')
+        parser.error('Hour/day/cross/fine require both frozen reference files.')
+    if (args.stage in ('cross', 'fine')) != (args.terminal_reference is not None):
+        parser.error('Cross/fine require --terminal-reference (the archived PR #81 day).')
     if args.output.exists():
         raise FileExistsError('Preserve completed evidence; select a new output.')
     for name in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_DEFAULT_NUM_THREADS'):
@@ -117,7 +117,7 @@ def _run(args):
         data, reference = (json.loads(inputs[str(p)]) for p in (args.development_report, args.cn_reference))
         _, design = declared_terminal_control(data, reference, args.stage)
         terminal_reference = None
-        if args.stage == 'cross':
+        if args.stage in ('cross', 'fine'):
             _, expected = declared_terminal_control(data, reference, 'day')
             raw = args.terminal_reference.read_bytes()
             terminal_reference, equivalence = _frozen_terminal_reference(raw, manifest['inputs_sha256'], source, expected)
