@@ -50,6 +50,39 @@ class CurveFitRunnerTests(unittest.TestCase):
             curves._atomic_report(path, payload, replace_existing=True)
             with self.assertRaisesRegex(ValueError, 'geometry differs'): curves.run_fit(args)
 
+    def test_parallel_cases_match_serial_fit_traces_and_use_exclusive_files(self):
+        from concurrent.futures import ThreadPoolExecutor
+        const = lambda t: np.full(np.asarray(t).shape, .5)
+        linear = BM1PiecewiseResponse.linear()
+        record = CurveTrainingRecord('test', 'TRAIN', const, (0., 1.),
+            (const, linear, linear, 1., 2., 0.), 0., .1, np.diff,
+            BM1ObservationSeries([.25, .75], [.5, .6], 'day'))
+        source = {'commit': 'test-source', 'dirty': False, 'sha256': {}}
+        with TemporaryDirectory() as folder, \
+             patch.object(curves, 'source_snapshot', return_value=source), \
+             patch.object(curves, 'read_numerical_dependency', return_value={'fixture': 'release'}), \
+             patch.object(curves, 'h1_training_records', return_value=((record,), ())), \
+             patch.dict(curves.H1_V2_NUMERICS, {'base': dict(cells=11, max_step=.25, quadrature_order=1)}, clear=True):
+            args = SimpleNamespace(run_dir=Path(folder)/'serial', numerics_run=Path(folder)/'numerics',
+                resume=False, max_hours=1., limit_candidates=None, blas_threads=1, quiet=True, workers=1)
+            serial = curves.run_fit(args)
+            args.run_dir, args.workers = Path(folder)/'parallel', 3
+            # Exercise actual concurrent publication using the same tiny pure
+            # fixture; the separate numerical test covers real spawn transport.
+            with patch('concurrent.futures.ProcessPoolExecutor',
+                       side_effect=lambda max_workers, **kw: ThreadPoolExecutor(max_workers=max_workers)):
+                parallel = curves.run_fit(args)
+                self.assertTrue(parallel['completed'])
+                for a,b in zip(serial['fits'],parallel['fits']):
+                    self.assertEqual(a['trace'],b['trace'])
+                    self.assertEqual(a['f'],b['f'])
+                    self.assertEqual(a['replay'],b['replay'])
+                args.resume = True
+                cached = curves.run_fit(args)
+                self.assertEqual(cached['new_candidates'],0)
+            args.limit_candidates = 3
+            with self.assertRaisesRegex(ValueError,'workers=1'): curves.run_fit(args)
+
     def test_old_or_incomplete_numerical_report_cannot_release_fit(self):
         with TemporaryDirectory() as folder:
             directory = Path(folder)

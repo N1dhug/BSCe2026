@@ -289,13 +289,103 @@ def read_numerical_dependency(directory):
                 numerical_panel_passes=True, fv_replays=0)
 
 
-def run_fit(args):
-    """Conditional H1b development fits with resumable candidate-score traces."""
+def _fit_cases(args, case_names, source, design, begun, settings):
+    """Case-exclusive files; caller owns the run lock and validates dependency."""
     from src.method.bm_1_response import fit_shared_curve_pair, curve_pair_logits, curve_pair_from_logits, pooled_curve_log_likelihood
     from src.params.bm_1_response import BM1PiecewiseResponse
     from src.validation.bm_1.response import _score_record
+    reports, new_total, paused = [], 0, False
+    directory = args.run_dir
+    for name in case_names:
+        if perf_counter()-begun >= args.max_hours*3600:
+            paused = True
+            break
+        records, _ = h1_training_records(name)
+        linear = BM1PiecewiseResponse.linear()
+        baseline_path = directory/f'{name}_linear.json.gz'
+        if baseline_path.exists():
+            baseline, _ = _read_likelihood_report(baseline_path)
+        else:
+            baseline = _score_record(pooled_curve_log_likelihood(records, linear, linear,
+                backend='fitted', **settings))
+            if source_snapshot() != source:
+                raise ValueError('Fit source changed before baseline publication.')
+            _atomic_report(baseline_path, baseline)
+        previous = None
+        for pieces in (2, 4):
+            starts = design['two_starts'] if pieces == 2 else [
+                curve_pair_logits(previous['f'], previous['g'], pieces=4).tolist(), [0.]*6]
+            result_path = directory/f'{name}_{pieces}_result.json.gz'
+            trace_path = directory/f'{name}_{pieces}_trace.json.gz'
+            if result_path.exists():
+                saved, _ = _read_likelihood_report(result_path)
+                # A saved finished family must have a matching durable trace.
+                trace, _ = _read_likelihood_report(trace_path)
+                if saved['trace'] != trace or saved.get('paused') is not False:
+                    raise ValueError('Completed fit and candidate checkpoint disagree.')
+                if (saved.get('case') != name or saved.get('pieces') != pieces
+                        or saved.get('starts') != starts or not trace
+                        or saved.get('distinct_evaluations') != len(trace)):
+                    raise ValueError('Completed fit family/start/budget metadata changed.')
+                best = min(trace, key=lambda row: row['objective'])
+                f, g = curve_pair_from_logits(best['logits'], pieces)
+                if (saved['logits'] != best['logits'] or saved['objective'] != best['objective']
+                        or saved['f'] != f.to_record() or saved['g'] != g.to_record()):
+                    raise ValueError('Completed curve geometry differs from its best evaluated candidate.')
+                previous = dict(f=BM1PiecewiseResponse.from_record(saved['f']),
+                                g=BM1PiecewiseResponse.from_record(saved['g']))
+                reports.append(saved)
+                continue
+            if (args.limit_candidates is not None and new_total >= args.limit_candidates
+                    or perf_counter()-begun >= args.max_hours*3600):
+                paused = True
+                break
+            trace = _read_likelihood_report(trace_path)[0] if trace_path.exists() else []
+            resumed = len(trace)
+            clock = perf_counter()
+            def checkpoint(rows):
+                if source_snapshot() != source:
+                    raise ValueError('Fit source changed during candidate; no checkpoint published.')
+                _atomic_report(trace_path, rows, replace_existing=trace_path.exists())
+            def progress(done, total):
+                if not args.quiet:
+                    print(f'H1 fit {name}/{pieces}: {done}/{total}; '
+                          +runtime_text(clock, done, total, initial_completed=resumed), flush=True)
+            result = fit_shared_curve_pair(records, pieces=pieces, starts=starts,
+                regularization=.1, max_evaluations=250, max_iterations=40, logit_bound=4.,
+                backend='fitted', resume_trace=trace, checkpoint=checkpoint,
+                max_new_evaluations=None if args.limit_candidates is None else args.limit_candidates-new_total,
+                should_pause=lambda: perf_counter()-begun >= args.max_hours*3600,
+                progress=progress, **settings)
+            new_total += result['new_evaluations']
+            previous = result
+            payload = {key: value for key, value in result.items()
+                       if key not in ('f', 'g', 'replay', 'logits', 'starts')}
+            payload.update(case=name, pieces=pieces, f=result['f'].to_record(), g=result['g'].to_record(),
+                logits=result['logits'].tolist(), starts=result['starts'].tolist(),
+                replay=_score_record(result['replay']), linear_log_likelihood=baseline['log_likelihood'],
+                numerical_acceptance=False, scientific_acceptance=False,
+                interpretation='Selected candidate still needs its own refinements; TRAIN gain is not model selection.')
+            reports.append(payload)
+            if result['paused']:
+                paused = True
+                break
+            if source_snapshot() != source:
+                raise ValueError('Fit source changed before result publication.')
+            _atomic_report(result_path, payload)
+        if paused:
+            break
+    return reports, new_total, paused
+
+
+def run_fit(args):
+    """Conditional H1b development fits with resumable candidate-score traces."""
     import scipy
     import platform
+    from src.validation.estimation import positive_integer
+    workers = positive_integer(getattr(args, 'workers', 1), 'workers')
+    if workers > 1 and args.limit_candidates is not None:
+        raise ValueError('Use workers=1 for a global limit-candidates pilot; parallel cases retain the registered family budgets.')
     begun = perf_counter()
     if not np.isfinite(args.max_hours) or args.max_hours <= 0.:
         raise ValueError('max-hours must be finite and positive.')
@@ -327,88 +417,25 @@ def run_fit(args):
                 raise ValueError('Fit source/data/dependency/numerics/optimizer environment changed.')
         else:
             _atomic_report(path, manifest)
-        for name in H1_IDS:
-            if perf_counter()-begun >= args.max_hours*3600:
-                paused = True
-                break
-            records, _ = h1_training_records(name)
-            linear = BM1PiecewiseResponse.linear()
-            baseline_path = directory/f'{name}_linear.json.gz'
-            if baseline_path.exists():
-                baseline, _ = _read_likelihood_report(baseline_path)
-            else:
-                baseline = _score_record(pooled_curve_log_likelihood(records, linear, linear,
-                    backend='fitted', **settings))
-                if source_snapshot() != source:
-                    raise ValueError('Fit source changed before baseline publication.')
-                _atomic_report(baseline_path, baseline)
-            previous = None
-            for pieces in (2, 4):
-                starts = design['two_starts'] if pieces == 2 else [
-                    curve_pair_logits(previous['f'], previous['g'], pieces=4).tolist(), [0.]*6]
-                result_path = directory/f'{name}_{pieces}_result.json.gz'
-                trace_path = directory/f'{name}_{pieces}_trace.json.gz'
-                if result_path.exists():
-                    saved, _ = _read_likelihood_report(result_path)
-                    # A saved finished family must have a matching durable trace.
-                    trace, _ = _read_likelihood_report(trace_path)
-                    if saved['trace'] != trace or saved.get('paused') is not False:
-                        raise ValueError('Completed fit and candidate checkpoint disagree.')
-                    if (saved.get('case') != name or saved.get('pieces') != pieces
-                            or saved.get('starts') != starts or not trace
-                            or saved.get('distinct_evaluations') != len(trace)):
-                        raise ValueError('Completed fit family/start/budget metadata changed.')
-                    best = min(trace, key=lambda row: row['objective'])
-                    f, g = curve_pair_from_logits(best['logits'], pieces)
-                    if (saved['logits'] != best['logits'] or saved['objective'] != best['objective']
-                            or saved['f'] != f.to_record() or saved['g'] != g.to_record()):
-                        raise ValueError('Completed curve geometry differs from its best evaluated candidate.')
-                    previous = dict(f=BM1PiecewiseResponse.from_record(saved['f']),
-                                    g=BM1PiecewiseResponse.from_record(saved['g']))
-                    reports.append(saved)
-                    continue
-                if (args.limit_candidates is not None and new_total >= args.limit_candidates
-                        or perf_counter()-begun >= args.max_hours*3600):
-                    paused = True
-                    break
-                trace = _read_likelihood_report(trace_path)[0] if trace_path.exists() else []
-                resumed = len(trace)
-                clock = perf_counter()
-                def checkpoint(rows):
-                    if source_snapshot() != source:
-                        raise ValueError('Fit source changed during candidate; no checkpoint published.')
-                    _atomic_report(trace_path, rows, replace_existing=trace_path.exists())
-                def progress(done, total):
-                    if not args.quiet:
-                        print(f'H1 fit {name}/{pieces}: {done}/{total}; '
-                              +runtime_text(clock, done, total, initial_completed=resumed), flush=True)
-                result = fit_shared_curve_pair(records, pieces=pieces, starts=starts,
-                    regularization=.1, max_evaluations=250, max_iterations=40, logit_bound=4.,
-                    backend='fitted', resume_trace=trace, checkpoint=checkpoint,
-                    max_new_evaluations=None if args.limit_candidates is None else args.limit_candidates-new_total,
-                    should_pause=lambda: perf_counter()-begun >= args.max_hours*3600,
-                    progress=progress, **settings)
-                new_total += result['new_evaluations']
-                previous = result
-                payload = {key: value for key, value in result.items()
-                           if key not in ('f', 'g', 'replay', 'logits', 'starts')}
-                payload.update(case=name, pieces=pieces, f=result['f'].to_record(), g=result['g'].to_record(),
-                    logits=result['logits'].tolist(), starts=result['starts'].tolist(),
-                    replay=_score_record(result['replay']), linear_log_likelihood=baseline['log_likelihood'],
-                    numerical_acceptance=False, scientific_acceptance=False,
-                    interpretation='Selected candidate still needs its own refinements; TRAIN gain is not model selection.')
-                reports.append(payload)
-                if result['paused']:
-                    paused = True
-                    break
-                if source_snapshot() != source:
-                    raise ValueError('Fit source changed before result publication.')
-                _atomic_report(result_path, payload)
-            if paused:
-                break
+        if workers == 1:
+            reports, new_total, paused = _fit_cases(args, list(H1_IDS), source, design, begun, settings)
+        else:
+            from concurrent.futures import ProcessPoolExecutor
+            import multiprocessing
+            # Each task owns exactly one registered case and its two dependent
+            # families. Candidate budgets/starter order within a case are unchanged.
+            with ProcessPoolExecutor(max_workers=min(workers, len(H1_IDS)),
+                    mp_context=multiprocessing.get_context('spawn')) as pool:
+                futures = [pool.submit(_fit_cases, args, [name], source, design, begun, settings)
+                           for name in H1_IDS]
+                for future in futures:
+                    case_reports, count, stopped = future.result()
+                    reports.extend(case_reports)
+                    new_total += count
+                    paused = paused or stopped
         summary = dict(schema='bm1-h1-fit-summary-v1', source=source,
             completed=len(reports) == 6 and not paused, paused=paused,
-            new_candidates=new_total, fits=reports, scientific_acceptance=False,
+            new_candidates=new_total, fits=reports, workers=workers, scientific_acceptance=False,
             elapsed_seconds=perf_counter()-begun,
             interpretation='H1b conditional development only; complete execution does not imply convergence or recovery.')
         if source_snapshot() != source:
@@ -522,6 +549,7 @@ def main(argv=None):
     fit.add_argument('--max-hours', type=float, default=8.)
     fit.add_argument('--blas-threads', type=int, default=1)
     fit.add_argument('--quiet', action='store_true')
+    fit.add_argument('--workers', type=int, default=1)
     verify = sub.add_parser('validate-fit', help='Check exact selected curves on time/space/quadrature refinements.')
     verify.add_argument('--numerics-run', type=Path, required=True)
     verify.add_argument('--fit-run', type=Path, required=True)

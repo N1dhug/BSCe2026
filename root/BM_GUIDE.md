@@ -222,12 +222,14 @@ Start kun H1b efter `completed=True` og `numerical_panel_passes=True`:
 $hFit = "files/output/bm_1/runs/estimation/h1_fit_recovery"
 python -B -m src.exe.run_model.bm_1.curves fit --numerics-run $hNumerics --run-dir $hFit --limit-candidates 3 --blas-threads 1
 if ($LASTEXITCODE -ne 0) { throw "H1b-pilot fejlede." }
-python -B -m src.exe.run_model.bm_1.curves fit --numerics-run $hNumerics --run-dir $hFit --resume --max-hours 8 --blas-threads 1
+python -B -m src.exe.run_model.bm_1.curves fit --numerics-run $hNumerics --run-dir $hFit --resume --max-hours 8 --workers 3 --blas-threads 1
 if ($LASTEXITCODE -ne 0) { throw "H1b fejlede." }
 ```
 
 H1a understøtter `--workers 8` med bounded spawn-pool og BLAS=1.
-Fitteren er fortsat sekventiel; `--workers` gælder kun `numerics`.
+H1b understøtter `--workers 3` (eller 8, som begrænses til tre cases).
+To-/fire-stykkers familierne inden for en case køres fortsat i samme rækkefølge.
+`--limit-candidates` kræver `--workers 1`, så pilotens globale loft er entydigt.
 BLAS=1 bevares. Pause er exit=0 og `paused=True`, aldrig convergence/accept.
 Alle 96 numeriske råunits valideres ved hver invocation uden nye FV-replays.
 Fitmanifestet låser source, dependency-hashes, Python/NumPy/SciPy, numerik og
