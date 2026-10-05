@@ -1,13 +1,5 @@
-name: BM regression and notes
+name: BM focused checks
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'root/**'
-      - 'AGENTS.md'
-      - '.github/workflows/bm-review.yml'
   pull_request:
     paths:
       - 'src/**'
@@ -16,58 +8,75 @@ on:
       - 'AGENTS.md'
       - '.github/workflows/bm-review.yml'
   workflow_dispatch:
+    inputs:
+      tests:
+        description: 'Space-separated unittest methods/classes/modules; choose only affected G or F checks'
+        type: string
+        default: ''
+      runner:
+        description: 'Windows only for platform-specific changes'
+        type: choice
+        options: [ubuntu-latest, windows-latest]
+        default: ubuntu-latest
+      full_suite:
+        description: 'Explicit exceptional full regression (G and F); not a routine gate'
+        type: boolean
+        default: false
+      notes:
+        description: 'Build F4 PDF only when needed'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
-  group: bm-review-${{ github.ref }}
+  group: bm-review-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 jobs:
-  windows-launcher:
-    runs-on: windows-latest
-    timeout-minutes: 10
+  syntax:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-      - name: Check night launcher on Windows PowerShell 5.1
-        shell: powershell
-        run: ./tests/check_g2b_night_launcher.ps1
-      - name: Check actual Windows file-sharing locks
-        shell: powershell
-        run: python -B -m unittest tests.test_checkpoint_io -v
-      - name: Install distributed runner test dependencies
-        run: python -m pip install numpy scipy matplotlib pandas openpyxl
-      - name: Check hourly characteristic, positive CN and curve-control checkpoints on Windows
-        shell: powershell
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Parse changed Python files without imports or numerical runs
         env:
-          OPENBLAS_NUM_THREADS: '1'
-          OMP_NUM_THREADS: '1'
-        run: python -B -m unittest tests.test_bm1_interval_characteristic tests.test_bm1_interval_curve_control -v
-      - name: Check G4 response/archive controls on Windows
-        shell: powershell
-        env:
-          MPLBACKEND: Agg
-          OPENBLAS_NUM_THREADS: '1'
-          OMP_NUM_THREADS: '1'
-        run: python -B -m unittest tests.test_bm1_deterministic_response -v
-      - name: Check portable split bundles on Windows
-        shell: powershell
-        run: python -B -m unittest tests.test_run_bundle -v
-      - name: Check distributed resume and real spawned workers on Windows
-        shell: powershell
-        env:
-          OPENBLAS_NUM_THREADS: '1'
-          OMP_NUM_THREADS: '1'
-        run: python -B -m unittest tests.test_bm1_distributed -v
-  review:
-    runs-on: ubuntu-latest
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python - <<'PYTHON'
+          import ast
+          import os
+          from pathlib import Path
+          import subprocess
+          paths = subprocess.check_output([
+              'git', 'diff', '--name-only', '--diff-filter=ACMR', '-z',
+              os.environ['BASE_SHA'] + '...' + os.environ['HEAD_SHA'],
+          ]).decode().split('\0')
+          checked = 0
+          for name in paths:
+              path = Path(name)
+              if path.suffix == '.py' and path.is_file():
+                  ast.parse(path.read_bytes(), filename=name)
+                  checked += 1
+          print(f'Syntax checked: {checked} changed Python files. No numerical tests requested.')
+          PYTHON
+  selected-tests:
+    if: github.event_name == 'workflow_dispatch' && (inputs.tests != '' || inputs.full_suite)
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 25
-    defaults:
-      run:
-        shell: bash
     env:
       MPLBACKEND: Agg
       PYTHONDONTWRITEBYTECODE: '1'
       OPENBLAS_NUM_THREADS: '1'
       OMP_NUM_THREADS: '1'
+      SELECTED_TESTS: ${{ inputs.tests }}
+      FULL_SUITE: ${{ inputs.full_suite }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,22 +86,23 @@ jobs:
           python-version: '3.11'
       - name: Install numerical dependencies
         run: python -m pip install numpy scipy matplotlib pandas openpyxl
-      - name: Record reviewed source and environment
+      - name: Run only explicitly selected checks
+        shell: python
         run: |
-          mkdir -p review-results
-          git rev-parse HEAD > review-results/commit.txt
-          git archive HEAD src tests root > review-results/source.tar
-          python -m pip freeze > review-results/environment.txt
-      - name: Run complete regression suite
-        run: python -B -m unittest discover -s tests -v 2>&1 | tee review-results/tests.txt
-      - name: Save review evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bm-review-${{ github.sha }}
-          path: review-results/
-          retention-days: 7
+          import os
+          import re
+          import subprocess
+          import sys
+          selected = os.environ['SELECTED_TESTS'].split()
+          full = os.environ['FULL_SUITE'] == 'true'
+          if full and selected:
+              sys.exit('Choose targeted checks OR full_suite, not both.')
+          if any(not re.fullmatch(r'tests\.[A-Za-z_][A-Za-z0-9_.]*', name) for name in selected):
+              sys.exit('Use dotted unittest names starting with tests.; no shell arguments.')
+          args = ['discover', '-s', 'tests', '-v'] if full else [*selected, '-v']
+          sys.exit(subprocess.call([sys.executable, '-B', '-m', 'unittest', *args]))
   notes:
+    if: github.event_name == 'workflow_dispatch' && inputs.notes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

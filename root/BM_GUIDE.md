@@ -1,5 +1,17 @@
 # BM — arbejdsvejviser
 
+**Arbejdsregel fra Johan, 5. oktober — G/F og testomfang:** G (deterministisk
+BM med senere sandsynlighedslag) og F (stokastisk BM) har egne forløb og gates.
+G-arbejde udløser ikke F's test-/forsøgsprogram og omvendt. Vælg kun den mindste
+relevante eksisterende test; ingen fast fuld suite, gentagne beståede kontroller
+eller nye tests uden konkret væsentlig fejlrisiko. Fælles kode kræver alene
+kontrol af de berørte kontrakter. Rene dokumentationsændringer kræver ingen
+numeriske kørsler. CI laver kun PR-syntakskontrol; præcist valgte tests,
+Windows og F4-PDF startes efter behov, fuld regression kun som eksplicit tilvalg.
+Dette erstatter ældre generelle test-/CI-kommandoer som standardkrav; eksisterende
+numeriske acceptgrænser og gemt evidens bevares. Se den bindende regel i AGENTS.md.
+
+
 **G-plan, 5. oktober:** [G_IMPLEMENTATION_HANDOFF.md](G_IMPLEMENTATION_HANDOFF.md)
 er Sol-overdragelsen fra G3: gemt-fit-snapshot og forecast uden ny optimering,
 derefter lille G4, FP/mixture/EM, rekursiv estimation og single-shooting-kontrol.

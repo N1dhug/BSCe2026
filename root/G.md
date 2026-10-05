@@ -1,5 +1,32 @@
 # G-plan — deterministisk BM-kerne, stokastisk udvidelse og WM4-sammenligning
 
+
+## Arbejdsregel fra Johan, 5. oktober: adskil G/F og minimér kontrolarbejdet
+
+G er den deterministiske BM-kæde med et senere sandsynlighedslag; F er den
+stokastiske BM-kæde. De har egne planer, kørsler, modelvalg og acceptkrav.
+G må ikke vente på F/H-gates, og F må ikke få G's kontroller som standardkrav.
+Genbrug stabile matematiske kerner gennem små eksplicitte interfaces; undgå
+at koble fitforløb, konfigurationer og testpakker sammen eller kopiere kerner.
+G's senere FP/EM-lag arver kun relevante interfacekrav, ikke hele F's forsøgsprogram.
+
+- Vælg den mindste eksisterende test/metode, der dækker den konkrete ændring.
+  Ingen fast 20-/29-testpakke for G og ingen automatisk fuld discovery for F.
+- Rene tekst-/planændringer kræver ingen numeriske tests eller modelkørsler.
+  Kør ikke hele pakken igen efter en bestået relevant kontrol uden ny grund.
+- Tilføj kun en test for en konkret væsentlig fejlrisiko, som ikke allerede
+  dækkes. Ingen ekstra cases, prøvekørsler eller benchmarkpaneler af vane.
+- Ændres fælles kode, kontrolleres kun de faktisk berørte G/F/WM-kontrakter.
+  Windows, layout og LaTeX kontrolleres kun, når ændringen kræver det.
+- Bevar numeriske tolerancer, datavalidering og nødvendige acceptkrav i selve
+  forskningskørslerne. Genbrug gemt evidens; færre gentagelser er ikke ny accept.
+- CI foretager kun let syntakskontrol af ændrede Python-filer på PR'er.
+  Relevante numeriske checks køres lokalt eller vælges med præcise unittest-
+  navne via workflow_dispatch. Fuld regression og F4-PDF er eksplicitte tilvalg.
+  Ingen ekstra push-kørsel efter merge. Notér hvilke kontroller der faktisk er kørt.
+
+Denne regel erstatter tidligere standard-testpakker i projektplanerne.
+
 **Revideret 5. oktober mod bacheloropgaven, projekt 111866. G3 er rapporteret complete lokalt med 168/168 scored timer. G4's lille kurveadapter/LS-pilot er implementeret og syntetisk kontrolleret; historisk G4-valg og råreview mangler. G6–G8 er planlagt: FP/mixture/EM, obligatorisk stokastisk prisstyring og rekursiv estimation.**
 
 G er et selvstændigt spor ved siden af F-planen. Formålet er en enkel, hurtig

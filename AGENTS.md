@@ -1,5 +1,31 @@
 # Fælles projektkontekst
 
+## Arbejdsregel fra Johan, 5. oktober: adskil G/F og minimér kontrolarbejdet
+
+G er den deterministiske BM-kæde med et senere sandsynlighedslag; F er den
+stokastiske BM-kæde. De har egne planer, kørsler, modelvalg og acceptkrav.
+G må ikke vente på F/H-gates, og F må ikke få G's kontroller som standardkrav.
+Genbrug stabile matematiske kerner gennem små eksplicitte interfaces; undgå
+at koble fitforløb, konfigurationer og testpakker sammen eller kopiere kerner.
+G's senere FP/EM-lag arver kun relevante interfacekrav, ikke hele F's forsøgsprogram.
+
+- Vælg den mindste eksisterende test/metode, der dækker den konkrete ændring.
+  Ingen fast 20-/29-testpakke for G og ingen automatisk fuld discovery for F.
+- Rene tekst-/planændringer kræver ingen numeriske tests eller modelkørsler.
+  Kør ikke hele pakken igen efter en bestået relevant kontrol uden ny grund.
+- Tilføj kun en test for en konkret væsentlig fejlrisiko, som ikke allerede
+  dækkes. Ingen ekstra cases, prøvekørsler eller benchmarkpaneler af vane.
+- Ændres fælles kode, kontrolleres kun de faktisk berørte G/F/WM-kontrakter.
+  Windows, layout og LaTeX kontrolleres kun, når ændringen kræver det.
+- Bevar numeriske tolerancer, datavalidering og nødvendige acceptkrav i selve
+  forskningskørslerne. Genbrug gemt evidens; færre gentagelser er ikke ny accept.
+- CI foretager kun let syntakskontrol af ændrede Python-filer på PR'er.
+  Relevante numeriske checks køres lokalt eller vælges med præcise unittest-
+  navne via workflow_dispatch. Fuld regression og F4-PDF er eksplicitte tilvalg.
+  Ingen ekstra push-kørsel efter merge. Notér hvilke kontroller der faktisk er kørt.
+
+Denne regel erstatter tidligere standard-testpakker i projektplanerne.
+
 **Nyt selvstændigt spor, Johan 5. oktober: [G-planen](root/G.md).**
 Deterministisk BM1-kerne, afgrænset parameterfit, matched WM4-prognoser og
 et efterfølgende billigt stokastisk usikkerhedslag.
@@ -44,16 +70,13 @@ G4's lille to-stykkers g-adapter/LS er implementeret og syntetisk kontrolleret;
 historisk pilot/udviklingsvalg mangler. Brug `deterministic_response --reference-fit`
 på original TRAIN-eksport, ingen G2/WM/baseline-refit. K er fast; samme x0-policy.
 Lineær G3-kernel er bevaret af hensyn til arkivkompatibilitet. G4 har ni korte
-tests i `tests.test_bm1_deterministic_response`; brug dem ved G4-ændringer.
+tests i `tests.test_bm1_deterministic_response`; vælg kun de berørte metoder ved G4-ændringer.
 Maks. to strafstyrker inkl. nul, 3.000 residualkald/600 s samlet inklusive
 replay/forfining. TRAIN vælger ikke strafstyrke. Derefter G6b→G8→G7;
 G5's brede benchmark og en stor baselinegevinst må ikke blokere kernekravene.
 Nye G-adaptere får egne korte kontroller; F4/H-status og tidligere gates bevares.
-Ved almindelige G0–G3-ændringer er standardkontrollen de 20 tests i
-`python -B -m unittest tests.test_bm1_deterministic_fit tests.test_bm1_deterministic_snapshot -q`. Dette erstatter
-fuld test-discovery for dette spor. Kør kun berørte ekstra tests ved ændringer
-i fælles BM/WM-kode eller entrypoints. Gentag ikke månedssmoke eller historisk
-fit alene for dokumentation/testoprydning. Se testpolitikken i januarvejledningen.
+For G0–G4 vælges kun den mindste relevante kontrol efter reglen ovenfor.
+Ingen standardpakke, historisk genfit eller månedssmoke ved almindelig vedligeholdelse.
 Præcisering kl. 12:56: genbrug WM4's `statistical_output`-baseline, samme
 fit/predict-protokol, metrics, performanceanalyser og rapportlayout dér, hvor
 muligt. Første benchmark følger WM's én-fituges/næste-uges-protokol. Forskelle
@@ -140,8 +163,8 @@ chatplaner og historiske "næste opgave"-afsnit kan være overhalet.
   betydning og numeriske/statistiske gates ved rene performanceændringer.
 - Kontrollér nyeste `main` før publicering og bevar andres samtidige ændringer,
   herunder WM-arbejde. Følg brugerens konkrete instruktion om branch/publicering.
-- Relevant regression: `python -B -m unittest discover -s tests -q`.
-  Noter: `python -B root/f4/build.py`. Lange forskningsstudier er ikke CI-tests.
+- Vælg konkret berørte regressioner; fuld discovery er kun et begrundet tilvalg.
+  Byg kun F4-noter ved relevante noteændringer. Lange forskningsstudier er ikke CI-tests.
 - Nye lange kørsler skal vise et løbende groft estimat for både resterende og
   samlet tid ved eksisterende statusopdateringer. Genbrug
   `src/exe/run_model/progress.py`; medregn forskellig opgavepris, hvor den er

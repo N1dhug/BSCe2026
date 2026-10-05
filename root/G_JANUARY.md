@@ -342,13 +342,15 @@ observation, fælles baseline, begge prognoser, korrektion, pris og modelstates.
 
 ### Minimumskontrol for G0–G3
 
-Standardkørslen er 20 små tests: de 10 eksisterende G-tests og 10 nye
-snapshot/forecast/scoring-tests. Den gennemførte kørsel med yderligere tre
-berørte layout/importkontroller gav 23 beståede tests på ca. 6.7 s.
+Der er ingen fast standardpakke. Vælg kun den eksisterende testmetode, der
+dækker ændringen; G4 har egne tests og udløser ikke G0–G3- eller F-pakker.
+Dokumentationsændringer kræver ingen numeriske tests. Brug en hel testklasse
+eller et modul kun hvis ændringen faktisk berører hele kontrakten. Den fælles
+regel i `AGENTS.md` gælder også CI og senere G6–G8.
 
-```powershell
-python -B -m unittest tests.test_bm1_deterministic_fit tests.test_bm1_deterministic_snapshot -q
-```
+De tidligere 20 fit-/snapshot-tests og tre layout/importkontroller er allerede
+kørt (ca. 6.7 s); nedenstående er en oversigt over eksisterende dækning, ikke en
+obligatorisk kørselsliste.
 
 | Test | Fejlrisiko |
 | --- | --- |
@@ -378,11 +380,11 @@ Layouttests køres kun ved ændringer i entrypoints/importstruktur. Ved ændring
 i fælles BM/WM-kode køres derudover de berørte regressioner. Fuld projekt-suite
 er ikke en standardgate for G. F4-tests bevares til F4-arbejde.
 Den tidligere fulde suite tog cirka otte minutter; G-testene er små, så det er
-primært den smallere standardkørsel, der sparer tid.
+primært det konkrete testvalg og fraværet af gentagelser, der sparer tid.
 
 Gentag ikke det syntetiske månedsforsøg eller historisk januar-fit ved rene
-tekst-/testændringer. Ved ændret solver, fit eller tidsopdeling køres ét
-syntetisk integrationsforsøg; historisk fit køres kun når nye estimater er
+tekst-/testændringer. Ved ændret solver, fit eller tidsopdeling vælges en berørt eksisterende test;
+ét lille integrationsforsøg bruges kun, hvis den ikke dækker ændringen; historisk fit køres kun når nye estimater er
 nødvendige. Numerisk refinement, datavalidering og budgetværn inde i selve
 januarkørslen bevares: de afgør, om dens resultater kan accepteres.
 Det tidligere syntetiske 744+168-timers forsøg tog cirka 22 s med to starter og 130 kald i denne
