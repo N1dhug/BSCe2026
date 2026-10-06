@@ -1,5 +1,12 @@
 # F4-H2 method decision (6 October 2026)
 
+**Implementation update:** [H2_NATIVE_DEVELOPMENT.md](H2_NATIVE_DEVELOPMENT.md)
+is the active command handoff. Native log-Thomas with eight frequency workers
+passes the 40 declared reference hours in 104.43 s here. PC timing is next via
+`root/f4/run_h2_native.ps1`, with 777.25 s left in the shared native allowance,
+not another 900 s. H ledger is 1147.38 s. No historical optimizer is enabled;
+full data/rate/task-graph admission and blind-exposure gates remain.
+
 The Astra mathematical review is complete: see
 [H2_METHOD_REDESIGN.md](H2_METHOD_REDESIGN.md). MED is separate; TRAIN is
 7–13 February, model selection 14–20 February and planned final evaluation

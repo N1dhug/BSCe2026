@@ -1,0 +1,1 @@
+{"passed":true,"checks":["newer seed extends PC history; larger reserve and orderly refund preserved","newer PC history retained; older seed cannot reset time","startup/import time charged and removed from compute deadline","divergent rejected without ledger mutation","native-cap-exhausted rejected without ledger mutation"],"numerical_replays":0}
