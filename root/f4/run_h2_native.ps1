@@ -1,4 +1,8 @@
-param([ValidateRange(76, 900)][double]$Seconds = 900, [switch]$Resume)
+param(
+    [ValidateRange(76, 900)][double]$Seconds = 900,
+    [string]$RunDir = 'files/output/bm_1/runs/estimation/f4_h2_native_pc_20261006',
+    [switch]$Resume
+)
 $ErrorActionPreference = 'Stop'
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot '../..'))
 $active = @(Get-CimInstance Win32_Process | Where-Object {
@@ -18,10 +22,12 @@ $env:OPENBLAS_DEFAULT_NUM_THREADS = '1'
 $env:OMP_NUM_THREADS = '1'
 $env:MKL_NUM_THREADS = '1'
 $env:NUMBA_NUM_THREADS = '1'
-$directory = 'files/output/bm_1/runs/estimation/f4_h2_native_pc_20261006'
-$archive = 'files/output/bm_1/runs/estimation/f4_h2_native_pc_review_20261006.zip'
+$directory = $RunDir
+$parent = Split-Path -Parent $directory
+$stem = (Split-Path -Leaf $directory) -replace '_pc_', '_pc_review_'
+$archive = Join-Path $parent "$stem.zip"
 if ($Resume) {
-    $archive = "files/output/bm_1/runs/estimation/f4_h2_native_pc_review_$(Get-Date -Format 'yyyyMMdd_HHmmss').zip"
+    $archive = Join-Path $parent "$($stem)_resume_$(Get-Date -Format 'yyyyMMdd_HHmmss').zip"
 } elseif (Test-Path $archive) {
     throw "Bevar eksisterende arkiv: $archive"
 }

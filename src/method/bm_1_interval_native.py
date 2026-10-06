@@ -18,17 +18,23 @@ from src.validation.bm_1.interval_terminal_tilt import _terminal_candidate
 
 
 @njit(cache=True, fastmath=False, inline='always')
-def _add(a, b):
+def _mix(a, b):
+    """Positive log sum and complementary CF weights from one exponential.
+
+    Compute the smaller weight directly; finite sub-float log amplitudes are
+    retained even when their ordinary CF mixing weight underflows. This is
+    the same positive addition, not a probability floor or normalization.
+    """
     if a == -np.inf:
-        return b
+        return (b, 0., 0. if b == -np.inf else 1.)
     if b == -np.inf:
-        return a
-    return max(a, b) + math.log1p(math.exp(-abs(a-b)))
-
-
-@njit(cache=True, fastmath=False, inline='always')
-def _weight(a, total):
-    return 0. if a == -np.inf else math.exp(a-total)
+        return a, 1., 0.
+    ratio = math.exp(-abs(a-b))
+    small = ratio/(1.+ratio)
+    total = max(a,b)+math.log1p(ratio)
+    if a >= b:
+        return total, 1.-small, small
+    return total, small, 1.-small
 
 
 @njit(cache=True, fastmath=False, nogil=True)
@@ -40,6 +46,16 @@ def _advance(logs, cf, neutral, step_ids, ed, el, eu, lp, lbeta, lu,
     explicit_logs, forward_logs = np.empty(n), np.empty(n)
     explicit_cf, forward_cf = np.empty_like(cf), np.empty_like(cf)
     neutral_rhs = np.empty(n)
+    # These exact math.exp calls were previously repeated every substep.
+    # Profiles are frozen by exact held-input/step keys. Compute once per
+    # block, retaining the same ordinary neutral coefficients bit-for-bit.
+    e_diag, e_lower, e_upper = np.empty_like(ed), np.empty_like(el), np.empty_like(eu)
+    for profile in range(len(ed)):
+        for j in range(n):
+            e_diag[profile,j] = math.exp(ed[profile,j])
+        for j in range(n-1):
+            e_lower[profile,j] = math.exp(el[profile,j])
+            e_upper[profile,j] = math.exp(eu[profile,j])
     maximum_error = 0.
     for profile in step_ids:
         for j in range(n):
@@ -50,30 +66,30 @@ def _advance(logs, cf, neutral, step_ids, ed, el, eu, lp, lbeta, lu,
             a = logs[j]+ed[profile, j]
             b = logs[j-1]+el[profile, j-1] if j else -np.inf
             c = logs[j+1]+eu[profile, j] if j+1 < n else -np.inf
-            total = _add(_add(a, b), c)
+            ab, w0, w1 = _mix(a,b)
+            total, wab, w2 = _mix(ab,c)
             explicit_logs[j] = total
-            w0, w1, w2 = _weight(a, total), _weight(b, total), _weight(c, total)
             for f in range(k):
                 value = w0*cf[j, f]
                 if j:
                     value += w1*cf[j-1, f]
+                value *= wab
                 if j+1 < n:
                     value += w2*cf[j+1, f]
                 explicit_cf[j, f] = value
-            value = math.exp(ed[profile, j])*neutral[j]
+            value = e_diag[profile, j]*neutral[j]
             if j:
-                value += math.exp(el[profile, j-1])*neutral[j-1]
+                value += e_lower[profile, j-1]*neutral[j-1]
             if j+1 < n:
-                value += math.exp(eu[profile, j])*neutral[j+1]
+                value += e_upper[profile, j]*neutral[j+1]
             neutral_rhs[j] = value
         forward_logs[0] = explicit_logs[0]
         for f in range(k):
             forward_cf[0, f] = explicit_cf[0, f]
         for j in range(1, n):
             a, b = explicit_logs[j], lbeta[profile, j-1]+forward_logs[j-1]
-            total = _add(a, b)
+            total, w0, w1 = _mix(a,b)
             forward_logs[j] = total
-            w0, w1 = _weight(a, total), _weight(b, total)
             for f in range(k):
                 forward_cf[j, f] = w0*explicit_cf[j, f]+w1*forward_cf[j-1, f]
             neutral_rhs[j] += beta[profile, j-1]*neutral_rhs[j-1]
@@ -83,9 +99,8 @@ def _advance(logs, cf, neutral, step_ids, ed, el, eu, lp, lbeta, lu,
             cf[-1, f] = forward_cf[-1, f]
         for j in range(n-2, -1, -1):
             a, b = forward_logs[j], lu[profile, j]+logs[j+1]
-            total = _add(a, b)
+            total, w0, w1 = _mix(a,b)
             logs[j] = total-lp[profile, j]
-            w0, w1 = _weight(a, total), _weight(b, total)
             for f in range(k):
                 cf[j, f] = w0*forward_cf[j, f]+w1*cf[j+1, f]
             neutral[j] = (neutral_rhs[j]+upper[profile, j]*neutral[j+1])/pivots[profile, j]
@@ -98,9 +113,12 @@ def _advance(logs, cf, neutral, step_ids, ed, el, eu, lp, lbeta, lu,
                 zero = cf[j, 0]
                 if zero.real <= 0. or zero.imag != 0. or not math.isfinite(zero.real):
                     raise ValueError('Native zero-frequency amplitude guard failed.')
-                logs[j] += math.log(zero.real)
-                for f in range(k):
-                    cf[j, f] /= zero.real
+                # Exact identity fast path: the original log(1) and divide
+                # by 1 change no value. Non-unit corrections remain intact.
+                if zero.real != 1.:
+                    logs[j] += math.log(zero.real)
+                    for f in range(k):
+                        cf[j, f] /= zero.real
             logs[j] += shifts[profile, j]
             if math.isnan(logs[j]) or logs[j] == np.inf:
                 raise ValueError('Native log-amplitude guard failed.')

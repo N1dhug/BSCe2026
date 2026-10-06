@@ -1,5 +1,12 @@
 # F4-H2: native interval kernel, 6 October 2026
 
+**Current handoff:** [PC raw review and native v2](H2_NATIVE_PC_REVIEW.md).
+The first PC run passes in 118.67 s, but the full 49-pair plan fails the time
+gate at that synthetic rate. V2 preserves the method and passes its 40-hour
+Linux check in 80.72 s. Use the separate bounded v2 PC command, not the original
+completed run. H ledger 1352.86 s; native allowance remaining 571.77 s.
+The first implementation/command/budget snapshot below is historical.
+
 The isolated native log-Thomas kernel passes the bounded synthetic equivalence
 check. It implements [the Astra decision](H2_METHOD_REDESIGN.md), not historical
 fitting or H2/H3 acceptance. G and WM source is unchanged.
