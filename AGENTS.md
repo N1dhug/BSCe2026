@@ -1,5 +1,25 @@
 # Fælles projektkontekst
 
+## F4-H2: Windows-exportfejl rettet, PC-ledger afventer råreview, 7. oktober
+
+PC-forsøget `f4_h2_compact_rates_pc_20261007_014819` stoppede ved
+`Raw data audit changed.` i frozen_packet, før observationslæsning/modeljobs.
+Rapport og terminal oplyser 6.964884199900553 s invocation og
+1540.6592115679418 s H; review-ZIP/fuld PC-ledger er endnu ikke modtaget.
+Ingen ny pilot eller seed-reset før den komplette ledger er reconcileret.
+
+Årsagen er reproduceret: Git archive med core.autocrlf=true ændrer audit-LF
+til CRLF. Afgrænset `.gitattributes` -text bevarer de frosne packet-/audit-
+bytes; strict SHA256 og alle numeriske gates er uændrede. Launcheren og
+source-manifestet inkluderer nu attributfilen. Ét Git-only check reproducerer
+fejlen og bevarer alle fire frosne filer i seks autocrlf/eol-konfigurationer.
+Check 0.3752458700000716 s, ingen model/JIT/workbook. Råreceipt:
+`files/output/bm_1/runs/estimation/f4_h2_frozen_export_check_20261007.json`.
+Dette check-charge afventer sammenfletning efter PC-entry; budgetseed er ikke
+ændret. Sol High fortsætter. G/WM/frosne data/native kerner er uændrede.
+Aktiv overdragelse: [historisk pilot](root/H2_COMPACT_RATE_PILOT.md).
+Følgende F-afsnit er historik.
+
 ## F4-H2: faktisk rate-/præcisionsprøve klar til PC, 7. oktober
 
 Aktiv overdragelse: [afgrænset historisk pilot](root/H2_COMPACT_RATE_PILOT.md).

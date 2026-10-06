@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 OUT = ROOT/'files/output/bm_1/runs/estimation'
 READY = ROOT/'root/f4/h2_compact_data_ready_20261007.json'
-EXTRA_SOURCE = ('src/method/bm_1_interval_forecast.py',
+EXTRA_SOURCE = ('.gitattributes', 'src/method/bm_1_interval_forecast.py',
     'src/tools/bm_1_h2_data_packet.py', 'src/tools/import_data/import_input.py',
     'root/f4/h2_compact_data_policy_20261006.json',
     'root/f4/h2_compact_method_decision_20261006.json',
