@@ -1,0 +1,147 @@
+{
+  "summary": {
+    "registration": {
+      "source_parent": "1bf048940483a4707035e84f707ce4ef407e9fe0",
+      "source_sha256": {
+        "src/method/beta_mixture.py": "3fb0b5f7ad95a00409b828966bddd1000b12a201dbf8d919d9a66c4a7090b224",
+        "src/control/objective.py": "ae098b1ecb5af095b970c961b97463bb726e365f09cb38340524e6991d6dbece",
+        "src/validation/model/bm.py": "a4e0d360ab8bc208874368d4f77faae06c83bf1f9550daf254a2b9c6c23dd27f",
+        "src/model/base/bm.py": "3c0066ca559898c1c5b15ff433a3cd902b01fbd99438745aabcac76344282522",
+        "src/validation/method/euler_maruyama.py": "eb5fdfb413c43ea0ded219d4e88544d89d80b1fd0f1c769717d6f071ed061359",
+        "src/method/euler_maruyama.py": "0b8f110fcfbe435a81477af558b61b07b5c00c1baa550404fbe92554066ee07e",
+        "src/validation/solver/active_set.py": "93f3f7aac0379f486e67f7536b2afd1bc1728feadd1b923911ab457e234b97fe",
+        "src/solver/active_set.py": "fc6df91b4664de126d43f0a22cd9537bbc100f44941e30757b9580173b5a30e6",
+        "src/validation/solver/finite_volume.py": "e8eecd9025a055b62af16c92c9ba5421df8f1c4b8eef33fecca9f1c267497377",
+        "src/solver/finite_volume.py": "28cf8118216457ea7d87bb775d36885fc8cc6f94614db005d38335ad4e497d03",
+        "src/validation/method/fokker_planc.py": "4dd880c31fbb4a4ecc2eb5278cf5a5ed8475fb752f84ca5dbb6a6f631b409226",
+        "src/method/fokker_planc.py": "a5c503b14785978996203d0ddd6adbc0767e29ce1cd0b2c4f88bd3cbe72b821a",
+        "src/validation/model/bm_1.py": "f1690c3f75f47fc494cdcd537eaaccd42f6575ae1cdfc8518bf7b150902b2581",
+        "src/validation/tools/input_generator/input_builder.py": "c6bff7e7e746714dfb6d5fe6949fc8200efa586210cfbf2815252bfb665874af",
+        "src/tools/input_generator/input_builder.py": "f85131284895376c10b8b4876f2e170ac9d56e5053a12047347b47a919f0795f",
+        "src/validation/method/objective.py": "b205697b3a597d5342a202641ca10ff8892d44f507dad70778d0410df8ee9b5c",
+        "src/method/objective.py": "c2a78c21da740bc4eb7bd3402fbf32247594805d0be7818b3e69c70c2dd77285",
+        "src/model/bm_1.py": "ef902d4acd9555bd185001fbbaf3b5e9bf63ab6eab9de1967476d1c66a91d307",
+        "src/validation/control.py": "1633b40ba7b1fe1eccdc1fe042c3b2e037ba996d9453a5e3e0110868b0b85554",
+        "src/control/bm_1.py": "9870c59085cf9248772871a361a3f6378d9b0475bc3a702a11ee4b4af7e02c33",
+        "src/validation/estimation.py": "61289c4a25f7c8576de1ea9d0bbc52238cb37918a99e4cc872d84acf3d2caa9e",
+        "src/params/bm_1.py": "4cce1629c26d548401786b48f668679f1182658d4ccb3009f23037ffea07f140",
+        "src/method/bm_1_estimation.py": "fc5774006d9731b843cf15d4f5de1cc9b4baed1e586d799e4ba9df5023dbd0c3",
+        "src/control/bm_1_handoff.py": "59345e3ba2639f21540a861e7846ff457030b7f60b06108dea45bc8de7d31aa4",
+        "src/params/bm_1_deterministic.py": "0ee08c88eb4e58041fa0f00b9822b6b7c84721eaa6d00bce1c9c9a225dee04b6",
+        "src/method/bm_1_deterministic_fit.py": "cf627f3683fcdf53cb423cc87e927921f282f24d622f39c5fe36b7407c2e6729",
+        "src/params/bm_1_response.py": "2d2380189072f447e2df676d6a91695fe8b66bc4b96fc7996ffddb0d305afe9c",
+        "src/method/bm_1_deterministic_response.py": "ba109ad881e0af1fb6d7206dd81e44402044f822fc2176d0fe5852684c6e31ed",
+        "src/method/bm_1_linear_noise.py": "bba55b9c43dba54d2d47425078ca59a29a699b053a478121ca78020c6e566228",
+        "src/method/bm_1_distribution_panel.py": "6d3c461b082b698bbdd15bf8165f5bf7de1c20ccabae738d7879bb79cca149e2",
+        "src/method/bm_1_g8.py": "afb2617130271eeb492763e409e58e427695ab12f526f213a4d4508814bdee1e",
+        "src/method/bm_1_g8_bernstein.py": "9dc79965d74e17127d6462840f426b66518832812960af81992c06306adc97cb",
+        "src/method/bm_1_g7.py": "43ed5bb0c24b721c3adcca29efb1b2fee6c3dbe3c61f4ce32fdcd9d43891bafa",
+        "src/exe/run_model/bm_1/g8.py": "64eba5d3903e7eaa5c9841106b591316db3b3eb405da78e9c281f11ca65018d0",
+        "src/method/bm_1_g8_basis.py": "c88b67e7146e61187ae4851980f72130438dcce060ba63a3f2a520478ad35518",
+        "src/exe/run_model/bm_1/g8_basis.py": "6264fab4309ee2fb9243d1b5d739758fcc4db1320fd57b2b2e0fbaf484099fab",
+        "src/exe/run_model/bm_1/g8_bernstein.py": "58aa0f57106f032e510d43035f7631b46609e05897e8a5e423dadce30d6cf495",
+        "src/exe/run_model/bm_1/g7.py": "34c9484657e5c77c6d79f54f4746bf2f354309c126b959368804e7c5ec31f515",
+        "tests/test_bm1_g7.py": "a2be48710422c0fc2f983905a6e48f4357f6cb57b70eaf9d01e6a3696a3dc058"
+      },
+      "input_sha256": {
+        "/workspace/scratch/783a396a9c9c/g8_m254_run/origin_12.json": "1cd343248607cc27baa61d4e52303fbfbf5c08ca7674fac0b9b3dce43649b3bc",
+        "/workspace/scratch/783a396a9c9c/g8_m254_refine_run/origin_12.json": "746e45c4603e724824687e535c2e7235f824e19ecbb6adcdd1c6ee0c0a7593e0",
+        "/workspace/scratch/783a396a9c9c/g7_source_manifest.json": "ee7db839da1be071c3011744bf242d0816410ab66ebd8f0105419b1914cd06b2"
+      },
+      "budget_seconds": 600,
+      "compute_seconds": 570,
+      "export_reserve_seconds": 30,
+      "pilot_seconds": 60,
+      "prior_panel_debit_seconds": 983.266544185,
+      "test_charge_seconds": 2.0,
+      "scope": "2h G7 prototype12->14; full24h job admission only; no full-day optimizer after refusal",
+      "target": "A=.5 fixed ex ante; baseline same frozen analytic G8 function",
+      "price_edges": [
+        12.0,
+        13.0,
+        14.0
+      ],
+      "bounds": [
+        0.0,
+        1.0
+      ],
+      "terminal_weight": 0.0,
+      "smoothing_weight": 0.0,
+      "nodes": "Same five owned rho/state laws; cutoff logweights frozen during price forward",
+      "search": "One neutral start per deterministic-MAP and full-bank FV policy; Powell maxfev48 each, max96 calls/300s. Exact incumbent preserved even if optimizer does not converge.",
+      "cross": "neutral/deterministic/stochastic policies; owned M254257/M254513, independent FV513, EM256 per node, coupled h1/192 and1/384, common random numbers",
+      "seeds": {
+        "initial": 20261021,
+        "brownian": 20261022,
+        "measurement_noise": 20261023
+      },
+      "tolerances": {
+        "state_mean": 0.005,
+        "demand_mean": 0.005,
+        "state_variance": 0.002,
+        "demand_variance": 0.002,
+        "state_cdf": 0.03,
+        "demand_cdf": 0.03,
+        "state_quantile": 0.02,
+        "demand_quantile": 0.02,
+        "posterior_mass_l1": 0.05,
+        "projection_l1": 0.05,
+        "log_evidence": 0.05,
+        "bank_weight": 0.03,
+        "checkpoint": 1e-10,
+        "truth_path": 0.001,
+        "mass": 1e-09
+      },
+      "objective_gate": "max(.001, .02*abs(referenceJ))",
+      "mc_gate": "abs(Jmc-Jfv)<=max(.001,4*sampling_SE); coupled timeerror<=.001",
+      "admission": "1.25 pilot-based complete job estimate incl<=100 search calls and three chosen-policy checks fits remaining570s; otherwise no search",
+      "tests": "One reset/own-state/missing-update contract check passed previously, conservatively charged2s; not repeated",
+      "excluded": "No historical Y, baseline/physical refit, parameter grid, future measurement inside objective or global optimum claim"
+    },
+    "prototype_accept": false,
+    "full_day_G7_accept": false,
+    "historical_accept": false,
+    "elapsed_seconds": 60.0001454000012,
+    "failure": {
+      "type": "TimeoutError",
+      "message": "G7 registered numerical allowance exhausted."
+    },
+    "wall_seconds": 60.001028360999044,
+    "source_unchanged": true,
+    "inputs_unchanged": true
+  },
+  "post_review": {
+    "observed_coarse_completion_elapsed_seconds_rounded": 17.61,
+    "pilot_total_seconds": 60.001028360999044,
+    "fine_completed": false,
+    "origin": "Recorded stdout from original invocation; exact coarse solver-only time was not exported by v1.",
+    "coarse_trajectory_exported": false,
+    "reason": "v1 deferred raw trajectory export until all four pilot forwards completed; timeout interrupted the fine forward.",
+    "no_replay_performed": true,
+    "budget_debit_before": 983.266544185,
+    "contract_test_charge_seconds": 2,
+    "current_conservative_debit_seconds": 1045.267572545999,
+    "remaining_panel_seconds": 754.7324274540009,
+    "illustration": "3 policies *12(24h/2h)*60s about2160s for own-mixture cross alone, using incomplete pilot; not a complete measured rate or formal runtime bound. Full job not admitted."
+  },
+  "correction_audit": {
+    "syntax_passed": [
+      "src/method/bm_1_g7.py",
+      "src/exe/run_model/bm_1/g7.py",
+      "tests/test_bm1_g7.py"
+    ],
+    "numeric_retry": false,
+    "runner_correction": "Immediate completed pilot raw exports and projection counters; enforce originally declared marginal-L1 and feedback/evidence/weight gates explicitly in not-yet-run stages. No model/kernel/tolerance changes.",
+    "corrected_runner_sha256": "c36af388adb9ac985b4e80cf68d2d0a4a6a107d8c324c5245514d2eca2116e27",
+    "original_executed_source_preserved": true
+  },
+  "archive_review": {
+    "archive": "G7_owned_handoff_pilot_20261007.zip",
+    "bytes": 2324073,
+    "sha256": "16eb8163adbd758839c3426aef287815d9a3a5edce1fcf451d75774d2eeff92b",
+    "creation_seconds": 0.3125054560005083,
+    "current_conservative_panel_seconds": 1045.5800780020006,
+    "remaining_panel_seconds": 754.4199219979994,
+    "original_raw_summary_unchanged": true
+  }
+}
