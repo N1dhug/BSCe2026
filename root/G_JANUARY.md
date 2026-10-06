@@ -1,5 +1,27 @@
 # G0–G4: januar-fit, frosset ugeprognose og lille kurvepilot
 
+**Aktuel G-overdragelse, 6. oktober:** G8-reviewet har valgt Bernstein M254
+til et afgrænset eget filterforsøg; se [review og næste opgave](G8_BERNSTEIN_REVIEW.md).
+Januar-/G4-kommandoerne nedenfor bevares som historik og reproduktion.
+
+**G4 afsluttet for den afgrænsede punktprotokol, 6. oktober 2026:** Den fastlåste S3-sammenligning på nye ISO-uger 13–18 er complete: seks fælles mandagscutoffs, 1008/1008 målte timer. Uden straf har MSE 0.1798347601 mod 0.1843188395 med lambda=0.001 og baseline 0.1806157175. Straf øger MSE 2.4934 %, vinder kun 2/6 uger og taber alle leave-one-week-out-sammenligninger. Det registrerede modelvalg er derfor **S3 med lambda=0**, lineær f og fælles to-stykkers g over 35 historiske dage; ingen nye kurver eller lambdaer. Baselinegevinsten er kun 0.4324 %. Bounds, næsten flad prisrespons i tre senere fits og 207 observationer under den frosne demand-skala begrænser fysisk/prisstyringsfortolkning. Dette er fortsat betingede prognoser med realiseret pris/temperatur på legacy-punktkontrakten, ikke en uafhængig sluttest eller operationel forecast-accept. Alle 12 valgte kandidater består tidsforfining; to ugefits krævede 24 trin/time. Runnerinvocation 297.03 s, to fokuserede tests og syntakskontrol består. Præcis 24 fysiske warmup-timer efter sommertid er rettet; tidligere fits er bevaret uden genkørsel. Se [matematik, valg og råreview](G4_VALIDATION_WEEKS_13_18_REVIEW.md). **Næste: G6a-variansreference, derefter G6b→G8→G7; G5 dokumenteres løbende og afsluttes særskilt.** Ingen lokal kørsel kræves nu.
+
+
+**Nyeste G4-forsøg, 6. oktober 2026 — 12 uger og tre strategier:** Syv fælles mandagscutoffs (uge 1–5→6, …, 7–11→12), 49 dagsprognoser og 1175/1175 fysiske målte timer er komplette. S1 er retrospektiv (C,k,Xi fra alle 12 uger); S2 fitter C,k,Xi,a per ugedag; S3 fitter dem samlet over 35 dage. S3 med lambda=0.001 har lavest MSE 0.2052253468 mod 0.2065071888 uden straf og baseline 0.2076682236. Straf forbedrer S3 med 0.6207 %, men vinder kun 3/7 uger; uden uge 10 vender gevinsten til en forværring på 0.2836 %. S2's samlede strafgevinst 9.0688 % drives også af uge 10. S3 med straf er derfor kun en foreløbig udviklingskandidat, med lambda=0 bevaret som reference. Realiseret pris/temperatur gør forsøget betinget; ingen blind eller origin-tilgængelig ugeforecast-accept. Se [matematik, kode og resultater](G4_STRATEGIES_12_WEEKS_REVIEW.md). Alle 210 valgte kandidater består tidsforfining; fem fokuserede testmetoder er dækket, ingen fuld testpakke. Én kandidat blev fortsat fra checkpoint, øvrige 104 opgaver genbrugt. Tidligere protokolresultater nedenfor er bevaret og gælder deres egne forsøg. Ingen lokal kørsel kræves nu; G6b→G8→G7 består som obligatorisk kæde.
+
+
+**Nyeste prognoseudvikling, 6. oktober 2026:** Johans fem-matchende-ugedage-protokol er gennemført for 7.–27. februar: 21 rolling-origin døgnprognoser og 504/504 målte timer. G4 uden straf har MSE 0.1639224439 mod 0.1666013393 med lambda=0.001; straffen øger samlet MSE med 1.6342 %. Uden straf slår samme origins' WM-baseline med 3.8626 %. Valget for denne protokol er lambda=0, baseret på DEVELOPMENT-forecastfejl. Det historiske januarvalg bevares og gælder den gamle protokol. Dette er daglige refits, ikke tre frosne 168-timers forecasts. Se [matematik, kodereview og resultater](G4_WEEKDAY_DEVELOPMENT_REVIEW.md). To fokuserede tests samt alle 42 valgte kandidaters 60/120-kontrol består. Ingen lokal kørsel kræves nu; G6b→G8→G7 består som næste obligatoriske kæde.
+
+
+**G4-resultat, 5. oktober:** Januar-pilot og begge frosne februarprognoser er nu
+kørt og rå-reviewet. 206 residualkald, ca. 83 s inklusive eksport/figurer.
+Bedste fleksible g forbedrer DEVELOPMENT-MSE med 0.01504 %; lineær BM
+beholdes efter den låste 1 %-regel. Baseline har stadig lavest MSE.
+Se [G4-reviewet](G4_JANUARY_PILOT_REVIEW.md) og dets rå benchmark.
+Dette er udviklingsvalg på legacy-punktkontrakten, ikke blind validering.
+Ældre beskrivelser af manglende G4-pilot nedenfor er historisk status;
+den aktuelle næste handling står i reviewet.
+
 Status 5. oktober 2026: Johan har rapporteret historisk januar-fit som
 `complete` på `07fad9f`, run `g_january_fit_20261005_154824`.
 624 målte/744 timer; 120 manglende demand-timer; pris/temperatur komplette efter import.
@@ -11,16 +33,18 @@ Genkør ikke fit alene for dokumentationsopdatering. [G-planen](G.md) indeholder
 nu obligatorisk FP/mixture/EM (G6b), stokastisk single-shooting-kontrol (G7)
 og rekursiv estimation (G8), baseret på eksisterende F-arbejde.
 
-## Aktuelt næste trin: G4 fra original TRAIN-eksport
+## G4 fra original TRAIN-eksport — gennemført pilot og bevarede kommandoer
 
 Matematik og begrundelse er samlet i [G-planens afsnit 5](G.md#5-fleksible-fg-i-et-lille-ekstra-trin):
 én knude a=g(0.5), lineær f og fælles bounded nonlinear LS for log-C/Xi/a.
 Dokumentationsreview 5. oktober mod main `0da7e2a9`: metoden svarer til den
 eksisterende kode; ingen solverændring eller ny numerisk test er foretaget.
-Den originale januar-fitmappe er ikke tilgængelig i denne chat, og dens to
-TRAIN-CSV'er blev ikke fundet ved fil-søgning. Historisk G4-fit/modelvalg er
-derfor fortsat åbent. Brug originalmappen nedenfor; genskab ikke et nyt G2-fit
-eller parametre fra afrundet terminaloutput for at erstatte arkivet.
+Ved dette dokumentationsreview var den originale januar-fitmappe og dens to
+TRAIN-CSV'er endnu ikke tilgængelige, så historisk G4-fit/modelvalg stod åbent.
+Den efterfølgende gennemførte pilot og råreview er dokumenteret øverst og i
+G4_JANUARY_PILOT_REVIEW.md. Ved reproduktion bruges originalmappen nedenfor;
+genskab ikke et nyt G2-fit eller parametre fra afrundet terminaloutput
+for at erstatte arkivet.
 
 G3's rapporterede fejlmål i rå workbook-enheder:
 
@@ -413,3 +437,4 @@ integration med 27 demandhuller (inklusive et helt døgn og begge månedsender)
 og 3 temperaturhuller bestod på ca. 19 s: BM og WM scorer begge 717 timer.
 Fælles importers indre/ydre interpolation og measured-only fejlmål er kontrolleret.
 Det er syntetisk integrationsevidens, ikke et historisk januarfit.
+

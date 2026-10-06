@@ -1,4 +1,83 @@
+**Vejledermateriale/legacy, Johan 6. oktober:** Tavlebillederne er vejlederens
+grundlag. Originalmodeller og resultater bevares; udvidelser kræver udledning,
+kilder, begrundelse og eksplicit sammenligning. Den nye basis er kun reference,
+og dens allerede gennemførte G8-kørsler genbruges. Se
+[detaljeret Beta-udledning, kildekort og designargument](G8_POSTERIOR_BASIS_REVIEW.md#vejledergrundlag-og-referenceudvidelse--dokumentationsregel).
+Den oprindelige noteændring var dokumentation alene; det efterfølgende
+M254-review er registreret særskilt nedenfor.
+
+## Aktiv basisbeslutning — Johan, 6. oktober 2026
+
+Vejlederens normaliserede Bernstein/Beta-basis er G's primære mixture-basis:
+
+\[
+\ell_m(x)=\frac{(M+1)!}{m!(M-m)!}x^m(1-x)^{M-m},
+\qquad m=0,\ldots,M.
+\]
+
+Den nye faste 42-leds Beta-basis beholdes alene som sammenligningsreference.
+FV er fortsat den numeriske reference; metodeprioritet og numerisk accept er
+forskellige beslutninger. De gemte negative M38/M78-resultater og positive
+42-leds-resultater bevares uændret. M38's åbne G6b-propagation består, men
+M38/M78 er ikke accepteret til G8's posterior→G7-kæde.
+
+**G8-review gennemført, 6. oktober:** Én statisk kandidat, M254 med 255 af
+vejlederens oprindelige Bernstein/Beta-funktioner og eksplicit celleintegration,
+består syv afgrænsede LS-kontroller på gemte love. Maksimal posterior-L1 er
+1.27144e-6; invocation9.596 s. Gradforhøjelse bevarer Beta(20,20)-prioren
+med L1-fejl3.18e-14. De eksisterende produktionskerner og legacy-defaults er
+uændrede. Dårlig konditionering består; dette er repræsentationsaccept på
+udvalgte eksponerede love, ikke accept af et rekursivt filter eller G7.
+
+**Næste: Sol High** implementerer den navngivne celleintegrerede Bernstein-
+variant, eksakt prior og checkpointkontrakt, derefter én afgrænset egen
+fem-node-filterkørsel. Højst300 nye numeriske sekunder inklusive højst60 s
+pilot og30 s eksportreserve; forfining/resume kun inden for samme budget.
+Ingen automatisk gradtalssøgning. Se [fuld udledning, resultater og stopregler](G8_BERNSTEIN_REVIEW.md).
+Ingen lokal kørsel kræves nu.
+
+G7's primære mixture-handoff skal komme fra en kontrolleret kørsel med den
+oprindelige basisfamilie og hver nodes egne koefficienter/posterior.
+Det gemte bank_local257-origin må kun bruges som eksplicit 42-leds-reference,
+ikke som primær origin eller som skjult restart for Bernstein-filteret.
+Bevar modellen, likelihooden, simplex-constraints og accepttolerancer;
+ingen større målefejl, signed koefficienter eller FV-fallback forklædt som
+mixture for at få den primære metode til at bestå. Hvis den primære basis
+ikke består inden for praktisk budget, dokumenteres begrænsningen.
+
+Denne beslutning erstatter tidligere anbefalinger om 42-leds-basis som
+G7's primære startkonfiguration. De tidligere resultater bevares uændret.
+Det efterfølgende M254-review ovenfor tilføjer kun statisk evidens.
+
+**G8 punktfilter/bank gennemført som afgrænset integration, 6. oktober 2026:** FV kendt-parameter-filter og fem-node-rho-bank består forfining, missing og faktisk JSON-resume. 24 syntetiske timer/22 målinger; predictive demand-RMSE .0208264 mod åben .0286866 (27.40 % mindre på denne ene bane). Banken identificerer ikke sand rho sikkert. M38/M78 gennemfører, men begge afvises efter Bayes-opdateringer: kendt posterior-L1 .498924/.139169 og bank .500165/.138551 mod .05. M78's gode mean er ikke fordelingsaccept. Fuld-bank→FV fast kontrolforslag bevarer egne nodeposteriors og parameterusikkerhed; ingen prisoptimering. V2 invocation49.112 s, tre fokuserede tests består, fælles kerner/F/WM uændret. Se [matematik, råreview og begrænsninger](G8_POINT_BANK_REVIEW.md). **G8 mixture er ikke accepteret: næste lille opgave er posterior-repræsentation før mixture→G7; FV-handoff er klar til separat G7-referencearbejde.** Historisk timeenergi og ugeforecast er ikke accepteret. Ingen lokal kørsel kræves nu. Ældre næste-trin-afsnit nedenfor er historiske.
+
+**G8 posterior-basis afklaret, 6. oktober 2026:** En fast celleintegreret ordbog med 41 smalle Beta-led (kappa256) plus Beta(20,20)-prioren sænker Bayes-projektionsfejlen fra .128495 til .001494 allerede ved samme129-grid. 42 koefficienter bruges i stedet for M78's79. En ny conditional-node-kontrol afviste129-cellers grid for både den gemte FV-bank og ny mixture; det negative første studie bevares. Én målrettet257→513-forfining består nu for hver node og marginalen. **Historisk anbefaling, nu erstattet af Johans basisbeslutning ovenfor: 42 komponenter/257 celler er kun reference for G7.** Alle31 eksisterende importerede shared-moduler er uændrede; kun G-adapterens basisvalg udvides. Faktisk JSON-resume er identisk; to fokuserede tests består. Nye numeriske invocations150.086 s i alt. Se [udledning, kildegrundlag, valg og råreview](G8_POSTERIOR_BASIS_REVIEW.md). Næste G7-evaluator skal bruge originens faktiske basis og egne nodekoefficienter, ikke rekonstruere M38. Ingen prisoptimering, historisk forecastaccept eller parameterrecovery i denne leverance. G4/F/WM uændret; ingen lokal kørsel kræves nu. Tidligere blokering nedenfor er løst for denne udviklingscase, ikke universelt.
+
 # G3 og frem — grundlag og overdragelse til Sol
+
+**G6b-panel gennemført, 6. oktober 2026:** Én låst syntetisk 24-timerscase med samme Beta(20,20)-prior, lineær f/g og fast sigma_x=0.2. FV består rum-/tidskontroller. M20 afvises (initial L1=0.291667, statevarians/kvantiler og demand-CDF); M38 matcher FV (maks. demandmiddelforskel 0.0001061, J-forskel 0.0221 %). EM2048 stemmer med FV inden for registrerede praktiske tolerancer og punktvise sampling-SE; nul rå randoverskridelser. FV er primær reference og hurtigere end M38 her. V3-hovedpanel 7.101 s, invocation 8.840 s plus separat genbrugt M20-pilot 1.120 s; fejlede interfaceforsøg er bevaret uden komplet samlet timing. To fokuserede tests består; ingen nye fits eller shared-kernelændringer. Dette er numerisk udviklingsevidens, ikke historisk forecast-/intervalaccept. Se [matematik, valg og råreview](G6B_DISTRIBUTION_PANEL_REVIEW.md). **Næste: G8 kendt-parameter-statefilter, derefter lille rho-bank og G7.** Ingen lokal kørsel kræves nu. Ældre næste-trin-afsnit nedenfor er historiske.
+
+
+**G6a-reference færdig, 6. oktober 2026:** Konstant støj kalibreret med analytisk nonnegative LS på fem tidligere matchende weekdays, genbrug af S3/lambda=0 uge13+18. 336 målte timer; procesbånd dækker 45.83 % mod 88.99 % for historisk spredning omkring samme G4-center. Uge13 lineær statevarians overskrider den fysiske bound1/4; båndene er ikke accepteret som kalibrerede 95 %-intervaller. 168 propagationer/2.283 s, begge tidsforfininger og tre fokuserede tests består. Ingen nye strukturelle fits eller støjfamilier; F/WM uændret. Se [matematik og negativt G6a-resultat](G6A_LINEAR_NOISE_REVIEW.md). **Næste: G6b med FP/FV, Beta-mixture og EM på det faste lille syntetiske panel.**
+
+
+**G4 afsluttet for den afgrænsede punktprotokol, 6. oktober 2026:** Den fastlåste S3-sammenligning på nye ISO-uger 13–18 er complete: seks fælles mandagscutoffs, 1008/1008 målte timer. Uden straf har MSE 0.1798347601 mod 0.1843188395 med lambda=0.001 og baseline 0.1806157175. Straf øger MSE 2.4934 %, vinder kun 2/6 uger og taber alle leave-one-week-out-sammenligninger. Det registrerede modelvalg er derfor **S3 med lambda=0**, lineær f og fælles to-stykkers g over 35 historiske dage; ingen nye kurver eller lambdaer. Baselinegevinsten er kun 0.4324 %. Bounds, næsten flad prisrespons i tre senere fits og 207 observationer under den frosne demand-skala begrænser fysisk/prisstyringsfortolkning. Dette er fortsat betingede prognoser med realiseret pris/temperatur på legacy-punktkontrakten, ikke en uafhængig sluttest eller operationel forecast-accept. Alle 12 valgte kandidater består tidsforfining; to ugefits krævede 24 trin/time. Runnerinvocation 297.03 s, to fokuserede tests og syntakskontrol består. Præcis 24 fysiske warmup-timer efter sommertid er rettet; tidligere fits er bevaret uden genkørsel. Se [matematik, valg og råreview](G4_VALIDATION_WEEKS_13_18_REVIEW.md). **Næste: G6a-variansreference, derefter G6b→G8→G7; G5 dokumenteres løbende og afsluttes særskilt.** Ingen lokal kørsel kræves nu.
+
+
+**Nyeste G4-forsøg, 6. oktober 2026 — 12 uger og tre strategier:** Syv fælles mandagscutoffs (uge 1–5→6, …, 7–11→12), 49 dagsprognoser og 1175/1175 fysiske målte timer er komplette. S1 er retrospektiv (C,k,Xi fra alle 12 uger); S2 fitter C,k,Xi,a per ugedag; S3 fitter dem samlet over 35 dage. S3 med lambda=0.001 har lavest MSE 0.2052253468 mod 0.2065071888 uden straf og baseline 0.2076682236. Straf forbedrer S3 med 0.6207 %, men vinder kun 3/7 uger; uden uge 10 vender gevinsten til en forværring på 0.2836 %. S2's samlede strafgevinst 9.0688 % drives også af uge 10. S3 med straf er derfor kun en foreløbig udviklingskandidat, med lambda=0 bevaret som reference. Realiseret pris/temperatur gør forsøget betinget; ingen blind eller origin-tilgængelig ugeforecast-accept. Se [matematik, kode og resultater](G4_STRATEGIES_12_WEEKS_REVIEW.md). Alle 210 valgte kandidater består tidsforfining; fem fokuserede testmetoder er dækket, ingen fuld testpakke. Én kandidat blev fortsat fra checkpoint, øvrige 104 opgaver genbrugt. Tidligere protokolresultater nedenfor er bevaret og gælder deres egne forsøg. Ingen lokal kørsel kræves nu; G6b→G8→G7 består som obligatorisk kæde.
+
+
+**Nyeste prognoseudvikling, 6. oktober 2026:** Johans fem-matchende-ugedage-protokol er gennemført for 7.–27. februar: 21 rolling-origin døgnprognoser og 504/504 målte timer. G4 uden straf har MSE 0.1639224439 mod 0.1666013393 med lambda=0.001; straffen øger samlet MSE med 1.6342 %. Uden straf slår samme origins' WM-baseline med 3.8626 %. Valget for denne protokol er lambda=0, baseret på DEVELOPMENT-forecastfejl. Det historiske januarvalg bevares og gælder den gamle protokol. Dette er daglige refits, ikke tre frosne 168-timers forecasts. Se [matematik, kodereview og resultater](G4_WEEKDAY_DEVELOPMENT_REVIEW.md). To fokuserede tests samt alle 42 valgte kandidaters 60/120-kontrol består. Ingen lokal kørsel kræves nu; G6b→G8→G7 består som næste obligatoriske kæde.
+
+
+**G4-resultat, 5. oktober:** Januar-pilot og begge frosne februarprognoser er nu
+kørt og rå-reviewet. 206 residualkald, ca. 83 s inklusive eksport/figurer.
+Bedste fleksible g forbedrer DEVELOPMENT-MSE med 0.01504 %; lineær BM
+beholdes efter den låste 1 %-regel. Baseline har stadig lavest MSE.
+Se [G4-reviewet](G4_JANUARY_PILOT_REVIEW.md) og dets rå benchmark.
+Dette er udviklingsvalg på legacy-punktkontrakten, ikke blind validering.
+Ældre beskrivelser af manglende G4-pilot nedenfor er historisk status;
+den aktuelle næste handling står i reviewet.
 
 Forberedt 5. oktober 2026 mod `main` ved
 `d9f95a0513605d58f0fe01464067e8f0a2a0eeeb` efter PR #69/#70.
@@ -18,6 +97,17 @@ om manglende P1/P2. Kommando: [G_JANUARY.md](G_JANUARY.md).
 Læs nyeste `AGENTS.md`, [G.md](G.md) og [G_JANUARY.md](G_JANUARY.md)
 ved genoptagelse af G. Læs kun F-dokumenter, når en konkret fælles grænseflade
 skal genbruges eller ændres. F4-H2 tilhører F-chatten; bevar samtidige F/WM-ændringer.
+
+## Ny beslutning: langt fit og genbrug af WM's ugeprognose
+
+Johan har 5. oktober valgt WM's fit→frys→viderefør cutoff-state→168 timers
+forecast som G's princip, med fælles helårsfit hvis data tillader det.
+G3/G4 har allerede forward/snapshot-grundlaget. Nødvendige udvidelser
+implementeres ved den relevante etape; ingen ny forecast-solver nu.
+Se beslutningsafsnittet i [G.md](G.md) for verificeret WM-kode,
+origin-tilgængelige inputs, årsfit/testsplit og skel til oracle-dagsstate.
+Dette ændrer den planlagte lange variants træningsvindue, ikke januararkivet
+eller G4-pilotens budget. Langt fit er ikke en gate for G6b→G8→G7.
 
 ## Opgaven og det allerede kendte
 
@@ -192,8 +282,9 @@ negativ baselinegevinst; det udløser ikke automatisk nye fits.
 
 Den implementerede pilots ligninger, monotonicitetsbevis, residualer og
 metodeforsvar står nu i [G-planens afsnit 5](G.md#5-fleksible-fg-i-et-lille-ekstra-trin).
-Dokumentationsreview mod main `0da7e2a9` ændrer ikke solver eller acceptstatus;
-originalarkivet er fortsat nødvendigt for historisk G4-kørsel.
+Det historiske dokumentationsreview mod main `0da7e2a9` ændrede ikke solver
+eller acceptstatus. Den efterfølgende G4-pilot er gennemført og rå-reviewet
+som beskrevet øverst; originalarkivet kræves fortsat ved reproduktion.
 
 **Genbrug:** `src/params/bm_1_response.py`, `src/method/bm_1_response.py` og
 `BM1Parameters` i `src/control/bm_1.py`. H's likelihood-fit er ikke G's LS-fit.
@@ -418,3 +509,4 @@ Hvis G senere skal assimilere historisk timeenergi, kræves en særskilt valgt
 og kontrolleret intervaloperator. Det kan være genbrug af en egnet F-løsning;
 F4-H2 som helhed er ikke en forudsætning. Syntetiske punktmålinger må ikke
 omdøbes til historisk timeenergi for at springe dette krav over.
+

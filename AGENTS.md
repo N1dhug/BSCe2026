@@ -1,5 +1,22 @@
 # Fælles projektkontekst
 
+## Vejledermateriale og legacy — Johan, 6. oktober 2026
+
+Alle tavlebilleder Johan har givet er som tommelfingerregel materiale fra
+vejlederen og det oprindelige faglige grundlag. Bevar de oprindelige
+legacy-modeller, formler, kodeveje og råresultater. Udvidelser er mulige,
+men kræver grundig matematisk udledning, konkret begrundelse, kildeangivelse,
+sammenligning og tydelig dokumentation af forskellen fra originalen.
+Skeln mellem direkte vejledermateriale, standardidentiteter og egne
+metode-/numerikvalg. Erstat eller ommærk ikke originalen stiltiende.
+
+For G-mixture er tavlens normaliserede Bernstein/Beta-familie primær;
+den nye lokale 42-leds Beta-basis er kun sammenligningsreference.
+FV er numerisk reference. Metodeprioritet ændrer ikke acceptkrav eller
+negative testresultater. Genbrug den allerede gennemførte referencekørsel.
+Detaljeret kildekort/udledning: [G8-basisnoterne](root/G8_POSTERIOR_BASIS_REVIEW.md).
+Denne dokumentationsregel ændrer ikke F/WM's aktive opgaver eller resultater.
+
 ## F4-H2: intervalprognose implementeret, 6. oktober
 
 Aktiv overdragelse: [intervalprognose og næste datatrin](root/H2_INTERVAL_FORECAST_IMPLEMENTATION.md).
@@ -404,3 +421,4 @@ Disse kurveregler gælder BM og ændrer ikke WM-modellernes egne fitkontrakter.
 
 Dette er den fælles repoindgang for projektchats. En allerede åben chats indlæste
 kontekst opdateres ikke automatisk; ved genoptagelse skal den læse den aktuelle plan.
+
