@@ -234,7 +234,15 @@ source hashes, observations/inputs references, numerical diagnostics and
 marginal states. Frozen local source snapshots are included separately;
 local commit names in reports must not be mistaken for remote commit names.
 
-The next proposed route reduces the number of precise candidate evaluations
+**Windows update, 6 October:** the later synthetic eight-worker pilot completed
+in 556.53 s. Its conservative 17-candidate projection is 5.50 hours for
+24 synthetic hours, but 20.65 hours when extrapolated to 168 hours, including
+spent time and a provisional two-hour reserve. The old table below is retained
+as the earlier planning illustration and does not support run admission.
+See [H2_PRECISE_BATCH.md](H2_PRECISE_BATCH.md). Historical throughput and the
+actual F TRAIN/validation contract remain unresolved.
+
+The earlier proposed route reduces the number of precise candidate evaluations
 and parallelizes independent whole-stream replays. It does not assume a
 surrogate is now accepted. Based on the saved synthetic 1921-cell rate only:
 

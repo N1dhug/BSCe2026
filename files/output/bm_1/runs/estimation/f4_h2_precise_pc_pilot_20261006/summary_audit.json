@@ -1,0 +1,61 @@
+{
+  "schema": "f4-h2-pc-pilot-summary-audit-v1",
+  "date_utc": "2026-10-06",
+  "submitted_files_sha256": {
+    "pilot_report.json": "cc2aeb655170b597e560d9876a3574a0ff6ef26d891342f09a7d28ab625e2055",
+    "f4_h2_remaining_budget.json": "b02614c830bb0e955fabd7bc6a28dd200e8d7543203d90be5f24c34420f6ac28"
+  },
+  "manifest_identity_reported": "1c04aaff50dfb95adaa633a6bd5fc556e3502c628da568ae0cd7c5925064007f",
+  "pilot_wall_seconds": 556.5325485998765,
+  "completed_candidate_units_reported": 64,
+  "pilot_completion_raw_verified": false,
+  "manifest_checkpoint_guards_raw_received": false,
+  "historical_rate_measured": false,
+  "numerical_fit_readiness": false,
+  "scientific_acceptance": false,
+  "optimizer_converged": false,
+  "trained_model_exported": false,
+  "campaign_baseline_seconds": 425.8919726690074,
+  "campaign_charged_seconds": 1024.631120639875,
+  "remaining_to_ceiling_seconds": 34975.368879360125,
+  "remaining_before_validation_reserve_seconds": 27775.368879360125,
+  "provisional_validation_reserve_seconds": 7200.0,
+  "ledger_accounting_matches": true,
+  "formula": "search_seconds = 1.5 * ceil(17 / 8) * (replay_units * worst_observed_interval_seconds + pilot_wall_seconds)",
+  "worst_observed_interval_seconds": 84.11974960006773,
+  "report_total_excludes_final_ledger_overhead_seconds": 0.004186799982562661,
+  "scenarios": [
+    {
+      "replay_units_without_prior_lead": 24,
+      "projected_search_seconds": 11589.32942550676,
+      "projected_H_seconds_including_spent_and_reserved_validation": 19813.960546146634,
+      "target_6h_met": true,
+      "budget_admissible": true
+    },
+    {
+      "replay_units_without_prior_lead": 48,
+      "projected_search_seconds": 20674.262382314075,
+      "projected_H_seconds_including_spent_and_reserved_validation": 28898.89350295395,
+      "target_6h_met": false,
+      "budget_admissible": true
+    },
+    {
+      "replay_units_without_prior_lead": 72,
+      "projected_search_seconds": 29759.19533912139,
+      "projected_H_seconds_including_spent_and_reserved_validation": 37983.826459761265,
+      "target_6h_met": false,
+      "budget_admissible": false
+    },
+    {
+      "replay_units_without_prior_lead": 168,
+      "projected_search_seconds": 66098.92716635065,
+      "projected_H_seconds_including_spent_and_reserved_validation": 74323.55828699053,
+      "target_6h_met": false,
+      "budget_admissible": false
+    }
+  ],
+  "actual_train_window_selected": false,
+  "interpretation": "Planning extrapolation only. Synthetic 24-hour budget flags do not admit historical search. The 168-hour illustration exceeds the ceiling; no period is silently shortened.",
+  "next_step": "Collect existing manifest, checkpoints, logs and F configuration without new likelihood replays; resolve historical data and validation scope before revising search design.",
+  "verification": "JSON/accounting/projection arithmetic and byte-identical archival only; no numerical tests, replays or fits."
+}
