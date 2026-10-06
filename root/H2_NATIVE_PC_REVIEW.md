@@ -1,5 +1,12 @@
 # F4-H2: PC raw review and native v2, 6 October 2026
 
+**Review completed:** the active decision and Sol implementation handoff are in
+[H2_COMPACT_ESTIMATION_REVIEW.md](H2_COMPACT_ESTIMATION_REVIEW.md). The new,
+explicit 48/24/168-hour study supersedes the old period/work-graph choice;
+its actual timing/data admission is still pending. Preserve all earlier
+mathematics and evidence for their declared scopes. No completed timing run
+should be repeated from the historical commands below.
+
 **Completed v2 PC update:** all 40 units pass the raw review in 104.31 s.
 The current next task and latest ledger are in
 [the post-v2 mathematical review](H2_NATIVE_V2_NEXT_REVIEW.md).

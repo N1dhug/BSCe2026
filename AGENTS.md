@@ -1,5 +1,26 @@
 # Fælles projektkontekst
 
+## F4-H2: kompakt metodevalg efter Astra-review, 6. oktober
+
+Aktiv overdragelse: [kompakt H2-design](root/H2_COMPACT_ESTIMATION_REVIEW.md).
+Det tidligere syvdages TRAIN-design erstattes eksplicit af et mindre studie:
+TRAIN 18.–19. februar 2022 (48 h), modelvalg 20. februar (24 h), uændret
+slutuge 21.–27. februar (168 h), prediction-only prior fra 17. februar.
+MED's 13 huse forbliver separat; samme præcise interval-likelihood, native v2,
+lineær/to-/fire-stykkers kurver og COBYQA-loft på 49 par. Ingen daglige fits.
+Ugeprognosen får alle 168 intervalmiddelværdier/varianser via positive
+momentrekurrenser; fordelinger på de syv eksisterende horisonter 1/6/12/24/48/72/168 h.
+Der er udledt en konkret implementering med bevaret fuld log-state og egne
+fine streams. Det samlede betingede budgeteksempel er 8.76 h, inkl. tidligere
+tid; valideringsreserven er ca. 4.01 h. Fine/moment/CDF-rates er endnu umålte:
+intet historisk fit er admitted, og 4–6 h er ikke dokumenteret.
+Næste trin kan udføres på Sol High: implementér adapteren, færdiggør F-kontrakten
+og pris hele grafen før fit. Brug højst resterende 464.10/900 native-sekunder;
+ingen gentagelse af de afsluttede 40-timers checks. Reviewet kørte ingen modeller
+og ændrede ikke ledgeren på 1460.53 s. G/WM og legacy-kerner bevares.
+Det mindre studie er ikke accept af det gamle syvdages fit, måneds-generalitet,
+kalibreret populationsdækning eller hele F4. Følgende statusafsnit er historik.
+
 ## F4-H2: native v2 PC råkontrolleret, metodevalg er næste trin
 
 Aktiv næste opgave: [review efter native v2](root/H2_NATIVE_V2_NEXT_REVIEW.md).

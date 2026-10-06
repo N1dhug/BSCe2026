@@ -1,5 +1,12 @@
 # F4-H2: next decision after the native v2 PC audit
 
+**Review completed:** the active decision and Sol implementation handoff are in
+[H2_COMPACT_ESTIMATION_REVIEW.md](H2_COMPACT_ESTIMATION_REVIEW.md). The new,
+explicit 48/24/168-hour study supersedes the old period/work-graph choice;
+its actual timing/data admission is still pending. Preserve all earlier
+mathematics and evidence for their declared scopes. No completed timing run
+should be repeated from the historical commands below.
+
 The native v2 PC run passes the full raw audit. Equivalent arithmetic is
 implemented and measured; historical fitting is still not time-admitted.
 This is the active next task. The PC timing commands in the preceding
