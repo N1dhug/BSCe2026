@@ -18,6 +18,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 OUT = ROOT/'files/output/bm_1/runs/estimation'
 REVIEW = OUT/'f4_h2_native_pc_pilot_20261006'
+PC_RUNS = {
+    1: ('f4_h2_native_pc_20261006', REVIEW, 900.),
+    2: ('f4_h2_native_v2_pc_20261006', OUT/'f4_h2_native_v2_pc_pilot_20261006', 300.),
+}
 
 
 def require(ok, reason):
@@ -85,7 +89,7 @@ def validate_pc_checkpoint(saved, spec, candidate):
     return payload
 
 
-def audit(archive):
+def audit(archive, *, version=1):
     import numpy as np
     from scipy.special import logsumexp
     from src.exe.run_model.bm_1_h2_native import (
@@ -93,7 +97,9 @@ def audit(archive):
     from src.exe.run_model.bm_1_h2_precise import _load
     from src.method.bm_1_interval_precise import digest
     from src.solver.finite_volume import finite_volume_1d_fitted
-    files = read_archive(archive); run = 'f4_h2_native_pc_20261006/'
+    require(version in PC_RUNS, 'Unknown declared PC run version.')
+    run_name, review, requested_seconds = PC_RUNS[version]
+    files = read_archive(archive); run = run_name+'/'
     expected = {run+n for n in ('algebra.json', 'hour_wall_times.json', 'linear.json.gz',
         'manifest.json', 'p4_c0_plus.json.gz', 'report.json', 'run.lock', 'two_narrow.json.gz')}
     require(set(files) == expected | {'f4_h2_remaining_budget.json'}, 'Unexpected/missing PC evidence members.')
@@ -114,10 +120,10 @@ def audit(archive):
         and env['platform'].startswith('Windows-') and env['python'].startswith('3.11.') and report['workers'] == 8
         and report['blas_threads'] == 1, 'Declared worker/native environment differs.')
     require(set(m['source_sha256']) == set(_source()), 'Source dependency set differs.')
-    bundle = REVIEW/'execution_sources.zip'
+    bundle = review/'execution_sources.zip'
     frozen_source = None
     if bundle.exists():
-        declared_bundle = _load(REVIEW/'execution_sources_manifest.json')
+        declared_bundle = _load(review/'execution_sources_manifest.json')
         require(declared_bundle['pc_manifest_identity'] == m['identity']
             and declared_bundle['source_sha256'] == m['source_sha256']
             and declared_bundle['bundle_sha256'] == hashlib.sha256(bundle.read_bytes()).hexdigest(),
@@ -210,14 +216,14 @@ def audit(archive):
         summaries.append(summary); all_rows.extend(rows); all_walls.extend(walls)
     require(report['cases'] == summaries and sum(all_walls) <= report['elapsed_seconds'], 'Summary timing/errors differ from raw evidence.')
     ledger = read('f4_h2_remaining_budget.json'); _ledger_valid(ledger)
-    seed = _load(REVIEW/'seed_before_pc.json'); _ledger_valid(seed)
+    seed = _load(review/'seed_before_pc.json'); _ledger_valid(seed)
     require(ledger['entries'][:-1] == seed['entries'] and ledger['entries'][-1]['status'] == 'closed',
         'PC ledger does not exactly extend the frozen pre-PC ledger.')
     before = sum(e['charged_seconds'] for e in seed['entries'] if e['label'].startswith(PREFIX))
     entry = ledger['entries'][-1]
-    label = PREFIX+str(PureWindowsPath(m['campaign']).parent/'f4_h2_native_pc_20261006')
+    label = PREFIX+str(PureWindowsPath(m['campaign']).parent/run_name)
     require(entry['label'] == label and report['native_seconds_before'] == before
-        and report['grant_seconds'] == min(900.-before,36000.-seed['validation_reserve_seconds']-seed['charged_seconds'])
+        and report['grant_seconds'] == min(requested_seconds,900.-before,36000.-seed['validation_reserve_seconds']-seed['charged_seconds'])
         and report['stop_reserve_seconds'] == 60.
         and report['elapsed_seconds'] <= entry['charged_seconds'] < report['grant_seconds'],
         'PC time reservation/charge does not match the report.')
@@ -230,6 +236,7 @@ def audit(archive):
     illustrative = ledger['charged_seconds']+coarse_seconds+1.5*1344*(2*2561/1921)*steady+3600.+60.
     return dict(schema='f4-h2-native-pc-raw-audit-v1', raw_verified=True,
         archive_sha256=hashlib.sha256(Path(archive).read_bytes()).hexdigest(), manifest_identity=m['identity'],
+        declared_pc_version=version, requested_seconds=requested_seconds,
         source_files_verified=len(source_rows), source_equivalence=source_rows, environment=env,
         independent_control_verified=True, initial_prior_maximum_log_differences=initial_prior_errors,
         checkpoint_score_arithmetic='Declared CPython 3.11 ordered binary64, exact comparison; no tolerance or checksum replacement.',
@@ -254,16 +261,20 @@ def audit(archive):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive',type=Path,required=True)
-    parser.add_argument('--output',type=Path,default=REVIEW/'raw_audit.json')
+    parser.add_argument('--version',type=int,choices=PC_RUNS,default=1)
+    parser.add_argument('--output',type=Path)
     args = parser.parse_args(); begun = perf_counter()-.25
+    if args.output is None:
+        args.output = PC_RUNS[args.version][1]/'raw_audit.json'
     import os
     for name in ('OPENBLAS_NUM_THREADS','OPENBLAS_DEFAULT_NUM_THREADS','OMP_NUM_THREADS','MKL_NUM_THREADS'):
         os.environ[name] = '1'
     from src.exe.run_model.bm_1_h2_native import native_reservation
     from src.exe.run_model.bm_1_h2_precise import _write
     require(not args.output.exists(),'Preserve the existing completed audit.')
-    with native_reservation(OUT/'f4_h2_remaining_budget.json',90.,'native-pc-raw-review',begun=begun):
-        result = audit(args.archive)
+    label = 'native-pc-raw-review' if args.version == 1 else 'native-v2-pc-raw-review'
+    with native_reservation(OUT/'f4_h2_remaining_budget.json',90.,label,begun=begun):
+        result = audit(args.archive,version=args.version)
         _write(args.output,result)
         print(json.dumps({k:v for k,v in result.items() if k not in ('source_equivalence','cases')},ensure_ascii=False))
 
