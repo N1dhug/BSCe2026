@@ -1,5 +1,10 @@
 # F4-H2: native interval kernel, 6 October 2026
 
+**Implementation update:** interval-moment/CDF adapters and the focused independent
+control are complete. Use [the active Sol handoff](H2_INTERVAL_FORECAST_IMPLEMENTATION.md)
+for current source, evidence, ledger and remaining F data/throughput prerequisites.
+The earlier numbers/next tasks below describe their original review scope.
+
 **Current handoff:** [PC raw review and native v2](H2_NATIVE_PC_REVIEW.md).
 The first PC run passes in 118.67 s, but the full 49-pair plan fails the time
 gate at that synthetic rate. V2 preserves the method and passes its 40-hour
