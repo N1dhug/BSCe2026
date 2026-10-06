@@ -7,12 +7,17 @@ projection is for 24 synthetic hours only. Applying the same conservative
 rule to the old seven-day illustration gives 20.65 hours including spent
 time and the provisional two-hour validation reserve; that illustration no
 longer supports admission. This is not measured historical throughput.
-Use [H2_PRECISE_BATCH.md](H2_PRECISE_BATCH.md) to collect the existing full
-manifest/checkpoints/logs and F configuration without another replay.
+The full archive has now been reviewed without a solver replay: all eight
+checkpoint identities/checksums, 64 saved units, 56 observed updates, eight
+missing predictions and saved numerical guards pass. The 49 declared source
+hashes and input fixture match the Git source with exact Windows LF-to-CRLF
+checkout conversion; original execution/resume hashes are not normalized.
+Use [H2_PRECISE_BATCH.md](H2_PRECISE_BATCH.md) for the raw audit and archive.
 Resolve the actual data/split/baseline contract before revising search scope.
 Do not silently shorten TRAIN, drop curve families or resume the pilot.
-Only summary reports have been received; Windows numerical raw review,
-historical readiness, optimizer convergence and H2/H3 acceptance remain open.
+The F configuration remains an incomplete template. Historical readiness,
+optimizer convergence and H2/H3 acceptance remain open. This prefix audit
+does not validate all 17 candidates, a full day or a new refinement gate.
 
 The positive joint surrogates have not passed the full declared development
 stream. Do not integrate them into historical fitting, relax .05/.002/.05,

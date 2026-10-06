@@ -1,11 +1,12 @@
 # F4-H2 Windows pilot result (6 October 2026)
 
-The eight-worker/eight-candidate/eight-hour synthetic pilot is reported
-complete in 556.53 s; the cumulative H ledger is now 1024.63 s. Its 5.50-hour
+The eight-worker/eight-candidate/eight-hour synthetic pilot is complete and
+its eight checkpoints have been raw-reviewed without replay. Runtime is
+556.53 s; the cumulative H ledger remains 1024.63 s. Its 5.50-hour
 projection applies to 24 synthetic hours only. The old seven-day illustration
 cannot fit the 10-hour ceiling under the measured conservative planning rule.
-See [H2_PRECISE_BATCH.md](H2_PRECISE_BATCH.md) for the next collection-only
-command, raw outputs and historical prerequisites. Do not rerun/resume the
+See [H2_PRECISE_BATCH.md](H2_PRECISE_BATCH.md) for the raw audit, original
+archive and unresolved F data contract. Do not rerun/resume the
 development pilot automatically. This is not historical fit acceptance.
 The old `curves history-fit` does not run the new terminal-tilt batch.
 

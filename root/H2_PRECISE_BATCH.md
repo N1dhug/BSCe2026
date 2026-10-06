@@ -6,6 +6,52 @@ surrogater i H2_SEARCH_FEASIBILITY.md er fortsat afvist. Den eksisterende
 terminalvise tilt-kernel genbruges uændret. Numerisk fit-readiness, H2/H3 og
 videnskabelig accept er stadig falske; en bestået runtimepilot ændrer ikke dette.
 
+## Fuld PC-råreview færdig, 6. oktober 2026
+
+ZIP'en er nu modtaget og gennemgået uden solver-replay. Manifestets identitet,
+alle otte kandidat-identiteter/checksums, kronologi/missing-masker, likelihood-
+summer, afsluttende log-state og det oprindelige budgetestimat er kontrolleret.
+64 timer er gemt: 56 Bayes-opdateringer og otte missing-prædiktioner uden
+likelihood. Alle otte checkpoints har status `prefix_complete`; hele døgnet
+og de øvrige ni kandidater er ikke beregnet af denne pilot.
+
+| Gemt diagnostik | Maksimum | Uændret grænse |
+|---|---:|---:|
+| Conditional guard | 2.3256e-9 | 1e-8 |
+| Overlap-logforskel | 1.7092e-8 | 1e-7 |
+| Massefejl | 2.1760e-14 | 1e-10 |
+| Afsluttende log-normaliseringsfejl | 1.3323e-13 | 1e-10 |
+
+55 observerede opdateringer brugte tre contours, én brugte to. Alle sluttede
+med nul uafklarede celler. Negative tætheder i en enkelt contours ubrugelige
+Fourier-kandidater er ikke klippet ind i posterioren; den eksisterende kernel
+vælger kun resolved/positive celler og fortsætter banken efter behov. Alle
+otte sluttilstande har 1921 endelige log-masser, ned til **-1684.14**, og deres
+state-mean rekonstrueres præcist fra den gemte log-state. Guards er fortsat
+heuristiske roundoffkontroller; dette er ingen ny kontinuumsfejlgaranti.
+
+De 49 rå kildehashes afviger fra Linux-checkoutet, men hver eneste matcher
+præcist Git-indholdet med LF→CRLF, ligesom den gemte input-fixture. De lokale
+Git-blobs er desuden kontrolleret mod den deklarerede `d6e805e`-commits tree.
+Dette dokumenterer Windows-proveniens ved råreview; det ændrer ikke en
+originalhash, kildefil, environment-guard eller execution-/resumelås.
+
+Originale bytes ligger i `f4_h2_precise_pc_pilot_20261006/windows_review_20261006.zip`;
+det aktuelle resultat er `raw_audit.json` i samme mappe. Den tidligere
+`summary_audit.json` beskriver tidspunktet før ZIP-modtagelsen, ikke den
+aktuelle råreviewstatus. Den udførte læse-/auditkode er
+`root/f4/audit_h2_precise_pc.py`; den starter ingen likelihood-replay og
+bogfører ingen ny beregning i H-ledgeren.
+
+Kontrakten i ZIP'en er stadig den ufuldstændige template: 32 null-/tomme
+deklarationsfelter, blandt andet population/målerkolonner, alle splitdatoer,
+eksponeringsaudit, prisområde/skala, baselinefil/origin, fysiske parametre/
+støj og Beta-prior. De udfyldte timeenheder/timezone er arbejdsantagelser.
+Næste beslutning er F's faktiske population og TRAIN-/valideringsperioder,
+med kendt tidligere dataeksponering; derefter fastlægges de øvrige inputs
+og et søgedesign inden for loftet. G's januarvalg overtages ikke automatisk.
+Der er ingen ny lokal numerisk kørsel til Johan på baggrund af denne ZIP.
+
 ## Windows-resultat og næste trin, 6. oktober 2026
 
 Johans `pilot_report.json` har status `completed`, med otte færdige timer
@@ -40,10 +86,10 @@ at passe til tabellen, og obligatoriske kurvefamilier/acceptkrav bevares.
 
 De to originale uploadfiler og ren budgetaritmetik er arkiveret i
 `files/output/bm_1/runs/estimation/f4_h2_precise_pc_pilot_20261006/`.
-Fuld PC-manifest, checkpoint-checksums, per-time-guards/contours og posterior
-er endnu ikke modtaget og rå-reviewet. Næste trin samler eksisterende filer
-og F-konfigurationen; det beregner ingen nye likelihoods og læser ingen
-historiske observationsworkbooks. Kør fra din eksisterende repo-rod:
+Det oprindelige næste trin var at samle fuld PC-manifest, checkpoints,
+per-time-guards/contours og posterior samt F-konfigurationen. ZIP'en er nu
+modtaget og rå-reviewet, se ovenfor. Den følgende indsamlingskommando er
+allerede udført; den kræver ingen ny likelihood eller historisk workbook:
 
 ```powershell
 $ErrorActionPreference = "Stop"
@@ -62,8 +108,8 @@ Write-Host "Send denne fil: $zip"
 ```
 
 Ingen pull/branchskift eller ny pilot er nødvendig for at samle filerne.
-Kontrakten kan stadig være den ufuldstændige template; åbne felter forbliver
-åbne. Efter råreview fastlægges faktisk population, TRAIN/split/eksponering,
+Kontrakten er stadig den ufuldstændige template; åbne felter forbliver
+åbne. Efter det nu færdige råreview fastlægges faktisk population, TRAIN/split/eksponering,
 baseline/prior-lead, skala og fysisk/støj-betingelse, før søgedesignet revideres.
 Ved flytning PC/chat videreføres den seneste fælles ledger. Den uændrede
 468.09-sekunders seed er kun det oprindelige startpunkt, ikke nyt restbudget.

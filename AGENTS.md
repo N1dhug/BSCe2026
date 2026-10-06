@@ -1,15 +1,21 @@
 # Fælles projektkontekst
 
-## F4-H2 Windows-runtimepilot modtaget, 6. oktober 2026
+## F4-H2 Windows-runtimepilot rå-reviewet, 6. oktober 2026
 
-Johans syntetiske pilot er rapporteret komplet: 8 kandidater x 8 timer,
-8 workers/BLAS=1, 556.53 s. Samlet H-ledger er nu **1024.63 s**.
+Johans syntetiske pilot er nu rå-reviewet: otte valide kandidat-checkpoints,
+64 timer inklusive 56 Bayes-opdateringer og otte missing-prædiktioner.
+Manifest/kandidat/checksums, log-normalisering, guards og tidsprojektion består
+uden FV-replay. Alle 49 kildefiler og fixture matcher præcist pilotens Git-
+indhold med Windows LF→CRLF-checkout; originalhashes/resumelåse er uændrede.
+8 workers/BLAS=1, 556.53 s. Samlet H-ledger er stadig **1024.63 s**.
 Rapportens 5.50 timers H-estimat gælder kun **24 syntetiske TRAIN-timer**;
 det åbner ikke historisk search. Samme forsigtige regneregel på syv dage
 giver 20.65 timer inklusive foreløbig 2-timers reserve og allerede brugt tid.
 Den gamle 17-kandidater/syv-dage-budgetillustration er derfor overhalet.
-Rårapporter og ren budgetaritmetik er arkiveret; fuld Windows-manifest,
-checkpoints/guards og F-datakontrakt skal rå-reviewes uden nye replays.
+Original ZIP, reproducerbar råauditor og raw_audit.json er arkiveret.
+F-konfigurationen er stadig ufuldstændig: population, TRAIN/split/eksponering,
+pris/skala, tidligere baseline/prior og fysisk/støj-betingelse mangler.
+Næste er disse deklarationer og et revideret søgedesign, ikke endnu en pilot.
 Se root/H2_PRECISE_BATCH.md. Ingen automatisk resume, ny pilot, kortere TRAIN
 eller færre kurvefamilier; 10-timersloftet og alle H-acceptkrav bevares.
 Ved flytning mellem PC/chat bruges den seneste fælles ledger, ikke seedens
