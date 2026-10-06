@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Path $snapshot | Out-Null
 $sourceZip=Join-Path $snapshot 'source_export.zip'
 $packetBase='files/output/bm_1/runs/estimation'
 # Immutable source/data export; no active branch/worktree change and no installs.
-git -C $RepoRoot archive --format=zip --output=$sourceZip $SourceCommit src root/f4 "$packetBase/f4_h2_native_budget_seed_20261006.json" "$packetBase/f4_h2_compact_data_pc_packet_20261007" "$packetBase/f4_h2_compact_data_pc_audit_20261007.json"
+git -C $RepoRoot archive --format=zip --output=$sourceZip $SourceCommit .gitattributes src root/f4 "$packetBase/f4_h2_native_budget_seed_20261006.json" "$packetBase/f4_h2_compact_data_pc_packet_20261007" "$packetBase/f4_h2_compact_data_pc_audit_20261007.json"
 if ($LASTEXITCODE -ne 0) { throw 'Source/data-export fejlede; ingen rateprøve startet.' }
 $sourceRoot=Join-Path $snapshot 'code'
 Expand-Archive -LiteralPath $sourceZip -DestinationPath $sourceRoot

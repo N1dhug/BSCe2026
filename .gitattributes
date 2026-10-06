@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Frozen F4 receipts: byte hashes include the original LF/CRLF bytes.
+files/output/bm_1/runs/estimation/f4_h2_compact_data_pc_packet_20261007/* -text
+files/output/bm_1/runs/estimation/f4_h2_compact_data_pc_audit_20261007.json -text

@@ -1,0 +1,19 @@
+{
+  "schema": "f4-h2-user-reported-pre-model-failure-v1",
+  "source_commit": "2416ad57afb5150f909cd4cb44fbeb703484b529",
+  "run_name": "f4_h2_compact_rates_pc_20261007_014819",
+  "status": "failed",
+  "reason": "Raw data audit changed.",
+  "failure_location": "measure_h2_compact_rates.py:frozen_packet:130",
+  "elapsed_seconds_before_ledger_close": 6.9115608998108655,
+  "invocation_charged_seconds": 6.964884199900553,
+  "H_charged_seconds": 1540.6592115679418,
+  "evidence_origin": "User-pasted report.json and terminal; review ZIP/full ledger not yet received",
+  "full_ledger_verified": false,
+  "seed_updated": false,
+  "automatic_retry": false,
+  "historical_fit_ready": false,
+  "runtime_admitted": false,
+  "scientific_acceptance": false,
+  "next_step": "Receive and verify failed review ZIP/ledger, extend the exact entry prefix with export-check charge, then provide a new pinned pilot command."
+}
