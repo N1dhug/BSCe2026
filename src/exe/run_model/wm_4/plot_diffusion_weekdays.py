@@ -6,19 +6,17 @@ import numpy as np
 
 from src.exe.run_model.wm_4.analyze_observation_uncertainty import DEFAULT_WEEKS
 from src.exe.run_model.wm_4.fit_daily import DAY_HOURS, aligned_wm4_data, day_start, selected_day
-from src.exe.run_model.wm_4.fit_time_diffusion_qp import fit_prediction_day
+from src.exe.run_model.wm_4.fit_constant_diffusion_qp import fit_prediction_day
 
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "uncertainty" / "diffusion_weekdays"
 
 
-def build_plot_data(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hour=60, max_state_iter=50, state_tol=1e-8, min_order=1, max_order=11, min_relative_improvement=0.05):
+def build_plot_data(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hour=60, max_state_iter=50, state_tol=1e-8):
     result = fit_prediction_day(
         frame, prediction_day, weeks, steps_per_hour,
         max_state_iter=max_state_iter, state_tol=state_tol,
-        min_order=min_order, max_order=max_order,
-        min_relative_improvement=min_relative_improvement,
     )
     hourly_index = np.arange(DAY_HOURS, dtype=int) * int(steps_per_hour)
     days = []
@@ -41,7 +39,7 @@ def save_plot(result, days, path):
 
     fig, axes = plt.subplots(4, 1, figsize=(14, 13), sharex=True)
 
-    axes[0].step(diffusion_time, diffusion, where="post", label=f"Estimated diffusion g(t), K={result['selected_order']}")
+    axes[0].plot(diffusion_time, diffusion, label=f"Estimated constant diffusion $\\sigma$={result['sigma']:.4f}")
     axes[0].plot(hours, observed_std, marker="o", linestyle="--", label="Empirical observed $s_I$ across 5 weekdays")
     axes[0].set_ylabel("Diffusion / observed std")
     axes[0].legend()
@@ -81,9 +79,6 @@ def main():
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
-    parser.add_argument("--min-order", type=int, default=1)
-    parser.add_argument("--max-order", type=int, default=11)
-    parser.add_argument("--min-relative-improvement", type=float, default=0.05)
     parser.add_argument("--output", default=str(OUTPUT))
     args = parser.parse_args()
 
@@ -91,8 +86,6 @@ def main():
     result, days = build_plot_data(
         frame, args.day, args.weeks, args.steps_per_hour,
         max_state_iter=args.max_state_iter, state_tol=args.state_tol,
-        min_order=args.min_order, max_order=args.max_order,
-        min_relative_improvement=args.min_relative_improvement,
     )
 
     output = Path(args.output)
@@ -102,7 +95,7 @@ def main():
 
     print(f"prediction day={result['prediction_day']:%Y-%m-%d}")
     print("corresponding weekdays=" + ", ".join(values["day"].strftime("%Y-%m-%d") for values in days))
-    print(f"selected harmonic order K={result['selected_order']}")
+    print(f"constant diffusion sigma={result['sigma']:.10f}")
     print(f"plot={path}")
 
 
