@@ -37,11 +37,13 @@ def save_plot(result, days, path):
     hours = np.arange(DAY_HOURS, dtype=float)
     diffusion_time = np.asarray(result["prediction_state"]["Time"], dtype=float)
     diffusion = np.asarray(result["fine_g"], dtype=float)
+    observed_std = result["hourly"]["s_I"].to_numpy(dtype=float)
 
     fig, axes = plt.subplots(4, 1, figsize=(14, 13), sharex=True)
 
     axes[0].step(diffusion_time, diffusion, where="post", label=f"Estimated diffusion g(t), K={result['selected_order']}")
-    axes[0].set_ylabel("Diffusion g(t)")
+    axes[0].plot(hours, observed_std, marker="o", linestyle="--", label="Empirical observed $s_I$ across 5 weekdays")
+    axes[0].set_ylabel("Diffusion / observed std")
     axes[0].legend()
     axes[0].grid(True, alpha=0.25)
 
