@@ -1,5 +1,34 @@
 # Fælles projektkontekst
 
+## F4-H2: data-policy implementeret, lokal frysning er næste trin, 6. oktober
+
+Aktiv overdragelse: [F's betingede datagrundlag](root/H2_COMPACT_DATA_FOUNDATION.md).
+Johan valgte kurver først: C=1/k=2/Xi=1/sigma_x=.5/Beta(20,20) er faste
+F-referenceantagelser; sigma_y=.04 er særskilt nominal likelihood-støj.
+Ingen historisk fysisk calibration eller G/WM-parametre. De 13 MED-huse
+behandles separat. Historik 1. januar→16. februar (1104 h) giver en frosset
+168-bin OLS-baseline (mindst 3 komplette timer/bin), effektskala 1.1×max
+og DK1 spot-proxy-min/max med 10% historikpadding. Ingen imputation/klipning.
+Kun pre-origin forbrug og pre-final prisinput læses; target-Y er ikke i pakken.
+Slutugens tidligere eksponering kan ikke verificeres; udviklings-holdout,
+ikke blind H3-accept. En exposure-intervalguard afviser blindhedsclaim.
+
+Ny policy: `root/f4/h2_compact_data_policy_20261006.json`; gammelt partial og
+metodevalg bevares. Native kerne/celler/precisiongates uændrede; fysisk
+begrundet revision til base h=1/32768 og fine h=1/65536 for positiv CN.
+Det gamle 8.76 h-proxyoverslag må ikke åbne fit. Faktiske rates og samlet
+jobgraf mangler stadig; 10 h samlet loft, 4–6 h mål. Ingen fit startet.
+
+Én kort syntetisk datakontrol består på 4.06 s; OLS-fejl 1.78e-15,
+cutoff/poison/NaN/hash/overwrite/positivity/blindhedsafvisning kontrolleret.
+H-ledger 1498.46 s; native 473.83/900 s, rest 426.17 s samlet.
+Stor privat input.xlsx kan ikke hentes her: faktiske baseline/skala-tal
+skal fryses med `root/f4/run_h2_compact_data.ps1` lokalt og ZIP råreviewes.
+180 s maksimum inklusive 60 s stopreserve, 1 proces/BLAS=1, ingen model/fit.
+Launcheren eksporterer immutable source uden aktiv branch/worktree-skift.
+Sol High er tilstrækkelig. Historisk/numerisk/runtime/videnskabelig accept
+forbliver false. Følgende F-statusafsnit er historik.
+
 ## Vejledermateriale og legacy — Johan, 6. oktober 2026
 
 Alle tavlebilleder Johan har givet er som tommelfingerregel materiale fra
