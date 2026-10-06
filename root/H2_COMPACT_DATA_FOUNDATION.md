@@ -1,5 +1,9 @@
 # F4-H2: betinget datagrundlag, råreview 7. oktober 2026
 
+Næste faktiske rate-/præcisionsprøve er implementeret: se
+[PC-pilot og afgrænsning](H2_COMPACT_RATE_PILOT.md). Datapakkens budgettal
+nedenfor er historikken ved råreviewet; seneste fælles seed gælder.
+
 Aktiv datapolicy er `root/f4/h2_compact_data_policy_20261006.json`. Johan valgte
 **kurver først**: fælles f/g estimeres betinget på faste F-referenceparametre,
 ikke samtidig historisk identifikation af de fysiske parametre. Implementeringen
