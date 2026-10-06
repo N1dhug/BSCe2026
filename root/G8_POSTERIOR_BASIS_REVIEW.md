@@ -1,5 +1,7 @@
 # G8 — posterior-basis: udledning, én kandidat og målrettet forfining
 
+**Aktuel opfølgning:** Det efterfølgende eget M254-filter og dets 513-forfining består nu de deklarerede rekursive gates. Se [M254-forfiningens matematik og resultater](G8_M254_REFINEMENT_REVIEW.md). De daterede forsøg og gamle næste-trin-afsnit nedenfor bevares som historik; G7-control er stadig åben.
+
 6. oktober 2026. G-parent: e77aaafdf2613fa2e846f458386145ce121ae33b.
 Dette er en fortsættelse af G8, adskilt fra F4-H2 og WM.
 G8's gamle M38/M78-resultater og alle negative gates bevares.
