@@ -1,5 +1,7 @@
 # G0–G4: januar-fit, frosset ugeprognose og lille kurvepilot
 
+**M254-forfining gennemført, 6. oktober:** Eget Bernstein-filter med 513 celler og max_step=1/192 gennemfører samme 24 timer fra egen eksakte prior. Alle parrede conditional-/marginalgates mod gemt M254257 og FV513 består; faktisk JSON-resume time22→24 er identisk, også i conditional evidence. Mod FV513: conditional L1 0.00354065, marginal L1 0.00108111, nodevægtforskel 0.000265417; største projektion L1 0.000971943. Filter 309.743 s; resume 17.327 s; invocation 327.829 s. Vejlederens 255 Bernstein-funktioner, model, likelihood og tolerancer er uændrede. **M254-repræsentationen er klar til næste G7-interfacearbejde på denne syntetiske case; G7-mixture-prisforward og prisstyring er endnu ikke implementeret eller accepteret.** Næste er et typed own-origin-handoff og kort prisforward-runtimepilot før et konkret optimizerbudget. Ingen lokal kørsel kræves nu. Se [matematik, valg, resultater og begrænsninger](G8_M254_REFINEMENT_REVIEW.md). Statusafsnittene nedenfor er dateret historik.
+
 **Aktuel G-overdragelse, 6. oktober:** Eget Bernstein M254-filter er nu komplet på257 celler; alle udførte FV/conditional-gates og faktisk JSON-resume består. Samlet126.105 s før råarkiv. Eget513-replay og mixture→G7-accept er fortsat åbne efter runtime-admission. Se [matematik, resultat og næste opgave](G8_M254_FILTER_REVIEW.md).
 Januar-/G4-kommandoerne nedenfor bevares som historik og reproduktion.
 

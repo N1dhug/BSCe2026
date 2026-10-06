@@ -1,5 +1,7 @@
 # G8 — eget rekursivt filter med vejlederens Bernstein M254
 
+**Efterfølgende forfining:** Eget M254513-filter består nu alle paired gates og faktisk resume. Se [det nye forfiningsreview](G8_M254_REFINEMENT_REVIEW.md). Det oprindelige 257-forsøg, budgetstop/admission og råresultater nedenfor er uændrede historik.
+
 Dette er den bestilte opfølgning på det statiske M254-review. Vejlederens
 basisfamilie er primær; legacy-M38/M78 og den lokaliserede 42-leds-reference
 bevares. Statisk repræsentationsevne er ikke i sig selv filteraccept.
