@@ -64,8 +64,11 @@ class qp_params:
 
     def _qp_constraints(self, stabilize=True):
         eps, dt = self.model._FIT_EPS, self.model.dt
-        rows = [np.array([1.0, -1.0, 0.0])]
-        rhs = [0.0]
+        rows = [
+            np.array([1.0, -1.0, 0.0]),
+            np.array([-1.0, -1.0, 1.0]),
+        ]
+        rhs = [0.0, 0.0]
         if stabilize:
             rows.extend([
                 np.array([dt * dt, 0.0, -2.0 * dt]),
