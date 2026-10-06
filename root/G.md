@@ -1,5 +1,8 @@
 # G-plan — deterministisk BM-kerne, stokastisk udvidelse og WM4-sammenligning
 
+**G6b-panel gennemført, 6. oktober 2026:** Én låst syntetisk 24-timerscase med samme Beta(20,20)-prior, lineær f/g og fast sigma_x=0.2. FV består rum-/tidskontroller. M20 afvises (initial L1=0.291667, statevarians/kvantiler og demand-CDF); M38 matcher FV (maks. demandmiddelforskel 0.0001061, J-forskel 0.0221 %). EM2048 stemmer med FV inden for registrerede praktiske tolerancer og punktvise sampling-SE; nul rå randoverskridelser. FV er primær reference og hurtigere end M38 her. V3-hovedpanel 7.101 s, invocation 8.840 s plus separat genbrugt M20-pilot 1.120 s; fejlede interfaceforsøg er bevaret uden komplet samlet timing. To fokuserede tests består; ingen nye fits eller shared-kernelændringer. Dette er numerisk udviklingsevidens, ikke historisk forecast-/intervalaccept. Se [matematik, valg og råreview](G6B_DISTRIBUTION_PANEL_REVIEW.md). **Næste: G8 kendt-parameter-statefilter, derefter lille rho-bank og G7.** Ingen lokal kørsel kræves nu. Ældre næste-trin-afsnit nedenfor er historiske.
+
+
 **G6a-reference færdig, 6. oktober 2026:** Konstant støj kalibreret med analytisk nonnegative LS på fem tidligere matchende weekdays, genbrug af S3/lambda=0 uge13+18. 336 målte timer; procesbånd dækker 45.83 % mod 88.99 % for historisk spredning omkring samme G4-center. Uge13 lineær statevarians overskrider den fysiske bound1/4; båndene er ikke accepteret som kalibrerede 95 %-intervaller. 168 propagationer/2.283 s, begge tidsforfininger og tre fokuserede tests består. Ingen nye strukturelle fits eller støjfamilier; F/WM uændret. Se [matematik og negativt G6a-resultat](G6A_LINEAR_NOISE_REVIEW.md). **Næste: G6b med FP/FV, Beta-mixture og EM på det faste lille syntetiske panel.**
 
 

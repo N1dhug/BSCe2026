@@ -127,3 +127,7 @@ python -B -m src.exe.run_model.bm_1.linear_noise --raw-csv "PATH/raw_inputs.csv"
 ```
 
 Output skal være en ny mappe; ingen automatisk genfit eller retuning. Den gemte G6a-prøve genbruges ved review, så Johan behøver ikke køre denne kommando nu. Ved budget-/numerikstop bevares filer; stop er ikke accept. Den første G6a-run har ingen resume-mekanisme, fordi hele panel er målt til få sekunder. G6b/G8/G7's selvstændige kontrolkrav og budgetter bevares.
+
+## Kildepræcisering fra efterfølgende matematisk gennemgang
+
+Lecture08 slide10, (20), giver den lineære kovariansligning Pdot=AP+PA^T+GG^T. Alba Gonzalo Primos upload `09-MSC_AGP_FINAL-1.pdf`, afsnit6.1.2, (6.4)/(6.7), viser BM-EKF-processkovarians og outputvarians. Higham2001 afsnit8, (8.3), giver Itô-korrektionen bag generator-/momentargumentet. Den konkrete five-weekday-std-kalibrering af sigma og startpolitikken P0=0 var vores udviklingsvalg, ikke en kildevalideret procedure. G6b bruger en særskilt samme-prior-reference med P0=1/164; den ændrer ikke denne historiske kørsels definition eller negative resultat.
