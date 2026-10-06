@@ -1,5 +1,12 @@
 # F4-H2: exact-kernel acceleration and bounded adaptive estimation
 
+**Review completed:** the active decision and Sol implementation handoff are in
+[H2_COMPACT_ESTIMATION_REVIEW.md](H2_COMPACT_ESTIMATION_REVIEW.md). The new,
+explicit 48/24/168-hour study supersedes the old period/work-graph choice;
+its actual timing/data admission is still pending. Preserve all earlier
+mathematics and evidence for their declared scopes. No completed timing run
+should be repeated from the historical commands below.
+
 **Native v2 PC update:** implementation/equivalence is established for the
 saved synthetic cases, but the complete 49-pair plan fails the timing gate.
 Next is [the explicit search/validation review](H2_NATIVE_V2_NEXT_REVIEW.md),

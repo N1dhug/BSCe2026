@@ -1,5 +1,19 @@
 # H2: raw historical inputs and the next fitting pilot
 
+**Active compact decision, 6 October:** the explicitly revised windows are
+TRAIN 18–19 February 2022, MODEL_SELECTION 20 February and unchanged final
+week 21–27 February. Prior origin is 17 February; its 24-hour lead is
+prediction-only. Use the fixed mean of all 13 audited MED households.
+See [the compact method review](H2_COMPACT_ESTIMATION_REVIEW.md) and
+`f4/h2_compact_method_decision_20261006.json`. All hours in the new TRAIN
+are used; this is a limited new experiment, not a subset passed off as the
+old seven-day fit. Original decisions below are historical.
+Exact columns, F price/scale/physical/noise/prior/baseline provenance and final
+exposure still require completion. The compact decision is not executable.
+The open forecast repeats only the prior seven days' hourly prices and uses
+the pre-origin frozen MED-only baseline; its input assumptions/uncertainty are
+reported separately from the contemporaneous final prequential filter.
+
 **6 October decision:** use the fixed mean of the 13 audited MED households,
 separately from UDEN. TRAIN is 7–13 February 2022, MODEL_SELECTION 14–20
 February, and planned final evaluation 21–27 February. Windows are half-open
