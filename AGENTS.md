@@ -1,5 +1,23 @@
 # Fælles projektkontekst
 
+## F4-H2: PC-native rå-reviewet, hurtigere v2 kontrolleret
+
+Aktiv indgang: `root/H2_NATIVE_PC_REVIEW.md`. Første PC-native består alle
+40 units/36 observerede opdateringer på 118.67 s; 54 sourcehashes/checkpoints/
+referencer/guards/ledger er råvalideret uden FV-replay. Python 3.11-scoren
+rekonstrueres eksakt i read-only-auditor; execution/resume/checksums ændres ikke.
+Ved den målte varme maksimumstakt 3.54858 s giver den fulde 49-par-plan 13.41 h
+alene for basearbejde. Historisk fit er derfor ikke admitted; fine-/forecast-
+arbejde og faktisk historisk rate mangler stadig. Ingen automatisk kortere TRAIN,
+manglende kurvefamilie eller gammel 17-kandidatpanel som løsning.
+Samme native metode v2 fjerner gentagne exp/log/divisioner og består igen de
+40 matchende timer på 80.72 s her; største log-state-fejl 9.19e-10 mod 1e-7.
+Næste PC-kommando bruger nyt v2-run-dir og højst 300 s, inklusive 60 s stopreserve.
+H-ledger 1352.86 s; native 328.23/900 s, rest 571.77 s over alle maskiner/resumes.
+Nyeste seed udvider PC-historikken; originale rådata/source/seeds er bevaret.
+MED/tre februaruger og 10-timersloftet bevares; G/WM og de 49 gamle F-kilder
+er uændrede. Fuld datakontrakt og prissat heljob-gate blokerer fortsat optimizer.
+
 ## F4-H2: native kerne kontrolleret, 6. oktober 2026
 
 Aktiv overdragelse: `root/H2_NATIVE_DEVELOPMENT.md`. Isoleret log-Thomas/Numba

@@ -1,5 +1,11 @@
 # F4-H2: exact-kernel acceleration and bounded adaptive estimation
 
+**Implementation update, 6 October:** [PC raw review and native v2](H2_NATIVE_PC_REVIEW.md)
+is the active command/status handoff. The first native PC check passes, but
+the full 49-pair workload is not time-admitted. An equivalent arithmetic v2
+passes the matched synthetic controls here; its PC timing is next. The
+mathematical decisions below remain binding; no historical fit is enabled.
+
 Mathematical decision, 6 October 2026, after the Windows raw audit. This is
 the Astra review requested by Johan. **The implementation and speed are not
 yet established.** This document supersedes the next-action sections of
