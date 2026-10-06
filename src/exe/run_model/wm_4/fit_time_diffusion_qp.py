@@ -95,6 +95,8 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
         "constant_q": constant_q,
         "constant_variance_rmse": variance_rmse_constant, "constant_std_rmse": std_rmse_constant,
         "hourly": hourly, "prediction_state": prediction_state,
+        "training_days": list(fit["training_days"]),
+        "training_states": list(fit["deterministic_states"]),
         "fine_index": fine_index, "fine_variance": fine_diffusion["variance"], "fine_g": fine_diffusion["std"],
         "actual": actual,
     }
