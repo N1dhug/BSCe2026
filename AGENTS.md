@@ -1,5 +1,18 @@
 # Fælles projektkontekst
 
+## F4-H2 præcis batch, 6. oktober 2026
+
+Det begrænsede søgegrundlag er implementeret: `bm_1_h2_precise`, præcis
+terminal-tilt, 17 faste koordinatkandidater og kandidat-parallelitet med egen
+log-state hele TRAIN. Brug `root/H2_PRECISE_BATCH.md`; legacy `curves history-fit`
+er ikke den nye intervalbackend. Næste lokale kommando er den syntetiske
+8-worker/8-time-runtimepilot, højst 900 s, med samme samlede H-budgetledger.
+Den fastlægger ikke historisk throughput. F-datakontrakten skal stadig udfyldes
+før historisk prepare/pilot/search; G's kontrakt må ikke overtages automatisk.
+Alle negative guards/budgetstops bevares. 17-kandidatprøven er ikke konvergeret
+fit eller TRAIN-modelvalg. Numerisk/historisk/H2/H3-readiness er fortsat falsk.
+Ingen automatisk fuld suite, ekstra panel eller lang kørsel i chatten.
+
 ## F4-H beregningsbudget, Johan 6. oktober 2026
 
 Samlet resterende H-beregning skal planlægges mod 4–6 timer og holde sig under

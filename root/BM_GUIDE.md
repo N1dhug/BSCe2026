@@ -1,3 +1,12 @@
+# F4-H2 bounded precise batch (6 October 2026)
+
+For the next F-only runtime pilot use `root/f4/run_h2_precise_pilot.ps1` from
+clean, idle source. It fixes 8 workers, BLAS=1, eight candidates/eight synthetic
+hours and a 900-second invocation cap, with a shared cumulative H budget.
+See [H2_PRECISE_BATCH.md](H2_PRECISE_BATCH.md) for mathematics, raw outputs,
+resume and the later historical commands. It is not historical fit acceptance.
+The old `curves history-fit` does not run the new terminal-tilt batch.
+
 # BM — arbejdsvejviser
 
 **Arbejdsregel fra Johan, 5. oktober — G/F og testomfang:** G (deterministisk

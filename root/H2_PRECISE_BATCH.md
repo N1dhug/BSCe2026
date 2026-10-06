@@ -1,0 +1,146 @@
+# F4-H2: afgrænset præcis søgning og lokal runtimepilot
+
+Grundlaget er implementeret 6. oktober 2026. Dette er F's stokastiske
+intervalmodel; G's fit/data/modelvalg og WM ændres ikke. De negative
+surrogater i H2_SEARCH_FEASIBILITY.md er fortsat afvist. Den eksisterende
+terminalvise tilt-kernel genbruges uændret. Numerisk fit-readiness, H2/H3 og
+videnskabelig accept er stadig falske; en bestået runtimepilot ændrer ikke dette.
+
+## Matematik og afgrænsning
+
+Hver måling er det normaliserede timegennemsnit
+\(Y_i=\Delta_i^{-1}\int_{s_i}^{t_i}D(v,X_v)\,dv+\epsilon_i\), med
+\(\epsilon_i\sim N(0,\sigma_y^2)\). Den eksisterende terminal-tilt-metode
+beregner fælles endpoint/observation-masser og normaliserer kun ved Bayes.
+Hele log-posterioren, også endelige værdier under almindelig floats rækkevidde,
+gemmes og bruges i næste interval. Kun ægte nulmasse bliver JSON-null/-infinity.
+Ingen floors, clipping eller daglig genstart indføres. Manglende målinger og
+hele perioden fra den erklærede prior-origin til TRAIN får prædiktion uden
+observationslikelihood; dage inden for samme stream paralleliseres aldrig.
+
+For hver kurve bestemmes faldstørrelserne som
+\(d_j=2\exp(\theta_j)/\sum_l\exp(\theta_l)\), med sidste logit nul, og
+knudeværdierne som \(v_j=1-\sum_{l\le j}d_l\). Dette genbruger H's
+eksisterende kurvegeometri: kontinuitet, faldende kurver og endpoints 1/-1.
+To stykker giver to uafhængige parametre for f/g tilsammen; fire stykker giver seks.
+
+Den første batch er **17 på forhånd fastlagte kandidater**: én fælles lineær
+reference, +/-0.5 i hver af to logit-koordinater og +/-0.5 i hver af seks.
+Det er en lokal koordinatprøve fra det lineære udgangspunkt, ikke en færdig
+optimering eller et stort parametergrid. Alle kandidater bruger samme fysiske
+parametre/støj/prior og én fælles f/g over hele TRAIN. En eventuel straf er
+den eksisterende deklarerede kvadratiske knudeafstand til lineære kurver.
+Rapporten kan gemme bedst evaluerede TRAIN-kandidat per familie, men vælger
+ikke modelfamilie, erklærer ikke konvergens og eksporterer ingen accepteret model.
+Valgte kurvers numerik, MODEL_SELECTION og frosset H3 mangler stadig.
+
+Den foreløbige præcise indstilling er 1921 celler, h=1/24576 dag, 64 frekvenser,
+periode 2 og uændrede contour-guards. Den er lokalt kontrolleret på den gemte
+fixture mod 2561/h=1/49152, ikke universelt valideret på alle kandidater/historik.
+Ved en fejlet guard stoppes hele batchen; kandidaten droppes ikke og omkøres
+ikke automatisk med andre settings. Frys B/U fra de eksisterende timeholdte
+udviklings-/historiske adaptere. Vilkårlige kontinuerlige inputs er ikke omfattet.
+
+## Budget, parallelitet og genoptagelse
+
+Brug `src.exe.run_model.bm_1_h2_precise`, ikke den gamle `curves history-fit`.
+8 workers og BLAS=1 er standard. Hver proces ejer én kandidats hele stream,
+skriver en atomisk gzip-checkpoint efter hver færdig time og gemmer rå evidens,
+posterior-mean, contour-brug, probability guards og faktisk log-state.
+Kandidat/input-identitet og checkpoint-checksum kontrolleres inden genbrug.
+Relevante F-kilder, originalinput-digests og Python/NumPy/SciPy/pandas/platform
+skal matche. Uvedkommende G-/WM-filer er ikke med i F's kildehashliste.
+
+Alle runs bruger samme `f4_h2_remaining_budget.json`. Udgangspunktet medregner
+den tidligere prøve og kontrolreserve, 425.89 s; en gemt seed medregner også
+denne leverances udførte kontroller. En invocation reserveres og bogføres før
+processtart. Kun ordentlig afslutning refunderer ubrugt reservation; et crash
+beholder reservationen. Parent og workers har tidswatchdogs, så en mistet
+parent ikke lader en worker fortsætte ubundet. Normal timeout/Ctrl+C beholder
+sidste færdige time og giver en pause, ikke accept. En `STOP`-fil i run-mappen
+pauser; fjern den kun før ønsket resume. Slet aldrig ledger eller checkpoints
+for at få et nyt budget. Nye mapper bruger samme campaign, også mellem PC/chat.
+
+Mål 4–6 timer, samlet loft 10 timer. Søgningen får ikke lov at bruge den
+reserverede 2-timers kontrol-/valideringspulje. Denne pulje er foreløbig og
+skal måles imod den faktiske valideringsplan; den er ikke dokumentation for,
+at H kan afsluttes inden loftet. Efterfølgende H-arbejde skal fortsætte samme
+regnskab, ikke starte et nyt. Ingen 73-kandidat-kørsel eller automatisk udvidelse.
+
+## Det Johan skal køre først
+
+Kør fra en ren repo-rod, uden en anden modelkørsel i dette checkout:
+
+```powershell
+& ./root/f4/run_h2_precise_pilot.ps1
+```
+
+Det opretter en ufuldstændig F-datakontrakt og måler de første otte kandidaters
+første otte timer fra det gemte syntetiske døgn, sigma_y=.04. Forløbet indeholder
+en prisændring og en manglende måling. Højst 15 minutter **per invocation**;
+alle invocations tæller i samme samlede H-ledger. Råresultater gemmes også ved
+pause/fejl. Den syntetiske pilot måler Windows-processer, contention og
+contour-adfærd; den fastlægger ingen historisk population, TRAIN-periode,
+historisk throughput, præcision eller H-accept.
+
+Send `h2_precise_development_pc_v1/pilot_report.json` og
+`f4_h2_remaining_budget.json`. Hvis status er fejlet, send også den relevante
+log fra run-mappens `logs/`. Ved timeout er checkpointet bevaret; genoptagelse
+er mulig med samme source/inputs og `-Resume`, men kræver ikke automatisk en ny
+15-minutters prøve, hvis det allerede er tydeligt, at planen er for dyr.
+
+```powershell
+& ./root/f4/run_h2_precise_pilot.ps1 -Resume
+```
+
+## Historisk vej, først efter F-datakontrakten er udfyldt
+
+Population, enheder, timezone, price proxy, skala, prior-origin, fysisk/støj-
+betingelse, tidligere baseline og eksponerings-/splitkontrakt bliver ikke
+gættet. G's januarfiler/-valg er ikke automatisk F's kontrakt. Den nye template
+bevarer disse åbne felter og den eksisterende loader, som afviser dem før
+observationsværdier læses. Baseline-CSV kræver `timestamp,baseline` og komplet
+timehistorik fra origin til TRAIN-end. FINAL_HOLDOUT-værdier læses ikke.
+
+Når kontrakten er dokumenteret og frosset:
+
+```powershell
+python -B -m src.exe.run_model.bm_1_h2_precise prepare --config files/output/bm_1/runs/estimation/h2_precise_contract_pc_v1.json --run-dir files/output/bm_1/runs/estimation/h2_precise_history_pc_v1
+python -B -m src.exe.run_model.bm_1_h2_precise pilot --run-dir files/output/bm_1/runs/estimation/h2_precise_history_pc_v1 --workers 8 --seconds 900 --resume
+```
+
+Den historiske pilot begynder ved den deklarerede prior og omfatter de første
+otte TRAIN-intervaller. En lang prior-lead skjules eller forkortes ikke. Kun
+en komplet historisk pilot på samme workerantal kan åbne search-kommandoen.
+Planestimatet bruger den dyreste målte observations-time, hele TRAIN-længden,
+tre batchbølger og faktor 1.5 samt målt startup/storage; det er stadig et
+estimat, ikke en garanti. Ukendte senere tails/kandidater kan blive dyrere.
+Hele H-regnskabet plus planestimat/reserve skal være under loftet ved admission.
+
+```powershell
+python -B -m src.exe.run_model.bm_1_h2_precise search --run-dir files/output/bm_1/runs/estimation/h2_precise_history_pc_v1 --workers 8 --seconds 14400 --resume
+```
+
+Dette er en senere kommando, ikke bestillingen nu. Den genbruger pilotens
+færdige timer for de samme kandidater og fortsætter dem; de resterende ni
+starter fra deres egen prior. Fire timer er invocation-loft, ikke målt fit-tid.
+Ufuldstændige budgetstops forbliver ufuldstændige. Ingen modelvalg efter TRAIN.
+
+## Udførte kontroller
+
+To fokuserede nye tests består (0.166 s): eksakt state-uafhængig Gaussian-
+likelihood med sub-float log-state, midnight/gaps/missing og identisk resume;
+samt cross-candidate/checksum-afvisning og bevaret crash-reservation med låst
+valideringsreserve. Ingen fuld suite, nye numeriske paneler eller historisk fit.
+Procesintegration og faktisk subprocess-resume er udført: 35.04 s og 5.17 s,
+med to færdige kandidat-timer og to genbrugte timer. Timeout bevarede den
+sidste færdige time. Lineær første-time-score, mean og hele log-posterioren
+er bitvis identiske med den allerede gemte præcise reference; ingen gammel
+reference blev genberegnet. Piloten er ufuldstændig, og ingen historiske værdier
+blev læst. Den er ikke Windows-runtime eller fuld pilotaccept.
+Rådata: `f4_h2_precise_adapter_check_20261006.json.gz`; den indeholder også
+den oprindelige kontrol-CLI før en afsluttende ændring af ETA-vægte og
+afvisning af fejlede pilotrapporter. Numerisk adapter/kernel er uændret.
+Den publicerede `f4_h2_budget_seed_20261006.json` starter PC'ens H-ledger ved
+**468.09 s** inklusive den tidligere prøve og en konservativ 2 s kontrolpost.
+Alle senere PC-piloter tilføjes dette samme budget, ikke et nyt nulpunkt.

@@ -1,5 +1,12 @@
 # F4-H2: next bounded task after the search trial
 
+**6 October continuation:** the precise 17-candidate batch, hourly log-state
+adapter, locked aggregate campaign budget and local launcher are implemented.
+Use [H2_PRECISE_BATCH.md](H2_PRECISE_BATCH.md) and
+`src.exe.run_model.bm_1_h2_precise`. The next user action is the bounded
+synthetic Windows runtime pilot; the historical contract remains unresolved.
+This is a fixed coordinate probe, not optimizer convergence or H2/H3 acceptance.
+
 The positive joint surrogates have not passed the full declared development
 stream. Do not integrate them into historical fitting, relax .05/.002/.05,
 drop a candidate, or replace interval averages by point observations. The
