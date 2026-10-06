@@ -190,6 +190,11 @@ negativ baselinegevinst; det udløser ikke automatisk nye fits.
 
 ## P3 — lille G4 og ét fælles modelinterface
 
+Den implementerede pilots ligninger, monotonicitetsbevis, residualer og
+metodeforsvar står nu i [G-planens afsnit 5](G.md#5-fleksible-fg-i-et-lille-ekstra-trin).
+Dokumentationsreview mod main `0da7e2a9` ændrer ikke solver eller acceptstatus;
+originalarkivet er fortsat nødvendigt for historisk G4-kørsel.
+
 **Genbrug:** `src/params/bm_1_response.py`, `src/method/bm_1_response.py` og
 `BM1Parameters` i `src/control/bm_1.py`. H's likelihood-fit er ikke G's LS-fit.
 **Adapterarbejde:** `src/method/bm_1_deterministic_fit.py` har en lineær,
