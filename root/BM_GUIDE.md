@@ -1,10 +1,12 @@
-# F4-H2 bounded precise batch (6 October 2026)
+# F4-H2 Windows pilot result (6 October 2026)
 
-For the next F-only runtime pilot use `root/f4/run_h2_precise_pilot.ps1` from
-clean, idle source. It fixes 8 workers, BLAS=1, eight candidates/eight synthetic
-hours and a 900-second invocation cap, with a shared cumulative H budget.
-See [H2_PRECISE_BATCH.md](H2_PRECISE_BATCH.md) for mathematics, raw outputs,
-resume and the later historical commands. It is not historical fit acceptance.
+The eight-worker/eight-candidate/eight-hour synthetic pilot is reported
+complete in 556.53 s; the cumulative H ledger is now 1024.63 s. Its 5.50-hour
+projection applies to 24 synthetic hours only. The old seven-day illustration
+cannot fit the 10-hour ceiling under the measured conservative planning rule.
+See [H2_PRECISE_BATCH.md](H2_PRECISE_BATCH.md) for the next collection-only
+command, raw outputs and historical prerequisites. Do not rerun/resume the
+development pilot automatically. This is not historical fit acceptance.
 The old `curves history-fit` does not run the new terminal-tilt batch.
 
 # BM — arbejdsvejviser

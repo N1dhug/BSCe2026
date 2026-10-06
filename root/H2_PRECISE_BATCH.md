@@ -6,6 +6,70 @@ surrogater i H2_SEARCH_FEASIBILITY.md er fortsat afvist. Den eksisterende
 terminalvise tilt-kernel genbruges uændret. Numerisk fit-readiness, H2/H3 og
 videnskabelig accept er stadig falske; en bestået runtimepilot ændrer ikke dette.
 
+## Windows-resultat og næste trin, 6. oktober 2026
+
+Johans `pilot_report.json` har status `completed`, med otte færdige timer
+for hver af otte kandidater, 8 workers/BLAS=1 og wall-time **556.53 s**.
+Den uploadede fælles ledger er **1024.63 s**; summen af den oprindelige
+425.89-sekunders baseline og alle fire bogførte poster stemmer præcist.
+Der resterer højst **27775.37 s (7 timer 43 min)** til piloter/søgning, når
+7200 s holdes fri og det samlede loft er 36000 s.
+
+Rapportens `total_train_units=24` er afgørende: dens grønne budgetflag og
+**5.50 timers** prognose gælder kun det syntetiske døgn. Det er ikke en
+historisk pilot og kan ikke åbne runnerens `search`. Den dyreste målte
+observations-time er 84.11975 s. Samme planformel for 17 kandidater med
+8 workers er
+\(T_{search}=1.5\cdot3\cdot(N\cdot84.11975+556.53255)\) sekunder.
+Her er N antallet af replay-units, inklusive en eventuel prior-lead.
+Samlet H-planbudget er 1024.63112 + T_search + 7200 sekunder.
+
+| Regneeksempel, ingen prior-lead | Søgeestimat | H inkl. brugt tid og foreløbig 2-timers reserve |
+|---|---:|---:|
+| 24 timer | 3.22 timer | 5.50 timer |
+| 48 timer | 5.74 timer | 8.03 timer |
+| 72 timer | 8.27 timer | 10.55 timer |
+| 168 timer | 18.36 timer | 20.65 timer |
+
+Dette er forsigtig ekstrapolation fra syntetiske PC-tider, ikke målt
+historisk throughput eller et løfte om at afslutte H. Ukendte kandidater,
+senere tails, prior-lead og det faktiske kontrol-/valideringsarbejde kan
+ændre omkostningen. Den gamle 17-kandidater/syv-dage-illustration er overhalet;
+den giver ikke grundlag for admission. TRAIN forkortes ikke automatisk for
+at passe til tabellen, og obligatoriske kurvefamilier/acceptkrav bevares.
+
+De to originale uploadfiler og ren budgetaritmetik er arkiveret i
+`files/output/bm_1/runs/estimation/f4_h2_precise_pc_pilot_20261006/`.
+Fuld PC-manifest, checkpoint-checksums, per-time-guards/contours og posterior
+er endnu ikke modtaget og rå-reviewet. Næste trin samler eksisterende filer
+og F-konfigurationen; det beregner ingen nye likelihoods og læser ingen
+historiske observationsworkbooks. Kør fra din eksisterende repo-rod:
+
+```powershell
+$ErrorActionPreference = "Stop"
+$base = "files/output/bm_1/runs/estimation"
+$items = @(
+    "$base/h2_precise_development_pc_v1",
+    "$base/f4_h2_remaining_budget.json",
+    "$base/h2_precise_contract_pc_v1.json"
+)
+foreach ($item in $items) {
+    if (-not (Test-Path -LiteralPath $item)) { throw "Mangler: $item" }
+}
+$zip = "$base/h2_precise_review_$(Get-Date -Format yyyyMMdd_HHmmss).zip"
+Compress-Archive -LiteralPath $items -DestinationPath $zip
+Write-Host "Send denne fil: $zip"
+```
+
+Ingen pull/branchskift eller ny pilot er nødvendig for at samle filerne.
+Kontrakten kan stadig være den ufuldstændige template; åbne felter forbliver
+åbne. Efter råreview fastlægges faktisk population, TRAIN/split/eksponering,
+baseline/prior-lead, skala og fysisk/støj-betingelse, før søgedesignet revideres.
+Ved flytning PC/chat videreføres den seneste fælles ledger. Den uændrede
+468.09-sekunders seed er kun det oprindelige startpunkt, ikke nyt restbudget.
+Ved denne statusopdatering er ingen numeriske kilder ændret og ingen tests,
+replays eller historiske fits kørt.
+
 ## Matematik og afgrænsning
 
 Hver måling er det normaliserede timegennemsnit
@@ -67,7 +131,11 @@ skal måles imod den faktiske valideringsplan; den er ikke dokumentation for,
 at H kan afsluttes inden loftet. Efterfølgende H-arbejde skal fortsætte samme
 regnskab, ikke starte et nyt. Ingen 73-kandidat-kørsel eller automatisk udvidelse.
 
-## Det Johan skal køre først
+## Den allerede gennemførte udviklingspilot
+
+Dette afsnit dokumenterer den oprindelige kommando. Piloten er siden
+rapporteret komplet; næste handling er filindsamlingen ovenfor, ikke en
+ny invocation eller automatisk resume.
 
 Kør fra en ren repo-rod, uden en anden modelkørsel i dette checkout:
 
@@ -83,7 +151,7 @@ pause/fejl. Den syntetiske pilot måler Windows-processer, contention og
 contour-adfærd; den fastlægger ingen historisk population, TRAIN-periode,
 historisk throughput, præcision eller H-accept.
 
-Send `h2_precise_development_pc_v1/pilot_report.json` og
+De oprindeligt bestilte filer var `h2_precise_development_pc_v1/pilot_report.json` og
 `f4_h2_remaining_budget.json`. Hvis status er fejlet, send også den relevante
 log fra run-mappens `logs/`. Ved timeout er checkpointet bevaret; genoptagelse
 er mulig med samme source/inputs og `-Resume`, men kræver ikke automatisk en ny
@@ -136,8 +204,9 @@ Procesintegration og faktisk subprocess-resume er udført: 35.04 s og 5.17 s,
 med to færdige kandidat-timer og to genbrugte timer. Timeout bevarede den
 sidste færdige time. Lineær første-time-score, mean og hele log-posterioren
 er bitvis identiske med den allerede gemte præcise reference; ingen gammel
-reference blev genberegnet. Piloten er ufuldstændig, og ingen historiske værdier
-blev læst. Den er ikke Windows-runtime eller fuld pilotaccept.
+reference blev genberegnet. Den daværende Linux-procespilot var ufuldstændig,
+og ingen historiske værdier blev læst. Den var ikke Windows-runtime eller
+fuld pilotaccept; det senere Windows-resultat står øverst.
 Rådata: `f4_h2_precise_adapter_check_20261006.json.gz`; den indeholder også
 den oprindelige kontrol-CLI før en afsluttende ændring af ETA-vægte og
 afvisning af fejlede pilotrapporter. Numerisk adapter/kernel er uændret.

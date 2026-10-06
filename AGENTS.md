@@ -1,13 +1,28 @@
 # Fælles projektkontekst
 
+## F4-H2 Windows-runtimepilot modtaget, 6. oktober 2026
+
+Johans syntetiske pilot er rapporteret komplet: 8 kandidater x 8 timer,
+8 workers/BLAS=1, 556.53 s. Samlet H-ledger er nu **1024.63 s**.
+Rapportens 5.50 timers H-estimat gælder kun **24 syntetiske TRAIN-timer**;
+det åbner ikke historisk search. Samme forsigtige regneregel på syv dage
+giver 20.65 timer inklusive foreløbig 2-timers reserve og allerede brugt tid.
+Den gamle 17-kandidater/syv-dage-budgetillustration er derfor overhalet.
+Rårapporter og ren budgetaritmetik er arkiveret; fuld Windows-manifest,
+checkpoints/guards og F-datakontrakt skal rå-reviewes uden nye replays.
+Se root/H2_PRECISE_BATCH.md. Ingen automatisk resume, ny pilot, kortere TRAIN
+eller færre kurvefamilier; 10-timersloftet og alle H-acceptkrav bevares.
+Ved flytning mellem PC/chat bruges den seneste fælles ledger, ikke seedens
+gamle 468.09 s. Ingen numeriske kildefiler er ændret ved denne statusopdatering.
+
 ## F4-H2 præcis batch, 6. oktober 2026
 
 Det begrænsede søgegrundlag er implementeret: `bm_1_h2_precise`, præcis
 terminal-tilt, 17 faste koordinatkandidater og kandidat-parallelitet med egen
 log-state hele TRAIN. Brug `root/H2_PRECISE_BATCH.md`; legacy `curves history-fit`
-er ikke den nye intervalbackend. Næste lokale kommando er den syntetiske
-8-worker/8-time-runtimepilot, højst 900 s, med samme samlede H-budgetledger.
-Den fastlægger ikke historisk throughput. F-datakontrakten skal stadig udfyldes
+er ikke den nye intervalbackend. Den syntetiske 8-worker/8-time-runtimepilot
+er nu rapporteret færdig; se status ovenfor. Den fastlægger ikke historisk
+throughput. F-datakontrakten skal stadig udfyldes
 før historisk prepare/pilot/search; G's kontrakt må ikke overtages automatisk.
 Alle negative guards/budgetstops bevares. 17-kandidatprøven er ikke konvergeret
 fit eller TRAIN-modelvalg. Numerisk/historisk/H2/H3-readiness er fortsat falsk.
