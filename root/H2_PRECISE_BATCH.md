@@ -1,5 +1,12 @@
 # F4-H2: afgrænset præcis søgning og lokal runtimepilot
 
+**Aktivt trin efter Sol-implementeringen:** [H2_NATIVE_DEVELOPMENT.md](H2_NATIVE_DEVELOPMENT.md).
+Ny log-Thomas/frekvenskerne består 40 gemte referencetimer; PC-hastighed og
+historisk heljob-admission mangler. Brug `root/f4/run_h2_native.ps1` med fælles
+nyeste ledger, ikke en ny gammel kandidatpilot. Native-restbudget 777.25 s
+inklusive alle resumes/kompilering og stopreserve; samlet H-ledger 1147.38 s.
+De følgende næste-trin-tekster er historik. Historisk fit/readiness er fortsat falsk.
+
 **Aktivt næste trin, efter Astra-review 6. oktober:**
 [H2_METHOD_REDESIGN.md](H2_METHOD_REDESIGN.md) vælger MED separat og de tre
 februaruger samt en kompileret, algebraisk ækvivalent positiv state-solve.

@@ -1,5 +1,11 @@
 # F4-H2: next bounded task after the search trial
 
+**Active handoff after Sol implementation:** [H2_NATIVE_DEVELOPMENT.md](H2_NATIVE_DEVELOPMENT.md).
+The isolated kernel passes all 40 declared reference hours; next is actual PC
+timing, the complete F contract and whole-job admission. Native allowance left
+777.25 s across all resumes/compilation; H ledger 1147.38 s. Do not repeat old
+candidate/grid panels or start a historical optimizer from synthetic success.
+
 **Active handoff after the 6 October Astra review:**
 [H2_METHOD_REDESIGN.md](H2_METHOD_REDESIGN.md) supersedes the next-action
 instructions below. Implement the derived positive log-Thomas recurrence,

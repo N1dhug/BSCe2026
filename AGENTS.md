@@ -1,5 +1,19 @@
 # Fælles projektkontekst
 
+## F4-H2: native kerne kontrolleret, 6. oktober 2026
+
+Aktiv overdragelse: `root/H2_NATIVE_DEVELOPMENT.md`. Isoleret log-Thomas/Numba
+med 8 frekvensworkers og BLAS=1 består uafhængig algebra og 24+8+8 gemte
+syntetiske referencetimer på 104.43 s. Maksimal log-state-forskel <1e-9 mod
+1e-7. Gamle referencer/49 F-kildefiler er uændrede; ingen G/WM-kobling.
+STOP/resume og fælles ledger er afgrænset kontrolleret. H-ledger 1147.38 s;
+native-udvikling 122.75/900 s, højst 777.25 s til PC/alle resumes inklusive
+kompilering/imports og 60 s stopreserve. Brug ny seed, aldrig den gamle
+468.09 s-seed. `root/f4/run_h2_native.ps1` måler samme case på PC og skriver
+review-ZIP; historisk fit er ikke en runnerkommando. PC-hastighed, fuld
+F-datakontrakt og prissat heljob-gate mangler. Ingen ekstra panel eller automatisk
+optimizer. MED/perioder forbliver valgt; Astra-reviewet nedenfor er nu historik.
+
 ## F4-H2: Astra-metodevalg færdigt, 6. oktober 2026
 
 Aktiv overdragelse er `root/H2_METHOD_REDESIGN.md`. MED's 13 elvarmehuse
