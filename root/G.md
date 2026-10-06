@@ -1,3 +1,10 @@
+**Vejledermateriale/legacy, Johan 6. oktober:** Tavlebillederne er vejlederens
+grundlag. Originalmodeller og resultater bevares; udvidelser kræver udledning,
+kilder, begrundelse og eksplicit sammenligning. Den nye basis er kun reference,
+og dens allerede gennemførte G8-kørsler genbruges. Se
+[detaljeret Beta-udledning, kildekort og designargument](G8_POSTERIOR_BASIS_REVIEW.md#vejledergrundlag-og-referenceudvidelse--dokumentationsregel).
+Ingen nye modelkørsler i denne noteopdatering.
+
 ## Aktiv basisbeslutning — Johan, 6. oktober 2026
 
 Vejlederens normaliserede Bernstein/Beta-basis er G's primære mixture-basis:

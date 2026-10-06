@@ -1,5 +1,148 @@
 # Fælles projektkontekst
 
+## Vejledermateriale og legacy — Johan, 6. oktober 2026
+
+Alle tavlebilleder Johan har givet er som tommelfingerregel materiale fra
+vejlederen og det oprindelige faglige grundlag. Bevar de oprindelige
+legacy-modeller, formler, kodeveje og råresultater. Udvidelser er mulige,
+men kræver grundig matematisk udledning, konkret begrundelse, kildeangivelse,
+sammenligning og tydelig dokumentation af forskellen fra originalen.
+Skeln mellem direkte vejledermateriale, standardidentiteter og egne
+metode-/numerikvalg. Erstat eller ommærk ikke originalen stiltiende.
+
+For G-mixture er tavlens normaliserede Bernstein/Beta-familie primær;
+den nye lokale 42-leds Beta-basis er kun sammenligningsreference.
+FV er numerisk reference. Metodeprioritet ændrer ikke acceptkrav eller
+negative testresultater. Genbrug den allerede gennemførte referencekørsel.
+Detaljeret kildekort/udledning: [G8-basisnoterne](root/G8_POSTERIOR_BASIS_REVIEW.md).
+Denne dokumentationsregel ændrer ikke F/WM's aktive opgaver eller resultater.
+
+## F4-H2: native v2 PC råkontrolleret, metodevalg er næste trin
+
+Aktiv næste opgave: [review efter native v2](root/H2_NATIVE_V2_NEXT_REVIEW.md).
+PC v2 består 40 units/36 observerede opdateringer på 104.31 s, cirka 12.1%
+kortere invocation end første PC. Alle 54 sourcehashes/checkpoints/referencer/
+guards/ledger består uden numerisk replay; største finite-log-fejl 9.19e-10.
+Varm maksimumstime er 4.06821 s, så 49-par-planens basearbejde alene illustrerer
+15.38 h med den uændrede 1.5-faktor. Historisk fit er fortsat ikke admitted.
+Ingen ny timingprøve: næste er et konkret matematisk søge-/valideringsreview,
+anbefalet Astra XHigh, derefter Sol High-implementering af det valgte design.
+MED/valgte uger og acceptkrav bevares indtil en eksplicit begrundet designrevision.
+Fuld F-datakontrakt og faktisk prissat heljob-gate er stadig åbne; G/WM uændret.
+H-ledger 1460.53 s; native 435.90/900 s, rest 464.10 s samlet.
+Original ZIP/source/ledger og råaudit er bevaret; ny seed udvider historikken.
+Ingen nye modelkørsler, historiske værdier eller bred suite i råreviewet.
+Følgende afsnit er historik og må ikke starte de afsluttede prøver igen.
+
+## F4-H2: PC-native rå-reviewet, hurtigere v2 kontrolleret
+
+Aktiv indgang: `root/H2_NATIVE_PC_REVIEW.md`. Første PC-native består alle
+40 units/36 observerede opdateringer på 118.67 s; 54 sourcehashes/checkpoints/
+referencer/guards/ledger er råvalideret uden FV-replay. Python 3.11-scoren
+rekonstrueres eksakt i read-only-auditor; execution/resume/checksums ændres ikke.
+Ved den målte varme maksimumstakt 3.54858 s giver den fulde 49-par-plan 13.41 h
+alene for basearbejde. Historisk fit er derfor ikke admitted; fine-/forecast-
+arbejde og faktisk historisk rate mangler stadig. Ingen automatisk kortere TRAIN,
+manglende kurvefamilie eller gammel 17-kandidatpanel som løsning.
+Samme native metode v2 fjerner gentagne exp/log/divisioner og består igen de
+40 matchende timer på 80.72 s her; største log-state-fejl 9.19e-10 mod 1e-7.
+Næste PC-kommando bruger nyt v2-run-dir og højst 300 s, inklusive 60 s stopreserve.
+H-ledger 1352.86 s; native 328.23/900 s, rest 571.77 s over alle maskiner/resumes.
+Nyeste seed udvider PC-historikken; originale rådata/source/seeds er bevaret.
+MED/tre februaruger og 10-timersloftet bevares; G/WM og de 49 gamle F-kilder
+er uændrede. Fuld datakontrakt og prissat heljob-gate blokerer fortsat optimizer.
+
+## F4-H2: native kerne kontrolleret, 6. oktober 2026
+
+Aktiv overdragelse: `root/H2_NATIVE_DEVELOPMENT.md`. Isoleret log-Thomas/Numba
+med 8 frekvensworkers og BLAS=1 består uafhængig algebra og 24+8+8 gemte
+syntetiske referencetimer på 104.43 s. Maksimal log-state-forskel <1e-9 mod
+1e-7. Gamle referencer/49 F-kildefiler er uændrede; ingen G/WM-kobling.
+STOP/resume og fælles ledger er afgrænset kontrolleret. H-ledger 1147.38 s;
+native-udvikling 122.75/900 s, højst 777.25 s til PC/alle resumes inklusive
+kompilering/imports og 60 s stopreserve. Brug ny seed, aldrig den gamle
+468.09 s-seed. `root/f4/run_h2_native.ps1` måler samme case på PC og skriver
+review-ZIP; historisk fit er ikke en runnerkommando. PC-hastighed, fuld
+F-datakontrakt og prissat heljob-gate mangler. Ingen ekstra panel eller automatisk
+optimizer. MED/perioder forbliver valgt; Astra-reviewet nedenfor er nu historik.
+
+## F4-H2: Astra-metodevalg færdigt, 6. oktober 2026
+
+Aktiv overdragelse er `root/H2_METHOD_REDESIGN.md`. MED's 13 elvarmehuse
+vælges separat, med fast gruppemiddel. TRAIN er 7.–13. februar 2022,
+MODEL_SELECTION 14.–20. februar og planlagt slutevaluering 21.–27. februar;
+sidste uges blindhed kræver stadig eksponeringsaudit. Datoer er hour-start-
+vinduer; målinger bliver tilgængelige ved intervalslut. Population/perioder
+skal ikke vælges igen. Øvrig F-datakontrakt er stadig ufuldstændig.
+Præcis interval-likelihood bevares; næste Sol High-opgave er en isoleret
+kompileret positiv Thomas-rekurrens med 8 frekvensworkers/BLAS=1.
+Matematisk ækvivalens er udledt; implementering/hastighed er ikke kontrolleret.
+Højst 900 nye sekunder til den afgrænsede implementeringskontrol, inklusive
+kompilering/resumes og 60 s stopreserve. Ingen nye forsøg er kørt i reviewet.
+Senere adaptiv COBYQA er betinget af fuld data-/numerik-/budgetadmission;
+49 TRAIN-par er et loft, ikke en bestilling eller konvergensgaranti.
+Budgettér sekventielle kald, alle tre uger, finere replays og forecastarbejde;
+den gamle ceil(kandidater/8)-formel gælder ikke frekvensworkers. Forøg den
+mindst 2-timers valideringsreserve til faktisk prissat arbejde om nødvendigt.
+10 timer er stadig samlet loft, mål 4–6 timer; ledger står på 1024.63 s.
+Ingen automatisk 17-/73-kandidat-kørsel eller ny grov solverrunde. G/WM uændret.
+
+## F4-H2 Windows-runtimepilot rå-reviewet, 6. oktober 2026
+
+Johans syntetiske pilot er nu rå-reviewet: otte valide kandidat-checkpoints,
+64 timer inklusive 56 Bayes-opdateringer og otte missing-prædiktioner.
+Manifest/kandidat/checksums, log-normalisering, guards og tidsprojektion består
+uden FV-replay. Alle 49 kildefiler og fixture matcher præcist pilotens Git-
+indhold med Windows LF→CRLF-checkout; originalhashes/resumelåse er uændrede.
+8 workers/BLAS=1, 556.53 s. Samlet H-ledger er stadig **1024.63 s**.
+Rapportens 5.50 timers H-estimat gælder kun **24 syntetiske TRAIN-timer**;
+det åbner ikke historisk search. Samme forsigtige regneregel på syv dage
+giver 20.65 timer inklusive foreløbig 2-timers reserve og allerede brugt tid.
+Den gamle 17-kandidater/syv-dage-budgetillustration er derfor overhalet.
+Original ZIP, reproducerbar råauditor og raw_audit.json er arkiveret.
+F-konfigurationen er stadig ufuldstændig: population, TRAIN/split/eksponering,
+pris/skala, tidligere baseline/prior og fysisk/støj-betingelse mangler.
+Næste er disse deklarationer og et revideret søgedesign, ikke endnu en pilot.
+Se root/H2_PRECISE_BATCH.md. Ingen automatisk resume, ny pilot, kortere TRAIN
+eller færre kurvefamilier; 10-timersloftet og alle H-acceptkrav bevares.
+Ved flytning mellem PC/chat bruges den seneste fælles ledger, ikke seedens
+gamle 468.09 s. Ingen numeriske kildefiler er ændret ved denne statusopdatering.
+
+## F4-H2 præcis batch, 6. oktober 2026
+
+Det begrænsede søgegrundlag er implementeret: `bm_1_h2_precise`, præcis
+terminal-tilt, 17 faste koordinatkandidater og kandidat-parallelitet med egen
+log-state hele TRAIN. Brug `root/H2_PRECISE_BATCH.md`; legacy `curves history-fit`
+er ikke den nye intervalbackend. Den syntetiske 8-worker/8-time-runtimepilot
+er nu rapporteret færdig; se status ovenfor. Den fastlægger ikke historisk
+throughput. F-datakontrakten skal stadig udfyldes
+før historisk prepare/pilot/search; G's kontrakt må ikke overtages automatisk.
+Alle negative guards/budgetstops bevares. 17-kandidatprøven er ikke konvergeret
+fit eller TRAIN-modelvalg. Numerisk/historisk/H2/H3-readiness er fortsat falsk.
+Ingen automatisk fuld suite, ekstra panel eller lang kørsel i chatten.
+
+## F4-H beregningsbudget, Johan 6. oktober 2026
+
+Samlet resterende H-beregning skal planlægges mod 4–6 timer og holde sig under
+10 timer inklusive piloter, fits og nødvendige kontroller. Budgettet følger
+forløbet på tværs af resumes; de tidligere cirka 90 timer er afvist.
+Den afgrænsede interval-søgeprøve er nu kørt på 415.89 s i alt.
+De første timer kunne bestå, men positiv joint-CN med 321 celler og
+da=1/1024 fejler den genbrugte døgnreference: score 3.58901, maksimal
+endpoint-mean .00822776 og L1 .26784242. Ingen billig backend er godkendt.
+Næste prioritet er et lavere, eksplicit kandidatbudget og parallelle
+HELE TRAIN-replays med den præcise metode, efter datakontrakt og en kort
+repræsentativ runtimepilot. 17 kandidater/7 dage/8 workers er kun en
+budgetillustration, ikke et godkendt run eller et løfte om fitkonvergens.
+Se root/H2_SEARCH_FEASIBILITY.md og root/H2_SEARCH_NEXT_HANDOFF.md.
+Ingen automatisk ny surrogate-/gridpanelrunde eller Fourier-runtimekontrol.
+De gamle grove grids fejlede numerik; de må ikke genindføres som accepteret
+likelihood. Kontroller kandidatforskelle og valgte løsninger, og stop ved
+utilstrækkelig præcision eller budget. Genbrug fitter/data/checkpoints og
+timeholdte B/U-inputs. Brede profiler/bootstrap/robusthedspaneler er udsat;
+fælles f/g, datakontrakt, modelvalg og frosset slutvalidering bevares.
+Se den nye budgetbeslutning øverst i root/F4.md. Budgetmål er ikke målt runtime.
+
 ## Arbejdsregel fra Johan, 5. oktober: adskil G/F og minimér kontrolarbejdet
 
 G er den deterministiske BM-kæde med et senere sandsynlighedslag; F er den
@@ -123,10 +266,25 @@ og gennemfører det smalle cases to døgn-replays. Tre fokuserede nye tests best
 Hele døgnet fejler fortsat den uændrede scoregate: .08754758 > .05;
 slut-mean/L1 består. Runtime 225.70/630.87 s; faktisk log-state-pause/resume
 er kontrolleret. Dette er kun en pilot, med heuristisk roundoffguard og et
-analytisk modeksempel på universel tilt-dækning. Næste Sol-opgave er ét
-1281-cellers replay med h=1/24576 på samme fixture, sammenholdt med de to
-gemte replays for at skelne tids- og rumfejl. Budget <=900 s, samme gates;
-genkør ikke de gemte replays. Historisk backend og fælles kerner er uændrede.
+analytisk modeksempel på universel tilt-dækning. Sols krydsreplay er nu færdigt
+på 433.43 s: tids-scoreforskel .00216009 består; rum-scoreforskel .08538749
+fejler .05. Mean/L1 består begge; gamle døgn er genbrugt uden replay. Én ny
+fokuseret genbrugstest består; den uændrede terminal-kernel og 35 relevante
+BM-kildehashes er kontrolleret uden at koble uvedkommende G/WM-kode til F.
+Læs `root/H2_TERMINAL_TILT_CROSS_CONTROL.md`. Den ene finere reference er nu
+færdig: 2561 celler, h=1/49152, samme fixture og genbrugt 1921-cellers døgn.
+Scoreforskel .03055462, slut-mean .00001396 og masse-L1 .00117516 består
+de uændrede .05/.002/.05-grænser. Runtime 1503.30 s (25.1 min); 15 gemte
+timer er genbrugt efter budgetpause med identisk log-state-fingerprint.
+Dette er fælles tids-/rumforfining, ingen kontinuumsfejlgaranti eller historisk
+fit-readiness. Se `root/H2_TERMINAL_TILT_FINE_REFERENCE.md` for rådata og scope.
+Næste er én parret runtimekontrol af den gemte 1921-cellers time med svagest
+conditional guard, 48 frekvenser/periode 1.5 versus 64/2; behold alle guards.
+Ingen ny døgn-/gridpanelkørsel eller løsere gate. Sol er tilstrækkelig til
+denne deklarerede repræsentations-/runtimekontrol. Det kontrollerede
+1921-cellers døgn tager stadig 10.5 min; praktisk runtime-/adapterløsning,
+tidsvariation og frosne historiske data-/split-/baselinevalg mangler.
+Historisk backend og fælles kerner er uændrede.
 Eksakt operatorgenbrug er testet; en parret én-time-median viser 1.23x, ikke et
 historisk fit-speedup. Faktisk tidsvariation og historisk log-state-checkpointadapter er
 stadig åbne. H2/H3-readiness forbliver falsk; historisk fitter er uændret.

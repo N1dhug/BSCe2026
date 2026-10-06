@@ -58,6 +58,165 @@ positiv LS-projektion ved hvert internt trin; det er ikke en gridfri metode.
 I denne case er FV hurtigere. Mixture indgår som den krævede
 fordelingsapproksimation, ikke som dokumenteret runtimeforbedring over FV.
 
+## Vejledergrundlag og referenceudvidelse — dokumentationsregel
+
+Johan har 6. oktober præciseret, at de uploadede tavlebilleder er materiale
+fra vejlederen. De behandles som det oprindelige faglige grundlag. En
+udvidelse skal have en konkret begrundelse, udledning, kildeangivelse,
+sammenligning og tydelig forskel fra legacy-modellen. De oprindelige
+formler, kodeveje og resultater bevares; en alternativ reference må ikke
+overtage den primære metode stiltiende.
+
+### Hvor kommer den oprindelige basis fra?
+
+Tavlebilledet wSnLZuio(1).jpg (upload07, lokal kopi
+07-wSnLZuio-1-.jpg) viser både mixture-summen og den normaliserede
+Bernstein-basis på [0,1]. Det er den direkte vejlederkilde til vores
+primære basis; Ritschels slides er et supplerende grundlag for mixture/LS.
+
+Bernstein-polynomiet er
+\[
+b_{m,M}(x)=\binom{M}{m}x^m(1-x)^{M-m}.
+\]
+Dets integral er 1/(M+1), så en sandsynlighedskomponent er
+\[
+\ell_{m,M}(x)=(M+1)b_{m,M}(x)
+=\frac{(M+1)!}{m!(M-m)!}x^m(1-x)^{M-m}.
+\]
+Tavlens normaliseringsfaktor er derfor nødvendig: de almindelige
+Bernstein-polynomier er ikke hver især sandsynlighedstætheder.
+
+### Den nye reference udledes fra samme Beta-familie
+
+Dette afsnit beskriver en referenceudvidelse, ikke en erstatning af tavlens
+foreskrevne basis. Lad beta-normaliseringsfunktionen være
+\[
+\mathrm B(\alpha,\beta)=\int_0^1x^{\alpha-1}(1-x)^{\beta-1}\,dx
+=\frac{\Gamma(\alpha)\Gamma(\beta)}{\Gamma(\alpha+\beta)}.
+\]
+For alpha,beta>0 er
+\[
+\ell_{\alpha,\beta}(x)=
+\frac{\Gamma(\alpha+\beta)}{\Gamma(\alpha)\Gamma(\beta)}
+x^{\alpha-1}(1-x)^{\beta-1}.
+\]
+Den er ikke-negativ og integrerer til 1 ved definitionen af B.
+Gammafunktionen har Gamma(n)=(n-1)! for positive heltal.
+Indsættelse af alpha=m+1,beta=M-m+1 giver præcis vejlederens formel.
+Den nye reference ændrer altså valget af Beta-parametre, ikke
+normaliseringsprincippet eller sandsynlighedskravene.
+
+Beta-integralerne giver momentformlerne direkte:
+\[
+E[X^q]=\frac{\mathrm B(\alpha+q,\beta)}
+{\mathrm B(\alpha,\beta)},\quad
+E[X]=\frac{\alpha}{\alpha+\beta},\quad
+E[X^2]=\frac{\alpha(\alpha+1)}
+{(\alpha+\beta)(\alpha+\beta+1)}.
+\]
+Her bruges q=1,2; generelt kræves alpha+q>0.
+Sæt kappa=alpha+beta og mu=alpha/kappa. Ved at trække E[X]^2
+fra E[X^2] fås
+\[
+\operatorname{Var}(X)=\frac{\mu(1-\mu)}{\kappa+1}.
+\]
+Dermed kan placering mu og koncentration kappa vælges særskilt:
+alpha=kappa*mu,beta=kappa*(1-mu). Det er hele den matematiske
+idé bag referenceudvidelsen.
+
+For referencekomponenterne bruges r=0,...,40,
+mu_r=(r+1/2)/41 og kappa=256:
+\[
+\widetilde\ell_r(x)=
+\frac{\Gamma(256)}
+{\Gamma(256\mu_r)\Gamma(256(1-\mu_r))}
+x^{256\mu_r-1}(1-x)^{256(1-\mu_r)-1}.
+\]
+Parametrene er generelt ikke heltal, så Gamma erstatter fakulteter.
+Ved r=20 fås mu=.5 og den konkrete funktion
+255!/(127!127!) * x^127(1-x)^127.
+
+Den fulde reference-mixture er
+\[
+\widetilde p(x)=c_{\rm prior}\ell_{20,20}(x)
++\sum_{r=0}^{40}\widetilde c_r\widetilde\ell_r(x),
+\quad c_{\rm prior},\widetilde c_r\geq0,\quad
+c_{\rm prior}+\sum_r\widetilde c_r=1.
+\]
+Her betegner ell_(20,20) Beta-formparametrene, ikke et Bernstein-gradtal.
+Beta(20,20) tilføjes for at repræsentere den oprindelige initiallov direkte:
+initialt c_prior=1 og de øvrige vægte 0. I kodens 42-leds-array er prioren
+komponent0, mens referencekomponent r ligger på indeks r+1.
+De 42 repræsentationsvægte er forskellige fra parameterbankens fem rho-vægte.
+
+### Hvorfor referenceudvidelsen bruges, og hvorfor netop disse tal?
+
+Formålet er at undersøge, hvor meget den observerede posterior-fejl skyldes
+basisfamiliens opløsning, når den fysiske model og målemodel holdes fast.
+For vejlederens basis er kappa=M+2, og derfor kobles antal og bredde.
+Variansgulvet udledes i næste afsnit. M38/M78's negative G8-resultater
+er grunden til sammenligningen, ikke en grund til at slette originalmodellen.
+
+Den gemte FV-nodevariance er mindst cirka .00216612. Det udviklingsvalgte
+designmål for referencen var et centralt komponentgulv under halvdelen:
+.25/(kappa+1)<.00108306. Kappa256 er den mindste potens af to, der
+opfylder dette mål: .25/257=.000972763. Valget af en potens af to og
+halveringsfaktoren er praktiske designregler, ikke et teorem eller en
+opskrift fra vejlederen. De er valgt efter eksponering af udviklingscasen.
+
+41 placeringer giver cirka samme komponentantal som M38 og spacing
+1/41=.0243902, mindre end den centrale standardafvigelse
+sqrt(.25/257)=.0311891. Komponenterne overlapper derfor centralt.
+Dette er ikke et krav om overlap i halerne eller et bevis for optimal
+dækning. Antallet41 er et enkelt fast referencevalg, ikke et estimeret optimum.
+Også den nye familie har et variansgulv og begrænset opløsning.
+
+Kappa256 kunne matches af vejlederens familie med M254, men denne ville
+have255 komponenter i stedet for42 og en anden placering af deres means.
+Det er kun en analytisk sammenligning; M254 er hverken valgt eller testet.
+Vi holder derfor originalfamilien primær og undersøger dens gradtal og
+konditionering separat, med den nye reference som diagnostisk sammenligning.
+
+### Hvad er fra kilderne, og hvad er vores valg?
+
+| Del | Oprindelse og status |
+|---|---|
+| Normaliseret Bernstein-basis på [0,1] | Vejlederens upload07; primær legacy-familie. |
+| SDE, Euler–Maruyama og FP med faktor1/2 | Upload05/07 viser disse relationer; behold den deklarerede standard-Brownsk-konvention. |
+| Mixture-sum og positiv LS med sum1 | Mixture-sum: upload07 og Ritschel upload13 slide6 eq4. LS/constraints: upload13 slide8 eq7a–7c. |
+| Beta-normalisering og momentudledning ovenfor | Udledning af de almindelige Beta-identiteter; forbindelsen til tavlens formel er vist eksplicit. |
+| Uafhængige mu/kappa, 41 placeringer, kappa256, ekstra priorled | Vores begrundede referencevalg; ikke tilskrevet tavlen/slides som foreskrevet model. |
+| Celleintegreret basis, FV-transport og efterfølgende LS-projektion | Den faktiske genbrugte numeriske implementering; ikke påstået identisk med slides' eksplicitte residualtidsstep. |
+| Referenceaccept på den ene syntetiske case | Gemte udviklingsresultater; ingen generel garanti, historisk forecastaccept eller metodeprioritet. |
+
+At slides skriver en generel ell_m giver plads til en sammenligningsreference,
+men ophæver ikke Johans beslutning om tavlens konkrete basis som hovedmetode.
+Ved en mulig uoverensstemmelse mellem kilder dokumenteres konventionen:
+tavlen viser FP-faktoren1/2, mens upload13's viste SDE/FP-notation ikke
+har denne faktor eksplicit. Vi ændrer ikke BM's Brownsk-konvention stiltiende.
+Slide9's ortogonalitetsforenkling bruges ikke til disse overlappende baser.
+
+Kontrollerede originalkilder (SHA256):
+
+- upload07: 858904ad879ce1e8b7c910cac0fb91d00a2ed5e431f9448476635f7e5a276fa3
+- upload13: ddb18be6af9e9a23dc546ff1dcbe2c86ae062beb22ebf4a1140d874f1a94f395
+
+### Referencekørsel og bevarelse af legacy
+
+Den nye reference er allerede kørt på samme G8-fixture, model, likelihood,
+seeds og rho-bank som den oprindelige M38/M78-sammenligning. Resultaterne
+i tabellerne nedenfor genbruges; denne noteudvidelse udfører ingen ny kørsel.
+Samme129-grid sammenlignes særskilt fra forbedringen ved finere grid.
+Original M38/M78-evidens fra g8_run_v2 og referencens g8_basis_run/
+g8_basis_refine_run bevares i deres oprindelige arkiver og registreringer.
+
+Den generelle degree-vej er stadig tilgængelig; referencebasis kræver
+eksplicit basis_kind='g8-local-beta-41-k256-prior20-v1'. Der ændres ikke
+defaults eller checkpoints for legacy. Hvis senere nye forsøg kræver en
+ændring, erklæres hvad der ændres, hvorfor, og hvordan den sammenlignes med
+den bevarede original. Original posterior må ikke udskiftes med en
+referenceposterior under primær filtrering eller kontrol.
+
 ## Hvorfor den gamle basis fejlede
 
 Den gamle grad-M-basis var Beta(m+1,M-m+1), m=0,...,M.
@@ -242,9 +401,9 @@ Tobias K. S. Ritschel, upload13:
 Mixture approximations for the Fokker-Planck equation, 28.september2025,
 slide6 ligning4: generel mixture sum c_m ell_m;
 slide8 ligning7a–7c: least squares med positive koefficienter og sum1.
-Det er direkte grundlaget for at ændre de faste basisfunktioner og bevare
-det samme constrained LS-problem. Noterne kræver ikke vores gamle kobling
-mellem antal komponenter og Beta-koncentration.
+Dette understøtter mixture/LS-grundlaget for en særskilt referenceudvidelse.
+Tavlens konkrete normaliserede Bernstein-basis er fortsat hovedmetoden;
+slides' generelle notation er ikke en begrundelse for at erstatte den.
 
 Den konkrete Beta-ordbog, kappa256, cell-integral-repræsentation og
 variancegulv-udledningen er vores metodevalg/udledning; de tilskrives ikke
