@@ -1,5 +1,20 @@
 # Fælles projektkontekst
 
+## F4-H2: intervalprognose implementeret, 6. oktober
+
+Aktiv overdragelse: [intervalprognose og næste datatrin](root/H2_INTERVAL_FORECAST_IMPLEMENTATION.md).
+Sol-adapteren fører intervalmiddelværdi/varians og fuld log-state frem med den
+samme positive native operator; CDF/kvantiler på syv horisonter, egne fine gates
+og checkpoint/resume ved timegrænser er implementeret og afgrænset kontrolleret.
+Uafhængige matrix-/Gauss-kontroller består; ingen gamle 40-timers cases genkørt.
+De 13 præcise MED-kolonnenavne er nu fastlagt fra Johans eksisterende header-rapport.
+Ny delvis F-datapakke: `root/f4/h2_compact_data_packet_20261006.json`.
+Pris/skala, historisk MED-baseline, fysisk/støj-betingelse, Beta-prior og
+slutugens eksponeringsaudit mangler stadig reel provenance før historisk rate/fit.
+H-ledger 1494.40 s; native 469.77/900 s, rest 430.23 s på tværs af PC/chat.
+Ingen historiske observationer læst, ingen fit eller faktisk uge-runtime godkendt.
+Sol High er tilstrækkelig; ingen ny lokal modelkommando endnu. Følgende afsnit er historik.
+
 ## F4-H2: kompakt metodevalg efter Astra-review, 6. oktober
 
 Aktiv overdragelse: [kompakt H2-design](root/H2_COMPACT_ESTIMATION_REVIEW.md).

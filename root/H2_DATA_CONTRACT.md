@@ -1,5 +1,12 @@
 # H2: raw historical inputs and the next fitting pilot
 
+**Current header update:** all 13 exact MED measurement columns are established
+from Johan's existing header report and the audited installation IDs. They are
+in `f4/h2_compact_data_packet_20261006.json`; see
+[the implementation handoff](H2_INTERVAL_FORECAST_IMPLEMENTATION.md) for evidence
+and current ledger. Price/scale/baseline/physical/prior/exposure provenance is
+still incomplete. Older statements that the exact headers are unknown are historical.
+
 **Active compact decision, 6 October:** the explicitly revised windows are
 TRAIN 18–19 February 2022, MODEL_SELECTION 20 February and unchanged final
 week 21–27 February. Prior origin is 17 February; its 24-hour lead is

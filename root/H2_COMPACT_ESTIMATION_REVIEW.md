@@ -1,5 +1,10 @@
 # F4-H2: compact historical design and interval forecasts
 
+**Implementation update:** interval-moment/CDF adapters and the focused independent
+control are complete. Use [the active Sol handoff](H2_INTERVAL_FORECAST_IMPLEMENTATION.md)
+for current source, evidence, ledger and remaining F data/throughput prerequisites.
+The earlier numbers/next tasks below describe their original review scope.
+
 Astra mathematical review, 6 October 2026, after the verified native v2 PC run.
 This is the active implementation handoff. **Choose a declared 48-hour TRAIN,
 24-hour MODEL_SELECTION and the same 168-hour final week.** Keep the native v2
