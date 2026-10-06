@@ -3,7 +3,8 @@ grundlag. Originalmodeller og resultater bevares; udvidelser kræver udledning,
 kilder, begrundelse og eksplicit sammenligning. Den nye basis er kun reference,
 og dens allerede gennemførte G8-kørsler genbruges. Se
 [detaljeret Beta-udledning, kildekort og designargument](G8_POSTERIOR_BASIS_REVIEW.md#vejledergrundlag-og-referenceudvidelse--dokumentationsregel).
-Ingen nye modelkørsler i denne noteopdatering.
+Den oprindelige noteændring var dokumentation alene; det efterfølgende
+M254-review er registreret særskilt nedenfor.
 
 ## Aktiv basisbeslutning — Johan, 6. oktober 2026
 
@@ -20,13 +21,20 @@ forskellige beslutninger. De gemte negative M38/M78-resultater og positive
 42-leds-resultater bevares uændret. M38's åbne G6b-propagation består, men
 M38/M78 er ikke accepteret til G8's posterior→G7-kæde.
 
-Næste G-opgave er et afgrænset repræsentationsreview inden for vejlederens
-basisfamilie. Genbrug gemte FV-posteriors og undersøg nødvendigt gradtal M,
-LS-konditionering og praktisk runtime før højst én registreret kandidatkontrol.
-For denne familie er det kontinuerte variansgulv
-V >= mu(1-mu)/(M+3); et højere M kan sænke gulvet, men dette er kun et
-nødvendigt kriterium, ikke en garanti for tilstrækkelig L1-/scorepræcision.
-Intet bestemt nyt M eller nyt forsøgsbudget er valgt ved denne planændring.
+**G8-review gennemført, 6. oktober:** Én statisk kandidat, M254 med 255 af
+vejlederens oprindelige Bernstein/Beta-funktioner og eksplicit celleintegration,
+består syv afgrænsede LS-kontroller på gemte love. Maksimal posterior-L1 er
+1.27144e-6; invocation9.596 s. Gradforhøjelse bevarer Beta(20,20)-prioren
+med L1-fejl3.18e-14. De eksisterende produktionskerner og legacy-defaults er
+uændrede. Dårlig konditionering består; dette er repræsentationsaccept på
+udvalgte eksponerede love, ikke accept af et rekursivt filter eller G7.
+
+**Næste: Sol High** implementerer den navngivne celleintegrerede Bernstein-
+variant, eksakt prior og checkpointkontrakt, derefter én afgrænset egen
+fem-node-filterkørsel. Højst300 nye numeriske sekunder inklusive højst60 s
+pilot og30 s eksportreserve; forfining/resume kun inden for samme budget.
+Ingen automatisk gradtalssøgning. Se [fuld udledning, resultater og stopregler](G8_BERNSTEIN_REVIEW.md).
+Ingen lokal kørsel kræves nu.
 
 G7's primære mixture-handoff skal komme fra en kontrolleret kørsel med den
 oprindelige basisfamilie og hver nodes egne koefficienter/posterior.
@@ -38,8 +46,8 @@ mixture for at få den primære metode til at bestå. Hvis den primære basis
 ikke består inden for praktisk budget, dokumenteres begrænsningen.
 
 Denne beslutning erstatter tidligere anbefalinger om 42-leds-basis som
-G7's primære startkonfiguration. Numerisk evidens er ikke ændret.
-Kun G-dokumentation er opdateret; ingen nye tests eller modelkørsler.
+G7's primære startkonfiguration. De tidligere resultater bevares uændret.
+Det efterfølgende M254-review ovenfor tilføjer kun statisk evidens.
 
 **G8 punktfilter/bank gennemført som afgrænset integration, 6. oktober 2026:** FV kendt-parameter-filter og fem-node-rho-bank består forfining, missing og faktisk JSON-resume. 24 syntetiske timer/22 målinger; predictive demand-RMSE .0208264 mod åben .0286866 (27.40 % mindre på denne ene bane). Banken identificerer ikke sand rho sikkert. M38/M78 gennemfører, men begge afvises efter Bayes-opdateringer: kendt posterior-L1 .498924/.139169 og bank .500165/.138551 mod .05. M78's gode mean er ikke fordelingsaccept. Fuld-bank→FV fast kontrolforslag bevarer egne nodeposteriors og parameterusikkerhed; ingen prisoptimering. V2 invocation49.112 s, tre fokuserede tests består, fælles kerner/F/WM uændret. Se [matematik, råreview og begrænsninger](G8_POINT_BANK_REVIEW.md). **G8 mixture er ikke accepteret: næste lille opgave er posterior-repræsentation før mixture→G7; FV-handoff er klar til separat G7-referencearbejde.** Historisk timeenergi og ugeforecast er ikke accepteret. Ingen lokal kørsel kræves nu. Ældre næste-trin-afsnit nedenfor er historiske.
 

@@ -1,0 +1,333 @@
+{
+  "registration": {
+    "study": "G8 supervisor Bernstein static degree review",
+    "degree": 254,
+    "components": 255,
+    "basis": "Beta(m+1,M-m+1), all m=0,...,M; exact cell averages",
+    "choice_reason": "Same concentration 256 as the retained reference; central variance floor below half the saved FV513 minimum.",
+    "target_selection": "For each of five nodes choose its saved FV513 posterior with largest mu*(1-mu)/variance; descending node order. Also the globally hardest FV257 law.",
+    "projection_count_limit": 7,
+    "projection_detail": "One exact-prior check, five FV513 posteriors, one FV257 posterior, all at M254.",
+    "posterior_solver_start": "Existing uniform default, independently per target",
+    "cache_size": 32,
+    "diagnostic_cpu_wall_limit_seconds": 60,
+    "alarm_seconds": 55,
+    "blas_threads_required": 1,
+    "gates": {
+      "cell_mass_l1": 0.05,
+      "state_mean": 0.005,
+      "state_cdf": 0.03,
+      "state_variance": 0.002,
+      "probability_mass": 1e-09
+    },
+    "solver_optimality": "Existing unchanged primary/fallback gap checks",
+    "scope": "Static exposed-development representation only; no propagation, filter, likelihood-score or price-optimization acceptance",
+    "input_files": {
+      "fv257": {
+        "path": "/workspace/scratch/783a396a9c9c/g8_basis_run/bank_fv257.npz",
+        "sha256": "1e6c1e286e894003f79a404506c9664baa766fc040fc2b4be7eb1de6d23d6d6a"
+      },
+      "fv513": {
+        "path": "/workspace/scratch/783a396a9c9c/g8_basis_refine_run/bank_fv513.npz",
+        "sha256": "d30c5f0f7454ccdc93049c51877bbab7e7715cba62dbe418d15b1855b8948b05"
+      },
+      "legacy78": {
+        "path": "/workspace/scratch/783a396a9c9c/g8_run_v2/bank_mix78.npz",
+        "sha256": "501c2ddfc18c97593c6d8754a2cf6ce07f5b8f21f89a8b3b38666a97f6141ef9"
+      }
+    },
+    "script_sha256": "1c21420142cd4e4bb93c2865f701c475ecfdcd5ba866930c9dad3f2a392733c3"
+  },
+  "records": [
+    {
+      "grid": "fv513",
+      "kind": "prior",
+      "node": null,
+      "time": null,
+      "seconds": 0.0004127950014662929,
+      "diagnostics": {
+        "optimality_gap": 9.085618212849128e-16,
+        "density_l2_error": 9.387194390647678e-14,
+        "cell_mass_l1_error": 3.1809335898521304e-14,
+        "boundary_cell_mass": 8.350564786051373e-44,
+        "mass_error": 2.220446049250313e-16,
+        "used_fallback": false,
+        "hessian_condition_number": 8.901483736056451e+18,
+        "projection_matrix_condition_number": 1295789618246583.2,
+        "used_clipping": false,
+        "used_renormalization": false
+      },
+      "mean_error": 0.0,
+      "variance_error": 5.551115123125783e-17,
+      "cdf_error": 1.1398430052841099e-15,
+      "active_coefficients": 217,
+      "scaled_gap": 9.216947521463388e-16,
+      "sampled_same_coefficients_density_L1": 2.4231690979974704e-05,
+      "passed": true
+    },
+    {
+      "grid": "fv513",
+      "kind": "posterior",
+      "node": 4,
+      "time": 16.0,
+      "seconds": 1.6560070189989347,
+      "diagnostics": {
+        "optimality_gap": 8.040811307051655e-12,
+        "density_l2_error": 3.480339298295117e-06,
+        "cell_mass_l1_error": 1.2714363874810349e-06,
+        "boundary_cell_mass": 6.195921616952872e-150,
+        "mass_error": 4.440892098500626e-16,
+        "used_fallback": false,
+        "hessian_condition_number": 8.901483736056451e+18,
+        "projection_matrix_condition_number": 1295789618246583.2,
+        "used_clipping": false,
+        "used_renormalization": false
+      },
+      "mean_error": 3.5968409695108505e-08,
+      "variance_error": 5.547947212747317e-09,
+      "cdf_error": 2.4193825004466575e-07,
+      "active_coefficients": 20,
+      "scaled_gap": 8.04154368313101e-12,
+      "sampled_same_coefficients_density_L1": 7.198338249836671e-05,
+      "passed": true
+    },
+    {
+      "grid": "fv513",
+      "kind": "posterior",
+      "node": 3,
+      "time": 16.0,
+      "seconds": 1.6045153429986385,
+      "diagnostics": {
+        "optimality_gap": 6.519771074880781e-12,
+        "density_l2_error": 1.9436593988011856e-06,
+        "cell_mass_l1_error": 6.977958341781929e-07,
+        "boundary_cell_mass": 2.8222373031454427e-151,
+        "mass_error": 2.220446049250313e-16,
+        "used_fallback": false,
+        "hessian_condition_number": 8.901483736056451e+18,
+        "projection_matrix_condition_number": 1295789618246583.2,
+        "used_clipping": false,
+        "used_renormalization": false
+      },
+      "mean_error": 2.1930750104814933e-08,
+      "variance_error": 3.4262278569840987e-09,
+      "cdf_error": 1.387614732484778e-07,
+      "active_coefficients": 22,
+      "scaled_gap": 6.520363440649119e-12,
+      "sampled_same_coefficients_density_L1": 6.749838024602687e-05,
+      "passed": true
+    },
+    {
+      "grid": "fv513",
+      "kind": "posterior",
+      "node": 2,
+      "time": 16.0,
+      "seconds": 1.6795395129993267,
+      "diagnostics": {
+        "optimality_gap": 9.614214362281581e-12,
+        "density_l2_error": 1.1169338424634977e-06,
+        "cell_mass_l1_error": 4.081229141553878e-07,
+        "boundary_cell_mass": 4.545936768626211e-137,
+        "mass_error": 4.440892098500626e-16,
+        "used_fallback": false,
+        "hessian_condition_number": 8.901483736056451e+18,
+        "projection_matrix_condition_number": 1295789618246583.2,
+        "used_clipping": false,
+        "used_renormalization": false
+      },
+      "mean_error": 1.2188602904750212e-08,
+      "variance_error": 2.2088807172249147e-09,
+      "cdf_error": 7.825712080014513e-08,
+      "active_coefficients": 24,
+      "scaled_gap": 9.614913594848448e-12,
+      "sampled_same_coefficients_density_L1": 6.308468787572012e-05,
+      "passed": true
+    },
+    {
+      "grid": "fv513",
+      "kind": "posterior",
+      "node": 1,
+      "time": 16.0,
+      "seconds": 1.5383570069971029,
+      "diagnostics": {
+        "optimality_gap": 8.512681494850146e-12,
+        "density_l2_error": 8.554697784666833e-07,
+        "cell_mass_l1_error": 3.174973351737429e-07,
+        "boundary_cell_mass": 1.154474257305985e-107,
+        "mass_error": 2.220446049250313e-16,
+        "used_fallback": false,
+        "hessian_condition_number": 8.901483736056451e+18,
+        "projection_matrix_condition_number": 1295789618246583.2,
+        "used_clipping": false,
+        "used_renormalization": false
+      },
+      "mean_error": 9.912930365452155e-09,
+      "variance_error": 1.6631192811811246e-09,
+      "cdf_error": 5.975372494713106e-08,
+      "active_coefficients": 25,
+      "scaled_gap": 8.513258190945712e-12,
+      "sampled_same_coefficients_density_L1": 6.0934131294021495e-05,
+      "passed": true
+    },
+    {
+      "grid": "fv513",
+      "kind": "posterior",
+      "node": 0,
+      "time": 16.0,
+      "seconds": 1.5019111180008622,
+      "diagnostics": {
+        "optimality_gap": 3.030639007849067e-12,
+        "density_l2_error": 6.609563018399926e-07,
+        "cell_mass_l1_error": 2.489849585079597e-07,
+        "boundary_cell_mass": 6.308024211935491e-116,
+        "mass_error": 0.0,
+        "used_fallback": false,
+        "hessian_condition_number": 8.901483736056451e+18,
+        "projection_matrix_condition_number": 1295789618246583.2,
+        "used_clipping": false,
+        "used_renormalization": false
+      },
+      "mean_error": 7.420383585365897e-09,
+      "variance_error": 1.4065034970034418e-09,
+      "cdf_error": 4.596888100427261e-08,
+      "active_coefficients": 26,
+      "scaled_gap": 3.0312379406836978e-12,
+      "sampled_same_coefficients_density_L1": 5.879582463338492e-05,
+      "passed": true
+    },
+    {
+      "grid": "fv257",
+      "kind": "posterior",
+      "node": 4,
+      "time": 16.0,
+      "seconds": 0.8977106129968888,
+      "diagnostics": {
+        "optimality_gap": 7.556689354892038e-12,
+        "density_l2_error": 3.3719477630551025e-06,
+        "cell_mass_l1_error": 1.119568951367027e-06,
+        "boundary_cell_mass": 2.315516554025433e-129,
+        "mass_error": 0.0,
+        "used_fallback": false,
+        "hessian_condition_number": 4.1797357460449823e+18,
+        "projection_matrix_condition_number": 4.1793672277597805e+17,
+        "used_clipping": false,
+        "used_renormalization": false
+      },
+      "mean_error": 3.5308944990042335e-08,
+      "variance_error": 5.450924323024964e-09,
+      "cdf_error": 2.389541540905726e-07,
+      "active_coefficients": 20,
+      "scaled_gap": 7.55633718246831e-12,
+      "sampled_same_coefficients_density_L1": 0.0002811845826529479,
+      "passed": true
+    }
+  ],
+  "failures": [],
+  "full_filter_accept": false,
+  "historical_accept": false,
+  "source_sha256": {
+    "root/g8/bernstein_review.py": "1c21420142cd4e4bb93c2865f701c475ecfdcd5ba866930c9dad3f2a392733c3",
+    "src/method/beta_mixture.py": "3fb0b5f7ad95a00409b828966bddd1000b12a201dbf8d919d9a66c4a7090b224",
+    "src/validation/solver/active_set.py": "93f3f7aac0379f486e67f7536b2afd1bc1728feadd1b923911ab457e234b97fe",
+    "src/solver/active_set.py": "fc6df91b4664de126d43f0a22cd9537bbc100f44941e30757b9580173b5a30e6",
+    "src/validation/solver/finite_volume.py": "e8eecd9025a055b62af16c92c9ba5421df8f1c4b8eef33fecca9f1c267497377",
+    "src/solver/finite_volume.py": "28cf8118216457ea7d87bb775d36885fc8cc6f94614db005d38335ad4e497d03",
+    "src/validation/method/fokker_planc.py": "4dd880c31fbb4a4ecc2eb5278cf5a5ed8475fb752f84ca5dbb6a6f631b409226",
+    "src/method/fokker_planc.py": "a5c503b14785978996203d0ddd6adbc0767e29ce1cd0b2c4f88bd3cbe72b821a"
+  },
+  "fv257_moments": {
+    "mean_range": [
+      0.47133173764760006,
+      0.6608449731956256
+    ],
+    "minimum_variance_midpoint": 0.0021661187405948024,
+    "minimum_variance_piecewise_constant": 0.0021673804301485175,
+    "maximum_ratio": 115.2998221558174,
+    "necessary_M_from_continuous_moment_bound": 113,
+    "hardest_time": 16.0,
+    "hardest_node": 4,
+    "hardest_mean": 0.5100708420639462,
+    "hardest_variance": 0.0021673804301485175,
+    "per_node_selected_times": [
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0
+    ],
+    "interpretation": "Continuum design screen applied to the FV piecewise-constant law; not an exact moment constraint for the discretized mixture."
+  },
+  "fv513_moments": {
+    "mean_range": [
+      0.47097712147191617,
+      0.6604978779929109
+    ],
+    "minimum_variance_midpoint": 0.0021224493080900797,
+    "minimum_variance_piecewise_constant": 0.002122765961393977,
+    "maximum_ratio": 117.7104180726587,
+    "necessary_M_from_continuous_moment_bound": 115,
+    "hardest_time": 16.0,
+    "hardest_node": 4,
+    "hardest_mean": 0.5113283367669617,
+    "hardest_variance": 0.002122765961393977,
+    "per_node_selected_times": [
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0
+    ],
+    "interpretation": "Continuum design screen applied to the FV piecewise-constant law; not an exact moment constraint for the discretized mixture."
+  },
+  "saved_M78_geometry": {
+    "matrix_shape": [
+      129,
+      79
+    ],
+    "matrix_condition_number": 7052994216751504.0,
+    "numerical_rank": 63,
+    "source": {
+      "path": "/workspace/scratch/783a396a9c9c/g8_run_v2/bank_mix78.npz",
+      "sha256": "501c2ddfc18c97593c6d8754a2cf6ce07f5b8f21f89a8b3b38666a97f6141ef9"
+    }
+  },
+  "degree_elevation": {
+    "initial_degree": 38,
+    "target_degree": 254,
+    "coefficient_sum_error": 2.220446049250313e-16,
+    "minimum_coefficient": 0.0,
+    "nonzero_coefficients": 217
+  },
+  "geometry": {
+    "fv513": {
+      "seconds": 0.22669595800107345,
+      "matrix_shape": [
+        513,
+        255
+      ],
+      "matrix_condition_number": 1295789618246583.2,
+      "hessian_condition_number": 8.901483736056451e+18,
+      "numerical_rank": 119,
+      "column_mass_error": 2.220446049250313e-15,
+      "sampled_vs_integrated_column_L1_max": 0.014702883752234715,
+      "sampled_vs_integrated_worst_column": 1,
+      "elevated_prior_cell_L1": 3.1809335898521304e-14
+    },
+    "fv257": {
+      "seconds": 0.116063381999993,
+      "matrix_shape": [
+        257,
+        255
+      ],
+      "matrix_condition_number": 4.1793672277597805e+17,
+      "hessian_condition_number": 4.1797357460449823e+18,
+      "numerical_rank": 115,
+      "column_mass_error": 2.6645352591003757e-15,
+      "sampled_vs_integrated_column_L1_max": 0.05471794355474925,
+      "sampled_vs_integrated_worst_column": 253,
+      "elevated_prior_cell_L1": 6.920056630487655e-15
+    }
+  },
+  "static_review_passed": true,
+  "invocation_seconds": 9.596361959000205
+}
