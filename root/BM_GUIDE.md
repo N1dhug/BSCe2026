@@ -1,4 +1,16 @@
-# F4-H2 Windows pilot result (6 October 2026)
+# F4-H2 method decision (6 October 2026)
+
+The Astra mathematical review is complete: see
+[H2_METHOD_REDESIGN.md](H2_METHOD_REDESIGN.md). MED is separate; TRAIN is
+7–13 February, model selection 14–20 February and planned final evaluation
+21–27 February 2022, with blind status still unresolved. Sol High's next
+task is the isolated compiled positive-recursion/frequency-worker prototype,
+under one 900-second development ceiling. There is no new historical run
+command yet. The 17-candidate pilot is not the new adaptive fit; complete
+runtime/data/precision admission and priced validation work are required.
+Review changed no numerical code and consumed no model time; ledger 1024.63 s.
+
+## F4-H2 Windows pilot result (6 October 2026)
 
 The eight-worker/eight-candidate/eight-hour synthetic pilot is complete and
 its eight checkpoints have been raw-reviewed without replay. Runtime is

@@ -1,5 +1,14 @@
 # F4-H2: afgrænset præcis søgning og lokal runtimepilot
 
+**Aktivt næste trin, efter Astra-review 6. oktober:**
+[H2_METHOD_REDESIGN.md](H2_METHOD_REDESIGN.md) vælger MED separat og de tre
+februaruger samt en kompileret, algebraisk ækvivalent positiv state-solve.
+Den senere adaptive søgning bruger frekvensparallelitet og kræver egen samlet
+budgetadmission. Det eksisterende 17-kandidatdesign og kommandoerne her er
+arkiveret pilotgrundlag; de må ikke startes automatisk på den valgte uge.
+Population/perioder er valgt; øvrig datakontrakt, blindhed, implementering,
+hastighed og H2/H3-accept er stadig åbne. Ingen nye modelkørsler i reviewet.
+
 Grundlaget er implementeret 6. oktober 2026. Dette er F's stokastiske
 intervalmodel; G's fit/data/modelvalg og WM ændres ikke. De negative
 surrogater i H2_SEARCH_FEASIBILITY.md er fortsat afvist. Den eksisterende
