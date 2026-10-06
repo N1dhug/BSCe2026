@@ -280,6 +280,12 @@ negativ baselinegevinst; det udløser ikke automatisk nye fits.
 
 ## P3 — lille G4 og ét fælles modelinterface
 
+Den implementerede pilots ligninger, monotonicitetsbevis, residualer og
+metodeforsvar står nu i [G-planens afsnit 5](G.md#5-fleksible-fg-i-et-lille-ekstra-trin).
+Det historiske dokumentationsreview mod main `0da7e2a9` ændrede ikke solver
+eller acceptstatus. Den efterfølgende G4-pilot er gennemført og rå-reviewet
+som beskrevet øverst; originalarkivet kræves fortsat ved reproduktion.
+
 **Genbrug:** `src/params/bm_1_response.py`, `src/method/bm_1_response.py` og
 `BM1Parameters` i `src/control/bm_1.py`. H's likelihood-fit er ikke G's LS-fit.
 **Adapterarbejde:** `src/method/bm_1_deterministic_fit.py` har en lineær,
@@ -503,3 +509,4 @@ Hvis G senere skal assimilere historisk timeenergi, kræves en særskilt valgt
 og kontrolleret intervaloperator. Det kan være genbrug af en egnet F-løsning;
 F4-H2 som helhed er ikke en forudsætning. Syntetiske punktmålinger må ikke
 omdøbes til historisk timeenergi for at springe dette krav over.
+

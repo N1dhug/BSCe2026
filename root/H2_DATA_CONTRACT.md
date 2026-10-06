@@ -1,5 +1,39 @@
 # H2: raw historical inputs and the next fitting pilot
 
+**Current header update:** all 13 exact MED measurement columns are established
+from Johan's existing header report and the audited installation IDs. They are
+in `f4/h2_compact_data_packet_20261006.json`; see
+[the implementation handoff](H2_INTERVAL_FORECAST_IMPLEMENTATION.md) for evidence
+and current ledger. Price/scale/baseline/physical/prior/exposure provenance is
+still incomplete. Older statements that the exact headers are unknown are historical.
+
+**Active compact decision, 6 October:** the explicitly revised windows are
+TRAIN 18–19 February 2022, MODEL_SELECTION 20 February and unchanged final
+week 21–27 February. Prior origin is 17 February; its 24-hour lead is
+prediction-only. Use the fixed mean of all 13 audited MED households.
+See [the compact method review](H2_COMPACT_ESTIMATION_REVIEW.md) and
+`f4/h2_compact_method_decision_20261006.json`. All hours in the new TRAIN
+are used; this is a limited new experiment, not a subset passed off as the
+old seven-day fit. Original decisions below are historical.
+Exact columns, F price/scale/physical/noise/prior/baseline provenance and final
+exposure still require completion. The compact decision is not executable.
+The open forecast repeats only the prior seven days' hourly prices and uses
+the pre-origin frozen MED-only baseline; its input assumptions/uncertainty are
+reported separately from the contemporaneous final prequential filter.
+
+**6 October decision:** use the fixed mean of the 13 audited MED households,
+separately from UDEN. TRAIN is 7–13 February 2022, MODEL_SELECTION 14–20
+February, and planned final evaluation 21–27 February. Windows are half-open
+at local midnight and apply to interval starts; availability is at interval
+end. See [H2_METHOD_REDESIGN.md](H2_METHOD_REDESIGN.md) and
+`f4/h2_method_decision_20261006.json`. These choices are now recorded and must
+not be requested again. Exact header-column mapping and the remaining price,
+scale, earlier baseline/prior and physical/noise declarations still need
+completion. Final-week exposure is not audited; blind-holdout validation
+remains blocking. The decision JSON is not a runnable configuration and
+does not fill evidence fields with invented provenance. The old 73-candidate
+commands below describe an earlier pilot, not the active execution plan.
+
 Updated 5 October 2026. H1a-v2 and all six conditional synthetic H1b fits are
 complete on PR #62/#64. This H2 preparation does not repeat their studies or
 claim historical fitting/validation. See [F4.md](F4.md) for scientific status.

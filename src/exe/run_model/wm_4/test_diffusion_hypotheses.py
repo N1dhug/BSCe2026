@@ -81,7 +81,7 @@ def _initial_starts(hypothesis, records):
         return [np.array([base, sigma_I], dtype=float) for sigma_I in (0.50, 0.75, 0.90, 0.97, 0.995)]
     if hypothesis == "H4":
         base = max(1e-4, mean_sigma)
-        return [np.array([base, rho_F], dtype=float) for rho_F in (-0.75, -0.25, 0.0, 0.25, 0.75)]
+        return [np.array([base, rho_F], dtype=float) for rho_F in (0.0, 0.25, 0.50, 0.75, 0.95)]
 
     peak_hours = [int(np.argmax(record["observed_sigma"])) for record in records]
     phase = float(np.median(peak_hours))
@@ -118,7 +118,7 @@ def _bounds(hypothesis):
     if hypothesis == "H3":
         return np.array([1e-8, 0.0], dtype=float), np.array([np.inf, 1.0], dtype=float)
     if hypothesis == "H4":
-        return np.array([1e-8, -0.999999], dtype=float), np.array([np.inf, 0.999999], dtype=float)
+        return np.array([0.0, 0.0], dtype=float), np.array([1.0, 1.0], dtype=float)
     if hypothesis == "H5":
         return (
             np.array([1e-8, 0.0, 0.0, -0.999999], dtype=float),

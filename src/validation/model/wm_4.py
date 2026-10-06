@@ -26,6 +26,7 @@ class wm_4_validation(wm_1_validation):
         if r_U > tol: raise ValueError("wm_4 requires r_U <= 0 so higher signed prices reduce flexibility flow.")
         if r_R >= -tol: raise ValueError("wm_4 requires r_R < 0 so the rate state is damped.")
         if r_U < r_F - tol: raise ValueError("wm_4 requires r_F <= r_U so F*(U) remains in [-1, 1] for U in [-1, 1].")
+        if r_F + r_U < r_R - tol: raise ValueError("wm_4 requires r_F + r_U >= r_R so R*(F,U) remains in [-1, 1] for F,U in [-1, 1].")
         return r
 
     @classmethod
@@ -35,6 +36,7 @@ class wm_4_validation(wm_1_validation):
         if q_F >= -tol: raise ValueError("wm_4 requires q_F < 0.")
         if q_U > tol: raise ValueError("wm_4 requires q_U <= 0.")
         if q_U < q_F - tol: raise ValueError("wm_4 requires q_F <= q_U so F*(U) remains in [-1, 1].")
+        if q_F + q_U < -1.0 - tol: raise ValueError("wm_4 requires q_F + q_U >= -1 so R*(F,U)=q_F F+q_U U remains in [-1, 1].")
         return q
 
     @classmethod

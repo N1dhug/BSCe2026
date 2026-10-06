@@ -1,3 +1,34 @@
+# F4-H2 method decision (6 October 2026)
+
+**Implementation update:** [H2_NATIVE_DEVELOPMENT.md](H2_NATIVE_DEVELOPMENT.md)
+is the active command handoff. Native log-Thomas with eight frequency workers
+passes the 40 declared reference hours in 104.43 s here. PC timing is next via
+`root/f4/run_h2_native.ps1`, with 777.25 s left in the shared native allowance,
+not another 900 s. H ledger is 1147.38 s. No historical optimizer is enabled;
+full data/rate/task-graph admission and blind-exposure gates remain.
+
+The Astra mathematical review is complete: see
+[H2_METHOD_REDESIGN.md](H2_METHOD_REDESIGN.md). MED is separate; TRAIN is
+7–13 February, model selection 14–20 February and planned final evaluation
+21–27 February 2022, with blind status still unresolved. Sol High's next
+task is the isolated compiled positive-recursion/frequency-worker prototype,
+under one 900-second development ceiling. There is no new historical run
+command yet. The 17-candidate pilot is not the new adaptive fit; complete
+runtime/data/precision admission and priced validation work are required.
+Review changed no numerical code and consumed no model time; ledger 1024.63 s.
+
+## F4-H2 Windows pilot result (6 October 2026)
+
+The eight-worker/eight-candidate/eight-hour synthetic pilot is complete and
+its eight checkpoints have been raw-reviewed without replay. Runtime is
+556.53 s; the cumulative H ledger remains 1024.63 s. Its 5.50-hour
+projection applies to 24 synthetic hours only. The old seven-day illustration
+cannot fit the 10-hour ceiling under the measured conservative planning rule.
+See [H2_PRECISE_BATCH.md](H2_PRECISE_BATCH.md) for the raw audit, original
+archive and unresolved F data contract. Do not rerun/resume the
+development pilot automatically. This is not historical fit acceptance.
+The old `curves history-fit` does not run the new terminal-tilt batch.
+
 # BM — arbejdsvejviser
 
 **Arbejdsregel fra Johan, 5. oktober — G/F og testomfang:** G (deterministisk

@@ -1,5 +1,9 @@
 # G0–G4: januar-fit, frosset ugeprognose og lille kurvepilot
 
+**Aktuel G-overdragelse, 6. oktober:** G8-reviewet har valgt Bernstein M254
+til et afgrænset eget filterforsøg; se [review og næste opgave](G8_BERNSTEIN_REVIEW.md).
+Januar-/G4-kommandoerne nedenfor bevares som historik og reproduktion.
+
 **G4 afsluttet for den afgrænsede punktprotokol, 6. oktober 2026:** Den fastlåste S3-sammenligning på nye ISO-uger 13–18 er complete: seks fælles mandagscutoffs, 1008/1008 målte timer. Uden straf har MSE 0.1798347601 mod 0.1843188395 med lambda=0.001 og baseline 0.1806157175. Straf øger MSE 2.4934 %, vinder kun 2/6 uger og taber alle leave-one-week-out-sammenligninger. Det registrerede modelvalg er derfor **S3 med lambda=0**, lineær f og fælles to-stykkers g over 35 historiske dage; ingen nye kurver eller lambdaer. Baselinegevinsten er kun 0.4324 %. Bounds, næsten flad prisrespons i tre senere fits og 207 observationer under den frosne demand-skala begrænser fysisk/prisstyringsfortolkning. Dette er fortsat betingede prognoser med realiseret pris/temperatur på legacy-punktkontrakten, ikke en uafhængig sluttest eller operationel forecast-accept. Alle 12 valgte kandidater består tidsforfining; to ugefits krævede 24 trin/time. Runnerinvocation 297.03 s, to fokuserede tests og syntakskontrol består. Præcis 24 fysiske warmup-timer efter sommertid er rettet; tidligere fits er bevaret uden genkørsel. Se [matematik, valg og råreview](G4_VALIDATION_WEEKS_13_18_REVIEW.md). **Næste: G6a-variansreference, derefter G6b→G8→G7; G5 dokumenteres løbende og afsluttes særskilt.** Ingen lokal kørsel kræves nu.
 
 
@@ -30,6 +34,17 @@ nu obligatorisk FP/mixture/EM (G6b), stokastisk single-shooting-kontrol (G7)
 og rekursiv estimation (G8), baseret på eksisterende F-arbejde.
 
 ## G4 fra original TRAIN-eksport — gennemført pilot og bevarede kommandoer
+
+Matematik og begrundelse er samlet i [G-planens afsnit 5](G.md#5-fleksible-fg-i-et-lille-ekstra-trin):
+én knude a=g(0.5), lineær f og fælles bounded nonlinear LS for log-C/Xi/a.
+Dokumentationsreview 5. oktober mod main `0da7e2a9`: metoden svarer til den
+eksisterende kode; ingen solverændring eller ny numerisk test er foretaget.
+Ved dette dokumentationsreview var den originale januar-fitmappe og dens to
+TRAIN-CSV'er endnu ikke tilgængelige, så historisk G4-fit/modelvalg stod åbent.
+Den efterfølgende gennemførte pilot og råreview er dokumenteret øverst og i
+G4_JANUARY_PILOT_REVIEW.md. Ved reproduktion bruges originalmappen nedenfor;
+genskab ikke et nyt G2-fit eller parametre fra afrundet terminaloutput
+for at erstatte arkivet.
 
 G3's rapporterede fejlmål i rå workbook-enheder:
 
@@ -65,6 +80,9 @@ git pull --ff-only origin main
 if ($LASTEXITCODE -ne 0) { throw "Pull fejlede." }
 
 $fitDir = "files/output/bm_1/runs/deterministic/g_january_fit_20261005_154824"
+foreach ($name in @("fit_predictions_normalized.csv", "fit_signals_normalized.csv")) {
+    if (-not (Test-Path "$fitDir/$name")) { throw "Original TRAIN-eksport mangler: $fitDir/$name" }
+}
 $pilotDir = "files/output/bm_1/runs/deterministic/g4_january_pilot_" + (Get-Date -Format "yyyyMMdd_HHmmss")
 python -B -m src.exe.run_model.bm_1.deterministic_response --reference-fit $fitDir --output $pilotDir
 $pilotExitCode = $LASTEXITCODE
@@ -419,3 +437,4 @@ integration med 27 demandhuller (inklusive et helt døgn og begge månedsender)
 og 3 temperaturhuller bestod på ca. 19 s: BM og WM scorer begge 717 timer.
 Fælles importers indre/ydre interpolation og measured-only fejlmål er kontrolleret.
 Det er syntetisk integrationsevidens, ikke et historisk januarfit.
+

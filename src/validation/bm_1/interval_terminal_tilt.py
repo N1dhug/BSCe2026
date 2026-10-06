@@ -183,21 +183,30 @@ def terminal_reference_control():
 
 def declared_terminal_control(report, reference, stage):
     from src.validation.bm_1.interval_curve_control import declared_control
-    if stage not in ('hour', 'day'):
-        raise ValueError('Declare hour or day.')
+    if stage not in ('hour', 'day', 'cross', 'fine'):
+        raise ValueError('Declare hour, day, cross or fine.')
     record, old = declared_control(report, reference, 'two-narrow')
+    settings = [dict(cells=1281, max_step=1/12288, frequencies=64, span=2.),
+                dict(cells=1921, max_step=1/24576, frequencies=64, span=2.)]
+    comparison = 'combined time/state refinement; not separate time and state attribution'
+    if stage in ('cross', 'fine'):
+        settings = [dict(cells=1281 if stage == 'cross' else 2561,
+                         max_step=1/24576 if stage == 'cross' else 1/49152,
+                         frequencies=64, span=2.)]
+        comparison = ('one cross replay; reuse saved day to separate time and state'
+                      if stage == 'cross' else
+                      'one joint finer state/time reference; reduced step required for positive CN')
     return record, dict(case='two-narrow-terminal-tilt', intervals=1 if stage == 'hour' else 24,
         centers=list(DEFAULT_CENTERS), relative_guard=1e-8, overlap_log_tolerance=1e-7,
-        settings=[dict(cells=1281, max_step=1/12288, frequencies=64, span=2.),
-                  dict(cells=1921, max_step=1/24576, frequencies=64, span=2.)],
+        settings=settings,
         f=old['f'], g=old['g'], sigma_y=old['sigma_y'],
         observations_reused=True, physical_parameters_reused=True, prior_reused=True,
-        comparison='combined time/state refinement; not separate time and state attribution')
+        comparison=comparison)
 
 
 def run_terminal_control(report, reference, stage, *, saved_rows=(), checkpoint=None,
-                         progress=None, deadline=None):
-    """Two fixed resolutions, one atomic pilot unit per completed interval.
+                         progress=None, deadline=None, terminal_reference=None):
+    """Fixed resolutions, one atomic pilot unit per completed interval.
 
     This checkpoint stores the pilot's actual log state. It is not an adapter
     for the historical fitter, arbitrary records, or continuously varying B/U.
@@ -206,6 +215,13 @@ def run_terminal_control(report, reference, stage, *, saved_rows=(), checkpoint=
     from src.solver.finite_volume import finite_volume_1d_fitted
     from src.validation.bm_1.interval_curve_control import _compare
     record, design = declared_terminal_control(report, reference, stage)
+    if stage in ('cross', 'fine'):
+        _, expected = declared_terminal_control(report, reference, 'day')
+        if (terminal_reference is None or terminal_reference.get('design') != expected
+                or terminal_reference.get('status') != 'completed'
+                or terminal_reference.get('stage') != 'day'
+                or len(terminal_reference.get('replays', [])) != 2):
+            raise ValueError('Cross/fine control requires the matching completed terminal day.')
     rows, count = list(saved_rows), design['intervals']
     total = len(design['settings'])*count
     if len(rows) > total or any((r['setting_index'], r['interval_index']) != divmod(i, count)
@@ -277,6 +293,23 @@ def run_terminal_control(report, reference, stage, *, saved_rows=(), checkpoint=
             log_likelihood=float(sum(r['log_evidence'] for r in units if r['log_evidence'] is not None)),
             posterior_state_means=[r['posterior_state_mean'] for r in units],
             elapsed_seconds=sum(r['elapsed_seconds'] for r in units)))
+    if stage == 'fine':
+        comparison = _compare('combined_1921_2561_reference', terminal_reference['replays'][1],
+                              replays[0], report['development_tolerances'])
+        return dict(status='completed', rows=rows, replays=replays, comparison=comparison,
+                    reference_replays_reused=1, reference_intervals_recomputed=0,
+                    numerical_fit_readiness=False,
+                    development_checks_pass=comparison['development_tolerances_pass'])
+    if stage == 'cross':
+        coarse, fine = terminal_reference['replays']
+        comparisons = [
+            _compare('time_at_1281_cells', coarse, replays[0], report['development_tolerances']),
+            _compare('space_at_h_1_24576', replays[0], fine, report['development_tolerances'])]
+        return dict(status='completed', rows=rows, replays=replays, comparisons=comparisons,
+                    reference_replays_reused=2, reference_intervals_recomputed=0,
+                    saved_combined_comparison=terminal_reference['comparison'],
+                    numerical_fit_readiness=False,
+                    development_checks_pass=all(c['development_tolerances_pass'] for c in comparisons))
     comparison = _compare('combined_time_state', replays[0], replays[1], report['development_tolerances'])
     return dict(status='completed', rows=rows, replays=replays, comparison=comparison,
                 development_checks_pass=comparison['development_tolerances_pass'])
