@@ -1,5 +1,10 @@
 # F4-H2: PC raw review and native v2, 6 October 2026
 
+**Completed v2 PC update:** all 40 units pass the raw review in 104.31 s.
+The current next task and latest ledger are in
+[the post-v2 mathematical review](H2_NATIVE_V2_NEXT_REVIEW.md).
+The PC commands below are completed evidence; do not rerun them.
+
 Johan's first native PC run is complete and raw-verified. The same-method
 arithmetic optimization v2 also passes its Linux equivalence check. Historical
 fitting is not admitted. This is the active handoff after

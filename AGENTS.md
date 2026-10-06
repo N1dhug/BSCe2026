@@ -1,5 +1,22 @@
 # Fælles projektkontekst
 
+## F4-H2: native v2 PC råkontrolleret, metodevalg er næste trin
+
+Aktiv næste opgave: [review efter native v2](root/H2_NATIVE_V2_NEXT_REVIEW.md).
+PC v2 består 40 units/36 observerede opdateringer på 104.31 s, cirka 12.1%
+kortere invocation end første PC. Alle 54 sourcehashes/checkpoints/referencer/
+guards/ledger består uden numerisk replay; største finite-log-fejl 9.19e-10.
+Varm maksimumstime er 4.06821 s, så 49-par-planens basearbejde alene illustrerer
+15.38 h med den uændrede 1.5-faktor. Historisk fit er fortsat ikke admitted.
+Ingen ny timingprøve: næste er et konkret matematisk søge-/valideringsreview,
+anbefalet Astra XHigh, derefter Sol High-implementering af det valgte design.
+MED/valgte uger og acceptkrav bevares indtil en eksplicit begrundet designrevision.
+Fuld F-datakontrakt og faktisk prissat heljob-gate er stadig åbne; G/WM uændret.
+H-ledger 1460.53 s; native 435.90/900 s, rest 464.10 s samlet.
+Original ZIP/source/ledger og råaudit er bevaret; ny seed udvider historikken.
+Ingen nye modelkørsler, historiske værdier eller bred suite i råreviewet.
+Følgende afsnit er historik og må ikke starte de afsluttede prøver igen.
+
 ## F4-H2: PC-native rå-reviewet, hurtigere v2 kontrolleret
 
 Aktiv indgang: `root/H2_NATIVE_PC_REVIEW.md`. Første PC-native består alle

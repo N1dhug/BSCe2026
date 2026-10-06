@@ -1,5 +1,11 @@
 # F4-H2: exact-kernel acceleration and bounded adaptive estimation
 
+**Native v2 PC update:** implementation/equivalence is established for the
+saved synthetic cases, but the complete 49-pair plan fails the timing gate.
+Next is [the explicit search/validation review](H2_NATIVE_V2_NEXT_REVIEW.md),
+with no automatic new timing or historical run. The older method choices
+below remain binding until a deliberate documented revision.
+
 **Implementation update, 6 October:** [PC raw review and native v2](H2_NATIVE_PC_REVIEW.md)
 is the active command/status handoff. The first native PC check passes, but
 the full 49-pair workload is not time-admitted. An equivalent arithmetic v2
