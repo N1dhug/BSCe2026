@@ -1,5 +1,27 @@
 # F4-H2: next bounded task after the search trial
 
+**Active handoff after the 6 October Astra review:**
+[H2_METHOD_REDESIGN.md](H2_METHOD_REDESIGN.md) supersedes the next-action
+instructions below. Implement the derived positive log-Thomas recurrence,
+compile the frozen-segment loop, and split Fourier indices across eight
+persistent workers for one adaptive candidate at a time (BLAS=1). The initial
+implementation/equivalence/runtime allocation is at most 900 new seconds,
+including compilation/resumes and 60 seconds to stop/save. Reuse old raw
+references; no broad panel or historical fit is started by this handoff.
+
+MED's fixed 13-household mean and TRAIN 7–13 February / MODEL_SELECTION
+14–20 February / planned final evaluation 21–27 February 2022 are selected.
+The final week's blind status and other historical inputs remain unresolved.
+Population/dates are recorded in `f4/h2_method_decision_20261006.json`, not
+an executable config. After equivalence and a complete budget/data gate,
+bounded COBYQA is the chosen adaptive search; its 49-pair outer ceiling is
+not a run authorization or convergence claim. Price all sequential calls,
+fine replays, selection/final continuations and forecast work, with an
+adequate validation reserve. Do not divide adaptive candidate count by eight.
+The review ran no numerical work; the latest ledger remains 1024.63 seconds.
+
+## Archived prior handoff and pilot evidence
+
 **6 October Windows result:** the synthetic eight-candidate/eight-hour pilot
 is reported complete in 556.53 seconds with eight workers and BLAS=1.
 The uploaded cumulative ledger now charges 1024.63 seconds. Its 5.50-hour

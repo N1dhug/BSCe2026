@@ -1,5 +1,26 @@
 # Fælles projektkontekst
 
+## F4-H2: Astra-metodevalg færdigt, 6. oktober 2026
+
+Aktiv overdragelse er `root/H2_METHOD_REDESIGN.md`. MED's 13 elvarmehuse
+vælges separat, med fast gruppemiddel. TRAIN er 7.–13. februar 2022,
+MODEL_SELECTION 14.–20. februar og planlagt slutevaluering 21.–27. februar;
+sidste uges blindhed kræver stadig eksponeringsaudit. Datoer er hour-start-
+vinduer; målinger bliver tilgængelige ved intervalslut. Population/perioder
+skal ikke vælges igen. Øvrig F-datakontrakt er stadig ufuldstændig.
+Præcis interval-likelihood bevares; næste Sol High-opgave er en isoleret
+kompileret positiv Thomas-rekurrens med 8 frekvensworkers/BLAS=1.
+Matematisk ækvivalens er udledt; implementering/hastighed er ikke kontrolleret.
+Højst 900 nye sekunder til den afgrænsede implementeringskontrol, inklusive
+kompilering/resumes og 60 s stopreserve. Ingen nye forsøg er kørt i reviewet.
+Senere adaptiv COBYQA er betinget af fuld data-/numerik-/budgetadmission;
+49 TRAIN-par er et loft, ikke en bestilling eller konvergensgaranti.
+Budgettér sekventielle kald, alle tre uger, finere replays og forecastarbejde;
+den gamle ceil(kandidater/8)-formel gælder ikke frekvensworkers. Forøg den
+mindst 2-timers valideringsreserve til faktisk prissat arbejde om nødvendigt.
+10 timer er stadig samlet loft, mål 4–6 timer; ledger står på 1024.63 s.
+Ingen automatisk 17-/73-kandidat-kørsel eller ny grov solverrunde. G/WM uændret.
+
 ## F4-H2 Windows-runtimepilot rå-reviewet, 6. oktober 2026
 
 Johans syntetiske pilot er nu rå-reviewet: otte valide kandidat-checkpoints,
