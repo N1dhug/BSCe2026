@@ -1,5 +1,7 @@
 # G8 — review af vejlederens Bernstein-basis
 
+**Aktuel opfølgning:** Det efterfølgende eget M254-filter og dets 513-forfining består nu de deklarerede rekursive gates. Se [M254-forfiningens matematik og resultater](G8_M254_REFINEMENT_REVIEW.md). De daterede forsøg og gamle næste-trin-afsnit nedenfor bevares som historik; G7-control er stadig åben.
+
 6. oktober 2026. G-parent: `7ecea53f289edbc2b86c7e7ff3e273694075aa73`.
 Seneste main kontrolleret ved reviewstart: `fa6c60fa3d1b4843d6e82028163a7374d011afcf`.
 Dette er G's matematiske repræsentationsreview; F/WM og historiske fits ændres ikke.

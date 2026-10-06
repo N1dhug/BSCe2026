@@ -74,6 +74,28 @@ negative testresultater. Genbrug den allerede gennemførte referencekørsel.
 Detaljeret kildekort/udledning: [G8-basisnoterne](root/G8_POSTERIOR_BASIS_REVIEW.md).
 Denne dokumentationsregel ændrer ikke F/WM's aktive opgaver eller resultater.
 
+## G8: eget Bernstein M254-filter forfinet, 6. oktober
+
+Eget 513/1-192-filter med vejlederens 255 celleintegrerede Bernstein-funktioner
+består hele døgnet og alle uændrede paired gates mod eget257-filter/FV513.
+Conditional L1 mod FV513 .00354065; marginal .00108111; projektion .000971943.
+Faktisk typed JSON-resume22→24 er identisk i masser/c/logvægte og begge
+likelihoodfelter. Filter309.743s; resume17.327s; invocation327.829s.36 importerede
+Gitblobs/37 sourcehashes og alle inputs er uændrede. Gamle resultater bevares.
+Dette frigiver M254's afgrænsede syntetiske repræsentation til G7-interfacearbejde;
+G7-mixture-prisforward/prisoptimering, historisk forecast og parameterrecovery
+mangler stadig. FV-control-helperen må ikke ommærkes til mixture-control.
+Næste er et typed own-origin-handoff og kort prisforwardpilot, derefter en
+konkret samlet jobgraf før optimizer. Sol High er tilstrækkelig til adapteren;
+Astra High kan bruges til den nye objective/handoff-matematiks review.
+Nyt scoped loft900s efter eksplicit fortsættelse; gamle300s-forsøg ændres ikke.
+Panel1800s bevares; tidligere målt ca345s+konservativ300s probe/arkivreserve
+afrundes til debit650s, nye faktiske tider lægges til uden budgetnulstilling.
+Budgetregnskabet er en konservativ reservation, ikke komplet timing af gamle
+umålte probes; G7 er ikke admitted. Ingen automatisk ekstra panel eller toleranceløsning.
+Læs [matematik og resultater](root/G8_M254_REFINEMENT_REVIEW.md).
+F/WM's status, kerner og budgetter er uændrede.
+
 ## F4-H2: intervalprognose implementeret, 6. oktober
 
 Aktiv overdragelse: [intervalprognose og næste datatrin](root/H2_INTERVAL_FORECAST_IMPLEMENTATION.md).
