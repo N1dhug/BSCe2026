@@ -1,0 +1,181 @@
+{
+  "population": {
+    "id": "MED_13_fixed_mean",
+    "tag": "MED",
+    "installation_ids": [
+      "223774",
+      "223811",
+      "223868",
+      "223891",
+      "223982",
+      "5080166",
+      "5099164",
+      "5099500",
+      "5099508",
+      "5100327",
+      "5100459",
+      "5101629",
+      "5102623"
+    ],
+    "measurement_columns": [
+      "223774_MED",
+      "223811_MED",
+      "223868_MED",
+      "223891_MED",
+      "223982_MED",
+      "5080166_MED",
+      "5099164_MED",
+      "5099500_MED",
+      "5099508_MED",
+      "5100327_MED",
+      "5100459_MED",
+      "5101629_MED",
+      "5102623_MED"
+    ],
+    "aggregation": "fixed mean; any missing member makes the hour missing",
+    "separate_from_UDEN": true
+  },
+  "header_evidence": {
+    "report": "files/output/bm_1/runs/estimation/h2_header_inspection_archived_20261006.json",
+    "report_sha256": "3be5eb7891c5fcf688cd7d43970934a04f68562ce3bdea9e5353cfc3adbfb5be",
+    "input_workbook_sha256": "3ce534b533e0da472cd72ae599916fa6209eccd10ad4c021a76ac5cfba3586d4",
+    "input_sheet": "2022 med dato (3)",
+    "price_workbook_sha256": "9321b4eaa2986ca20dbbdcd0f3f7d8fb5aab64fc71cd22b7ba6e3723dff319df",
+    "price_sheet": "data",
+    "price_headers": [
+      "HourDK",
+      "HourUTC",
+      "PriceArea",
+      "SpotPriceDKK",
+      "SpotPriceEUR"
+    ],
+    "membership_audit": "files/output/bm_1/runs/estimation/h2_workbook_metadata_audit_20261005.json",
+    "membership_audit_git_blob": "51c6c5087e8bed9aa3e817525124d8543081c7a7",
+    "observation_values_read": 0
+  },
+  "split": {
+    "timezone": "Europe/Copenhagen",
+    "timestamp_role": "interval_start",
+    "availability": "interval_end",
+    "prior_origin": "2022-02-17T00:00:00+01:00",
+    "train_start": "2022-02-18T00:00:00+01:00",
+    "selection_start": "2022-02-20T00:00:00+01:00",
+    "holdout_start": "2022-02-21T00:00:00+01:00",
+    "holdout_end": "2022-02-28T00:00:00+01:00",
+    "prior_lead_hours": 24,
+    "train_hours": 48,
+    "selection_hours": 24,
+    "final_hours": 168,
+    "prior_lead_policy": "prediction only; no pre-TRAIN observations assimilated",
+    "holdout_blindness_verified": false,
+    "exposure_audit": "root/H2_COMPACT_DATA_FOUNDATION.md#eksponering"
+  },
+  "observations": {
+    "kind": "interval_energy",
+    "measurement_unit": "kWh",
+    "timestamp_label": "hour_start",
+    "metadata_status": "working_assumptions",
+    "model_time_unit": "day"
+  },
+  "schema": "f4-h2-compact-data-policy-v1",
+  "method_decision": "root/f4/h2_compact_method_decision_20261006.json",
+  "authorization": "Johan: curves first; fixed F reference condition, no historical physical-parameter fit",
+  "history": {
+    "start": "2022-01-01T00:00:00+01:00",
+    "information_cutoff": "2022-02-16T00:00:00+01:00",
+    "availability": "interval end; cutoff strictly before prior origin"
+  },
+  "baseline": {
+    "method": "168 independent weekday/hour OLS intercepts on complete fixed MED group hours",
+    "minimum_complete_samples_per_bin": 3,
+    "imputation": false,
+    "legacy_baseline_unchanged": true,
+    "selection": "frozen before reading target observations; no tuning on selection/final"
+  },
+  "power_scale": {
+    "unit": "kW",
+    "history_maximum_multiplier": 1.1,
+    "subtraction": 0,
+    "clipping": false,
+    "history_population": "MED_13_fixed_mean"
+  },
+  "price": {
+    "area": "DK1",
+    "unit": "DKK/MWh",
+    "role": "spot_proxy",
+    "history_range_padding": 0.1,
+    "provenance": "src/exe/run_model/bm_1/real_data.py: historical F3 DK1 convention; no tariff/geography assertion",
+    "open_forecast_policy": "repeat Feb14-Feb21 hourly prices at Feb21 origin, with frozen prior scales",
+    "future_realized_prices": false
+  },
+  "physical": {
+    "C": 1.0,
+    "k": 2.0,
+    "Xi": 1.0,
+    "sigma_x": 0.5,
+    "sigma_y": 0.04,
+    "time_unit": "day",
+    "status": "fixed nominal conditional assumptions; not estimated MED physical parameters",
+    "provenance": "src/exe/run_model/bm_1/real_data.py::_parameters; root/BM_REFERENCE.md canonical F3",
+    "sigma_y_provenance": "separately declared nominal Gaussian likelihood noise in normalized hourly-average power; not an estimated meter-noise level"
+  },
+  "prior": {
+    "alpha": 20.0,
+    "beta": 20.0,
+    "origin": "2022-02-17T00:00:00+01:00",
+    "provenance": "src/validation/bm_1/cases.py and root/BM_REFERENCE.md F reference; not historically estimated"
+  },
+  "exposure": {
+    "audit_reference": "root/H2_COMPACT_DATA_FOUNDATION.md#eksponering",
+    "blind_holdout_verified": false,
+    "status": "unknown prior exposure; development held-out week only",
+    "evidence": [
+      "legacy F3 season-wide data-derived normalization can include future dates",
+      "no complete historical inspection log proves Feb21-Feb28 never exposed",
+      "new adapter decodes no target-period measurements or final realized prices"
+    ],
+    "blind_h3_acceptance": false
+  },
+  "numerics": {
+    "likelihood": "same sequential Gaussian interval-average likelihood",
+    "native": "v2 positive Thomas log-amplitude/conditional-transform recurrence",
+    "base_cells": 1921,
+    "base_max_step": 3.0517578125e-05,
+    "fine_cells": 2561,
+    "fine_max_step": 1.52587890625e-05,
+    "frequencies": 64,
+    "span": 2,
+    "centers": [
+      0.5,
+      0.25,
+      0.75,
+      0.0,
+      1.0
+    ],
+    "workers": 8,
+    "blas_threads": 1,
+    "fastmath": false,
+    "revision": "smaller time steps for nominal F sigma_x=.5 positivity; old timing estimate is not transferable",
+    "old_base_max_step": 4.0690104166666664e-05,
+    "old_fine_max_step": 2.0345052083333332e-05,
+    "guards": {
+      "mass": 1e-10,
+      "conditional": 1e-08,
+      "overlap": 1e-07,
+      "total_window_log_score": 0.05,
+      "state_mean": 0.002,
+      "state_L1": 0.05,
+      "forecast_mean": 0.002,
+      "forecast_variance": 0.002,
+      "forecast_cdf": 0.002,
+      "forecast_quantile": 0.002
+    }
+  },
+  "gates": {
+    "historical_fit_ready": false,
+    "runtime_admitted": false,
+    "numerical_likelihood_ready": false,
+    "scientific_acceptance": false
+  },
+  "next": "freeze actual workbook-derived baseline/scales locally; review raw ZIP; measure/prices complete work graph before any fit; no automatic optimization"
+}
