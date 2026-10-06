@@ -74,6 +74,27 @@ negative testresultater. Genbrug den allerede gennemførte referencekørsel.
 Detaljeret kildekort/udledning: [G8-basisnoterne](root/G8_POSTERIOR_BASIS_REVIEW.md).
 Denne dokumentationsregel ændrer ikke F/WM's aktive opgaver eller resultater.
 
+## G7: own M254-handoff implementeret, runtimepilot stoppet, 7. oktober
+
+Ny G-adapter bevarer typed supervisor M254, hver nodes egne c/posterior og
+frosne vægte ved candidate-forward. Kvadratisk tracking inkluderer within/
+between-varians; candidate-state nulstilles til samme origin. Shared kerner,
+legacy-evaluatorer og F/WM ændres ikke. Én kontrakttest består .410s.
+Pilot12→14: coarse neutralforward returnerer ved17.61s elapsed; fineforward
+afbrydes ved60.001s-loftet. Ingen paired precisionaccept, optimizer, EM eller
+actual feedback; G7-accept er false. G8's positive egen-filterevidens bevares.
+Original39 kildehashes/inputs og V1-source er frozen; coarse trajectory blev
+ikke råeksporteret før timeout. Corrected runner eksporterer completed forwards
+straks/audit ved stop og håndhæver oprindelige marginal-/feedback-gates eksplicit.
+Kun syntaks efter fix; ingen retry eller ny numerik. Se det konkrete review.
+Conservative paneldebit1045.580s inkl.2s testcharge/arkiv, rest754.420s;
+oprindelig umålt-probe-reservation bevares, budget nulstilles ikke.600s scoped
+G7-loft er ikke600s forbrugt og åbner ikke nyt job efter failed60s-pilot.
+Næste er afgrænset runtime-/jobdesignreview før et særskilt registreret run.
+Ingen større bank, løsere gate, noiseændring eller automatisk fuldt døgnjob.
+Ingen lokal modelkommando nu. F4-H2/WM-budgetter og status er uændrede.
+Læs [G7-matematik og faktisk udført](root/G7_OWNED_HANDOFF_REVIEW.md).
+
 ## G8: eget Bernstein M254-filter forfinet, 6. oktober
 
 Eget 513/1-192-filter med vejlederens 255 celleintegrerede Bernstein-funktioner
