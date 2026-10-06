@@ -47,7 +47,7 @@ class RecordingProjector(PreparedBetaProjector):
         return result
 
 
-def context(cells, degree=None, *, deadline=None):
+def context(cells, degree=None, *, deadline=None, basis_kind=None):
     model = BudgetBM1(baseline, target, (0., 24.), 2, deadline=deadline)
     fixed = build_problem().parameters
     parameters = fixed.parameter_template([0., 6., 12., 18., 24.])
@@ -57,18 +57,24 @@ def context(cells, degree=None, *, deadline=None):
     from src.control.bm_1 import beta_initial_cell_mass
     initial = beta_initial_cell_mass(edges)
     projector = None
-    if degree is not None:
+    if basis_kind is not None:
+        from src.method.bm_1_g8_basis import BASIS_KIND, localized_beta_basis
+        if degree is not None or basis_kind != BASIS_KIND:
+            raise ValueError('Declare one supported G8 basis, without a Bernstein degree.')
+        projector = RecordingProjector(localized_beta_basis(edges), dx)
+    elif degree is not None:
         basis = model.fokker_planc._normalise_basis_discretely(
             model.fokker_planc.beta_basis(grid, degree), dx)
         projector = RecordingProjector(basis, dx)
     return model, fixed, parameters, edges, initial, projector
 
 
-def known_filter(cells, observations, step, *, degree=None, deadline=None):
+def known_filter(cells, observations, step, *, degree=None, deadline=None, basis_kind=None):
     """Use the existing whole-record state-filter API; retain its diagnostics."""
     if observations.time_unit != 'hour':
         raise ValueError('G8 point observations must explicitly use hours.')
-    model, fixed, parameters, edges, initial, projector = context(cells, degree, deadline=deadline)
+    model, fixed, parameters, edges, initial, projector = context(
+        cells, degree, deadline=deadline, basis_kind=basis_kind)
     options = dict(breakpoints=[6.,12.,18.], max_step=step, likelihood_quadrature_order=3)
     if projector is None:
         result = run_fv_filter(model, parameters, fixed.sigma_x, SIGMA_Y,
@@ -180,7 +186,7 @@ class G8BankOrigin:
 
 
 def bank_filter(cells, observations, step, *, nodes=RHO_VALUES, degree=None,
-                origin=None, deadline=None, on_step=None):
+                origin=None, deadline=None, on_step=None, basis_kind=None):
     """Public bank API one new observation at a time, retaining node histories.
 
     Continuation passes each conditional mass AND mixture coefficient row.
@@ -188,12 +194,13 @@ def bank_filter(cells, observations, step, *, nodes=RHO_VALUES, degree=None,
     """
     if observations.time_unit != 'hour':
         raise ValueError('G8 observations use hours.')
-    model,fixed,parameters,edges,initial,projector = context(cells,degree,deadline=deadline)
+    model,fixed,parameters,edges,initial,projector = context(
+        cells,degree,deadline=deadline,basis_kind=basis_kind)
     nodes = checks.finite_vector(nodes,'rho nodes')
     logs = np.full(nodes.size,-np.log(nodes.size))
     current, coefficients, time = None,None,0.
     if origin is not None:
-        expected = 'fv' if degree is None else 'mixture'
+        expected = 'fv' if projector is None else 'mixture'
         if (not isinstance(origin,G8BankOrigin) or origin.backend != expected
                 or not np.array_equal(origin.rho_values,nodes) or not np.array_equal(origin.x_edges,edges)
                 or origin.price_side != observations.price_side or origin.sigma_y != SIGMA_Y

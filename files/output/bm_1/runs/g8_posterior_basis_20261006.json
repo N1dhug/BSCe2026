@@ -1,0 +1,1305 @@
+{
+  "initial_study": {
+    "registration": {
+      "study": "G8 fixed localized Beta dictionary",
+      "source_parent": "e77aaafdf2613fa2e846f458386145ce121ae33b",
+      "basis_kind": "g8-local-beta-41-k256-prior20-v1",
+      "alpha": [
+        20.0,
+        3.1219512195121952,
+        9.365853658536585,
+        15.609756097560975,
+        21.853658536585368,
+        28.097560975609756,
+        34.34146341463415,
+        40.58536585365854,
+        46.829268292682926,
+        53.073170731707314,
+        59.31707317073171,
+        65.5609756097561,
+        71.8048780487805,
+        78.04878048780488,
+        84.29268292682927,
+        90.53658536585365,
+        96.78048780487805,
+        103.02439024390245,
+        109.26829268292683,
+        115.51219512195122,
+        121.7560975609756,
+        128.0,
+        134.2439024390244,
+        140.4878048780488,
+        146.73170731707316,
+        152.97560975609755,
+        159.21951219512195,
+        165.46341463414635,
+        171.70731707317074,
+        177.9512195121951,
+        184.1951219512195,
+        190.4390243902439,
+        196.6829268292683,
+        202.9268292682927,
+        209.17073170731706,
+        215.41463414634146,
+        221.65853658536585,
+        227.90243902439025,
+        234.14634146341464,
+        240.390243902439,
+        246.6341463414634,
+        252.8780487804878
+      ],
+      "beta": [
+        20.0,
+        252.8780487804878,
+        246.6341463414634,
+        240.390243902439,
+        234.14634146341464,
+        227.90243902439025,
+        221.65853658536585,
+        215.41463414634146,
+        209.1707317073171,
+        202.9268292682927,
+        196.6829268292683,
+        190.4390243902439,
+        184.1951219512195,
+        177.9512195121951,
+        171.7073170731707,
+        165.46341463414635,
+        159.21951219512195,
+        152.97560975609755,
+        146.7317073170732,
+        140.4878048780488,
+        134.2439024390244,
+        128.0,
+        121.7560975609756,
+        115.51219512195121,
+        109.26829268292684,
+        103.02439024390245,
+        96.78048780487805,
+        90.53658536585365,
+        84.29268292682926,
+        78.04878048780489,
+        71.8048780487805,
+        65.5609756097561,
+        59.3170731707317,
+        53.07317073170731,
+        46.82926829268294,
+        40.585365853658544,
+        34.34146341463415,
+        28.097560975609753,
+        21.853658536585357,
+        15.60975609756099,
+        9.365853658536594,
+        3.121951219512198
+      ],
+      "components": 42,
+      "cell_average_basis": true,
+      "selection": "One design chosen after exposed G8 development evidence: kappa=256 is the smallest power of two whose central variance floor is below half the smallest saved FV node variance .00216612; 41 equispaced means plus original Beta(20,20). No independent validation claim.",
+      "comparisons": "Same 24h fixture, physical model, five rho nodes, likelihood GL3, cfl .4 and G8 tolerances.",
+      "levels": [
+        {
+          "cells": 129,
+          "step": 0.020833333333333332
+        },
+        {
+          "cells": 257,
+          "step": 0.010416666666666666
+        }
+      ],
+      "budget_seconds": 600,
+      "pilot_seconds": 60,
+      "checkpoint": 12.0,
+      "tolerances": {
+        "state_mean": 0.005,
+        "demand_mean": 0.005,
+        "state_variance": 0.002,
+        "demand_variance": 0.002,
+        "state_cdf": 0.03,
+        "demand_cdf": 0.03,
+        "state_quantile": 0.02,
+        "demand_quantile": 0.02,
+        "posterior_mass_l1": 0.05,
+        "projection_l1": 0.05,
+        "log_evidence": 0.05,
+        "bank_weight": 0.03,
+        "checkpoint": 1e-10,
+        "truth_path": 0.001,
+        "mass": 1e-09
+      },
+      "source_sha256": {
+        "src/control/bm_1.py": "9870c59085cf9248772871a361a3f6378d9b0475bc3a702a11ee4b4af7e02c33",
+        "src/control/bm_1_handoff.py": "59345e3ba2639f21540a861e7846ff457030b7f60b06108dea45bc8de7d31aa4",
+        "src/control/objective.py": "ae098b1ecb5af095b970c961b97463bb726e365f09cb38340524e6991d6dbece",
+        "src/exe/run_model/bm_1/g8.py": "64eba5d3903e7eaa5c9841106b591316db3b3eb405da78e9c281f11ca65018d0",
+        "src/exe/run_model/bm_1/g8_basis.py": "6264fab4309ee2fb9243d1b5d739758fcc4db1320fd57b2b2e0fbaf484099fab",
+        "src/method/beta_mixture.py": "3fb0b5f7ad95a00409b828966bddd1000b12a201dbf8d919d9a66c4a7090b224",
+        "src/method/bm_1_deterministic_fit.py": "cf627f3683fcdf53cb423cc87e927921f282f24d622f39c5fe36b7407c2e6729",
+        "src/method/bm_1_deterministic_response.py": "ba109ad881e0af1fb6d7206dd81e44402044f822fc2176d0fe5852684c6e31ed",
+        "src/method/bm_1_distribution_panel.py": "6d3c461b082b698bbdd15bf8165f5bf7de1c20ccabae738d7879bb79cca149e2",
+        "src/method/bm_1_estimation.py": "fc5774006d9731b843cf15d4f5de1cc9b4baed1e586d799e4ba9df5023dbd0c3",
+        "src/method/bm_1_g8.py": "ddc358a66515d68077799fb7001b4b3ba44fe966ab8243b9f6c28d2d5e72f1f0",
+        "src/method/bm_1_g8_basis.py": "c88b67e7146e61187ae4851980f72130438dcce060ba63a3f2a520478ad35518",
+        "src/method/bm_1_linear_noise.py": "bba55b9c43dba54d2d47425078ca59a29a699b053a478121ca78020c6e566228",
+        "src/method/euler_maruyama.py": "0b8f110fcfbe435a81477af558b61b07b5c00c1baa550404fbe92554066ee07e",
+        "src/method/fokker_planc.py": "a5c503b14785978996203d0ddd6adbc0767e29ce1cd0b2c4f88bd3cbe72b821a",
+        "src/method/objective.py": "c2a78c21da740bc4eb7bd3402fbf32247594805d0be7818b3e69c70c2dd77285",
+        "src/model/base/bm.py": "3c0066ca559898c1c5b15ff433a3cd902b01fbd99438745aabcac76344282522",
+        "src/model/bm_1.py": "ef902d4acd9555bd185001fbbaf3b5e9bf63ab6eab9de1967476d1c66a91d307",
+        "src/params/bm_1.py": "4cce1629c26d548401786b48f668679f1182658d4ccb3009f23037ffea07f140",
+        "src/params/bm_1_deterministic.py": "0ee08c88eb4e58041fa0f00b9822b6b7c84721eaa6d00bce1c9c9a225dee04b6",
+        "src/params/bm_1_response.py": "2d2380189072f447e2df676d6a91695fe8b66bc4b96fc7996ffddb0d305afe9c",
+        "src/solver/active_set.py": "fc6df91b4664de126d43f0a22cd9537bbc100f44941e30757b9580173b5a30e6",
+        "src/solver/finite_volume.py": "28cf8118216457ea7d87bb775d36885fc8cc6f94614db005d38335ad4e497d03",
+        "src/tools/input_generator/input_builder.py": "f85131284895376c10b8b4876f2e170ac9d56e5053a12047347b47a919f0795f",
+        "src/validation/control.py": "1633b40ba7b1fe1eccdc1fe042c3b2e037ba996d9453a5e3e0110868b0b85554",
+        "src/validation/estimation.py": "61289c4a25f7c8576de1ea9d0bbc52238cb37918a99e4cc872d84acf3d2caa9e",
+        "src/validation/method/euler_maruyama.py": "eb5fdfb413c43ea0ded219d4e88544d89d80b1fd0f1c769717d6f071ed061359",
+        "src/validation/method/fokker_planc.py": "4dd880c31fbb4a4ecc2eb5278cf5a5ed8475fb752f84ca5dbb6a6f631b409226",
+        "src/validation/method/objective.py": "b205697b3a597d5342a202641ca10ff8892d44f507dad70778d0410df8ee9b5c",
+        "src/validation/model/bm.py": "a4e0d360ab8bc208874368d4f77faae06c83bf1f9550daf254a2b9c6c23dd27f",
+        "src/validation/model/bm_1.py": "f1690c3f75f47fc494cdcd537eaaccd42f6575ae1cdfc8518bf7b150902b2581",
+        "src/validation/solver/active_set.py": "93f3f7aac0379f486e67f7536b2afd1bc1728feadd1b923911ab457e234b97fe",
+        "src/validation/solver/finite_volume.py": "e8eecd9025a055b62af16c92c9ba5421df8f1c4b8eef33fecca9f1c267497377",
+        "src/validation/tools/input_generator/input_builder.py": "c6bff7e7e746714dfb6d5fe6949fc8200efa586210cfbf2815252bfb665874af"
+      },
+      "reference_sha256": {
+        "registration.json": "79226c1e2a33a111bb36dd298a65c21b8a72be587efc91b1e2147748322f0b05",
+        "fixture.npz": "a0067f2b5336f89a12718639e3f9ad149d8fb7247a0ed197fb2b7db0f7f53307",
+        "summary.json": "69edc1c0060eb20096b04e6aafd43bd0dbd3b738d89687da5ff9600e24b8d475",
+        "known_fv129.npz": "bea8f4525b9fc9cbc69acc0afadbfc39d25b79d2e3acafbecb629f42a904590d",
+        "known_fv129.json": "c082557a52b15390fac2a652acd38c80d2cac815941b20579e387eb23b6ff97b",
+        "known_fv257.npz": "31053ab4b290e1a7897fc5ccd18592026b3592aae32e111838092d5504696b30",
+        "known_fv257.json": "78b82e96ab7e4a20cccce467d30216d4a1a810a2480ab2f3048592484c864500",
+        "bank_fv129.npz": "e780f5c475803306e42072ef3e2b31380dabeca96118cd89757c5ace0adc6cd2",
+        "bank_fv129.json": "880eb1f7d27d77492a76dd478e89fba219e8a640be9f32cb45da426f30809da3",
+        "bank_fv257.npz": "1e6c1e286e894003f79a404506c9664baa766fc040fc2b4be7eb1de6d23d6d6a",
+        "bank_fv257.json": "20fb285caca1780e964ff732516eb6d52263e0f17af530e413718dcdfcf99d2f"
+      },
+      "software": {
+        "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+        "numpy": "2.3.5",
+        "scipy": "1.17.0"
+      },
+      "stop_policy": "One candidate only. No degree/concentration/mean search after failure. FV remains accepted reference; failed mixture remains unaccepted."
+    },
+    "failures": {},
+    "comparisons": {
+      "known_local129_vs_fv257": {
+        "prediction": {
+          "state_mean": {
+            "max_error": 0.0015396713499103987,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00044472520684052386,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 0.00017163634843575526,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.527355336733427e-05,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.006837979084165446,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.018419484584204282,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.004084007757061969,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0014377992075688684,
+            "passed": true
+          }
+        },
+        "posterior": {
+          "state_mean": {
+            "max_error": 0.0015210115421632198,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00044472520684052386,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 0.00011274860382998186,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.527355336733427e-05,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.007171150554167949,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.023289156502164454,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.00331833080641164,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.001291788562778784,
+            "passed": true
+          }
+        },
+        "posterior_l1": {
+          "max_error": 0.02508864477127437,
+          "passed": true
+        },
+        "log_evidence": {
+          "max_error": 0.011336949597855916,
+          "passed": true
+        },
+        "all_pass": true
+      },
+      "known_local257_vs_fv257": {
+        "prediction": {
+          "state_mean": {
+            "max_error": 8.058154776824367e-05,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 2.4510115760600915e-05,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 1.405044115970755e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 2.0691701204389457e-06,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.0006155846408285592,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.0005632676515108237,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0002628297342948116,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.00010838326969236922,
+            "passed": true
+          }
+        },
+        "posterior": {
+          "state_mean": {
+            "max_error": 8.102686398447911e-05,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 2.7302668729078938e-05,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 1.0509550239679033e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.4300613261075679e-06,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.0004933165471396328,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.000503771679390419,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.00022003596837222306,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 8.979046081880604e-05,
+            "passed": true
+          }
+        },
+        "posterior_l1": {
+          "max_error": 0.0018020313838982942,
+          "passed": true
+        },
+        "log_evidence": {
+          "max_error": 0.0008971565721700436,
+          "passed": true
+        },
+        "all_pass": true
+      },
+      "bank_local129_vs_fv257": {
+        "prediction": {
+          "state_mean": {
+            "max_error": 0.0014963480832359544,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00043734836231473784,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 0.0001444381803276107,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.6405249624151796e-05,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.00668553336611416,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.017636742500545033,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.003031202427796087,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0014233134202540354,
+            "passed": true
+          }
+        },
+        "posterior": {
+          "state_mean": {
+            "max_error": 0.001572750083687957,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00045388157708753374,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 9.275630388794198e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.235160746082542e-05,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.00790994682703361,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.021903735010526948,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0024850753172678264,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0012433008896447495,
+            "passed": true
+          }
+        },
+        "posterior_l1": {
+          "max_error": 0.023901296237677176,
+          "passed": true
+        },
+        "log_evidence": {
+          "max_error": 0.013345245410639084,
+          "passed": true
+        },
+        "weights": {
+          "max_error": 0.0025820999312479165,
+          "passed": true
+        },
+        "all_pass": true
+      },
+      "bank_local257_vs_fv257": {
+        "prediction": {
+          "state_mean": {
+            "max_error": 8.211885908615546e-05,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 2.6353053908079183e-05,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 1.6097464433983966e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 2.48383967230148e-06,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.0006168433795057937,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.0006371614212351551,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.00030637648042836085,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.00013235730895821973,
+            "passed": true
+          }
+        },
+        "posterior": {
+          "state_mean": {
+            "max_error": 8.261801667164281e-05,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 2.861027275807837e-05,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 9.44719108997294e-06,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.3689520087512008e-06,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.0006383820398144779,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.0005202783074260697,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0001873546244357538,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 7.667202907707393e-05,
+            "passed": true
+          }
+        },
+        "posterior_l1": {
+          "max_error": 0.0023026383397689604,
+          "passed": true
+        },
+        "log_evidence": {
+          "max_error": 0.0017897127418793346,
+          "passed": true
+        },
+        "weights": {
+          "max_error": 0.000581705373063568,
+          "passed": true
+        },
+        "all_pass": true
+      },
+      "known_local_refinement": {
+        "prediction": {
+          "state_mean": {
+            "max_error": 0.0015803682589231594,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00043871114881877116,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 0.00018049511834505871,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.5628600354811173e-05,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.006980994126197959,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.018423358091579245,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0041128709957366505,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0014447821649147263,
+            "passed": true
+          }
+        },
+        "posterior": {
+          "state_mean": {
+            "max_error": 0.0015509254610128753,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00043655737168535325,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 0.00011338112097025732,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.5628600354811173e-05,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.006851301923279318,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.0233357662258587,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.003297683996682621,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0012756522231462952,
+            "passed": true
+          }
+        },
+        "posterior_l1": {
+          "max_error": 0.025250940538574983,
+          "passed": true
+        },
+        "log_evidence": {
+          "max_error": 0.01223410617002596,
+          "passed": true
+        },
+        "all_pass": true
+      },
+      "bank_local_refinement": {
+        "prediction": {
+          "state_mean": {
+            "max_error": 0.0015399196214286315,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00044689046486351414,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 0.00016053564476159465,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.8889089296453276e-05,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.006732237527820983,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.017591131868770926,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0029638893909210706,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0014207570870959918,
+            "passed": true
+          }
+        },
+        "posterior": {
+          "state_mean": {
+            "max_error": 0.0016333555905534425,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.0004746346329081441,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 9.3187873521694e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.2687908984593266e-05,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.007573778490849836,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.02178509976858556,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0024273671053146595,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0012251457979445268,
+            "passed": true
+          }
+        },
+        "posterior_l1": {
+          "max_error": 0.02445774283550242,
+          "passed": true
+        },
+        "log_evidence": {
+          "max_error": 0.015134958152518418,
+          "passed": true
+        },
+        "weights": {
+          "max_error": 0.0029960927663551795,
+          "passed": true
+        },
+        "all_pass": true
+      }
+    },
+    "conditional_checks": {
+      "bank_local129": {
+        "maximum_conditional_mass_l1": 0.051712878988690585,
+        "maximum_conditional_state_mean_error": 0.0030544620725692084,
+        "maximum_conditional_log_evidence_error": 0.031664274813932636,
+        "passed": false
+      },
+      "bank_local257": {
+        "maximum_conditional_mass_l1": 0.007299292993785336,
+        "maximum_conditional_state_mean_error": 0.000429788980328083,
+        "maximum_conditional_log_evidence_error": 0.006731918482287824,
+        "passed": true
+      },
+      "local_refinement": {
+        "maximum_conditional_mass_l1": 0.05841796553670224,
+        "maximum_conditional_state_mean_error": 0.0034842510528972914,
+        "maximum_conditional_log_evidence_error": 0.03664224928788262,
+        "passed": false
+      }
+    },
+    "projection_gates": {
+      "known_local129": {
+        "maximum_l1": 0.0010495164849421606,
+        "passed": true
+      },
+      "known_local257": {
+        "maximum_l1": 0.0010697924835161548,
+        "passed": true
+      },
+      "bank_local129": {
+        "maximum_l1": 0.0014936758834927664,
+        "passed": true
+      },
+      "bank_local257": {
+        "maximum_l1": 0.001556019796557031,
+        "passed": true
+      }
+    },
+    "checkpoint_resume": {
+      "seconds": 10.484227846000067,
+      "errors": {
+        "conditional_mass": 0.0,
+        "conditional_coefficients": 0.0,
+        "log_weights": 0.0,
+        "log_evidence": 0.0
+      },
+      "passed": true
+    },
+    "invocation_seconds": 42.665952765999464,
+    "numerical_development_accept": false,
+    "historical_accept": false,
+    "parameter_recovery_accept": false,
+    "price_optimization_performed": false,
+    "summaries": {
+      "known_local129": {
+        "total_log_evidence": 43.93172613546293,
+        "missing_mass_change": 0.0,
+        "maximum_mass_error": 2.220446049250313e-15,
+        "minimum_mass": 9.926365276543242e-154,
+        "seconds": 1.1572289100004127
+      },
+      "known_local257": {
+        "total_log_evidence": 43.959558539599136,
+        "missing_mass_change": 0.0,
+        "maximum_mass_error": 2.3314683517128287e-15,
+        "minimum_mass": 1.664155222873272e-184,
+        "seconds": 4.31342673600011
+      },
+      "bank_local129": {
+        "total_log_evidence": 43.67966236067239,
+        "missing_mass_change": 0.0,
+        "maximum_mass_error": 1.1102230246251565e-15,
+        "minimum_mass": 3.430466333427346e-153,
+        "seconds": 6.189768918000482,
+        "final_entropy": 1.5149291011757855,
+        "final_map_rho": 0.1875,
+        "missing_weight_change": 0.0
+      },
+      "bank_local257": {
+        "total_log_evidence": 43.6986377285709,
+        "missing_mass_change": 0.0,
+        "maximum_mass_error": 8.881784197001252e-16,
+        "minimum_mass": 1.8372282970300628e-172,
+        "seconds": 20.09428299799947,
+        "final_entropy": 1.5103867197139902,
+        "final_map_rho": 0.1875,
+        "missing_weight_change": 0.0
+      }
+    }
+  },
+  "followup": {
+    "registration": {
+      "study": "G8 conditional bank resolution follow-up",
+      "parent_study_sha256": "848fd091223a03a717364b245dfcb543a065bd1b04d7521806c13adb28b624ea",
+      "reason": "All original marginal/projection gates pass, but conditional-node 129-to-257 fails for both mixture and saved FV; test exactly one finer grid.",
+      "original_fv_conditional_failure": {
+        "maximum_conditional_mass_l1": 0.06554788622808437,
+        "maximum_conditional_state_mean_error": 0.003945127905419676,
+        "maximum_conditional_log_evidence_error": 0.04438327739712311,
+        "passed": false
+      },
+      "prior_numerical_accept": false,
+      "new_solves": [
+        "bank_fv513",
+        "bank_local513"
+      ],
+      "cells": 513,
+      "step": 0.005208333333333333,
+      "basis_kind": "g8-local-beta-41-k256-prior20-v1",
+      "total_followup_cap_seconds": 300,
+      "prior_invocation_seconds": 42.665952765999464,
+      "combined_numerical_cap_seconds": 600,
+      "tolerances": {
+        "state_mean": 0.005,
+        "demand_mean": 0.005,
+        "state_variance": 0.002,
+        "demand_variance": 0.002,
+        "state_cdf": 0.03,
+        "demand_cdf": 0.03,
+        "state_quantile": 0.02,
+        "demand_quantile": 0.02,
+        "posterior_mass_l1": 0.05,
+        "projection_l1": 0.05,
+        "log_evidence": 0.05,
+        "bank_weight": 0.03,
+        "checkpoint": 1e-10,
+        "truth_path": 0.001,
+        "mass": 1e-09
+      },
+      "source_sha256": {
+        "src/control/bm_1.py": "9870c59085cf9248772871a361a3f6378d9b0475bc3a702a11ee4b4af7e02c33",
+        "src/control/bm_1_handoff.py": "59345e3ba2639f21540a861e7846ff457030b7f60b06108dea45bc8de7d31aa4",
+        "src/control/objective.py": "ae098b1ecb5af095b970c961b97463bb726e365f09cb38340524e6991d6dbece",
+        "src/exe/run_model/bm_1/g8.py": "64eba5d3903e7eaa5c9841106b591316db3b3eb405da78e9c281f11ca65018d0",
+        "src/exe/run_model/bm_1/g8_basis.py": "6264fab4309ee2fb9243d1b5d739758fcc4db1320fd57b2b2e0fbaf484099fab",
+        "src/exe/run_model/bm_1/g8_basis_refine.py": "7d25af441b9ffecc06e7d8f07b64bde8c93488e36ee23d36c248a9a0909ac9b1",
+        "src/method/beta_mixture.py": "3fb0b5f7ad95a00409b828966bddd1000b12a201dbf8d919d9a66c4a7090b224",
+        "src/method/bm_1_deterministic_fit.py": "cf627f3683fcdf53cb423cc87e927921f282f24d622f39c5fe36b7407c2e6729",
+        "src/method/bm_1_deterministic_response.py": "ba109ad881e0af1fb6d7206dd81e44402044f822fc2176d0fe5852684c6e31ed",
+        "src/method/bm_1_distribution_panel.py": "6d3c461b082b698bbdd15bf8165f5bf7de1c20ccabae738d7879bb79cca149e2",
+        "src/method/bm_1_estimation.py": "fc5774006d9731b843cf15d4f5de1cc9b4baed1e586d799e4ba9df5023dbd0c3",
+        "src/method/bm_1_g8.py": "ddc358a66515d68077799fb7001b4b3ba44fe966ab8243b9f6c28d2d5e72f1f0",
+        "src/method/bm_1_g8_basis.py": "c88b67e7146e61187ae4851980f72130438dcce060ba63a3f2a520478ad35518",
+        "src/method/bm_1_linear_noise.py": "bba55b9c43dba54d2d47425078ca59a29a699b053a478121ca78020c6e566228",
+        "src/method/euler_maruyama.py": "0b8f110fcfbe435a81477af558b61b07b5c00c1baa550404fbe92554066ee07e",
+        "src/method/fokker_planc.py": "a5c503b14785978996203d0ddd6adbc0767e29ce1cd0b2c4f88bd3cbe72b821a",
+        "src/method/objective.py": "c2a78c21da740bc4eb7bd3402fbf32247594805d0be7818b3e69c70c2dd77285",
+        "src/model/base/bm.py": "3c0066ca559898c1c5b15ff433a3cd902b01fbd99438745aabcac76344282522",
+        "src/model/bm_1.py": "ef902d4acd9555bd185001fbbaf3b5e9bf63ab6eab9de1967476d1c66a91d307",
+        "src/params/bm_1.py": "4cce1629c26d548401786b48f668679f1182658d4ccb3009f23037ffea07f140",
+        "src/params/bm_1_deterministic.py": "0ee08c88eb4e58041fa0f00b9822b6b7c84721eaa6d00bce1c9c9a225dee04b6",
+        "src/params/bm_1_response.py": "2d2380189072f447e2df676d6a91695fe8b66bc4b96fc7996ffddb0d305afe9c",
+        "src/solver/active_set.py": "fc6df91b4664de126d43f0a22cd9537bbc100f44941e30757b9580173b5a30e6",
+        "src/solver/finite_volume.py": "28cf8118216457ea7d87bb775d36885fc8cc6f94614db005d38335ad4e497d03",
+        "src/tools/input_generator/input_builder.py": "f85131284895376c10b8b4876f2e170ac9d56e5053a12047347b47a919f0795f",
+        "src/validation/control.py": "1633b40ba7b1fe1eccdc1fe042c3b2e037ba996d9453a5e3e0110868b0b85554",
+        "src/validation/estimation.py": "61289c4a25f7c8576de1ea9d0bbc52238cb37918a99e4cc872d84acf3d2caa9e",
+        "src/validation/method/euler_maruyama.py": "eb5fdfb413c43ea0ded219d4e88544d89d80b1fd0f1c769717d6f071ed061359",
+        "src/validation/method/fokker_planc.py": "4dd880c31fbb4a4ecc2eb5278cf5a5ed8475fb752f84ca5dbb6a6f631b409226",
+        "src/validation/method/objective.py": "b205697b3a597d5342a202641ca10ff8892d44f507dad70778d0410df8ee9b5c",
+        "src/validation/model/bm.py": "a4e0d360ab8bc208874368d4f77faae06c83bf1f9550daf254a2b9c6c23dd27f",
+        "src/validation/model/bm_1.py": "f1690c3f75f47fc494cdcd537eaaccd42f6575ae1cdfc8518bf7b150902b2581",
+        "src/validation/solver/active_set.py": "93f3f7aac0379f486e67f7536b2afd1bc1728feadd1b923911ab457e234b97fe",
+        "src/validation/solver/finite_volume.py": "e8eecd9025a055b62af16c92c9ba5421df8f1c4b8eef33fecca9f1c267497377",
+        "src/validation/tools/input_generator/input_builder.py": "c6bff7e7e746714dfb6d5fe6949fc8200efa586210cfbf2815252bfb665874af"
+      },
+      "reference_sha256": {
+        "fixture.npz": "a0067f2b5336f89a12718639e3f9ad149d8fb7247a0ed197fb2b7db0f7f53307",
+        "bank_local257.npz": "7774384c20ed2d8fc7be6802017264f4e8aeee45c85c5f079c3355f5840fb59c",
+        "bank_local257.json": "d88bc40ed96a5bca38c1aa5203bc6d93fab2d3fee5fa91f5ba406ca8c74b39dc",
+        "bank_fv257.npz": "1e6c1e286e894003f79a404506c9664baa766fc040fc2b4be7eb1de6d23d6d6a",
+        "bank_fv257.json": "20fb285caca1780e964ff732516eb6d52263e0f17af530e413718dcdfcf99d2f"
+      },
+      "stop_policy": "No further grid, dictionary or physical-parameter changes if this paired refinement fails.",
+      "conditional_gates": "Every rho node mass L1<=.05, state mean<=.005, pre-update log-evidence<=.05; plus unchanged marginal gates."
+    },
+    "failures": {},
+    "comparisons": {
+      "fv_refinement": {
+        "prediction": {
+          "state_mean": {
+            "max_error": 0.0008432626865816362,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.0002466821793525864,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 9.342954462693287e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.1263198576721978e-05,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.003580523314606121,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.00898515043941761,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0014513603424722854,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0007154413540829685,
+            "passed": true
+          }
+        },
+        "posterior": {
+          "state_mean": {
+            "max_error": 0.0009085177225152119,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.0002670570500881708,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 4.731381931721845e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 6.615382429880912e-06,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.0039045791508581784,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.010710240942518434,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0013207485363750937,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0006227723239446981,
+            "passed": true
+          }
+        },
+        "posterior_l1": {
+          "max_error": 0.01347501945890387,
+          "passed": true
+        },
+        "log_evidence": {
+          "max_error": 0.009219897679918931,
+          "passed": true
+        },
+        "weights": {
+          "max_error": 0.0018715265819706367,
+          "passed": true
+        },
+        "all_pass": true
+      },
+      "local_refinement": {
+        "prediction": {
+          "state_mean": {
+            "max_error": 0.000813863742820109,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00023795617744759578,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 8.404010148116425e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 9.904501004381894e-06,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.003562847813752268,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.00901404602347633,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0014767705129679065,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0007072533572406448,
+            "passed": true
+          }
+        },
+        "posterior": {
+          "state_mean": {
+            "max_error": 0.0008699989915299522,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00025428491693324506,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 4.7099193627053726e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 6.431725785849274e-06,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.004096831726527306,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.010949357287911243,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0013357404466334266,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0006329416204148286,
+            "passed": true
+          }
+        },
+        "posterior_l1": {
+          "max_error": 0.013012300427167585,
+          "passed": true
+        },
+        "log_evidence": {
+          "max_error": 0.008198294746237789,
+          "passed": true
+        },
+        "weights": {
+          "max_error": 0.0016510032860423407,
+          "passed": true
+        },
+        "all_pass": true
+      },
+      "local257_vs_fv513": {
+        "prediction": {
+          "state_mean": {
+            "max_error": 0.000799691148388959,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00023363931120329307,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 7.73320801929489e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 8.779358904420498e-06,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.003533819152899298,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.009030761071191717,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0015186733793473017,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0007082838653822421,
+            "passed": true
+          }
+        },
+        "posterior": {
+          "state_mean": {
+            "max_error": 0.0008479122156497265,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 0.00024630399426756044,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 4.688224968346644e-05,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 6.279080906113066e-06,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.0042407474870419515,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.011140748401643641,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.0013784567483282606,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 0.0006409274156449207,
+            "passed": true
+          }
+        },
+        "posterior_l1": {
+          "max_error": 0.012793899661434635,
+          "passed": true
+        },
+        "log_evidence": {
+          "max_error": 0.007430184938039597,
+          "passed": true
+        },
+        "weights": {
+          "max_error": 0.0014575337468633737,
+          "passed": true
+        },
+        "all_pass": true
+      },
+      "local513_vs_fv513": {
+        "prediction": {
+          "state_mean": {
+            "max_error": 5.052188519483192e-05,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 1.5280366472469886e-05,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 6.708021288215349e-06,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 1.125142099961396e-06,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.0002830029496342368,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.00029622364228909515,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.00014880768980629622,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 6.42153690516567e-05,
+            "passed": true
+          }
+        },
+        "posterior": {
+          "state_mean": {
+            "max_error": 5.052188519483192e-05,
+            "passed": true
+          },
+          "demand_mean": {
+            "max_error": 1.72805704223844e-05,
+            "passed": true
+          },
+          "state_variance": {
+            "max_error": 4.196193468419818e-06,
+            "passed": true
+          },
+          "demand_variance": {
+            "max_error": 6.311284402316097e-07,
+            "passed": true
+          },
+          "state_cdf": {
+            "max_error": 0.0002949550195031625,
+            "passed": true
+          },
+          "demand_cdf": {
+            "max_error": 0.0002442603122998488,
+            "passed": true
+          },
+          "state_quantile": {
+            "max_error": 0.00010836647654088871,
+            "passed": true
+          },
+          "demand_quantile": {
+            "max_error": 5.170848841762332e-05,
+            "passed": true
+          }
+        },
+        "posterior_l1": {
+          "max_error": 0.0013293811627329499,
+          "passed": true
+        },
+        "log_evidence": {
+          "max_error": 0.0007681098081981919,
+          "passed": true
+        },
+        "weights": {
+          "max_error": 0.00027253456061096526,
+          "passed": true
+        },
+        "all_pass": true
+      }
+    },
+    "conditional_checks": {
+      "fv_refinement": {
+        "maximum_conditional_mass_l1": 0.036568734296761655,
+        "maximum_conditional_state_mean_error": 0.0021485994760508387,
+        "maximum_conditional_log_evidence_error": 0.023955236918864475,
+        "passed": true
+      },
+      "local_refinement": {
+        "maximum_conditional_mass_l1": 0.032883289852286855,
+        "maximum_conditional_state_mean_error": 0.0019196989408275522,
+        "maximum_conditional_log_evidence_error": 0.020322017482572452,
+        "passed": true
+      },
+      "local257_vs_fv513": {
+        "maximum_conditional_mass_l1": 0.02963794655629681,
+        "maximum_conditional_state_mean_error": 0.0017188121288520541,
+        "maximum_conditional_log_evidence_error": 0.017484057062338465,
+        "passed": true
+      },
+      "local513_vs_fv513": {
+        "maximum_conditional_mass_l1": 0.0034864449848049854,
+        "maximum_conditional_state_mean_error": 0.00020088681197549807,
+        "maximum_conditional_log_evidence_error": 0.003098699045995801,
+        "passed": true
+      }
+    },
+    "maximum_bayes_projection_l1": 0.0015626233219989056,
+    "invocation_seconds": 107.41981614500037,
+    "combined_numerical_seconds": 150.08576891099983,
+    "numerical_development_accept_257_and_513": true,
+    "coarse_129_conditional_accept": false,
+    "initial_study_accept_unchanged": false,
+    "historical_accept": false,
+    "parameter_recovery_accept": false,
+    "price_optimization_performed": false,
+    "summaries": {
+      "bank_fv513": {
+        "total_log_evidence": 43.70888525784275,
+        "missing_mass_change": 0.0,
+        "maximum_mass_error": 2.220446049250313e-15,
+        "minimum_mass": 1.3944100968337096e-67,
+        "seconds": 16.9360127609998,
+        "final_entropy": 1.5082121481550825,
+        "final_map_rho": 0.1875,
+        "missing_weight_change": 0.0
+      },
+      "bank_local513": {
+        "total_log_evidence": 43.708105386388134,
+        "missing_mass_change": 0.0,
+        "maximum_mass_error": 2.220446049250313e-15,
+        "minimum_mass": 2.359943980592758e-201,
+        "seconds": 89.6210339040008,
+        "final_entropy": 1.5078746376622438,
+        "final_map_rho": 0.1875,
+        "missing_weight_change": 0.0
+      }
+    }
+  },
+  "evidence": {
+    "parent": "e77aaafdf2613fa2e846f458386145ce121ae33b",
+    "source_git_sha": {
+      "src/control/bm_1.py": "75e93ea42b1f0f105ad2af680e0b7afb884319e3",
+      "src/control/bm_1_handoff.py": "fb3bb2b15c0b9325ef60af9a7786ac7016ebdddb",
+      "src/control/objective.py": "78f7bb4a2b0274621e330cb4a9124f034f06929d",
+      "src/exe/run_model/bm_1/g8.py": "ce84d5571a87c785487abf0fad588e67a41a99dc",
+      "src/exe/run_model/bm_1/g8_basis.py": "871ce0a59a4ec79649544919e36dd91d12689835",
+      "src/exe/run_model/bm_1/g8_basis_refine.py": "a89b3bd3d5bfcb9f9cc941af9e4cf24854293e74",
+      "src/method/beta_mixture.py": "61ae6ae4c4678a3157977a58de5c1d4c4fa315a0",
+      "src/method/bm_1_deterministic_fit.py": "fa6421f3c2c21b4e14b37c2ba4821988b8584c58",
+      "src/method/bm_1_deterministic_response.py": "e18b77d702a3d8df64ebf8ff559e60e541935342",
+      "src/method/bm_1_distribution_panel.py": "268d0a80a1f354ba82a1484ddd2ad1e4d3bd5540",
+      "src/method/bm_1_estimation.py": "fe55afc9526a2970279b4cc7147db264092d7841",
+      "src/method/bm_1_g8.py": "0eb93b8a108c2c20679330db916887952c3dc820",
+      "src/method/bm_1_g8_basis.py": "9056ce04402681f2f3c3c0ac9a71a4bb0859382d",
+      "src/method/bm_1_linear_noise.py": "b725a3073a5803132738ff03aa4a0548739a2b7f",
+      "src/method/euler_maruyama.py": "288c2db0b7262ac62381ba8a6c7c3d0319480a5f",
+      "src/method/fokker_planc.py": "7f00cd11f9c0a6b129c04d7cb1fbdff4c4cb3b90",
+      "src/method/objective.py": "bb08c689ff4dba3109d5c578ba92f0bcee04af5a",
+      "src/model/base/bm.py": "413020f6a5810e791a35fd1101529133474b5b5b",
+      "src/model/bm_1.py": "23cd0bb2628522257498bf8c323612427b42ed42",
+      "src/params/bm_1.py": "6561400079167a055dc2038fdf9adb06b6644880",
+      "src/params/bm_1_deterministic.py": "79bfc3402b612e8b7d609b28b6b772f7c6285288",
+      "src/params/bm_1_response.py": "9cb852feb0e875da9546d303de8cb82e035dc4fa",
+      "src/solver/active_set.py": "16ded6cfa9498b2a62e8e3dd971b6b9ed87713c9",
+      "src/solver/finite_volume.py": "2ad38a82f250136fa3d46aaabb3cd9c21f75e4f8",
+      "src/tools/input_generator/input_builder.py": "bf5c89f729d0fe97eecde2f948ebf18e3501e281",
+      "src/validation/control.py": "12088715411a91ef7010911768326df3d0bdb9c3",
+      "src/validation/estimation.py": "46acd6cf93744ffe813a2bb7babac9dd17d0451d",
+      "src/validation/method/euler_maruyama.py": "b76125192de16b2226bc70bef88316dd66597574",
+      "src/validation/method/fokker_planc.py": "95e9484b3a17c463f2574ca91f21cfe42c5f5ba7",
+      "src/validation/method/objective.py": "91261b000ebfcd87018399c5af9ecc450eb55116",
+      "src/validation/model/bm.py": "eef5b34847bc4e5c9ecc3d7626db1bf52868223c",
+      "src/validation/model/bm_1.py": "d1385ad2866b1b9dd05ed586b00fa00326799605",
+      "src/validation/solver/active_set.py": "0c4ce88fb2ff0b6691b16aa4ef2c3cb20f675d9c",
+      "src/validation/solver/finite_volume.py": "6d942ed66d772f9ad44b04114f72e48cf1b63a98",
+      "src/validation/tools/input_generator/input_builder.py": "01fdbd29eccdc737ca4ea16d399d1358eaec29f1"
+    },
+    "tests": {
+      "command": "OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m unittest tests.test_bm1_g8_basis -v",
+      "passed": 2,
+      "unittest_seconds": 0.079,
+      "invocation_seconds": 0.672773339
+    },
+    "syntax": {
+      "passed": 5
+    },
+    "source_attribution": {
+      "upload": "13-MixtureApproximationsForTheFokkerPlanckEquation-1.pdf",
+      "author": "Tobias K. S. Ritschel",
+      "date": "2025-09-28",
+      "slides": [
+        6,
+        8
+      ],
+      "equations": [
+        "4",
+        "7a-7c"
+      ]
+    }
+  }
+}
