@@ -1,6 +1,42 @@
+## Aktiv basisbeslutning — Johan, 6. oktober 2026
+
+Vejlederens normaliserede Bernstein/Beta-basis er G's primære mixture-basis:
+
+\[
+\ell_m(x)=\frac{(M+1)!}{m!(M-m)!}x^m(1-x)^{M-m},
+\qquad m=0,\ldots,M.
+\]
+
+Den nye faste 42-leds Beta-basis beholdes alene som sammenligningsreference.
+FV er fortsat den numeriske reference; metodeprioritet og numerisk accept er
+forskellige beslutninger. De gemte negative M38/M78-resultater og positive
+42-leds-resultater bevares uændret. M38's åbne G6b-propagation består, men
+M38/M78 er ikke accepteret til G8's posterior→G7-kæde.
+
+Næste G-opgave er et afgrænset repræsentationsreview inden for vejlederens
+basisfamilie. Genbrug gemte FV-posteriors og undersøg nødvendigt gradtal M,
+LS-konditionering og praktisk runtime før højst én registreret kandidatkontrol.
+For denne familie er det kontinuerte variansgulv
+V >= mu(1-mu)/(M+3); et højere M kan sænke gulvet, men dette er kun et
+nødvendigt kriterium, ikke en garanti for tilstrækkelig L1-/scorepræcision.
+Intet bestemt nyt M eller nyt forsøgsbudget er valgt ved denne planændring.
+
+G7's primære mixture-handoff skal komme fra en kontrolleret kørsel med den
+oprindelige basisfamilie og hver nodes egne koefficienter/posterior.
+Det gemte bank_local257-origin må kun bruges som eksplicit 42-leds-reference,
+ikke som primær origin eller som skjult restart for Bernstein-filteret.
+Bevar modellen, likelihooden, simplex-constraints og accepttolerancer;
+ingen større målefejl, signed koefficienter eller FV-fallback forklædt som
+mixture for at få den primære metode til at bestå. Hvis den primære basis
+ikke består inden for praktisk budget, dokumenteres begrænsningen.
+
+Denne beslutning erstatter tidligere anbefalinger om 42-leds-basis som
+G7's primære startkonfiguration. Numerisk evidens er ikke ændret.
+Kun G-dokumentation er opdateret; ingen nye tests eller modelkørsler.
+
 **G8 punktfilter/bank gennemført som afgrænset integration, 6. oktober 2026:** FV kendt-parameter-filter og fem-node-rho-bank består forfining, missing og faktisk JSON-resume. 24 syntetiske timer/22 målinger; predictive demand-RMSE .0208264 mod åben .0286866 (27.40 % mindre på denne ene bane). Banken identificerer ikke sand rho sikkert. M38/M78 gennemfører, men begge afvises efter Bayes-opdateringer: kendt posterior-L1 .498924/.139169 og bank .500165/.138551 mod .05. M78's gode mean er ikke fordelingsaccept. Fuld-bank→FV fast kontrolforslag bevarer egne nodeposteriors og parameterusikkerhed; ingen prisoptimering. V2 invocation49.112 s, tre fokuserede tests består, fælles kerner/F/WM uændret. Se [matematik, råreview og begrænsninger](G8_POINT_BANK_REVIEW.md). **G8 mixture er ikke accepteret: næste lille opgave er posterior-repræsentation før mixture→G7; FV-handoff er klar til separat G7-referencearbejde.** Historisk timeenergi og ugeforecast er ikke accepteret. Ingen lokal kørsel kræves nu. Ældre næste-trin-afsnit nedenfor er historiske.
 
-**G8 posterior-basis afklaret, 6. oktober 2026:** En fast celleintegreret ordbog med 41 smalle Beta-led (kappa256) plus Beta(20,20)-prioren sænker Bayes-projektionsfejlen fra .128495 til .001494 allerede ved samme129-grid. 42 koefficienter bruges i stedet for M78's79. En ny conditional-node-kontrol afviste129-cellers grid for både den gemte FV-bank og ny mixture; det negative første studie bevares. Én målrettet257→513-forfining består nu for hver node og marginalen. **Brug42 komponenter/257 celler som udgangspunkt for G7's lille syntetiske integration.** Alle31 eksisterende importerede shared-moduler er uændrede; kun G-adapterens basisvalg udvides. Faktisk JSON-resume er identisk; to fokuserede tests består. Nye numeriske invocations150.086 s i alt. Se [udledning, kildegrundlag, valg og råreview](G8_POSTERIOR_BASIS_REVIEW.md). Næste G7-evaluator skal bruge originens faktiske basis og egne nodekoefficienter, ikke rekonstruere M38. Ingen prisoptimering, historisk forecastaccept eller parameterrecovery i denne leverance. G4/F/WM uændret; ingen lokal kørsel kræves nu. Tidligere blokering nedenfor er løst for denne udviklingscase, ikke universelt.
+**G8 posterior-basis afklaret, 6. oktober 2026:** En fast celleintegreret ordbog med 41 smalle Beta-led (kappa256) plus Beta(20,20)-prioren sænker Bayes-projektionsfejlen fra .128495 til .001494 allerede ved samme129-grid. 42 koefficienter bruges i stedet for M78's79. En ny conditional-node-kontrol afviste129-cellers grid for både den gemte FV-bank og ny mixture; det negative første studie bevares. Én målrettet257→513-forfining består nu for hver node og marginalen. **Historisk anbefaling, nu erstattet af Johans basisbeslutning ovenfor: 42 komponenter/257 celler er kun reference for G7.** Alle31 eksisterende importerede shared-moduler er uændrede; kun G-adapterens basisvalg udvides. Faktisk JSON-resume er identisk; to fokuserede tests består. Nye numeriske invocations150.086 s i alt. Se [udledning, kildegrundlag, valg og råreview](G8_POSTERIOR_BASIS_REVIEW.md). Næste G7-evaluator skal bruge originens faktiske basis og egne nodekoefficienter, ikke rekonstruere M38. Ingen prisoptimering, historisk forecastaccept eller parameterrecovery i denne leverance. G4/F/WM uændret; ingen lokal kørsel kræves nu. Tidligere blokering nedenfor er løst for denne udviklingscase, ikke universelt.
 
 # G3 og frem — grundlag og overdragelse til Sol
 

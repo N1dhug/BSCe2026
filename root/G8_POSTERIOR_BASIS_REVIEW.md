@@ -4,9 +4,45 @@
 Dette er en fortsættelse af G8, adskilt fra F4-H2 og WM.
 G8's gamle M38/M78-resultater og alle negative gates bevares.
 
-## Beslutning
+## Aktiv basisbeslutning — Johan, 6. oktober 2026
 
-Brug den nye faste, celleintegrerede Beta-basis med 42 komponenter og
+Vejlederens normaliserede Bernstein/Beta-basis er G's primære mixture-basis:
+
+\[
+\ell_m(x)=\frac{(M+1)!}{m!(M-m)!}x^m(1-x)^{M-m},
+\qquad m=0,\ldots,M.
+\]
+
+Den nye faste 42-leds Beta-basis beholdes alene som sammenligningsreference.
+FV er fortsat den numeriske reference; metodeprioritet og numerisk accept er
+forskellige beslutninger. De gemte negative M38/M78-resultater og positive
+42-leds-resultater bevares uændret. M38's åbne G6b-propagation består, men
+M38/M78 er ikke accepteret til G8's posterior→G7-kæde.
+
+Næste G-opgave er et afgrænset repræsentationsreview inden for vejlederens
+basisfamilie. Genbrug gemte FV-posteriors og undersøg nødvendigt gradtal M,
+LS-konditionering og praktisk runtime før højst én registreret kandidatkontrol.
+For denne familie er det kontinuerte variansgulv
+V >= mu(1-mu)/(M+3); et højere M kan sænke gulvet, men dette er kun et
+nødvendigt kriterium, ikke en garanti for tilstrækkelig L1-/scorepræcision.
+Intet bestemt nyt M eller nyt forsøgsbudget er valgt ved denne planændring.
+
+G7's primære mixture-handoff skal komme fra en kontrolleret kørsel med den
+oprindelige basisfamilie og hver nodes egne koefficienter/posterior.
+Det gemte bank_local257-origin må kun bruges som eksplicit 42-leds-reference,
+ikke som primær origin eller som skjult restart for Bernstein-filteret.
+Bevar modellen, likelihooden, simplex-constraints og accepttolerancer;
+ingen større målefejl, signed koefficienter eller FV-fallback forklædt som
+mixture for at få den primære metode til at bestå. Hvis den primære basis
+ikke består inden for praktisk budget, dokumenteres begrænsningen.
+
+Denne beslutning erstatter tidligere anbefalinger om 42-leds-basis som
+G7's primære startkonfiguration. Numerisk evidens er ikke ændret.
+Kun G-dokumentation er opdateret; ingen nye tests eller modelkørsler.
+
+## Historisk udviklingsanbefaling — erstattet som metodevalg
+
+Den tidligere anbefaling var at bruge den nye faste, celleintegrerede Beta-basis med 42 komponenter og
 257 FV-celler som udgangspunkt for G7's afgrænsede syntetiske integration.
 513-cellerskontrollen består både for bankens marginal og hver nodes egen
 conditional law. Det oprindelige 129-cellers grid accepteres ikke til den
@@ -237,13 +273,15 @@ Begge originale registreringer/resultater, den negative coarse-gate, alle
 nodehistories, basis, coefficients, evidence, checkpoints og frosne kilder
 bevares i råarkivet. Der ændres ikke i gamle G8-arkiver.
 
-Næste opgave er G7's lille single-shooting-kontrol med den accepterede
-syntetiske posterior. Brug som start det gemte time12-origin fra
-bank_local257 og en separat FV-reference. Mixture-evaluatoren skal eksplicit
-modtage originens 42-ledsbasis og hver nodes egne koefficienter; den må ikke
-genbygge en standard Bernstein-basis ud fra et gradtal eller projicere til M38.
-Vægt objective med de frosne nodevægte; MAP er stadig en særskilt approximation.
-Kontrollér det valgte prisforslag mod FV og det erklærede G7-budget.
+Den tidligere G7-anbefaling brugte det gemte time12-origin fra bank_local257.
+Efter Johans basisbeslutning er dette alene en 42-leds-reference. Næste
+primære opgave er repræsentationsreview og derefter en afgrænset kontrol
+inden for den oprindelige Bernstein/Beta-familie. Den primære G7-origin
+skal stamme fra denne families egen kontrollerede rekursive filterkørsel.
+Genbrug ikke referenceposteriors som skjulte restarts. Den senere
+mixture-evaluator skal respektere den faktisk gemte basis og hver nodes
+egne koefficienter; vægt objective med de frosne nodevægte.
+MAP er fortsat en særskilt approximation.
 
 Den eksisterende weighted_control_evaluation bruger FV-forward fra egne
 conditional cell laws og er fortsat korrekt mærket FV. Denne leverance
