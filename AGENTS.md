@@ -17,6 +17,21 @@ negative testresultater. Genbrug den allerede gennemførte referencekørsel.
 Detaljeret kildekort/udledning: [G8-basisnoterne](root/G8_POSTERIOR_BASIS_REVIEW.md).
 Denne dokumentationsregel ændrer ikke F/WM's aktive opgaver eller resultater.
 
+## G8: eget Bernstein M254-filter, 6. oktober
+
+Den primære vejlederbasis er nu implementeret celleintegreret med eksakt
+Beta(20,20)-prior og typed checkpoints. Eget fem-node-døgn på257 celler
+består alle udførte FV257/FV513-, conditional-, marginal- og projektionsgates;
+faktisk JSON-resume fra time22 er identisk. Samlet126.105 s før råarkiv,
+inden for den deklarerede300s-ramme;33 andre importerede moduler er uændrede.
+Eget513-cellers mixture-replay blev ikke admitted af budgetgrunde.
+Den egne mixture-forfiningsgate og mixture→G7-accept er derfor stadig åbne;
+ingen historisk accept, prisoptimering eller ny budgetbevilling.
+Næste er ét særskilt budgetteret513-replay med samme M254/model og en kort
+runtimepilot. Sol High er tilstrækkelig; ingen lokal kørsel kræves nu.
+Læs [matematik og resultater](root/G8_M254_FILTER_REVIEW.md).
+F/WM's status, kerner og budgetter er uændrede.
+
 ## F4-H2: intervalprognose implementeret, 6. oktober
 
 Aktiv overdragelse: [intervalprognose og næste datatrin](root/H2_INTERVAL_FORECAST_IMPLEMENTATION.md).
@@ -421,4 +436,5 @@ Disse kurveregler gælder BM og ændrer ikke WM-modellernes egne fitkontrakter.
 
 Dette er den fælles repoindgang for projektchats. En allerede åben chats indlæste
 kontekst opdateres ikke automatisk; ved genoptagelse skal den læse den aktuelle plan.
+
 

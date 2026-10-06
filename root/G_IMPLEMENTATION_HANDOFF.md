@@ -1,3 +1,5 @@
+**M254-filterforsøg gennemført, 6. oktober:** Vejlederens oprindelige Bernstein-familie er implementeret som eksplicit celleintegreret M254 med eksakt gradforhøjet Beta(20,20)-prior og typed checkpoints. Eget fem-node-filter gennemfører24 timer fra prioren; alle conditional- og marginalgates mod gemte FV257/FV513 består. Maksimal conditional L1 modFV513 er0.0295811, marginal L1 er0.0126685, Bayes/substep-projektion er0.000963871. Tre målrettede checks består; faktisk JSON-resume fra time22 til24 er identisk i masser, koefficienter, vægte og evidence. Filter117.873 s; hovedinvocation119.901 s; resume6.204 s; samlet126.105 s før råarkiv. 33 øvrige importerede kodefiler matcher main c64198b. **Eget513-replay blev ikke admitted inden for300s-budgettet; egne mixture-forfiningsgate og mixture→G7-accept er stadig åbne.** Dette er et positivt257-udviklingsresultat, ikke et negativt basisresultat eller historisk accept. Næste er én særskilt budgetteret513-forfining med samme basis/model og checkpoint; Sol High er tilstrækkelig. Ingen lokal kørsel kræves nu. Se [matematik, valg, resultater og begrænsninger](G8_M254_FILTER_REVIEW.md).
+
 **Vejledermateriale/legacy, Johan 6. oktober:** Tavlebillederne er vejlederens
 grundlag. Originalmodeller og resultater bevares; udvidelser kræver udledning,
 kilder, begrundelse og eksplicit sammenligning. Den nye basis er kun reference,
@@ -29,12 +31,8 @@ med L1-fejl3.18e-14. De eksisterende produktionskerner og legacy-defaults er
 uændrede. Dårlig konditionering består; dette er repræsentationsaccept på
 udvalgte eksponerede love, ikke accept af et rekursivt filter eller G7.
 
-**Næste: Sol High** implementerer den navngivne celleintegrerede Bernstein-
-variant, eksakt prior og checkpointkontrakt, derefter én afgrænset egen
-fem-node-filterkørsel. Højst300 nye numeriske sekunder inklusive højst60 s
-pilot og30 s eksportreserve; forfining/resume kun inden for samme budget.
-Ingen automatisk gradtalssøgning. Se [fuld udledning, resultater og stopregler](G8_BERNSTEIN_REVIEW.md).
-Ingen lokal kørsel kræves nu.
+**Det planlagte M254-filterforsøg er nu gennemført; aktuel status står øverst.**
+
 
 G7's primære mixture-handoff skal komme fra en kontrolleret kørsel med den
 oprindelige basisfamilie og hver nodes egne koefficienter/posterior.
@@ -509,4 +507,5 @@ Hvis G senere skal assimilere historisk timeenergi, kræves en særskilt valgt
 og kontrolleret intervaloperator. Det kan være genbrug af en egnet F-løsning;
 F4-H2 som helhed er ikke en forudsætning. Syntetiske punktmålinger må ikke
 omdøbes til historisk timeenergi for at springe dette krav over.
+
 

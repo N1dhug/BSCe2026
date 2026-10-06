@@ -59,9 +59,16 @@ def context(cells, degree=None, *, deadline=None, basis_kind=None):
     projector = None
     if basis_kind is not None:
         from src.method.bm_1_g8_basis import BASIS_KIND, localized_beta_basis
-        if degree is not None or basis_kind != BASIS_KIND:
+        from src.method.bm_1_g8_bernstein import BASIS_KIND as M254, bernstein_basis, prior_coefficients
+        if degree is not None or basis_kind not in (BASIS_KIND, M254):
             raise ValueError('Declare one supported G8 basis, without a Bernstein degree.')
-        projector = RecordingProjector(localized_beta_basis(edges), dx)
+        basis = bernstein_basis(edges) if basis_kind == M254 else localized_beta_basis(edges)
+        projector = RecordingProjector(basis, dx)
+        if basis_kind == M254:
+            projector.initial_coefficients = prior_coefficients()
+            represented = projector.initial_coefficients @ basis * dx
+            if not np.allclose(represented, initial, atol=1e-10, rtol=0.):
+                raise ValueError('Degree-elevated prior differs from original cell prior.')
     elif degree is not None:
         basis = model.fokker_planc._normalise_basis_discretely(
             model.fokker_planc.beta_basis(grid, degree), dx)
@@ -81,7 +88,8 @@ def known_filter(cells, observations, step, *, degree=None, deadline=None, basis
                                initial, 0., observations, **options)
     else:
         result = run_mixture_filter(model, parameters, fixed.sigma_x, SIGMA_Y,
-                                    initial, 0., observations, projector=projector, cfl=.4, **options)
+                                    initial, 0., observations, projector=projector, cfl=.4,
+                                    initial_coefficients=getattr(projector,'initial_coefficients',None), **options)
     return result, model, parameters, projector
 
 
@@ -104,9 +112,15 @@ class G8BankOrigin:
     conditional_coefficients: object = None
     basis: object = None
     price_side: str = 'right'
+    basis_kind: str | None = None
 
     def __post_init__(self):
         time = checks.finite_scalar(self.time, 'cutoff')
+        if self.basis_kind is not None:
+            from src.method.bm_1_g8_bernstein import BASIS_KIND, bernstein_basis
+            if (self.backend != 'mixture' or self.basis_kind != BASIS_KIND
+                    or not np.array_equal(self.basis, bernstein_basis(np.asarray(self.x_edges)))):
+                raise ValueError('Typed M254 checkpoint must carry its declared exact basis.')
         if self.time_unit != 'hour' or self.price_side not in ('left','right'):
             raise ValueError('Declare G8 hours and observation price side.')
         if not isinstance(self.fixed_parameters, BM1Parameters):
@@ -163,7 +177,7 @@ class G8BankOrigin:
     def to_record(self):
         p = self.fixed_parameters
         return dict(schema='g8-rho-origin-v1',time=self.time,time_unit=self.time_unit,
-                    observation_kind='point',price_side=self.price_side,backend=self.backend,
+                    observation_kind='point',price_side=self.price_side,backend=self.backend,basis_kind=self.basis_kind,
                     parameters=dict(C=p.C,k=p.k,Xi=p.Xi,sigma_x=p.sigma_x,
                         f=p.state_response.to_record(),g=p.price_response.to_record()),
                     sigma_y=self.sigma_y,rho_values=self.rho_values.tolist(),
@@ -182,11 +196,11 @@ class G8BankOrigin:
         return cls(record['time'],fixed,record['rho_values'],
                    [-np.inf if v is None else v for v in record['log_weights']],
                    record['x_edges'],record['conditional_mass'],record['sigma_y'],record['time_unit'],
-                   record['backend'],record['conditional_coefficients'],record['basis'],record['price_side'])
+                   record['backend'],record['conditional_coefficients'],record['basis'],record['price_side'],record.get('basis_kind'))
 
 
 def bank_filter(cells, observations, step, *, nodes=RHO_VALUES, degree=None,
-                origin=None, deadline=None, on_step=None, basis_kind=None):
+                origin=None, deadline=None, on_step=None, basis_kind=None, configure_projector=None):
     """Public bank API one new observation at a time, retaining node histories.
 
     Continuation passes each conditional mass AND mixture coefficient row.
@@ -196,9 +210,18 @@ def bank_filter(cells, observations, step, *, nodes=RHO_VALUES, degree=None,
         raise ValueError('G8 observations use hours.')
     model,fixed,parameters,edges,initial,projector = context(
         cells,degree,deadline=deadline,basis_kind=basis_kind)
+    if configure_projector is not None:
+        if projector is None:
+            raise ValueError('Projector instrumentation requires a mixture backend.')
+        configure_projector(projector)
     nodes = checks.finite_vector(nodes,'rho nodes')
     logs = np.full(nodes.size,-np.log(nodes.size))
     current, coefficients, time = None,None,0.
+    typed_kind = None
+    if projector is not None and hasattr(projector, 'initial_coefficients'):
+        typed_kind = basis_kind
+        coefficients = np.tile(projector.initial_coefficients,(nodes.size,1))
+        current = coefficients @ projector.basis * np.diff(edges)
     if origin is not None:
         expected = 'fv' if projector is None else 'mixture'
         if (not isinstance(origin,G8BankOrigin) or origin.backend != expected
@@ -208,6 +231,7 @@ def bank_filter(cells, observations, step, *, nodes=RHO_VALUES, degree=None,
                 or origin.fixed_parameters.price_response.to_record() != fixed.price_response.to_record()
                 or (origin.fixed_parameters.C,origin.fixed_parameters.k,origin.fixed_parameters.Xi,origin.fixed_parameters.sigma_x)
                    != (fixed.C,fixed.k,fixed.Xi,fixed.sigma_x)
+                or origin.basis_kind != typed_kind
                 or (projector is not None and not np.array_equal(origin.basis,projector.basis))):
             raise ValueError('Checkpoint and G8 model/nodes/grid/observation contract differ.')
         logs,current,coefficients,time = origin.log_weights,origin.conditional_mass,origin.conditional_coefficients,origin.time
@@ -233,7 +257,7 @@ def bank_filter(cells, observations, step, *, nodes=RHO_VALUES, degree=None,
             raise RuntimeError('Projection audit does not match node update count.')
         snapshot = G8BankOrigin(time,fixed,nodes,logs,edges,current,backend='fv' if projector is None else 'mixture',
                         conditional_coefficients=coefficients,basis=None if projector is None else projector.basis,
-                        price_side=observations.price_side)
+                        price_side=observations.price_side,basis_kind=typed_kind)
         record = dict(time=time,observed=bool(present),prior_log_weights=np.array(old_logs),
                       log_weights=np.array(logs),log_evidence=result['log_evidence'][0],
                       conditional_log_evidence=result['conditional_log_evidence'][0],
