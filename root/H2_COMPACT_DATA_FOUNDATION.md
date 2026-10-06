@@ -1,12 +1,58 @@
-# F4-H2: betinget datagrundlag, 6. oktober 2026
+# F4-H2: betinget datagrundlag, råreview 7. oktober 2026
 
 Aktiv datapolicy er `root/f4/h2_compact_data_policy_20261006.json`. Johan valgte
 **kurver først**: fælles f/g estimeres betinget på faste F-referenceparametre,
 ikke samtidig historisk identifikation af de fysiske parametre. Implementeringen
-er færdig; de faktiske workbook-afledte tal skal stadig fryses på PC og råreviewes.
-`input.xlsx` findes ikke i chat-workspace, og den store private GitHub-binærfil
-kan ikke hentes korrekt gennem den tilgængelige forbindelse. Ingen faktiske MED-
-forbrugsværdier er læst i denne implementering.
+og den lokale frysning er færdige. PC-pakken fra commit `d95fd26` består
+råreviewet. Aktiv indeksfil er `root/f4/h2_compact_data_ready_20261007.json`.
+Datagrundlaget er betinget klar; historisk fit, numerisk likelihood, runtime,
+blind H3 og videnskabelig accept er fortsat false. Ingen optimizer er startet.
+
+## Faktisk PC-pakke og råreview
+
+| Resultat | Frosset værdi |
+|---|---|
+| Historik | 1104 gruppetimer; 984 komplette, 120 manglende |
+| Baseline | Alle 168 bins har 5–7 komplette observationer; .8444615384615386–2.0876923076923073 kW |
+| Effektskala | 3.1265384615384613 kW |
+| Prisgrænser | −259.66200100000003 / 2865.162011 DKK/MWh |
+| PC-preparation | 30.45018790010363 s, én proces/BLAS=1 |
+| Packet identity | `5c9acec9250e77cc3f8342ca01fec1df6c06bed285ec1a53f3da6e69471bcead` |
+
+`root/f4/audit_h2_compact_data.py` kontrollerer original ZIP/CRC, alle 60
+sourcehashes mod Git-blobs (Windows CRLF normaliseres kun ved Git-sammenligningen),
+canonical packet identity, workbook-/outputhashes, tidsafgrænsning, komplet
+profil/counts, præcis CSV/NPZ-normalisering, blindhedsafvisning og CN-bounds.
+Pris-workbook fra samme commit har identisk SHA256: historik-min/max .74 og
+2604.76001 med den erklærede 10% padding, og hele U-vektoren inklusive den
+gentagne pre-final uge rekonstrueres bitwise. Ingen final-realiserede priser
+læses. Pakkens 264 baseline-/prisintervaller indeholder ingen target-Y.
+
+Demand-workbook er **ikke** inkluderet i receipt og kan ikke hentes her. Derfor
+er original hushistorik, OLS-koefficienter og historisk effektmax ikke
+uafhængigt genberegnet. Disse følger den Git-/SHA-verificerede runner og
+workbookhashen fra tidligere header-audit; profil/outputs er konsistenskontrolleret.
+Dette er en eksplicit begrænsning, ikke ny fysisk/statistisk kalibrering.
+Manifestet angiver Python 3.11.7, NumPy 1.26.4, SciPy 1.17.0 og pandas 2.3.3;
+openpyxl-version er ikke registreret.
+
+Original `f4_h2_compact_data_pc_review_20261007.zip`, råaudit
+`f4_h2_compact_data_pc_audit_20261007.json`, den aktive packetfolder
+`f4_h2_compact_data_pc_packet_20261007` og afsluttet
+`f4_h2_compact_data_ledger_after_20261007.json` ligger under
+`files/output/bm_1/runs/estimation/`. Original receipt/source/ledger bevares.
+Git-evidens: `root/f4/h2_compact_data_git_evidence_20261007.json`.
+
+PC-ledgeren udvider hele kendte prefix én gang; reviewet tilføjer 2 s
+konservativ receipt-charge og 1.391969786 s fuld invocation. Samlet H
+**1532.30037923 s**, native **507.66925859/900 s**, rest
+**392.33074141 s**. Den opdaterede native-seed bevarer alle gamle entries.
+Ingen modeltimer, FV-replay eller fit blev kørt i råreviewet.
+
+Næste trin er en særskilt kort rate/gate på faktisk historisk condition med
+base/fine/moment/CDF-arbejde og pris på den komplette jobgraf. Data-preparation
+og afsluttede gamle cases skal ikke genkøres. En samlet runtime under 10 h
+og de uændrede numeriske krav skal være dokumenteret før optimizerstart.
 
 ## Frosne valg
 
@@ -51,7 +97,8 @@ Tidsskridtene kræver cirka en tredjedel flere substeps; en ren proportional
 opskalering af den gamle proxy kan overstige 10 h. Faktiske repræsentative
 historiske base/fine/moment/CDF-rates og prissat samlet jobgraf skal derfor
 bestå før et fit. Der er ikke givet tilladelse til en lang kørsel. Samlet H-loft
-10 h og mål 4–6 h er uændret; alle fit/readiness-flags forbliver false.
+10 h og mål 4–6 h er uændret; fit/numerik/runtime/accept forbliver false,
+mens conditional_data_ready nu er true.
 
 ## Eksponering
 
@@ -65,7 +112,7 @@ ukendt tidligere eksponering**. Blind H3/videnskabelig accept forbliver false.
 Det eksponerede/ukendte interval optages i contract.split.exposure_intervals,
 så den eksisterende require_blind_holdout også afviser denne kontrakt.
 
-## Lokal forberedelse
+## Lokal forberedelse (afsluttet; kør ikke igen)
 
 `root/f4/run_h2_compact_data.ps1` eksporterer `src`, `root/f4` og den aktuelle
 budgetseed fra et præcist Git-commit til en ny midlertidig sourcefolder. Den
@@ -83,13 +130,12 @@ BM1-array-checkpointformat (ikke numpy.load direkte). Target-Y er fraværende.
 Ved manglende bin/negativ effekt/ud-af-range pris/ændret workbook/budgetstop:
 bevar output og failure; ingen automatisk gentagelse, retuning eller imputation.
 
-Næste trin er råreview af den lokale ZIP: baseline-bins, complete/missing counts,
-reelle frosne skalaer, provenance og ledger. Derefter kan en særskilt kort faktisk
-rate/gate planlægges under det resterende budget; optimizeren startes aldrig af
-datapreparationen. Den gamle delvise packet og metodebeslutning bevares som
+Den lokale ZIP er nu råreviewet som beskrevet ovenfor. En særskilt kort faktisk
+rate/gate skal planlægges under det resterende budget; optimizeren startes aldrig
+af datapreparationen. Den gamle delvise packet og metodebeslutning bevares som
 historik. Sol High er tilstrækkelig til dette data-/implementeringsarbejde.
 
-## Afgrænset kontrol
+## Oprindelig syntetisk kontrol, 6. oktober (historik)
 
 Én syntetisk workbook-/OLS-kontrol er kørt under fælles reservation: 4.06 s
 inklusive imports og source-export; ingen modeltimer eller historiske værdier.
@@ -102,6 +148,6 @@ Rårapport/manifest/source/ledger er gemt i
 Tre ændrede Python-filer består syntakskontrol. Windows-launcheren er
 statisk gennemgået, ikke eksekveret her (PowerShell er ikke tilgængelig).
 
-Ledger efter kontrollen: **1498.45822 s H**, **473.82710/900 s native**,
+Historisk ledger efter kontrollen, før PC-preparation/råreview: **1498.45822 s H**, **473.82710/900 s native**,
 rest **426.17290 s** samlet på tværs af PC/chat/resumes. Den nye seed udvider
 den fulde kendte historik; gamle seeds/rapporter må ikke nulstille tiden.
