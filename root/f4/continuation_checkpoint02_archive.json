@@ -1,0 +1,14 @@
+{
+  "schema": "f4-h2-continuation-archive-receipt-v1",
+  "archive": "f4_h2_continuation_checkpoint02_20261008.zip",
+  "archive_sha256": "12ef7b2b5b5c0c9ec505b645e26abc5a6dcdee90430fdeb6c71b53eac4918d2f",
+  "bytes": 7252431,
+  "library_file_id": "libfile_f8942a93990481918e6c14178f563aa5",
+  "new_jobs": 204,
+  "prior_new_jobs": 179,
+  "adoptions": 450,
+  "completed_four_piece_calls": 32,
+  "partial_next_candidate": true,
+  "latest_committed_campaign_is_authoritative": true,
+  "scientific_acceptance": false
+}
