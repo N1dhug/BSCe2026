@@ -1,3 +1,18 @@
+# G7 nattecheckpoint — færdigt deterministisk delstudie, 7. oktober 2026
+
+Status: numerisk studie og read-only review færdige. Publicering følger G7-branchens PR; numerik skal ikke gentages.
+Aktiv overdragelse: [matematik og resultater](G7_ENERGY_NEUTRAL_REVIEW.md).
+Råresultater er sikret på commit4a3c4148b308fd2e74e3b7cc590a0de591b349b0.
+Alle17 units/19 råfiler er komplette. Ingen modelgenkørsel ved genoptagelse.
+Seks policies består precision;374 forwards;3.775397722s process.
+Én uafhængig QP/Euler-test og byte-/J/E-audit består. Ingen M254-retry.
+Konservativ nattecharge30s, G1098.580078s, rest701.419922s af1800s.
+Begge deterministic objectives bevares, F og legacy uændrede.
+Næste: [nodecheckpoint og komplet M254-jobgraf](G7_M254_RUNTIME_JOB_REVIEW.md),
+inden en særskilt registreret måling/optimizer. Hele stokastiske G7 er åbent.
+
+## Oprindelig registrering, bevaret som historik
+
 # G7 nattecheckpoint — 7. oktober 2026
 
 Status: registreret før nye beregninger. Executionbase: 4f9ea30abee6a2673a33868ffad30e9ff82cc429.
