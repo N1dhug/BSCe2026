@@ -345,7 +345,7 @@ class Engine:
             return self.data['jobs'][(grid, 0, 'prediction')]['prior_log_state'].copy()
         from src.exe.run_model.bm_1_history import _beta_mass
         spec = self.spec(grid); prior = self.data['packet']['prior']
-        mass = _beta_mass(np.linspace(0., 1., spec['settings']['cells']+1), prior['alpha'], prior['beta'])
+        mass = _beta_mass(np.linspace(0., 1., spec['settings']['cells']+1), alpha=prior['alpha'], beta=prior['beta'])
         with np.errstate(divide='ignore'):
             logs = np.log(mass)
         state_check(logs)
