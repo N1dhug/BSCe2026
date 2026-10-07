@@ -11,9 +11,15 @@ ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT))
 def status(directory,campaign):
     from src.exe.run_model.progress import runtime_text
     directory=Path(directory)
-    ledger=json.loads(Path(campaign).read_text());entry=ledger['entries'][-1]
+    ledger=json.loads(Path(campaign).read_text())
+    entry=next(e for e in reversed(ledger['entries']) if e['label']=='compact-production|budgeted-prefinal')
     outer=json.loads((directory/'budgeted_execution.json').read_text());rates=outer['rates']['base']
-    report=dict(ledger_status=entry['status'],invocation_elapsed_seconds=max(0.,time()-entry.get('started_utc_seconds',time())))
+    elapsed=entry['charged_seconds'] if entry['status']=='closed' else max(0.,time()-entry.get('started_utc_seconds',time()))
+    report=dict(ledger_status=entry['status'],invocation_elapsed_seconds=elapsed,
+        ledger_total_includes_open_reservations=ledger['charged_seconds'])
+    terminal=directory/'budgeted_report.json'
+    if entry['status']=='closed' and terminal.exists():
+        saved=json.loads(terminal.read_text());report.update(run_status=saved['status'],reason=saved.get('reason'))
     registry=json.loads((directory/'candidate_registry.json').read_text())
     calls={};pending=[]
     for family in ('2','4'):
@@ -33,9 +39,10 @@ def status(directory,campaign):
             else:fresh.append(path.stat().st_mtime-r['elapsed_seconds'])
         total=24*rates['prediction']+48*rates['observed']
         elapsed=max(0.,time()-min(fresh)) if fresh else 0.
-        report.update(active_family=int(family),curve=key,completed_hours=hours,total_hours=72,
-            current_candidate_weighted_eta=runtime_text(perf_counter()-elapsed,done,total,initial_completed=initial),
-            eta_scope='Current candidate only; weights distinguish prediction and observed work. Not a convergence prediction.')
+        report.update(active_family=int(family),curve=key,completed_hours=hours,total_hours=72)
+        if entry['status']=='reserved':
+            report.update(current_candidate_weighted_eta=runtime_text(perf_counter()-elapsed,done,total,initial_completed=initial),
+                eta_scope='Current candidate only; weights distinguish prediction and observed work. Not a convergence prediction or proof of process liveness.')
     return report
 
 

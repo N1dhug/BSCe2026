@@ -77,6 +77,7 @@ def restore(paths,destination,*,verify_only=False):
         campaign_charged_seconds=last_campaign['charged_seconds'],
         open_reservations=sum(e['status']=='reserved' for e in last_campaign['entries']),
         model_started=False,automatic_refund=False,ledger_semantics_reconciled=False,
+        restored_run_starts_paused=True,
         campaign_snapshot='campaign_at_checkpoint.json')
     if verify_only:return receipt
     destination.parent.mkdir(parents=True,exist_ok=True)
@@ -89,6 +90,8 @@ def restore(paths,destination,*,verify_only=False):
                 target.write_bytes(raw)
             previous[path.name]=digest
         (staging/'restoration.json').write_text(json.dumps(receipt,separators=(',',':')),encoding='utf-8')
+        if not (staging/'STOP').exists():
+            (staging/'STOP').write_text('Restored from durable checkpoints. Reconcile the authoritative campaign snapshot, preserve every open reservation, and verify the original source/environment before an explicit resume. A failed run cannot resume.\n',encoding='utf-8')
         # Files are complete before the restored directory becomes visible.
         if os.path.lexists(destination):raise FileExistsError('Restore destination appeared concurrently.')
         os.rename(staging,destination)

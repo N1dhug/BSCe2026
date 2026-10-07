@@ -45,11 +45,23 @@ Checkpoint03 bevarer yderligere358 atomiske jobs (608 i alt med01+02),
 SHA256 `8291b790365fe68854bcda139447c79eb3188148e851c7b022635c7301f487b9`.
 Checkpoint04 tilføjer127 jobs (735 i alt), SHA256
 `baef38f921964263b11fd41a9b39ceadbe013b34574d25651c8730cc9e6b216d`.
+Checkpoint05 tilføjer159 jobs (894 i alt), SHA256
+`e0964149339e6960f7bd9c7f9eb567f52eeb2c3ece6c79890985fc4c485550a8`.
 Det indeholder også den åbne produktionsreservation; denne må ikke nulstilles
 ved crash. Færdige kald genbruges; et ufuldstændigt kald er ikke konvergens.
 `root/f4/status_h2_budgeted.py` giver et separat vægtet statusestimat for det
 aktuelle par uden at ændre de frosne numeriske kilder. Resultatauditoren
 rekonstruerer gemte likelihoods og COBYQA-stop fra råfiler uden modelreplay.
+
+`root/f4/restore_h2_staged_checkpoints.py` kontrollerer alle tidligere
+arkivhashes, kilde-/datamanifest og hver jobfil før gendannelse til en ny
+mappe. Angiv alle nummererede checkpoints i rækkefølge og `--destination`.
+`--verify-only` verificerer uden udpakning. Gendannelse starter pauset med
+en STOP-markør og overskriver aldrig den autoritative campaign-ledger.
+Brug `campaign_at_checkpoint.json`, ikke en ældre `ledger.json`, ved
+reconciliation; behold åbne reservationer. FAILED-runs kan ikke genoptages.
+Ingen model starter fra dette værktøj. Endeligt råreview kontrollerer faktisk
+gendannelse byte for byte samt afvisning af manglende prefix/overskrivning.
 
 **Aktiv nu:** ydre controller-kilde `5e7875674447b13a9697cf47c358e2f7e3a98b45`,
 `run_h2_budgeted_search.py`, samme V2-run-mappe og uændret numerisk manifest.
