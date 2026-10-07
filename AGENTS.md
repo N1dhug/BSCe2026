@@ -1,5 +1,24 @@
 # Fælles projektkontekst
 
+## G7: deterministisk primærreference gennemført, 7. oktober
+
+Johan prioriterer deterministisk BM/WM-kontrol; stokastisk G7 beholdes som
+obligatorisk leverance. Original FP2025-BM bruger kendt fixed A(t); der
+opfindes ikke en ny WM-indkøbsfunktion. Én syntetisk24h/fire blokke består
+bounded residual-LS/TRF og coarse/fine: J=.0209268019845 mod neutral .12,
+82.561% mindre,68 actual forwards inkl.Jacobian probes,14.227s invocation.
+Begge starter konvergerer via ftol; ikke global/KKT-optimalitetsaccept.
+Én analytisk kontraktkontrol består efter rettet assertion ved aktiv bound;
+failed attempt/source/raw er bevaret.27 gamle importerede Git-blobs matcher;
+F/WM/shared-kerner og legacy-optimizere ændres ikke.
+Næste er fælles fixed-A BM/WM-benchmarkkontrakt og frozen-fit/prisrespons-
+audit før historisk kontrol. Faktisk WM-rangering og stokastisk policy/
+mixture/EM/feedback er åbne; den gamle G7-runtimepilot genkøres ikke.
+G-ledger1062.580078s,rest737.419922s; F/WM-budgetter er uændrede.
+Sol High er tilstrækkelig; ingen lokal modelkommando nu.
+Læs [G7-matematik, kilder og faktisk udført](root/G7_DETERMINISTIC_CONTROL_REVIEW.md).
+
+
 ## F4-H2: Windows-exportfejl rettet, PC-ledger afventer råreview, 7. oktober
 
 PC-forsøget `f4_h2_compact_rates_pc_20261007_014819` stoppede ved
@@ -365,8 +384,9 @@ Deterministisk BM1-kerne, afgrænset parameterfit, matched WM4-prognoser og
 et efterfølgende billigt stokastisk usikkerhedslag.
 Læs G-planen ved dette arbejde; `G-plan/G0`–`G-plan/G8` er ikke `F4-G2a/b/c`.
 G0–G3 er første deterministiske leverance. G6 er en obligatorisk senere
-stokastisk pilot med FP/mixture og EM; G7 er obligatorisk stokastisk
-single-shooting-prisstyring; G8 er rekursiv tilstands-/parameterestimation.
+stokastisk pilot med FP/mixture og EM; G7 omfatter en deterministisk
+primærreference og obligatorisk stokastisk single-shooting-prisstyring;
+G8 er rekursiv tilstands-/parameterestimation.
 Bachelorens projekt 111866 kræver disse sammenhænge. Genbrug F2/F3/F4-kode
 og evidens; G6a's varianslag og G2's batch-LS er ikke erstatninger.
 Se kravmatrix, WM-kodereview og små forsøgsbudgetter i G-planens afsnit 0/8.
