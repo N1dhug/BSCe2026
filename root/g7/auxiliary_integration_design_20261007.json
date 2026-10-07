@@ -1,0 +1,231 @@
+{
+  "schema": "g7-auxiliary-integration-design-v1",
+  "date": "2026-10-07",
+  "design_base": "7a81c8ed1f3926feca4df55ea628c97da7052e05",
+  "status": "design complete; launcher not implemented; no numerical invocation registered",
+  "campaign": {
+    "ceiling_seconds": 1800,
+    "prior_debit_seconds": 1224.712123334,
+    "design_review_charge_seconds": 10,
+    "debit_seconds": 1234.712123334,
+    "remaining_seconds": 565.2878766660001
+  },
+  "proposed_measurement": {
+    "scope_ceiling_seconds": 200,
+    "worker_hard_timeout_seconds": 150,
+    "stop_export_reserve_seconds": 30,
+    "review_charge_seconds": 20,
+    "launch_ready": false,
+    "numerical_run_performed": false,
+    "policy": "neutral only",
+    "horizon": [
+      12,
+      14
+    ],
+    "price_edges": [
+      12,
+      13,
+      14
+    ],
+    "prices": [
+      0.5,
+      0.5
+    ],
+    "nodes": 5,
+    "objective_max_step": 0.010416666666666666,
+    "solver_steps": {
+      "257": 0.010416666666666666,
+      "513": 0.005208333333333333
+    },
+    "jobs": [
+      {
+        "id": "restore_setup",
+        "count": 4,
+        "reservation_each_seconds": 10,
+        "depends_on": [],
+        "description": "Separate new charge: reconstruct M254 and FV evaluators on each own grid; verify full original numerical contract and archive hashes."
+      },
+      {
+        "id": "fv_fine_nodes",
+        "count": 5,
+        "reservation_each_seconds": 2,
+        "depends_on": [
+          "restore_setup"
+        ],
+        "description": "Independent native FV513 forwards from fine M254 own starting cell mass; not an independently filtered FV posterior."
+      },
+      {
+        "id": "fv_coarse_nodes",
+        "count": 5,
+        "reservation_each_seconds": 2,
+        "depends_on": [
+          "restore_setup"
+        ],
+        "description": "Independent native FV257 forwards from coarse M254 own starting cell mass."
+      },
+      {
+        "id": "coupled_em_nodes",
+        "count": 5,
+        "reservation_each_seconds": 4,
+        "depends_on": [
+          "restore_setup"
+        ],
+        "description": "Per-node paired coarse/fine EM, 256 paths, fine owned continuous M254 initial draw, h1/192 and1/384."
+      },
+      {
+        "id": "feedback_m254_fine",
+        "count": 1,
+        "reservation_each_seconds": 10,
+        "depends_on": [
+          "restore_setup",
+          "coupled_em_nodes"
+        ],
+        "description": "Read-only rehydrate fine stored neutral forward; own evaluator metadata; actual neutral-price point update; no propagation."
+      },
+      {
+        "id": "feedback_m254_coarse",
+        "count": 1,
+        "reservation_each_seconds": 10,
+        "depends_on": [
+          "restore_setup",
+          "coupled_em_nodes"
+        ],
+        "description": "Same new synthetic point observation on coarse stored neutral forward; no propagation."
+      },
+      {
+        "id": "feedback_fv_fine",
+        "count": 1,
+        "reservation_each_seconds": 10,
+        "depends_on": [
+          "fv_fine_nodes",
+          "coupled_em_nodes"
+        ],
+        "description": "Same observation and neutral policy on new fine FV forward."
+      },
+      {
+        "id": "feedback_fv_coarse",
+        "count": 1,
+        "reservation_each_seconds": 10,
+        "depends_on": [
+          "fv_coarse_nodes",
+          "coupled_em_nodes"
+        ],
+        "description": "Same observation and neutral policy on new coarse FV forward."
+      },
+      {
+        "id": "reduce_audit",
+        "count": 1,
+        "reservation_each_seconds": 10,
+        "depends_on": [
+          "feedback_m254_fine",
+          "feedback_m254_coarse",
+          "feedback_fv_fine",
+          "feedback_fv_coarse"
+        ],
+        "description": "Algebraic bank reductions, same-origin backend/moment gates, sampling-SE and point feedback gates; no independent quadrature claim."
+      }
+    ],
+    "reservation_meaning": "Administrative stopping allowances for an exploratory measurement; not measured rates, numerical gates, expected runtimes or worst-case bounds.",
+    "em": {
+      "paths_per_node": 256,
+      "coarse_step_hours": 0.005208333333333333,
+      "fine_step_hours": 0.0026041666666666665,
+      "initial_seed": 20261021,
+      "brownian_seed": 20261022,
+      "noise_seed": 20261023,
+      "truth_node_index": 2,
+      "truth_rho": 0.25,
+      "truth_path_index": 0,
+      "boundary": "none; raw violation stops; no clipping or reflection",
+      "measurement": "Y14 = first prespecified fine neutral-path terminal demand at rho .25 + one independent Gaussian draw with owned sigma_y"
+    },
+    "feedback": {
+      "point_observation": true,
+      "historical_hourly_interval_likelihood": false,
+      "new_forward_after_update": false,
+      "selected_optimized_policy": false,
+      "evidence_before_state_projection": true,
+      "missing_update_preserved": true
+    },
+    "gates": {
+      "source": "unchanged src/method/bm_1_distribution_panel.py TOLERANCES and root/G7_OWNED_HANDOFF_REVIEW.md",
+      "objective": "max(.001,.02*abs(fine_J))",
+      "conditional_mass_l1": 0.05,
+      "marginal_mass_l1": 0.05,
+      "projection_l1": 0.05,
+      "bank_weight": 0.03,
+      "log_evidence": 0.05,
+      "em_fp": "max(.001,4*stratified_SE)",
+      "coupled_em_cost_difference": 0.001,
+      "raw_em_boundary_violations": 0
+    },
+    "stop": "Sequential OS-locked owner, reservations before each job, atomic completed receipts, parent hard timeout; any slow or failed job stops without accepting partial scientific results; no automatic retry.",
+    "reuse": {
+      "execution_commit": "872e77714d1bc5848d8dce5b1fac058417b796cf",
+      "data_archive_sha256": "ad730a148e770fffeeccdfcfff13af30fc33510d0bbcba9b988c15767af1e80d",
+      "coarse_bank_sha256": "caa95f7c3bf23479e4b99d511a979970c3489e64a01246704705328749848cbb",
+      "fine_bank_sha256": "ec1766b8cc90896420c50ac9a80df5451ed02e6e19c4df520ca9eb64f8051599",
+      "coarse_contract": "52478c32d21f3f1a9f910143143f7d0ae9b4979a88a33c73ab9347be823512e0",
+      "fine_contract": "3e5b9dc47d9befc02c89bf1b7f42ab6bb85443692857498bb8b226a8c6eaf725",
+      "read_only_previous_ledger": true,
+      "new_ledger_seed_includes_all_prior_charges": true,
+      "no_new_m254_forward": true,
+      "no_prior_reset": true,
+      "no_basis_change": true,
+      "no_refit": true,
+      "no_fv_coefficients_for_m254": true
+    },
+    "remaining_before_launch": [
+      "Implement read-only full-contract rehydration and independent current launcher-source manifest; old numerical source remains frozen.",
+      "Implement parent and durable auxiliary receipts; re-establish setup per invocation with fresh charge; repeated native/EM jobs need explicit failed-job retry registration.",
+      "Freeze exact launcher source, originals and runtime versions in a separate pre-run registration; maintain one aggregate campaign debit including old outer charges.",
+      "Preserve stop/export reserve in actual charge reconciliation; partial output also exported on stop."
+    ],
+    "excluded": [
+      "optimizer",
+      "new M254 forward",
+      "new G8 filter",
+      "full-day admission",
+      "independent objective quadrature refinement",
+      "historical future Y",
+      "new stochastic energy equality",
+      "G/F joint work"
+    ],
+    "scientific_accept": false,
+    "short_policy_optimization_accept": false,
+    "full_day_budget_admitted": false,
+    "actual_optimizer_started": false,
+    "total_job_reservations_seconds": 130,
+    "worker_unallocated_reserve_seconds": 20,
+    "remaining_after_maximum_scope_seconds": 365.2878766660001
+  },
+  "full_day": {
+    "registered_graph": "root/g7/node_job_budget_20261007.json",
+    "graph_unchanged": true,
+    "horizon_hours": 24,
+    "policies": [
+      "neutral",
+      "deterministic",
+      "stochastic"
+    ],
+    "unknown_rate_rows": 14,
+    "measured_matching_day_rates": 0,
+    "budget_admitted": false,
+    "scientific_accept": false,
+    "actual_optimizer_started": false,
+    "linear_m254_cross_illustration_seconds": 2465.5349578049913,
+    "illustration_is_rate_or_bound": false,
+    "quadrature": "Stored solver_t_eval contains endpoints and original midpoints only. A finer midpoint partition needs a distinct forward contract; averaging existing midpoint costs just reproduces the old weighted sum and cannot certify independent quadrature refinement."
+  },
+  "deterministic_primary": {
+    "reference": "root/G7_ENERGY_NEUTRAL_REVIEW.md",
+    "horizon_hours": 24,
+    "price_blocks": 4,
+    "matched_baseline_target_and_units": true,
+    "same_total_consumption_equality": true,
+    "completed_evidence_reused": true,
+    "no_rerun": true,
+    "stochastic_fixture_is_same_benchmark": false
+  },
+  "next_action": "Implement and preregister this bounded neutral auxiliary measurement; execute only under its frozen contract. It will not finish G7 or admit 24h optimization."
+}
