@@ -1,3 +1,16 @@
+## F4-H2: afbrudt blok gendannet; anden chat fortsætter, 8. oktober
+
+Fjerde blok har ingen normal slutrapport; dens fulde600s-reservation bevares.
+Begge aktive run-/campaignlåse var frie; ingen modelproces blev fundet.
+38 firestykkekald og780 nye råjobs er gemt. Checkpoint04 verificerer de194
+nye jobs siden checkpoint03 samt450 adoptioner;0 numeriske jobfejl.
+Alle69 oprindelige numeriske kilder, konturadapter og pinned miljø matcher.
+Ingen genstart fra bedste kandidat; den præcise trace og delvise kandidat genbruges.
+Femte bounded blok er startet under samme08:00-frist/H64800/native1080s.
+PR106 er merged; resultatscope PR118 fortsætter. H/I/J/F4 er stadig åbne.
+Original input.xlsx kræves først til slut-Y efter forecastfreeze.
+Se root/f4/continuation_checkpoint04_archive.json. Følgende afsnit er historik.
+
 ## F4-H2: PR106 merged; kontrolleret fit fortsætter, 8. oktober
 
 Fortsættelsesimplementationen er merged på306c7afc med nyere G/WM bevaret.
