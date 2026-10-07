@@ -18,7 +18,44 @@ from src.method.bm_1_g7 import OwnedBankPriceEvaluator
 from src.method.bm_1_distribution_panel import baseline, target
 
 
-REQUIRED_SOURCE_PATHS = ('src/method/beta_mixture.py', 'src/control/objective.py', 'src/validation/model/bm.py', 'src/model/base/bm.py', 'src/validation/method/euler_maruyama.py', 'src/method/euler_maruyama.py', 'src/validation/solver/active_set.py', 'src/solver/active_set.py', 'src/validation/solver/finite_volume.py', 'src/solver/finite_volume.py', 'src/validation/method/fokker_planc.py', 'src/method/fokker_planc.py', 'src/validation/model/bm_1.py', 'src/validation/tools/input_generator/input_builder.py', 'src/tools/input_generator/input_builder.py', 'src/validation/method/objective.py', 'src/method/objective.py', 'src/model/bm_1.py', 'src/validation/control.py', 'src/control/bm_1.py', 'src/validation/estimation.py', 'src/params/bm_1.py', 'src/method/bm_1_estimation.py', 'src/control/bm_1_handoff.py', 'src/params/bm_1_deterministic.py', 'src/method/bm_1_deterministic_fit.py', 'src/params/bm_1_response.py', 'src/method/bm_1_deterministic_response.py', 'src/method/bm_1_linear_noise.py', 'src/method/bm_1_distribution_panel.py', 'src/method/bm_1_g8.py', 'src/method/bm_1_g8_bernstein.py', 'src/method/bm_1_g7.py', 'src/method/bm_1_g8_basis.py', 'src/method/bm_1_g7_jobs.py', 'src/method/bm_1_g7_budget.py')
+REQUIRED_SOURCE_PATHS = (
+    'src/method/beta_mixture.py',
+    'src/control/objective.py',
+    'src/validation/model/bm.py',
+    'src/model/base/bm.py',
+    'src/validation/method/euler_maruyama.py',
+    'src/method/euler_maruyama.py',
+    'src/validation/solver/active_set.py',
+    'src/solver/active_set.py',
+    'src/validation/solver/finite_volume.py',
+    'src/solver/finite_volume.py',
+    'src/validation/method/fokker_planc.py',
+    'src/method/fokker_planc.py',
+    'src/validation/model/bm_1.py',
+    'src/validation/tools/input_generator/input_builder.py',
+    'src/tools/input_generator/input_builder.py',
+    'src/validation/method/objective.py',
+    'src/method/objective.py',
+    'src/model/bm_1.py',
+    'src/validation/control.py',
+    'src/control/bm_1.py',
+    'src/validation/estimation.py',
+    'src/params/bm_1.py',
+    'src/method/bm_1_estimation.py',
+    'src/control/bm_1_handoff.py',
+    'src/params/bm_1_deterministic.py',
+    'src/method/bm_1_deterministic_fit.py',
+    'src/params/bm_1_response.py',
+    'src/method/bm_1_deterministic_response.py',
+    'src/method/bm_1_linear_noise.py',
+    'src/method/bm_1_distribution_panel.py',
+    'src/method/bm_1_g8.py',
+    'src/method/bm_1_g8_bernstein.py',
+    'src/method/bm_1_g7.py',
+    'src/method/bm_1_g8_basis.py',
+    'src/method/bm_1_g7_jobs.py',
+    'src/method/bm_1_g7_budget.py',
+)
 
 
 def plain(value):
@@ -49,9 +86,11 @@ class NodeJobStop(RuntimeError): pass
 
 
 class NodeJobStore:
-    def __init__(self,root,*,prior_debit,ceiling=1800.):
+    def __init__(self,root,*,prior_debit,ceiling=1800.,max_new_seconds=None):
         self.root=Path(root);self.root.mkdir(parents=True,exist_ok=True)
-        self.seed=dict(schema='g7-node-ledger-v1',prior_debit=float(prior_debit),ceiling=float(ceiling))
+        cap=float(ceiling-prior_debit if max_new_seconds is None else max_new_seconds)
+        if not np.isfinite(cap) or cap<=0: raise ValueError('Positive finite study allowance required.')
+        self.seed=dict(schema='g7-node-ledger-v1',prior_debit=float(prior_debit),ceiling=float(ceiling),max_new_seconds=cap)
         if not np.isfinite([prior_debit,ceiling]).all() or not 0<=prior_debit<ceiling:
             raise ValueError('A finite preserved campaign debit below the ceiling is required.')
         self.ledger_path=self.root/'ledger.json'
@@ -132,7 +171,8 @@ class NodeJobStore:
         if not np.isfinite(reservation) or reservation<=0:
             raise ValueError('Positive finite per-node reservation required.')
         total=self.seed['prior_debit']+sum(e['charged_seconds'] for e in ledger['entries'])
-        if total+reservation>self.seed['ceiling']:
+        limit=min(self.seed['ceiling'],self.seed['prior_debit']+self.seed['max_new_seconds'])
+        if total+reservation>limit:
             raise NodeJobStop('Remaining campaign budget cannot cover this whole node.')
         entry=dict(job_id=key,node=job['index'],attempt=len(attempts)+1,status='running',
                    reserved_seconds=float(reservation),charged_seconds=float(reservation))
@@ -170,7 +210,6 @@ class CheckpointedBankControl:
         required=set(REQUIRED_SOURCE_PATHS)
         if not required.issubset(self.sources): raise ValueError('Required G source hashes are missing.')
         self.check_sources()
-        s=evaluator.supports[0]
         self.contract=self.describe()
         with store.lock(): self.contract_id=store.bind(self.contract)
 

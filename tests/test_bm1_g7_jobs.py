@@ -81,6 +81,10 @@ class G7NodeJobTests(unittest.TestCase):
             filename=next((Path(tmp)/'nodes').glob('*.json'));payload=json.loads(filename.read_text())
             job=payload['job'];payload['payload']['node_total']+=1.;filename.write_text(json.dumps(payload))
             with self.assertRaises(ValueError):store2.receipt(filename,job)
+        with TemporaryDirectory() as limited:
+            store=NodeJobStore(limited,prior_debit=0.,ceiling=100.,max_new_seconds=.01)
+            with store.lock(),self.assertRaises(NodeJobStop):
+                store.node(dict(index=0,contract='stub'),1.,lambda deadline: {})
         plan=full_job_plan();rates={}
         admission=price_job_plan(plan,rates,campaign_debit=1118.580078)
         self.assertEqual(len(admission['unknown']),14);self.assertFalse(admission['budget_admitted'])

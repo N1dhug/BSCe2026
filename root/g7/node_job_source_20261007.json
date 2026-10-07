@@ -33,6 +33,6 @@
   "src/method/bm_1_g8_bernstein.py": "9dc79965d74e17127d6462840f426b66518832812960af81992c06306adc97cb",
   "src/method/bm_1_g7.py": "296c726dd6286c4de4226c6ad3018d2e5c6fc3a5bd864d91a8c21492413e12ed",
   "src/method/bm_1_g8_basis.py": "c88b67e7146e61187ae4851980f72130438dcce060ba63a3f2a520478ad35518",
-  "src/method/bm_1_g7_jobs.py": "2d8d12caf859cbb79b1756af853bff861a3f4722d8fa9d8aebddba05d1f9c3e0",
+  "src/method/bm_1_g7_jobs.py": "a98037f9fc6e6a70743bb36f70739ae77cd3baff99034661b287f53ed013b6f1",
   "src/method/bm_1_g7_budget.py": "c1c6c67b34b20ad01a5d75bc7884c5d078f417296e531e5f6c670e3f55eaf046"
 }
