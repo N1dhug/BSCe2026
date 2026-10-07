@@ -118,7 +118,8 @@ class OwnedBankPriceEvaluator:
             self.origin.log_weights,self.origin.x_edges,mass[:,-1],sigma_y=self.origin.sigma_y,
             backend=self.backend,conditional_coefficients=None if coefficients is None else coefficients[:,-1],
             basis=self.origin.basis if self.backend=='mixture' else None,
-            price_side=self.origin.price_side,basis_kind=BASIS_KIND if self.backend=='mixture' else None)
+            price_side=self.origin.price_side,basis_kind=BASIS_KIND if self.backend=='mixture' else None,
+            basis_identity_sha256=self.origin.basis_identity_sha256 if self.backend=='mixture' else None)
         return dict(total=objective.total,bias=objective.bias,variance=objective.variance,
             within_parameter_variance=float(s.widths@within),between_parameter_variance=float(s.widths@between),
             expected_demand=objective.expected_demand,demand_variance=objective.demand_variance,
@@ -167,6 +168,7 @@ class OwnedBankPriceEvaluator:
         posterior=G8BankOrigin(predicted.time,predicted.fixed_parameters,predicted.rho_values,
             weight_update['log_weights'][0],predicted.x_edges,np.array(mass),sigma_y=predicted.sigma_y,
             backend=self.backend,conditional_coefficients=np.array(coefficients) if coefficients else None,
-            basis=predicted.basis,price_side=predicted.price_side,basis_kind=predicted.basis_kind)
+            basis=predicted.basis,price_side=predicted.price_side,basis_kind=predicted.basis_kind,
+            basis_identity_sha256=predicted.basis_identity_sha256)
         return dict(origin=posterior,conditional_log_evidence=np.array(scores),
                     log_evidence=float(weight_update['log_evidence'][0]),projections=projections)

@@ -4,6 +4,8 @@ A frozen bank owns each node's conditional law. The observation contract is
 point demand in hours; historical interval-energy likelihoods are separate.
 """
 from dataclasses import dataclass, replace
+import hashlib
+import json
 from time import perf_counter
 
 import numpy as np
@@ -113,14 +115,36 @@ class G8BankOrigin:
     basis: object = None
     price_side: str = 'right'
     basis_kind: str | None = None
+    basis_identity_sha256: str | None = None
+
+    @staticmethod
+    def basis_identity(edges, basis):
+        """Exact owned float64 bytes; independent of a fresh special-function call."""
+        return hashlib.sha256(np.asarray(edges,dtype='<f8').tobytes()+
+                              np.asarray(basis,dtype='<f8').tobytes()).hexdigest()
 
     def __post_init__(self):
         time = checks.finite_scalar(self.time, 'cutoff')
         if self.basis_kind is not None:
             from src.method.bm_1_g8_bernstein import BASIS_KIND, bernstein_basis
+            reference=bernstein_basis(np.asarray(self.x_edges))
+            exact=np.array_equal(self.basis,reference)
+            certified=False
+            if self.basis_identity_sha256 is not None:
+                if np.iscomplexobj(self.basis):
+                    raise ValueError('Certified basis must be real.')
+                owned=np.asarray(self.basis,dtype=float)
+                widths=np.diff(np.asarray(self.x_edges,dtype=float))
+                certified=(owned.shape==reference.shape and np.isfinite(owned).all()
+                    and self.basis_identity_sha256==self.basis_identity(self.x_edges,owned)
+                    and np.max(np.abs(owned-reference)@widths)<=64*np.finfo(float).eps)
+                if not certified:
+                    raise ValueError('Owned basis bytes or roundoff-only family certificate changed.')
             if (self.backend != 'mixture' or self.basis_kind != BASIS_KIND
-                    or not np.array_equal(self.basis, bernstein_basis(np.asarray(self.x_edges)))):
+                    or not (exact or certified)):
                 raise ValueError('Typed M254 checkpoint must carry its declared exact basis.')
+        elif self.basis_identity_sha256 is not None:
+            raise ValueError('Basis byte certificate requires the typed supervisor family.')
         if self.time_unit != 'hour' or self.price_side not in ('left','right'):
             raise ValueError('Declare G8 hours and observation price side.')
         if not isinstance(self.fixed_parameters, BM1Parameters):
@@ -176,7 +200,7 @@ class G8BankOrigin:
 
     def to_record(self):
         p = self.fixed_parameters
-        return dict(schema='g8-rho-origin-v1',time=self.time,time_unit=self.time_unit,
+        record=dict(schema='g8-rho-origin-v1',time=self.time,time_unit=self.time_unit,
                     observation_kind='point',price_side=self.price_side,backend=self.backend,basis_kind=self.basis_kind,
                     parameters=dict(C=p.C,k=p.k,Xi=p.Xi,sigma_x=p.sigma_x,
                         f=p.state_response.to_record(),g=p.price_response.to_record()),
@@ -185,6 +209,26 @@ class G8BankOrigin:
                     x_edges=self.x_edges.tolist(),conditional_mass=self.conditional_mass.tolist(),
                     conditional_coefficients=None if self.conditional_coefficients is None else self.conditional_coefficients.tolist(),
                     basis=None if self.basis is None else self.basis.tolist())
+        if self.basis_identity_sha256 is not None:
+            record['basis_identity_sha256']=self.basis_identity_sha256
+        return record
+
+    @classmethod
+    def from_verified_bytes(cls, payload, expected_sha256):
+        """Load registered original bytes without replacing their numerical basis.
+
+        The default loader remains bit-exact. This explicit portability path
+        verifies the externally registered whole-record hash, owned basis bytes,
+        and a 64-epsilon component-mass family bound, before ordinary validation.
+        """
+        if hashlib.sha256(payload).hexdigest()!=expected_sha256:
+            raise ValueError('Registered whole-origin bytes changed.')
+        record=json.loads(payload)
+        from src.method.bm_1_g8_bernstein import BASIS_KIND
+        if record.get('basis_kind')!=BASIS_KIND:
+            raise ValueError('Verified portability loader requires supervisor M254.')
+        record['basis_identity_sha256']=cls.basis_identity(record['x_edges'],record['basis'])
+        return cls.from_record(record)
 
     @classmethod
     def from_record(cls, record):
@@ -196,7 +240,8 @@ class G8BankOrigin:
         return cls(record['time'],fixed,record['rho_values'],
                    [-np.inf if v is None else v for v in record['log_weights']],
                    record['x_edges'],record['conditional_mass'],record['sigma_y'],record['time_unit'],
-                   record['backend'],record['conditional_coefficients'],record['basis'],record['price_side'],record.get('basis_kind'))
+                   record['backend'],record['conditional_coefficients'],record['basis'],record['price_side'],record.get('basis_kind'),
+                   record.get('basis_identity_sha256'))
 
 
 def bank_filter(cells, observations, step, *, nodes=RHO_VALUES, degree=None,

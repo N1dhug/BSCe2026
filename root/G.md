@@ -1,3 +1,26 @@
+## G7: eget M254-nodeforsøg gennemført, 7. oktober
+
+10 native nodeforwards på gemte EGNE hour12-posteriorer, neutral12→14h,
+M254513 først37.961317s, M254257 derefter16.828349s inkl.nodefiler/reduktion.
+Jfine=.003715517464, Jcoarse=.003741963573; Jfejl2.644611e-5<.001.
+Conditional/marginal slut-L1 .011187752/.005225045<.05; alle korte
+moment/CDF/kvantil- og projektiongates består. Ingen FV/EM/optimizer/feedback.
+Første invocation stoppede før forward ved bit-exact basisreload; original
+fejl/source/input/ledger er bevaret. Optional verified-byte loader bevarer
+gamle basisværdier/c og default strict guard; machine-roundoff-familiecheck
+med eksakt owned-bytehash er begrundet. Ingen model-/acceptgate lempet.
+Ét loadercheck består1.609s; gamle node-/modeltests ikke genkørt.
+12 receipts og41 sourcehashes råreviewet; gemte demandmomenter/J rekonstrueres
+identisk uden nye forwards. Fuld data-ZIP er gemt separat og hashverificeret.
+Native source/kode og originalinputbytes er gemt i Git; vejleder M254 bevares.
+G-debit1224.712123s, rest575.287877s; begge forsøg medregnet, F/WM uændrede.
+2h-rates giver ingen24h-admission. En ren lineær M254-cross-illustration er
+41.1min før andre jobs, ikke målt døgnrate/bound. Ingen automatisk større run.
+Næste er budgetteret FV/EM/feedback-/policyintegrationdesign med recovery,
+derefter eksplicit døgnadmission. Sol High; ingen lokal kommando nu.
+Læs [forsøg, matematik, råreview og resterende arbejde](G7_NODE_RUNTIME_REVIEW.md).
+Følgende G-statusafsnit er historik.
+
 ## G7: egne nodecheckpoints implementeret, 7. oktober
 
 Durable nodejobs bevarer hver rho-nodes egne M254-c/posterior, eksakt
