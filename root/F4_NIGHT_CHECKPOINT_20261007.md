@@ -32,11 +32,39 @@ Ingen flytning af udviklingskontroller til en anden budgetetiket.
 ## Status
 
 - [x] Aktuel kilde, råpilot, budget og seneste GitHub-main læst.
-- [ ] Konkret admission-/valideringsbeslutning dokumenteret.
-- [ ] Genbrug af frossen receipt og portable inputs.
-- [ ] Fit, egne valideringsstreams og atomiske checkpoints/resume.
-- [ ] Prognose og betinget I/J-handoff.
-- [ ] Afgrænsede kontroller og status/budget opdateret.
+- [x] Konkret admission-/valideringsbeslutning dokumenteret i `H2_COMPACT_STAGED_RUN.md`.
+- [x] Genbrug af frossen receipt og portable inputs.
+- [x] Fit, egne valideringsstreams og atomiske checkpoints/resume implementeret.
+- [x] Prognose og betinget I/J-handoff implementeret; syntetisk fuldt flow kontrolleret.
+- [x] Ni afgrænsede kontroller består; separate prior-API-kontrol består.
 - [ ] Publiceret og reviewet.
 
-Historisk fit, runtime-admission og videnskabelig accept er fortsat false.
+## Aktiv kørsel og sidste holdbare kilde
+
+Kilde på GitHub: `e115242de79756a4a7163da28593f2452f17bcc6`.
+Run: `files/output/bm_1/runs/estimation/f4_h2_staged_night_v2_20261007`.
+Manifest: `e4d14ffe2473bf44dbfe3d6514ee13fd98e572234cb854f46255dd16f5afbeec`.
+Ændr ikke runner, protokol eller numeriske afhængigheder under denne kørsel.
+
+Nonlinear prøve består på **83.738727247 s**. 69 kildefiler og 64 råjobs er
+råkontrolleret uden native/FV-replay. Scoreforskel 2.0704491e-6; maksimal
+state-L1 .0004062245; CF→CDF/kvantiler og moments består. Det er stadig en
+27-timers prefix, ikke hele TRAIN/selection. Den eksisterende lineære
+PC-prefix genbruges byte for byte, når produktionsreferencen fortsætter.
+
+Før produktion: H **1764.392331237 s**, native **739.761210597 / 900 s**.
+Komplet konservativ graf: **7.880713832 h**, validation **11851.641664530 s**.
+En produktions-invocation har reserveret 29000 s inklusive stopreserve.
+Den fælles lokale ledger er autoritativ; dens åbne reservation må ikke
+erstattes af en ældre seed ved crash. En crash-reservation beholdes fuldt.
+Først den fulde lineære reference; COBYQA starter kun ved beståede gates.
+Slutugens workbook er ikke tilgængelig her og læses ikke i denne etape.
+
+Bevarede implementeringsfejl: én IndentationError før reservation (2 s
+konservativ charge), og ét forkert positional Beta-API-kald under preparation
+(1.36381916 s, nul modeljobs). Begge kilder/fejl er bevaret. Keyword-kaldet
+er rettet og særskilt kontrolleret; V2 er den første faktiske nonlinear prøve.
+
+Råreview: `root/f4/audit_h2_staged_probe.py` og
+`files/output/bm_1/runs/estimation/f4_h2_staged_probe_audit_20261007.json`.
+Historisk fit og videnskabelig accept er endnu ikke afsluttet.
