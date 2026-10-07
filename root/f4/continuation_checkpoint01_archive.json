@@ -1,0 +1,18 @@
+{
+  "schema": "f4-h2-continuation-archive-receipt-v1",
+  "archive": "f4_h2_continuation_checkpoint01_20261008.zip",
+  "archive_sha256": "9bda19ba8e7fce4f6fdb5c0f78b11f2103a629dfba19053650f538d1bdc3564b",
+  "bytes": 6493696,
+  "library_file_id": "libfile_3a48687a83b88191ae01ce14a0e84b59",
+  "file_id": "file_0000000099a08210892aa1b8f033eace",
+  "new_jobs": 179,
+  "adoptions": 450,
+  "predecessor_jobs": 3655,
+  "completed_four_piece_calls": 29,
+  "partial_next_candidate": true,
+  "original_numerical_sources_unchanged": 69,
+  "controller_commit": "b9983ee408746c49207c980e8e5c0c2b5a546b89",
+  "implementation_merge": "306c7afca15648308a003b115b2e94172b80c96c",
+  "latest_committed_campaign_is_authoritative": true,
+  "scientific_acceptance": false
+}

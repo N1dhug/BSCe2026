@@ -1,3 +1,16 @@
+## F4-H2: PR106 merged; første fortsættelsesblok sikret, 8. oktober
+
+PR106 er merged på306c7afc efter bestået syntax-CI og bevaret nyere G/WM-main.
+Første blok lukkede efter540.150835s med179 nye jobs/450 adoptioner; råreview
+består uden propagation.29 firestykkekald er komplette, næste kandidat delvis.
+Checkpoint01 er sikret; native-audit/eksportcharge1.445373s. Anden blok er
+startet under samme frosne controllerb9983ee og godkendte08:00-frist.
+Aktuel v3-campaign er autoritativ; alle tidligere charges og reserver bevares.
+H-fit/validering/forecast/finale og I/J er fortsat åbne. Ingen F4-slutaccept.
+Aktuelt arbejde fortsætter i særskilt results-branch; færdige scopes merges.
+Slut-Y kræver original input.xlsx efter forecastfreeze; ingen lokal kørsel nu.
+Alle nedenstående statusafsnit er historik.
+
 ## Arbejdsregel: merge færdige egne branches, Johan 8. oktober 2026
 
 Johan: "merge altid naar du er faerdig med en branch". Når eget autoriseret
