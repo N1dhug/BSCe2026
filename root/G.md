@@ -24,6 +24,38 @@ Det ændrer ikke snapshotbytes, numeriske gates eller beregningsbudget.
 Næste G7-opgave fremgår af den nyeste status nedenfor. Selve BM/WM-
 sammenligningen planlægges efter BM's færdiggørelse.
 
+## G7: merges verified; bounded price/quad design ready, 7. oktober
+
+PR112 og PR113 er merged i rækkefølge på main uden konflikter. Alle29 ændrede
+blobs matcher reviewet G-head; src/tests/workflows er bevaret byte-identiske
+med main før merge. Begge PR-heads har bestået syntax; gamle numeriske checks
+er ikke gentaget. Originaljournalens resume-afvisning bevares.
+
+Næste afgrænsede scope er designet: neutral [.5,.5] genbruges; to nye
+M254257-kandidater [.3,.7]/[.7,.3] undersøges. Coarse vælger én plan med
+fast tie-regel; valgt plan kontrolleres på M254513, reel ny costpartition
+1/192h og FV513. Højst25 nye nodeforwards, ingen EM/feedback i dette scope.
+Lige middelpris er ikke energibevarelse. Ingen kontinuert/global optimum-
+claim; fine-J-gain og energi-/sluttilstandsforskelle rapporteres separat.
+Kvadratur ændrer output/transportpartition og er ikke et rent fejlcertifikat.
+
+Jobreservationer260s +10s worker-headroom; foreslået scope320s =
+270 worker +30 stop/eksport +20 råreview. Nye policy/quad-rates er ukendte;
+reservationer er stoprammer, ikke runtimebounds. Én stdlibdesignkontrol består
+104 checks på.007533s med41 sourcehashes, DAG, budget, gates og distinkte
+midpoints; nul native imports/forwards. Source/basis/inputs og F/WM bevares.
+Design/reviewcharge10s: G1441.082740428s af1800; rest358.917259572s.
+320s er endnu ikke charged; worst-case-rest38.917259572s før nye setup/check-
+charges. Budget skal re-admitteres efter yderligere implementation-charge.
+
+launch_ready/pre_run_registration/actual_optimizer/scientific/full-day=false.
+Næste er konkret parent/worker med GuardedNodeJobStore, eksplicit read-only
+adoption, sourcefrysning og særskilt præregistrering, derefter én kørsel.
+Ingen gammel one-invocation-resume eller automatisk retry. Valgt-policy EM,
+feedback, historiske intervalobservationer og døgnadmission er senere krav.
+Direkte BM/WM-sammenligning venter til BM er færdig.
+Læs [matematik, design, budget og næste trin](G7_BOUNDED_PRICE_QUADRATURE_DESIGN.md).
+
 ## G7: receipt-genbrug og writer-guards færdige, 7. oktober
 
 24 seed-run-receipts er verificeret i et eksternt hash-låst read-only indeks;
