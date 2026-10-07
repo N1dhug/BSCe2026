@@ -37,10 +37,8 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
     hourly_index = np.arange(DAY_HOURS, dtype=int) * steps_per_hour
     process_kernel = prediction_model.process_variance_kernel({"r": fit["r"]}, hourly_index)
 
-    P0 = np.array([[0.0, 0.0], [0.0, observed_variance[0]]], dtype=float)
-    sensitivity = prediction_model.sensitivity(fit["r"])["input"][hourly_index]
-    initial_variance = np.einsum("ni,ij,nj->n", sensitivity, P0, sensitivity)
-    initial_variance = np.maximum(initial_variance, 0.0)
+    P0 = np.zeros((2, 2), dtype=float)
+    initial_variance = np.zeros(DAY_HOURS, dtype=float)
 
     fit_mask = np.ones(DAY_HOURS, dtype=bool)
     qp = constant_diffusion_qp(prediction_model).fit(
@@ -107,8 +105,8 @@ def print_result(result, plot_path, csv_path):
     print(f"variance RMSE={result['variance_rmse']:.10f}, R2={result['r2']:.8f}")
     print(f"std RMSE after sqrt={result['std_rmse']:.10f}, MAE={result['std_mae']:.10f}")
     print()
-    print(f"P0=[[0,0],[0,{result['P0'][1,1]:.10f}]] from the empirical hour-0 variance.")
-    print("All 24 hourly variances are included; hour 0 is matched exactly by the empirical initial covariance.")
+    print("P0=[[0,0],[0,0]]: the constant diffusion fit is conditional on a known/oracle initial state.")
+    print("All 24 hourly variances are included; hour 0 contributes an irreducible residual because process diffusion has not accumulated yet.")
     print("The additive constant Ito diffusion has zero mean, so E[I_stochastic]=I_deterministic for the same initial mean.")
     print(f"hourly={csv_path}")
     print(f"plot={plot_path}")
