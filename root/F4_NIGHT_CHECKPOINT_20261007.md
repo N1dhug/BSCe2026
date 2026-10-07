@@ -47,6 +47,8 @@ Checkpoint04 tilføjer127 jobs (735 i alt), SHA256
 `baef38f921964263b11fd41a9b39ceadbe013b34574d25651c8730cc9e6b216d`.
 Checkpoint05 tilføjer159 jobs (894 i alt), SHA256
 `e0964149339e6960f7bd9c7f9eb567f52eeb2c3ece6c79890985fc4c485550a8`.
+Checkpoint06 tilføjer182 jobs (1076 i alt), SHA256
+`f39cd9f7b9e706f284d62c6559e4d85bf2a83619682b771e1ed04bfd55aa1044`.
 Det indeholder også den åbne produktionsreservation; denne må ikke nulstilles
 ved crash. Færdige kald genbruges; et ufuldstændigt kald er ikke konvergens.
 `root/f4/status_h2_budgeted.py` giver et separat vægtet statusestimat for det
