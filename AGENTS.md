@@ -1,21 +1,31 @@
 # Fælles projektkontekst
 
-## F4-H2: afgrænset cap-fortsættelse registreret, 7. oktober kl. 16:36
+## F4-H2: to-stykkers fit konvergeret og valideret; fire-stykkers fit aktivt
 
-Efter Johans instruktion kl. 16:28 er en særskilt 25/49-maxfev-fortsættelse
-registreret i `root/H2_CAP_EXTENSION_20261007.md`; controllercommit er
-`4f4e35ae64cbbf6e1f75f8e10462baacbadf2561`. Nyt run:
-`files/output/bm_1/runs/estimation/f4_h2_cap_extension_20261007`.
-Samme v2-campaign, 18h/23:55/600s-blokke, fuld valideringsreserve og gates.
-Alle 1402 gamle jobs og 17 objectivekald genbruges. Den gamle terminale
-kørsel og dens failure bevares; ny execution har egne extension_* traces.
-Cached diagnose viser radius .02 ved kald16; kald18 anmodes præcist efter
-alle17 bevarede kald. Én fokuseret AST-/cachekontrol består uden modeljobs.
-Fittet er endnu ikke dokumenteret konvergeret; læs nyeste extension_report
-og ledger før genoptagelse. Nyt cap-/numerikstop er terminalt. Ingen ændring
-af F/G/WM-numerik eller genstart af droppede F4-G2b/G2c.
-Følgende terminalstatus gælder forgængeren og bevares som historik.
+Den særskilte fortsættelse på Johans instruktion 7. oktober kl. 16:28 bruger
+25/49 maxfev under uændret 18h-loft og 23:55-frist. Controllercommit:
+4f4e35ae64cbbf6e1f75f8e10462baacbadf2561. Aktiv metode er
+[root/H2_CAP_EXTENSION_20261007.md](root/H2_CAP_EXTENSION_20261007.md).
+Run: files/output/bm_1/runs/estimation/f4_h2_cap_extension_20261007.
+Samme f4_h2_same_day_campaign_20261007.json er autoritativ; alle gamle
+charges og den åbne 30000s-reservation bevares. 600s-blokke, ingen auto-retry
+ved numerisk fejl eller nyt kandidatloft; fuld restvalidering beskyttes.
 
+To-stykkers COBYQA konvergerede med status0 efter20 kald; de17 gamle kald
+blev genbrugt præcist. Råreview bekræfter20 objectives uden model-replay.
+Dens egne base/fine TRAIN48+selection24 består: total logscore-difference
+.0030801524/.0007200562; max state-L1 .002927696. Resultat ligger i
+family_2_validation.json. Fire-stykkers optimizer er startet; første27 timer
+af den gamle PROBE genbruges. Checkpoint extension01–04 bevarer1965 jobs
+oven på den oprindelige01–08-kæde. Nyeste extension_report og campaign,
+ikke dette løbende statustal, bestemmer senere genoptagelse.
+
+Modelvalg,168h forecast,finaldiagnose og faktisk I-handoff er endnu åbne.
+Final-Y er ulæst. PC-databroen til v2-budget er export_h2_cap_extension_final.py;
+kør den først efter den hashverificerede forecastfreeze. De69 oprindelige
+numeriske/sourcefiler er uændrede. F/G/WM holdes adskilt. H/I/J/F4 er ikke
+slutaccepteret; PR106 forbliver draft. Gammel17-cap-kørsel bevares som negativ
+evidens. Følgende statusafsnit er historik.
 
 ## F4-H2: terminalt kandidatstop; 1402 jobs gemt, 7. oktober
 
