@@ -1,5 +1,24 @@
 # Fælles projektkontekst
 
+## F4-H2: terminalt kandidatstop; 1402 jobs gemt, 7. oktober
+
+Dagscontroller7171875 nåede to-stykkers maxfev17 med COBYQAstatus5,
+converged=false.17 komplette TRAIN-objectives, alle1402 rawjobs og69 frosne
+numeriske/runner-kilder består rawaudit; præcis COBYQA-termination er
+rekonstrueret med0 nativepropagationer. Ingen gemte numeriske jobfailures.
+326 nyejobs over to lukkede dagsblokke; hele checkpoint01–08-kæden verificeret.
+To-stykkers fit er ikke færdigt; fire-stykkers fit, nonlinear selection,
+modelvalg, forecast, finaldiagnose og I-handoff mangler. Final-Y er ulæst.
+
+Aktiv run er terminal: SAME_DAY_FAILED.json og optimizerresultat bevares;
+ingen retry, markørsletning eller skjult capforøgelse. V2 H34030.249462s,
+rest30769.750538s under18h; protectedvalidation22005.997020s;
+native854.498417/900s. Begge auditcharges og gammel30000s-reservation bevares.
+Stop23:55 Copenhagen. PR106 forbliver draft; H/I/J/F4 ikke afsluttet.
+Læs [terminalresultat og konkret metodeforslag](root/F4_H2_TERMINAL_AND_NEXT_DECISION_20261007.md).
+25/49 maxfev er kun et særskilt forslag og er IKKE godkendt eller udført.
+G/WM og droppede F4-G2b/G2c berøres ikke. Følgende statusafsnit er historik.
+
 ## F4-H2: første dagsblok gemt; 1241 jobs, 7. oktober
 
 Dagscontroller7171875 kørte første600s-blok og lukkede rent efter540.23s.

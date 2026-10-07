@@ -1,8 +1,9 @@
 # F4-H2 → I/J: resultatreview, 7. oktober 2026
 
-**Arbejdsversion under dagskørslen.** Der foreligger endnu ikke et afsluttet
-historisk f/g-fit, modelvalg eller ugeforecast. Resultatafsnittet skal udfyldes
-fra de faktisk gemte terminalrapporter; dette dokument afslutter ikke F4.
+**Opdateret efter terminalt kandidatstop.** To-stykkers fit nåede17 evalueringer
+og optimizerstatus5 uden konvergens. Der foreligger endnu ikke modelvalg eller
+ugeforecast. Råresultaterne består kontrollen, men H/I/J/F4 er ikke afsluttet.
+Læs [terminalstatus og konkret næste beslutning](F4_H2_TERMINAL_AND_NEXT_DECISION_20261007.md).
 
 ## Den konkrete opgave
 
@@ -134,7 +135,13 @@ er ukendt: den skal fortsat kaldes udviklings-holdout, ikke blind H3.
 
 ## Faktiske resultater og afslutning
 
-**Afventer terminale dagsrapporter.** Her skal tilføjes:
+**Terminal dagsrapport foreligger:** `same_day_report_002.json` er failed på
+kandidatloftet, ikke numerisk jobfailure.1402 jobs,17 komplette objectives og
+præcis cached COBYQA-termination er verified. Best objective-10,15586624
+gælder kun TRAIN; to-stykkers fit er ikke konvergeret. Fire-stykkers fit,
+modelvalg, forecast, finaldiagnose og faktisk I-handoff mangler.
+
+Ved en senere særskilt godkendt metodefortsættelse skal tilføjes:
 
 - Algoritmisk status for begge nonlinear familier og faktisk forbrug.
 - Egne TRAIN/selection-scoreforskelle, state-/moment-/CDF-gates og modelvalg.
