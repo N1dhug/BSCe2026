@@ -1,3 +1,19 @@
+## F4-H2: egen fine-kontrol består; 180 ekstra sekunder godkendt
+
+Johan godkendte 180 ekstra native-s 7. oktober kl.23:47:41. Native-loft1080s,
+H-loft64800s og stop23:55 Copenhagen er uændret. Separat kandidat28-kontrol
+med egen2561-celle-prior24h + observeret time24 består på41.78s. Logscore-
+forskel1.06323e-5; state-L1 .000834817; alle oprindelige guards består.
+Alle24 priorcheckpoints og9 fulde konturer består råreview med0 propagationer;
+posterior rekonstrueres præcist.69 gamle numeriske kilder er uændrede.
+Native942.31036/1080s; H40472.90630/64800s efter kontrol/review/ZIP-eksport.
+Gamle3655 jobs/27 firestykkekald og terminalfejl bevares. Ingen fitgenstart.
+Næste trin er særskilt proveniensverificeret adoption og ny runtime-admission
+for restfit/fullvalidation; dagens frist må ikke rulles automatisk videre.
+Læs root/H2_TERMINAL_BANK_FINE_RESULT_20261007.md. PR106 forbliver draft.
+Råresultat: f4_h2_terminal_bank_fine_20261007.zip, libfile_c10efdaac29881919c10ffae7600a37d.
+G/WM er uberørt. Følgende statusafsnit er historik.
+
 ## F4-H2: terminal fejl afgrænset; udvidet konturbank består basistimen
 
 Kandidat28 stoppede cap-extension efter3655 gemte jobs/27 komplette firestykkekald.
