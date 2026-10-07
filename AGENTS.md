@@ -1,3 +1,20 @@
+## F4-H2: terminal fejl afgrænset; udvidet konturbank består basistimen
+
+Kandidat28 stoppede cap-extension efter3655 gemte jobs/27 komplette firestykkekald.
+Det gamle run er terminalt; bevar EXTENSION_FAILED og alle checkpoints.
+En separat9-konturdiagnose fra gemt prior løser alle1921 celler på10.23s med
+uændrede guards. Gammel5-konturprefix giver samme25 uløste celler;0.875 løser dem.
+Rårekonstruktion består uden modelreplay;69 gamle numeriske kilder er uændrede.
+Ny opt-in adapter er ikke installeret i produktionsrunneren. Fine-check og
+provenienssikker adoption mangler; ingen refit/final-Y/modelvalg/forecast.
+Native898.08637/900s; H40428.29713/64800s før eksport. Forslag:180 nye native-s,
+900→1080, samme18h-loft/23:55-frist; IKKE godkendt eller kørt. Egen fine-prior24h
+plus den ene observerede time; base-resultatet genbruges. PR106 forbliver draft.
+Læs root/H2_TERMINAL_BANK_EXTENSION_REVIEW.md og den tilhørende proposal-JSON.
+Nyeste rå-checkpoints11/12 er sikret i f4_h2_takeover_checkpoint12_20261007.zip;
+Library-id libfile_e7115c96991881918e421cd20264bd16. G/WM er uberørt.
+Følgende statusafsnit er historik.
+
 # Fælles projektkontekst
 
 ## F4-H2: pauset med 3.324 råjob; to-stykkers validering består
