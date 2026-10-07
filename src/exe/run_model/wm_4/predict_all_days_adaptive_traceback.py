@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, aligned_wm4_data, day_start
+from src.exe.run_model.wm_4.fit_daily import DAY_HOURS, aligned_wm4_data, day_start
 from src.exe.run_model.wm_4.predict_all_days_optimized import END_DAY, START_DAY, fit_history_optimized, historical_optimized_state
 from src.exe.run_model.wm_4.predict_daily import deviation_metrics, prediction_setup
 
@@ -153,17 +153,12 @@ def save_plot(selected, candidates, path):
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 
 
-def print_summary(selected, candidates, failures, skipped):
-    adaptive = deviation_metrics(
-        pd.concat([group["I_observed"] for _, group in candidates[candidates["selected"]].groupby("day")]) if False else np.zeros(1),
-        np.zeros(1),
-    )
+def print_summary(selected, hourly, candidates, failures, skipped):
+    adaptive = deviation_metrics(hourly["I_observed"], hourly["I_wm4"])
     print()
-    print(f"days fitted={len(selected)}, skipped={len(skipped)}, candidate fits={len(candidates)}, failed candidates={len(failures)}")
+    print(f"days fitted={len(selected)}, skipped={len(skipped)}, candidate fits={len(candidates)}, failed candidates={len(failures)}, hourly observations={len(hourly)}")
     print(f"selection metric={selected['selection_metric'].iloc[0]}")
-    print(f"mean selected daily MSE={selected['wm4_mse'].mean():.10f}")
-    print(f"mean selected daily RMSE={selected['wm4_rmse'].mean():.10f}")
-    print(f"mean selected daily MAE={selected['wm4_mae'].mean():.10f}")
+    print(f"adaptive MSE={adaptive['mse']:.10f}, RMSE={adaptive['rmse']:.10f}, MAE={adaptive['mae']:.10f}, bias={adaptive['bias']:.10f}")
     print(f"median selected daily MSE={selected['wm4_mse'].median():.10f}")
     print(f"selected traceback matches hindsight-best prediction on {100.0 * selected['selected_matches_hindsight_best'].mean():.2f}% of days")
     print()
@@ -216,7 +211,7 @@ def main():
     if not failures.empty: failures.to_csv(output / "failed_candidates.csv", index=False)
     if skipped: pd.DataFrame([{"day": day, "reason": reason} for day, reason in skipped]).to_csv(output / "skipped_days.csv", index=False)
     save_plot(selected, candidates, output / "adaptive_traceback_performance.png")
-    print_summary(selected, candidates, failures, skipped)
+    print_summary(selected, hourly, candidates, failures, skipped)
 
 
 if __name__ == "__main__": main()
