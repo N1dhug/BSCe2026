@@ -1,3 +1,20 @@
+## F4-H2: normalt budgetstop;43 kald sikret, 8. oktober
+
+PR118 er merged. Blok6 stoppede rent for at beskytte restvalidation, ikke pga
+numerisk fejl.43 firestykkekald og1166 nye råjobs er sikret i checkpoint01–06;
+kandidat44 har38/72 timer gemt.450 adoptioner og alle frosne kilder består.
+Ingen proces kører; gammel18h-approval tillader ikke mere fit nu. De20955.86s
+restvalidation er fortsat beskyttet; alle crashcharges bevares fuldt.
+Forslag +7200s (H18→20h), samme08:00-frist/native1080s og25/49-caps, er
+IKKE godkendt. Registered remaining49-rate-scenarie:18.49min ved jobmidler,
+27.74min med faktor1.5,82.42min ved beskyttede rater/hjælpere. Convergence er
+ikke garanteret. Separat v4-runner/checkpointhelper er klargjort;7 scoped
+kontroller består med0 propagationer/reservationer. Den afviser uden approval.
+Læs root/H2_BUDGET_BOUNDARY_20261008.md og den konkrete proposal-JSON.
+H-fit/selection/forecast/finale og I/J/F4 er åbne. Original input.xlsx mangler
+stadig efter forecastfreeze. G/WM og droppede F4-G2b/G2c er uberørte.
+Følgende status-/deadlineforslag er historik.
+
 ## F4-H2: checkpoint05 består; resultatfortsættelse, 8. oktober
 
 PR106 er merged. Firestykkefit har40 komplette kald, næste kandidat delvis.
