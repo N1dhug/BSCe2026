@@ -1,0 +1,23 @@
+{
+  "schema": "g7-receipt-recovery-registration-v1",
+  "date": "2026-10-07",
+  "source_parent_commit": "77cd2d74152e7b4e69c92b38413ab6123ea66d17",
+  "user_authorization": "Johan: Sol High, continue next journal/recovery step",
+  "prior_debit": 1401.0827404279985,
+  "campaign_ceiling": 1800,
+  "scope_ceiling_seconds": 30,
+  "verification_reserve_seconds": 20,
+  "review_documentation_reserve_seconds": 10,
+  "conservative_scope_charge_seconds": 30,
+  "source_sha256": {
+    "receipt_recovery.py": "322202ea83c64470870f091227fc49442a8a665c1ad13fa6beb96a1998b60172",
+    "check_receipt_recovery.py": "283f7e0a94d611c6539f652b0271e73da694c880b1e3c39e1f5d9cf3e41ccf48"
+  },
+  "native_store_sha256": "a98037f9fc6e6a70743bb36f70739ae77cd3baff99034661b287f53ed013b6f1",
+  "manifest_sha256": "69c09a17835d5089d8fd3fe2df4219c220ac4bc070fe573d73e7c136643f7f6d",
+  "new_model_forwards": 0,
+  "old_journal_mutation_permitted": false,
+  "original_store_resume_permitted": false,
+  "automatic_retry": false,
+  "status": "registered before focused check; no numerical run"
+}
