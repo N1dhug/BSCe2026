@@ -1,3 +1,28 @@
+## G7: fælles BM/WM-kontrakt og frozen-fit-prisrespons, 7. oktober
+
+24h/fire blokke/known fixed-A med fælles januar-baseline og scales er låst.
+A er baseline-døgnmiddel, uden target-Y; WM's native A(U)-opgave bevares.
+Time/dage og u_BM=u/U_WM=2u-1 omregnes eksplicit; hver kandidat bruger
+sin gemte origin. Januar-G4/lambda0 og matched januar-WM4 genbruges sammen
+med original lineær BM-reference; nyere S3 har ikke matched WM-origins.
+Én kort analytisk kontraktkontrol består.18 forwards (3 priser/3 modeller/
+2 grids) består alle gates; .212s body/.505s process. Ingen optimizer/refit.
+S3-audit:1008/1008 gemte forecastpriser u<.5; uge16–18 har næsten flad
+g netop dér. Stærk respons over knækket er ikke kausalt dokumenteret.
+J alene kan falde ved ændret slutlager/energi; rapportér terminal og
+energy-gap separat, ingen skjult ny straf. Raw demandsemantik er endnu
+legacy-uafklaret; ingen kW²h- eller fysisk ranking-claim.
+18 gamle importerede Git-blobs matcher executionbase; WM deterministic
+AST er scoped-reviewet, ny validation-only guard består. F/WM/legacy
+kilder, basisfamilier, budgets og negative G7/M254-resultater bevares.
+Næste: lille fireblokoptimering af samme januarpar, native feasibility,
+J/energy/terminal rapportering. S3's senere historiske kontrol er ikke
+frigivet. Stokastisk G7 obligatorisk; runtime-/jobdesignreview før retry.
+G-debit1068.580078s, rest731.419922s. Sol High; ingen lokal kørsel nu.
+Læs [kontrakt, udledning, kilder og faktiske resultater](G7_MATCHED_CONTROL_REVIEW.md).
+
+Følgende daterede statusafsnit er historik.
+
 **G7 deterministisk kontrol gennemført, 7. oktober 2026:** Begge kontrolmål beholdes med deterministisk BM/WM-reference først. Original BM i FP2025 bruger kendt exogent A(t); en ny WM-afledt A(U)-funktion er ikke nødvendig. Én syntetisk24h-case med fire prisblokke, fixed A=.5 og lineær reference giver fine J=.0209268019845 mod neutral .12 (82.561% mindre). Begge bounded least-squares/TRF-starter konvergerer via ftol, uden global/KKT-optimalitetsclaim. Alle coarse/fine-gates består: J-fejl6.78073e-7, statefejl1.32738e-7, demandfejl5.55150e-8. 68 faktiske forward-solves inklusive Jacobian-prober, invocation14.227s. Én fokuseret analytisk kontraktkontrol består efter rettet assertion ved aktiv bound; failed check bevares, produkttolerancer uændrede. 27 gamle importerede Git-blobs og execution-hashes matcher. F/WM/shared-kerner er uændrede. **Syntetisk deterministisk udviklingsaccept; faktisk BM/WM-rangering, historisk kontrol og stokastisk G7 er åbne.** Næste: fælles fixed-A benchmarkkontrakt, ens inputs/prisblokke/enheder og eksplicit initialisering; bevar WM's native A(U)-mål separat. G4-fits genbruges og svag prisrespons diagnosticeres før fysisk kontrolfortolkning. M254-prisoptimering afventer stadig runtime-/jobdesignreview; ingen automatisk genkørsel. Conservative paneldebit1062.580078s, rest737.419922s. Sol High er tilstrækkelig; ingen lokal kørsel nu. Se [udledning, kilder, matematik og råresultater](G7_DETERMINISTIC_CONTROL_REVIEW.md). Følgende daterede statusafsnit er historik.
 
 ## Aktiv kontrolprioritet — Johan, 7. oktober 2026
