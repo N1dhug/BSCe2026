@@ -1,5 +1,29 @@
 # Fælles projektkontekst
 
+## G7: fælles BM/WM-kontrakt og frozen-fit-prisrespons, 7. oktober
+
+24h/fire blokke/known fixed-A med fælles januar-baseline og scales er låst.
+A er baseline-døgnmiddel, uden target-Y; WM's native A(U)-opgave bevares.
+Time/dage og u_BM=u/U_WM=2u-1 omregnes eksplicit; hver kandidat bruger
+sin gemte origin. Januar-G4/lambda0 og matched januar-WM4 genbruges sammen
+med original lineær BM-reference; nyere S3 har ikke matched WM-origins.
+Én kort analytisk kontraktkontrol består.18 forwards (3 priser/3 modeller/
+2 grids) består alle gates; .212s body/.505s process. Ingen optimizer/refit.
+S3-audit:1008/1008 gemte forecastpriser u<.5; uge16–18 har næsten flad
+g netop dér. Stærk respons over knækket er ikke kausalt dokumenteret.
+J alene kan falde ved ændret slutlager/energi; rapportér terminal og
+energy-gap separat, ingen skjult ny straf. Raw demandsemantik er endnu
+legacy-uafklaret; ingen kW²h- eller fysisk ranking-claim.
+18 gamle importerede Git-blobs matcher executionbase; WM deterministic
+AST er scoped-reviewet, ny validation-only guard består. F/WM/legacy
+kilder, basisfamilier, budgets og negative G7/M254-resultater bevares.
+Næste: lille fireblokoptimering af samme januarpar, native feasibility,
+J/energy/terminal rapportering. S3's senere historiske kontrol er ikke
+frigivet. Stokastisk G7 obligatorisk; runtime-/jobdesignreview før retry.
+G-debit1068.580078s, rest731.419922s. Sol High; ingen lokal kørsel nu.
+Læs [kontrakt, udledning, kilder og faktiske resultater](root/G7_MATCHED_CONTROL_REVIEW.md).
+
+
 ## F4-H2: faktisk lineær PC-pilot råreviewet, 7. oktober
 
 Aktiv overdragelse: [historiske rates og næste admission-design](root/H2_COMPACT_RATE_REVIEW.md).
