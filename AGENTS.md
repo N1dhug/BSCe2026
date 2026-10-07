@@ -1,3 +1,15 @@
+## F4-H2: ny frist godkendt; separat fortsættelse startet
+
+Johan godkendte8.oktober kl.00:28 ny stopfrist08:00 Copenhagen under samme
+H64800s/native1080s-lofter. Den separate approval-JSON bevarer proposal og
+alle gamle charges. Første600s-blok er startet med controllerb9983ee;
+gamle lineære/to-stykkers valideringer adopteres, og kandidat28 fortsætter
+under egen namespace med valideret ni-konturbank. Ingen lokale kommandoer
+kræves før slutdataeksport efter forecastfreeze. F4/H/I/J er stadig åbne.
+Johan har nu bedt om merge af færdige branches; tidligere "ingen merge"
+er historik. Merge af implementation/evidens er ikke videnskabelig F4-accept.
+Alle nedenstående tidligere statusafsnit bevares som historik.
+
 ## F4: næste trin samlet; kontrolleret H-fortsættelse klar
 
 Aktuel samlet restplan: root/F4_REMAINING_PLAN_20261008.md. De to tidligere
@@ -50,6 +62,31 @@ Library-id libfile_e7115c96991881918e421cd20264bd16. G/WM er uberørt.
 Følgende statusafsnit er historik.
 
 # Fælles projektkontekst
+
+## G7: deterministisk døgnkontrol med bevaret forbrug, 7. oktober
+
+Fælles frossent januarpar og lineær BM-reference er optimeret over fire6h-
+prisblokke, både original fixed-A og separat lighed integral(demand-B)=0.
+Alle seks valgte policies består coarse/fine;374 faktiske forwards inkl.
+Jacobianprober,3.7754s process. Neutral fine-J: lineær BM .275408888,
+G4 .276532280, WM .303629020; baselineJ .308609546. Forbedringer10.758%/
+10.394%/1.614% er modelbetinget tracking i ét døgn, ikke fysisk/kausal ranking.
+WM løses som certifieret affin/konveks4D-QP; BM er bedste fundne lokale
+SLSQP-kandidat fra to starter, uden global optimalitetsclaim. Ingen refits.
+Samme diskrete forbrugsbalance bruges i J og lighed; WM's Euler/midpoint-
+korrektion er udledt. Fine energierror højst1.466e-6 i neutrale policies.
+Én fokuseret analytisk kontrol og read-only byte/J/E-audit består.17 units/
+19 råfiler, fulde baner og hashes er gemt med atomiske checkpoints.
+S3-fladhed genbruges som identifikationsforbehold; ingen ny straf indføres.
+M254's gamle døgnestimat mangler eksplicitte FV/EM/feedback/quad-led:
+ingen ny stochastic admission eller pilotretry. Næste er durable egne
+rho-nodejobs og komplet målt jobgraf før særskilt registreret måling.
+Vejlederbasis, legacy, F/WM-kilder og deres budgetter er uændrede.
+Konservativ nattecharge30s af max300s; G1098.580078s, rest701.419922s.
+Læs [matematik, faktisk udført og resultater](root/G7_ENERGY_NEUTRAL_REVIEW.md)
+og [M254-runtime/jobdesign](root/G7_M254_RUNTIME_JOB_REVIEW.md).
+Følgende statusafsnit er historik.
+
 
 ## F4-H2: pauset med 3.324 råjob; to-stykkers validering består
 

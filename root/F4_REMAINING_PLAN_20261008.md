@@ -1,3 +1,15 @@
+## F4-H2: ny frist godkendt; separat fortsættelse startet
+
+Johan godkendte8.oktober kl.00:28 ny stopfrist08:00 Copenhagen under samme
+H64800s/native1080s-lofter. Den separate approval-JSON bevarer proposal og
+alle gamle charges. Første600s-blok er startet med controllerb9983ee;
+gamle lineære/to-stykkers valideringer adopteres, og kandidat28 fortsætter
+under egen namespace med valideret ni-konturbank. Ingen lokale kommandoer
+kræves før slutdataeksport efter forecastfreeze. F4/H/I/J er stadig åbne.
+Johan har nu bedt om merge af færdige branches; tidligere "ingen merge"
+er historik. Merge af implementation/evidens er ikke videnskabelig F4-accept.
+Alle nedenstående tidligere statusafsnit bevares som historik.
+
 # Aktuel restplan for hele F4 — 8. oktober 2026
 
 Dette er det samlede aktuelle overblik over resterende F4-arbejde. root/F4.md
