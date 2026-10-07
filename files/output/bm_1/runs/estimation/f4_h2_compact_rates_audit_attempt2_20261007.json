@@ -1,0 +1,11 @@
+{
+  "status": "failed",
+  "scope": "Read-only Beta prior reconstruction; no model replay",
+  "reason": "Platform Beta-CDF finite-log difference 8.999e-12 exceeded an auditor-specific 1e-12 assertion; compare declared Beta cell masses instead, keep all native/pilot gates unchanged.",
+  "ledger_entry": {
+    "label": "native-development|historical-rate-raw-review",
+    "started_utc_seconds": 1791332052.1312456,
+    "status": "closed",
+    "charged_seconds": 1.2927045180003915
+  }
+}
