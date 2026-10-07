@@ -169,3 +169,41 @@ tilbage. Ingen tidligere charge refunderes.
 Den nye registrering i root/g7/bounded_price_addendum_20261007 commits
 før den nye invocation. Det tidligere320s forsøg forbliver failed/zero-forward
 og historisk. Det oprindelige PR114-designsnapshot bevares uændret.
+
+## Manglende inputs rettet og faktisk setupkontrol
+
+Registrering80c5b16 blev committed før næste invocation. Verifikation
+bestod1.482263s; første setup fejlede straks med FileNotFoundError.
+Det gendannede G7-råarkiv indeholdt kontrakter og receipts, men ikke de
+separate inputs/coarse.json/fine.json. read_owned validerede historiske
+kontrakter, ikke eksistensen af disse launcher-inputfiler. Det blev ikke
+fanget af stand-in-checket; den manglende preflight var en launcherfejl.
+Denne stopinvocation har nul nye forwards, én complete verify-receipt og
+én failed setup. Journalen består read-only review; ingen numerisk accept.
+Scopecharge10.274316715s bevares: G1518.141507860s, rest281.858492140s.
+
+Begge originale origin_12.json er nu hentet fra de eksisterende G8 M254
+filter-/513-forfiningsarkiver. Coarse1938113bytes hash1cd343248607cc27baa61d4e52303fbfbf5c08ca7674fac0b9b3dce43649b3bc;
+fine3846405bytes hash746e45c4603e724824687e535c2e7235f824e19ecbb6adcdd1c6ee0c0a7593e0.
+Ingen tilstand er rekonstrueret, refittet eller regriddet. Et forsøg på
+bytegendannelse fra kontraktens JSON gav ikke match og blev ikke brugt.
+Parent kontrollerer nu begge hash-pinnede inputfiler før started-markør
+og spawn; worker bevarer den fulde native kontraktkontrol. Fejlrapporten
+gemmer også str(exc) og traceback, så den konkrete sti ikke skjules.
+
+Én nødvendig live setup-preflight bestod3.790773s med real native imports,
+men evaluate_node var eksplicit deaktiveret. Faktiske fire nested setups,
+neutral receipt-reduktion, coarse/fine/FV-contractidentitet og192/384
+midpoints blev kontrolleret. Manglende inputs afvises før workerstart.
+Ingen modelpropagation/replay blev kørt. Dette er stærkere setupevidens
+end stand-ins, men ikke Windows-, concurrency- eller power-loss-test.
+
+Konservativ input-/setupcheckcharge8s inkluderer den afviste2.176s
+bytegendannelsescheck og live preflight: G1526.141507860s; rest273.858492140s.
+Ny, særskilt registrering i root/g7/bounded_price_inputs_fixed_20261007:
+scope273=245 worker+20 stop/eksport+8 review. Verifycap4s baseres på faktisk
+1.48s læsning; setupcaps4s på live preflight. Øvrige forwardcaps bevares.
+Jobreservationer243s, worker-headroom2s. Caps er stadig stoprammer, ikke
+runtimebounds; intet matematisk resultat eller tolerance lempes. Ved fuldt
+loft rest.858492140s. Alle tidligere charges og failed scopes bevares;
+ingen automatisk genstart af dem. Ny registrering commits før ny invocation.
