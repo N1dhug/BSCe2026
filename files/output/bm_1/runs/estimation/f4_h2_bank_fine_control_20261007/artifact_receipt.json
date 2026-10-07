@@ -1,0 +1,12 @@
+{
+  "schema": "f4-h2-bank-fine-artifact-v1",
+  "file_name": "f4_h2_terminal_bank_fine_20261007.zip",
+  "library_file_id": "libfile_c10efdaac29881919c10ffae7600a37d",
+  "file_id": "file_00000000a6b8820aa831d55b5527347c",
+  "bytes": 24596354,
+  "sha256": "192b6346a11e0e4fffc547e3b09ce6ff5ccd17ac6412ac945c96093cbd3b6087",
+  "raw_prior_hours": 24,
+  "raw_contours": 9,
+  "includes_posterior": true,
+  "original_chain_required_for_fit": true
+}

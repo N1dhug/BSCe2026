@@ -1,0 +1,50 @@
+{"curve": "linear", "grid": "base", "hour": 12, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 24, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 36, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 48, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 60, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 72, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "linear", "grid": "base", "hour": 84, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 96, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "linear", "grid": "fine", "hour": 12, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 24, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 36, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 48, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 60, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 72, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "linear", "grid": "fine", "hour": 84, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 96, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 12, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 24, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 36, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 48, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 60, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 72, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 84, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 96, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 12, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 24, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 36, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 48, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 60, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 72, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 84, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 96, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "ff84ba302754", "grid": "base", "hour": 12, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "ff84ba302754", "grid": "base", "hour": 24, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "ff84ba302754", "grid": "base", "hour": 36, "new_jobs": 2, "status": "elapsed=7s; remaining~2m 06s; total~2m 13s"}
+{"curve": "ff84ba302754", "grid": "base", "hour": 48, "new_jobs": 14, "status": "elapsed=44s; remaining~1m 15s; total~1m 58s"}
+{"curve": "ff84ba302754", "grid": "base", "hour": 60, "new_jobs": 26, "status": "elapsed=1m 36s; remaining~44s; total~2m 20s"}
+{"curve": "ff84ba302754", "grid": "base", "hour": 72, "new_jobs": 38, "status": "elapsed=2m 18s; remaining~0s; total~2m 18s"}
+{"stage": "fit", "pieces": 4, "objective_calls": 21, "new_pairs": 20, "objective": -39.931209469830875}
+{"curve": "91fb6ab1de3f", "grid": "base", "hour": 12, "new_jobs": 12, "status": "elapsed=5s; remaining~22s; total~27s"}
+{"curve": "91fb6ab1de3f", "grid": "base", "hour": 24, "new_jobs": 24, "status": "elapsed=9s; remaining~17s; total~26s"}
+{"curve": "91fb6ab1de3f", "grid": "base", "hour": 36, "new_jobs": 36, "status": "elapsed=39s; remaining~39s; total~1m 17s"}
+{"curve": "91fb6ab1de3f", "grid": "base", "hour": 48, "new_jobs": 48, "status": "elapsed=1m 12s; remaining~36s; total~1m 47s"}
+{"curve": "91fb6ab1de3f", "grid": "base", "hour": 60, "new_jobs": 60, "status": "elapsed=2m 07s; remaining~26s; total~2m 32s"}
+{"curve": "91fb6ab1de3f", "grid": "base", "hour": 72, "new_jobs": 72, "status": "elapsed=2m 49s; remaining~0s; total~2m 49s"}
+{"stage": "fit", "pieces": 4, "objective_calls": 22, "new_pairs": 21, "objective": -38.93652250594152}
+{"curve": "e8fbf75c2260", "grid": "base", "hour": 12, "new_jobs": 12, "status": "elapsed=4s; remaining~20s; total~24s"}
+{"curve": "e8fbf75c2260", "grid": "base", "hour": 24, "new_jobs": 24, "status": "elapsed=8s; remaining~16s; total~24s"}
+{"curve": "e8fbf75c2260", "grid": "base", "hour": 36, "new_jobs": 36, "status": "elapsed=45s; remaining~45s; total~1m 29s"}
+{"curve": "e8fbf75c2260", "grid": "base", "hour": 48, "new_jobs": 48, "status": "elapsed=1m 20s; remaining~40s; total~2m 00s"}
