@@ -4,12 +4,39 @@
 forsøgsdesign, **ikke en ny numerisk kørsel**. Ny launcher, input-/sourcefrysning
 og særskilt præregistrering mangler før udførelse. Ingen optimizer startes.
 
+## Aktiv afgrænsning: BM færdig først, WM-sammenligning bagefter
+
+Johan, 7. oktober 2026 kl.16:25: G-arbejdet skal udvikle og færdiggøre BM.
+Direkte BM/WM-sammenligning, fælles benchmarkkørsler og rangering udskydes,
+til BM er færdig. WM-resultater er ikke en adgangsgate for BM's næste trin.
+
+BM skal under udviklingen være meningsfuldt sammenlignelig med WM:
+dokumentér tidsakse/horizon, informationscutoff og dataopdeling, input,
+baseline/målprofil, normalisering/enheder, prisdefinition og tilladte
+kontroller, forbrugsbegrænsninger, metrics og outputformat. Genbrug relevante
+WM-konventioner; begrund nødvendige modelforskelle. Det kræver ikke løbende
+WM-kørsler eller tilpasning af BM til WM's resultater.
+
+BM's deterministiske kontrolmål og varianten med bevaret samlet forbrug
+bevares som BM-opgaver. Stokastiske M254/FV/EM-kontroller er interne
+numeriske BM-kontroller og fortsætter. Vejlederbasis/legacy og adskillelsen
+mellem G og F bevares.
+
+Tidligere gennemførte BM/WM-forsøg og råresultater bevares som historisk
+evidens, men er ikke den aktive udviklingsprioritet eller en endelig
+modelsammenligning. Denne afgrænsning overstyrer ældre formuleringer om
+"primær BM/WM-sammenligning", også i det gemte auxiliary-designsnapshot.
+Det ændrer ikke snapshotbytes, numeriske gates eller beregningsbudget.
+Næste G7-opgave er fortsat BM's restore/launcher og afgrænsede FV/EM/feedback-
+forsøg. Selve BM/WM-sammenligningen planlægges efter BM's færdiggørelse.
+
 ## Beslutning og afgrænsning
 
-Den deterministiske BM/WM-reference med bevaret døgnforbrug er gennemført og
-forbliver den primære modelsammenligning. Genbrug dens frosne januarpar,
-fælles A/B, fire prisblokke, input- og enhedskontrakt samt alle seks fine/coarse
-policykontroller. Intet refittes. Se G7_ENERGY_NEUTRAL_REVIEW.md.
+BM's deterministiske kontrol med bevaret døgnforbrug bevares som en BM-opgave.
+Genbrug den eksisterende BM-evidens og dokumentér mål, input, prisblokke og
+normalisering, så en senere WM-sammenligning giver mening. Den tidligere
+fælles undersøgelse er historisk evidens; nye WM-benchmarkkørsler og rangering
+venter, til BM er færdig. Se G7_ENERGY_NEUTRAL_REVIEW.md for de bevarede resultater.
 
 Den stokastiske G7-opgave bevares. Det næste lille trin skal måle de manglende
 FV/EM/feedback-dele på den allerede gemte neutrale to-timerspolicy. Det bør ske
