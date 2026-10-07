@@ -1,0 +1,26 @@
+{
+  "schema": "g7-feedback-integration-check-registration-v1",
+  "session_date": "2026-10-08",
+  "scope": "One stub posterior-receipt/crash/reuse/continuation and whole-budget preflight check; no transport/likelihood/projection kernels executed.",
+  "prior_debit": 1846.3372718589885,
+  "campaign_ceiling": 1910,
+  "hard_seconds": 5,
+  "conservative_charge_seconds": 5,
+  "native_transport_forwards_max": 0,
+  "native_likelihood_evaluations_max": 0,
+  "native_projection_solves_max": 0,
+  "scientific_accept": false,
+  "source_sha256": {
+    "root/g7/integrated_budget.py": "824ca0b1df420aea30899ba2583956080b21dd03ae9122753849d37138f92c2d",
+    "root/g7/audited_feedback.py": "62dab8139079075e3996677274d17bb0cf72a13c517004473d8f4bdd9935eff4",
+    "root/g7/integration_design.json": "ce3c081d21952310e1e20e06abd14dda0122236a5a61211f79d4db59f8a064de",
+    "root/g7/integration_native_manifest.json": "3b54e893e0a6f8310883d2610747607b470a2898858cc4396f4c9294c141a880",
+    "root/g7/launch_integrated_feedback.py": "09559933994ac27edfa75775ee157fc5d369aa186873def89971b06a68abda12",
+    "root/g7/feedback_phase.py": "6003f88026ce4f8706caf4c794503a618bc1bde4b34ffe9b437b432c929d787b",
+    "root/g7/check_integrated_feedback.py": "52d88549e851be24229b10414cc82d734ca3d624178fcbb4cfbdc24e9e0fac35"
+  },
+  "unchanged_dependency_sha256": {
+    "root/g7/audited_node_control.py": "056b54d53d60a216f9f0ea1047fa2eb16254434f91041b8ca9d9745005036dc9",
+    "root/g7/receipt_recovery.py": "322202ea83c64470870f091227fc49442a8a665c1ad13fa6beb96a1998b60172"
+  }
+}
