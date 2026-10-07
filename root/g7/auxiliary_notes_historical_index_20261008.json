@@ -1,0 +1,29 @@
+{
+  "schema": "g7-historical-notes-index-v1",
+  "source_commit": "1394a7a622f80dc0ef7602db5bfa8cc9c10f04dd",
+  "original_files": [
+    {
+      "path": "root/G7_AUXILIARY_MEASUREMENT_REVIEW.md",
+      "git_blob": "fbdb1fb5ea7e9fd0281c6b26010c3b8caf9bc198"
+    },
+    {
+      "path": "root/G_JANUARY.md",
+      "git_blob": "608017f641fcee8005e32e1ec194f1234fe46b79"
+    },
+    {
+      "path": "root/g7/auxiliary_archive_manifest_20261007.json",
+      "git_blob": "4270e22ae1a43dcf79393c95d0379dc6cc97aac6"
+    },
+    {
+      "path": "root/g7/auxiliary_next_step_20261007.json",
+      "git_blob": "918bd487c7a3d149c961a77890d7f51cfbd097c7"
+    }
+  ],
+  "historical_next_step_receipt": "root/g7/auxiliary_next_step_20261007.json",
+  "active_registration_or_budget": false,
+  "superseded_by": [
+    "root/G7_SEED_REPAIR_REVIEW.md",
+    "root/G7_COMPLETE_QUAD_RECOVERY_REVIEW.md"
+  ],
+  "new_numerical_work": 0
+}
