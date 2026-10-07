@@ -63,7 +63,7 @@ def worker(args):
         for cells,label in [(513,'fine'),(257,'coarse')]:
             local={}
             def setup(deadline):
-                origin=G8BankOrigin.from_record(json.loads((out/'inputs'/(label+'.json')).read_text()))
+                origin=G8BankOrigin.from_verified_bytes((out/'inputs'/(label+'.json')).read_bytes(),reg['input_files'][label]['sha256'])
                 if origin.time!=12. or len(origin.rho_values)!=5:
                     raise ValueError('Expected own hour12 five-node bank.')
                 audits=[]
@@ -169,7 +169,7 @@ def parent(args):
                        sort_keys=True,separators=(',',':')).encode()
     compressed=zlib.compress(encoded,6)
     payload=base64.b64encode(compressed).decode()
-    destination=Path('root/g7/node_runtime_raw_20261007')
+    destination=Path('root/g7/'+reg.get('archive_name','node_runtime_raw_20261007'))
     destination.mkdir(exist_ok=True)
     chunks=[]
     for index,start in enumerate(range(0,len(payload),30000)):
@@ -189,7 +189,7 @@ def parent(args):
     result['remaining_seconds']=reg['campaign_ceiling']-result['campaign_debit']
     result['within_scope_ceiling']=result['scope_charge']<=reg['scope_ceiling']
     write(out/'invocation.json',result)
-    write(Path('root/g7/node_runtime_invocation_20261007.json'),result)
+    write(Path('root/g7/'+reg.get('invocation_name','node_runtime_invocation_20261007.json')),result)
     print(json.dumps(result,indent=2))
     return 0
 

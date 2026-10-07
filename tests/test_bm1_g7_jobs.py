@@ -9,7 +9,7 @@ import numpy as np
 
 from src.control.bm_1 import BM1ControlNumerics
 from src.method.bm_1_g7 import OwnedBankPriceEvaluator
-from src.method.bm_1_g7_jobs import CheckpointedBankControl,NodeJobStore,NodeJobStop
+from src.method.bm_1_g7_jobs import CheckpointedBankControl,NodeJobStore,NodeJobStop,source_manifest,REQUIRED_SOURCE_PATHS
 from src.method.bm_1_g7_budget import full_job_plan,price_job_plan
 from src.method.bm_1_g8 import G8BankOrigin,context,RHO_VALUES
 from src.method.bm_1_g8_bernstein import BASIS_KIND,prior_coefficients
@@ -19,7 +19,7 @@ from src.method.bm_1_distribution_panel import baseline,target
 class G7NodeJobTests(unittest.TestCase):
     def test_crash_resume_fingerprints_complete_graph_and_own_bank(self):
         root=Path(__file__).resolve().parents[1]
-        hashes=json.loads((root/'root/g7/node_job_source_20261007.json').read_text())
+        hashes=source_manifest(root,REQUIRED_SOURCE_PATHS)
         _,fixed,_,edges,_,projector=context(257,basis_kind=BASIS_KIND)
         c=np.stack([np.roll(prior_coefficients(),j*8) for j in range(5)])
         origin=G8BankOrigin(12.,fixed,RHO_VALUES,np.log([.1,.15,.3,.2,.25]),edges,
