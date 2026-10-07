@@ -14,6 +14,16 @@
   "one_invocation_only": true,
   "all_prior_charges_preserved": true,
   "checks": "One focused cheap ownership/deadline check, then the registered run; no old regression panel",
-  "launcher_status": "Source checkpoint; hash fields filled in immutable pre-run registration after cheap check",
-  "failed_retry_policy": "No automatic retry; retain all attempts and charges."
+  "launcher_status": "Final hashed source; execution commit recorded separately before run",
+  "failed_retry_policy": "No automatic retry; retain all attempts and charges.",
+  "design_sha256": "972ad1e4ab94714056b7c40d2fc18883042f69d4f13e131460014720f46d4047",
+  "previous_audit_sha256": "f8773f3354b0644684555707bb9d0cac9520a42c0719d7e82d0913e1e4d3f48c",
+  "launcher_sha256": {
+    "run_auxiliary_measurement.py": "1e68bfeedb8e7abd5150ce530b0e075ca9a7cdf3124e5657a51d0bee0d489dc4",
+    "restore_auxiliary.py": "73a8b6b675cae6dbcdd5baae30cc77dffd9f0bc4ba3b6040fdb4cc3258bf06cb"
+  },
+  "source_checkpoint_before_run": "8a8e08cfa3a8cc0d460794e15a38e3168b7cce0c",
+  "actual_optimizer_started": false,
+  "scientific_accept": false,
+  "full_day_budget_admitted": false
 }

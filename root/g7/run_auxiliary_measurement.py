@@ -30,6 +30,8 @@ def write(path, value):
 @contextmanager
 def job_deadline(deadline, stop_type):
     """POSIX worker timer interrupts LS; parent timeout applies on every OS."""
+    if time.perf_counter() >= deadline:
+        raise stop_type('Auxiliary job reservation is already exhausted.')
     supported = hasattr(signal, 'setitimer')
     if supported:
         def stop(*unused):
@@ -106,7 +108,7 @@ def worker(out, old):
             name = ('m254_' if backend=='mixture' else 'fv_')+label
             def setup(backend=backend,label=label,cells=cells,name=name,index=index):
                 verification = first_restore() if index==0 else {}
-                original = json.loads((old/'registration.json').read_text())
+                original = owned_box['registration']
                 origin = G8BankOrigin.from_verified_bytes((old/'inputs'/(label+'.json')).read_bytes(),
                                                           original['input_files'][label]['sha256'])
                 def configure(projector):
@@ -242,6 +244,10 @@ def parent(out,old):
         raise ValueError('One invocation only; explicit new registration required for resume/retry.')
     if sha(out/'design.json')!=reg['design_sha256']:
         raise ValueError('Design bytes changed.')
+    plan=json.loads((out/'design.json').read_text())
+    if (reg['prior_debit']!=plan['campaign']['debit_seconds'] or reg['scope_ceiling']!=200
+            or reg['worker_seconds']!=150 or reg['stop_export_reserve']!=30 or reg['review_charge']!=20):
+        raise ValueError('Registered preserved budget/scope differs from the reviewed design.')
     for name,expected in reg['launcher_sha256'].items():
         if sha(out/name)!=expected:raise ValueError('Launcher bytes changed.')
     env=dict(os.environ,PYTHONPATH=str(old/'frozen_source'),OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='1',MKL_NUM_THREADS='1')

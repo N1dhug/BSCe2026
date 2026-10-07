@@ -47,7 +47,9 @@ def read_owned(root, audit, reuse):
     ledger = verified_json(root/'campaign/ledger.json', files['campaign/ledger.json']['sha256'])
     if len(ledger['entries']) != 12:
         raise ValueError('Original twelve completed attempts required.')
-    result = dict(sources=sources, contracts={}, nodes={}, ledger_sha256=sha(root/'campaign/ledger.json'))
+    registration = verified_json(root/'registration.json', files['registration.json']['sha256'])
+    result = dict(sources=sources, contracts={}, nodes={}, registration=registration,
+                  ledger_sha256=sha(root/'campaign/ledger.json'))
     ids = set()
     for entry in ledger['entries']:
         key = entry['job_id']
