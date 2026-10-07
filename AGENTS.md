@@ -1,3 +1,12 @@
+## Arbejdsregel: merge færdige egne branches, Johan 8. oktober 2026
+
+Johan: "merge altid naar du er faerdig med en branch". Når eget autoriseret
+arbejde er færdigt og de relevante kontroller består, merge branchen/PR'en
+og kontrollér merge-resultatet. Lad ikke en færdig egen PR vente på endnu
+en mergegodkendelse. Reglen gælder fremover; uafsluttede drafts og andres
+arbejde merges ikke alene på grund af denne regel. Branchsletning er en
+særskilt handling og følger de eksisterende ejerskabs-/bevaringsregler.
+
 ## G7: PR115/116 merged; atomisk audit kontrolleret, 7. oktober
 
 PR115 merge d5b06119 og historiske PR116 merge 02812cab er verificeret
