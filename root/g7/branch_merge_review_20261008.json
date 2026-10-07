@@ -1,0 +1,21 @@
+{
+  "main_base": "02812cab540b414d59ad7d06124e46d5bca039d2",
+  "merged_prs": [
+    {
+      "number": 115,
+      "merge": "d5b061195b9f88c22a375a3d343cd12ac1c00f1e",
+      "exact_review_tree": "1628932e9090d8d22557062be7b50434e4bd6bd2"
+    },
+    {
+      "number": 116,
+      "merge": "02812cab540b414d59ad7d06124e46d5bca039d2",
+      "exact_review_tree": "546655bbb7dd6441caa32ff7d39d1b9b89ca7ddb",
+      "resolved_conflict": "root/G_JANUARY.md; latest status retained; unique old notes marked historical"
+    }
+  ],
+  "other_g_ancestor_branches": 14,
+  "unmerged_draft_pr": 106,
+  "deleted_branches": 0,
+  "native_source_hashes_preserved": 41,
+  "native_source_or_tests_or_workflow_changes": false
+}
