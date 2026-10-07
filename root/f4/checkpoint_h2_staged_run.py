@@ -28,7 +28,10 @@ def snapshot(directory, destination, campaign, previous=()):
     # Read atomic metadata first; completed job files are immutable thereafter.
     metadata={}
     for path in sorted(directory.iterdir()):
-        if path.is_file() and path.name!='run.lock' and not path.name.endswith('.partial'):
+        # A restored run already contains its predecessor's campaign snapshot.
+        # Write only the supplied authoritative campaign under this reserved
+        # member name below; duplicate ZIP members cannot be restored safely.
+        if path.is_file() and path.name not in ('run.lock','campaign_at_checkpoint.json','durable_checkpoint.json') and not path.name.endswith('.partial'):
             metadata[path.name]=path.read_bytes()
     jobs=[p for p in sorted((directory/'jobs').iterdir()) if p.is_file()
         and not p.name.endswith('.partial') and p.name not in seen]

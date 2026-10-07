@@ -1,5 +1,20 @@
 # Fælles projektkontekst
 
+## F4-H2: første dagsblok gemt; 1241 jobs, 7. oktober
+
+Dagscontroller7171875 kørte første600s-blok og lukkede rent efter540.23s.
+165 nye jobs er gemt; samlet1241. To-stykkers optimizer har14 komplette kald;
+næste kandidat er delvist gemt. Ingen numerisk failure, fit er stadig uafsluttet.
+Checkpoint07 fortsætter den verificerede01–06-kæde; hele1241-job-kæden er
+verificeret uden modelreplay. Snapshothelperen er rettet til at udelade en
+gammel campaign_at_checkpoint.json i metadata; første lokale arkiv havde
+dobbelt member og blev bevaret som ugyldigt. Kun korrigeret arkiv publiceres.
+Numeriske69 kilder og frosne controller7171875 er uændrede. V2-loft18h,
+stop23:55 Copenhagen; H33496.780253s efter første blok. Slut-Y ulæst.
+[I/J-resultatreview](root/F4_H2_IJ_RESULT_REVIEW_20261007.md) er en arbejdsversion;
+H/I/J/F4 er ikke afsluttet. G/WM og droppedeG2b/G2c berøres ikke.
+Følgende statusafsnit er historik.
+
 ## F4-H2: 18h-budget godkendt; korte beregningsblokke, 7. oktober
 
 Johan godkendte kl15:48:55 et samlet18h-loft og stop23:55 Copenhagen.
