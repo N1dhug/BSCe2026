@@ -24,6 +24,39 @@ Det ændrer ikke snapshotbytes, numeriske gates eller beregningsbudget.
 Næste G7-opgave er fortsat BM's restore/launcher og afgrænsede FV/EM/feedback-
 forsøg. Selve BM/WM-sammenligningen planlægges efter BM's færdiggørelse.
 
+## G7: neutralt FV/EM/endpoint-forsøg gennemført og råreviewet, 7. oktober
+
+Aktiv prioritet er fortsat BM færdig først; ingen ny WM-sammenligning.
+Vejleder M254/legacy og F/WM-kilder/budgetter bevares. Ti egne gamle M254-
+forwards genbruges, ti nye FV-forwards måles, fem coupled EM-noder og fire
+endpoint-opdateringer gemmes. Alle registrerede2h-numeriske gates består:
+Jfine M254 .003715517464, FV .003715309811, forskel2.07653147e-7;
+EM .003673709879 er et deskriptivt samplemiddel. Maxfine M254/FV-posterior
+conditional-L1 .00165428517<.05. Missing-opdateringer bevarer arrays eksakt.
+
+Første EM-node stoppede ved JSON-metadata inf; failed source/raw/charge bevares.
+Særskilt registreret fortsættelse genbrugte alle completed FV-receipts,
+gentog kun ugemt EM-node0 og udførte resten; native max_step er uændret.
+Råreview38 completed receipts rekonstruerer EM-pathcosts med maxfejl0 og
+posteriorweights fra hvert grids egne priors. To readonly auditorfejl og
+rettelser er bevaret; ingen modelreplay til review. Begge fulde rå-ZIP'er
+og frosne sourcecommits er gemt med identiteter/hashes.
+
+Vigtigt nyt forbehold: initial/Brownian-seedrækker overlapper; noise-seed
+matcher selected truth-initial. Diagonal-SE .0000940481 er derfor ikke
+uafhængigt certificeret. Punkt-y er kun fælles numerisk fixture; generativ
+uafhængig støj og fuld stochastic_accept er ikke valideret. Ingen auto-rerun.
+
+Samlet nycharge112.942121780s inkl.fejl/eksport/ekstra review; G-debit
+1347.654245114s, rest452.345754886s af1800. Ingen optimizer eller døgnadmission.
+Næste: disjunkte RNG-roller og særskilt registreret budget for resterende
+BM-G7-policy/kvadratur/døgnjobgraf. Gamle midpoints er ikke finere kvadratur;
+41.1min M254-only-lineærillustration er ikke målt24h-rate/bound.
+Sol High; ingen lokal kommando nu. Skøn2–4h yderligere G7-implementation/
+review betinget af solver/budgetadmission; compute er endnu ukendt.
+Læs [matematik, kodevalg, råresultater og resterende arbejde](G7_AUXILIARY_MEASUREMENT_REVIEW.md).
+Følgende G-statusafsnit er historik.
+
 ## G7: auxiliary-budget og integrationsdesign færdigt, 7. oktober
 
 Deterministisk BM/WM med bevaret døgnforbrug forbliver primær; færdige
