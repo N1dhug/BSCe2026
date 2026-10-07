@@ -1,3 +1,29 @@
+## G7: PR115/116 merged; atomisk audit kontrolleret, 7. oktober
+
+PR115 merge d5b06119 og historiske PR116 merge 02812cab er verificeret
+mod reviewede træer. Januar-konflikten er løst med aktuel status bevaret;
+gamle auxiliary-noter er historik. Fjorten andre gamle G-branches var
+allerede merged. F-PR106 er draft; ingen branches slettet.
+Ny opt-in AuditedBankControl gemmer forward + per-hypotese projectionaudit
+inde i samme hashed/fsynced receipt før ledgercommit. Source/kontrakt binder
+auditpolicy; reuse kræver gemt audit. FV har eksplicit not-applicable.
+Ingen native src/tests/workflow- eller kernelændring. Separat checkpoint
+b5843438 og byte-identisk registration før én stub-invocation: 6 checks
+består, .782377885s process, nul native forwards. Coverage er ikke en
+numerisk fitgate; update/Bayes-projektion kræver særskilt receiptintegration.
+Gamle quad0/1/2-audits er stadig tabt; scientific/full-day=false.
+Konservativ checkcharge5s: G1846.337271859/1910s; rest63.662728141s.
+Nyt v2-forslag: 24h/4 blokke, deterministisk og primær M254-stokastisk
+søgning, tre fælles policies, M254/FV/quad/pairedEM samt én observation→
+update→nyt bounded prisvalg→2h-forward. 16 synlige jobtyper; rates ukendte.
+Gamle 14-job-budgethelper/source bevares og accepterer ikke v2 automatisk.
+Design er ikke launchregistration: launch_ready/budget_admitted=false.
+Næste kode: konkret v2-integration inkl. update-receipts og samlet budget;
+ingen automatisk ny numerisk kørsel. BM færdig først; WM-sammenligning senere.
+Læs [adapter, matematik, merges og faktisk kontrol](root/G7_PER_HYPOTHESIS_AUDIT_REVIEW.md)
+og [samlet forsøgsforslag](root/G7_INTEGRATED_EXPERIMENT_DESIGN.md).
+De ældre G7-statusafsnit nedenfor er historik.
+
 ## Aktiv afgrænsning: BM færdig først, WM-sammenligning bagefter
 
 Johan, 7. oktober 2026 kl.16:25: G-arbejdet skal udvikle og færdiggøre BM.
