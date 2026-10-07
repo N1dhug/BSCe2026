@@ -1,5 +1,21 @@
 # Fælles projektkontekst
 
+## F4-H2: 18h-budget godkendt; korte beregningsblokke, 7. oktober
+
+Johan godkendte kl15:48:55 et samlet18h-loft og stop23:55 Copenhagen.
+Den nye [dagscontroller](root/H2_SAME_DAY_EXECUTION_20261007.md) bevarer alle
+69 numeriske kilder, præcis cached COBYQA-trace og gamle jobs/identiteter.
+Særskilt v2-ledger bevarer alle gamle entries, inklusive30000s-crashcharge;
+ingen refundering eller reset. H32956.549305s før første nye blok;
+native848.307761/900s. Restvalidation22005.997020s beskyttes med aktuelle
+maksimumrater/faktor1.5. Fuld49-ramme eller konvergens loves ikke.
+Én scoped budget-/delegationskontrol består med0 modeljobs. Miljøet matcher.
+600s invocations, lukket ledger og publiceret delta efter hver blok.
+Aktuelle resultater følger i same_day_report_NNN.json; cap/failure er terminal,
+invocation-/budgetstop er pause. Final-Y afventer faktisk frosset forecast.
+G/WM og droppede G2b/G2c berøres ikke. H/I/J/F4 er endnu ikke afsluttet.
+Følgende statusafsnit er historik.
+
 ## F4-H2: dagsplan og præcis genoptagelse kontrolleret, 7. oktober
 
 Johan ønsker at afslutte F4 i dag, hvis muligt. [Restplan og budgetforslag](root/F4_SAME_DAY_REMAINING_PLAN_20261007.md)
