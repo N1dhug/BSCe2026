@@ -1,31 +1,13 @@
-## F4-H2: afbrudt blok gendannet; anden chat fortsætter, 8. oktober
+## F4-H2: checkpoint05 består; resultatfortsættelse, 8. oktober
 
-Fjerde blok har ingen normal slutrapport; dens fulde600s-reservation bevares.
-Begge aktive run-/campaignlåse var frie; ingen modelproces blev fundet.
-38 firestykkekald og780 nye råjobs er gemt. Checkpoint04 verificerer de194
-nye jobs siden checkpoint03 samt450 adoptioner;0 numeriske jobfejl.
-Alle69 oprindelige numeriske kilder, konturadapter og pinned miljø matcher.
-Ingen genstart fra bedste kandidat; den præcise trace og delvise kandidat genbruges.
-Femte bounded blok er startet under samme08:00-frist/H64800/native1080s.
-PR106 er merged; resultatscope PR118 fortsætter. H/I/J/F4 er stadig åbne.
-Original input.xlsx kræves først til slut-Y efter forecastfreeze.
-Se root/f4/continuation_checkpoint04_archive.json. Følgende afsnit er historik.
-
-## F4-H2: PR106 merged; kontrolleret fit fortsætter, 8. oktober
-
-Fortsættelsesimplementationen er merged på306c7afc med nyere G/WM bevaret.
-Tre600s-blokke er lukket normalt:586 nye råjobs er sikret i checkpoint01–03,
-med450 verificerede adoptioner og0 numeriske jobfejl.35 firestykkekald er
-komplette, næste kandidat delvis. Alle3655 gamle jobs/terminalfejl bevares.
-Fjerde blok kører med uændret controllerb9983ee; stop08:00 Copenhagen,
-H64800s/native1080s og fuld resterende validering beskyttes. Den aktuelle
-v3-campaign bestemmer charge og reservationer; ingen refund eller reset.
-Resultatevidens fortsætter i PR118. Den faktiske H→I-originreview er klar
-og køres først efter forecastfreeze; selvstændig I/F3-kørsel er endnu ikke
-admitted. Læs root/F4_I_IMPLEMENTATION_PREPARATION_20261008.md.
-H-fit/validering/forecast/finale og I/J er stadig åbne; ingen F4-slutaccept.
-Original input.xlsx kræves til slut-Y efter freeze, ikke til det aktive fit.
-De nedenstående statusafsnit er historik.
+PR106 er merged. Firestykkefit har40 komplette kald, næste kandidat delvis.
+971 nye råjobs er sikret i checkpoint01–05; seneste191 jobs og450 adoptioner
+består read-only audit.0 gemte numeriske failures, alle frosne kilder/miljø
+uændrede. Blok4's fulde600s-crashreservation bevares; blok5 sluttede normalt.
+Blok6 fortsætter under samme08:00-frist,64800/1080s-lofter og beskyttet
+fuld restvalidering. Fit/selection/forecast/finale og I/J/F4 er fortsat åbne.
+I/J-resultatreviewet beskriver nu det konvergerede/validerede tostykkefit.
+Nyere main's G/WM-status og alle andre paths bevares. Følgende afsnit er historik.
 
 ## Arbejdsregel: merge færdige egne branches, Johan 8. oktober 2026
 
@@ -35,6 +17,38 @@ og kontrollér merge-resultatet. Lad ikke en færdig egen PR vente på endnu
 en mergegodkendelse. Reglen gælder fremover; uafsluttede drafts og andres
 arbejde merges ikke alene på grund af denne regel. Branchsletning er en
 særskilt handling og følger de eksisterende ejerskabs-/bevaringsregler.
+
+## G7: durable feedback og v2-budgetgate kontrolleret, 8. oktober
+
+PR117 er merged c8b76c2d; denne levering bygger på main306c7af og bevarer
+F-PR106's senere merge. Ingen native src/tests/.github- eller F-budgetændring.
+Ny FeedbackBankControl gemmer rå posterior/evidences, projected posterior,
+updateaudit og observation i én native receipt før ledgercompletion.
+Reuse udfører ikke likelihood/projektion; continuation genlæser den egen
+posterior med korrekt cutoff, state, koefficienter, basis og bankvægte.
+Fire backend/grids og tre coarse-prisvalg er komponeret i feedback_phase;
+next[36,38]-forwards bruger de egne opdaterede posteriorer. Input kræver
+komplette auditerede24h-forwards under præcis samme frosne sourcekontrakt.
+Ny stdlib launcher afviser unadmitted helgraf før native workerimport;
+persistent one-invocation-claim, parent timeout, hele phasecap bevares.
+V2-budget kræver16 whole-job-rates med samme problem/source/origin/runtime;
+ukendte rates er null. Native v1-budgethelper og gamle gates bevares.
+Præregistrering79c76197 er læst byte-identisk før én stub-invocation:
+20 checks består, .908693493s parentwall. Native transport/likelihood/
+projection solves alle0; ingen gamle videnskabelige kørsler genkørt.
+Konservativ checkcharge5s: G1851.337271859/1910s; rest58.662728141s.
+Gamle quad0/1/2-audits forbliver tabt. Ingen numerical/scientific/full-day-
+eller historisk accept. F's historik/aktive arbejde bevares.
+Feedbackfasekode er færdig; samlet døgnsearch/EM/crossreview-driver og
+reelt rate-/budgetgrundlag mangler. Ingen udfyldt autoriseret numerisk
+launchregistration eller24h-inputpacket: launch_ready/budget_admitted=false.
+Næste kodeopgave: samlet døgnorchestration med native deterministisk/M254-
+søgning og fælles reference-/EM-review. Før numerisk opstart kræves konkret
+samlet budget eller et særskilt afgrænset målescope. Ingen automatisk retry.
+BM færdig før direkte WM-sammenligning. Eget færdigt arbejde merges efter
+relevante kontroller som besluttet af Johan; ingen branchsletning her.
+Læs [matematik, integration, kontrol og begrænsninger](root/G7_FEEDBACK_INTEGRATION_REVIEW.md).
+De ældre G7-statusafsnit nedenfor er historik.
 
 ## G7: PR115/116 merged; atomisk audit kontrolleret, 7. oktober
 
