@@ -1,5 +1,62 @@
 # Fælles projektkontekst
 
+## F4-H2: hel lineær reference består; tidsbegrænset natforsøg, 7. oktober
+
+Aktiv metode: [budgetteret søgeforsøg](root/H2_COMPACT_BUDGETED_SEARCH.md).
+96 kronologiske timer (24 prior, TRAIN48, selection24) består egne base/fine
+streams. Total-scorefejl .00555411/.00045416, max state-L1 .00104931.
+Den gamle lineære PC-prefix og nonlinear-prøvens 64 jobs genbruges.
+Råreviewet har ingen FV-replays. Alle 69 numeriske/sourcefiler fra
+`e115242de79756a4a7163da28593f2452f17bcc6` bevares uændret.
+
+De faktiske senere rates er højere: base8.30102/fine18.13960 s observeret time.
+Komplet konservativ 49-par-graf er nu14.61 h og er AFVIST. Ny eksplicit
+admission-revision tillader alene et tidsbegrænset konvergensforsøg:
+hele resterende validation19960.3143 s beskyttes først; ved seneste H2851.55 s
+er ca13128.14 s tilgængelig for søgning plus særskilt60 s stopmargin.
+Det giver ingen garanti for alle49 kald eller konvergens. Samme1/2/4 familier,
+17/33 maxfev,48/24/168 split, precisiongates og samlet36000 s loft.
+Cap/timeout/failure betyder ufuldstændigt fit; ingen manglende familie ommærkes.
+
+Ny ydre controller `root/f4/run_h2_budgeted_search.py` har eget source-/execution-
+manifest og genbruger original Engine/COBYQA/selection/forecast. Det gamle
+`run_h2_compact.py run` må ikke genoptages efter runtime-reviewet.
+Ingen optimizer var startet ved helvinduesreviewet. Slut-Y er stadig ulæst.
+Fysik/støj er nominelt betinget, tidligere slutugeeksponering ukendt;
+historisk fit/videnskabelig/blind-H3 accept er ikke afsluttet.
+
+Nine scoped orchestration controls, prior-API control, nonlinear raw review
+og ny reserve-/sourcekontrol består. To preparation-fejl og alle charges er
+bevaret. H2851.5493 s; native743.30776/900 s, rest156.69224 s,48 entries.
+PR106 er et løbende checkpoint; læs `root/F4_NIGHT_CHECKPOINT_20261007.md`
+for aktiv run/ledger. G/WM og legacy/native kerner ændres ikke.
+Følgende statusafsnit er historik.
+
+## G7: deterministisk døgnkontrol med bevaret forbrug, 7. oktober
+
+Fælles frossent januarpar og lineær BM-reference er optimeret over fire6h-
+prisblokke, både original fixed-A og separat lighed integral(demand-B)=0.
+Alle seks valgte policies består coarse/fine;374 faktiske forwards inkl.
+Jacobianprober,3.7754s process. Neutral fine-J: lineær BM .275408888,
+G4 .276532280, WM .303629020; baselineJ .308609546. Forbedringer10.758%/
+10.394%/1.614% er modelbetinget tracking i ét døgn, ikke fysisk/kausal ranking.
+WM løses som certifieret affin/konveks4D-QP; BM er bedste fundne lokale
+SLSQP-kandidat fra to starter, uden global optimalitetsclaim. Ingen refits.
+Samme diskrete forbrugsbalance bruges i J og lighed; WM's Euler/midpoint-
+korrektion er udledt. Fine energierror højst1.466e-6 i neutrale policies.
+Én fokuseret analytisk kontrol og read-only byte/J/E-audit består.17 units/
+19 råfiler, fulde baner og hashes er gemt med atomiske checkpoints.
+S3-fladhed genbruges som identifikationsforbehold; ingen ny straf indføres.
+M254's gamle døgnestimat mangler eksplicitte FV/EM/feedback/quad-led:
+ingen ny stochastic admission eller pilotretry. Næste er durable egne
+rho-nodejobs og komplet målt jobgraf før særskilt registreret måling.
+Vejlederbasis, legacy, F/WM-kilder og deres budgetter er uændrede.
+Konservativ nattecharge30s af max300s; G1098.580078s, rest701.419922s.
+Læs [matematik, faktisk udført og resultater](root/G7_ENERGY_NEUTRAL_REVIEW.md)
+og [M254-runtime/jobdesign](root/G7_M254_RUNTIME_JOB_REVIEW.md).
+Følgende statusafsnit er historik.
+
+
 ## G7: fælles BM/WM-kontrakt og frozen-fit-prisrespons, 7. oktober
 
 24h/fire blokke/known fixed-A med fælles januar-baseline og scales er låst.

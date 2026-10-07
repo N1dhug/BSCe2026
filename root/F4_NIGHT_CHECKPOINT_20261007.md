@@ -41,6 +41,18 @@ Ingen flytning af udviklingskontroller til en anden budgetetiket.
 
 ## Aktiv kørsel og sidste holdbare kilde
 
+**Nyeste status:** den første produktion er pauset efter fuld bestået lineær
+reference og før optimizer. Invocation1083.610424 s. Hele referenceforløbet
+er bevaret i checkpoint01+02; råaudit er `f4_h2_linear_window_audit_20261007.json`.
+TRAIN-scorefejl .0055541053; selection .0004541615; L1 .0010493139.
+Nye globale maksimumrater giver14.61 h for hele49-par-grafen, som afvises.
+`H2_COMPACT_BUDGETED_SEARCH.md` registrerer i stedet et eksplicit tidsbegrænset
+konvergensforsøg med hele resterende validering reserveret først. Ny controller
+`root/f4/run_h2_budgeted_search.py`; gamle modeljobs og69 kilder ændres ikke.
+Seneste lukkede ledger H2851.549305434 s, native743.307761054/900 s,48 entries.
+Stopmarkøren flyttes til `STOP_before_budget_review.txt` før det nye forsøg.
+Det gamle `run_h2_compact.py run` må ikke genoptages. Følgende er tidligere status.
+
 Kilde på GitHub: `e115242de79756a4a7163da28593f2452f17bcc6`.
 Run: `files/output/bm_1/runs/estimation/f4_h2_staged_night_v2_20261007`.
 Manifest: `e4d14ffe2473bf44dbfe3d6514ee13fd98e572234cb854f46255dd16f5afbeec`.
