@@ -143,7 +143,7 @@ def _distribution_heatmap(mean, std, y_grid):
     mean = np.asarray(mean, dtype=float)
     std = np.maximum(np.asarray(std, dtype=float), 1e-8)
     z = (y_grid[:, None] - mean[None, :]) / std[None, :]
-    return np.exp(-0.5 * z ** 2) / (np.sqrt(2.0 * np.pi) * std[None, :])
+    return np.exp(-0.5 * z ** 2)
 
 
 def save_plot(result, path):
@@ -167,7 +167,7 @@ def save_plot(result, path):
     y_grid = np.linspace(lower - margin, upper + margin, 320)
     historical_density = _distribution_heatmap(result["historical_I"], joint_std, y_grid)
     oracle_density = _distribution_heatmap(result["oracle_I"], joint_std, y_grid)
-    density_max = max(float(np.max(historical_density)), float(np.max(oracle_density)))
+    density_max = 1.0
 
     fig, axes = plt.subplots(
         6, 1, figsize=(17, 22), sharex=True,
@@ -193,7 +193,7 @@ def save_plot(result, path):
     axes[1].set_ylabel("Normalized input")
     axes[1].set_title("Historical-centred predictive distribution")
     axes[1].legend(loc="upper left")
-    fig.colorbar(hist_mesh, ax=axes[1], pad=0.01, label="Probability density")
+    fig.colorbar(hist_mesh, ax=axes[1], pad=0.01, label="Normalized probability density")
 
     oracle_mesh = axes[2].pcolormesh(
         time, y_grid, oracle_density,
@@ -204,7 +204,7 @@ def save_plot(result, path):
     axes[2].set_ylabel("Normalized input")
     axes[2].set_title("Oracle-centred predictive distribution")
     axes[2].legend(loc="upper left")
-    fig.colorbar(oracle_mesh, ax=axes[2], pad=0.01, label="Probability density")
+    fig.colorbar(oracle_mesh, ax=axes[2], pad=0.01, label="Normalized probability density")
 
     axes[3].plot(time, historical["F"], label="Historical F")
     axes[3].plot(time, oracle["F"], label="Oracle F")
