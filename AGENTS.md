@@ -34,6 +34,32 @@ evidens, faktisk kontrol og dens begrænsninger. Begrundelser skal kunne
 efterprøves; en bestået numerisk gate er ikke i sig selv et matematisk bevis.
 Denne regel kræver ikke genkørsel af allerede beståede numeriske kontroller.
 
+## G7: receipt-genbrug og writer-guards færdige, 7. oktober
+
+24 seed-run-receipts er verificeret i et eksternt hash-låst read-only indeks;
+alle ti egne FV-resultater kan genbruges ved eksakt original jobidentitet.
+Et G-lokalt GuardedNodeJobStore-interface bevarer native lock/budget/retry og
+kontrollerer samlet journal før jobs, reservation før compute, tidligere
+historik og completion-write ved readback. Brud stopper scope med separat
+markør. Adapteren skal vælges eksplicit og sourcefryses i næste launcher;
+den gamle one-invocation runner er ikke ændret eller kørt igen.
+
+Én stdlibkontrol består:12 cases,24 faktiske receipt-/payloadhashes,4.571s,
+seks stub-computes, nul model-forwards/numeriske imports. Orphan/missing/
+tampered files, lost reservation/completion, stale overwrite og crash/retry
+kontrolleres. Eksakte native writer-definitioner bruges via AST; ingen fuld
+solver-, Windows-, concurrency- eller power-loss-integrationstest påstås.
+Originaljournal/raw-ZIP er bevaret byte-identisk. Årsagen til journaltabet er
+stadig ukendt; source_journal_integrity_passed=false og original resume=false.
+Eksplicit read-only adoption er verificeret; ingen scientific/24h-accept.
+
+Præregistreret konservativ scopecharge30s inkluderer verifikation/review.
+G1431.082740428s af1800; rest368.917259572s. Alle gamle charges bevares;
+gamle receipts genberegnes/gencharges ikke. Næste trin er konkret budgetteret
+prisoptimerings-/selvstændig costkvadraturdesign med den nye guardintegration
+før nye forwards. F/WM/native/shared kilder bevares; BM/WM-sammenligning venter.
+Læs [interface, begrundelse, kontrol og næste trin](root/G7_RECEIPT_RECOVERY_REVIEW.md).
+
 ## G7: seed-rettelse og kort EM/feedback-kontrol færdig, 7. oktober
 
 Én ny præregistreret120s-opgave er gennemført på egne gemte hour12→14-data.
