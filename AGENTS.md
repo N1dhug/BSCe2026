@@ -34,6 +34,22 @@ evidens, faktisk kontrol og dens begrænsninger. Begrundelser skal kunne
 efterprøves; en bestået numerisk gate er ikke i sig selv et matematisk bevis.
 Denne regel kræver ikke genkørsel af allerede beståede numeriske kontroller.
 
+## G7: PR114 merged; launcher og særskilt præregistrering færdige, 7. oktober
+
+PR114 merge66991a0 bevarer alle11 reviewede blobs og nyere main/WM4; ingen
+src/tests/workflows ændres. Gamle rådata og41 native sources er gendannet
+og hashverificeret. Ny parent/worker bruger opt-in GuardedNodeJobStore,
+fulde kontrakter, read-only adoption, én invocation og270s hardstop.
+Én stdlibcheck:27 checks,.042779s, nul numerical imports/forwards.
+Gamle kontroller gentages ikke. Matematik/totalvarians/selection/quad er
+dokumenteret sammen med antagelser og begrænsninger.
+Recovery/launchercharge35s: G1476.082740428s; rest323.917259572s.
+320s scope re-admitteret, endnu ikke charged; maxrest3.917259572s.
+Separate registration/launch_ready=true; numerical/scientific/full-day=false.
+Registreringen commits før én faktisk kørsel. Ingen automatisk retry,
+energiligning, kandidat-EM/feedback, F/WM eller døgnadmission i scope.
+Læs [launcher, matematik, kontrol og budget](root/G7_BOUNDED_LAUNCHER_REVIEW.md).
+
 ## G7: merges verified; bounded price/quad design ready, 7. oktober
 
 PR112 og PR113 er merged i rækkefølge på main uden konflikter. Alle29 ændrede

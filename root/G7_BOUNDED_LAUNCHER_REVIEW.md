@@ -1,0 +1,123 @@
+# G7: launcher og særskilt præregistrering, 7. oktober 2026
+
+## Faktisk ændring og mergekontrol
+
+PR114 er merged i 66991a099aac2961083d7efa452be616a2f052d2, oven på
+f42b229626530d3852875be03fc6610b073fe4ce. Alle11 ændrede filblobs matcher
+det reviewede PR-head9571242. Ingen src-, tests- eller workflowfiler ændres
+af mergen; de nyere WM4-ændringer på main bevares. PR-head syntax bestod;
+selected-tests/notes var skipped. Tidligere modeltests/forwards er ikke genkørt.
+
+Den gamle transient kørselsmappe var væk. Det eksisterende originale
+G7_M254_node_runtime_20261007_data.zip er gendannet og matcher den registrerede
+SHA256 ad730a148e770fffeeccdfcfff13af30fc33510d0bbcba9b988c15767af1e80d.
+Alle41 numeriske filer er gendannet fra872e777 og byteverificeret mod den
+oprindelige source_manifest. Kun tomme __init__.py-filer til packageimport
+er tilføjet lokalt; ingen numerisk kode ændres. NumPy2.3.5/SciPy1.17.0 matcher
+de gemte fulde kontrakter. Gamle data/journaler forbliver read-only.
+
+Den nye parent/worker bruger eksplicit GuardedNodeJobStore, binder hver fuld
+kontrakt under den allerede ejede native OS-lock og fjerner derfor ikke
+writer-guards. Native CheckpointedBankControl.describe/check_sources genbruges
+uden at kalde dens initializer under samme ikke-reentrante lock. Setupmetadata
+kan ikke erstatte live evaluatorer. Der er én invocation og ingen automatisk
+retry/resume; en fsync'et started-markør skrives før workerstart.
+
+De 41 gamle numerical hashes holdes adskilt fra nye launcher/guard/restore-
+hashes. Ny registrering fryser begge, de gamle inputs, versionsnumre,
+designbytes, budget, candidates og tie-rækkefølge. FV genbruges kun gennem
+det eksternt pinned24-receipt-indeks og den fulde oprindelige FV-kontrakt.
+Den afvigende gamle journal må stadig ikke genoptages som aktiv writer.
+
+## Matematik og hvorfor implementeringen svarer til den
+
+På[12,13] og[13,14] bruges u(delta)=(.5+delta,.5-delta), delta i{0,-.2,+.2}.
+Hver node j starter fra sine egne gemte hour12-masser og M254-koefficienter,
+med faste cutoff-vægte w_j. Ingen fremtidig observation indgår i valget.
+
+Målet er
+\[
+J(u)=\sum_jw_j\int_{12}^{14}E_j[(D_t(u)-A_t)^2]dt.
+\]
+Sæt mu_j=E_j[D], v_j=Var_j(D), mu=sum_jw_jmu_j. Med sum_jw_j=1 er
+\[
+\sum_jw_jE_j[(D-A)^2]
+=\sum_jw_j(v_j+(mu_j-A)^2)
+=(mu-A)^2+\sum_jw_jv_j+\sum_jw_j(mu_j-mu)^2.
+\]
+Krydsleddet er nul, fordi sum_jw_j(mu_j-mu)=0. Derfor er bias, within-
+parameter-variance og between-parameter-variance en eksakt dekomposition af
+samme mål, ikke tre vilkårlige strafled. combine_nodes kontrollerer både
+totalvarians og J=sum_jw_jJ_j. Vi rapporterer alle led fra samme forward.
+Middelkurvens kvadratfejl er ikke generelt identisk med en separat
+deterministisk trajectory ved middelparametre; ikke-lineær dynamik bryder
+typisk denne identifikation. Ingen anden objective optimeres særskilt her.
+
+Valg foretages kun på tre komplette coarse-banker: argmin(J_0,J_1,J_2),
+med eksakt tie-rækkefølge0,1,2. Alle fem noder kræves; en ufuldstændig bank
+ændrer ikke kandidatlisten eller vægtene. Fine/FV/quad kontrollerer det
+allerede fastlagte valg og bruges ikke til re-selektion. Denne beslutning
+finder et minimum blandt tre prøvede planer på det grove grid. Ingen
+konveksitet i u, kontinuert/global optimalitet eller historisk kausal effekt
+følger af kvadratet i demand eller af numerisk agreement.
+
+Midpointmålet er J_Delta=sum_l Delta_t_l r(t_l), hvor r=E[(D-A)^2].
+Delta halveres1/96h→1/192h og giver192→384 nye midtpunkter. Maksimalt
+solvertrin holdes1/192h, men ændrede outputpunkter opdeler også M254's
+transport/projektionsforløb. Det er derfor en cost/output-følsomhedskontrol,
+ikke et isoleret kvadraturfejlcertifikat eller Richardsonestimat.
+
+Kun samme originale-partition-fine-J sammenlignes med neutral. Forbedring
+kræver G=J_neutral,fine-J_valgt,fine>e_neutral+e_valgt samt forwardgates,
+hvor e er den observerede coarse/fine-J-forskel. Det er screening mod
+observeret numerisk følsomhed, ikke et rigorøst kontinuumsfejlbound.
+Den nye partition må ikke bruges som kandidat-J mod en gammel neutralpartition.
+
+Vi rapporterer også sum_l Delta_t_l(mu_l-B_l) og ændret endpoint-middeltilstand.
+Lige middelpris er ikke bevaret samlet forbrug. Der indføres ingen ny
+energiligning, terminal-/smoothingstraf eller fysisk enhedspåstand.
+Den tidligere deterministiske kontrol med/uden energikrav bevares særskilt.
+
+## Kontrol, budget og startstatus
+
+Én fokuseret stdlibkontrol består27 checks på0.042779s: fulde finite
+candidatecosts/ties, budgetadmission, ændrede designbytes, one-invocation-
+stop før spawn, POSIX-jobtimer og de fire faktiske nested setup-funktioner
+med stand-ins. Stand-in-init fejler ved lock-reentry; setup bruger den
+native describe/bind-vej uden reentry. Der udføres nul numerical imports
+eller forwards. Dette er ikke en fuld solver-/Windows-/concurrency-/power-
+loss-integrationstest. Eksisterende guardcases og numeriske tests gentages ikke.
+
+Gendannelse, forberedelse og launchercheck charges konservativt35s med
+bevarede gamle charges: G1441.082740428→1476.082740428s; rest323.917259572s.
+Det foreslåede320s scope er re-admitteret og endnu ikke charged. Ved dets
+fulde loft ville3.917259572s være tilbage. Ingen ny allowance eller reset.
+Worker270s, stop/eksport30s, råreview20s og alle jobcaps fra PR114 fastholdes.
+Jobreservationer er stoprammer, ikke kendte runtimebounds for de nye priser.
+
+Parent stopper worker ved270s og eksporterer også partials. Faktisk charge
+er max(workerwall, ledgerincrement)+målt eksport+20s råreview; overshoot
+bevares og blokerer senere jobs. Ved parenttab uden måling kræves eksplicit
+reconciliation med fuld workerreserve og ikke-målte reserver bevaret.
+
+Kilder, templates og særskilt registrering skal være committed før forsøget.
+launch_ready/pre_run_registration=true; numerical_run/actual_optimizer/
+scientific/full-day=false indtil den faktiske invocation. Denne registrering
+ændrer ikke det oprindelige PR114-designsnapshot eller de historiske receipts.
+Kandidat-EM/feedback, historiske intervalobservationer og24h-admission er
+stadig uden for scope. G/F holdes adskilt; direkte BM/WM-sammenligning venter.
+
+## Kørsel og output
+
+Kopiér filerne i root/g7/bounded_price_20261007 til en ny, tom outputscope.
+Den samme mappe indeholder launch_bounded_price.py og de låste helperbytes.
+Giv --previous den gendannede originale råmappe med frozen_source, og --seed
+den read-only seed-repair-råmappe. Kør først efter denne registreringscommit:
+python -B launch_bounded_price.py --output OUTPUT --previous OLD --seed SEED.
+Parent og worker bruger samme registrering; PYTHONPATH peger på OLD/frozen_source,
+og BLAS/OpenMP/MKL/NumExpr sættes til én thread. Ingen lokal kørsel kræves af Johan.
+
+Nodereceipts gemmer fulde arrays; kontrakter og selection gemmes separat.
+worker_summary/progress viser fuldførte og partiale jobs. invocation indeholder
+faktisk debit og eksportmåling; archive_index fastholder ZIP-hash og den
+efterfølgende final-invocation-hash uden at omskrive ZIP'ens tidligere bytes.
