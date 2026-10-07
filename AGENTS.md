@@ -1,5 +1,30 @@
 # Fælles projektkontekst
 
+## G7: deterministisk døgnkontrol med bevaret forbrug, 7. oktober
+
+Fælles frossent januarpar og lineær BM-reference er optimeret over fire6h-
+prisblokke, både original fixed-A og separat lighed integral(demand-B)=0.
+Alle seks valgte policies består coarse/fine;374 faktiske forwards inkl.
+Jacobianprober,3.7754s process. Neutral fine-J: lineær BM .275408888,
+G4 .276532280, WM .303629020; baselineJ .308609546. Forbedringer10.758%/
+10.394%/1.614% er modelbetinget tracking i ét døgn, ikke fysisk/kausal ranking.
+WM løses som certifieret affin/konveks4D-QP; BM er bedste fundne lokale
+SLSQP-kandidat fra to starter, uden global optimalitetsclaim. Ingen refits.
+Samme diskrete forbrugsbalance bruges i J og lighed; WM's Euler/midpoint-
+korrektion er udledt. Fine energierror højst1.466e-6 i neutrale policies.
+Én fokuseret analytisk kontrol og read-only byte/J/E-audit består.17 units/
+19 råfiler, fulde baner og hashes er gemt med atomiske checkpoints.
+S3-fladhed genbruges som identifikationsforbehold; ingen ny straf indføres.
+M254's gamle døgnestimat mangler eksplicitte FV/EM/feedback/quad-led:
+ingen ny stochastic admission eller pilotretry. Næste er durable egne
+rho-nodejobs og komplet målt jobgraf før særskilt registreret måling.
+Vejlederbasis, legacy, F/WM-kilder og deres budgetter er uændrede.
+Konservativ nattecharge30s af max300s; G1098.580078s, rest701.419922s.
+Læs [matematik, faktisk udført og resultater](root/G7_ENERGY_NEUTRAL_REVIEW.md)
+og [M254-runtime/jobdesign](root/G7_M254_RUNTIME_JOB_REVIEW.md).
+Følgende statusafsnit er historik.
+
+
 ## G7: fælles BM/WM-kontrakt og frozen-fit-prisrespons, 7. oktober
 
 24h/fire blokke/known fixed-A med fælles januar-baseline og scales er låst.
