@@ -1,9 +1,13 @@
 # F4-H2 → I/J: resultatreview, 7. oktober 2026
 
-**Opdateret efter terminalt kandidatstop.** To-stykkers fit nåede17 evalueringer
-og optimizerstatus5 uden konvergens. Der foreligger endnu ikke modelvalg eller
-ugeforecast. Råresultaterne består kontrollen, men H/I/J/F4 er ikke afsluttet.
-Læs [terminalstatus og konkret næste beslutning](F4_H2_TERMINAL_AND_NEXT_DECISION_20261007.md).
+**Aktuel status, 8. oktober.** Den særskilt godkendte 25/49-fortsættelse har
+færdiggjort to-stykkers fit og dets egen fulde base/fine-validering. Firestykkefit
+fortsætter fra sin præcise gemte optimizertrace; modelvalg og ugeforecast er
+endnu åbne. PR106's separate konturadapter er merged. Blok4 blev afbrudt uden
+normal slutrapport, men checkpoint04 sikrer38 komplette kald/780 nye råjobs.
+Dens fulde600s-reservation bevares, og blok5 fortsætter under08:00-fristen.
+Se [samlet restplan](F4_REMAINING_PLAN_20261008.md). Tidligere negative stops
+og kilde-/resultatidentiteter er bevaret; H/I/J/F4 er ikke slutaccepteret.
 
 ## Den konkrete opgave
 
@@ -82,7 +86,8 @@ Hver ny kandidat genafvikler hele sin egen kronologiske prior/TRAIN-kæde.
 Kun identiske jobs med identisk prior, input, kurve og kilde kan genbruges.
 Den samme state-posterior må ikke genbruges på tværs af forskellige kurver.
 COBYQA søger under den deklarerede logit-bound [-4,4], med én lineær start
-og maxfev17/33. Det er en afgrænset lokal søgning; ingen global optimalitet.
+og den særskilt godkendte maxfev25/49-ramme. De gamle17/33-resultater
+og terminalmarkører er historik og bevares. Det er en afgrænset lokal søgning; ingen global optimalitet.
 `success` og trust-radius-status0 er det erklærede algoritmiske stop.
 Et kandidat-/tidsloft dokumenterer et ufuldstændigt fit.
 
@@ -107,7 +112,10 @@ Kodekort:
 | Interval-likelihood og guards | `src/method/bm_1_interval_native.py` |
 | Intervalmomenter, CDF og kvantiler | `src/method/bm_1_interval_forecast.py` |
 | Immutable jobstore, fit, modelvalg, forecast og finale | `src/exe/run_model/bm_1_h2_compact.py` |
-| Godkendt budgetadapter | `root/f4/run_h2_same_day.py` |
+| Oprindelig godkendt budgetadapter | `root/f4/run_h2_same_day.py` |
+| Aktuel separate konturfortsættelse | `src/exe/run_model/bm_1_h2_continuation.py`, `root/f4/run_h2_continuation.py` |
+| Immutable adoption og checkpointreview | `root/f4/checkpoint_h2_continuation.py` |
+| Faktisk H→I-originreview efter freeze | `root/f4/review_h2_i_handoff.py` |
 | Frossen prognose → PC-slutdata | `root/f4/export_h2_final_observations.py` |
 
 ## I-handoff og finale
@@ -135,13 +143,35 @@ er ukendt: den skal fortsat kaldes udviklings-holdout, ikke blind H3.
 
 ## Faktiske resultater og afslutning
 
-**Terminal dagsrapport foreligger:** `same_day_report_002.json` er failed på
-kandidatloftet, ikke numerisk jobfailure.1402 jobs,17 komplette objectives og
-præcis cached COBYQA-termination er verified. Best objective-10,15586624
-gælder kun TRAIN; to-stykkers fit er ikke konvergeret. Fire-stykkers fit,
-modelvalg, forecast, finaldiagnose og faktisk I-handoff mangler.
+To-stykkers COBYQA nåede status0 efter20 kald, Q=-10.155937279386325.
+Den valgte kurves f(0.5)=0.48508748289841463 og
+ g(0.5)=0.6331765945295157; endpoints er fortsat1,-1.
+Dens fulde egen numeriske validering består:
 
-Ved en senere særskilt godkendt metodefortsættelse skal tilføjes:
+| Mål | Resultat |
+|---|---:|
+| TRAIN-score, base/fine | 11.428382211235753 / 11.4253020588032 |
+| TRAIN-scoreforskel | 0.003080152432552552 |
+| Selection-score, base/fine | 23.267887918742304 / 23.26716786258129 |
+| Selection-scoreforskel | 0.0007200561610147815 |
+| Maksimal state-L1 | 0.0029276959731513326 |
+| Selection-RMSE, fine, normaliseret timeforbrug | 0.07219496766405152 |
+| Selection-MAE, fine, normaliseret timeforbrug | 0.060482808455341874 |
+
+Dette er numerisk validering af én fælles fitted familie, ikke modelvalg,
+fysisk identifikation eller ugeforecastaccept. Den oprindelige240-job-
+validering og dens identity genbruges; ingen replay alene for denne rapport.
+Firestykkefit har endnu ingen gemt termination; dets lavere TRAIN-objective
+må ikke bruges til at vælge kompleksitet. Lineær/to/fire sammenlignes først
+efter fuld egen base/fine-TRAIN og selection for alle relevante familier.
+
+Den ni-konturfortsættelse bevarer den oprindelige fem-konturprefix og
+tilføjer fire repræsentationskonturer. Egen24h fine-prior og den oprindeligt
+fejlede time består uden at ændre model eller guards. Adopterede jobs har
+deres originale tokens/checksums/prior bytes; nye jobs har separat identity.
+Kandidat28's gamle terminalfejl og alle crashreservationer bevares fuldt.
+
+Næste resultater, når de foreligger:
 
 - Algoritmisk status for begge nonlinear familier og faktisk forbrug.
 - Egne TRAIN/selection-scoreforskelle, state-/moment-/CDF-gates og modelvalg.

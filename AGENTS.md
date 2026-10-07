@@ -1,3 +1,14 @@
+## F4-H2: checkpoint05 består; resultatfortsættelse, 8. oktober
+
+PR106 er merged. Firestykkefit har40 komplette kald, næste kandidat delvis.
+971 nye råjobs er sikret i checkpoint01–05; seneste191 jobs og450 adoptioner
+består read-only audit.0 gemte numeriske failures, alle frosne kilder/miljø
+uændrede. Blok4's fulde600s-crashreservation bevares; blok5 sluttede normalt.
+Blok6 fortsætter under samme08:00-frist,64800/1080s-lofter og beskyttet
+fuld restvalidering. Fit/selection/forecast/finale og I/J/F4 er fortsat åbne.
+I/J-resultatreviewet beskriver nu det konvergerede/validerede tostykkefit.
+Nyere main's G/WM-status og alle andre paths bevares. Følgende afsnit er historik.
+
 ## Arbejdsregel: merge færdige egne branches, Johan 8. oktober 2026
 
 Johan: "merge altid naar du er faerdig med en branch". Når eget autoriseret
