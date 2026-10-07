@@ -64,6 +64,10 @@ def review_em(records, weights, fp_total):
         raise ValueError('Raw EM boundary violation; no corrected-path acceptance.')
     coarse = np.array([r['coarse_costs'] for r in records])
     fine = np.array([r['fine_costs'] for r in records])
+    if (coarse.shape != (5,256) or fine.shape != coarse.shape
+            or [r['index'] for r in records] != list(range(5))
+            or not np.isfinite(fp_total)):
+        raise ValueError('Complete registered five-by-256 coupled EM costs required.')
     a, b = stratified(coarse, weights), stratified(fine, weights)
     error = abs(b['mean']-fp_total); coupled = stratified(fine-coarse, weights)
     gate = max(.001, 4*b['standard_error'])

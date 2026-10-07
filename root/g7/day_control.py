@@ -4,6 +4,7 @@ Not an executable experiment by itself. The stdlib launcher must admit and
 register the complete graph before importing this module into its worker.
 """
 import json
+import hashlib
 from pathlib import Path
 from time import perf_counter
 import numpy as np
@@ -34,12 +35,13 @@ def check_sources(root, manifest):
             raise ValueError('Frozen source changed: '+name)
     for name in PATHS:
         if name not in manifest:
-            raise ValueError('Register both loaded full-day helpers.')
+            raise ValueError('Register all loaded full-day helpers.')
     if Path(__file__).resolve() != root/PATHS[0]:
         raise ValueError('Loaded full-day driver differs from registered source root.')
-    import day_review
-    if Path(day_review.__file__).resolve() != root/PATHS[1]:
-        raise ValueError('Loaded review differs from registered source root.')
+    import day_review, day_contract
+    if (Path(day_review.__file__).resolve() != root/PATHS[1]
+            or Path(day_contract.__file__).resolve() != root/PATHS[2]):
+        raise ValueError('Loaded review/contract differs from registered source root.')
 
 
 def make_control(origin, name, store, root, manifest, *, horizon=(12.,36.),
@@ -109,9 +111,12 @@ def search(objective, plan, *, output, name, deadline):
     if not history:
         raise ValueError('No complete search candidate exists.')
     best = min(range(len(history)), key=lambda k: (history[k]['J'], k))
+    selected_converged = starts[history[best]['start']]['converged']
     return dict(prices=history[best]['prices'], J=history[best]['J'],
                 selected_completed_candidate=best, history=history, starts=starts,
-                converged=any(s['converged'] for s in starts), global_optimum_claimed=False)
+                selected_start_converged=selected_converged,
+                any_start_converged=any(s['converged'] for s in starts),
+                global_optimum_claimed=False)
 
 
 def deterministic_job(control, prices, store, *, seconds, deadline):
@@ -155,8 +160,13 @@ def em_node(control, prices, index, *, deadline):
     initial = generator.beta(components+1., 255.-components)
     fine_time = 12.+np.arange(24*384+1)/384
     dw = rng(2).standard_normal((256, len(fine_time)-1))*np.sqrt(np.diff(fine_time))
-    inputs = digest(dict(initial=initial, fine_increments=dw, fine_time=fine_time,
-                         seed=dict(entropy=20261008, roles=[1,2], node=index)))
+    # Binary hashes avoid turning millions of increments into Python/JSON scalars.
+    fingerprint = hashlib.sha256(b'g7-em-inputs-float64-little-endian-v1')
+    fingerprint.update(digest(dict(entropy=20261008, roles=[1,2], node=index,
+                                   shapes=[initial.shape,dw.shape,fine_time.shape])).encode())
+    for array in (initial, dw, fine_time):
+        fingerprint.update(np.asarray(array, dtype='<f8').tobytes(order='C'))
+    inputs = fingerprint.hexdigest()
     original = s.model._drift
     def guarded(*args, **kwargs):
         if perf_counter() >= deadline:

@@ -1,0 +1,22 @@
+{
+  "schema": "g7-full-day-registration-v1",
+  "stage": "full-day-and-feedback",
+  "template_only": true,
+  "execution_authorized": false,
+  "automatic_retry": false,
+  "design_sha256": null,
+  "rates_sha256": null,
+  "previous_budget_sha256": null,
+  "origins_sha256": null,
+  "source_manifest_sha256": null,
+  "source_root": null,
+  "source_fingerprint": null,
+  "origin_fingerprint": null,
+  "versions": null,
+  "prior_debit": 1851.3372718589885,
+  "campaign_ceiling": 1910,
+  "scope_cap": null,
+  "worker_seconds": null,
+  "stop_export_review_reserve": null,
+  "notice": "Not an authorized launch registration. Fill and immutably commit/read back only after genuine rates and whole-graph admission."
+}

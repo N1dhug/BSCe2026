@@ -7,6 +7,30 @@ en mergegodkendelse. Reglen gælder fremover; uafsluttede drafts og andres
 arbejde merges ikke alene på grund af denne regel. Branchsletning er en
 særskilt handling og følger de eksisterende ejerskabs-/bevaringsregler.
 
+## G7: samlet døgnstyring implementeret, ikke kørt, 8. oktober
+
+Denne levering bygger på den mergede feedbackintegration PR119/main7586a9d2.
+Ny day_control forbinder deterministic MAP/conditional-mean ODE og M254257-
+Powell-search (to starts,24 calls/start,48/policy,96 total) med tre fælles
+prisplaners M254/FV257/513-, partition-, parrede raw-EM- og feedbackreview.
+Alle policies vurderes på samme stochastic J; fine/FV vælger ikke nye priser.
+EM deler startstates/Brownian mellem policies og mellem coupled coarse/fine;
+observation36 kommer fra forudbestemt fine node2/path0 plus separat noise.
+Fire egne posteriorer bruges videre til38; kvitteringer genbruges eksakt.
+Ny stdlib day_contract/launcher kræver fuld16-job-admission før native import,
+source/origin/runtime-pins, eksklusiv invocation og parenttimeout. Ingen
+autoriseret numerisk registration er oprettet; template er execution=false.
+Native kerner/M254/legacy/F/WM/workflow bevares. Fire nye Python-filer er
+statisk AST-parset; ingen runtime-, stub-, model- eller numerisk fuldgraftest
+er kørt. PR-CI kontrollerer syntaks; statisk kontrol er ikke runtimeaccept.
+G-debit uændret1851.3372718589885/1910s; rest58.662728141011485s.
+Full-day/budget/scientific/historical=false; gamle quad0/1/2-audits stadig tabt.
+Næste: én fokuseret fuldgraf-stubkontrol, derefter reelle whole-job-rates,
+samlet budget og særskilt immutable numerisk præregistrering før døgnforsøget.
+Johan skal ikke køre noget lokalt nu. Egen færdig branch merges efter kontrol.
+Læs [implementering, matematik, forsvar og begrænsninger](root/G7_FULL_DAY_DRIVER_REVIEW.md).
+De ældre G7-statusser nedenfor er historik.
+
 ## G7: durable feedback og v2-budgetgate kontrolleret, 8. oktober
 
 PR117 er merged c8b76c2d; denne levering bygger på main306c7af og bevarer
