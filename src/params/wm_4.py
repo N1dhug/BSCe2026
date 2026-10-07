@@ -64,6 +64,7 @@ class qp_params:
 
     def _qp_constraints(self, stabilize=True):
         eps, dt = self.model._FIT_EPS, self.model.dt
+        strict = 10.0 * eps
         rows = [
             np.array([1.0, -1.0, 0.0]),
             np.array([-1.0, -1.0, 1.0]),
@@ -74,9 +75,9 @@ class qp_params:
                 np.array([dt * dt, 0.0, -2.0 * dt]),
                 np.array([-dt, 0.0, 1.0]),
             ])
-            rhs.extend([4.0 - eps, -eps])
+            rhs.extend([4.0 - eps, -strict])
         lb = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
-        ub = np.array([-eps, 0.0, -eps], dtype=float)
+        ub = np.array([-strict, 0.0, -strict], dtype=float)
         return np.vstack(rows), np.asarray(rhs, dtype=float), lb, ub
 
     def _solve_qp(self, datasets, init_conds, stabilize=True):

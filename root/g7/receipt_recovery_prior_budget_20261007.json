@@ -1,0 +1,22 @@
+{
+  "schema": "g7-receipt-recovery-budget-v1",
+  "prior_debit": 1401.0827404279985,
+  "prior_budget_sha256": "9f49700e5608f20607153eb45891e9eed41b7082f86b951cc227c4e3b0bc6e0a",
+  "scope_ceiling_seconds": 30,
+  "conservative_verification_charge": 20,
+  "review_documentation_charge": 10,
+  "scope_charge": 30,
+  "focused_check_seconds": 4.571205493999514,
+  "campaign_debit": 1431.0827404279985,
+  "remaining_seconds": 368.9172595720015,
+  "campaign_ceiling": 1800,
+  "all_prior_charges_preserved": true,
+  "old_receipts_recharged": false,
+  "new_model_forwards": 0,
+  "source_journal_integrity_passed": false,
+  "explicit_read_only_adoption_verified": true,
+  "original_store_resume_permitted": false,
+  "scientific_accept": false,
+  "full_day_budget_admitted": false,
+  "reason": "30s conservative registered charge covers preparation, one focused check, metadata export and review. Old receipts already covered by prior parent wall; no reset/refund or numerical replay."
+}

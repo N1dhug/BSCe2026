@@ -43,29 +43,64 @@ class OwnedBankPriceEvaluator:
         elif configure_projector is not None:
             raise ValueError('FV has no mixture projector.')
 
-    def evaluate(self,prices):
+    def evaluate_node(self,prices,index):
+        """One unchanged native forward from this node's own frozen law."""
         prices=self.supports[0].validate_prices(prices).copy()
+        if isinstance(index,bool) or int(index)!=index or not 0<=index<len(self.supports):
+            raise ValueError('Valid integer node index required.')
+        j=int(index);s=self.supports[j]
+        parameters=s.parameters_for_prices(prices)
+        if self.backend=='mixture':
+            evolved=evolve_projected_density(method=s.model.fokker_planc,
+                t_eval=s.solver_t_eval,breakpoints=s.breakpoints,x=s.x,dx=s.dx,
+                basis=self.origin.basis,initial_coefficients=self.origin.conditional_coefficients[j].copy(),
+                drift=lambda t,x:s.model._drift(t,x,parameters),
+                diffusion=lambda t,x:s.model.diffusion_coefficient(x,s.sigma_x),
+                max_step=s.solver_max_step,cfl=.4,
+                projection_data=self.projector.projection_data,
+                projection_solver=self.projector.projection_solver)
+            mass=evolved['density']*s.dx
+            coefficients=evolved['coefficients'];diagnostics=evolved['diagnostics']
+            demand=tracking.demand_grid(s.model,parameters,s.midpoints,s.x)
+            mean,second,_=tracking.discrete_demand_moments(demand,mass[1:-1])
+            obj=tracking.stochastic_tracking_objective(s.widths,mean,second,s.target)
+        else:
+            result=s.evaluate(prices);mass=result.cell_mass;obj=result.objective
+            coefficients=None;diagnostics=result.diagnostics
+        return dict(index=j,prices=prices,times=s.solver_t_eval,
+                    mass=mass,coefficients=coefficients,diagnostics=diagnostics,
+                    expected_demand=obj.expected_demand,second_moment=obj.second_moment,
+                    node_total=obj.total)
+
+    def combine_nodes(self,prices,nodes):
+        """Reduce complete node receipts with the original fixed bank weights."""
+        prices=self.supports[0].validate_prices(prices).copy()
+        if len(nodes)!=len(self.supports):
+            raise ValueError('All owned node receipts are required before bank reduction.')
         masses=[];coefficients=[];objectives=[];diagnostics=[]
-        for j,s in enumerate(self.supports):
-            parameters=s.parameters_for_prices(prices)
+        for j,(s,node) in enumerate(zip(self.supports,nodes)):
+            if (node['index']!=j or not np.array_equal(node['prices'],prices)
+                    or not np.array_equal(node['times'],s.solver_t_eval)):
+                raise ValueError('Node index, candidate or integration partition differs.')
+            mass=np.asarray(node['mass'],float)
+            c=None if node['coefficients'] is None else np.asarray(node['coefficients'],float)
+            if (mass.shape!=(len(s.solver_t_eval),len(s.x)) or not np.isfinite(mass).all()
+                    or np.min(mass)<-1e-12 or not np.allclose(mass.sum(axis=1),1.,atol=1e-9,rtol=0.)
+                    or not np.allclose(mass[0],self.origin.conditional_mass[j],atol=1e-10,rtol=0.)):
+                raise ValueError('Node mass does not match its own origin or valid full trajectory.')
             if self.backend=='mixture':
-                evolved=evolve_projected_density(method=s.model.fokker_planc,
-                    t_eval=s.solver_t_eval,breakpoints=s.breakpoints,x=s.x,dx=s.dx,
-                    basis=self.origin.basis,initial_coefficients=self.origin.conditional_coefficients[j].copy(),
-                    drift=lambda t,x:s.model._drift(t,x,parameters),
-                    diffusion=lambda t,x:s.model.diffusion_coefficient(x,s.sigma_x),
-                    max_step=s.solver_max_step,cfl=.4,
-                    projection_data=self.projector.projection_data,
-                    projection_solver=self.projector.projection_solver)
-                mass=evolved['density']*s.dx
-                coefficients.append(evolved['coefficients']);diagnostics.append(evolved['diagnostics'])
-                demand=tracking.demand_grid(s.model,parameters,s.midpoints,s.x)
-                mean,second,_=tracking.discrete_demand_moments(demand,mass[1:-1])
-                obj=tracking.stochastic_tracking_objective(s.widths,mean,second,s.target)
-            else:
-                result=s.evaluate(prices);mass=result.cell_mass;obj=result.objective
-                diagnostics.append(result.diagnostics)
-            masses.append(mass);objectives.append(obj)
+                if (c is None or c.shape!=(len(s.solver_t_eval),self.origin.basis.shape[0])
+                        or not np.isfinite(c).all() or not np.array_equal(c[0],self.origin.conditional_coefficients[j])
+                        or not np.allclose(c@self.origin.basis*s.dx,mass,atol=1e-10,rtol=0.)):
+                    raise ValueError('Node coefficients do not own the declared mixture trajectory.')
+                coefficients.append(c)
+            elif c is not None:
+                raise ValueError('FV receipts must not carry mixture coefficients.')
+            obj=tracking.stochastic_tracking_objective(s.widths,np.asarray(node['expected_demand']),
+                                                       np.asarray(node['second_moment']),s.target)
+            if abs(obj.total-node['node_total'])>1e-10:
+                raise ValueError('Stored node cost differs from its full demand moments.')
+            masses.append(mass);objectives.append(obj);diagnostics.append(node['diagnostics'])
         weights=self.origin.weights
         means=np.stack([o.expected_demand for o in objectives])
         second=np.stack([o.second_moment for o in objectives])
@@ -83,7 +118,8 @@ class OwnedBankPriceEvaluator:
             self.origin.log_weights,self.origin.x_edges,mass[:,-1],sigma_y=self.origin.sigma_y,
             backend=self.backend,conditional_coefficients=None if coefficients is None else coefficients[:,-1],
             basis=self.origin.basis if self.backend=='mixture' else None,
-            price_side=self.origin.price_side,basis_kind=BASIS_KIND if self.backend=='mixture' else None)
+            price_side=self.origin.price_side,basis_kind=BASIS_KIND if self.backend=='mixture' else None,
+            basis_identity_sha256=self.origin.basis_identity_sha256 if self.backend=='mixture' else None)
         return dict(total=objective.total,bias=objective.bias,variance=objective.variance,
             within_parameter_variance=float(s.widths@within),between_parameter_variance=float(s.widths@between),
             expected_demand=objective.expected_demand,demand_variance=objective.demand_variance,
@@ -91,6 +127,9 @@ class OwnedBankPriceEvaluator:
             times=s.solver_t_eval,midpoints=s.midpoints,widths=s.widths,target=s.target,
             conditional_mass=mass,conditional_coefficients=coefficients,prices=prices,
             diagnostics=diagnostics,predicted_origin=predicted,backend=self.backend,_owner=self)
+
+    def evaluate(self,prices):
+        return self.combine_nodes(prices,[self.evaluate_node(prices,j) for j in range(len(self.supports))])
 
     def __call__(self,prices):return self.evaluate(prices)['total']
 
@@ -129,6 +168,7 @@ class OwnedBankPriceEvaluator:
         posterior=G8BankOrigin(predicted.time,predicted.fixed_parameters,predicted.rho_values,
             weight_update['log_weights'][0],predicted.x_edges,np.array(mass),sigma_y=predicted.sigma_y,
             backend=self.backend,conditional_coefficients=np.array(coefficients) if coefficients else None,
-            basis=predicted.basis,price_side=predicted.price_side,basis_kind=predicted.basis_kind)
+            basis=predicted.basis,price_side=predicted.price_side,basis_kind=predicted.basis_kind,
+            basis_identity_sha256=predicted.basis_identity_sha256)
         return dict(origin=posterior,conditional_log_evidence=np.array(scores),
                     log_evidence=float(weight_update['log_evidence'][0]),projections=projections)

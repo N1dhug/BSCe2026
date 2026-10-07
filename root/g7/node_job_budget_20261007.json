@@ -1,0 +1,241 @@
+{
+  "schema": "g7-node-job-budget-checkpoint-v1",
+  "previous_debit": 1098.580078,
+  "scope_charge": 20.0,
+  "campaign_ceiling": 1800.0,
+  "plan": {
+    "schema": "g7-complete-control-job-plan-v1",
+    "horizon_hours": 24.0,
+    "nodes": 5,
+    "policies": [
+      "neutral",
+      "deterministic",
+      "stochastic"
+    ],
+    "safety_factor": 1.25,
+    "jobs": [
+      {
+        "work": "setup",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "search_deterministic",
+        "count": 48,
+        "rate_unit": "whole job",
+        "nodes": 1
+      },
+      {
+        "work": "search_fv",
+        "count": 48,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "cross_m254_coarse",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "cross_m254_fine",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "cross_fv_coarse",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "cross_fv_fine",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "quadrature",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "em_coupled",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "feedback_m254_coarse",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "feedback_m254_fine",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "feedback_fv_coarse",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "feedback_fv_fine",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5
+      },
+      {
+        "work": "audit_export",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5
+      }
+    ],
+    "monte_carlo": {
+      "paths_per_node": 256,
+      "levels": [
+        "coupled coarse",
+        "fine"
+      ]
+    },
+    "target": "original fixed A=.5; stochastic full within/between variance",
+    "energy_neutral_extension": false,
+    "scientific_accept": false,
+    "actual_optimizer_started": false
+  },
+  "rates": {},
+  "admission": {
+    "schema": "g7-complete-job-admission-v1",
+    "rows": [
+      {
+        "work": "setup",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "search_deterministic",
+        "count": 48,
+        "rate_unit": "whole job",
+        "nodes": 1,
+        "seconds": null
+      },
+      {
+        "work": "search_fv",
+        "count": 48,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "cross_m254_coarse",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "cross_m254_fine",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "cross_fv_coarse",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "cross_fv_fine",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "quadrature",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "em_coupled",
+        "count": 3,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "feedback_m254_coarse",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "feedback_m254_fine",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "feedback_fv_coarse",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "feedback_fv_fine",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      },
+      {
+        "work": "audit_export",
+        "count": 1,
+        "rate_unit": "whole job",
+        "nodes": 5,
+        "seconds": null
+      }
+    ],
+    "unknown": [
+      "setup",
+      "search_deterministic",
+      "search_fv",
+      "cross_m254_coarse",
+      "cross_m254_fine",
+      "cross_fv_coarse",
+      "cross_fv_fine",
+      "quadrature",
+      "em_coupled",
+      "feedback_m254_coarse",
+      "feedback_m254_fine",
+      "feedback_fv_coarse",
+      "feedback_fv_fine",
+      "audit_export"
+    ],
+    "estimated_seconds": null,
+    "campaign_debit": 1118.580078,
+    "remaining_seconds": 681.419922,
+    "budget_admitted": false,
+    "scientific_accept": false,
+    "actual_optimizer_started": false,
+    "note": "Measured representative rates plus explicit reserve are not a worst-case timing bound."
+  }
+}

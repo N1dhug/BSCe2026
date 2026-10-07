@@ -1,3 +1,188 @@
+## G7: PR115/116 merged; atomisk audit kontrolleret, 7. oktober
+
+PR115 merge d5b06119 og historiske PR116 merge 02812cab er verificeret
+mod reviewede træer. Januar-konflikten er løst med aktuel status bevaret;
+gamle auxiliary-noter er historik. Fjorten andre gamle G-branches var
+allerede merged. F-PR106 er draft; ingen branches slettet.
+Ny opt-in AuditedBankControl gemmer forward + per-hypotese projectionaudit
+inde i samme hashed/fsynced receipt før ledgercommit. Source/kontrakt binder
+auditpolicy; reuse kræver gemt audit. FV har eksplicit not-applicable.
+Ingen native src/tests/workflow- eller kernelændring. Separat checkpoint
+b5843438 og byte-identisk registration før én stub-invocation: 6 checks
+består, .782377885s process, nul native forwards. Coverage er ikke en
+numerisk fitgate; update/Bayes-projektion kræver særskilt receiptintegration.
+Gamle quad0/1/2-audits er stadig tabt; scientific/full-day=false.
+Konservativ checkcharge5s: G1846.337271859/1910s; rest63.662728141s.
+Nyt v2-forslag: 24h/4 blokke, deterministisk og primær M254-stokastisk
+søgning, tre fælles policies, M254/FV/quad/pairedEM samt én observation→
+update→nyt bounded prisvalg→2h-forward. 16 synlige jobtyper; rates ukendte.
+Gamle 14-job-budgethelper/source bevares og accepterer ikke v2 automatisk.
+Design er ikke launchregistration: launch_ready/budget_admitted=false.
+Næste kode: konkret v2-integration inkl. update-receipts og samlet budget;
+ingen automatisk ny numerisk kørsel. BM færdig først; WM-sammenligning senere.
+Læs [adapter, matematik, merges og faktisk kontrol](G7_PER_HYPOTHESIS_AUDIT_REVIEW.md)
+og [samlet forsøgsforslag](G7_INTEGRATED_EXPERIMENT_DESIGN.md).
+De ældre G7-statusafsnit nedenfor er historik.
+
+## G7: recovery afsluttet; fuld quadbank, åben projektionsaudit, 7. oktober
+
+Nyeste status; de ældre partial-statusser nedenfor er bevaret som historik.
+Johan godkendte højst110 ekstra sekunder. Separat præregistreringf208bbc3
+blev committed og læst tilbage før invocation. Kun quadnode3/4 er nye;
+alle13 completed forwards genbruges read-only. Hele femknudebanken er
+reduceret. Coarse/fine, fine/384-midpoint og fine/FV består alle uændrede
+terminal-/J-gates; J-forskelle2.64461e-5,5.95835e-9,2.07653e-7.
+Neutral[.5,.5] er bedst af tre coarse-planer; ingen kontrolforbedring eller
+kontinuert global optimalitet. Middelfejl og within/between-varians kommer
+fra samme forwards. Tidligere quadnode0/1/2 mangler deres tabte projection-
+fit auditmaxima: quad_bank_complete=true, forward_gates_passed=true,
+men numerical_validation/scientific/full-day=false. Massechecks erstatter
+ikke den manglende projection-L1. Ingen completed forward genkørt.
+Ekstra charge42.195763999s inkl10 forberedelse/10 rawreview-reserve;
+G1841.337271859s af godkendt1910, rest68.662728141s. Alle gamle charges
+bevares. Fuld ZIP er gemt og CRC/SHA-verificeret efter rettet eksport.
+PR114 er merged; PR115 er åben og ikke mergegodkendt. Næste kodearbejde er
+atomisk projectionaudit per node før nye forsøg; resterende tid er ingen
+automatisk admission. Direkte WM-sammenligning venter til BM er færdig.
+Læs [matematik, resultat, begrænsning og budget](G7_COMPLETE_QUAD_RECOVERY_REVIEW.md).
+
+## Aktiv afgrænsning: BM færdig først, WM-sammenligning bagefter
+
+Johan, 7. oktober 2026 kl.16:25: G-arbejdet skal udvikle og færdiggøre BM.
+Direkte BM/WM-sammenligning, fælles benchmarkkørsler og rangering udskydes,
+til BM er færdig. WM-resultater er ikke en adgangsgate for BM's næste trin.
+
+BM skal under udviklingen være meningsfuldt sammenlignelig med WM:
+dokumentér tidsakse/horizon, informationscutoff og dataopdeling, input,
+baseline/målprofil, normalisering/enheder, prisdefinition og tilladte
+kontroller, forbrugsbegrænsninger, metrics og outputformat. Genbrug relevante
+WM-konventioner; begrund nødvendige modelforskelle. Det kræver ikke løbende
+WM-kørsler eller tilpasning af BM til WM's resultater.
+
+BM's deterministiske kontrolmål og varianten med bevaret samlet forbrug
+bevares som BM-opgaver. Stokastiske M254/FV/EM-kontroller er interne
+numeriske BM-kontroller og fortsætter. Vejlederbasis/legacy og adskillelsen
+mellem G og F bevares.
+
+Tidligere gennemførte BM/WM-forsøg og råresultater bevares som historisk
+evidens, men er ikke den aktive udviklingsprioritet eller en endelig
+modelsammenligning. Denne afgrænsning overstyrer ældre formuleringer om
+"primær BM/WM-sammenligning", også i det gemte auxiliary-designsnapshot.
+Det ændrer ikke snapshotbytes, numeriske gates eller beregningsbudget.
+Næste G7-opgave er fortsat BM's restore/launcher og afgrænsede FV/EM/feedback-
+forsøg. Selve BM/WM-sammenligningen planlægges efter BM's færdiggørelse.
+
+## Historisk G7: neutral auxiliary før seed-rettelsen, 7. oktober
+
+Denne blok beskriver det tidligere forsøg. RNG-rollerne er siden rettet,
+quadbanken færdiggjort og budgettet opdateret; se nyeste status øverst.
+Den oprindelige næste-trin-receipt er bevaret som historik, ikke aktiv admission.
+
+Aktiv prioritet er fortsat BM færdig først; ingen ny WM-sammenligning.
+Vejleder M254/legacy og F/WM-kilder/budgetter bevares. Ti egne gamle M254-
+forwards genbruges, ti nye FV-forwards måles, fem coupled EM-noder og fire
+endpoint-opdateringer gemmes. Alle registrerede2h-numeriske gates består:
+Jfine M254 .003715517464, FV .003715309811, forskel2.07653147e-7;
+EM .003673709879 er et deskriptivt samplemiddel. Maxfine M254/FV-posterior
+conditional-L1 .00165428517<.05. Missing-opdateringer bevarer arrays eksakt.
+
+Første EM-node stoppede ved JSON-metadata inf; failed source/raw/charge bevares.
+Særskilt registreret fortsættelse genbrugte alle completed FV-receipts,
+gentog kun ugemt EM-node0 og udførte resten; native max_step er uændret.
+Råreview38 completed receipts rekonstruerer EM-pathcosts med maxfejl0 og
+posteriorweights fra hvert grids egne priors. To readonly auditorfejl og
+rettelser er bevaret; ingen modelreplay til review. Begge fulde rå-ZIP'er
+og frosne sourcecommits er gemt med identiteter/hashes.
+
+Vigtigt nyt forbehold: initial/Brownian-seedrækker overlapper; noise-seed
+matcher selected truth-initial. Diagonal-SE .0000940481 er derfor ikke
+uafhængigt certificeret. Punkt-y er kun fælles numerisk fixture; generativ
+uafhængig støj og fuld stochastic_accept er ikke valideret. Ingen auto-rerun.
+
+Samlet nycharge112.942121780s inkl.fejl/eksport/ekstra review; G-debit
+1347.654245114s, rest452.345754886s af1800. Ingen optimizer eller døgnadmission.
+Næste: disjunkte RNG-roller og særskilt registreret budget for resterende
+BM-G7-policy/kvadratur/døgnjobgraf. Gamle midpoints er ikke finere kvadratur;
+41.1min M254-only-lineærillustration er ikke målt24h-rate/bound.
+Sol High; ingen lokal kommando nu. Skøn2–4h yderligere G7-implementation/
+review betinget af solver/budgetadmission; compute er endnu ukendt.
+Læs [matematik, kodevalg, råresultater og resterende arbejde](G7_AUXILIARY_MEASUREMENT_REVIEW.md).
+Følgende G-statusafsnit er historik.
+
+## G7: auxiliary-budget og integrationsdesign færdigt, 7. oktober
+
+Deterministisk BM/WM med bevaret døgnforbrug forbliver primær; færdige
+fits/policies og råevidens genbruges. Supervisor M254/legacy og F/WM bevares.
+Næste måleforsøg er konkret designet som neutral12→14h: genbrug de ti
+gemte M254-noder, nye egne FV257/FV513-forwards, coupled EM256/node og
+samme nye syntetiske endpoint-observation på fire backend/grids.
+Ingen M254-forward, optimizer eller nyt G8-filter i det foreslåede scope.
+Maks200s =150 worker +30 stop/eksport +20 review; jobreservationer130s,
+workerheadroom20s. Reservationer er stoprammer, ikke målte rates/bounds.
+Read-only restore med fuld gammel kontrakt/ny setupcharge og ny launcher-
+provenance skal implementeres og sourcefryses før separat præregistrering.
+launch_ready=false; scope er endnu IKKE udført/charged. Ingen auto-retry.
+
+Vigtigt: gemte outputmidtpunkter giver ikke gratis kvadraturforfining;
+gennemsnit af to midpoint-costs reproducerer blot samme sum. En ny
+quadraturpartition kræver eget forwardjob/kontrakt og forbliver ukendt.
+14-rækkers døgnplan og gates bevares; 2h-demo kan ikke give24h-admission.
+Ingen sammenligning af J fra den analytiske2h-fixture med januarens24h-par.
+
+Én stdlib struktur-/aritmetikkontrol består44 checks på.010431s; ingen
+native import, modelrun eller gamle tests. Design/reviewcharge10s:
+G1234.712123334s, rest565.287876666s. F/WM-budgetter er uændrede.
+Næste: implementér/review restore+auxiliary-launcher, registrér og mål
+det konkrete neutrale scope; derefter beslut policy-/døgnbudget på faktisk evidens.
+Sol High; ingen lokal kommando nu.
+Læs [design, udledning, budget og resterende arbejde](G7_AUXILIARY_INTEGRATION_DESIGN.md).
+Følgende G-statusafsnit er historik.
+
+## G7: eget M254-nodeforsøg gennemført, 7. oktober
+
+10 native nodeforwards på gemte EGNE hour12-posteriorer, neutral12→14h,
+M254513 først37.961317s, M254257 derefter16.828349s inkl.nodefiler/reduktion.
+Jfine=.003715517464, Jcoarse=.003741963573; Jfejl2.644611e-5<.001.
+Conditional/marginal slut-L1 .011187752/.005225045<.05; alle korte
+moment/CDF/kvantil- og projektiongates består. Ingen FV/EM/optimizer/feedback.
+Første invocation stoppede før forward ved bit-exact basisreload; original
+fejl/source/input/ledger er bevaret. Optional verified-byte loader bevarer
+gamle basisværdier/c og default strict guard; machine-roundoff-familiecheck
+med eksakt owned-bytehash er begrundet. Ingen model-/acceptgate lempet.
+Ét loadercheck består1.609s; gamle node-/modeltests ikke genkørt.
+12 receipts og41 sourcehashes råreviewet; gemte demandmomenter/J rekonstrueres
+identisk uden nye forwards. Fuld data-ZIP er gemt separat og hashverificeret.
+Native source/kode og originalinputbytes er gemt i Git; vejleder M254 bevares.
+G-debit1224.712123s, rest575.287877s; begge forsøg medregnet, F/WM uændrede.
+2h-rates giver ingen24h-admission. En ren lineær M254-cross-illustration er
+41.1min før andre jobs, ikke målt døgnrate/bound. Ingen automatisk større run.
+Næste er budgetteret FV/EM/feedback-/policyintegrationdesign med recovery,
+derefter eksplicit døgnadmission. Sol High; ingen lokal kommando nu.
+Læs [forsøg, matematik, råreview og resterende arbejde](G7_NODE_RUNTIME_REVIEW.md).
+Følgende G-statusafsnit er historik.
+
+## G7: egne nodecheckpoints implementeret, 7. oktober
+
+Durable nodejobs bevarer hver rho-nodes egne M254-c/posterior, eksakt
+prisplan og original transportpartition. Atomiske råbaner og write-ahead
+reservationer genbruges efter crash; afbrudte noder kræver eksplicit retry
+med bevaret charge. Persistent kampagne- og studycap; én OS-locked ejer.
+36 kildehashes/full origin/numerik/versioner indgår i kontrakten.
+Native mixturekald, bankreduktion og assimilate er AST-identiske med før.
+Én fokuseret stubtest består; anden invocation efter konkret caprettelse
+består også. Begge receipts bevares;4.129374s process i alt. Ingen faktisk
+M254/FV/EM-forward, nye fits eller gamle numeriske checks genkørt.
+Komplet14-jobgraf inkl.FVfine/quad/coupledEM/feedback/setup/export er gemt.
+Alle rates er ukendte; budget_admitted/scientific_accept/optimizer=false.
+Kooperativ deadline er ikke hard kill; næste launcher kræver stopreserve.
+Vejlederbasis og legacy bevares; F/WM-kilder og budgetter er uændrede.
+G-debit1118.580078s, rest681.419922s efter konservativ20s scopecharge.
+Næste er særskilt kort registreret faktisk måling fra hashverificerede
+egne origins, ingen automatisk gentagelse af den gamle60s-pilot.
+Sol High; ingen lokal modelkommando nu.
+Læs [matematik, crashmekanik, budget og faktisk kontrol](G7_NODE_JOB_REVIEW.md).
+Følgende G-statusafsnit er historik.
+
 ## G7: deterministisk døgnkontrol med bevaret forbrug, 7. oktober
 
 Fælles frossent januarpar og lineær BM-reference er optimeret over fire6h-

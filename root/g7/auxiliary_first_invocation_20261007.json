@@ -1,0 +1,17 @@
+{
+  "schema": "g7-neutral-auxiliary-invocation-v1",
+  "worker_wall_seconds": 12.993654966999202,
+  "ledger_increment": 9.665917149000052,
+  "native_charge": 12.993654966999202,
+  "hard_stop": false,
+  "returncode": 0,
+  "review_charge": 20,
+  "scientific_accept": false,
+  "full_day_budget_admitted": false,
+  "actual_optimizer_started": false,
+  "export_seconds": 4.476094963000833,
+  "scope_charge": 37.469749930000035,
+  "campaign_debit": 1272.181873264,
+  "remaining_seconds": 527.8181267360001,
+  "within_scope_ceiling": true
+}

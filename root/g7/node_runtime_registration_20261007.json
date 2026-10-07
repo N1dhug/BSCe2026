@@ -1,0 +1,74 @@
+{
+  "schema": "g7-owned-node-runtime-registration-v1",
+  "date": "2026-10-07",
+  "source_parent": "92ddd9d63cb579964fa927324b6e846e22e5340f",
+  "prior_debit": 1118.580078,
+  "campaign_ceiling": 1800,
+  "scope_ceiling": 200,
+  "worker_seconds": 150,
+  "stop_export_reserve": 30,
+  "review_charge": 20,
+  "order": [
+    "m254_513",
+    "m254_257"
+  ],
+  "horizon": [
+    12,
+    14
+  ],
+  "price_edges": [
+    12,
+    13,
+    14
+  ],
+  "prices": [
+    0.5,
+    0.5
+  ],
+  "objective_max_step": 0.010416666666666666,
+  "solver_steps": {
+    "257": 0.010416666666666666,
+    "513": 0.005208333333333333
+  },
+  "per_node_reservation": {
+    "257": 5,
+    "513": 20
+  },
+  "setup_reservation": 20,
+  "input_files": {
+    "fine": {
+      "path": "g8_m254_refine_run/origin_12.json",
+      "sha256": "746e45c4603e724824687e535c2e7235f824e19ecbb6adcdd1c6ee0c0a7593e0"
+    },
+    "coarse": {
+      "path": "g8_m254_run/origin_12.json",
+      "sha256": "1cd343248607cc27baa61d4e52303fbfbf5c08ca7674fac0b9b3dce43649b3bc"
+    }
+  },
+  "target": "original G8 analytic B=.5+.1sin(2pi*t/24), fixed A=.5",
+  "reuse": "Existing own hour12 posterior/c/basis/weights, no prior reconstruction, refit, regrid or completed-filter rerun",
+  "controls": "BLAS1, one serial campaign writer, exact node receipts, no automatic retry",
+  "rates": "Two-hour complete banks only; no 2h-to-24h rate admission; setup and export separate",
+  "gates": {
+    "objective": "max(.001,.02*abs(fineJ))",
+    "state_mean": 0.005,
+    "demand_mean": 0.005,
+    "state_variance": 0.002,
+    "demand_variance": 0.002,
+    "posterior_mass_l1": 0.05,
+    "projection_l1": 0.05,
+    "mass": 1e-9,
+    "checkpoint": 1e-10
+  },
+  "excluded": [
+    "optimizer",
+    "new FV or EM run",
+    "feedback",
+    "historical demand",
+    "future observations in objective",
+    "stochastic energy-neutral extension",
+    "full-day/scientific acceptance"
+  ],
+  "charge_rule": "max(worker wall time, reserved/actual ledger increment) + measured export + 20s review; hard-loss reserve retained",
+  "resume": "Completed node files reusable only with exact contract and original single-owner ledger; any interrupted node needs separately authorized explicit retry; no retry in this scope"
+}

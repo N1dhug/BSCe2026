@@ -1,0 +1,8 @@
+{
+  "seconds": 1.6089887630000703,
+  "returncode": 0,
+  "stdout": "",
+  "stderr": ".\n----------------------------------------------------------------------\nRan 1 test in 0.838s\n\nOK\n",
+  "source_commit": "872e77714d1bc5848d8dce5b1fac058417b796cf",
+  "scope": "basis byte/family loader only, no propagation"
+}

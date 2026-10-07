@@ -1,0 +1,291 @@
+{
+  "schema": "g7-bounded-price-quadrature-design-v1",
+  "date": "2026-10-07",
+  "source_base": "db44080fb2cd2f0833c203632ec86bfbd8bf1960",
+  "status": "design complete; launcher and separate pre-run registration still required",
+  "campaign": {
+    "ceiling_seconds": 1800,
+    "prior_debit_seconds": 1501.8671911449997,
+    "addendum_preparation_charge_seconds": 6,
+    "debit_after_preparation_seconds": 1507.8671911449997,
+    "remaining_after_preparation_seconds": 292.13280885500035
+  },
+  "proposal": {
+    "scope_ceiling_seconds": 292,
+    "worker_hard_timeout_seconds": 264,
+    "stop_export_reserve_seconds": 20,
+    "raw_review_reserve_seconds": 8,
+    "jobs": [
+      {
+        "id": "verify_reuse",
+        "count": 1,
+        "reservation_each_seconds": 12,
+        "depends_on": [],
+        "new_forwards": 0
+      },
+      {
+        "id": "restore_setup",
+        "count": 4,
+        "reservation_each_seconds": 7,
+        "depends_on": [
+          "verify_reuse"
+        ],
+        "new_forwards": 0
+      },
+      {
+        "id": "coarse_candidates",
+        "count": 10,
+        "reservation_each_seconds": 6,
+        "depends_on": [
+          "restore_setup"
+        ],
+        "new_forwards": 10
+      },
+      {
+        "id": "select_coarse",
+        "count": 1,
+        "reservation_each_seconds": 1,
+        "depends_on": [
+          "coarse_candidates"
+        ],
+        "new_forwards": 0
+      },
+      {
+        "id": "fine_selected",
+        "count": 5,
+        "reservation_each_seconds": 12,
+        "depends_on": [
+          "select_coarse"
+        ],
+        "new_forwards": 5
+      },
+      {
+        "id": "quadrature_selected",
+        "count": 5,
+        "reservation_each_seconds": 18,
+        "depends_on": [
+          "fine_selected"
+        ],
+        "new_forwards": 5
+      },
+      {
+        "id": "fv_selected",
+        "count": 5,
+        "reservation_each_seconds": 2,
+        "depends_on": [
+          "quadrature_selected"
+        ],
+        "new_forwards": 5
+      },
+      {
+        "id": "reduce_review",
+        "count": 1,
+        "reservation_each_seconds": 2,
+        "depends_on": [
+          "fv_selected"
+        ],
+        "new_forwards": 0
+      }
+    ],
+    "total_job_reservations_seconds": 263,
+    "worker_unallocated_headroom_seconds": 1,
+    "maximum_new_forwards": 25,
+    "remaining_after_maximum_scope_seconds": 0.13280885500034856,
+    "reservations_are_measured_bounds": false,
+    "unknown_policy_and_quadrature_runtime": true,
+    "automatic_retry": false
+  },
+  "problem": {
+    "horizon": [
+      12,
+      14
+    ],
+    "price_edges": [
+      12,
+      13,
+      14
+    ],
+    "nodes": 5,
+    "baseline": "G8 analytic .5+.1sin(2pi*t/24)",
+    "target": "G8 fixed .5",
+    "frozen_bank_weights": true,
+    "own_grid_origins": true,
+    "neutral_prices": [
+      0.5,
+      0.5
+    ],
+    "candidate_deltas": [
+      0,
+      -0.2,
+      0.2
+    ],
+    "candidate_prices": [
+      [
+        0.5,
+        0.5
+      ],
+      [
+        0.3,
+        0.7
+      ],
+      [
+        0.7,
+        0.3
+      ]
+    ],
+    "new_non_neutral_candidates": 2,
+    "candidate_family": "u(delta)=(.5+delta,.5-delta)",
+    "price_bounds": [
+      0,
+      1
+    ],
+    "equal_mean_price_is_not_energy_equality": true,
+    "stochastic_energy_equality_added": false,
+    "terminal_weight": 0,
+    "smoothing_weight": 0,
+    "coarse_cells": 257,
+    "fine_cells": 513,
+    "objective_step_hours": 0.010416666666666666,
+    "coarse_solver_step_hours": 0.010416666666666666,
+    "fine_solver_step_hours": 0.005208333333333333,
+    "quadrature_step_hours": 0.005208333333333333,
+    "quadrature_solver_step_hours": 0.005208333333333333
+  },
+  "selection": {
+    "rule": "argmin coarse original-partition J over all three complete policies; exact tie order neutral,delta=-.2,delta=+.2",
+    "only_coarse_data_used": true,
+    "fine_or_fv_reselection": false,
+    "neutral_winner_reuses_existing_same_contract_fine_and_fv": true,
+    "no_fallback_to_incomplete_bank": true,
+    "fine_validation_failure": "reject selected-policy acceptance; retain neutral reference without relabelling it optimized"
+  },
+  "acceptance": {
+    "forward_comparison": "unchanged compare_forward including abs(Jleft-Jright)<=max(.001,.02*abs(Jright)) and existing state/distribution gates",
+    "tolerances": {
+      "source": "unchanged src/exe/run_model/bm_1/g8.py TOLERANCES, src/exe/run_model/bm_1/g7.py and root/G7_OWNED_HANDOFF_REVIEW.md",
+      "objective": "max(.001,.02*abs(fine_J))",
+      "conditional_mass_l1": 0.05,
+      "marginal_mass_l1": 0.05,
+      "projection_l1": 0.05,
+      "bank_weight": 0.03,
+      "log_evidence": 0.05,
+      "em_fp": "max(.001,4*stratified_SE)",
+      "coupled_em_cost_difference": 0.001,
+      "raw_em_boundary_violations": 0,
+      "state_mean": 0.005,
+      "demand_mean": 0.005,
+      "state_variance": 0.002,
+      "demand_variance": 0.002,
+      "state_cdf": 0.03,
+      "demand_cdf": 0.03,
+      "state_quantile": 0.02,
+      "demand_quantile": 0.02,
+      "mass": 1e-09,
+      "checkpoint": 1e-10
+    },
+    "projection_cell_mass_l1": 0.05,
+    "required_pairs": [
+      "selected_M254257__selected_M254513",
+      "selected_M254513__selected_M254513_quadrature_refined",
+      "selected_M254513__selected_FV513"
+    ],
+    "improvement_claim": "Only original-partition fine-J improvement against original-partition neutral fine-J; gain must exceed sum of observed selected and neutral coarse/fine differences. Screening heuristic, not rigorous continuous-error bound.",
+    "full_candidate_optimality_claim": false,
+    "parameter_space_global_optimality_claim": false,
+    "policy_scientific_accept": false,
+    "em_candidate_validation": false,
+    "optimized_policy_feedback": false,
+    "historical_validation": false,
+    "full_day_budget_admitted": false
+  },
+  "reports": [
+    "J bias variance within/between and node costs",
+    "expected energy-gap integral(mu-B) on own costpartition",
+    "endpoint state mean and difference to neutral; no physical conserved-energy claim",
+    "coarse/fine cost error and refined-partition cost error separately",
+    "all probability/projection diagnostics and own-grid contracts",
+    "selection, neutral retained or rejected candidate and partial jobs",
+    "worker wall, conservative ledgerincrement, measured export and raw review; all failures retained"
+  ],
+  "reuse": {
+    "execution_commit": "872e77714d1bc5848d8dce5b1fac058417b796cf",
+    "data_archive_sha256": "ad730a148e770fffeeccdfcfff13af30fc33510d0bbcba9b988c15767af1e80d",
+    "coarse_bank_sha256": "caa95f7c3bf23479e4b99d511a979970c3489e64a01246704705328749848cbb",
+    "fine_bank_sha256": "ec1766b8cc90896420c50ac9a80df5451ed02e6e19c4df520ca9eb64f8051599",
+    "coarse_contract": "52478c32d21f3f1a9f910143143f7d0ae9b4979a88a33c73ab9347be823512e0",
+    "fine_contract": "3e5b9dc47d9befc02c89bf1b7f42ab6bb85443692857498bb8b226a8c6eaf725",
+    "read_only_previous_ledger": true,
+    "new_ledger_seed_includes_all_prior_charges": true,
+    "no_prior_reset": true,
+    "no_basis_change": true,
+    "no_refit": true,
+    "no_fv_coefficients_for_m254": true,
+    "historical_scope_only_no_new_m254_forward": true,
+    "new_policy_requires_new_forwards": true
+  },
+  "provenance": {
+    "native_source_manifest_sha256": "3b54e893e0a6f8310883d2610747607b470a2898858cc4396f4c9294c141a880",
+    "native_source_files": 41,
+    "original_input_files": {
+      "fine": {
+        "path": "g8_m254_refine_run/origin_12.json",
+        "sha256": "746e45c4603e724824687e535c2e7235f824e19ecbb6adcdd1c6ee0c0a7593e0"
+      },
+      "coarse": {
+        "path": "g8_m254_run/origin_12.json",
+        "sha256": "1cd343248607cc27baa61d4e52303fbfbf5c08ca7674fac0b9b3dce43649b3bc"
+      }
+    },
+    "coarse_contract": "52478c32d21f3f1a9f910143143f7d0ae9b4979a88a33c73ab9347be823512e0",
+    "fine_contract": "3e5b9dc47d9befc02c89bf1b7f42ab6bb85443692857498bb8b226a8c6eaf725",
+    "receipt_adoption_manifest_sha256": "69c09a17835d5089d8fd3fe2df4219c220ac4bc070fe573d73e7c136643f7f6d",
+    "receipt_recovery_source_sha256": "322202ea83c64470870f091227fc49442a8a665c1ad13fa6beb96a1998b60172",
+    "restore_auxiliary_source_sha256": "6adf6861d6b057b88a361e9954feba2db83a0d043781ed58a0bb3ce36eb05a8e",
+    "original_journal_read_only": true,
+    "original_active_store_resume_permitted": false,
+    "current_launcher_source_manifest_separate_from_frozen_native_contract": true
+  },
+  "measured_references": {
+    "m254_coarse_bank_seconds": 16.828349174999857,
+    "m254_fine_bank_seconds": 37.96131655399995,
+    "m254_original_objective_difference": 2.6446109606737163e-05,
+    "fv_fine_bank_stage_seconds": 3.906186455002171,
+    "new_policy_and_quadrature_rates_measured": false
+  },
+  "launch_ready": false,
+  "pre_run_registration_complete": false,
+  "numerical_run_performed": false,
+  "actual_optimizer_started": false,
+  "scientific_accept": false,
+  "full_day_budget_admitted": false,
+  "remaining_before_launch": [
+    "Implement parent/worker for bounded search; GuardedNodeJobStore in fresh scope and current full debit",
+    "Rehydrate four own-contract evaluators; pin original inputs/native sources and new adapter/launcher separately",
+    "Freeze candidate list/tie rule, versions, all jobs and false acceptflags in a separate registration",
+    "Parent hard timeout; partial export; charge=max(worker-wall,ledgerincrement)+export+review; no auto-retry",
+    "After any further implementation/check charge, re-admit320s against current remainder; no new allowance"
+  ],
+  "excluded": [
+    "new EM paths",
+    "optimized-policy observation/feedback",
+    "continuous optimizer/global optimum proof",
+    "new energy constraint",
+    "historical interval operator",
+    "24h/week forecast admission",
+    "F4/WM runs"
+  ],
+  "addendum": {
+    "previous_scope_failed_before_forwards": true,
+    "prior_invocation_sha256": "90c9912cd6dbc4a3eb09a2dc11e23cb18743fb96409ad38274e42943785a7c67",
+    "reason": "Avoid redundant M254 receipt parse; authenticate all adopted bytes before deserializing only reused FV payloads. Increase verify cap12s, setup7s; unchanged forward caps/candidates/gates; smaller export/review reserves.",
+    "explicit_new_scope_decision": true,
+    "old_scope_resume_permitted": false,
+    "original_design_campaign_snapshot": {
+      "ceiling_seconds": 1800,
+      "prior_debit_seconds": 1431.0827404279985,
+      "design_review_charge_seconds": 10,
+      "debit_after_design_seconds": 1441.0827404279985,
+      "remaining_after_design_seconds": 358.9172595720015
+    }
+  }
+}
