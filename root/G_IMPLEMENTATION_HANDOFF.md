@@ -1,3 +1,62 @@
+## G7: recovery afsluttet; fuld quadbank, åben projektionsaudit, 7. oktober
+
+Nyeste status; de ældre partial-statusser nedenfor er bevaret som historik.
+Johan godkendte højst110 ekstra sekunder. Separat præregistreringf208bbc3
+blev committed og læst tilbage før invocation. Kun quadnode3/4 er nye;
+alle13 completed forwards genbruges read-only. Hele femknudebanken er
+reduceret. Coarse/fine, fine/384-midpoint og fine/FV består alle uændrede
+terminal-/J-gates; J-forskelle2.64461e-5,5.95835e-9,2.07653e-7.
+Neutral[.5,.5] er bedst af tre coarse-planer; ingen kontrolforbedring eller
+kontinuert global optimalitet. Middelfejl og within/between-varians kommer
+fra samme forwards. Tidligere quadnode0/1/2 mangler deres tabte projection-
+fit auditmaxima: quad_bank_complete=true, forward_gates_passed=true,
+men numerical_validation/scientific/full-day=false. Massechecks erstatter
+ikke den manglende projection-L1. Ingen completed forward genkørt.
+Ekstra charge42.195763999s inkl10 forberedelse/10 rawreview-reserve;
+G1841.337271859s af godkendt1910, rest68.662728141s. Alle gamle charges
+bevares. Fuld ZIP er gemt og CRC/SHA-verificeret efter rettet eksport.
+PR114 er merged; PR115 er åben og ikke mergegodkendt. Næste kodearbejde er
+atomisk projectionaudit per node før nye forsøg; resterende tid er ingen
+automatisk admission. Direkte WM-sammenligning venter til BM er færdig.
+Læs [matematik, resultat, begrænsning og budget](G7_COMPLETE_QUAD_RECOVERY_REVIEW.md).
+
+## G7: PR114 merged, coarse-prissøgning færdig; quad partial, 7. oktober
+
+PR114 merge66991a0 er verificeret:11 reviewede blobs, ingen src/tests/
+workflowændringer og nyere WM4 bevaret. PR115 har launcher, separate
+præregistreringer og rettelser til verifikation/inputpreflight.
+To kontrollerede setupstop er bevaret med charges; nul forwards i dem.
+Tredje scope gemmer10 nye coarse-forwards: neutral [.5,.5] J=.003741964
+vinder mod [.3,.7] .017303376 og [.7,.3] .010655853. Ingen global optimalitet
+eller forbedring påstås. Middelfejl/varians rapporteres fra samme forwards.
+Tre af fem nye quad-forwards completed; node3runningreserve18s, node4unstarted.
+Parent-session tabt; årsag ukendt og ingen final wallmåling.19complete
+receipts/13nye forwards er rawreviewverificeret3.807s uden propagation.
+Journal/arrays/source/inputs er bevaret; gammel scope må ikke genoptages.
+Fuldt tabsscope273s bevares: G1799.141507860s af1800; rest.858492140s.
+scientific/quad/full-day=false. PR115 og fuldt råarkiv dokumenterer partials.
+Næste er særskilt recovery af kun quadnode3/4 og fuld reduktion, hvis et
+nyt konkret budgetforslag110s ekstra godkendes. Forslaget er gemt, ikke
+admitteret/udført. Bevar13complete forwards og alle gamle charges.
+F/WM og direkte sammenligning forbliver uden for den aktive scope.
+Læs [matematik, resultater, fejlrettelser og budget](G7_BOUNDED_LAUNCHER_REVIEW.md).
+
+## G7: PR114 merged; launcher og særskilt præregistrering færdige, 7. oktober
+
+PR114 merge66991a0 bevarer alle11 reviewede blobs og nyere main/WM4; ingen
+src/tests/workflows ændres. Gamle rådata og41 native sources er gendannet
+og hashverificeret. Ny parent/worker bruger opt-in GuardedNodeJobStore,
+fulde kontrakter, read-only adoption, én invocation og270s hardstop.
+Én stdlibcheck:27 checks,.042779s, nul numerical imports/forwards.
+Gamle kontroller gentages ikke. Matematik/totalvarians/selection/quad er
+dokumenteret sammen med antagelser og begrænsninger.
+Recovery/launchercharge35s: G1476.082740428s; rest323.917259572s.
+320s scope re-admitteret, endnu ikke charged; maxrest3.917259572s.
+Separate registration/launch_ready=true; numerical/scientific/full-day=false.
+Registreringen commits før én faktisk kørsel. Ingen automatisk retry,
+energiligning, kandidat-EM/feedback, F/WM eller døgnadmission i scope.
+Læs [launcher, matematik, kontrol og budget](G7_BOUNDED_LAUNCHER_REVIEW.md).
+
 ## Aktiv afgrænsning: BM færdig først, WM-sammenligning bagefter
 
 Johan, 7. oktober 2026 kl.16:25: G-arbejdet skal udvikle og færdiggøre BM.

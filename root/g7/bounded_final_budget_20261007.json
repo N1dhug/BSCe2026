@@ -1,0 +1,16 @@
+{
+  "schema": "g7-bounded-parent-loss-budget-v1",
+  "prior_debit": 1526.1415078599962,
+  "unknown_worker_charge": 245,
+  "retained_export_reserve": 20,
+  "retained_review_charge": 8,
+  "scope_charge": 273,
+  "campaign_debit": 1799.1415078599962,
+  "remaining_seconds": 0.8584921400038183,
+  "campaign_ceiling": 1800,
+  "all_prior_charges_preserved": true,
+  "no_refund_of_parent_loss_reserve": true,
+  "worker_wall_not_measured": true,
+  "no_automatic_retry": true,
+  "numeric_scientific_full_day_accept": false
+}
