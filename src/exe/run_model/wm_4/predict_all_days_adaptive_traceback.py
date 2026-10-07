@@ -5,9 +5,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.fit_daily import DAY_HOURS, aligned_wm4_data, day_start
+from src.exe.run_model.wm_4.fit_daily import DAY_HOURS, aligned_wm4_data, day_start, model_input
 from src.exe.run_model.wm_4.predict_all_days_optimized import END_DAY, START_DAY, fit_history_optimized, historical_optimized_state
 from src.exe.run_model.wm_4.predict_daily import deviation_metrics, prediction_setup
+from src.params.wm_4 import optimized_qp_params
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -26,14 +27,24 @@ def normalized_tracebacks(values):
     return weeks
 
 
-def candidate_result(frame, day, weeks, steps_per_hour, max_state_iter=50, state_tol=1e-8):
+def candidate_result(frame, day, weeks, steps_per_hour, oracle_state=False, max_state_iter=50, state_tol=1e-8):
     output_model, output_fit, fit, _ = fit_history_optimized(
         frame, day, weeks, steps_per_hour,
         max_state_iter=max_state_iter, state_tol=state_tol,
     )
     _, actual, U, Time, model, fine_index = prediction_setup(frame, day, output_model, steps_per_hour)
-    init = historical_optimized_state(fit)
-    state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+    if oracle_state:
+        prediction_data, fine_index, _, _ = model_input(frame, day, steps_per_hour, 0, output_model)
+        oracle = optimized_qp_params(model).optimize_prediction_initial_state(prediction_data, fit["r"])
+        init = np.asarray(oracle["init_cond"], dtype=float)
+        state = oracle["deterministic_state"]
+        state_mode = "oracle"
+        prediction_state_fit_mse = float(oracle["loss"])
+    else:
+        init = historical_optimized_state(fit)
+        state = model.deterministic_solver(init, {"U": U, "PE": U, "Time": Time, "r": fit["r"]})
+        state_mode = "historical_median"
+        prediction_state_fit_mse = np.nan
 
     hourly_index = np.arange(DAY_HOURS, dtype=int) * int(steps_per_hour)
     observed = actual["I"].to_numpy(dtype=float)
@@ -49,6 +60,7 @@ def candidate_result(frame, day, weeks, steps_per_hour, max_state_iter=50, state
         "state_iterations": int(fit["state_iterations"]),
         "r_F": r[0], "r_U": r[1], "r_R": r[2],
         "F_0": init[0], "R_0": init[1],
+        "prediction_state_mode": state_mode, "prediction_state_fit_mse": prediction_state_fit_mse,
         "wm4_mse": wm4["mse"], "wm4_rmse": wm4["rmse"], "wm4_mae": wm4["mae"], "wm4_bias": wm4["bias"],
         "O_mse": output["mse"], "O_rmse": output["rmse"], "O_mae": output["mae"], "O_bias": output["bias"],
         "O_fit_mse": float(output_fit["mse"]),
@@ -64,7 +76,7 @@ def candidate_result(frame, day, weeks, steps_per_hour, max_state_iter=50, state
     return candidate, hourly
 
 
-def select_day(frame, day, tracebacks, steps_per_hour, selection_metric="historical_mse", max_state_iter=50, state_tol=1e-8):
+def select_day(frame, day, tracebacks, steps_per_hour, selection_metric="historical_mse", oracle_state=False, max_state_iter=50, state_tol=1e-8):
     if selection_metric not in SELECTION_METRICS: raise ValueError(f"selection_metric must be one of {SELECTION_METRICS}.")
     candidates, hourly_by_weeks, failures = [], {}, []
 
@@ -72,6 +84,7 @@ def select_day(frame, day, tracebacks, steps_per_hour, selection_metric="histori
         try:
             candidate, hourly = candidate_result(
                 frame, day, weeks, steps_per_hour,
+                oracle_state=oracle_state,
                 max_state_iter=max_state_iter, state_tol=state_tol,
             )
             candidates.append(candidate); hourly_by_weeks[int(weeks)] = hourly
@@ -99,7 +112,7 @@ def select_day(frame, day, tracebacks, steps_per_hour, selection_metric="histori
     return selected, hourly_by_weeks[selected_weeks], table, failures
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, tracebacks=DEFAULT_TRACEBACK_WEEKS, steps_per_hour=60, selection_metric="historical_mse", fail_fast=False, max_state_iter=50, state_tol=1e-8):
+def run_all_days(frame, start=START_DAY, end=END_DAY, tracebacks=DEFAULT_TRACEBACK_WEEKS, steps_per_hour=60, selection_metric="historical_mse", oracle_state=False, fail_fast=False, max_state_iter=50, state_tol=1e-8):
     start, end = day_start(start), day_start(end)
     if end < start: raise ValueError("end must be on or after start.")
     tracebacks = normalized_tracebacks(tracebacks)
@@ -109,7 +122,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, tracebacks=DEFAULT_TRACEBA
         try:
             selected, hourly, candidates, day_failures = select_day(
                 frame, day, tracebacks, steps_per_hour,
-                selection_metric=selection_metric,
+                selection_metric=selection_metric, oracle_state=oracle_state,
                 max_state_iter=max_state_iter, state_tol=state_tol,
             )
             selected_rows.append(selected); hourly_frames.append(hourly); candidate_frames.append(candidates); failures.extend(day_failures)
@@ -190,6 +203,7 @@ def main():
     parser.add_argument("--traceback-weeks", type=int, nargs="+", default=DEFAULT_TRACEBACK_WEEKS, help="Candidate counts of corresponding historical weekdays. Default: 3 4 5 6 7 8.")
     parser.add_argument("--selection-metric", choices=SELECTION_METRICS, default="historical_mse", help="Historical-only criterion used to select the traceback. Default: historical_mse.")
     parser.add_argument("--steps-per-hour", type=int, default=60)
+    parser.add_argument("--oracle-state", action="store_true", help="Use the prediction-day oracle [F0,R0] for every traceback candidate, isolating parameter-fit quality from initial-state estimation.")
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
     parser.add_argument("--fail-fast", action="store_true")
@@ -200,7 +214,7 @@ def main():
     frame, _ = aligned_wm4_data("MED")
     selected, hourly, candidates, failures, skipped = run_all_days(
         frame, args.start_day, args.end_day, tracebacks, args.steps_per_hour,
-        selection_metric=args.selection_metric, fail_fast=args.fail_fast,
+        selection_metric=args.selection_metric, oracle_state=args.oracle_state, fail_fast=args.fail_fast,
         max_state_iter=args.max_state_iter, state_tol=args.state_tol,
     )
 
