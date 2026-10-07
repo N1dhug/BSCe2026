@@ -121,3 +121,51 @@ Nodereceipts gemmer fulde arrays; kontrakter og selection gemmes separat.
 worker_summary/progress viser fuldførte og partiale jobs. invocation indeholder
 faktisk debit og eksportmåling; archive_index fastholder ZIP-hash og den
 efterfølgende final-invocation-hash uden at omskrive ZIP'ens tidligere bytes.
+
+## Første stop og særskilt, reviewet tillæg
+
+Registreringdf877b91e772a5a4a78d29f6c5b6c83b283a4863 blev committed før
+invocation. Read-only verifikationen ramte5s-cappen. Ingen evaluator-,
+candidate- eller forwardjob blev startet. Journalen er konsistent med én
+failed attempt og nul completed receipts; den gamle scope kan ikke resumes.
+Workerwall5.780612s, ledger5.009154s, eksport.003839s, bevaret review20s:
+scope25.784450717s; G1501.867191145s, rest298.132808855s.
+Returncode0 betyder her kun håndteret stop, ikke et completed forsøg.
+Workerens initiale reused10/5-counters var planlagte counts; ingen completed
+adoption påstås for dette stop. Tillægget tæller dem først efter succes.
+Stopråarkiv cc231d3406480565103d34e51b444d558cedc787e5b04e03afd46d6f5becc4fa
+er bevaret. Råreview bestod en tom receipt-journal på.000585s; ingen costs
+eller numerik blev valideret.
+
+En særskilt eksplicit reviewbeslutning opretter en ny scope; ingen restart
+af den gamle. Native equations, inputs, forwardcaps, candidates, tie-rule
+og sciencegates ændres ikke. To rent read-only ineffektiviteter fjernes:
+M254-receipts blev JSON-parset to gange; nu bruges samme pinned parse med
+uændret canonical payloadhashkontrol. For adoption autentificeres alle24
+receipts mod de eksternt reviewede fulde bytehashes, hvorefter kun de fem
+FV-payloads faktisk brugt i scope parses og semantisk verificeres.
+
+Dette er hashtransitivitet: hvis den fuldt reviewede fil havde hash h og
+den aktuelle fil også har h, regnes dens bytes for identiske under SHA256's
+alminelige collision-resistance-antagelse. Job-/payloadchecks ved faktisk
+genbrug bevares. Eager payloadvalidation er fortsat default; byte-only
+prevalidation er et eksplicit sourcefrosset valg i den nye G-snapshothelper.
+Den fælles gamle guardhelper og gamle receipts ændres ikke.
+
+Én ny fokuseret stdlibkontrol(1.312102s) verificerer41 sources, originale
+metadata og10 M254-job/payloadhashes, alle24 adoption-filehashes, alle fem
+fulde FV-job/payloadhashes, ændrede receiptbytes-afvisning, tie-rule og
+budget. Nul numerical imports/forwards. Gamle guard-/solverchecks gentages
+ikke. Det er ikke fysisk eller modelnumerisk validering.
+
+Tillægget charges konservativt6s: G1507.867191145s; rest292.132808855s.
+Ny scope292s =264 worker+20 stop/eksport+8 råreview. Verifycap12s, fire
+setupcaps7s; øvrige nodecaps bevares6/12/18/2s. Jobreservationer263s plus
+1s deklareret worker-headroom. De er stoprammer, ikke målte worst-case
+bounds. Eksport/review reserverne er mindre; overshoot charges stadig
+fuldt og blokerer videre jobs. Ved fuldt scope-loft ville.132808855s blive
+tilbage. Ingen tidligere charge refunderes.
+
+Den nye registrering i root/g7/bounded_price_addendum_20261007 commits
+før den nye invocation. Det tidligere320s forsøg forbliver failed/zero-forward
+og historisk. Det oprindelige PR114-designsnapshot bevares uændret.

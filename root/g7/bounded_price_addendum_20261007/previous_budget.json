@@ -1,0 +1,12 @@
+{
+  "schema": "g7-bounded-addendum-budget-v1",
+  "prior_invocation_sha256": "90c9912cd6dbc4a3eb09a2dc11e23cb18743fb96409ad38274e42943785a7c67",
+  "prior_debit": 1501.8671911449997,
+  "addendum_preparation_charge": 6,
+  "campaign_debit": 1507.8671911449997,
+  "remaining_seconds": 292.13280885500035,
+  "campaign_ceiling": 1800,
+  "scope_ceiling": 292,
+  "scope_charged": false,
+  "all_prior_charges_preserved": true
+}
