@@ -1,0 +1,11 @@
+{
+  "status": "failed",
+  "scope": "Read-only auditor before raw job decoding; no model replay",
+  "reason": "KeyError: Windows timing path jobs\\0000.npz needed separator normalization for ZIP lookup",
+  "ledger_entry": {
+    "label": "native-development|historical-rate-raw-review",
+    "started_utc_seconds": 1791332036.035812,
+    "status": "closed",
+    "charged_seconds": 1.2253165600013745
+  }
+}

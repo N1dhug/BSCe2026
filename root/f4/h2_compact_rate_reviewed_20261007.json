@@ -1,0 +1,22 @@
+{
+  "schema": "f4-h2-linear-prefix-reviewed-v1",
+  "review_path": "files/output/bm_1/runs/estimation/f4_h2_compact_rates_pc_review_20261007.zip",
+  "review_sha256": "cb7a30a2712116082337248a35ec2644850585caf8b2abc97396a421eb91cffb",
+  "audit_path": "files/output/bm_1/runs/estimation/f4_h2_compact_rates_pc_audit_20261007.json",
+  "audit_sha256": "6701b50db4da7004dab951cacc8b06cecd002065afc05aaa16cefbe7ee6157dd",
+  "pc_source_commit": "2846a5474027101a45b43aa66e9ec111a8727628",
+  "packet_identity": "5c9acec9250e77cc3f8342ca01fec1df6c06bed285ec1a53f3da6e69471bcead",
+  "linear_prefix_precision_verified": true,
+  "full_window_precision_verified": false,
+  "nonlinear_rates_measured": false,
+  "H_charged_seconds": 1671.0408590929223,
+  "native_charged_seconds": 646.4097384530473,
+  "native_remaining_seconds": 253.59026154695266,
+  "protected_validation_seconds": 11840.471907224273,
+  "projected_total_hours_after_review": 7.851300607053747,
+  "historical_fit_ready": false,
+  "runtime_admitted": false,
+  "scientific_acceptance": false,
+  "blind_h3_acceptance": false,
+  "next_step": "Design one bounded nonlinear/full-window admission step within the remaining shared native allowance; no automatic optimizer or pilot replay."
+}

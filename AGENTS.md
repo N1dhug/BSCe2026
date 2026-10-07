@@ -1,5 +1,28 @@
 # Fælles projektkontekst
 
+## F4-H2: faktisk lineær PC-pilot råreviewet, 7. oktober
+
+Aktiv overdragelse: [historiske rates og næste admission-design](root/H2_COMPACT_RATE_REVIEW.md).
+PC-invocation120.03943 s består27 kronologiske timer (24 prior+3 observerede
+TRAIN), på egne base/fine states.64 sourcehashes matcher præcis Git-source;
+64 raw jobs/checkpoints, CF→CDF/kvantiler, moments/score og budgetgraf er
+verificeret uden FV/JIT-replay. Præcision gælder den lineære prefix alene.
+Maks state L1 .000493025, total log-scorefejl3.52e-6; alle uændrede gates består.
+
+Prissat49-kandidat/hele-valideringsgraf med faktor1.5 og alle auxiliaryjobs
+estimerer7.8513 h efter reviewcharges: under10 h, over4–6 h-målet. Linear
+prefix er ikke et nonlinear worst-case eller full-window precisionbevis;
+fit/runtime/scientific/blind-H3 admission forbliver false. Ingen optimizer.
+Original rå-ZIP, PC-ledger, Git-evidence, auditor/rapport og alle fejlcharges
+bevares; to read-only auditorrettelser er dokumenteret, ingen model-genkørsel.
+Ny seed: H1671.04086 s, native646.40974/900 s, rest253.59026 s,38 entries.
+Beskyttet validation-reserve hæves til11840.47191 s, uden dobbelttælling.
+
+Næste er et konkret nonlinear/full-window admission-design under den
+resterende allowance, ikke en gentagelse af prefix eller automatisk fit.
+Sol High til råreview/implementering; G/WM/frosne data/native kerner uændrede.
+Følgende statusafsnit er historik.
+
 ## F4-H2: fejlforsøgets ledger samlet, ny PC-prøve klar, 7. oktober
 
 Den komplette PC-ledger er modtaget som tekst og matcher alle 30 tidligere
