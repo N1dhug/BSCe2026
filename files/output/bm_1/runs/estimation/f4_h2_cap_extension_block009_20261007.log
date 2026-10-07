@@ -1,0 +1,62 @@
+{"curve": "linear", "grid": "base", "hour": 12, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 24, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 36, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 48, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 60, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 72, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "linear", "grid": "base", "hour": 84, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "base", "hour": 96, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "linear", "grid": "fine", "hour": 12, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 24, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 36, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 48, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 60, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 72, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "linear", "grid": "fine", "hour": 84, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "linear", "grid": "fine", "hour": 96, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 12, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 24, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 36, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 48, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 60, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 72, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 84, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "base", "hour": 96, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 12, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 24, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 36, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 48, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 60, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 72, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 84, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "d80426f014a2", "grid": "fine", "hour": 96, "new_jobs": 0, "status": "elapsed=1s; remaining~0s; total~1s"}
+{"curve": "0de6d8433d39", "grid": "base", "hour": 12, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "0de6d8433d39", "grid": "base", "hour": 24, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "0de6d8433d39", "grid": "base", "hour": 36, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "0de6d8433d39", "grid": "base", "hour": 48, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "0de6d8433d39", "grid": "base", "hour": 60, "new_jobs": 0, "status": "elapsed=1s; remaining=estimating; total=estimating"}
+{"curve": "0de6d8433d39", "grid": "base", "hour": 72, "new_jobs": 1, "status": "elapsed=5s; remaining~0s; total~5s"}
+{"stage": "fit", "pieces": 4, "objective_calls": 17, "new_pairs": 16, "objective": -39.069031844562694}
+{"curve": "5c8c72077f99", "grid": "base", "hour": 12, "new_jobs": 12, "status": "elapsed=5s; remaining~24s; total~28s"}
+{"curve": "5c8c72077f99", "grid": "base", "hour": 24, "new_jobs": 24, "status": "elapsed=9s; remaining~18s; total~27s"}
+{"curve": "5c8c72077f99", "grid": "base", "hour": 36, "new_jobs": 36, "status": "elapsed=40s; remaining~40s; total~1m 20s"}
+{"curve": "5c8c72077f99", "grid": "base", "hour": 48, "new_jobs": 48, "status": "elapsed=1m 13s; remaining~37s; total~1m 49s"}
+{"curve": "5c8c72077f99", "grid": "base", "hour": 60, "new_jobs": 60, "status": "elapsed=1m 59s; remaining~24s; total~2m 23s"}
+{"curve": "5c8c72077f99", "grid": "base", "hour": 72, "new_jobs": 72, "status": "elapsed=2m 40s; remaining~0s; total~2m 40s"}
+{"stage": "fit", "pieces": 4, "objective_calls": 18, "new_pairs": 17, "objective": -36.38027793325762}
+{"curve": "76ccd57be452", "grid": "base", "hour": 12, "new_jobs": 12, "status": "elapsed=5s; remaining~21s; total~25s"}
+{"curve": "76ccd57be452", "grid": "base", "hour": 24, "new_jobs": 24, "status": "elapsed=9s; remaining~17s; total~25s"}
+{"curve": "76ccd57be452", "grid": "base", "hour": 36, "new_jobs": 36, "status": "elapsed=44s; remaining~44s; total~1m 27s"}
+{"curve": "76ccd57be452", "grid": "base", "hour": 48, "new_jobs": 48, "status": "elapsed=1m 18s; remaining~39s; total~1m 56s"}
+{"curve": "76ccd57be452", "grid": "base", "hour": 60, "new_jobs": 60, "status": "elapsed=2m 04s; remaining~25s; total~2m 29s"}
+{"curve": "76ccd57be452", "grid": "base", "hour": 72, "new_jobs": 72, "status": "elapsed=2m 46s; remaining~0s; total~2m 46s"}
+{"stage": "fit", "pieces": 4, "objective_calls": 19, "new_pairs": 18, "objective": -40.21750904568288}
+{"curve": "25fe2b218522", "grid": "base", "hour": 12, "new_jobs": 12, "status": "elapsed=5s; remaining~21s; total~25s"}
+{"curve": "25fe2b218522", "grid": "base", "hour": 24, "new_jobs": 24, "status": "elapsed=9s; remaining~17s; total~26s"}
+{"curve": "25fe2b218522", "grid": "base", "hour": 36, "new_jobs": 36, "status": "elapsed=41s; remaining~41s; total~1m 21s"}
+{"curve": "25fe2b218522", "grid": "base", "hour": 48, "new_jobs": 48, "status": "elapsed=1m 13s; remaining~37s; total~1m 49s"}
+{"curve": "25fe2b218522", "grid": "base", "hour": 60, "new_jobs": 60, "status": "elapsed=2m 00s; remaining~24s; total~2m 24s"}
+{"curve": "25fe2b218522", "grid": "base", "hour": 72, "new_jobs": 72, "status": "elapsed=2m 41s; remaining~0s; total~2m 41s"}
+{"stage": "fit", "pieces": 4, "objective_calls": 20, "new_pairs": 19, "objective": -39.98959320608167}
+{"curve": "ff84ba302754", "grid": "base", "hour": 12, "new_jobs": 12, "status": "elapsed=5s; remaining~21s; total~26s"}
+{"curve": "ff84ba302754", "grid": "base", "hour": 24, "new_jobs": 24, "status": "elapsed=9s; remaining~17s; total~25s"}
