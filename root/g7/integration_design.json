@@ -1,0 +1,285 @@
+{
+  "schema": "g7-integrated-control-proposal-v2",
+  "status": "design-only-not-launch-registration",
+  "session_date": "2026-10-07",
+  "artifact_suffix": "20261008",
+  "main_base": "02812cab540b414d59ad7d06124e46d5bca039d2",
+  "native_execution_source": "872e77714d1bc5848d8dce5b1fac058417b796cf",
+  "audit_registration_commit": "b58434384f7c7ad7b452784835f1ca259a6406f5",
+  "problem": {
+    "initial_time_hours": 12,
+    "horizon_hours": 24,
+    "price_edges": [
+      12,
+      18,
+      24,
+      30,
+      36
+    ],
+    "price_bounds": [
+      0,
+      1
+    ],
+    "target": "native analytic constant A=.5",
+    "baseline": "unchanged native bm_1_distribution_panel.baseline",
+    "origin": "existing own G8 posterior at12 for each backend/grid; hashes required in actual launch registration",
+    "nodes": 5,
+    "terminal_weight": 0,
+    "smoothing_weight": 0,
+    "energy_equality_added": false,
+    "units": "normalized demand squared times hours"
+  },
+  "policies": [
+    "neutral",
+    "deterministic plug-in reference",
+    "stochastic M254 primary"
+  ],
+  "optimizer": {
+    "method": "existing bounded Powell single shooting",
+    "starts": [
+      [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ],
+      [
+        0.3,
+        0.7,
+        0.3,
+        0.7
+      ]
+    ],
+    "max_calls_per_start": 24,
+    "max_calls_per_policy": 48,
+    "max_calls_total": 96,
+    "old_max_calls_total": 100,
+    "old_max_seconds_total": 300,
+    "primary_stochastic_backend": "mixture M254257",
+    "fine_fv_reselection": false
+  },
+  "numerics": {
+    "coarse_cells": 257,
+    "fine_cells": 513,
+    "mixture_degree": 254,
+    "coarse_max_step_hours": 0.010416666666666666,
+    "fine_max_step_hours": 0.005208333333333333,
+    "cost_step_hours": 0.010416666666666666,
+    "refined_cost_step_hours": 0.005208333333333333,
+    "em_paths_per_node": 256,
+    "em_coarse_step_hours": 0.005208333333333333,
+    "em_fine_step_hours": 0.0026041666666666665,
+    "entropy": 20261008,
+    "separate_role_node_streams": true,
+    "shared_initial_and_brownian_per_policy": true
+  },
+  "feedback": {
+    "observation_time_hours": 36,
+    "truth_node_index": 2,
+    "truth_fine_path_index": 0,
+    "truth_policy": "stochastic",
+    "point_observation": true,
+    "independent_observation_stream": true,
+    "price_candidates": [
+      [
+        0.5,
+        0.5
+      ],
+      [
+        0.3,
+        0.7
+      ],
+      [
+        0.7,
+        0.3
+      ]
+    ],
+    "next_edges": [
+      36,
+      37,
+      38
+    ],
+    "selection": "complete updated coarse M254 bank J; tie candidate order",
+    "backend_own_posteriors": true,
+    "update_receipts_required": true
+  },
+  "jobs": [
+    {
+      "work": "setup",
+      "count": 1,
+      "horizon_hours": null,
+      "rate_unit": "setup",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "search_deterministic",
+      "count": 48,
+      "horizon_hours": 24,
+      "rate_unit": "deterministic objective",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "search_m254",
+      "count": 48,
+      "horizon_hours": 24,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "cross_m254_coarse",
+      "count": 3,
+      "horizon_hours": 24,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "cross_m254_fine",
+      "count": 3,
+      "horizon_hours": 24,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "cross_fv_coarse",
+      "count": 3,
+      "horizon_hours": 24,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "cross_fv_fine",
+      "count": 3,
+      "horizon_hours": 24,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "quadrature",
+      "count": 3,
+      "horizon_hours": 24,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "em_coupled",
+      "count": 3,
+      "horizon_hours": 24,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "feedback_update",
+      "count": 4,
+      "horizon_hours": null,
+      "rate_unit": "one backend/grid posterior update",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null,
+      "endpoint_time_hours": 36
+    },
+    {
+      "work": "feedback_policy_search",
+      "count": 3,
+      "horizon_hours": 2,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "feedback_m254_coarse",
+      "count": 1,
+      "horizon_hours": 2,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "feedback_m254_fine",
+      "count": 1,
+      "horizon_hours": 2,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "feedback_fv_coarse",
+      "count": 1,
+      "horizon_hours": 2,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "feedback_fv_fine",
+      "count": 1,
+      "horizon_hours": 2,
+      "rate_unit": "five-hypothesis bank job",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    },
+    {
+      "work": "audit_export",
+      "count": 1,
+      "horizon_hours": null,
+      "rate_unit": "audit_export",
+      "measured_seconds": null,
+      "rate_receipt_sha256": null
+    }
+  ],
+  "budget": {
+    "prior_debit": 1846.3372718589885,
+    "ceiling": 1910,
+    "remaining_seconds": 63.662728141011485,
+    "planning_safety_factor": 1.25,
+    "estimated_full_seconds": null,
+    "all_relevant_rates_unknown": true,
+    "implicit_2h_to_24h_conversion": false,
+    "budget_admitted": false
+  },
+  "legacy_budget_helper": "native v1 full_job_plan/price_job_plan untouched; v2 graph is not admitted by v1 validator",
+  "launch_ready": false,
+  "actual_optimizer_started": false,
+  "new_native_forwards": 0,
+  "numerical_validation_complete": false,
+  "scientific_accept": false,
+  "historical_validation": false,
+  "wm_comparison_started": false,
+  "tolerances": {
+    "source": "unchanged src/exe/run_model/bm_1/g8.py TOLERANCES, src/exe/run_model/bm_1/g7.py and root/G7_OWNED_HANDOFF_REVIEW.md",
+    "objective": "max(.001,.02*abs(fine_J))",
+    "conditional_mass_l1": 0.05,
+    "marginal_mass_l1": 0.05,
+    "projection_l1": 0.05,
+    "bank_weight": 0.03,
+    "log_evidence": 0.05,
+    "em_fp": "max(.001,4*stratified_SE)",
+    "coupled_em_cost_difference": 0.001,
+    "raw_em_boundary_violations": 0,
+    "state_mean": 0.005,
+    "demand_mean": 0.005,
+    "state_variance": 0.002,
+    "demand_variance": 0.002,
+    "state_cdf": 0.03,
+    "demand_cdf": 0.03,
+    "state_quantile": 0.02,
+    "demand_quantile": 0.02,
+    "mass": 1e-09,
+    "checkpoint": 1e-10
+  },
+  "reuse": "only exact origin/source/price/grid/partition/audit-policy identities; old missing audits never invented",
+  "required_before_launch": [
+    "v2 integration with native auditable forward and complete update receipts",
+    "source/input/own-origin hashes and exact runtime environment",
+    "explicit full-job rates or separate bounded measurement registration",
+    "complete graph pricing and hardcap with stop/export/review reserves",
+    "separate immutable launch registration committed and read back"
+  ]
+}
