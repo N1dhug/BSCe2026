@@ -21,8 +21,48 @@ evidens, men er ikke den aktive udviklingsprioritet eller en endelig
 modelsammenligning. Denne afgrænsning overstyrer ældre formuleringer om
 "primær BM/WM-sammenligning", også i det gemte auxiliary-designsnapshot.
 Det ændrer ikke snapshotbytes, numeriske gates eller beregningsbudget.
-Næste G7-opgave er fortsat BM's restore/launcher og afgrænsede FV/EM/feedback-
-forsøg. Selve BM/WM-sammenligningen planlægges efter BM's færdiggørelse.
+Næste G7-opgave fremgår af den nyeste status nedenfor. Selve BM/WM-
+sammenligningen planlægges efter BM's færdiggørelse.
+
+## Aktiv dokumentationsregel for G
+
+Johan, 7. oktober 2026: dokumentér og begrund matematikken, og forklar lidt
+mere i chatten, hvad der konkret er indført og lavet. Ved G-leverancer skal
+notation, mål, antagelser, relevante udledninger og metodevalg fremgå sammen
+med koblingen til implementeringen. Skeln mellem nye beregninger og genbrugt
+evidens, faktisk kontrol og dens begrænsninger. Begrundelser skal kunne
+efterprøves; en bestået numerisk gate er ikke i sig selv et matematisk bevis.
+Denne regel kræver ikke genkørsel af allerede beståede numeriske kontroller.
+
+## G7: seed-rettelse og kort EM/feedback-kontrol færdig, 7. oktober
+
+Én ny præregistreret120s-opgave er gennemført på egne gemte hour12→14-data.
+Alle ti M254 og alle ti FV-forwards genbruges; fem nye coupled EM-par
+(256 paths/node) og fire nye endpoint-updates. Separate SeedSequence-role/node
+identiteter giver11 forskellige integer-streams; tilsigtet coarse/fine-coupling
+bevares. Hele worker-AST bortset fra to seed-lookups/collisionguard er bevaret.
+Ét fokuseret stdlibcheck består(.022s); gamle tests/modelreplays ikke genkørt.
+Råreview(8.916s) reproducerer præcist egne initialdraws, Brownian-inputs,
+observationsstøj, pathcosts, standardfejl og egne Bayes-vægte. Kort numerik
+består; fineEM J=.003668253468, SE=.000088703283, nul boundaryviolations.
+RNG-uafhængighed fortolkes under den almindelige PRNG-antagelse; ingen
+scientific/full-day/kvadratur-/optimizer-accept.
+
+Ny journalafvigelse: coarseFV-reuse0/1 mangler entries, fineFV-reuse4 står
+running, men alle24 complete raw payloads er hashverificeret. Originaljournal
+og failed auditor bevares; sidecar-reconciliation charges mindst fulde caps
+for manglende/running jobs.19.336s dækkes af parentens20.996s; ingen refund.
+journal_integrity_passed=false, receipt_reconciliation_verified=true.
+Næste er G-afgrænset journal-/receipt-recovery før nye optimizer/resumejobs;
+årsagen er ikke fastlagt, og sidecaret giver ingen automatisk resume-adgang.
+Ingen nye numeriske replays kræves for dette read-only recoveryarbejde.
+
+Scopecharge53.428495314s inkl.ekstra eksport/review; G1401.082740428s af1800,
+rest398.917259572s. Gamle charges bevares. Fuldt raw reviewarkiv er gemt.
+Seed-opgaven er afsluttet; G7/G som helhed er stadig åbent. Derefter budgetteret
+prisoptimering og selvstændig quadratur; ingen24h-admission fra2h-rates.
+F/WM bevares, og direkte modelsammenligning venter til BM er færdig.
+Læs [matematik, resultat, journalbegrænsning og næste trin](root/G7_SEED_REPAIR_REVIEW.md).
 
 ## G7: neutral auxiliary-kørsel færdig; råreview begrænser accept, 7. oktober
 
