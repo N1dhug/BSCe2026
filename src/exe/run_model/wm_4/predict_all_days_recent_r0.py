@@ -41,6 +41,33 @@ def _previous_residual(frame, output_model, start):
     return previous, I_minus_1, O_minus_1, I_minus_1 - O_minus_1
 
 
+def _pseudo_oracle_fixed_r0(model, prediction_data, r, R0, f_bounds=(-1.0, 1.0)):
+    helper = optimized_qp_params(model)
+    data = helper._prepare_data(prediction_data)
+    r = np.asarray(r, dtype=float)
+    R0 = float(R0)
+    base = helper._state_from_parameters(data, np.array([0.0, R0]), r)
+    f_unit = helper._state_from_parameters(data, np.array([1.0, R0]), r)
+    obs = np.asarray(data["observation_mask"], dtype=bool)
+    X = ((np.asarray(f_unit["I"], dtype=float) - np.asarray(base["I"], dtype=float))[obs])[:, None]
+    y = np.asarray(data["I"], dtype=float)[obs] - np.asarray(base["I"], dtype=float)[obs]
+    F0 = float(model._least_squares_qp(
+        X, y,
+        lb=np.array([float(f_bounds[0])], dtype=float),
+        ub=np.array([float(f_bounds[1])], dtype=float),
+        ridge=model._FIT_RIDGE,
+    )[0])
+    init = np.array([F0, R0], dtype=float)
+    state = helper._state_from_parameters(data, init, r, full=True)
+    residual = np.asarray(state["I"], dtype=float)[obs] - np.asarray(data["I"], dtype=float)[obs]
+    return {
+        "init_cond": init,
+        "deterministic_state": state,
+        "loss": float(np.mean(residual ** 2)),
+        "observation_mask": obs.copy(),
+    }
+
+
 def day_result(frame, start, baseline_weeks, steps_per_hour, **fit_kwargs):
     start = day_start(start)
     output_model, output_fit, fit, fit_model = fit_history_optimized(
@@ -80,10 +107,15 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, **fit_kwargs):
     shared_recent_init = np.array([shared_init[0], R_minus_1], dtype=float)
     historical_recent_init = np.array([historical_init[0], R_minus_1], dtype=float)
     shared_observed_r0_init = np.array([shared_init[0], R0_observed], dtype=float)
+    pseudo_oracle = _pseudo_oracle_fixed_r0(
+        model, prediction_data, fit["r"], R0_observed,
+    )
+    pseudo_oracle_init = np.asarray(pseudo_oracle["init_cond"], dtype=float)
 
     shared_recent_state = _predict(model, shared_recent_init, U, Time, fit["r"])
     historical_recent_state = _predict(model, historical_recent_init, U, Time, fit["r"])
     shared_observed_r0_state = _predict(model, shared_observed_r0_init, U, Time, fit["r"])
+    pseudo_oracle_state = pseudo_oracle["deterministic_state"]
 
     states = {
         "shared": shared_state,
@@ -91,6 +123,7 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, **fit_kwargs):
         "shared_recent": shared_recent_state,
         "historical_recent": historical_recent_state,
         "shared_observed_r0": shared_observed_r0_state,
+        "pseudo_oracle": pseudo_oracle_state,
         "oracle": oracle_state,
     }
     predictions = {
@@ -123,6 +156,11 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, **fit_kwargs):
         "oracle_F0": oracle_init[0],
         "oracle_R0": oracle_init[1],
         "oracle_fit_mse": float(oracle["loss"]),
+        "pseudo_oracle_F0": pseudo_oracle_init[0],
+        "pseudo_oracle_R0": pseudo_oracle_init[1],
+        "pseudo_oracle_fit_mse": float(pseudo_oracle["loss"]),
+        "shared_F0_gap_to_pseudo_oracle": shared_init[0] - pseudo_oracle_init[0],
+        "pseudo_oracle_F0_gap_to_oracle": pseudo_oracle_init[0] - oracle_init[0],
         "shared_recent_F0": shared_recent_init[0],
         "shared_recent_R0": shared_recent_init[1],
         "historical_recent_F0": historical_recent_init[0],
@@ -155,11 +193,14 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, **fit_kwargs):
         "I_shared_recent": predictions["shared_recent"],
         "I_historical_recent": predictions["historical_recent"],
         "I_shared_observed_r0": predictions["shared_observed_r0"],
+        "I_pseudo_oracle": predictions["pseudo_oracle"],
         "I_oracle": predictions["oracle"],
         "F_shared_recent": np.asarray(shared_recent_state["F"], dtype=float)[hourly_index],
         "R_shared_recent": np.asarray(shared_recent_state["R"], dtype=float)[hourly_index],
         "F_historical_recent": np.asarray(historical_recent_state["F"], dtype=float)[hourly_index],
         "R_historical_recent": np.asarray(historical_recent_state["R"], dtype=float)[hourly_index],
+        "F_pseudo_oracle": np.asarray(pseudo_oracle_state["F"], dtype=float)[hourly_index],
+        "R_pseudo_oracle": np.asarray(pseudo_oracle_state["R"], dtype=float)[hourly_index],
         "F_oracle": np.asarray(oracle_state["F"], dtype=float)[hourly_index],
         "R_oracle": np.asarray(oracle_state["R"], dtype=float)[hourly_index],
     }, index=actual.index)
@@ -213,6 +254,7 @@ def cumulative_horizon_summary(hourly, horizons=HORIZONS):
             ("shared_recent", "I_shared_recent"),
             ("historical_recent", "I_historical_recent"),
             ("shared_observed_r0", "I_shared_observed_r0"),
+            ("pseudo_oracle", "I_pseudo_oracle"),
             ("oracle", "I_oracle"),
         ):
             metrics = deviation_metrics(observed, part[column].to_numpy(dtype=float))
@@ -223,6 +265,12 @@ def cumulative_horizon_summary(hourly, horizons=HORIZONS):
         row["historical_recent_gain_vs_historical_pct"] = 100.0 * (
             1.0 - row["historical_recent_rmse"] / row["historical_rmse"]
         ) if row["historical_rmse"] > 0.0 else np.nan
+        row["shared_observed_r0_gap_to_pseudo_oracle_pct"] = 100.0 * (
+            row["shared_observed_r0_rmse"] / row["pseudo_oracle_rmse"] - 1.0
+        ) if row["pseudo_oracle_rmse"] > 0.0 else np.nan
+        row["pseudo_oracle_gap_to_oracle_pct"] = 100.0 * (
+            row["pseudo_oracle_rmse"] / row["oracle_rmse"] - 1.0
+        ) if row["oracle_rmse"] > 0.0 else np.nan
         rows.append(row)
     return pd.DataFrame(rows)
 
@@ -256,6 +304,8 @@ def save_r0_plot(daily, path):
     axes[2].plot(day, daily["historical_recent_mse"], label="Historical F0 + previous residual R0")
     axes[2].plot(day, daily["shared_mse"], label="Shared state")
     axes[2].plot(day, daily["historical_mse"], label="Historical-direct state")
+    axes[2].plot(day, daily["shared_observed_r0_mse"], label="Shared F0 + observed R0")
+    axes[2].plot(day, daily["pseudo_oracle_mse"], label="Pseudo-oracle: optimized F0 + observed R0")
     axes[2].plot(day, daily["oracle_mse"], label="Oracle")
     axes[2].set_ylabel("Daily MSE")
     axes[2].set_xlabel("Prediction day")
@@ -277,6 +327,7 @@ def save_horizon_plot(summary, path):
     ax.plot(horizon, summary["historical_rmse"], marker="o", label="Historical direct")
     ax.plot(horizon, summary["historical_recent_rmse"], marker="o", label="Historical F0 + recent R")
     ax.plot(horizon, summary["shared_observed_r0_rmse"], marker="o", label="Shared F0 + observed R0 diagnostic")
+    ax.plot(horizon, summary["pseudo_oracle_rmse"], marker="o", label="Pseudo-oracle: optimized F0 + observed R0")
     ax.plot(horizon, summary["oracle_rmse"], marker="o", label="Oracle")
     ax.set_ylabel("Cumulative RMSE")
     ax.set_xlabel("Open-loop horizon (hours)")
@@ -313,6 +364,7 @@ def print_summary(daily, hourly, r0, cumulative, skipped):
         ("shared F0 + recent R", "I_shared_recent"),
         ("historical F0 + recent R", "I_historical_recent"),
         ("shared F0 + observed R0", "I_shared_observed_r0"),
+        ("pseudo-oracle F0 + observed R0", "I_pseudo_oracle"),
         ("oracle", "I_oracle"),
     ):
         metrics = deviation_metrics(observed, hourly[column].to_numpy(dtype=float))
@@ -322,7 +374,7 @@ def print_summary(daily, hourly, r0, cumulative, skipped):
     print("cumulative RMSE from forecast start:")
     print(
         f"{'hours':>7}{'shared':>12}{'sh+recent':>12}"
-        f"{'hist':>12}{'hist+recent':>14}{'sh+R0obs':>12}{'oracle':>12}"
+        f"{'hist':>12}{'hist+recent':>14}{'sh+R0obs':>12}{'pseudo':>12}{'oracle':>12}"
     )
     for _, row in cumulative.iterrows():
         print(
@@ -332,6 +384,7 @@ def print_summary(daily, hourly, r0, cumulative, skipped):
             f"{row['historical_rmse']:>12.8f}"
             f"{row['historical_recent_rmse']:>14.8f}"
             f"{row['shared_observed_r0_rmse']:>12.8f}"
+            f"{row['pseudo_oracle_rmse']:>12.8f}"
             f"{row['oracle_rmse']:>12.8f}"
         )
 
@@ -357,8 +410,9 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
                 f"{day:%Y-%m-%d} | R-1={daily['R_minus_1_observed']:.6f} "
                 f"| R0 obs={daily['R0_observed']:.6f} shared={daily['shared_R0']:.6f} "
                 f"hist={daily['historical_R0']:.6f} oracle={daily['oracle_R0']:.6f} "
-                f"| MSE sh+recent={daily['shared_recent_mse']:.8f} "
-                f"hist+recent={daily['historical_recent_mse']:.8f} oracle={daily['oracle_mse']:.8f}"
+                f"| F0 pseudo={daily['pseudo_oracle_F0']:.6f} oracle={daily['oracle_F0']:.6f} "
+                f"| MSE sh+R0obs={daily['shared_observed_r0_mse']:.8f} "
+                f"pseudo={daily['pseudo_oracle_mse']:.8f} oracle={daily['oracle_mse']:.8f}"
             )
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
             if fail_fast: raise
@@ -401,6 +455,11 @@ def main():
     hourly.to_csv(output / "hourly_predictions.csv")
     r0.to_csv(output / "r0_estimator_summary.csv", index=False)
     cumulative.to_csv(output / "cumulative_horizon_summary.csv", index=False)
+    daily[[
+        "day", "shared_F0", "pseudo_oracle_F0", "oracle_F0",
+        "R0_observed", "oracle_R0",
+        "shared_observed_r0_mse", "pseudo_oracle_mse", "oracle_mse",
+    ]].to_csv(output / "pseudo_oracle_comparison.csv", index=False)
     if skipped:
         pd.DataFrame([{"day": day, "reason": reason} for day, reason in skipped]).to_csv(output / "skipped_days.csv", index=False)
 
