@@ -139,13 +139,40 @@ def fit_target_day(frame, day, weeks=BASELINE_WEEKS, steps_per_hour=60, confiden
     }
 
 
+def _distribution_heatmap(mean, std, y_grid):
+    mean = np.asarray(mean, dtype=float)
+    std = np.maximum(np.asarray(std, dtype=float), 1e-8)
+    z = (y_grid[:, None] - mean[None, :]) / std[None, :]
+    return np.exp(-0.5 * z ** 2) / (np.sqrt(2.0 * np.pi) * std[None, :])
+
+
 def save_plot(result, path):
     time = result["fine_index"]
     actual = result["actual"]
     historical = result["historical_state"]
     oracle = result["oracle_state"]
+    joint_std = np.asarray(result["joint_std_fine"], dtype=float)
 
-    fig, axes = plt.subplots(4, 1, figsize=(16, 14), sharex=True)
+    lower = min(
+        float(np.min(result["historical_I"] - 4.0 * joint_std)),
+        float(np.min(result["oracle_I"] - 4.0 * joint_std)),
+        float(np.min(actual["I"])),
+    )
+    upper = max(
+        float(np.max(result["historical_I"] + 4.0 * joint_std)),
+        float(np.max(result["oracle_I"] + 4.0 * joint_std)),
+        float(np.max(actual["I"])),
+    )
+    margin = 0.03 * max(upper - lower, 1e-6)
+    y_grid = np.linspace(lower - margin, upper + margin, 320)
+    historical_density = _distribution_heatmap(result["historical_I"], joint_std, y_grid)
+    oracle_density = _distribution_heatmap(result["oracle_I"], joint_std, y_grid)
+    density_max = max(float(np.max(historical_density)), float(np.max(oracle_density)))
+
+    fig, axes = plt.subplots(
+        6, 1, figsize=(17, 22), sharex=True,
+        gridspec_kw={"height_ratios": [1.25, 1.25, 1.25, 1.0, 1.0, 1.0]},
+    )
 
     axes[0].plot(actual.index, actual["I"], marker="o", linestyle="none", label="Observed I")
     axes[0].plot(time, result["historical_I"], label="Historical-state centre")
@@ -157,28 +184,50 @@ def save_plot(result, path):
     axes[0].legend(ncol=2)
     axes[0].grid(True, alpha=0.25)
 
-    axes[1].plot(time, historical["F"], label="Historical F")
-    axes[1].plot(time, oracle["F"], label="Oracle F")
-    axes[1].plot(time, historical["R"], label="Historical R")
-    axes[1].plot(time, oracle["R"], label="Oracle R")
-    axes[1].set_ylabel("State / rate")
-    axes[1].legend(ncol=2)
-    axes[1].grid(True, alpha=0.25)
+    hist_mesh = axes[1].pcolormesh(
+        time, y_grid, historical_density,
+        shading="auto", vmin=0.0, vmax=density_max,
+    )
+    axes[1].plot(time, result["historical_I"], linewidth=1.2, label="Historical-state centre")
+    axes[1].scatter(actual.index, actual["I"], s=24, edgecolors="white", linewidths=0.5, label="Observed I")
+    axes[1].set_ylabel("Normalized input")
+    axes[1].set_title("Historical-centred predictive distribution")
+    axes[1].legend(loc="upper left")
+    fig.colorbar(hist_mesh, ax=axes[1], pad=0.01, label="Probability density")
 
-    axes[2].plot(time, result["historical_rF_F"], label=r"Historical $r_FF$")
-    axes[2].plot(time, result["oracle_rF_F"], label=r"Oracle $r_FF$")
-    axes[2].axhline(0.0, linewidth=0.8)
-    axes[2].set_ylabel(r"$r_F F$")
-    axes[2].legend()
-    axes[2].grid(True, alpha=0.25)
+    oracle_mesh = axes[2].pcolormesh(
+        time, y_grid, oracle_density,
+        shading="auto", vmin=0.0, vmax=density_max,
+    )
+    axes[2].plot(time, result["oracle_I"], linewidth=1.2, label="Oracle-state centre")
+    axes[2].scatter(actual.index, actual["I"], s=24, edgecolors="white", linewidths=0.5, label="Observed I")
+    axes[2].set_ylabel("Normalized input")
+    axes[2].set_title("Oracle-centred predictive distribution")
+    axes[2].legend(loc="upper left")
+    fig.colorbar(oracle_mesh, ax=axes[2], pad=0.01, label="Probability density")
 
-    axes[3].plot(time, result["historical_rR_R"], label=r"Historical $r_RR$")
-    axes[3].plot(time, result["oracle_rR_R"], label=r"Oracle $r_RR$")
-    axes[3].axhline(0.0, linewidth=0.8)
-    axes[3].set_ylabel(r"$r_R R$")
-    axes[3].set_xlabel("Physical time")
-    axes[3].legend()
+    axes[3].plot(time, historical["F"], label="Historical F")
+    axes[3].plot(time, oracle["F"], label="Oracle F")
+    axes[3].plot(time, historical["R"], label="Historical R")
+    axes[3].plot(time, oracle["R"], label="Oracle R")
+    axes[3].set_ylabel("State / rate")
+    axes[3].legend(ncol=2)
     axes[3].grid(True, alpha=0.25)
+
+    axes[4].plot(time, result["historical_rF_F"], label=r"Historical $r_FF$")
+    axes[4].plot(time, result["oracle_rF_F"], label=r"Oracle $r_FF$")
+    axes[4].axhline(0.0, linewidth=0.8)
+    axes[4].set_ylabel(r"$r_F F$")
+    axes[4].legend()
+    axes[4].grid(True, alpha=0.25)
+
+    axes[5].plot(time, result["historical_rR_R"], label=r"Historical $r_RR$")
+    axes[5].plot(time, result["oracle_rR_R"], label=r"Oracle $r_RR$")
+    axes[5].axhline(0.0, linewidth=0.8)
+    axes[5].set_ylabel(r"$r_R R$")
+    axes[5].set_xlabel("Physical time")
+    axes[5].legend()
+    axes[5].grid(True, alpha=0.25)
 
     r = result["r"]
     fig.suptitle(
