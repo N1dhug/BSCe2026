@@ -224,6 +224,19 @@ def calibration_window(horizon, column):
     }
 
 
+def calibration_table(horizon):
+    labels = {
+        "observed_joint": "observed_joint_within_tolerance",
+        "oracle_I_initial": "oracle_I_initial_within_tolerance",
+        "oracle_state_initial_ellipse": "oracle_state_initial_ellipse_within_tolerance",
+        "oracle_process": "oracle_process_within_tolerance",
+    }
+    rows = []
+    for metric, column in labels.items():
+        rows.append({"metric": metric, **calibration_window(horizon, column)})
+    return pd.DataFrame(rows)
+
+
 def save_plot(horizon, path, confidence=CONFIDENCE, tolerance_pct_points=5.0):
     nominal = 100.0 * float(confidence)
     hours = horizon["forecast_hour"].to_numpy(dtype=int)
@@ -328,6 +341,7 @@ def main():
     daily.to_csv(output / "daily_initial_state_horizon.csv", index=False)
     hourly.to_csv(output / "hourly_initial_state_horizon.csv", index=False)
     horizon.to_csv(output / "horizon_coverage_summary.csv", index=False)
+    calibration_table(horizon).to_csv(output / "calibration_windows.csv", index=False)
     if skipped: pd.DataFrame([{"day": day, "reason": reason} for day, reason in skipped]).to_csv(output / "skipped_days.csv", index=False)
     save_plot(horizon, output / "initial_state_horizon_coverage.png", tolerance_pct_points=args.coverage_tolerance)
     print_summary(daily, horizon, skipped, args.coverage_tolerance)
