@@ -1,3 +1,29 @@
+## Aktiv afgrænsning: BM færdig først, WM-sammenligning bagefter
+
+Johan, 7. oktober 2026 kl.16:25: G-arbejdet skal udvikle og færdiggøre BM.
+Direkte BM/WM-sammenligning, fælles benchmarkkørsler og rangering udskydes,
+til BM er færdig. WM-resultater er ikke en adgangsgate for BM's næste trin.
+
+BM skal under udviklingen være meningsfuldt sammenlignelig med WM:
+dokumentér tidsakse/horizon, informationscutoff og dataopdeling, input,
+baseline/målprofil, normalisering/enheder, prisdefinition og tilladte
+kontroller, forbrugsbegrænsninger, metrics og outputformat. Genbrug relevante
+WM-konventioner; begrund nødvendige modelforskelle. Det kræver ikke løbende
+WM-kørsler eller tilpasning af BM til WM's resultater.
+
+BM's deterministiske kontrolmål og varianten med bevaret samlet forbrug
+bevares som BM-opgaver. Stokastiske M254/FV/EM-kontroller er interne
+numeriske BM-kontroller og fortsætter. Vejlederbasis/legacy og adskillelsen
+mellem G og F bevares.
+
+Tidligere gennemførte BM/WM-forsøg og råresultater bevares som historisk
+evidens, men er ikke den aktive udviklingsprioritet eller en endelig
+modelsammenligning. Denne afgrænsning overstyrer ældre formuleringer om
+"primær BM/WM-sammenligning", også i det gemte auxiliary-designsnapshot.
+Det ændrer ikke snapshotbytes, numeriske gates eller beregningsbudget.
+Næste G7-opgave er fortsat BM's restore/launcher og afgrænsede FV/EM/feedback-
+forsøg. Selve BM/WM-sammenligningen planlægges efter BM's færdiggørelse.
+
 ## G7: auxiliary-budget og integrationsdesign færdigt, 7. oktober
 
 Deterministisk BM/WM med bevaret døgnforbrug forbliver primær; færdige
