@@ -1,3 +1,12 @@
+## Nyeste status: recovery er afsluttet, 7. oktober
+
+Det tidligere110s-forslag nedenfor er nu godkendt og gennemført under
+separat præregistreringf208bbc3. Kun node3/4 er beregnet; fuld quadbank og
+alle tre forward-pargates består. Tabte projectionauditmaxima for node0/1/2
+begrænser fortsat numerical/scientific/full-day-accept. Ekstra charge42.195764s;
+G1841.337272/1910s, rest68.662728s. De ældre stop/charges bevares som historik.
+Læs den fulde [matematik, recovery og råreview](G7_COMPLETE_QUAD_RECOVERY_REVIEW.md).
+
 # G7: launcher og særskilt præregistrering, 7. oktober 2026
 
 ## Faktisk ændring og mergekontrol

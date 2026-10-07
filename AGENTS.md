@@ -34,6 +34,28 @@ evidens, faktisk kontrol og dens begrænsninger. Begrundelser skal kunne
 efterprøves; en bestået numerisk gate er ikke i sig selv et matematisk bevis.
 Denne regel kræver ikke genkørsel af allerede beståede numeriske kontroller.
 
+## G7: recovery afsluttet; fuld quadbank, åben projektionsaudit, 7. oktober
+
+Nyeste status; de ældre partial-statusser nedenfor er bevaret som historik.
+Johan godkendte højst110 ekstra sekunder. Separat præregistreringf208bbc3
+blev committed og læst tilbage før invocation. Kun quadnode3/4 er nye;
+alle13 completed forwards genbruges read-only. Hele femknudebanken er
+reduceret. Coarse/fine, fine/384-midpoint og fine/FV består alle uændrede
+terminal-/J-gates; J-forskelle2.64461e-5,5.95835e-9,2.07653e-7.
+Neutral[.5,.5] er bedst af tre coarse-planer; ingen kontrolforbedring eller
+kontinuert global optimalitet. Middelfejl og within/between-varians kommer
+fra samme forwards. Tidligere quadnode0/1/2 mangler deres tabte projection-
+fit auditmaxima: quad_bank_complete=true, forward_gates_passed=true,
+men numerical_validation/scientific/full-day=false. Massechecks erstatter
+ikke den manglende projection-L1. Ingen completed forward genkørt.
+Ekstra charge42.195763999s inkl10 forberedelse/10 rawreview-reserve;
+G1841.337271859s af godkendt1910, rest68.662728141s. Alle gamle charges
+bevares. Fuld ZIP er gemt og CRC/SHA-verificeret efter rettet eksport.
+PR114 er merged; PR115 er åben og ikke mergegodkendt. Næste kodearbejde er
+atomisk projectionaudit per node før nye forsøg; resterende tid er ingen
+automatisk admission. Direkte WM-sammenligning venter til BM er færdig.
+Læs [matematik, resultat, begrænsning og budget](root/G7_COMPLETE_QUAD_RECOVERY_REVIEW.md).
+
 ## G7: PR114 merged, coarse-prissøgning færdig; quad partial, 7. oktober
 
 PR114 merge66991a0 er verificeret:11 reviewede blobs, ingen src/tests/
