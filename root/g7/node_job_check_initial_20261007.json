@@ -1,0 +1,9 @@
+{
+  "schema": "g7-node-job-check-receipt-v1",
+  "seconds": 2.0963406199998644,
+  "returncode": 0,
+  "stdout": "",
+  "stderr": ".\n----------------------------------------------------------------------\nRan 1 test in 1.349s\n\nOK\n",
+  "transport": "stub only; no numerical evolution",
+  "source_manifest_sha256": "4a4c4fc553608578df27c8666042dd7ddaed1ef0bf1ff54a15869c2ccd5d3989"
+}
