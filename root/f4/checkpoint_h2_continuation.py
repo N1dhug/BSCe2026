@@ -75,6 +75,9 @@ def main():
                     and receipt['old_checkpoint_relabelled'] is False,
                     'Adoption provenance mismatch.')
                 adopted += 1
+            if (run/'conditional_handoff.npz').exists() and not (run/'I_origin_review.npz').exists():
+                from root.f4.review_h2_i_handoff import review
+                c.write(run/'I_origin_review.npz', review(run))
             report = dict(schema='f4-h2-continuation-raw-checkpoint-review-v1', passed=True,
                 manifest_identity=manifest['identity'], new_jobs_verified=len(new),
                 preserved_jobs_in_previous_archives=len(seen), adoptions_verified=adopted,
@@ -89,7 +92,8 @@ def main():
                 and (not str(q.relative_to(run)).startswith('jobs/') or q.name in new or q.suffix == '.json')}
             files['campaign_at_checkpoint.json'] = a.campaign.read_bytes()
             files['approved_decision.json'] = a.decision.read_bytes()
-            for name in (*manifest['source_sha256'], *manifest['continuation_source_sha256'], 'root/f4/checkpoint_h2_continuation.py'):
+            for name in (*manifest['source_sha256'], *manifest['continuation_source_sha256'],
+                         'root/f4/checkpoint_h2_continuation.py', 'root/f4/review_h2_i_handoff.py'):
                 files['source/'+name] = (ROOT/name).read_bytes()
             index = dict(schema='f4-h2-durable-continuation-v1', previous=previous,
                 predecessor_run=origin['predecessor_path'], predecessor_job_index_sha256=manifest['job_index_sha256'],

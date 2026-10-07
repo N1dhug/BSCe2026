@@ -45,12 +45,16 @@ def review(directory):
                 # This is an adapter view of the represented cell law. The
                 # original full log state remains immutable in the artifact.
                 transfers[str(cells)] = dict(edges=edges, mass=mass)
+            underflow = c.np.isfinite(state['log_state']) & (origin.posterior_mass == 0.)
             rows.append(dict(model_key=key, grid=grid, origin_time=origin.time,
                 origin_timestamp=artifact['origin_timestamp'], original_log_state_fingerprint=c.fingerprint(state['log_state']),
+                underflowed_cells_in_ordinary_mass_view=int(underflow.sum()),
+                log_mass_of_underflowed_cells=None if not underflow.any() else float(c.logsumexp(state['log_state'][underflow])),
                 parameter_source='fixed nominal physical condition with fitted shared response',
                 curves=model['curves'], transfers=transfers))
     result = dict(schema='f4-actual-H-to-I-origin-review-v1', passed=True,
         manifest_identity=manifest['identity'], handoff_sha256=c.sha(directory/'conditional_handoff.npz'),
+        review_source_sha256=c.sha(c.ROOT/'root/f4/review_h2_i_handoff.py'),
         as_forecast_origin_source_sha256=c.sha(c.ROOT/'src/exe/run_model/bm_1_h2_compact.py'),
         I_F3_interface_source_sha256=c.sha(c.ROOT/'src/control/bm_1_handoff.py'), rows=rows,
         model_propagations=0, future_observations_decoded=0,
