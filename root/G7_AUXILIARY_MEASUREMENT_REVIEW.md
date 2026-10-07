@@ -1,3 +1,8 @@
+Historisk review fra commit1394a7a før seed-rettelsen. Bevar de oprindelige
+tal og forbehold nedenfor; de er ikke den aktuelle budget-/næste-trin-status.
+Senere RNG-rettelse: G7_SEED_REPAIR_REVIEW.md. Nyeste recovery:
+[G7_COMPLETE_QUAD_RECOVERY_REVIEW.md](G7_COMPLETE_QUAD_RECOVERY_REVIEW.md).
+
 # G7: eget neutralt FV/EM/endpoint-forsøg, råreview og begrænsninger
 
 7. oktober 2026. G-sporet, BM alene. Vejlederens normaliserede M254-basis

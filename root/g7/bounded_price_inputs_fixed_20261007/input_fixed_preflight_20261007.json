@@ -1,0 +1,18 @@
+{
+  "schema": "g7-input-fixed-live-setup-preflight-v1",
+  "passed": true,
+  "checks": [
+    "both_actual_original_input_hashes",
+    "live_complete_contract_coarse",
+    "live_complete_contract_fine",
+    "live_complete_contract_quad",
+    "live_complete_contract_fv",
+    "192_vs384_actual_midpoints",
+    "missing_input_blocks_before_spawn"
+  ],
+  "seconds": 3.790773380002065,
+  "new_forwards": 0,
+  "numerical_imports": true,
+  "scope": "real four setups and neutral receipt reduction; forward method disabled",
+  "solver_propagation_or_windows_integration_tested": false
+}

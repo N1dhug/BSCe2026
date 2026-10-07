@@ -1,0 +1,23 @@
+{
+  "schema": "g7-seed-repair-final-budget-v1",
+  "prior_debit": 1347.654245113999,
+  "worker_wall_seconds": 20.996288734999325,
+  "original_ledger_increment": 13.66075492800519,
+  "reconciled_increment": 19.336431619003633,
+  "native_charge": 20.996288734999325,
+  "initial_export_seconds": 12.405701579000379,
+  "review_package_export_seconds": 0.02650499999981548,
+  "review_charge": 20,
+  "scope_charge": 53.42849531399952,
+  "campaign_debit": 1401.0827404279985,
+  "remaining_seconds": 398.9172595720015,
+  "scope_ceiling": 120,
+  "campaign_ceiling": 1800,
+  "all_prior_charges_preserved": true,
+  "extra_reconciliation_charge": 0,
+  "journal_integrity_passed": false,
+  "receipt_reconciliation_verified": true,
+  "reason": "Reconciled19.336s receipt charges are covered by20.996s parent wall. Full prior debit and failed read-only attempt retained; no refund/reset.",
+  "scientific_accept": false,
+  "full_day_budget_admitted": false
+}

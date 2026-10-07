@@ -1,0 +1,55 @@
+{
+  "schema": "g7-bounded-quad-recovery-registration-v1",
+  "date": "2026-10-07",
+  "user_authorization": "jeg godkender de hoejst 110 beregningssekunder",
+  "user_approved_additional_max_seconds": 110,
+  "original_prior_debit": 1799.1415078599962,
+  "preparation_charge": 10,
+  "prior_debit": 1809.1415078599962,
+  "campaign_ceiling": 1910,
+  "execution_ceiling": 100,
+  "worker_seconds": 70,
+  "export_reserve": 20,
+  "review_charge": 10,
+  "missing_node_indices": [
+    3,
+    4
+  ],
+  "job_reservations": {
+    "verify_read_only_sources_receipts_inputs": 8,
+    "rehydrate_quad_only": 4,
+    "missing_quad_nodes": 18,
+    "full_bank_reduce_and_comparisons": 2
+  },
+  "new_forwards_max": 2,
+  "reused_new_forwards": 13,
+  "source_scope_active_resume_permitted": false,
+  "automatic_retry": false,
+  "scientific_accept": false,
+  "full_day_budget_admitted": false,
+  "projection_audit_limit": "Original quad0/1/2 fit-error audit lost; no full projection acceptance can be inferred from mass diagnostics. No replay.",
+  "files_sha256": {
+    "adoption_manifest.json": "69c09a17835d5089d8fd3fe2df4219c220ac4bc070fe573d73e7c136643f7f6d",
+    "design.json": "e927132d976b49a9263f317589396236efed0dc3ddaa9a507a3dd41d8b768af9",
+    "launch_quad_recovery.py": "75aef8b07b16336ffe8bc3d7ca97fe9ca885668019349a5ab4e7a089e73a4d29",
+    "native_manifest.json": "3b54e893e0a6f8310883d2610747607b470a2898858cc4396f4c9294c141a880",
+    "partial_manifest.json": "c1f293fb62b50fdefbe4e6f4b5dfe2ef469adbf5255c167af5d6054cd456e5fa",
+    "previous_audit.json": "f8773f3354b0644684555707bb9d0cac9520a42c0719d7e82d0913e1e4d3f48c",
+    "receipt_recovery.py": "a6483b2b420c5b47785b22f10c2799643736e54054afd233cebfa5e79be916b4",
+    "restore_auxiliary.py": "44b75987209e5ff8f8e421291a5518ed08b409d02e8241bd35563b5fb143c3a8"
+  },
+  "external_files_sha256": {
+    "coarse_input": "1cd343248607cc27baa61d4e52303fbfbf5c08ca7674fac0b9b3dce43649b3bc",
+    "fine_input": "746e45c4603e724824687e535c2e7235f824e19ecbb6adcdd1c6ee0c0a7593e0",
+    "fv_setup": "0eebcaecd92b4c3c8646fc713c2bca0e7d96cfd30477bc88fee11b1081b485dc"
+  },
+  "excluded": [
+    "completed forward replay",
+    "new price search",
+    "fine/FV/EM forwards",
+    "future observations",
+    "tolerance changes",
+    "F or WM",
+    "24h acceptance"
+  ]
+}

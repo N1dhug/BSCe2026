@@ -1,3 +1,62 @@
+## G7: recovery afsluttet; fuld quadbank, åben projektionsaudit, 7. oktober
+
+Nyeste status; de ældre partial-statusser nedenfor er bevaret som historik.
+Johan godkendte højst110 ekstra sekunder. Separat præregistreringf208bbc3
+blev committed og læst tilbage før invocation. Kun quadnode3/4 er nye;
+alle13 completed forwards genbruges read-only. Hele femknudebanken er
+reduceret. Coarse/fine, fine/384-midpoint og fine/FV består alle uændrede
+terminal-/J-gates; J-forskelle2.64461e-5,5.95835e-9,2.07653e-7.
+Neutral[.5,.5] er bedst af tre coarse-planer; ingen kontrolforbedring eller
+kontinuert global optimalitet. Middelfejl og within/between-varians kommer
+fra samme forwards. Tidligere quadnode0/1/2 mangler deres tabte projection-
+fit auditmaxima: quad_bank_complete=true, forward_gates_passed=true,
+men numerical_validation/scientific/full-day=false. Massechecks erstatter
+ikke den manglende projection-L1. Ingen completed forward genkørt.
+Ekstra charge42.195763999s inkl10 forberedelse/10 rawreview-reserve;
+G1841.337271859s af godkendt1910, rest68.662728141s. Alle gamle charges
+bevares. Fuld ZIP er gemt og CRC/SHA-verificeret efter rettet eksport.
+PR114 er merged; PR115 er åben og ikke mergegodkendt. Næste kodearbejde er
+atomisk projectionaudit per node før nye forsøg; resterende tid er ingen
+automatisk admission. Direkte WM-sammenligning venter til BM er færdig.
+Læs [matematik, resultat, begrænsning og budget](G7_COMPLETE_QUAD_RECOVERY_REVIEW.md).
+
+## G7: PR114 merged, coarse-prissøgning færdig; quad partial, 7. oktober
+
+PR114 merge66991a0 er verificeret:11 reviewede blobs, ingen src/tests/
+workflowændringer og nyere WM4 bevaret. PR115 har launcher, separate
+præregistreringer og rettelser til verifikation/inputpreflight.
+To kontrollerede setupstop er bevaret med charges; nul forwards i dem.
+Tredje scope gemmer10 nye coarse-forwards: neutral [.5,.5] J=.003741964
+vinder mod [.3,.7] .017303376 og [.7,.3] .010655853. Ingen global optimalitet
+eller forbedring påstås. Middelfejl/varians rapporteres fra samme forwards.
+Tre af fem nye quad-forwards completed; node3runningreserve18s, node4unstarted.
+Parent-session tabt; årsag ukendt og ingen final wallmåling.19complete
+receipts/13nye forwards er rawreviewverificeret3.807s uden propagation.
+Journal/arrays/source/inputs er bevaret; gammel scope må ikke genoptages.
+Fuldt tabsscope273s bevares: G1799.141507860s af1800; rest.858492140s.
+scientific/quad/full-day=false. PR115 og fuldt råarkiv dokumenterer partials.
+Næste er særskilt recovery af kun quadnode3/4 og fuld reduktion, hvis et
+nyt konkret budgetforslag110s ekstra godkendes. Forslaget er gemt, ikke
+admitteret/udført. Bevar13complete forwards og alle gamle charges.
+F/WM og direkte sammenligning forbliver uden for den aktive scope.
+Læs [matematik, resultater, fejlrettelser og budget](G7_BOUNDED_LAUNCHER_REVIEW.md).
+
+## G7: PR114 merged; launcher og særskilt præregistrering færdige, 7. oktober
+
+PR114 merge66991a0 bevarer alle11 reviewede blobs og nyere main/WM4; ingen
+src/tests/workflows ændres. Gamle rådata og41 native sources er gendannet
+og hashverificeret. Ny parent/worker bruger opt-in GuardedNodeJobStore,
+fulde kontrakter, read-only adoption, én invocation og270s hardstop.
+Én stdlibcheck:27 checks,.042779s, nul numerical imports/forwards.
+Gamle kontroller gentages ikke. Matematik/totalvarians/selection/quad er
+dokumenteret sammen med antagelser og begrænsninger.
+Recovery/launchercharge35s: G1476.082740428s; rest323.917259572s.
+320s scope re-admitteret, endnu ikke charged; maxrest3.917259572s.
+Separate registration/launch_ready=true; numerical/scientific/full-day=false.
+Registreringen commits før én faktisk kørsel. Ingen automatisk retry,
+energiligning, kandidat-EM/feedback, F/WM eller døgnadmission i scope.
+Læs [launcher, matematik, kontrol og budget](G7_BOUNDED_LAUNCHER_REVIEW.md).
+
 ## Aktiv afgrænsning: BM færdig først, WM-sammenligning bagefter
 
 Johan, 7. oktober 2026 kl.16:25: G-arbejdet skal udvikle og færdiggøre BM.
@@ -21,8 +80,96 @@ evidens, men er ikke den aktive udviklingsprioritet eller en endelig
 modelsammenligning. Denne afgrænsning overstyrer ældre formuleringer om
 "primær BM/WM-sammenligning", også i det gemte auxiliary-designsnapshot.
 Det ændrer ikke snapshotbytes, numeriske gates eller beregningsbudget.
-Næste G7-opgave er fortsat BM's restore/launcher og afgrænsede FV/EM/feedback-
-forsøg. Selve BM/WM-sammenligningen planlægges efter BM's færdiggørelse.
+Næste G7-opgave fremgår af den nyeste status nedenfor. Selve BM/WM-
+sammenligningen planlægges efter BM's færdiggørelse.
+
+## G7: merges verified; bounded price/quad design ready, 7. oktober
+
+PR112 og PR113 er merged i rækkefølge på main uden konflikter. Alle29 ændrede
+blobs matcher reviewet G-head; src/tests/workflows er bevaret byte-identiske
+med main før merge. Begge PR-heads har bestået syntax; gamle numeriske checks
+er ikke gentaget. Originaljournalens resume-afvisning bevares.
+
+Næste afgrænsede scope er designet: neutral [.5,.5] genbruges; to nye
+M254257-kandidater [.3,.7]/[.7,.3] undersøges. Coarse vælger én plan med
+fast tie-regel; valgt plan kontrolleres på M254513, reel ny costpartition
+1/192h og FV513. Højst25 nye nodeforwards, ingen EM/feedback i dette scope.
+Lige middelpris er ikke energibevarelse. Ingen kontinuert/global optimum-
+claim; fine-J-gain og energi-/sluttilstandsforskelle rapporteres separat.
+Kvadratur ændrer output/transportpartition og er ikke et rent fejlcertifikat.
+
+Jobreservationer260s +10s worker-headroom; foreslået scope320s =
+270 worker +30 stop/eksport +20 råreview. Nye policy/quad-rates er ukendte;
+reservationer er stoprammer, ikke runtimebounds. Én stdlibdesignkontrol består
+104 checks på.007533s med41 sourcehashes, DAG, budget, gates og distinkte
+midpoints; nul native imports/forwards. Source/basis/inputs og F/WM bevares.
+Design/reviewcharge10s: G1441.082740428s af1800; rest358.917259572s.
+320s er endnu ikke charged; worst-case-rest38.917259572s før nye setup/check-
+charges. Budget skal re-admitteres efter yderligere implementation-charge.
+
+launch_ready/pre_run_registration/actual_optimizer/scientific/full-day=false.
+Næste er konkret parent/worker med GuardedNodeJobStore, eksplicit read-only
+adoption, sourcefrysning og særskilt præregistrering, derefter én kørsel.
+Ingen gammel one-invocation-resume eller automatisk retry. Valgt-policy EM,
+feedback, historiske intervalobservationer og døgnadmission er senere krav.
+Direkte BM/WM-sammenligning venter til BM er færdig.
+Læs [matematik, design, budget og næste trin](G7_BOUNDED_PRICE_QUADRATURE_DESIGN.md).
+
+## G7: receipt-genbrug og writer-guards færdige, 7. oktober
+
+24 seed-run-receipts er verificeret i et eksternt hash-låst read-only indeks;
+alle ti egne FV-resultater kan genbruges ved eksakt original jobidentitet.
+Et G-lokalt GuardedNodeJobStore-interface bevarer native lock/budget/retry og
+kontrollerer samlet journal før jobs, reservation før compute, tidligere
+historik og completion-write ved readback. Brud stopper scope med separat
+markør. Adapteren skal vælges eksplicit og sourcefryses i næste launcher;
+den gamle one-invocation runner er ikke ændret eller kørt igen.
+
+Én stdlibkontrol består:12 cases,24 faktiske receipt-/payloadhashes,4.571s,
+seks stub-computes, nul model-forwards/numeriske imports. Orphan/missing/
+tampered files, lost reservation/completion, stale overwrite og crash/retry
+kontrolleres. Eksakte native writer-definitioner bruges via AST; ingen fuld
+solver-, Windows-, concurrency- eller power-loss-integrationstest påstås.
+Originaljournal/raw-ZIP er bevaret byte-identisk. Årsagen til journaltabet er
+stadig ukendt; source_journal_integrity_passed=false og original resume=false.
+Eksplicit read-only adoption er verificeret; ingen scientific/24h-accept.
+
+Præregistreret konservativ scopecharge30s inkluderer verifikation/review.
+G1431.082740428s af1800; rest368.917259572s. Alle gamle charges bevares;
+gamle receipts genberegnes/gencharges ikke. Næste trin er konkret budgetteret
+prisoptimerings-/selvstændig costkvadraturdesign med den nye guardintegration
+før nye forwards. F/WM/native/shared kilder bevares; BM/WM-sammenligning venter.
+Læs [interface, begrundelse, kontrol og næste trin](G7_RECEIPT_RECOVERY_REVIEW.md).
+
+## G7: seed-rettelse og kort EM/feedback-kontrol færdig, 7. oktober
+
+Én ny præregistreret120s-opgave er gennemført på egne gemte hour12→14-data.
+Alle ti M254 og alle ti FV-forwards genbruges; fem nye coupled EM-par
+(256 paths/node) og fire nye endpoint-updates. Separate SeedSequence-role/node
+identiteter giver11 forskellige integer-streams; tilsigtet coarse/fine-coupling
+bevares. Hele worker-AST bortset fra to seed-lookups/collisionguard er bevaret.
+Ét fokuseret stdlibcheck består(.022s); gamle tests/modelreplays ikke genkørt.
+Råreview(8.916s) reproducerer præcist egne initialdraws, Brownian-inputs,
+observationsstøj, pathcosts, standardfejl og egne Bayes-vægte. Kort numerik
+består; fineEM J=.003668253468, SE=.000088703283, nul boundaryviolations.
+RNG-uafhængighed fortolkes under den almindelige PRNG-antagelse; ingen
+scientific/full-day/kvadratur-/optimizer-accept.
+
+Ny journalafvigelse: coarseFV-reuse0/1 mangler entries, fineFV-reuse4 står
+running, men alle24 complete raw payloads er hashverificeret. Originaljournal
+og failed auditor bevares; sidecar-reconciliation charges mindst fulde caps
+for manglende/running jobs.19.336s dækkes af parentens20.996s; ingen refund.
+journal_integrity_passed=false, receipt_reconciliation_verified=true.
+Næste er G-afgrænset journal-/receipt-recovery før nye optimizer/resumejobs;
+årsagen er ikke fastlagt, og sidecaret giver ingen automatisk resume-adgang.
+Ingen nye numeriske replays kræves for dette read-only recoveryarbejde.
+
+Scopecharge53.428495314s inkl.ekstra eksport/review; G1401.082740428s af1800,
+rest398.917259572s. Gamle charges bevares. Fuldt raw reviewarkiv er gemt.
+Seed-opgaven er afsluttet; G7/G som helhed er stadig åbent. Derefter budgetteret
+prisoptimering og selvstændig quadratur; ingen24h-admission fra2h-rates.
+F/WM bevares, og direkte modelsammenligning venter til BM er færdig.
+Læs [matematik, resultat, journalbegrænsning og næste trin](G7_SEED_REPAIR_REVIEW.md).
 
 ## G7: neutral auxiliary-kørsel færdig; råreview begrænser accept, 7. oktober
 

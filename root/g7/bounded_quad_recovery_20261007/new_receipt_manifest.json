@@ -1,0 +1,67 @@
+{
+  "schema": "g7-recovery-complete-receipt-index-v1",
+  "registration_sha256": "97148f853a01a1a5d7047c2019529f55498c6a7f729275374d5f78fbe6a71e8b",
+  "ledger_sha256": "1e1a43b93480f2ada11688498f3e97c5671c66849edd64cc717f477ede4a0088",
+  "entries": [
+    {
+      "job_id": "5bf9c06b647d8c2d9449e26463c7704253bb55611a24f4c8ac25d063d119488a",
+      "job": {
+        "index": -1,
+        "kind": "verify_read_only_sources_receipts_inputs",
+        "registration_sha256": "97148f853a01a1a5d7047c2019529f55498c6a7f729275374d5f78fbe6a71e8b"
+      },
+      "receipt_sha256": "1c5cd50ffeb6a0760c1d509eccaf93903eeb57968c50abb976530e20fc883a1d",
+      "payload_sha256": "345ecb3a5a5e0ee3b9f1b2e50a5641896c881e5f05f08e0d736ef1ee041579db"
+    },
+    {
+      "job_id": "abf853312c58be5fd3adc443ab2fcac03f4f3dd6eee5c8fe41bf88032e7249cb",
+      "job": {
+        "index": -1,
+        "kind": "rehydrate_quad_only",
+        "registration_sha256": "97148f853a01a1a5d7047c2019529f55498c6a7f729275374d5f78fbe6a71e8b"
+      },
+      "receipt_sha256": "33ba2a61fa9c629287b8e25109499ae52ba3a6cf2ac4e868caa62dacc27e5cb9",
+      "payload_sha256": "d17dbf9037d8f523099226b2b4e40647aacd73cc5ab67b3a1bfcdb432a245ed4"
+    },
+    {
+      "job_id": "f085df792f6ebe6128213aa6d3eaefed8a91c5ceee5b8067b8ba5b19af9a9b8f",
+      "job": {
+        "contract": "2a06024e5c5a15340fdab75da4a94491bc66a411fced4f9c89667c210573b7a8",
+        "index": 3,
+        "kind": "missing_quad_nodes",
+        "prices": [
+          0.5,
+          0.5
+        ],
+        "registration_sha256": "97148f853a01a1a5d7047c2019529f55498c6a7f729275374d5f78fbe6a71e8b"
+      },
+      "receipt_sha256": "a67ee044ab408e5d9d9f6e39ae5525cba80c88d3d362cc7d1fd4acabbcd40932",
+      "payload_sha256": "4fd12b4a7257111004ffdec82c0494cbb62a315fb37c0e668ede01692b3b2982"
+    },
+    {
+      "job_id": "fbbdc07b8f82c211b4329836075bc463de9d60cca49a83ed55bf51b5db7e398d",
+      "job": {
+        "contract": "2a06024e5c5a15340fdab75da4a94491bc66a411fced4f9c89667c210573b7a8",
+        "index": 4,
+        "kind": "missing_quad_nodes",
+        "prices": [
+          0.5,
+          0.5
+        ],
+        "registration_sha256": "97148f853a01a1a5d7047c2019529f55498c6a7f729275374d5f78fbe6a71e8b"
+      },
+      "receipt_sha256": "d9e0b45ca433963f1241fa28656fe9958e580845df2e4c9a549359b908785e75",
+      "payload_sha256": "bfa005412be1bfb10708fff7581dff615a21a19bd5506b659efad10be7979fd5"
+    },
+    {
+      "job_id": "97d5012601801fbf92557de341abef19e6ef5831d25a713e8dfa846ad8609776",
+      "job": {
+        "index": -1,
+        "kind": "full_bank_reduce_and_comparisons",
+        "registration_sha256": "97148f853a01a1a5d7047c2019529f55498c6a7f729275374d5f78fbe6a71e8b"
+      },
+      "receipt_sha256": "bfb5d891690a84125bd3d95fa7cadd0c5b68bf437e929fb2f4885b53961bb902",
+      "payload_sha256": "2719d1341fb4713616e14de7e681fd75d87b8658abadc38dab307399eb55db64"
+    }
+  ]
+}

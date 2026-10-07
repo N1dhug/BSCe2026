@@ -1,0 +1,15 @@
+{
+  "schema": "g7-auxiliary-final-budget-v1",
+  "prior_debit": 1234.712123334,
+  "first_scope_charge": 37.469749930000035,
+  "continuation_scope_charge": 55.472371849999035,
+  "additional_read_only_review_charge": 20.0,
+  "additional_review_reason": "Two failed read-only auditor attempts were not individually instrumented. Preserve both source versions and errors; charge20s additional conservative review reserve. Together40s review charges cover focused check, failed reviews and successful8.384s raw review; no model replay.",
+  "combined_task_charge": 112.94212177999907,
+  "campaign_debit": 1347.654245113999,
+  "remaining_seconds": 452.34575488600103,
+  "campaign_ceiling": 1800.0,
+  "original_task_ceiling": 200.0,
+  "within_original_scope": true,
+  "new_native_forwards_in_review": 0
+}

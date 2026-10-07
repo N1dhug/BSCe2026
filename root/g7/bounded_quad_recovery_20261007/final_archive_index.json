@@ -1,0 +1,22 @@
+{
+  "schema": "g7-complete-quad-archive-index-v1",
+  "path": "/workspace/scratch/a8396ed8d04d/G7_bounded_price_complete_quad_review_20261007.zip",
+  "bytes": 38829366,
+  "sha256": "e546e94fd23e1cf884cb4a5a17ee90921e62b4df400f29d37cf121240914354b",
+  "review_and_final_export_seconds": 2.325808004999999,
+  "raw_review_sha256": "006e9b8f8c184b5ac3ba4a3dfce44d0cfc548c8a6a0aa1920980f218b4ef57e7",
+  "invocation_sha256": "ea35a0a86e188e02298dca872aa4e57e35fdfab00cde27baa486a3818475d022",
+  "registration_sha256": "97148f853a01a1a5d7047c2019529f55498c6a7f729275374d5f78fbe6a71e8b",
+  "campaign_debit": 1841.3372718589885,
+  "additional_charge": 42.195763998992334,
+  "archive_review_timing_external": true,
+  "saved_archive_zip_crc_passed": true,
+  "saved_archive_entries": 89,
+  "library_file_id": "libfile_ccab8222cc648191970791416a6a9554",
+  "library_version": 1,
+  "post_save_verification_seconds": 0.3542964900043444,
+  "initial_incomplete_export_replaced": true,
+  "initial_review_and_export_seconds": 2.104519378997793,
+  "total_review_reexport_verification_seconds": 4.784623874002136,
+  "all_finalization_work_covered_by_preserved_review_charge": true
+}
