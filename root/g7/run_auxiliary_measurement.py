@@ -15,7 +15,7 @@ import sys
 import time
 import zipfile
 
-from restore_auxiliary import canonical, read_owned, sha, verified_json
+from restore_auxiliary import canonical, read_owned, read_completed_fv, sha, verified_json
 
 
 def write(path, value):
@@ -71,12 +71,15 @@ def worker(out, old):
         if sha(out/name) != expected:
             raise ValueError('Registered launcher source changed.')
     store = NodeJobStore(out/'campaign', prior_debit=reg['prior_debit'],
-                        ceiling=1800., max_new_seconds=150.)
+                        ceiling=1800., max_new_seconds=reg['worker_seconds'])
     report = dict(schema='g7-neutral-auxiliary-worker-v1', scientific_accept=False,
                   full_day_budget_admitted=False, actual_optimizer_started=False,
                   auxiliary_gates_passed=False, new_m254_forwards=0, stages={})
     started = time.perf_counter(); evaluators = {}; evaluations = {}; updates = {}; audits = {}
     caps = {j['id']:j['reservation_each_seconds'] for j in spec['jobs']}
+    continuation = reg.get('continuation')
+    if continuation:
+        caps.update(reg['job_caps'])
     reg_hash = sha(out/'registration.json')
 
     def job(kind, index, seconds, compute, **identity):
@@ -101,6 +104,8 @@ def worker(out, old):
         owned_box = {}
         def first_restore():
             owned_box.update(read_owned(old, audit, spec['reuse']))
+            if continuation:
+                owned_box['fv_reused'] = read_completed_fv(Path(continuation['root']), continuation)
             return dict(source_files=41, old_completed_nodes=10, old_ledger_sha256=owned_box['ledger_sha256'])
         # Charge verification together with the first evaluator setup.
         for index,(backend,label,cells) in enumerate([('mixture','fine',513),('mixture','coarse',257),
@@ -138,8 +143,12 @@ def worker(out, old):
             name='fv_'+label;e=evaluators[name];nodes=[]
             contract_id=digest(evaluators_contract(e,owned_box['sources'],CheckpointedBankControl,old))
             for j in range(5):
+                if continuation and contract_id != digest(owned_box['fv_reused']['contracts'][label]):
+                    raise ValueError('Live FV contract differs from imported full numerical contract.')
                 nodes.append(job('fv_'+label+'_nodes',j,caps['fv_'+label+'_nodes'],
-                     lambda j=j,e=e:e.evaluate_node(spec['prices'],j),contract=contract_id,prices=spec['prices']))
+                     (lambda j=j,label=label:owned_box['fv_reused']['nodes'][label][j]) if continuation else
+                     (lambda j=j,e=e:e.evaluate_node(spec['prices'],j)),
+                     contract=contract_id,prices=spec['prices'],receipt_reuse=bool(continuation)))
             value=e.combine_nodes(spec['prices'],nodes);evaluations[name]=value
             atomic_json(out/(name+'_bank.json'),bank_plain(value))
 
@@ -161,7 +170,12 @@ def worker(out, old):
                         raise RuntimeError('Raw EM boundary violation; no clipping/reflection.')
                     demand=np.atleast_2d(result[7]);state=np.atleast_2d(result[1])
                     cost=monte_carlo_tracking_objective(support.widths,demand[:,indices[level]],support.target)
-                    levels.append(dict(state=state,demand=demand,path_costs=cost.path_objectives,diagnostics=result[-1]))
+                    if not all(np.all(np.isfinite(a)) for a in (state,demand,cost.path_objectives)):
+                        raise RuntimeError('Nonfinite EM science arrays cannot be exported.')
+                    diagnostics=dict(result[-1])
+                    if diagnostics.get('requested_max_step') == np.inf:
+                        diagnostics['requested_max_step']='Infinity'
+                    levels.append(dict(state=state,demand=demand,path_costs=cost.path_objectives,diagnostics=diagnostics))
                 return dict(node=j,component=component,initial=initial,fine_time=fine_time,
                             fine_increments=dw,levels=levels)
             mc_nodes.append(job('coupled_em_nodes',j,caps['coupled_em_nodes'],em,
@@ -217,7 +231,9 @@ def worker(out, old):
                 stratified_SE=se,fp_errors=errors,coupled_time_error=abs(float(means[1]-means[0])),passed=bool(em_pass)),
                 feedback_pairs=feedback,projection_audits=projection,auxiliary_gates_passed=bool(passed),
                 costs={name:v['total'] for name,v in evaluations.items()},
-                new_fv_forwards=10,new_em_level_forwards=10,new_point_updates=4,
+                new_fv_forwards=0 if continuation else 10,reused_fv_forwards=10 if continuation else 0,
+                new_em_level_forwards=10,previous_unsaved_em_level_forwards=2 if continuation else 0,
+                new_point_updates=4,
                 future_price_search_permitted=False,independent_quadrature_accept=False)
         reduced=job('reduce_audit',-1,caps['reduce_audit'],reduce)
         report.update(reduced);report['stop_reason']='Registered neutral auxiliary measurement completed.'
@@ -245,9 +261,22 @@ def parent(out,old):
     if sha(out/'design.json')!=reg['design_sha256']:
         raise ValueError('Design bytes changed.')
     plan=json.loads((out/'design.json').read_text())
-    if (reg['prior_debit']!=plan['campaign']['debit_seconds'] or reg['scope_ceiling']!=200
-            or reg['worker_seconds']!=150 or reg['stop_export_reserve']!=30 or reg['review_charge']!=20):
-        raise ValueError('Registered preserved budget/scope differs from the reviewed design.')
+    continuation = reg.get('continuation')
+    if continuation:
+        previous=verified_json(Path(continuation['root'])/'invocation.json',continuation['invocation_sha256'])
+        expected_caps={'restore_setup':8,'fv_fine_nodes':1,'fv_coarse_nodes':1,'coupled_em_nodes':4,
+                       'feedback_m254_fine':10,'feedback_m254_coarse':10,
+                       'feedback_fv_fine':10,'feedback_fv_coarse':10,'reduce_audit':5}
+        valid=(previous['campaign_debit']==reg['prior_debit'] and
+               previous['scope_charge']==continuation['preserved_scope_charge'] and
+               reg['scope_ceiling']==160 and reg['worker_seconds']==110 and
+               previous['scope_charge']+reg['scope_ceiling']<=200 and
+               reg['job_caps']==expected_caps and reg['stop_export_reserve']==30 and reg['review_charge']==20)
+    else:
+        valid=(reg['prior_debit']==plan['campaign']['debit_seconds'] and reg['scope_ceiling']==200
+               and reg['worker_seconds']==150 and reg['stop_export_reserve']==30 and reg['review_charge']==20)
+    if not valid:
+        raise ValueError('Registered preserved budget/scope differs from the reviewed design/addendum.')
     for name,expected in reg['launcher_sha256'].items():
         if sha(out/name)!=expected:raise ValueError('Launcher bytes changed.')
     env=dict(os.environ,PYTHONPATH=str(old/'frozen_source'),OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='1',MKL_NUM_THREADS='1')

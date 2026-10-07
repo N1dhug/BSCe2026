@@ -27,6 +27,41 @@ def verified_receipt(path, expected_file_hash, expected_job):
     return receipt['payload']
 
 
+def read_completed_fv(root, reuse):
+    """Import only hash-authenticated completed FV receipts; never replay them."""
+    root = Path(root)
+    invocation = verified_json(root/'invocation.json', reuse['invocation_sha256'])
+    ledger = verified_json(root/'campaign/ledger.json', reuse['ledger_sha256'])
+    verified_json(root/'registration.json', reuse['registration_sha256'])
+    if invocation['scope_charge'] != reuse['preserved_scope_charge']:
+        raise ValueError('Previous failed invocation charge changed.')
+    entries = {e['job_id']: e for e in ledger['entries']}
+    if len(entries) != 15 or entries[reuse['failed_em_job_id']]['status'] != 'failed':
+        raise ValueError('Previous partial ledger identity changed.')
+    result = {'contracts': {}, 'nodes': {}}
+    for label in ('fine', 'coarse'):
+        setup = verified_json(root/('fv_'+label+'_setup.json'), reuse['setup_sha256'][label])
+        contract = setup['contract_id']
+        if hashlib.sha256(canonical(setup['contract'])).hexdigest() != contract:
+            raise ValueError('Imported FV contract hash changed.')
+        nodes = []
+        for j, item in enumerate(reuse['nodes'][label]):
+            receipt = verified_json(root/item['path'], item['sha256'])
+            key = hashlib.sha256(canonical(receipt['job'])).hexdigest()
+            entry = entries.get(key, {})
+            expected = dict(index=j, kind='fv_'+label+'_nodes',
+                            registration_sha256=reuse['registration_sha256'],
+                            contract=contract, prices=[.5, .5])
+            if receipt['job'] != expected or entry.get('status') != 'complete' or entry.get('attempt') != 1:
+                raise ValueError('Imported FV job is not the completed neutral owned node.')
+            nodes.append(verified_receipt(root/item['path'], item['sha256'], expected))
+        if len(nodes) != 5:
+            raise ValueError('Five completed FV nodes required per grid.')
+        result['contracts'][label] = setup['contract']
+        result['nodes'][label] = nodes
+    return result
+
+
 def read_owned(root, audit, reuse):
     """Validate the original complete ledger and numerical provenance read-only.
 

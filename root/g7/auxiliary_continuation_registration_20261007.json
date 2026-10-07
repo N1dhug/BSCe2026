@@ -1,0 +1,105 @@
+{
+  "schema": "g7-neutral-auxiliary-continuation-registration-v1",
+  "date": "2026-10-07",
+  "prior_debit": 1272.181873264,
+  "campaign_ceiling": 1800,
+  "scope_ceiling": 160,
+  "worker_seconds": 110,
+  "stop_export_reserve": 30,
+  "review_charge": 20,
+  "design_path": "root/g7/auxiliary_integration_design_20261007.json",
+  "numerical_source": "872e77714d1bc5848d8dce5b1fac058417b796cf",
+  "previous_archive_sha256": "ad730a148e770fffeeccdfcfff13af30fc33510d0bbcba9b988c15767af1e80d",
+  "scope": "Own neutral12\u219214 BM-only FV/EM/endpoint update; no new M254 forward, optimizer, independent quadrature, historical observations or full-day accept",
+  "one_invocation_only": true,
+  "all_prior_charges_preserved": true,
+  "checks": "One focused stdlib completed-FV ownership and infinity JSON check; review charge20 includes this; original tests not rerun.",
+  "launcher_status": "Final hashed source; execution commit recorded separately before run",
+  "failed_retry_policy": "No automatic retry; retain all attempts and charges.",
+  "design_sha256": "972ad1e4ab94714056b7c40d2fc18883042f69d4f13e131460014720f46d4047",
+  "previous_audit_sha256": "f8773f3354b0644684555707bb9d0cac9520a42c0719d7e82d0913e1e4d3f48c",
+  "launcher_sha256": {
+    "run_auxiliary_measurement.py": "f9428a6d5df56afa538ca59ae2c2870c89013d5b9f426f4050219ba316d1fda7",
+    "restore_auxiliary.py": "6adf6861d6b057b88a361e9954feba2db83a0d043781ed58a0bb3ce36eb05a8e"
+  },
+  "source_checkpoint_before_run": "c05381801f8f84a9f57b5509660cf9498589b2cb",
+  "actual_optimizer_started": false,
+  "scientific_accept": false,
+  "full_day_budget_admitted": false,
+  "job_caps": {
+    "restore_setup": 8,
+    "fv_fine_nodes": 1,
+    "fv_coarse_nodes": 1,
+    "coupled_em_nodes": 4,
+    "feedback_m254_fine": 10,
+    "feedback_m254_coarse": 10,
+    "feedback_fv_fine": 10,
+    "feedback_fv_coarse": 10,
+    "reduce_audit": 5
+  },
+  "continuation": {
+    "root": "/workspace/scratch/783a396a9c9c/g7_auxiliary_run",
+    "invocation_sha256": "c8a170cd73cc17b687d21fa2d28949a9fbded85a3c8bdb3e49392ce66ea956d1",
+    "ledger_sha256": "a53e9916492b417ebb8090d4bcbc359cdafeddae7484969bcb73363d24d7285c",
+    "registration_sha256": "ebb71e5b08006ff29fc868a267f4c7c14f351f45916e7ffd350d75ac58934a12",
+    "preserved_scope_charge": 37.469749930000035,
+    "failed_em_job_id": "5e936b71d8b0a0ae3db34d5c2fe60ec55fbd99d0c63e59023c9959e9113c2ccb",
+    "retry_failed_job_ids": [
+      "5e936b71d8b0a0ae3db34d5c2fe60ec55fbd99d0c63e59023c9959e9113c2ccb"
+    ],
+    "first_raw_archive_sha256": "4229bae5267a8869ab83aa2a73f3509b8d865d90a22dc6515eff06dddd1a4651",
+    "setup_sha256": {
+      "fine": "0eebcaecd92b4c3c8646fc713c2bca0e7d96cfd30477bc88fee11b1081b485dc",
+      "coarse": "ebe3b5cfd92ee94956e7e50db6e6cc48a2771964846cd63b2e62ebcc524f0d45"
+    },
+    "nodes": {
+      "fine": [
+        {
+          "path": "campaign/nodes/9c15b197678e3e9c6ea663acd70e40428db53a8819fab330022b94ad412020cc.json",
+          "sha256": "56f124e1c2f06ac06c16d6b0584176a723241c04cd47d842fab4be1ef5137dd6"
+        },
+        {
+          "path": "campaign/nodes/b12fa645f3a3207d66756c67a41b9c56f5e172bc451d41db78f0c648777f47a4.json",
+          "sha256": "eea142382b6862d7c5ad5193b9a3cc205084737263ac0015642241d583ed0b09"
+        },
+        {
+          "path": "campaign/nodes/4055b9baaaf4df753eaa99ee4c04475a22264437a017c13a16e69b645e9d8a32.json",
+          "sha256": "214ad89f51ec3629715b151d7e046504a3c5f69dc8d5c2b5016bbbcdaf9f5863"
+        },
+        {
+          "path": "campaign/nodes/12c31d6c832a6be69a9b785b16046ed8fb7db2f19dd6090937b449b78a625f78.json",
+          "sha256": "07a3dfb1ac319993be28dc1224b7a84c919994838d74abb24330e5b72f769e4c"
+        },
+        {
+          "path": "campaign/nodes/ef62da741cd39a6a1744e1246da41eb1a7a51beabd54e079dc819b0a16fe073f.json",
+          "sha256": "c7e6dde43807ce6ac0175a5e9c5b574151ee89087e32fd45e14f8337f31f60ed"
+        }
+      ],
+      "coarse": [
+        {
+          "path": "campaign/nodes/98b1d9ee1a230a530e7049ab335ae7d76e817ec71a6bcf3f79612a7d964d9719.json",
+          "sha256": "143f1761a395ec073fa3dd5102e27ae70bd79cbfde866ccd8a125577f2d36af9"
+        },
+        {
+          "path": "campaign/nodes/cfa0c8147ef0c39a5b2020868f22ae720f800b98d4f8daead882ffac62248c01.json",
+          "sha256": "4f6d8b74115e5aa55285dea5cce9ba6c33fca76a565469081a0f804d6354ebcd"
+        },
+        {
+          "path": "campaign/nodes/9a714f60ed65dcc1be389c236398b70fbbc6c0749b8c3360efc5dd09bb300ffd.json",
+          "sha256": "dc84225bb1889c1e8d8fd3ccbbda39ad68285095d3ee39f535f028dbf074e0cc"
+        },
+        {
+          "path": "campaign/nodes/f59c42af1ee2d1be9b5b12e7f2e6ef151801dc2c509b6726cb4187f6f749a397.json",
+          "sha256": "c294a8e3b396ad6594a9fa781d965c3c092cd7f14221f47de5fb5e8f0430a6db"
+        },
+        {
+          "path": "campaign/nodes/db51b55fc7ad74f26bb3e2e5272d33a1c16fb2ce355d350744c85b52e786f5f7.json",
+          "sha256": "8e187887b96c2dc2097c5253ee6107a86bb1a41308e6c2fefb6544788129e37f"
+        }
+      ]
+    }
+  },
+  "metadata_repair": "Only requested_max_step infinity becomes string Infinity; all science arrays must remain finite. Native max_step remains np.inf.",
+  "retry_scope": "Explicit repeat of unsaved EM node0 pair; ten completed FV forwards are read-only imports; no M254/native FV replay.",
+  "caps_interpretation": "Administrative stop limits, not measured rates or numerical tolerances; 107s reservations plus3s worker headroom. First37.46974993s charge preserved; combined maximum197.46974993s below original200s."
+}

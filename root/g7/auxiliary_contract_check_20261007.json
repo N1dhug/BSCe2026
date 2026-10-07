@@ -7,9 +7,14 @@
   "review_charge_included_in_next_scope": 20,
   "source_base_checkpoint": "8a8e08cfa3a8cc0d460794e15a38e3168b7cce0c",
   "checked_source_sha256": {
+    "run_auxiliary_measurement.py": "bf2f381c533419a5d1d2c34296bcf07648775b838e78876ca074f0108d748d99",
+    "restore_auxiliary.py": "221edd0bb81de98c2ddfaa4c79974f97a8a6b2faf700c260baaa6b507f48f09c",
+    "check_auxiliary_contract.py": "5a99950938168f27bb6c1d19c0b3a386ec01c5fa3be031747f48dba961f99e3f"
+  },
+  "post_check_changes": "Explicit early-deadline guard was checked; afterwards original-registration SHA authentication and parent fixed-scope predicate added. These additions are statically reviewed; no check or model rerun.",
+  "originally_reported_source_sha256": {
     "run_auxiliary_measurement.py": "1e68bfeedb8e7abd5150ce530b0e075ca9a7cdf3124e5657a51d0bee0d489dc4",
     "restore_auxiliary.py": "73a8b6b675cae6dbcdd5baae30cc77dffd9f0bc4ba3b6040fdb4cc3258bf06cb",
     "check_auxiliary_contract.py": "5a99950938168f27bb6c1d19c0b3a386ec01c5fa3be031747f48dba961f99e3f"
-  },
-  "post_check_changes": "Explicit early-deadline guard was checked; afterwards original-registration SHA authentication and parent fixed-scope predicate added. These additions are statically reviewed; no check or model rerun."
+  }
 }
