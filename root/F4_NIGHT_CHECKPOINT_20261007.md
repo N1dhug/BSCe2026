@@ -41,6 +41,23 @@ Ingen flytning af udviklingskontroller til en anden budgetetiket.
 
 ## Aktiv kørsel og sidste holdbare kilde
 
+Checkpoint03 bevarer yderligere358 atomiske jobs (608 i alt med01+02),
+SHA256 `8291b790365fe68854bcda139447c79eb3188148e851c7b022635c7301f487b9`.
+Det indeholder også den åbne produktionsreservation; denne må ikke nulstilles
+ved crash. Færdige kald genbruges; et ufuldstændigt kald er ikke konvergens.
+`root/f4/status_h2_budgeted.py` giver et separat vægtet statusestimat for det
+aktuelle par uden at ændre de frosne numeriske kilder. Resultatauditoren
+rekonstruerer gemte likelihoods og COBYQA-stop fra råfiler uden modelreplay.
+
+**Aktiv nu:** ydre controller-kilde `5e7875674447b13a9697cf47c358e2f7e3a98b45`,
+`run_h2_budgeted_search.py`, samme V2-run-mappe og uændret numerisk manifest.
+Startledger H2851.549305434 s. 30000 s maksimal invocation-reservation;
+den fulde dynamiske valideringsreserve beskytter fælles36000 s loft før
+hvert søgejob. `budgeted_execution.json` og `budgeted_admission_001.json`
+indeholder den faktiske admission. Den første lineære objective er cached;
+nonlinear to-stykkers søgning er startet. Se seneste fælles ledger ved crash.
+Følgende afsnit beskriver afsluttede tidligere etaper.
+
 **Nyeste status:** den første produktion er pauset efter fuld bestået lineær
 reference og før optimizer. Invocation1083.610424 s. Hele referenceforløbet
 er bevaret i checkpoint01+02; råaudit er `f4_h2_linear_window_audit_20261007.json`.

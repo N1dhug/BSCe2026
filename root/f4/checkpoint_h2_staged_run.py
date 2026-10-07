@@ -34,7 +34,7 @@ def snapshot(directory, destination, campaign, previous=()):
         and not p.name.endswith('.partial') and p.name not in seen]
     temporary=destination.with_suffix(destination.suffix+'.partial')
     destination.parent.mkdir(parents=True,exist_ok=True)
-    with zipfile.ZipFile(temporary,'w',compression=zipfile.ZIP_STORED) as z:
+    with zipfile.ZipFile(temporary,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=1) as z:
         for name,raw in metadata.items():
             z.writestr(name,raw)
         job_hashes={}
