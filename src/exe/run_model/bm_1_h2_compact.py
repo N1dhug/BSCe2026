@@ -709,7 +709,7 @@ def fit_and_select(engine):
         fit = optimizer_family(engine, pieces)
         families[pieces] = validated_family(engine, fit['candidate'])
     chosen = select_families(families)
-        chosen.update(identity=engine.manifest['identity'], schema='f4-h2-frozen-selection-v1',
+    chosen.update(identity=engine.manifest['identity'], schema='f4-h2-frozen-selection-v1',
         curves={str(p):families[p]['candidate'] for p in families},
         metrics={str(p):{g:selection_metrics(families[p]['streams'][g], engine.data['observations']) for g in ('base','fine')} for p in families},
         comparisons={str(p):families[p]['comparison'] for p in families},
