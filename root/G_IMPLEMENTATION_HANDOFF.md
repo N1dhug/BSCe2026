@@ -1,3 +1,32 @@
+## G7: auxiliary-budget og integrationsdesign færdigt, 7. oktober
+
+Deterministisk BM/WM med bevaret døgnforbrug forbliver primær; færdige
+fits/policies og råevidens genbruges. Supervisor M254/legacy og F/WM bevares.
+Næste måleforsøg er konkret designet som neutral12→14h: genbrug de ti
+gemte M254-noder, nye egne FV257/FV513-forwards, coupled EM256/node og
+samme nye syntetiske endpoint-observation på fire backend/grids.
+Ingen M254-forward, optimizer eller nyt G8-filter i det foreslåede scope.
+Maks200s =150 worker +30 stop/eksport +20 review; jobreservationer130s,
+workerheadroom20s. Reservationer er stoprammer, ikke målte rates/bounds.
+Read-only restore med fuld gammel kontrakt/ny setupcharge og ny launcher-
+provenance skal implementeres og sourcefryses før separat præregistrering.
+launch_ready=false; scope er endnu IKKE udført/charged. Ingen auto-retry.
+
+Vigtigt: gemte outputmidtpunkter giver ikke gratis kvadraturforfining;
+gennemsnit af to midpoint-costs reproducerer blot samme sum. En ny
+quadraturpartition kræver eget forwardjob/kontrakt og forbliver ukendt.
+14-rækkers døgnplan og gates bevares; 2h-demo kan ikke give24h-admission.
+Ingen sammenligning af J fra den analytiske2h-fixture med januarens24h-par.
+
+Én stdlib struktur-/aritmetikkontrol består44 checks på.010431s; ingen
+native import, modelrun eller gamle tests. Design/reviewcharge10s:
+G1234.712123334s, rest565.287876666s. F/WM-budgetter er uændrede.
+Næste: implementér/review restore+auxiliary-launcher, registrér og mål
+det konkrete neutrale scope; derefter beslut policy-/døgnbudget på faktisk evidens.
+Sol High; ingen lokal kommando nu.
+Læs [design, udledning, budget og resterende arbejde](G7_AUXILIARY_INTEGRATION_DESIGN.md).
+Følgende G-statusafsnit er historik.
+
 ## G7: eget M254-nodeforsøg gennemført, 7. oktober
 
 10 native nodeforwards på gemte EGNE hour12-posteriorer, neutral12→14h,

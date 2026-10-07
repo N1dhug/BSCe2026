@@ -148,7 +148,7 @@
       "missing_update_preserved": true
     },
     "gates": {
-      "source": "unchanged src/method/bm_1_distribution_panel.py TOLERANCES and root/G7_OWNED_HANDOFF_REVIEW.md",
+      "source": "unchanged src/exe/run_model/bm_1/g8.py TOLERANCES, src/exe/run_model/bm_1/g7.py and root/G7_OWNED_HANDOFF_REVIEW.md",
       "objective": "max(.001,.02*abs(fine_J))",
       "conditional_mass_l1": 0.05,
       "marginal_mass_l1": 0.05,
@@ -157,7 +157,17 @@
       "log_evidence": 0.05,
       "em_fp": "max(.001,4*stratified_SE)",
       "coupled_em_cost_difference": 0.001,
-      "raw_em_boundary_violations": 0
+      "raw_em_boundary_violations": 0,
+      "state_mean": 0.005,
+      "demand_mean": 0.005,
+      "state_variance": 0.002,
+      "demand_variance": 0.002,
+      "state_cdf": 0.03,
+      "demand_cdf": 0.03,
+      "state_quantile": 0.02,
+      "demand_quantile": 0.02,
+      "mass": 1e-9,
+      "checkpoint": 1e-10
     },
     "stop": "Sequential OS-locked owner, reservations before each job, atomic completed receipts, parent hard timeout; any slow or failed job stops without accepting partial scientific results; no automatic retry.",
     "reuse": {
@@ -179,7 +189,8 @@
       "Implement read-only full-contract rehydration and independent current launcher-source manifest; old numerical source remains frozen.",
       "Implement parent and durable auxiliary receipts; re-establish setup per invocation with fresh charge; repeated native/EM jobs need explicit failed-job retry registration.",
       "Freeze exact launcher source, originals and runtime versions in a separate pre-run registration; maintain one aggregate campaign debit including old outer charges.",
-      "Preserve stop/export reserve in actual charge reconciliation; partial output also exported on stop."
+      "Preserve stop/export reserve in actual charge reconciliation; partial output also exported on stop.",
+      "Scope-overrun accounting: if hard loss keeps ledger reservations above worker wall, reconcile max(wall,ledger increment) plus export/review; do not borrow protected reserves for another job."
     ],
     "excluded": [
       "optimizer",
