@@ -1,0 +1,86 @@
+{
+  "schema": "g7-night-protocol-v1",
+  "date": "2026-10-07",
+  "source_base": "4f9ea30abee6a2673a33868ffad30e9ff82cc429",
+  "packet_sha256": "2bd843dcf0aa1489263187a381eb2c0d192b3740a01fadde835b3a3a7e329c4e",
+  "source_sha256": {
+    "src/exe/run_model/wm_4/output_model.py": "6c53acdd9a05cc72ae96576e3e07dc79fdd23ef7af89f485ca8b4571d079b2b3",
+    "src/params/bm_1_deterministic.py": "0ee08c88eb4e58041fa0f00b9822b6b7c84721eaa6d00bce1c9c9a225dee04b6",
+    "src/method/bm_1_deterministic_fit.py": "cf627f3683fcdf53cb423cc87e927921f282f24d622f39c5fe36b7407c2e6729",
+    "src/validation/model/wm_1.py": "9ae1aa1e4382b50a30714869e84b28b16f64dad0edbdda0fb308e9daa52b451a",
+    "src/validation/model/wm_4.py": "b958420570d1756b82b615d7a037117fb31c9ccb7f5273cdc4190be9c7f1b7fb",
+    "src/tools/bm_1_deterministic_snapshot.py": "a35aea7a7cc242408d3e98726d02702fc9a980a86917d11025dbc59d24a75fef",
+    "src/validation/estimation.py": "61289c4a25f7c8576de1ea9d0bbc52238cb37918a99e4cc872d84acf3d2caa9e",
+    "src/params/bm_1_response.py": "2d2380189072f447e2df676d6a91695fe8b66bc4b96fc7996ffddb0d305afe9c",
+    "src/method/bm_1_deterministic_response.py": "ba109ad881e0af1fb6d7206dd81e44402044f822fc2176d0fe5852684c6e31ed",
+    "src/validation/solver/active_set.py": "93f3f7aac0379f486e67f7536b2afd1bc1728feadd1b923911ab457e234b97fe",
+    "src/solver/active_set.py": "fc6df91b4664de126d43f0a22cd9537bbc100f44941e30757b9580173b5a30e6",
+    "src/validation/solver/finite_volume.py": "e8eecd9025a055b62af16c92c9ba5421df8f1c4b8eef33fecca9f1c267497377",
+    "src/solver/finite_volume.py": "28cf8118216457ea7d87bb775d36885fc8cc6f94614db005d38335ad4e497d03",
+    "src/validation/method/fokker_planc.py": "4dd880c31fbb4a4ecc2eb5278cf5a5ed8475fb752f84ca5dbb6a6f631b409226",
+    "src/method/fokker_planc.py": "a5c503b14785978996203d0ddd6adbc0767e29ce1cd0b2c4f88bd3cbe72b821a",
+    "src/model/base/wm.py": "e2886a6a1ba2f2f1f00746aad1084df00dc7e7c7dd4ae9fba6d70475a41ae5f3",
+    "src/params/wm_4.py": "b231104125a1bdf61d455d7064321e47f4cf94502deed2665ece092dd165f0c0",
+    "src/model/wm_4.py": "3d28d3b52acda0c27d0dce74753997e358a10bb9965f45bc1a5f8cad00ecf742",
+    "src/method/bm_1_g7_matched.py": "99f5e771d6e605deb184eb3efd8487cd3f984824164123c7bca6f4a7d06b23a3",
+    "src/exe/run_model/bm_1/g7_matched_response.py": "dcadd3e44ed300065adfd397d5ded27e988a2b03cfa1712e712370bde8797d28",
+    "src/method/bm_1_g7_energy.py": "cd35f248ac396e16b5954b04c80f06446e29dc8b3736c7a6c62e85682b5baa99",
+    "root/g7/night_control.py": "8fb7c30e1d47f457cf15f3799c7ca87a88af49c6f935518d1bee5638078e7800",
+    "tests/test_bm1_g7_energy.py": "288d23f6e6807ebd63efe607685ec70fce32f911ded4a9e63c0fe045805d8a66"
+  },
+  "prior_g_debit_seconds": 1068.580078,
+  "night_cap_seconds": 300.0,
+  "run_cap_seconds": 240.0,
+  "overhead_reserve_seconds": 60.0,
+  "models": [
+    "bm_linear_january",
+    "bm_g4_january",
+    "wm4_january"
+  ],
+  "price_blocks": [
+    0,
+    6,
+    12,
+    18,
+    24
+  ],
+  "grids": [
+    60,
+    120
+  ],
+  "objective": "fixed-target squared demand tracking; no penalties",
+  "neutrality": "same midpoint integral(demand-A)=0; frozen integral A=integral B",
+  "bm": {
+    "method": "SLSQP",
+    "starts": "constant zero-drift equilibrium and symmetric +/-min(.15,ueq/2,(1-ueq)/2)",
+    "max_starts": 2,
+    "maxiter": 60,
+    "ftol": 1e-11,
+    "eps": 1e-05,
+    "actual_forwards_per_start": 400,
+    "seconds_per_start": 30
+  },
+  "wm": {
+    "method": "exhaust 81 box faces of strictly convex quadratic; equality optional",
+    "path_domain": "certify affine extrema on full box before dropping redundant path constraints",
+    "kkt_tolerance": 1e-08,
+    "affine_residual_tolerance": 1e-12
+  },
+  "gates": {
+    "state": 1e-05,
+    "demand": 1e-05,
+    "cost_absolute": 0.0001,
+    "cost_relative": 0.001,
+    "energy_coarse": 1e-08,
+    "energy_fine": 1e-05
+  },
+  "checkpoint": "atomic full selected coarse/fine per completed unit; write-ahead reserved seconds; no interrupted-unit retry",
+  "tests": "one new independent exact QP/Euler identity test only",
+  "excluded": [
+    "historical parameter fits",
+    "old response-panel reruns",
+    "M254 pilot retry",
+    "F changes",
+    "causal ranking"
+  ]
+}
