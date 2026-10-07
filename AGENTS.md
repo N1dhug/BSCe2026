@@ -1,5 +1,22 @@
 # Fælles projektkontekst
 
+## F4-H2: afgrænset cap-fortsættelse registreret, 7. oktober kl. 16:36
+
+Efter Johans instruktion kl. 16:28 er en særskilt 25/49-maxfev-fortsættelse
+registreret i `root/H2_CAP_EXTENSION_20261007.md`; controllercommit er
+`4f4e35ae64cbbf6e1f75f8e10462baacbadf2561`. Nyt run:
+`files/output/bm_1/runs/estimation/f4_h2_cap_extension_20261007`.
+Samme v2-campaign, 18h/23:55/600s-blokke, fuld valideringsreserve og gates.
+Alle 1402 gamle jobs og 17 objectivekald genbruges. Den gamle terminale
+kørsel og dens failure bevares; ny execution har egne extension_* traces.
+Cached diagnose viser radius .02 ved kald16; kald18 anmodes præcist efter
+alle17 bevarede kald. Én fokuseret AST-/cachekontrol består uden modeljobs.
+Fittet er endnu ikke dokumenteret konvergeret; læs nyeste extension_report
+og ledger før genoptagelse. Nyt cap-/numerikstop er terminalt. Ingen ændring
+af F/G/WM-numerik eller genstart af droppede F4-G2b/G2c.
+Følgende terminalstatus gælder forgængeren og bevares som historik.
+
+
 ## F4-H2: terminalt kandidatstop; 1402 jobs gemt, 7. oktober
 
 Dagscontroller7171875 nåede to-stykkers maxfev17 med COBYQAstatus5,
