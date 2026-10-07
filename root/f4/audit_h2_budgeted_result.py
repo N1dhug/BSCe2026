@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 import traceback
 import zipfile
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT))
@@ -13,7 +14,7 @@ for name in ('OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','OMP_NUM_THREADS','NUMBA_N
     os.environ[name]='1'
 
 
-def audit(directory):
+def audit(directory,checkpoints=()):
     import numpy as np
     from scipy.optimize import minimize
     from src.exe.run_model import bm_1_h2_compact as c
@@ -140,24 +141,42 @@ def audit(directory):
         c.require(all(stages[k] for k in ('selection_verified','open_forecast_verified','handoff_verified'))
             and set(optimizer_reports)=={'2','4'} and all(r['converged'] for r in optimizer_reports.values()),
             'A completed report lacks the complete fit/validation/forecast/handoff evidence.')
+    recovery=None
+    if checkpoints:
+        from root.f4.restore_h2_staged_checkpoints import restore
+        with tempfile.TemporaryDirectory(prefix='f4_verified_restore_') as temporary:
+            recovered=Path(temporary)/'run'
+            recovery=restore(checkpoints,recovered)
+            recovered_hashes={p.name:c.sha(p) for p in (recovered/'jobs').iterdir() if p.is_file()}
+            original_hashes={p.name:c.sha(p) for p in (directory/'jobs').iterdir() if p.is_file() and not p.name.endswith('.partial')}
+            c.require(recovered_hashes==original_hashes,'Durable checkpoint chain does not preserve all original jobs/failures.')
+            c.require((recovered/'budgeted_report.json').read_bytes()==(directory/'budgeted_report.json').read_bytes(),
+                'Restored terminal report differs.')
+            # A missing predecessor and an existing destination must fail closed.
+            for bad_paths,bad_destination in ((checkpoints[1:],Path(temporary)/'missing_prefix'),(checkpoints,recovered)):
+                try:restore(bad_paths,bad_destination)
+                except (ValueError,FileExistsError):pass
+                else:raise ValueError('Recovery failed to reject a missing predecessor or overwrite.')
+            recovery['all_job_and_failure_bytes_match']=True
     return dict(schema='f4-h2-budgeted-raw-result-audit-v1',status='passed',run_status=report['status'],
         numerical_manifest_identity=manifest['identity'],execution_identity=outer['identity'],
         numerical_source_files=len(manifest['source_sha256']),raw_jobs=len(jobs),
         completed_objectives=len(verified_scores),reserved_distinct_pairs=total,
         optimizer=optimizer_reports,verified_train_scores=verified_scores,
         partial_stream_hours=partial,guards=maxima,failed_jobs=failures,stages=stages,
-        source_job_sha256=job_hashes,
-        audit_source_sha256={p:c.sha(ROOT/p) for p in ('root/f4/audit_h2_budgeted_result.py','root/f4/audit_h2_saved_stages.py')},
+        source_job_sha256=job_hashes,recovery=recovery,
+        audit_source_sha256={p:c.sha(ROOT/p) for p in ('root/f4/audit_h2_budgeted_result.py','root/f4/audit_h2_saved_stages.py','root/f4/restore_h2_staged_checkpoints.py')},
         native_propagations=0,scientific_acceptance=False,blind_h3_acceptance=False)
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directory',type=Path);parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--checkpoints',type=Path,nargs='*',default=[])
     args=parser.parse_args()
     from src.exe.run_model import bm_1_h2_compact as c
     with c.reservation(c.OUT/'f4_h2_remaining_budget.json',90.,'budgeted-result-raw-audit',native=True,begun=BEGUN):
-        try:result=audit(args.directory)
+        try:result=audit(args.directory,args.checkpoints)
         except Exception:
             c.write(args.output,dict(status='failed',traceback=traceback.format_exc(),native_propagations=0))
             raise
