@@ -43,6 +43,8 @@ Ingen flytning af udviklingskontroller til en anden budgetetiket.
 
 Checkpoint03 bevarer yderligere358 atomiske jobs (608 i alt med01+02),
 SHA256 `8291b790365fe68854bcda139447c79eb3188148e851c7b022635c7301f487b9`.
+Checkpoint04 tilføjer127 jobs (735 i alt), SHA256
+`baef38f921964263b11fd41a9b39ceadbe013b34574d25651c8730cc9e6b216d`.
 Det indeholder også den åbne produktionsreservation; denne må ikke nulstilles
 ved crash. Færdige kald genbruges; et ufuldstændigt kald er ikke konvergens.
 `root/f4/status_h2_budgeted.py` giver et separat vægtet statusestimat for det
