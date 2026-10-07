@@ -1,0 +1,17 @@
+{
+  "schema": "g7-auxiliary-continuation-check-v1",
+  "passed": true,
+  "seconds": 1.4549968499995884,
+  "checks": [
+    "ten complete FV receipts full identity/nested payload verified",
+    "old failed attempt/charge preserved",
+    "explicit infinity JSON metadata accepted",
+    "changed launcher syntax parsed"
+  ],
+  "checked_sha256": {
+    "run_auxiliary_measurement.py": "f9428a6d5df56afa538ca59ae2c2870c89013d5b9f426f4050219ba316d1fda7",
+    "restore_auxiliary.py": "6adf6861d6b057b88a361e9954feba2db83a0d043781ed58a0bb3ce36eb05a8e"
+  },
+  "new_forwards": 0,
+  "native_imports": 0
+}

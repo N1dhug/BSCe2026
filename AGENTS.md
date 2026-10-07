@@ -24,6 +24,39 @@ Det ændrer ikke snapshotbytes, numeriske gates eller beregningsbudget.
 Næste G7-opgave er fortsat BM's restore/launcher og afgrænsede FV/EM/feedback-
 forsøg. Selve BM/WM-sammenligningen planlægges efter BM's færdiggørelse.
 
+## G7: neutral auxiliary-kørsel færdig; råreview begrænser accept, 7. oktober
+
+Den afbrudte chat genoptages fra completed resultater, ikke fra et nyt modelrun.
+Ti FV-forwards og ti coupled EM-level-forwards samt fire endpoint-opdateringer
+er gemt. De ti egne tidligere M254-nodeforwards er genbrugt; ingen ny M254,
+prisoptimizer, historisk observation eller WM-kørsel. Første forsøg fejlede
+kun JSON-eksport af max_step=Infinity efter EM-node0; dets data og charge
+bevares. Eksplicit registreret continuation genbrugte alle ti FV-resultater.
+
+Alle registrerede korte forward-/feedback-/projektionstal består. Råreview
+verificerer 14+24 completed receipts og rekonstruerer EM-pathcosts og Bayes-
+vægte uden native forwards. **Overlappende initial-/Brownian-seeds på tværs
+af noder og noise-seed lig truth-nodens initial-seed betyder, at uafhængig
+MC-standardfejl og uafhængig syntetisk observationsstøj ikke er verificeret.**
+Numerisk backend-sammenligning ved det gemte faste endpoint kan bruges;
+scientific_accept, independent_quadrature_accept, price-search og
+full_day_budget_admitted forbliver false. Workerens rå passed-flag ændres
+ikke; denne fortolkning og raw-review-JSON er autoritative for accept.
+
+Hele budgethistorikken er bevaret: task112.942121780s af oprindelig200s,
+G1347.654245114s af1800s; rest452.345754886s. To failed auditorversioner
+og konservativ ekstra20s reviewcharge er med. Crash-recovery læser gemt
+evidens og laver ingen ny modelkørsel eller gentagelse af beståede tests.
+Begge fulde rå-ZIP'er er gemt og hashverificeret.
+
+Næste G7-opgave: særskilt registreret minimal rettelse af RNG-streams og
+endpoint-generation, der genbruger M254/FV og kun genberegner de berørte
+EM-par og feedback. Frys kilde/streamidentiteter og totalcharge før kørsel;
+ingen automatisk retry eller nyt budget. Derefter selvstændig kvadratur,
+faktisk prisoptimering og konkret policy-/døgnbudgetbeslutning.
+Direkte BM/WM-sammenligning venter stadig til BM er færdig; F/WM bevares.
+Læs [resultater, matematik, begrænsninger og recovery](root/G7_AUXILIARY_RUNTIME_REVIEW.md).
+
 ## G7: auxiliary-budget og integrationsdesign færdigt, 7. oktober
 
 Deterministisk BM/WM med bevaret døgnforbrug forbliver primær; færdige
