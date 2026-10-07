@@ -1,0 +1,19 @@
+{
+  "schema": "g7-neutral-auxiliary-registration-v1",
+  "date": "2026-10-07",
+  "prior_debit": 1234.712123334,
+  "campaign_ceiling": 1800,
+  "scope_ceiling": 200,
+  "worker_seconds": 150,
+  "stop_export_reserve": 30,
+  "review_charge": 20,
+  "design_path": "root/g7/auxiliary_integration_design_20261007.json",
+  "numerical_source": "872e77714d1bc5848d8dce5b1fac058417b796cf",
+  "previous_archive_sha256": "ad730a148e770fffeeccdfcfff13af30fc33510d0bbcba9b988c15767af1e80d",
+  "scope": "Own neutral12\u219214 BM-only FV/EM/endpoint update; no new M254 forward, optimizer, independent quadrature, historical observations or full-day accept",
+  "one_invocation_only": true,
+  "all_prior_charges_preserved": true,
+  "checks": "One focused cheap ownership/deadline check, then the registered run; no old regression panel",
+  "launcher_status": "Source checkpoint; hash fields filled in immutable pre-run registration after cheap check",
+  "failed_retry_policy": "No automatic retry; retain all attempts and charges."
+}
