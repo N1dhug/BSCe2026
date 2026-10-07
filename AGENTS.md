@@ -1,5 +1,32 @@
 # Fælles projektkontekst
 
+## F4-H2: crash gendannet; videre kørsel budgetblokeret, 7. oktober
+
+Alle seks checkpoints fra `e79aa10` er faktisk gendannet og hashkontrolleret:
+1076 jobs, 69 frosne sourcefiler, 12 komplette to-stykkers objective-kald
+(inkl. lineær start), næste kandidat34/72 timer. Fire-stykkers fit er ikke
+startet. Ingen optimizer-resultatfil, terminalrapport, selection eller
+frosset forecast. Ingen gemte failed-jobfiler; ingen accept eller ny modelkørsel.
+Alle536 lokalt genfundne jobs indgår byte-identisk i gendannelsen.
+
+Den autoritative ledger matcher checkpoint06 og har en åben30000s-reservation.
+Crashreglen bevarer den fuldt. Efter særskilt60s recoverycharge er
+H32911.549305s, rest3088.450695s; native803.307761/900s.
+Sidste resterende validation19960.314316s overstiger restbudgettet.
+Ingen automatisk refundering, ny reservation eller fitstart; ikke brug
+en ældre seed/ledger. Aktuel afstemning og ledger-efter er gemt i
+`f4_h2_crash_budget_reconciliation_20261007.json` og
+`f4_h2_crash_campaign_after_20261007.json` under estimation-output.
+Basejobs er nu målt op til9.62828s: nyt budget kræver genprisning.
+Numba0.62.1/llvmlite0.45.1 skal også gendannes før numerisk resume.
+
+Læs [gendannelse, evidens og præcist næste trin](root/F4_CRASH_RECOVERY_20261007.md).
+Videre beregning kræver en senere autoritativ lukket ledger eller Johans
+udtrykkelige nye budgetbeslutning. Det eksisterende36000s-loft er uændret.
+PR106 forbliver draft; F4/H/I/J er ikke afsluttet. G/WM ændres ikke.
+Følgende statusafsnit er historik.
+
+
 ## F4-H2: hel lineær reference består; tidsbegrænset natforsøg, 7. oktober
 
 Aktiv metode: [budgetteret søgeforsøg](root/H2_COMPACT_BUDGETED_SEARCH.md).
