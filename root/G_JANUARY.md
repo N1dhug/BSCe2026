@@ -1,3 +1,35 @@
+## G7: durable feedback og v2-budgetgate kontrolleret, 8. oktober
+
+PR117 er merged c8b76c2d; denne levering bygger på main306c7af og bevarer
+F-PR106's senere merge. Ingen native src/tests/.github- eller F-budgetændring.
+Ny FeedbackBankControl gemmer rå posterior/evidences, projected posterior,
+updateaudit og observation i én native receipt før ledgercompletion.
+Reuse udfører ikke likelihood/projektion; continuation genlæser den egen
+posterior med korrekt cutoff, state, koefficienter, basis og bankvægte.
+Fire backend/grids og tre coarse-prisvalg er komponeret i feedback_phase;
+next[36,38]-forwards bruger de egne opdaterede posteriorer. Input kræver
+komplette auditerede24h-forwards under præcis samme frosne sourcekontrakt.
+Ny stdlib launcher afviser unadmitted helgraf før native workerimport;
+persistent one-invocation-claim, parent timeout, hele phasecap bevares.
+V2-budget kræver16 whole-job-rates med samme problem/source/origin/runtime;
+ukendte rates er null. Native v1-budgethelper og gamle gates bevares.
+Præregistrering79c76197 er læst byte-identisk før én stub-invocation:
+20 checks består, .908693493s parentwall. Native transport/likelihood/
+projection solves alle0; ingen gamle videnskabelige kørsler genkørt.
+Konservativ checkcharge5s: G1851.337271859/1910s; rest58.662728141s.
+Gamle quad0/1/2-audits forbliver tabt. Ingen numerical/scientific/full-day-
+eller historisk accept. F's historik/aktive arbejde bevares.
+Feedbackfasekode er færdig; samlet døgnsearch/EM/crossreview-driver og
+reelt rate-/budgetgrundlag mangler. Ingen udfyldt autoriseret numerisk
+launchregistration eller24h-inputpacket: launch_ready/budget_admitted=false.
+Næste kodeopgave: samlet døgnorchestration med native deterministisk/M254-
+søgning og fælles reference-/EM-review. Før numerisk opstart kræves konkret
+samlet budget eller et særskilt afgrænset målescope. Ingen automatisk retry.
+BM færdig før direkte WM-sammenligning. Eget færdigt arbejde merges efter
+relevante kontroller som besluttet af Johan; ingen branchsletning her.
+Læs [matematik, integration, kontrol og begrænsninger](G7_FEEDBACK_INTEGRATION_REVIEW.md).
+De ældre G7-statusafsnit nedenfor er historik.
+
 ## G7: PR115/116 merged; atomisk audit kontrolleret, 7. oktober
 
 PR115 merge d5b06119 og historiske PR116 merge 02812cab er verificeret
