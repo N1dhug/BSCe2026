@@ -1,3 +1,21 @@
+## F4: næste trin samlet; kontrolleret H-fortsættelse klar
+
+Aktuel samlet restplan: root/F4_REMAINING_PLAN_20261008.md. De to tidligere
+formuleringer beskriver samme næste trin: H-adapter + runtime/admission.
+A–F og afsluttet F4-G-evidens genbruges; G2b/G2c forbliver droppet. I/J er åbne.
+Separat prepared run f4_h2_contour_continuation_20261008:3655 gamle jobs og69
+kilder verificeret; gamle tokens/checksums/prior bytes+dtypes bevares. Nye jobs
+har egen identitet; original terminalfejl og alle charges er uændrede.
+Scoped offline identity/prior/failure/optimizer/budgetkontroller består;
+0 propagationer og0 produktionsjobs. Ingen H-kørsel efter gammel23:55-frist.
+H40481.86150/64800s inkl. separat preparation-ledger; native951.26557/1080s.
+Ny runtimeplan beskytter20955.85668s≈5h49m; ca55m til yderligere fit efter
+stopreserve. Fulde49-kaldsscenarie er IKKE admitted, convergence ikke lovet.
+Konkret forslag: ny frist8.oktober08:00 Copenhagen, samme18h/1080s-lofter.
+Deadline-proposal er IKKE godkendt; launcher afviser før reservation.
+F4/forecast/population/I/J er ikke slutaccepteret. PR106 forbliver draft.
+G-plan/G7 og WM er separate og uberørte. Følgende statusafsnit er historik.
+
 ## F4-H2: egen fine-kontrol består; 180 ekstra sekunder godkendt
 
 Johan godkendte 180 ekstra native-s 7. oktober kl.23:47:41. Native-loft1080s,

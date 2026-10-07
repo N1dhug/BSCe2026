@@ -1,0 +1,1 @@
+{"status": "write-rejected", "reason": "Repeated controls reached existing immutable report. No-overwrite guard rejected write; previous passed report and full additional charge preserved.", "native_propagations": 0, "model_jobs": 0}
