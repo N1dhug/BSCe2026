@@ -46,31 +46,20 @@ def fit_day(frame, day, weeks=BASELINE_WEEKS, steps_per_hour=60, confidence=CONF
 
     process_kernel = model.process_variance_kernel({"r": fit["r"]}, hourly_index)
 
-    # Deployable fit: historical initial-state covariance is already part of
-    # the observed cross-day variance, so fit q only to the remaining variance.
-    distributed_diffusion = constant_diffusion_qp(model).fit(
+    # Historical P0 is part of the initial distribution for both centres.
+    # Fit q only to variance not already explained by propagated P0.
+    diffusion = constant_diffusion_qp(model).fit(
         process_kernel, observed_variance,
         initial_variance=initial_variance,
         fit_mask=np.ones(DAY_HOURS, dtype=bool),
     )
 
-    # Oracle diagnostic: the initial state is treated as known exactly.
-    oracle_diffusion = constant_diffusion_qp(model).fit(
-        process_kernel, observed_variance,
-        initial_variance=np.zeros(DAY_HOURS, dtype=float),
-        fit_mask=np.ones(DAY_HOURS, dtype=bool),
-    )
-
-    distributed_process_cov = process_covariance(model, fit["r"], distributed_diffusion["q"])
-    oracle_process_cov = process_covariance(model, fit["r"], oracle_diffusion["q"])
-    distributed_process_variance = np.maximum(distributed_process_cov[hourly_index, 1, 1], 0.0)
-    oracle_process_variance = np.maximum(oracle_process_cov[hourly_index, 1, 1], 0.0)
-
-    joint_variance = np.maximum(initial_variance + distributed_process_variance, 0.0)
+    process_cov = process_covariance(model, fit["r"], diffusion["q"])
+    process_variance = np.maximum(process_cov[hourly_index, 1, 1], 0.0)
+    joint_variance = np.maximum(initial_variance + process_variance, 0.0)
     initial_std = np.sqrt(initial_variance)
-    process_std = np.sqrt(distributed_process_variance)
+    process_std = np.sqrt(process_variance)
     joint_std = np.sqrt(joint_variance)
-    oracle_process_std = np.sqrt(oracle_process_variance)
 
     observed = actual["I"].to_numpy(dtype=float)
     estimated_I = np.asarray(estimated_state["I"], dtype=float)[hourly_index]
@@ -79,47 +68,38 @@ def fit_day(frame, day, weeks=BASELINE_WEEKS, steps_per_hour=60, confidence=CONF
     z = float(norm.ppf(0.5 + 0.5 * confidence))
     initial_lower, initial_upper = estimated_I - z * initial_std, estimated_I + z * initial_std
     joint_lower, joint_upper = estimated_I - z * joint_std, estimated_I + z * joint_std
-    oracle_lower, oracle_upper = oracle_I - z * oracle_process_std, oracle_I + z * oracle_process_std
+    oracle_joint_lower, oracle_joint_upper = oracle_I - z * joint_std, oracle_I + z * joint_std
 
     observed_initial = (observed >= initial_lower) & (observed <= initial_upper)
     observed_joint = (observed >= joint_lower) & (observed <= joint_upper)
     oracle_I_initial = (oracle_I >= initial_lower) & (oracle_I <= initial_upper)
-    observed_oracle_process = (observed >= oracle_lower) & (observed <= oracle_upper)
+    observed_oracle_joint = (observed >= oracle_joint_lower) & (observed <= oracle_joint_upper)
 
     hourly = pd.DataFrame({
         "day": day, "forecast_hour": np.arange(DAY_HOURS, dtype=int), "time": actual.index,
         "I_observed": observed, "I_estimated": estimated_I, "I_oracle": oracle_I,
         "observed_variance": observed_variance,
         "initial_variance": initial_variance,
-        "distributed_process_variance": distributed_process_variance,
+        "process_variance": process_variance,
         "joint_variance": joint_variance,
-        "oracle_process_variance": oracle_process_variance,
         "initial_std_I": initial_std,
-        "distributed_process_std_I": process_std,
+        "process_std_I": process_std,
         "joint_std_I": joint_std,
-        "oracle_process_std_I": oracle_process_std,
         "initial_ci95_lower": initial_lower, "initial_ci95_upper": initial_upper,
         "joint_ci95_lower": joint_lower, "joint_ci95_upper": joint_upper,
-        "oracle_process_ci95_lower": oracle_lower, "oracle_process_ci95_upper": oracle_upper,
+        "oracle_joint_ci95_lower": oracle_joint_lower, "oracle_joint_ci95_upper": oracle_joint_upper,
         "observed_in_initial_95": observed_initial,
         "observed_in_joint_95": observed_joint,
         "oracle_I_in_initial_95": oracle_I_initial,
-        "observed_in_oracle_process_95": observed_oracle_process,
+        "observed_in_oracle_joint_95": observed_oracle_joint,
         "estimated_error": estimated_I - observed,
         "oracle_error": oracle_I - observed,
     })
 
     daily = {
         "day": day, "weekday": day.day_name(), "weeks": weeks,
-        "distributed_sigma": float(distributed_diffusion["sigma"]),
-        "distributed_q": float(distributed_diffusion["q"]),
-        "oracle_sigma": float(oracle_diffusion["sigma"]),
-        "oracle_q": float(oracle_diffusion["q"]),
-        "sigma_reduction_pct": 100.0 * (
-            1.0 - float(distributed_diffusion["sigma"]) / float(oracle_diffusion["sigma"])
-        ) if float(oracle_diffusion["sigma"]) > 0.0 else np.nan,
-        "distributed_variance_rmse": float(distributed_diffusion["variance_rmse"]),
-        "oracle_variance_rmse": float(oracle_diffusion["variance_rmse"]),
+        "sigma": float(diffusion["sigma"]), "q": float(diffusion["q"]),
+        "variance_rmse": float(diffusion["variance_rmse"]),
         "F0_hat": x_hat[0], "R0_hat": x_hat[1],
         "F0_std": float(np.sqrt(max(P0[0, 0], 0.0))),
         "R0_std": float(np.sqrt(max(P0[1, 1], 0.0))),
@@ -130,11 +110,10 @@ def fit_day(frame, day, weeks=BASELINE_WEEKS, steps_per_hour=60, confidence=CONF
         "observed_initial_coverage_pct": 100.0 * float(np.mean(observed_initial)),
         "observed_joint_coverage_pct": 100.0 * float(np.mean(observed_joint)),
         "oracle_I_initial_coverage_pct": 100.0 * float(np.mean(oracle_I_initial)),
-        "oracle_process_coverage_pct": 100.0 * float(np.mean(observed_oracle_process)),
+        "oracle_joint_coverage_pct": 100.0 * float(np.mean(observed_oracle_joint)),
         "mean_initial_std_I": float(np.mean(initial_std)),
-        "mean_distributed_process_std_I": float(np.mean(process_std)),
+        "mean_process_std_I": float(np.mean(process_std)),
         "mean_joint_std_I": float(np.mean(joint_std)),
-        "mean_oracle_process_std_I": float(np.mean(oracle_process_std)),
     }
     return daily, hourly
 
@@ -148,19 +127,18 @@ def horizon_summary(hourly, confidence=CONFIDENCE, tolerance_pct_points=5.0):
             "observed_initial_coverage_pct": 100.0 * float(part["observed_in_initial_95"].mean()),
             "observed_joint_coverage_pct": 100.0 * float(part["observed_in_joint_95"].mean()),
             "oracle_I_initial_coverage_pct": 100.0 * float(part["oracle_I_in_initial_95"].mean()),
-            "oracle_process_coverage_pct": 100.0 * float(part["observed_in_oracle_process_95"].mean()),
+            "oracle_joint_coverage_pct": 100.0 * float(part["observed_in_oracle_joint_95"].mean()),
             "mean_observed_variance": float(part["observed_variance"].mean()),
             "mean_initial_variance": float(part["initial_variance"].mean()),
-            "mean_distributed_process_variance": float(part["distributed_process_variance"].mean()),
+            "mean_process_variance": float(part["process_variance"].mean()),
             "mean_joint_variance": float(part["joint_variance"].mean()),
             "mean_initial_std_I": float(part["initial_std_I"].mean()),
-            "mean_distributed_process_std_I": float(part["distributed_process_std_I"].mean()),
+            "mean_process_std_I": float(part["process_std_I"].mean()),
             "mean_joint_std_I": float(part["joint_std_I"].mean()),
-            "mean_oracle_process_std_I": float(part["oracle_process_std_I"].mean()),
             "estimated_rmse": float(np.sqrt(np.mean(part["estimated_error"].to_numpy(dtype=float) ** 2))),
             "oracle_rmse": float(np.sqrt(np.mean(part["oracle_error"].to_numpy(dtype=float) ** 2))),
         }
-        for name in ("observed_joint", "oracle_I_initial", "oracle_process"):
+        for name in ("observed_joint", "oracle_I_initial", "oracle_joint"):
             row[f"{name}_within_tolerance"] = bool(
                 abs(row[f"{name}_coverage_pct"] - nominal) <= float(tolerance_pct_points)
             )
@@ -172,7 +150,7 @@ def calibration_table(horizon):
     mapping = {
         "observed_joint": "observed_joint_within_tolerance",
         "oracle_I_initial": "oracle_I_initial_within_tolerance",
-        "oracle_process": "oracle_process_within_tolerance",
+        "oracle_joint": "oracle_joint_within_tolerance",
     }
     return pd.DataFrame([
         {"metric": metric, **calibration_window(horizon, column)}
@@ -187,21 +165,20 @@ def save_plot(horizon, path, confidence=CONFIDENCE, tolerance_pct_points=5.0):
 
     axes[0].plot(hours, horizon["observed_joint_coverage_pct"], marker="o", label="Estimated state + fitted P0 + diffusion")
     axes[0].plot(hours, horizon["oracle_I_initial_coverage_pct"], marker="o", label="Oracle I under initial-state distribution")
-    axes[0].plot(hours, horizon["oracle_process_coverage_pct"], marker="o", label="Oracle state + P0=0 diffusion")
+    axes[0].plot(hours, horizon["oracle_joint_coverage_pct"], marker="o", label="Oracle centre + same P0 + diffusion")
     axes[0].axhline(nominal, linestyle="--", label=f"{nominal:.0f}% target")
     axes[0].fill_between(hours, nominal - tolerance_pct_points, nominal + tolerance_pct_points, alpha=0.1, label=f"±{tolerance_pct_points:g} pp")
     axes[0].set_ylabel("Coverage (%)"); axes[0].set_ylim(0.0, 102.0)
     axes[0].legend(); axes[0].grid(True, alpha=0.25)
 
     axes[1].plot(hours, horizon["mean_initial_std_I"], marker="o", label="Initial-state std")
-    axes[1].plot(hours, horizon["mean_distributed_process_std_I"], marker="o", label="Process std fitted after P0")
+    axes[1].plot(hours, horizon["mean_process_std_I"], marker="o", label="Process std fitted after P0")
     axes[1].plot(hours, horizon["mean_joint_std_I"], marker="o", label="Joint std")
-    axes[1].plot(hours, horizon["mean_oracle_process_std_I"], marker="o", label="Oracle process std (P0=0)")
     axes[1].set_ylabel("Mean std(I)"); axes[1].legend(); axes[1].grid(True, alpha=0.25)
 
     axes[2].plot(hours, horizon["mean_observed_variance"], marker="o", label="Observed cross-day variance")
     axes[2].plot(hours, horizon["mean_initial_variance"], marker="o", label="Propagated P0 variance")
-    axes[2].plot(hours, horizon["mean_distributed_process_variance"], marker="o", label="Fitted process variance")
+    axes[2].plot(hours, horizon["mean_process_variance"], marker="o", label="Fitted process variance")
     axes[2].plot(hours, horizon["mean_joint_variance"], marker="o", label="Joint fitted variance")
     axes[2].set_xlabel("Forecast horizon (hours)"); axes[2].set_ylabel("Variance")
     axes[2].set_xticks(np.arange(0, DAY_HOURS, 2)); axes[2].legend(); axes[2].grid(True, alpha=0.25)
@@ -214,15 +191,14 @@ def save_plot(horizon, path, confidence=CONFIDENCE, tolerance_pct_points=5.0):
 def print_summary(daily, horizon, skipped, tolerance_pct_points):
     print()
     print(f"days fitted={len(daily)}, skipped={len(skipped)}, nominal coverage=95.00%, tolerance=±{tolerance_pct_points:.2f} percentage points")
-    print(f"mean distributed-state sigma={daily['distributed_sigma'].mean():.8f}")
-    print(f"mean oracle P0=0 sigma={daily['oracle_sigma'].mean():.8f}")
-    print(f"mean sigma reduction after assigning variance to P0={daily['sigma_reduction_pct'].mean():.2f}%")
+    print(f"mean sigma fitted after propagated P0={daily['sigma'].mean():.8f}")
+    print("Estimated-centre and oracle-centre intervals use the same P0, diffusion, and joint interval width.")
     print()
 
     for label, column in (
         ("observed joint", "observed_joint_within_tolerance"),
         ("oracle I under initial-state distribution", "oracle_I_initial_within_tolerance"),
-        ("oracle-centred process P0=0", "oracle_process_within_tolerance"),
+        ("oracle-centred joint P0+diffusion", "oracle_joint_within_tolerance"),
     ):
         window = calibration_window(horizon, column)
         run = "none" if window["longest_run_start"] is None else f"{window['longest_run_start']}-{window['longest_run_end']} h"
@@ -232,21 +208,21 @@ def print_summary(daily, horizon, skipped, tolerance_pct_points):
         )
 
     print()
-    print(f"{'hour':>5}{'joint obs':>12}{'oracle I':>12}{'oracle+sig':>12}{'init std':>12}{'proc std':>12}{'oracle std':>12}")
+    print(f"{'hour':>5}{'joint obs':>12}{'oracle I':>12}{'oracle joint':>14}{'init std':>12}{'proc std':>12}{'joint std':>12}")
     for _, row in horizon.iterrows():
         print(
             f"{int(row['forecast_hour']):>5d}"
             f"{row['observed_joint_coverage_pct']:>11.2f}%"
             f"{row['oracle_I_initial_coverage_pct']:>11.2f}%"
-            f"{row['oracle_process_coverage_pct']:>11.2f}%"
+            f"{row['oracle_joint_coverage_pct']:>13.2f}%"
             f"{row['mean_initial_std_I']:>12.6f}"
-            f"{row['mean_distributed_process_std_I']:>12.6f}"
-            f"{row['mean_oracle_process_std_I']:>12.6f}"
+            f"{row['mean_process_std_I']:>12.6f}"
+            f"{row['mean_joint_std_I']:>12.6f}"
         )
 
 
 def main():
-    parser = ArgumentParser(description="Analyse WM4 uncertainty when the historical initial-state covariance P0 is included before fitting constant diffusion; retain P0=0 only for the oracle-state process diagnostic.")
+    parser = ArgumentParser(description="Analyse WM4 uncertainty using observed historical P0 for both estimated-centre and oracle-centre predictions, with one shared constant diffusion fit.")
     parser.add_argument("--start-day", default=START_DAY)
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--weeks", type=int, default=BASELINE_WEEKS)
@@ -269,9 +245,9 @@ def main():
             daily_rows.append(daily); hourly_frames.append(hourly)
             print(
                 f"{day:%Y-%m-%d} | "
-                f"sigma(P0)={daily['distributed_sigma']:.6f} | "
-                f"sigma(oracle)={daily['oracle_sigma']:.6f} | "
-                f"joint={daily['observed_joint_coverage_pct']:.2f}%"
+                f"sigma={daily['sigma']:.6f} | "
+                f"estimated joint={daily['observed_joint_coverage_pct']:.2f}% | "
+                f"oracle joint={daily['oracle_joint_coverage_pct']:.2f}%"
             )
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
             if args.fail_fast: raise
