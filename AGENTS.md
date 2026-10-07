@@ -1,3 +1,25 @@
+## G7: egne nodecheckpoints implementeret, 7. oktober
+
+Durable nodejobs bevarer hver rho-nodes egne M254-c/posterior, eksakt
+prisplan og original transportpartition. Atomiske råbaner og write-ahead
+reservationer genbruges efter crash; afbrudte noder kræver eksplicit retry
+med bevaret charge. Persistent kampagne- og studycap; én OS-locked ejer.
+36 kildehashes/full origin/numerik/versioner indgår i kontrakten.
+Native mixturekald, bankreduktion og assimilate er AST-identiske med før.
+Én fokuseret stubtest består; anden invocation efter konkret caprettelse
+består også. Begge receipts bevares;4.129374s process i alt. Ingen faktisk
+M254/FV/EM-forward, nye fits eller gamle numeriske checks genkørt.
+Komplet14-jobgraf inkl.FVfine/quad/coupledEM/feedback/setup/export er gemt.
+Alle rates er ukendte; budget_admitted/scientific_accept/optimizer=false.
+Kooperativ deadline er ikke hard kill; næste launcher kræver stopreserve.
+Vejlederbasis og legacy bevares; F/WM-kilder og budgetter er uændrede.
+G-debit1118.580078s, rest681.419922s efter konservativ20s scopecharge.
+Næste er særskilt kort registreret faktisk måling fra hashverificerede
+egne origins, ingen automatisk gentagelse af den gamle60s-pilot.
+Sol High; ingen lokal modelkommando nu.
+Læs [matematik, crashmekanik, budget og faktisk kontrol](root/G7_NODE_JOB_REVIEW.md).
+Følgende G-statusafsnit er historik.
+
 # Fælles projektkontekst
 
 ## G7: deterministisk døgnkontrol med bevaret forbrug, 7. oktober

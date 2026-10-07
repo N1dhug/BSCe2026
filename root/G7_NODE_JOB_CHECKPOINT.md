@@ -19,3 +19,16 @@ Plan:
 - Dokumentér/ review/merge efter eksisterende authorization. Gem checkpoints.
 
 Status: registreret før implementering/test. Numerisk G7-accept fortsat false.
+
+## Afsluttet delopgave
+
+Native node/reduction-split, atomic store, source/full-origin fingerprints,
+crashreservation og persistent studycap er implementeret. Komplet14-jobgraf
+har ingen målte rates og giver ingen stochastic admission.
+To invocations af samme fokuserede stubtest består: første evidens beholdt;
+anden følger konkret reviewrettelse af delundersøgelsens cap.
+Source før sidste kontrol: de0d507fb8538d79999a00f617ff36f2425a92c9.
+Ingen nye numerical forwards/fit/optimizer.
+Charge20s; G1118.580078s, rest681.419922s.
+Se [fuld dokumentation og resterende arbejde](G7_NODE_JOB_REVIEW.md)
+og root/g7/node_job_budget_20261007.json.
