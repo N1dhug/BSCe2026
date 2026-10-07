@@ -1,0 +1,22 @@
+{
+  "schema": "f4-h2-failed-pc-ledger-reconciliation-v1",
+  "passed": true,
+  "evidence_origin": "User-pasted complete ledger.json; raw failed ZIP not received",
+  "pc_ledger_path": "files/output/bm_1/runs/estimation/f4_h2_compact_rates_pc_failed_ledger_20261007.json",
+  "pc_ledger_sha256": "373b1e98fb677cf67e05b07655d9330b9a5431776e8b905a8a6e8fdd23fbb3e5",
+  "previous_prefix_entries": 30,
+  "failed_pc_entries": 31,
+  "new_seed_entries": 33,
+  "exact_prefix_preserved": true,
+  "pc_failure_charged_seconds": 6.964884199900553,
+  "export_control_charged_seconds": 0.3752458700000716,
+  "H_charged_seconds": 1543.034457437942,
+  "native_charged_seconds": 518.4033367980669,
+  "native_remaining_seconds": 381.5966632019331,
+  "model_jobs": 0,
+  "source_or_numerics_changed": false,
+  "historical_fit_ready": false,
+  "runtime_admitted": false,
+  "scientific_acceptance": false,
+  "receipt_review_charged_seconds": 2.0
+}
