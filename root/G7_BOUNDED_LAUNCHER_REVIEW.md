@@ -207,3 +207,72 @@ Jobreservationer243s, worker-headroom2s. Caps er stadig stoprammer, ikke
 runtimebounds; intet matematisk resultat eller tolerance lempes. Ved fuldt
 loft rest.858492140s. Alle tidligere charges og failed scopes bevares;
 ingen automatisk genstart af dem. Ny registrering commits før ny invocation.
+
+## Faktisk prissøgning og afbrudt kvadraturkontrol
+
+Inputrettelsesregistreringee3dae66bb759b855bc8f44a37216796c31c21dd blev
+committed før invocation. Verifikation1.358s og alle fire rigtige setups
+.522/.961/.699/.644s bestod. Ti nye coarse-forwards blev gemt; derefter
+valgte det præregistrerede coarse-argmin neutral. Der er ikke sket fine
+re-selektion. Neutral fine/FV genbruges under de fulde oprindelige kontrakter.
+
+| Prisplan | Coarse J | Fejl i middelkurve | Variansbidrag |
+|---|---:|---:|---:|
+| [.5,.5] | .003741963573 | .002278966740 | .001462996834 |
+| [.3,.7] | .017303375698 | .016255560315 | .001047815382 |
+| [.7,.3] | .010655853332 | .009386734230 | .001269119102 |
+
+Neutralrække er genbrugt og hash-pinned; tiltrækker er nye og reproduceret
+fra receipts. Begge tilts sænker variansbidraget, men øger middelkurvens
+trackingfejl mere, så samlet J bliver højere. Det er en forklaring gennem
+den præcise kvadratudvidelse, ikke efterfølgende ændring af målet.
+De samme to nye tilts er også dårligere efter middelkurvens mål på coarse.
+Ingen separat optimering af middelmålet eller deterministisk gammelt mål
+er gennemført. Neutral er bedst blandt tre komplette coarse-planer, ikke
+bevist globalt optimal og ikke ny dokumenteret kontrolforbedring.
+
+På den nye384-midpointpartition er node0,1,2 completed. Node3 står running
+med sin fulde18s reservation; node4 er ikke startet. Tool-sessionen blev
+utilgængelig; worker_summary, final invocation og parentarkiv blev ikke
+skrevet. Sidste completed log var45.33s. Det er ikke en measured runtime
+for hele scope. Årsagen til parent/worker-tab er ukendt; ingen numerical
+exception eller kontrolleret jobtimerfejl er gemt for node3.
+Ved snapshot var writer-lock fri, scopealder308.359s og originaljournal
+byte-identisk før/efter eksport; ingen aktiv writer blev genoptaget.
+
+Én read-only råreview bestod3.807205s:19 complete receipts,13 nye forwards
+(10 coarse,3 quad), konsistent20-attempt-journal inklusive running reserve,
+alle job/file/payloadhashes og nye node-J fra demand-momenter. Begge
+komplette coarse-banker reproducerer bias/within/between/totalvarians;
+partial quad reduceres ikke. Ingen modelpropagation eller numerical imports
+i review. Dette er validitet af gemt evidens, ikke en bestået quadgate.
+Neutral fine J=.003715517464 er tidligere evidens. Coarse/fine/FV-/quad-
+parrapporten blev ikke udført i denne scope, og quad accept er false.
+
+Hele parent-loss-reserven bevares uden refund:245s ukendt workercharge
++20s eksportreserve+8s review=273s. G1526.141507860→1799.141507860s;
+rest.858492140s af1800. Det målte stabile snapshoteksport tog4.556245s og
+ligger i den bevarede20s reserve. Der bruges ikke45.33s logtid som falsk
+walltime. Gamle failed scopes og charges er bevaret; ingen automatisk retry.
+
+Fuldt partial-reviewarkiv28266794bytes, SHA256
+e0d7dafa0c3c48cb7efa9477e472c8f8bbc671de1c8786be9fa3a9791bae121c,
+indeholder alle gemte arrays, fulde kontrakter, separate registreringer,
+originale own-inputbytes, log, ledger, selection, raw review og konservativt
+budget. OriginaljournalSHA2568e05dd6dc4eece02679b99177bb05e9b97aeb7a6e7bda79822d16c190b2c0291.
+Det er bevaret som en ufuldstændig kørsel, ikke en færdig scientific/G7-accept.
+
+## Konkret næste beslutning
+
+Nuværende allowance kan ikke dække de to manglende quad-forwards og
+slutreduktionen. Et ikke-admitteret, reviewbart recoveryforslag er gemt:
+110s ekstra maksimum =10s forberedelse/check +100s særskilt execution
+(70 worker,20 eksport,10 rawreview). Jobcaps:verify8,quad-setup4,to
+missing nodes18 hver,reduce2;50s jobs+20s workerheadroom. Bevar alle gamle
+charges; foreslået nyt samlet loft1910s. Dette loft er ikke taget i brug.
+Kun node3/4 ville få nye forwards; alle13 complete forwards genbruges
+read-only under pinned identities. Ingen ny prisoptimering, fine/FV/EM,
+refit eller WM/F-opgave. Ny launcher og separat registration skal source-
+fryses før eventuel kørsel, med parent-sessionen overvåget til final export.
+Numerical/scientific/full-day-accept forbliver false indtil relevante
+fulde gates faktisk er afsluttet. Direkte BM/WM-sammenligning venter stadig.

@@ -34,6 +34,27 @@ evidens, faktisk kontrol og dens begrænsninger. Begrundelser skal kunne
 efterprøves; en bestået numerisk gate er ikke i sig selv et matematisk bevis.
 Denne regel kræver ikke genkørsel af allerede beståede numeriske kontroller.
 
+## G7: PR114 merged, coarse-prissøgning færdig; quad partial, 7. oktober
+
+PR114 merge66991a0 er verificeret:11 reviewede blobs, ingen src/tests/
+workflowændringer og nyere WM4 bevaret. PR115 har launcher, separate
+præregistreringer og rettelser til verifikation/inputpreflight.
+To kontrollerede setupstop er bevaret med charges; nul forwards i dem.
+Tredje scope gemmer10 nye coarse-forwards: neutral [.5,.5] J=.003741964
+vinder mod [.3,.7] .017303376 og [.7,.3] .010655853. Ingen global optimalitet
+eller forbedring påstås. Middelfejl/varians rapporteres fra samme forwards.
+Tre af fem nye quad-forwards completed; node3runningreserve18s, node4unstarted.
+Parent-session tabt; årsag ukendt og ingen final wallmåling.19complete
+receipts/13nye forwards er rawreviewverificeret3.807s uden propagation.
+Journal/arrays/source/inputs er bevaret; gammel scope må ikke genoptages.
+Fuldt tabsscope273s bevares: G1799.141507860s af1800; rest.858492140s.
+scientific/quad/full-day=false. PR115 og fuldt råarkiv dokumenterer partials.
+Næste er særskilt recovery af kun quadnode3/4 og fuld reduktion, hvis et
+nyt konkret budgetforslag110s ekstra godkendes. Forslaget er gemt, ikke
+admitteret/udført. Bevar13complete forwards og alle gamle charges.
+F/WM og direkte sammenligning forbliver uden for den aktive scope.
+Læs [matematik, resultater, fejlrettelser og budget](root/G7_BOUNDED_LAUNCHER_REVIEW.md).
+
 ## G7: PR114 merged; launcher og særskilt præregistrering færdige, 7. oktober
 
 PR114 merge66991a0 bevarer alle11 reviewede blobs og nyere main/WM4; ingen
