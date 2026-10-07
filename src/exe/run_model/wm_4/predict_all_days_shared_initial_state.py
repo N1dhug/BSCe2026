@@ -13,6 +13,7 @@ from src.params.wm_4 import optimized_qp_params
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_shared_initial_state"
+CUMULATIVE_HORIZONS = (1, 2, 3, 4, 6, 8, 12, 24)
 
 
 def _state_design(helper, data, r):
@@ -215,6 +216,87 @@ def horizon_summary(hourly):
     return pd.DataFrame(rows)
 
 
+def cumulative_horizon_summary(hourly, horizons=CUMULATIVE_HORIZONS):
+    rows = []
+    for horizon in horizons:
+        horizon = int(horizon)
+        if horizon < 1 or horizon > DAY_HOURS: raise ValueError(f"horizon must lie in [1, {DAY_HOURS}].")
+        part = hourly[hourly["hour"] < horizon]
+        if part.empty: continue
+        observed = part["I_observed"].to_numpy(dtype=float)
+        row = {
+            "horizon_hours": horizon,
+            "days": int(part["day"].nunique()),
+            "observations": int(len(part)),
+        }
+        for name, column in (
+            ("shared", "I_shared"),
+            ("historical", "I_historical"),
+            ("oracle", "I_oracle"),
+        ):
+            metrics = deviation_metrics(observed, part[column].to_numpy(dtype=float))
+            row.update({f"{name}_{key}": value for key, value in metrics.items()})
+        row["shared_rmse_gain_vs_historical_pct"] = 100.0 * (
+            1.0 - row["shared_rmse"] / row["historical_rmse"]
+        ) if row["historical_rmse"] > 0.0 else np.nan
+        row["shared_rmse_gap_to_oracle_pct"] = 100.0 * (
+            row["shared_rmse"] / row["oracle_rmse"] - 1.0
+        ) if row["oracle_rmse"] > 0.0 else np.nan
+        row["historical_rmse_gap_to_oracle_pct"] = 100.0 * (
+            row["historical_rmse"] / row["oracle_rmse"] - 1.0
+        ) if row["oracle_rmse"] > 0.0 else np.nan
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def save_cumulative_horizon_plot(summary, path):
+    fig, axes = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
+    horizon = summary["horizon_hours"].to_numpy(dtype=int)
+
+    axes[0].plot(horizon, summary["shared_rmse"], marker="o", label="Shared state")
+    axes[0].plot(horizon, summary["historical_rmse"], marker="o", label="Historical direct")
+    axes[0].plot(horizon, summary["oracle_rmse"], marker="o", label="Oracle")
+    axes[0].set_ylabel("Cumulative RMSE")
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.25)
+
+    axes[1].plot(
+        horizon,
+        summary["shared_rmse_gain_vs_historical_pct"],
+        marker="o",
+        label="Shared RMSE gain vs historical",
+    )
+    axes[1].axhline(0.0, linewidth=0.8)
+    axes[1].set_ylabel("RMSE gain (%)")
+    axes[1].set_xlabel("Open-loop horizon (hours)")
+    axes[1].set_xticks(horizon)
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.25)
+
+    fig.suptitle("WM4 cumulative open-loop forecast performance by initialization")
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def print_cumulative_horizon_summary(summary):
+    print()
+    print("cumulative open-loop RMSE from forecast start:")
+    print(
+        f"{'hours':>7}{'shared':>14}{'historical':>14}{'oracle':>14}"
+        f"{'shared gain':>16}"
+    )
+    for _, row in summary.iterrows():
+        print(
+            f"{int(row['horizon_hours']):>7d}"
+            f"{row['shared_rmse']:>14.10f}"
+            f"{row['historical_rmse']:>14.10f}"
+            f"{row['oracle_rmse']:>14.10f}"
+            f"{row['shared_rmse_gain_vs_historical_pct']:>15.2f}%"
+        )
+
+
 def weekday_summary(daily):
     rows = []
     for weekday, part in daily.groupby("weekday", sort=False):
@@ -379,18 +461,22 @@ def main():
 
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
+    cumulative = cumulative_horizon_summary(hourly)
     daily.to_csv(output / "daily_comparison.csv", index=False)
     hourly.to_csv(output / "hourly_predictions.csv")
     training.to_csv(output / "historical_training_comparison.csv", index=False)
     horizon_summary(hourly).to_csv(output / "horizon_summary.csv", index=False)
+    cumulative.to_csv(output / "cumulative_horizon_summary.csv", index=False)
     weekday_summary(daily).to_csv(output / "weekday_summary.csv", index=False)
     if skipped:
         pd.DataFrame([{"day": day, "reason": reason} for day, reason in skipped]).to_csv(output / "skipped_days.csv", index=False)
 
     save_summary_plot(daily, output / "shared_initial_state_comparison.png")
     save_training_plot(daily, output / "shared_state_training_and_gain.png")
+    save_cumulative_horizon_plot(cumulative, output / "cumulative_horizon_rmse.png")
     print()
     print_summary(daily, hourly, skipped)
+    print_cumulative_horizon_summary(cumulative)
     print(f"output={output}")
 
 
