@@ -136,23 +136,35 @@ def run(frame, prediction_day, weeks=BASELINE_WEEKS, steps_per_hour=60, f0_guess
 
     rows, details = [], []
     for f0_guess in f0_guesses:
-        fit = fit_from_f0_guess(
-            model, datasets, r0_seeds, f0_guess,
-            max_state_iter=max_state_iter, state_tol=state_tol,
-        )
-        oracle_result = evaluate_oracle(frame, prediction_day, output_model, fit, steps_per_hour)
-        row = result_row(f0_guess, fit, oracle_result)
-        rows.append(row); details.append((float(f0_guess), fit, oracle_result))
-        print(
-            f"F0 seed={f0_guess: .4f} | "
-            f"MSE={row['oracle_mse']:.10f} RMSE={row['oracle_rmse']:.10f} MAE={row['oracle_mae']:.10f} | "
-            f"r=[{row['r_F']:.8f}, {row['r_U']:.8f}, {row['r_R']:.8f}] | "
-            f"q=[{row['q_F']:.8f}, {row['q_U']:.8f}] kappa_R={row['kappa_R']:.8f}"
-        )
+        try:
+            fit = fit_from_f0_guess(
+                model, datasets, r0_seeds, f0_guess,
+                max_state_iter=max_state_iter, state_tol=state_tol,
+            )
+            oracle_result = evaluate_oracle(frame, prediction_day, output_model, fit, steps_per_hour)
+            row = result_row(f0_guess, fit, oracle_result)
+            row["success"] = True; row["failure"] = ""
+            rows.append(row); details.append((float(f0_guess), fit, oracle_result, row))
+            print(
+                f"F0 seed={f0_guess: .4f} | "
+                f"MSE={row['oracle_mse']:.10f} RMSE={row['oracle_rmse']:.10f} MAE={row['oracle_mae']:.10f} | "
+                f"r=[{row['r_F']:.8f}, {row['r_U']:.8f}, {row['r_R']:.8f}] | "
+                f"q=[{row['q_F']:.8f}, {row['q_U']:.8f}] kappa_R={row['kappa_R']:.8f}"
+            )
+        except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
+            rows.append({
+                "F0_guess": float(f0_guess), "success": False, "failure": str(exc),
+                "oracle_mse": np.nan, "oracle_rmse": np.nan, "oracle_mae": np.nan, "oracle_bias": np.nan,
+                "r_F": np.nan, "r_U": np.nan, "r_R": np.nan,
+                "q_F": np.nan, "q_U": np.nan, "kappa_R": np.nan,
+                "qp_loss": np.nan, "historical_mse": np.nan, "state_iterations": np.nan,
+                "oracle_F0": np.nan, "oracle_R0": np.nan,
+            })
+            print(f"F0 seed={f0_guess: .4f} | FAILED: {exc}")
 
+    if not details: raise RuntimeError("All F0 sensitivity fits failed.")
     summary = pd.DataFrame(rows)
-    best_index = int(summary["oracle_mse"].idxmin())
-    best = details[best_index]
+    best = min(details, key=lambda item: item[3]["oracle_mse"])
     return {
         "prediction_day": prediction_day, "training_days": training_days,
         "output_fit": output_fit, "summary": summary,
