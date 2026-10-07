@@ -388,7 +388,21 @@ class Engine:
             else:
                 raise ValueError('Unknown native job kind.')
             return result
-        return self.store.run(meta, prior, compute)
+        # Scalar prediction/operator work cannot poll the pool deadline. A
+        # separate search watchdog protects the validation reserve even if
+        # such a job stalls; abrupt termination keeps the full reservation.
+        timer = None
+        if search:
+            used = self.allocation['before']+perf_counter()-self.allocation['begun']
+            allowance = 36000.-used-self.validation_remaining-60.
+            if allowance <= 0.:
+                raise TimeoutError('No search budget remains outside protected validation.')
+            timer = threading.Timer(allowance,lambda:os._exit(124)); timer.daemon=True; timer.start()
+        try:
+            return self.store.run(meta, prior, compute)
+        finally:
+            if timer is not None:
+                timer.cancel()
 
     def replay(self, candidate, grid, *, end=96, start=0, initial=None,
                observations=None, branch='prefinal', moments=False, search=False):
@@ -456,6 +470,10 @@ def prepare(directory, data, source_commit):
     path = directory/'manifest.json'
     if path.exists():
         require(load(path) == content, 'Resume requires identical source, environment, packet and protocol.')
+        for name, value in (('observations.npz',data['observations']),('inputs.npz',data['inputs']),('packet.json',data['packet'])):
+            target = directory/name
+            old = _read_array_checkpoint(target.read_bytes()) if target.suffix == '.npz' else load(target)
+            require(fingerprint(old) == fingerprint(value), 'Frozen preparation data changed.')
     else:
         require(not (directory/'FAILED.json').exists(), 'Preserve the failed run.')
         for name, value in (('observations.npz',data['observations']),('inputs.npz',data['inputs']),('packet.json',data['packet'])):
@@ -691,7 +709,7 @@ def fit_and_select(engine):
         fit = optimizer_family(engine, pieces)
         families[pieces] = validated_family(engine, fit['candidate'])
     chosen = select_families(families)
-    chosen.update(identity=engine.manifest['identity'], schema='f4-h2-frozen-selection-v1',
+        chosen.update(identity=engine.manifest['identity'], schema='f4-h2-frozen-selection-v1',
         curves={str(p):families[p]['candidate'] for p in families},
         metrics={str(p):{g:selection_metrics(families[p]['streams'][g], engine.data['observations']) for g in ('base','fine')} for p in families},
         comparisons={str(p):families[p]['comparison'] for p in families},
@@ -746,11 +764,11 @@ def forecast_week(engine, families, selection):
         final_observations_decoded=0, conditional_forecast_precision_passed=True,
         scientific_acceptance=False, blind_h3_acceptance=False,
         models=summaries, outputs=outputs, origins=raw_origins)
+    freeze['checksum'] = fingerprint(freeze)
     path = engine.directory/'forecast_frozen.npz'
     if path.exists():
         old = _read_array_checkpoint(path.read_bytes())
-        require(old['identity'] == freeze['identity'] and old['selection_sha256'] == freeze['selection_sha256'],
-            'Forecast freeze identity changed.')
+        require(fingerprint(old) == fingerprint(freeze), 'Forecast freeze content changed.')
         for key in outputs:
             for grid in ('base','fine'):
                 same_state(old['origins'][key][grid], raw_origins[key][grid])
@@ -779,9 +797,12 @@ def export_handoff(engine, selection, frozen):
         scientific_acceptance=False, blind_h3_acceptance=False,
         parameter_uncertainty=False, input_uncertainty=False,
         meaning='Fixed nominal physical condition and fitted shared response; not physical calibration.')
+    artifact['checksum'] = fingerprint(artifact)
     path = engine.directory/'conditional_handoff.npz'
     if not path.exists():
         write(path, artifact)
+    else:
+        require(fingerprint(_read_array_checkpoint(path.read_bytes())) == fingerprint(artifact), 'Frozen handoff changed.')
     return artifact
 
 
@@ -792,6 +813,8 @@ def as_forecast_origin(artifact, *, model_key, grid='base'):
     from src.params.bm_1_response import BM1PiecewiseResponse
     require(artifact['schema'] == 'f4-h2-conditional-IJ-handoff-v1'
         and artifact['conditional_prefinal_ready'] is True, 'Not a conditional fitted handoff.')
+    require(artifact['checksum'] == fingerprint({k:v for k,v in artifact.items() if k != 'checksum'}),
+        'Conditional handoff checksum failed.')
     model = artifact['origins'][model_key]; state = model['grids'][grid]; p = model['physical']
     state_check(state['log_state'])
     parameters = BM1Parameters(C=p['C'], k=p['k'], Xi=p['Xi'], sigma_x=p['sigma_x'],
@@ -806,6 +829,8 @@ def load_final_observations(engine, workbook):
     frozen_path = engine.directory/'forecast_frozen.npz'
     require(frozen_path.exists(), 'Freeze and validate the open forecast before final data access.')
     frozen = _read_array_checkpoint(frozen_path.read_bytes())
+    require(frozen['checksum'] == fingerprint({k:v for k,v in frozen.items() if k != 'checksum'}),
+        'Frozen forecast checksum failed before final access.')
     require(frozen['identity'] == engine.manifest['identity']
         and frozen['selection_sha256'] == sha(engine.directory/'selection.json')
         and frozen['conditional_forecast_precision_passed'] is True,
@@ -814,7 +839,8 @@ def load_final_observations(engine, workbook):
     packet = engine.data['packet']
     if path.exists():
         value = _read_array_checkpoint(path.read_bytes())
-        require(value['forecast_sha256'] == sha(frozen_path), 'Final data linked to a different frozen forecast.')
+        require(value['forecast_sha256'] == sha(frozen_path)
+            and value['input_sha256'] == packet['input_sha256']['input'], 'Final data provenance changed.')
     else:
         require(sha(workbook) == packet['input_sha256']['input'], 'Different raw demand workbook.')
         policy = packet['policy']; split = policy['split']
