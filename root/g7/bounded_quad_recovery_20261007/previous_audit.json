@@ -1,0 +1,151 @@
+{
+  "schema": "g7-owned-node-runtime-raw-audit-v1",
+  "read_only": true,
+  "new_forwards": 0,
+  "registered_inputs_verified": 2,
+  "source_hashes_verified": 41,
+  "ledger_entries": 12,
+  "completed_nodes": 10,
+  "banks": {
+    "fine": {
+      "verified_nodes": 5,
+      "verified_exact_start_coefficients": true,
+      "moment_error": 0,
+      "reduced_J": 0.0037155174638558177,
+      "bank_payload_identical": true,
+      "node_forward_seconds": [
+        5.2101696590002575,
+        9.140471334999802,
+        8.054093749999993,
+        7.471967204000066,
+        6.601045575999706
+      ]
+    },
+    "coarse": {
+      "verified_nodes": 5,
+      "verified_exact_start_coefficients": true,
+      "moment_error": 0,
+      "reduced_J": 0.003741963573462555,
+      "bank_payload_identical": true,
+      "node_forward_seconds": [
+        3.520097671000258,
+        4.689201685000171,
+        3.950142971000332,
+        2.2296413210001447,
+        1.6089361929998631
+      ]
+    }
+  },
+  "raw_data_archive": {
+    "path": "G7_M254_node_runtime_20261007_data.zip",
+    "sha256": "ad730a148e770fffeeccdfcfff13af30fc33510d0bbcba9b988c15767af1e80d",
+    "bytes": 20065053,
+    "files": {
+      "fine_bank.json": {
+        "sha256": "ec1766b8cc90896420c50ac9a80df5451ed02e6e19c4df520ca9eb64f8051599",
+        "bytes": 15375943
+      },
+      "invocation.json": {
+        "sha256": "462dd1cae49d9ad9d021e1c09f53fd7f7b5da8ec4b056018146421cee905bb7e",
+        "bytes": 578
+      },
+      "source_manifest.json": {
+        "sha256": "3b54e893e0a6f8310883d2610747607b470a2898858cc4396f4c9294c141a880",
+        "bytes": 4251
+      },
+      "execution_source.json": {
+        "sha256": "8659eba0ea53c9a9be446c13438f3d4c4de5322055e09df60dc10a252979c966",
+        "bytes": 81
+      },
+      "worker_summary.json": {
+        "sha256": "e43c0662b66efe86491d4c1db238f89ddf82de7c31b27994265bc78791d055cf",
+        "bytes": 3944
+      },
+      "coarse_bank.json": {
+        "sha256": "caa95f7c3bf23479e4b99d511a979970c3489e64a01246704705328749848cbb",
+        "bytes": 8461469
+      },
+      "progress.json": {
+        "sha256": "98d8775bc20e3b92856ee36170c7591d2b4e0030aae81b71e7895f17013b164e",
+        "bytes": 2040
+      },
+      "registration.json": {
+        "sha256": "447a4e508e0f7f02ad352d7f0e5911b0a61b838a2ade03cadb1c1a625f217c1b",
+        "bytes": 3374
+      },
+      "worker.log": {
+        "sha256": "5eb2a5683091aca6880f6eac7ec07d587ae3307ae88028252ee2d57f757c95a5",
+        "bytes": 619
+      },
+      "coarse_bank.json.tmp": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "campaign/ledger.json": {
+        "sha256": "5eba2f1ccf6ab4c996f708991c9963c06b8f0f269985798f5213d1aa80cc3c8c",
+        "bytes": 2271
+      },
+      "campaign/nodes/548d4a80ac8d8951a8bfd01f0234e181419b75370f5684efcac1d57124c8702a.json": {
+        "sha256": "01123b693d456d9ec9552d843444744da1992d1e656dbdaf48c282677c3d3559",
+        "bytes": 2507271
+      },
+      "campaign/nodes/ec10e7c1387bfe0015205056a6c7bcb79c61af84ebefb518ccac3fbb177e5138.json": {
+        "sha256": "52b1e61becf0ce0275cdc78090cb678bcd678db3eda6ff637ba345590b64f2e5",
+        "bytes": 1409514
+      },
+      "campaign/nodes/7c5fe2c7bab0a1179440b9da8f867d78a2396c200ea67ed572c4666956a5780f.json": {
+        "sha256": "5945dfc70caae79287a9ba7715659abbfd782cbed31d1b3f9aa4d84179be27cf",
+        "bytes": 287
+      },
+      "campaign/nodes/813133023b3619c95e5923a78274a6a8b9a616e46dfce7b68e2e5dd5d0894d4d.json": {
+        "sha256": "1551f29ecb6e9865fedcbe5fca922a9f7ec2777236d0f3d3beb888cc4a012298",
+        "bytes": 1422745
+      },
+      "campaign/nodes/7e462ec63f3477208237fff40e2d9b57bf27267c460b191da92276b1290ad50f.json": {
+        "sha256": "c94fffe866e846067b7af931a3473f3f1c98defb6ec231f6b771901997cef5be",
+        "bytes": 2512635
+      },
+      "campaign/nodes/82106c94f075d8194e06328ef6ee887c0f4a2b7fab793d43de3a9b24b3e13a72.json": {
+        "sha256": "7d6fdf3d4d4eb2050879f979609ec192cb8af2da5daa0f9571b4aebebc701582",
+        "bytes": 287
+      },
+      "campaign/nodes/6412d6a8040525dcc928b177ef00eef4d530dcb0118199a9ccb14c40e21200b2.json": {
+        "sha256": "8616c9c0d923c4bcb7bd4cbd81fd28e2ee20b5c58379bba3f9e54a9297add9ed",
+        "bytes": 1387213
+      },
+      "campaign/nodes/924b54faff9ac4f34d78f275378bf1680e76b80cc2abef62636b7f7de06e5ac4.json": {
+        "sha256": "ee54a4826000fe66a0bf57de1bdf09c5178213429833ab021934c9fa7fdb947c",
+        "bytes": 2486484
+      },
+      "campaign/nodes/c15e96235b8f12b370460b30e43b4cc9f16af7837842de095bad1fdaf4b46696.json": {
+        "sha256": "fd3df0c907afb20a6c217075c57f7977deb6b2d11fd031ac77694c82e9a52799",
+        "bytes": 1395082
+      },
+      "campaign/nodes/0c047742bc194d298d3e67acf31d58e94cc0f96c4452d581f2e43cf02ef441bb.json": {
+        "sha256": "7a18a89b3e0e3b1e8f9d53c48cad670425acd10f6b47a5f307fec4ca11d3a070",
+        "bytes": 2506013
+      },
+      "campaign/nodes/4157804b7807a9f06f82f146bcb8eb5ed97ec058916a1babb8551fff0a8fc7dc.json": {
+        "sha256": "4189f140f2e3fd5c8408af6d7aca7f5a9d0d429ccd9987285feab0d567afc9a3",
+        "bytes": 1418440
+      },
+      "campaign/nodes/56fa5f312d0119291f92ca312a2f800d1e94b9ca4ae06fa8868739399355ae95.json": {
+        "sha256": "71a397ba2ba265840a87c1f6bc71bf1b6908caec3c90f5f1766ce9747eb8ed08",
+        "bytes": 2494216
+      },
+      "campaign/contracts/52478c32d21f3f1a9f910143143f7d0ae9b4979a88a33c73ab9347be823512e0.json": {
+        "sha256": "52478c32d21f3f1a9f910143143f7d0ae9b4979a88a33c73ab9347be823512e0",
+        "bytes": 1516305
+      },
+      "campaign/contracts/3e5b9dc47d9befc02c89bf1b7f42ab6bb85443692857498bb8b226a8c6eaf725.json": {
+        "sha256": "3e5b9dc47d9befc02c89bf1b7f42ab6bb85443692857498bb8b226a8c6eaf725",
+        "bytes": 2981987
+      }
+    },
+    "library_file_id": "libfile_51a15bcce7c48191a7cabbd96b0c20f3",
+    "library_path": "/BSCe Batterimodel 2026 det/G7_M254_node_runtime_20261007_data.zip"
+  },
+  "original_input_source_archive": "files/output/bm_1/runs/g7_node_runtime_failed_20261007.raw.zlib",
+  "execution_commit": "872e77714d1bc5848d8dce5b1fac058417b796cf",
+  "seconds": 6.021449486000165
+}
