@@ -1,5 +1,28 @@
 # Fælles projektkontekst
 
+## F4-H2: fejlforsøgets ledger samlet, ny PC-prøve klar, 7. oktober
+
+Den komplette PC-ledger er modtaget som tekst og matcher alle 30 tidligere
+entries nøjagtigt; fejlforsøgets 6.964884199900553 s er bevaret som entry31.
+Den afsluttede eksportkontrol på 0.3752458700000716 s tilføjes uden genkørsel,
+og ledgerens råreview får 2 s konservativ charge. Ny seed er et præcist
+prefix-superset med 33 entries: H **1543.03445744 s**, native
+**518.40333680/900 s**, rest **381.59666320 s**. Original fejlforsøgsledger,
+ny samlet ledger og reconciliation-rapport er bevaret. Windows ordered-sum
+og den hidtidige historik er verificeret. Fejl-ZIP er ikke modtaget; ledger-
+verifikation er ikke et raw source/checkpoint-review eller numerisk accept.
+
+PR100's afgrænsede -text Git-attributter bevarer frosne audit/packet-bytes
+under Windows-eksport; hashgate og numerik er uændrede. Én ny invocation må
+måle den oprindeligt planlagte historiske lineære pilot, højst 300 s inkl.
+60 s stopreserve, med source-commit der også indeholder denne nye seed.
+Launcheren forlænger automatisk PC-ledgerens identiske prefix; ingen lokal
+manuel ledgeroverskrivning, ny datapreparation eller gamle modelchecks.
+Sol High; 8 frekvensworkers/BLAS1; review-ZIP også ved fejl/stop, ingen auto-
+retry. Fit/admission/scientific/blind-H3 flags er fortsat false. G/WM er
+uændrede. Aktiv overdragelse: [historisk pilot](root/H2_COMPACT_RATE_PILOT.md).
+Følgende F-statusafsnit er historik.
+
 ## G7: deterministisk primærreference gennemført, 7. oktober
 
 Johan prioriterer deterministisk BM/WM-kontrol; stokastisk G7 beholdes som
