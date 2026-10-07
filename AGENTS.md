@@ -24,6 +24,16 @@ Det ændrer ikke snapshotbytes, numeriske gates eller beregningsbudget.
 Næste G7-opgave fremgår af den nyeste status nedenfor. Selve BM/WM-
 sammenligningen planlægges efter BM's færdiggørelse.
 
+## Aktiv dokumentationsregel for G
+
+Johan, 7. oktober 2026: dokumentér og begrund matematikken, og forklar lidt
+mere i chatten, hvad der konkret er indført og lavet. Ved G-leverancer skal
+notation, mål, antagelser, relevante udledninger og metodevalg fremgå sammen
+med koblingen til implementeringen. Skeln mellem nye beregninger og genbrugt
+evidens, faktisk kontrol og dens begrænsninger. Begrundelser skal kunne
+efterprøves; en bestået numerisk gate er ikke i sig selv et matematisk bevis.
+Denne regel kræver ikke genkørsel af allerede beståede numeriske kontroller.
+
 ## G7: seed-rettelse og kort EM/feedback-kontrol færdig, 7. oktober
 
 Én ny præregistreret120s-opgave er gennemført på egne gemte hour12→14-data.
