@@ -131,7 +131,8 @@ def save_plot(hourly, daily, path):
 
 def print_summary(hourly, daily, skipped):
     covered = hourly["covered_95"].to_numpy(dtype=bool)
-    post_initial = hourly.groupby("day", sort=False)["covered_95"].apply(lambda values: values.iloc[1:]).explode().to_numpy(dtype=bool)
+    post_initial_mask = hourly.groupby("day", sort=False).cumcount().to_numpy() > 0
+    post_initial = hourly.loc[post_initial_mask, "covered_95"].to_numpy(dtype=bool)
     full_days = daily["full_day_covered_95"].to_numpy(dtype=bool)
     post_full_days = daily["hours_1_23_all_covered_95"].to_numpy(dtype=bool)
     hour0 = daily["hour0_covered_95"].to_numpy(dtype=bool)
