@@ -1,5 +1,25 @@
 # Fælles projektkontekst
 
+## F4-H2: dagsplan og præcis genoptagelse kontrolleret, 7. oktober
+
+Johan ønsker at afslutte F4 i dag, hvis muligt. [Restplan og budgetforslag](root/F4_SAME_DAY_REMAINING_PLAN_20261007.md)
+bygger på alle1076 hashverificerede jobs: fuld resterende kandidatramme
+4.85h ved målte gennemsnit,7.19h med faktor1.5,14.01h ved maksimumrater.
+Det er scenarier, ikke målt kode-speedup eller konvergensløfter; protected
+validation er fortsat6.11278h. Alle12 cached COBYQA-kald og næste afbrudte
+kandidat matcher; den gemte fire-stykkers PROBE genbruges også. Ingen nye
+modeljobs. Runtime numba0.62.1/llvmlite0.45.1 er gendannet fra lokale wheels;
+hele miljøet og alle69 numeriske kildehashes matcher. Anbefalet fortsættelse
+bruger600s invocations med lukket ledger/durable delta efter hver blok.
+
+H32941.549305s; native833.307761/900s; oprindeligt10h-loft er uændret.
+Forslag18h samlet og dagsstop23:55 Copenhagen er IKKE godkendt/implementeret.
+Ingen STOP-fjernelse eller ny modelkørsel. Ny controller-/budgetrevision
+skal bevare gammel reservation og alle kilde-/jobidentiteter. F/G/WM holdes
+adskilt, G2b/G2c er droppet. H/I/J er fortsat uafsluttet; betinget historisk
+48/24/168h-studie er ikke blind H3 eller generel forecast-accept.
+Følgende statusafsnit er historik.
+
 ## F4-H2: crash gendannet; videre kørsel budgetblokeret, 7. oktober
 
 Alle seks checkpoints fra `e79aa10` er faktisk gendannet og hashkontrolleret:

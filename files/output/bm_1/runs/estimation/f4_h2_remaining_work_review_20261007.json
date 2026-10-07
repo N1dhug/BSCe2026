@@ -1,0 +1,362 @@
+{
+  "schema": "f4-h2-remaining-work-review-v1",
+  "raw_audit_sha256": "422f6ba0ab0e47401c8960b02adb9b5ab5bef8759e65317054a15d4d3c39837c",
+  "numerical_manifest_identity": "e4d14ffe2473bf44dbfe3d6514ee13fd98e572234cb854f46255dd16f5afbeec",
+  "verified_jobs": 1076,
+  "rates": {
+    "base": {
+      "observed": {
+        "count": 610,
+        "mean": 4.812868784662327,
+        "median": 5.4268702095014305,
+        "p90": 5.673360177999712,
+        "maximum": 9.628281191999122,
+        "contours": {
+          "3": 216,
+          "5": 394
+        },
+        "mean_outside_contours": 0.017763029347657184
+      },
+      "prediction": {
+        "count": 312,
+        "mean": 0.33754316977246374,
+        "median": 0.328310925498954,
+        "p90": 0.3404465280000295,
+        "maximum": 2.1180795450018195,
+        "contours": {},
+        "mean_outside_contours": null
+      },
+      "moments": {
+        "count": 27,
+        "mean": 0.3644176821853088,
+        "median": 0.30138686500140466,
+        "p90": 0.33964184100113926,
+        "maximum": 1.69562909600063,
+        "contours": {},
+        "mean_outside_contours": null
+      },
+      "cdf": {
+        "count": 2,
+        "mean": 1.1455638359984732,
+        "median": 1.1455638359984732,
+        "p90": 1.165524699998059,
+        "maximum": 1.165524699998059,
+        "contours": {},
+        "mean_outside_contours": null
+      }
+    },
+    "fine": {
+      "moments": {
+        "count": 27,
+        "mean": 0.8099575407772877,
+        "median": 0.8012742159990012,
+        "p90": 0.8255999829998473,
+        "maximum": 0.9572349789996224,
+        "contours": {},
+        "mean_outside_contours": null
+      },
+      "prediction": {
+        "count": 24,
+        "mean": 0.8826278637505615,
+        "median": 0.8756863550006528,
+        "p90": 0.8920587659995363,
+        "maximum": 0.9870857989990327,
+        "contours": {},
+        "mean_outside_contours": null
+      },
+      "observed": {
+        "count": 72,
+        "mean": 10.943864837139094,
+        "median": 8.969144553999286,
+        "p90": 14.707149485999253,
+        "maximum": 18.139597843000956,
+        "contours": {
+          "3": 49,
+          "5": 23
+        },
+        "mean_outside_contours": 0.033410326833543676
+      },
+      "cdf": {
+        "count": 2,
+        "mean": 2.8869556760000705,
+        "median": 2.8869556760000705,
+        "p90": 2.923670382999262,
+        "maximum": 2.923670382999262,
+        "contours": {},
+        "mean_outside_contours": null
+      }
+    }
+  },
+  "protected_rates": {
+    "base": {
+      "observed": 9.628281191999122,
+      "prediction": 2.1180795450018195,
+      "moments": 1.69562909600063,
+      "cdf": 1.322575599886477
+    },
+    "fine": {
+      "moments": 0.9572349789996224,
+      "prediction": 1.1851699999533594,
+      "observed": 18.139597843000956,
+      "cdf": 2.923670382999262
+    }
+  },
+  "complete_nonlinear_candidates": [
+    {
+      "key": "ed3546d59985c020b9ec3af953956c477b56dc6faad09e818431bc8eb9063f04",
+      "seconds": 213.21246641499238
+    },
+    {
+      "key": "7c971f1e934c08fed88267bb439518c9a486656a55f14b73e4b84b86e35c26bb",
+      "seconds": 200.21745423100947
+    },
+    {
+      "key": "8b068b7d63de971a3499ff029400f82a3f706d3de5f7c5923fbfc5b20061b08d",
+      "seconds": 200.34311179998258
+    },
+    {
+      "key": "023fbfa9d51b980d9759ac3bf02901fb07daebd66c1c82dc12867b828d478228",
+      "seconds": 206.0222316719919
+    },
+    {
+      "key": "2a59b8d938c0a801cee945afa7268dd4f72e3e685c5ee42d50b70c644df8eea6",
+      "seconds": 244.8245939040171
+    },
+    {
+      "key": "d79edd81211252a8dab08acf14ecbb7586600cf241767d0e18fecaf345221f45",
+      "seconds": 272.86649737397966
+    },
+    {
+      "key": "bb7bd0efd9a6079ebaf26f2e217eda154c58709ba7e06e5dfd11e3686219ab7c",
+      "seconds": 268.89830794200316
+    },
+    {
+      "key": "67e002f3bd161ec186b59058c95d0dc7a4b1f44b1d04de0f15f334233aa887e5",
+      "seconds": 270.3897501930187
+    },
+    {
+      "key": "f8ff1b67f96187a1a7ddb704b9075cfea8b9b4854b2b4bc0eaa2c28c89626a70",
+      "seconds": 270.2272711990008
+    },
+    {
+      "key": "4112a0a1557a96f71f2241a0cf6941153ea520174af5a5ffb06369040332cc66",
+      "seconds": 250.2850015189979
+    },
+    {
+      "key": "35f7c7da4775f2ed6392898c9116e4e3433296ed504cdb74b141e21babd763ea",
+      "seconds": 267.38067217900607
+    }
+  ],
+  "scenarios": {
+    "empirical_mean": {
+      "rows": [
+        {
+          "job": "search_remaining_train",
+          "role": "search",
+          "base_units": 1763,
+          "fine_units": 0,
+          "seconds": 8485.087667359683
+        },
+        {
+          "job": "search_remaining_prior",
+          "role": "search",
+          "base_units": 840,
+          "fine_units": 0,
+          "seconds": 283.53626260886955
+        },
+        {
+          "job": "nonlinear_base_selection",
+          "role": "validation",
+          "base_units": 48,
+          "fine_units": 0,
+          "seconds": 231.01770166379168
+        },
+        {
+          "job": "nonlinear_fine_train_selection",
+          "role": "validation",
+          "base_units": 0,
+          "fine_units": 144,
+          "seconds": 1575.9165365480294
+        },
+        {
+          "job": "nonlinear_fine_prior",
+          "role": "validation",
+          "base_units": 0,
+          "fine_units": 48,
+          "seconds": 42.36613746002695
+        },
+        {
+          "job": "final_winner_and_linear",
+          "role": "validation",
+          "base_units": 336,
+          "fine_units": 336,
+          "seconds": 5294.262496925277
+        },
+        {
+          "job": "remaining_selection_open_final_moments",
+          "role": "validation",
+          "base_units": 720,
+          "fine_units": 720,
+          "seconds": 845.5501605330694
+        },
+        {
+          "job": "open_distributions",
+          "role": "validation",
+          "base_units": 14,
+          "fine_units": 14,
+          "seconds": 56.45527316797961
+        }
+      ],
+      "search_seconds": 9068.623929968553,
+      "validation_seconds": 8405.568306298173,
+      "remaining_hours": 4.853942287851868,
+      "factor": 1.0,
+      "admission": false
+    },
+    "empirical_mean_with_margin": {
+      "rows": [
+        {
+          "job": "search_remaining_train",
+          "role": "search",
+          "base_units": 1763,
+          "fine_units": 0,
+          "seconds": 12727.631501039525
+        },
+        {
+          "job": "search_remaining_prior",
+          "role": "search",
+          "base_units": 840,
+          "fine_units": 0,
+          "seconds": 425.30439391330435
+        },
+        {
+          "job": "nonlinear_base_selection",
+          "role": "validation",
+          "base_units": 48,
+          "fine_units": 0,
+          "seconds": 346.5265524956875
+        },
+        {
+          "job": "nonlinear_fine_train_selection",
+          "role": "validation",
+          "base_units": 0,
+          "fine_units": 144,
+          "seconds": 2363.874804822044
+        },
+        {
+          "job": "nonlinear_fine_prior",
+          "role": "validation",
+          "base_units": 0,
+          "fine_units": 48,
+          "seconds": 63.54920619004042
+        },
+        {
+          "job": "final_winner_and_linear",
+          "role": "validation",
+          "base_units": 336,
+          "fine_units": 336,
+          "seconds": 7941.393745387916
+        },
+        {
+          "job": "remaining_selection_open_final_moments",
+          "role": "validation",
+          "base_units": 720,
+          "fine_units": 720,
+          "seconds": 1268.3252407996042
+        },
+        {
+          "job": "open_distributions",
+          "role": "validation",
+          "base_units": 14,
+          "fine_units": 14,
+          "seconds": 84.68290975196942
+        }
+      ],
+      "search_seconds": 13452.935894952829,
+      "validation_seconds": 12428.352459447262,
+      "remaining_hours": 7.189246765111136,
+      "factor": 1.5,
+      "admission": false
+    },
+    "observed_maximum_with_margin": {
+      "rows": [
+        {
+          "job": "search_remaining_train",
+          "role": "search",
+          "base_units": 1763,
+          "fine_units": 0,
+          "seconds": 25461.989612241676
+        },
+        {
+          "job": "search_remaining_prior",
+          "role": "search",
+          "base_units": 840,
+          "fine_units": 0,
+          "seconds": 2668.7802267022926
+        },
+        {
+          "job": "nonlinear_base_selection",
+          "role": "validation",
+          "base_units": 48,
+          "fine_units": 0,
+          "seconds": 693.2362458239368
+        },
+        {
+          "job": "nonlinear_fine_train_selection",
+          "role": "validation",
+          "base_units": 0,
+          "fine_units": 144,
+          "seconds": 3918.1531340882066
+        },
+        {
+          "job": "nonlinear_fine_prior",
+          "role": "validation",
+          "base_units": 0,
+          "fine_units": 48,
+          "seconds": 85.33223999664187
+        },
+        {
+          "job": "final_winner_and_linear",
+          "role": "validation",
+          "base_units": 336,
+          "fine_units": 336,
+          "seconds": 13995.01103364004
+        },
+        {
+          "job": "remaining_selection_open_final_moments",
+          "role": "validation",
+          "base_units": 720,
+          "fine_units": 720,
+          "seconds": 2865.0932010002725
+        },
+        {
+          "job": "open_distributions",
+          "role": "validation",
+          "base_units": 14,
+          "fine_units": 14,
+          "seconds": 89.17116564060052
+        }
+      ],
+      "search_seconds": 28430.76983894397,
+      "validation_seconds": 22005.997020189698,
+      "remaining_hours": 14.01021301642602,
+      "factor": 1.5,
+      "admission": false
+    }
+  },
+  "limits": [
+    "Same 49-pair cap; completed and pending work deducted once.",
+    "Mean rates include cold jobs; no unmeasured warm-up subtraction.",
+    "Four-piece full TRAIN and final-week timing remain unmeasured.",
+    "Final jobs assume all 168 hours observed and a distinct nonlinear winner.",
+    "Empirical rates are not a validated new reserve or convergence prediction.",
+    "Controller IO/optimizer and job-boundary timeouts may add work.",
+    "Native runtime restoration, PC final export and I/J review are outside model rates."
+  ],
+  "native_propagations": 0,
+  "additional_search_admitted": false,
+  "optimizer_convergence_claim": false,
+  "scientific_acceptance": false,
+  "read_only_seconds": 0.18482143400024142,
+  "source_sha256": "5f279efe93bc9d9fde63a01312dddb97a0cb80070449c01e08a371edcb7e1217"
+}
