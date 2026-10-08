@@ -94,6 +94,21 @@ class S3UncertaintyTests(unittest.TestCase):
         self.assertEqual(result['status'],'numerics-failed')
         self.assertFalse(result['numerics']['passed'])
 
+    def test_nonzero_spring_forecast_preserves_physical_hours_and_raw_variance(self):
+        s=deepcopy(self.snapshot);origin=pd.Timestamp('2022-03-21');s['origin']=str(origin)
+        s['history']['days_by_weekday']=[[str((origin+pd.Timedelta(days=d)-pd.Timedelta(weeks=w)).date())
+            for w in range(1,6)] for d in range(7)]
+        index=pd.date_range(origin,origin+pd.Timedelta(days=7),freq='h',inclusive='left')
+        inputs=pd.DataFrame({'Price':100.,'Temp':5.},index=index)
+        result=process_forecast(s,inputs,sigma_x=.2)
+        p=result['predictions'];n=result['normalized_predictions']
+        self.assertEqual(len(p),167)
+        self.assertNotIn(pd.Timestamp('2022-03-27 02:00'),p.index)
+        self.assertEqual(p.time_utc.nunique(),167)
+        self.assertTrue((p.process_state_variance.between(0,.25)).all())
+        self.assertTrue((p.process_lower95<=p.process_upper95).all())
+        np.testing.assert_allclose(p.process_variance,n.process_variance*s['scales']['demand_scale']**2)
+
     def test_cli_forecast_survives_missing_observation_file(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);save_snapshot(root/'s.json',self.snapshot)

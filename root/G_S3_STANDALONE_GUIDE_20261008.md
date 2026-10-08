@@ -90,8 +90,10 @@ før scoringfejl og budgetstop uden snapshot. Seks kørt i 1,098 s og de to
 yderligere fitkontroller i 1,471 s. Alle tre nye Python-filer AST-parser.
 Det historiske fit og CLI-forecast er reelt udført, ikke testfixtures.
 
-Der er ikke implementeret et nyt støjlag i denne leverance. G6a's tidligere
-failure står ved magt. Den deterministiske prisstyring er stadig den
+Efterfølgende er [det afgrænsede proceslag](G_S3_UNCERTAINTY_GUIDE_20261008.md)
+implementeret og numerisk kontrolleret. Historisk kalibrering er afvist;
+G6a's tidligere failure står ved magt. Den deterministiske prisstyring er stadig den
 eksisterende selvstændige vej; den er ikke koblet til historisk closed loop.
-Næste afgrænsede arbejde er et enkelt G-egnet usikkerhedslag og den fælles
-slutgennemgang, inden for [den aktive arbejdsramme](G_COMPLETION_PLAN_8H_20261008.md).
+Grundimplementeringen er afleveret. Timeintervaloperator/enhed og gyldig
+usikkerhedskalibrering er åbne faglige udvidelser; se
+[den aktive arbejdsramme](G_COMPLETION_PLAN_8H_20261008.md).

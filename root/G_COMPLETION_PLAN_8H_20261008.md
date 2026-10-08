@@ -19,7 +19,14 @@ af obligatorisk parameterbank/demo. Den bygger på Johans seneste instrukser,
 [gennemgangen af faktisk WM-kode](G_WM_ALIGNMENT_REVIEW_20261008.md).
 Review og afgrænsning er udført. Den selvstændige deterministiske S3-vej
 er nu implementeret og kørt; se [brug og resultat](G_S3_STANDALONE_GUIDE_20261008.md).
-Støjlaget og den samlede slutgennemgang er fortsat åbne. Ingen ny historisk eller numerisk G7-accept er erklæret.
+Et afgrænset, numerisk kontrolleret proces-scenarielag og slutgennemgang er
+nu udført; [brug, matematik og afvisningsstatus](G_S3_UNCERTAINTY_GUIDE_20261008.md).
+Historisk støjkalibrering er afvist i udviklingseksemplet. Fysisk kalibreret
+observeret totalusikkerhed er fortsat åben. Ingen ny G7-accept er erklæret.
+Johan har nu præciseret, at målingen dækker en hel time, og at Demand efter
+hans erindring er Power. Punktoperatoren er derfor fortsat en mærket
+udviklingsapproksimation; intervaloperator og præcis fysisk enhed er næste
+faglige opgave, ikke en skjult ændring af den afleverede S3-model.
 
 ## 1. Mål og faste valg
 
@@ -132,8 +139,8 @@ ikke dokumenterer en kausal eller historisk styringsgevinst.
 |---|---:|---|
 | WM/G-review og kontrakter | 0,5 h | Udført; findings og kontrolkvittering gemt. Faktisk samlet reviewtid er ikke målt. |
 | S3 fit/snapshot/predict | 2,0 h | Udført: kode, komplet snapshot, 8 kontroller og faktisk historisk eksempel. |
-| Enkelt G-egnet støjlag efter fungerende kerne | Højst 2,0 h | Særskilt status; må vige for at afslutte den brugbare kerne. |
-| Historisk eksempel og fælles outputs | 1,0 h | Udført for S3: 168 timer, rådata, scorer og figur; støjoutput åbent. |
+| Enkelt G-egnet støjlag efter fungerende kerne | Højst 2,0 h | Udført procesvej med eksplicit sigma; historisk kalibrering afvist. |
+| Historisk eksempel og fælles outputs | 1,0 h | Udført for S3 og procesvej: 168 timer, scorer, figur og numerik; råpakke lokal. |
 | Samlet brugsvej, review og merge | 1,0 h | Dokumentation og færdige dele integreret; eksisterende styringsvej henvist. |
 | Reserve | 1,5 h | Konkrete fejl og inputadgang; ingen udvidelser. |
 | **Oprindelig ramme** | **8,0 h** | **Ingen automatisk nulstilling af arbejdsbudgettet.** |
@@ -148,9 +155,10 @@ Nye udviklingskørsler registreres særskilt, ikke som omskrevet gammel accept.
 ## 6. Klar til fortsættelse
 
 Næste trin køres i **denne G-chat, GPT-6.1 Sol, High** med
-[den færdige S3-brugsvej](G_S3_STANDALONE_GUIDE_20261008.md). S3-instruksen
-er udført; næste er afgrænset usikkerhed og samlet slutgennemgang. Ingen ny generel
-planrunde eller godkendelse er nødvendig. Færdige egne branches merges
+[den færdige S3-brugsvej](G_S3_STANDALONE_GUIDE_20261008.md) og
+[procesvejens slutstatus](G_S3_UNCERTAINTY_GUIDE_20261008.md). Grundimplementeringen
+er udført. Næste udvidelse er intervaloperator/enheder og derefter gyldig
+usikkerhedskalibrering; dette er ikke allerede afsluttet. Færdige egne branches merges
 efter relevante kontroller som autoriseret af Johan.
 
 Udskudt: parameterbank/filterdemo, fuldt G7-døgnforsøg, historisk
