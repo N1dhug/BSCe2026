@@ -1,3 +1,20 @@
+## Aktiv G-afslutning: otte timers grundversion, 8. oktober 2026
+
+Johan har nu valgt en WM-sammenlignelig historisk prognose og en afgrænset,
+fungerende filter→prisstyringsdemo inden for ca. otte timers arbejde.
+Læs først [den aktive plan](G_COMPLETION_PLAN_8H_20261008.md) og
+[kode-/matematikreviewet](G_CODE_MATH_REVIEW_20261008.md).
+Bevar S3 med lambda=0 som historisk hovedopskrift; den gamle lineære
+januarvej er reference. S3's syv mandagsfrosne dagsbaner er ikke én
+kontinuerlig 168h-statebane. Første implementering er en selvstændig
+S3 fit/snapshot/predict-indgang, dernæst den korte native M254-demo.
+Det store 24h/16-job-forsøg udskydes; dets gates og historiske budget/evidens
+ændres ikke. MAP-node med egen betinget middelstate er kontrolreferencen.
+Reviewleverancen ændrer ingen modelkode; 39 fokuserede eksisterende tests
+består, men ingen ny historisk eller fuld G7-numerisk accept er erklæret.
+De efterfølgende G-statusafsnits gamle næste-trin er historik, hvor de
+strider mod denne afslutningsscope. F's aktive arbejde bevares.
+
 ## Samlet matematik og argumentation, 8. oktober 2026
 
 Læs [den genfundne matematik og faglige begrundelser](G_MATHEMATICS_RECOVERY_20261008.md)
