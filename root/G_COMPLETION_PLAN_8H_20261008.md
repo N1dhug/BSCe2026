@@ -6,14 +6,43 @@ G-arbejde. Den bygger på [kodereviewet](G_CODE_MATH_REVIEW_20261008.md) og den
 **Planstatus: fastlagt; leverancerne nedenfor er endnu ikke færdigimplementeret
 eller kørt af dette review.** Der er ikke erklæret ny numerisk G7-accept.
 
+## 0. Seneste prioritering: WM-lignende stokastik før parameterbank
+
+Johan har efter den første plan præciseret og bekræftet, at stokastikken i
+G skal introduceres relativt som i WM, med sammenlignelige output og checks.
+**Parameterbanken er et bispor/en udvidelse, ikke grundversionens hovedspor
+eller en betingelse for at gøre den færdig.** Dette erstatter den tidligere
+prioritering af M254-parameterbankdemoen som obligatorisk leverance B.
+
+Det aktive forløb er deterministisk G → afgrænset stokastisk lag med WM som
+metodisk reference → sammenlignelige prognoseoutput og validering. G beholder
+sin egen dynamik. WM's faktiske stokastiske implementation skal først
+gennemgås for støjantagelser, estimering, initialusikkerhed, propagation og
+observationer; en konkret kobling til G fastlægges derefter. Der vælges ikke
+stiltiende en ny støjmodel eller en allerede underkendt G6a-approksimation.
+
+Fælles output skal omfatte middelprognose, baseline, observationer og
+usikkerhedsbånd med eksplicit betydning. Relevante fælles checks omfatter
+deterministisk grænsetilfælde, numerisk forfining, prognosefejl, dækning,
+intervalbredde og intervalscore ved samme informationsgrænse, horisonter og
+nominelle niveau. Proces-, observations- og parameterusikkerhed holdes
+adskilt; modelspecifikke nødvendige checks kommer oveni. Samme output kræver
+ikke identiske interne solvere eller fysisk identiske støjkoefficienter.
+
+Parameterbank-, M254- og filter→styringsarbejdet bevares som en særskilt,
+allerede udviklet udvidelse. Afsnit 4 beskriver dette bispor; dets krav gælder
+kun, hvis det faktisk køres. Det må ikke blokere hovedsporet eller automatisk
+forbruge otte-timers-reserven. F's undersøgelser overføres fortsat ikke til G.
+
 ## 1. Bestillingen og dens afgrænsning
 
 Johan har valgt:
 
 - Implementeringen skal helst være færdig inden for otte timers arbejde;
   kun strengt nødvendigt arbejde må begrunde en overskridelse.
-- Leverancen er en **WM-sammenlignelig historisk prognose samt en fungerende,
-  afgrænset filter→prisstyringsdemo**.
+- Hovedleverancen er en **WM-sammenlignelig historisk prognose med
+  deterministisk grundlag og et afgrænset, WM-lignende stokastisk lag**.
+  Den tidligere aftalte parameterbank/filter→prisstyringsdemo er nu bispor.
 - G skal fortsat ligne WM i de opgaver, input og output, man ønsker at
   sammenligne. Metodiske udvidelser skal kunne begrundes ud fra disse opgaver.
 
@@ -35,10 +64,10 @@ at G slår WM. Negative, men korrekt beregnede resultater er gyldige.
 2. Den oprindelige lineære januar→168h-vej bevares som reference med eget
    protokolnavn. Den erstatter ikke stiltiende S3 og bruges ikke som bevis
    for, at S3's fremtidige selvstændige forecast-indgang allerede findes.
-3. **Den afgrænsede demos stokastiske vej: M254-mixture og fem rho-hypoteser**
+3. **Bisporets stokastiske vej: M254-mixture og fem rho-hypoteser**
    med egne betingede laws. FV og rå EM er kontroller; de erstatter ikke den
    primære model for at gøre den hurtigere.
-4. G7's deterministiske reference bruger MAP-rho og dens egen betingede
+4. I parameterbankbisporet bruger G7's deterministiske reference MAP-rho og dens egen betingede
    middelstate, sigma_x=0. Dette følger den seneste implementation og
    afløser middelrho-formuleringen i det ældre døgnforslag.
 5. De historiske og syntetiske observationer har forskellige erklærede
@@ -50,8 +79,8 @@ at G slår WM. Negative, men korrekt beregnede resultater er gyldige.
    overføres ikke automatisk til G. Genbrug af fælles kode er ikke genbrug
    af hele F's forskningsprogram eller færdigkriterier. Hver ny G-opgave
    skal begrundes i G's egne aftalte leverancer og WM-sammenlignelighed.
-   Den deterministiske historiske prognose har førsteprioritet; den aftalte
-   filter→prisstyringsdemo er en afgrænset stokastisk del. Nødvendige
+   Den deterministiske historiske prognose har førsteprioritet, fulgt af
+   WM-lignende stokastik; parameterbankdemoen er bispor. Nødvendige
    korrekthedschecks for G's anvendte kode bevares. F's egne forsøg,
    resultater og budgetter samt WM's modeldefinition ændres ikke.
 
@@ -119,7 +148,10 @@ output-/scoringskontrol er med i grundversionen.
 Januar/Februar og ugerne 6–18 er allerede inspiceret. De kan være
 reproduktions-/udviklingseksempler, men bliver ikke nye blinde sluttestdata.
 
-## 4. Leverance B: en kort, reel filter→prisstyringsdemo
+## 4. Bispor: en kort, reel filter→prisstyringsdemo
+
+Følgende design bevares til en senere udvidelse. Det er ikke længere en
+obligatorisk leverance indenfor otte timer; se den nyere beslutning i afsnit 0.
 
 ### Mindste komplette forløb
 
@@ -204,25 +236,25 @@ reserven. Stor døgnaccept og historisk kontrolaccept står fortsat åbne.
 
 | Del | Planlagt tid | Konkret slutpunkt |
 |---|---:|---|
-| Afslut kode-/matematikreview og frys ovenstående kontrakter | 0,5 h | Én aktiv plan; S3, observationsbegreb og referencevalg er entydige. |
+| Konkret WM/G-kobling for stokastik og frosne kontrakter | 0,5 h | Faktisk WM-kode gennemgået; fælles output/checks og forskelle er entydige. |
 | Historisk S3-indgang, snapshot og prognoseeksport | 2,0 h | Leverance A's kode og fokuserede kontraktchecks. |
-| Kort filter→kontrol-demo og holdbar resultateksport | 2,0 h | Leverance B's orkestrering over eksisterende kernels. |
-| Faktisk historisk eksempel og native syntetisk integrationskontrol | 1,0 h | Gemte råresultater, numeriske checks og ærlig status. |
+| Afgrænset WM-lignende stokastisk lag og output | 2,0 h | Den aftalte WM/G-kobling implementeret uden krav om parameterbank. |
+| Historisk eksempel og fælles relevante stokastiske checks | 1,0 h | Gemte råresultater, numeriske checks og ærlig status. |
 | Samlet gennemgang, fælles outputkontrol, dokumentation og merge | 1,0 h | Brugbar startvej, figurer og genoptagelsesnoter. |
 | Reserve til konkrete fejl, inputadgang og uventet køretid | 1,5 h | Kun nødvendige rettelser; ingen nye modeludvidelser. |
-| **I alt** | **8,0 h** | **Grundversion med to tydeligt adskilte anvendelser.** |
+| **I alt** | **8,0 h** | **Deterministisk grundversion med afgrænset WM-lignende stokastik.** |
 
 Tiderne er estimater, ikke dokumenteret runtime. Kodningen behøver ikke vente
-på lange modelkørsler. Efter A og efter B føres en kort faktisk tidsstatus.
+på lange modelkørsler. Efter prognoseindgangen og det stokastiske lag føres en kort faktisk tidsstatus.
 Ved ca. 6,5 timer fryses nye funktioner; resten bruges til at få de aftalte
 forløb til at virke og til at dokumentere dem. En forventet overskridelse
 forklares med konkret blokering og mindst nødvendige ekstra arbejde;
 rammen udvides ikke stiltiende.
 
 Numeriske budgetter fryses for hver konkret invocation med reserve til
-stop og eksport. Ét repræsentativt kort bankjob måles, før resten af den
-korte graf startes; rateenhed omfatter alle fem knuder, ikke kun den
-billigste node. Mål og gem faktiske tider. Ingen gentagne automatiske
+stop og eksport. Mål repræsentativ køretid for den valgte WM-lignende vej
+før større kørsler. Hvis parameterbankbisporet senere køres, omfatter dets
+rateenhed alle fem knuder, ikke kun den billigste. Ingen gentagne automatiske
 retryforsøg, skjulte budgetnulstillinger eller store globale søgninger.
 Et afsluttet job genbruges kun under den samme verificerede kontrakt.
 
@@ -242,15 +274,17 @@ til denne bestilling; de bogføres ikke ved at omskrive gamle ledgerfiler.
 - Profit-/indkøbsmodeller og nye risikomål.
 - Bredt måneds-/årsbenchmark, nye blinde testperioder og endelig WM-rangering.
 
-Dette reducerer forsøgsomfanget, mens G6b, G8 og G7 indgår i grundversionen.
-Den korte demo er en afsluttet **basisimplementation**, ikke en påstand om,
-at alle krav i det tidligere fulde forskningsprogram er opfyldt.
+Den nye prioritering erstatter de ældre planers krav om fuld G6b/G8/G7-bankkæde
+som adgang til en færdig grundversion. Eksisterende kode og evidens bevares;
+udsættelse af bisporet er ikke en påstand om, at dets numeriske gates består.
 
 ## 7. Holdested til næste arbejdspas
 
 Reviewet er færdigt på den angivne kilderevision; 39 afgrænsede tests består.
 Modelkode er uændret i reviewleverancen. **Første implementering er den
-selvstændige S3 fit/snapshot/predict-vej**, ikke et nyt G7-døgnforsøg.
+selvstændige S3 fit/snapshot/predict-vej**. Før stokastikken implementeres
+videre, gennemgås WM's faktiske stokastiske kode og checks og kobles til G.
+Parameterbankdemo og nyt G7-døgnforsøg er ikke næste obligatoriske opgave.
 
 Find/verificér det konkrete historiske input og eventuelle komplette
 S3-arkiv, mens den lille indgang bygges. Hvis dataenes måleenhed eller
