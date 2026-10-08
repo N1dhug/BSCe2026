@@ -1,0 +1,12 @@
+{
+  "schema": "g7-full-graph-stub-parent-v1",
+  "status": "failed",
+  "exit_code": 1,
+  "parent_wall_seconds": 6.2414236210001945,
+  "conservative_charge_seconds": 15,
+  "campaign_debit": 1866.3372718589885,
+  "campaign_ceiling": 1910,
+  "remaining_seconds": 43.662728141011485,
+  "source_unchanged": true,
+  "scientific_accept": false
+}

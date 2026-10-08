@@ -1,0 +1,11 @@
+{
+  "schema": "g7-day-check-parent-result-v1",
+  "status": "failed",
+  "exit_code": 1,
+  "parent_wall_seconds": 10.260089069999594,
+  "conservative_charge_seconds": 20,
+  "campaign_debit_seconds": 1894.3372718589885,
+  "remaining_seconds": 15.662728141011485,
+  "all_source_hashes_unchanged": true,
+  "scientific_validation": false
+}
