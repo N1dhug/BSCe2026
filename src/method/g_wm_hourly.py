@@ -188,7 +188,8 @@ def validate_wm(snapshot,parent):
 
 
 def add_empirical(table,column,errors,scale=1.):
-    errors=np.asarray(errors,float);low,high=np.quantile(errors,[.025,.975],method='inverted_cdf')
+    errors=np.asarray(errors,float);alpha=1-.95
+    low,high=np.quantile(errors,[alpha/2,1-alpha/2],method='inverted_cdf')
     table[column+'_output_mean']=table[column]+scale*float(np.mean(errors))
     table[column+'_output_variance']=scale**2*float(np.var(errors))
     table[column+'_lower']=table[column]+scale*low;table[column+'_upper']=table[column]+scale*high

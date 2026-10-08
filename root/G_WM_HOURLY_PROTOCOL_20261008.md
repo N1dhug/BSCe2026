@@ -57,3 +57,22 @@ sciencekørsel. Ingen faktisk WM-fit er genkørt for at skjule dette.
 Resultatet er **conditional shared-baseline development comparison**. Det
 beviser ikke generel modelrangering, blind holdout, fysisk enhed,95%kalibrering
 eller prisstyringsgevinst. Labels/enhed er stadig brugerens working assumptions.
+
+## Nødvendig eksportkorrektion efter første sammenligning
+
+WM-fit941f4f1 er gennemført én gang,2.527086s/148calls, og dets parametre,
+historiske states og fejlbank bevares. Første forecast/scoring bevares også.
+Sammenligningsadapteren brugte literal .025 ved lower empiricalquantile,
+mens G's eksisterende companion bruger alpha=1−.95,alpha/2. Ved720 samples
+landede afrundingen på hver sin side af en empiricalCDF-atomgrænse og gav
+en forskel på én rang. Puremeans, baseline, fit og fejlbank er uændrede.
+
+Før sidste eksport ændres **kun** add_empirical til G's eksisterende regel.
+En ny regressionstest sammenholder G-bånd/mean med standalone-companion.
+Ingen WM-refit: det allerede fitte snapshot migreres eksplicit lokalt efter
+kontrol af præcis disse to kildeændringslinjer. Migrationjournal bevarer
+original snapshotfingerprint, originale/nye sourcehashes og viser, at alle
+andre snapshotfelter er bit-identiske. Strict load migrerer aldrig automatisk.
+Én nødvendig ny input-only forecast/scoring gemmes i ny mappe; det er ikke
+støjtuning, modelvalg eller budgetnulstilling. Originale outputtabeller er
+stadig bevaret med deres oprindelige kildehashes. G's egne snapshots ændres ikke.

@@ -63,6 +63,10 @@ class MatchedHourlyTests(unittest.TestCase):
         actual=fixture.interval.predict_interval(self.parent,self.raw)['predictions']
         np.testing.assert_array_equal(out['predictions'].g_prediction,actual.prediction)
         np.testing.assert_array_equal(out['predictions'].baseline,actual.baseline)
+        standalone=residual.predict_residual(self.parent,self.errors,self.raw)['predictions']
+        for new,old in (('g_prediction_lower','observed_lower'),('g_prediction_upper','observed_upper'),
+                        ('g_prediction_output_mean','observed_mean')):
+            np.testing.assert_allclose(out['predictions'][new],standalone[old],atol=1e-15,rtol=0)
 
     def test_common_mask_and_empirical_bands_use_raw_scaling(self):
         out=model.predict_comparison(self.parent,self.snapshot,self.raw,g_residual=self.errors)
