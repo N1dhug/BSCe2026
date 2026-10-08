@@ -1,3 +1,24 @@
+## F4-H2: godkendt 20h-fortsættelse, 8. oktober kl.15.17
+
+Johan: "det er godkendt bare skynd dig". Det pending +7200s-forslag er
+registreret i separat v4-campaign: H72000s, native1080s, calls25/49,
+paircap73, invocation600s og stop/export60s. Brugerens aktuelle resume
+superseder den passerede08:00-frist; nyt bounded stop er23:55 Copenhagen.
+V3's43780.468989510904s og alle gamle reservationscharges bevares byte-identisk.
+Forberedelse5s + lokal recovery/scoped kontrol35s giver43820.468989510904s;
+native1015.3882277010393s. Alle69+4 numeriske kildehashes, frozen input,
+environment og3655 predecessor-råjobs er verificeret;8 scoped guards består
+med0 propagation/reservationer. Checkpoint01–06's1166 nye jobs er gendannet.
+Original input.xlsx er nu genfundet/hashverificeret; ingen slut-Y er læst.
+Recoverybytes er holdbart sikret. Midlertidig GitHub-byteeksport kørte ingen
+model/test og er fjernet. Controllerb53e337b47613b1070037223b79befd96b0900d8
+fortsætter fra kandidat44, ikke en ny optimizerstart.43 færdige kald er
+historisk boundary; aktuelle supplementresults kommer i separat receipt.
+H-fit/selection/forecast/finale og I/J/F4 er fortsat åbne. Ingen ny numerical
+retry eller capudvidelse. G/WM-status og droppede F4-G2b/G2c bevares.
+Læs root/f4/h2_budget_supplement_approval_20261008.json og recoveryreceipt.
+Følgende ældre status-/approvalafsnit er historik.
+
 ## F4-H2: normalt budgetstop;43 kald sikret, 8. oktober
 
 PR118 er merged. Blok6 stoppede rent for at beskytte restvalidation, ikke pga
