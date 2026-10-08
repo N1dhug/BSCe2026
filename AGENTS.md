@@ -1,4 +1,20 @@
-## Aktuel G-status: rullende ugedagsfit og frosne bånd udført, 8. oktober 2026
+## Aktuel status: fælles kalender for F og G ugedagstest, 8. oktober 2026
+
+Johan bestilte genbrugelig kode til fem matchingugedage / sjette uge test.
+`src.tools.weekday_backtest` samler kalender, dataisolering, modelcallbacks,
+frosne prognoser og scoring. CLI `src.exe.run_model.weekday_backtest` har frie
+Mondayorigins, plan-only og indbygget G/WM-adapter til eksisterende bounded
+weekdayfit/export. Ingen G/F/WM-matematik er ændret. F kan tilsluttes med
+egne baseline/parameterfit/save/predict-funktioner; det faste F4-quickfit
+er ikke relabelled som weekdaykalibrering. Se root/WEEKDAY_BACKTEST_GUIDE.md.
+Rammen nulstiller ikke F-tilstande og udvider ikke gamle F/H-budgetter.
+Nye realdatakampagner og generisk båndkalibrering er ikke udført her.
+37 fokuserede kalender/G-weekday/F4/responsefit-kontroller består.
+Kode/guide/syntetiske tests må merges; data og nye resultater forbliver lokale.
+Tidligere studieartefakter og kildehashbundne snapshots bevares. Historisk
+G-science og fortsat usikre Demand-metadata følger nedenfor.
+
+## Historisk G-status: rullende ugedagsfit og frosne bånd udført, 8. oktober 2026
 
 Johan bestilte flere testperioder/bånd og præciserede fem matchingweekdaydage
 til fit, sjette uge test, derefter vinduet en uge frem. Ny separat indgang
