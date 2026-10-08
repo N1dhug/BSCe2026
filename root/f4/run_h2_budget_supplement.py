@@ -38,7 +38,7 @@ def validate_campaign(ledger, decision):
         and ledger['decision_identity'] == decision['identity']
         and ledger['entries'][:len(prefix)] == prefix, 'Lost old charges or different supplement.')
     c.require(ledger['ceiling_seconds'] == decision['proposed_ceiling_seconds'] == 72000
-        and ledger['deadline_utc_seconds'] == old['deadline_utc_seconds']
+        and ledger['deadline_utc_seconds'] == decision['deadline_utc_seconds']
         and ledger['validation_reserve_seconds'] >= old['validation_reserve_seconds'], 'Budget/deadline/reserve changed.')
     c.require(all(e['status'] in ('closed', 'reserved') and math.isfinite(e['charged_seconds'])
         and e['charged_seconds'] >= 0 for e in ledger['entries']), 'Invalid charge.')
@@ -58,7 +58,10 @@ def authorized(decision, directory):
         and decision['maximum_additional_seconds'] == 7200 and decision['native_development_ceiling_seconds'] == 1080
         and decision['maximum_candidate_calls'] == {'2':25, '4':49} and decision['global_pair_cap'] == 73
         and decision['invocation_cap_seconds'] == 600 and decision['stop_export_reserve_seconds'] == 60
-        and decision['deadline_utc_seconds'] == old['deadline_utc_seconds'] > time() + 75, 'Registered limits changed/expired.')
+        and decision['previous_deadline_utc_seconds'] == old['deadline_utc_seconds']
+        and decision['deadline_renewed_by_current_resume_request'] is True
+        and old['deadline_utc_seconds'] < decision['approval_utc_seconds'] < decision['deadline_utc_seconds']
+        and decision['deadline_utc_seconds'] > time() + 75, 'Registered limits changed/expired.')
     c.require(decision['manifest_identity'] == c.load(directory/'manifest.json')['identity'], 'Wrong run.')
     c.require(decision['source_sha256'] == {p:c.sha(ROOT/p) for p in SOURCES}, 'Supplement source changed.')
     control = ROOT / decision['offline_control_path']
@@ -75,7 +78,8 @@ def reservation(path, decision):
             ledger = validate_campaign(c.load(path), decision)
         else:
             ledger = dict(old, schema='f4-h2-budget-supplement-campaign-v4', ceiling_seconds=72000.,
-                entries=old['entries']+preparation(decision), decision_identity=decision['identity'])
+                entries=old['entries']+preparation(decision), decision_identity=decision['identity'],
+                deadline_utc_seconds=decision['deadline_utc_seconds'])
             ledger['charged_seconds'] = c.PRIOR_SECONDS+c.ordered_sum(e['charged_seconds'] for e in ledger['entries'])
             validate_campaign(ledger, decision)
             c.write(path, ledger)
