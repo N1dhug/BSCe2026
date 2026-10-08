@@ -29,6 +29,19 @@ blind holdout eller populationskalibrering. G/WM og droppede G2b/G2c bevares.
 Læs root/F4_H2_TWO_FAMILY_PREFINAL_20261008.md og scope-/checkpointreferencer.
 Følgende statusafsnit er historik.
 
+## F og G: særskilte formål, præciseret af Johan 8. oktober 2026
+
+G har et mere deterministisk grundlag; F har et mere stokastisk grundlag.
+Et spørgsmål, forsøg eller en udvidelse i F bliver ikke automatisk en
+G-opgave. Genbrug af fælles kode/metoder overfører ikke F's forskningsscope,
+forsøgsprogram eller færdigkriterier til G. Nye G-undersøgelser skal være
+nødvendige for G's egne aftalte leverancer og WM-sammenlignelighed.
+Prioritér den deterministiske historiske prognose i G. Den allerede aftalte
+afgrænsede filter→prisstyringsdemo bevares som en særskilt stokastisk del;
+den gør ikke G til en gentagelse af F. Bevar nødvendige korrekthedschecks
+for den kode, G faktisk bruger, og hold resultater/budgetter adskilt.
+Læs den aktive G-plan nedenfor; F's egne opgaver ændres ikke af denne regel.
+
 ## Aktiv G-afslutning: otte timers grundversion, 8. oktober 2026
 
 Johan har nu valgt en WM-sammenlignelig historisk prognose og en afgrænset,

@@ -1,3 +1,12 @@
+## F/G-afgrænsning, præciseret 8. oktober 2026
+
+G har et mere deterministisk grundlag, F et mere stokastisk. Undersøgelser
+i F er ikke automatisk nødvendige i G. Fælles kode må genbruges, men nye
+G-opgaver skal begrundes i G's egne leverancer og WM-sammenlignelighed.
+Prioritér den historiske deterministiske prognose; behold kun den aftalte
+afgrænsede stokastiske filter→prisstyringsdemo og dens nødvendige kontroller.
+Se [den aktive plan](G_COMPLETION_PLAN_8H_20261008.md), afsnit 2.
+
 ## Aktiv G-afslutning: otte timers grundversion, 8. oktober 2026
 
 Johan har nu valgt en WM-sammenlignelig historisk prognose og en afgrænset,
