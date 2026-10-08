@@ -39,7 +39,7 @@ Se [præregistreret kørsel og korrektion](G_INTERVAL_MODEL.md#g-s3-interval-pro
 [fit/snapshot/predict](../../src/method/bm_1_s3_interval.py),
 [baselinefeatures](../../src/method/bm_1_s3_interval_baseline.py),
 [integrerede procesmomenter og diagnose](../../src/method/bm_1_s3_interval_process.py)
-og [indgang/eksport](../../src/exe/run_model/bm_1/s3_interval.py).
+og [indgang/eksport](../../archive/bm/ORIGINALS.md#original-tree).
 
 #### Observation og baseline
 
@@ -146,10 +146,10 @@ observationsmodel under samme frosne parametre og baseline.
 Kør fra repoets rod med det eksisterende videnskabelige Python-miljø:
 
 ```text
-python -B -m src.exe.run_model.bm_1.s3_interval fit --raw-csv HISTORY.csv --origin 2022-02-07 --demand-label hour_start --seconds 120 --max-calls 1000 --output NEW_FIT_DIR
-python -B -m src.exe.run_model.bm_1.s3_interval predict --snapshot NEW_FIT_DIR/interval_snapshot.json --inputs-csv FUTURE.csv --observations-csv OBSERVED.csv --output NEW_FORECAST_DIR
-python -B -m src.exe.run_model.bm_1.s3_interval predict --snapshot NEW_FIT_DIR/interval_snapshot.json --inputs-csv FUTURE.csv --sigma-x .2 --observations-csv OBSERVED.csv --output NEW_PROCESS_DIR
-python -B -m src.exe.run_model.bm_1.s3_interval diagnose --snapshot NEW_FIT_DIR/interval_snapshot.json --raw-csv HISTORY.csv --output NEW_AUDIT_DIR
+python -B -m src.exe.run_model.bm_1.s3 interval fit --raw-csv HISTORY.csv --origin 2022-02-07 --demand-label hour_start --seconds 120 --max-calls 1000 --output NEW_FIT_DIR
+python -B -m src.exe.run_model.bm_1.s3 interval predict --snapshot NEW_FIT_DIR/interval_snapshot.json --inputs-csv FUTURE.csv --observations-csv OBSERVED.csv --output NEW_FORECAST_DIR
+python -B -m src.exe.run_model.bm_1.s3 interval predict --snapshot NEW_FIT_DIR/interval_snapshot.json --inputs-csv FUTURE.csv --sigma-x .2 --observations-csv OBSERVED.csv --output NEW_PROCESS_DIR
+python -B -m src.exe.run_model.bm_1.s3 interval diagnose --snapshot NEW_FIT_DIR/interval_snapshot.json --raw-csv HISTORY.csv --output NEW_AUDIT_DIR
 ```
 
 Inputs er rå Datetime,Demand,Price,Temp ved fit og Datetime,Price,Temp ved

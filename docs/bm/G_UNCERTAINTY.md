@@ -32,10 +32,10 @@ af støjstyrken er afvist i udviklingseksemplet**; den fungerende procesvej
 kræver en eksplicit scenariestyrke. Ingen totalusikkerhed eller fysisk
 95%-dækningsaccept er erklæret. Dette er første brugbare grundversion.
 
-Se [deterministisk brug](../../root/G_S3_STANDALONE_GUIDE_20261008.md),
+Se [deterministisk brug](../../archive/bm/G/forecast-development.md#g-s3-standalone-guide-20261008),
 [protokol før kørsel](G_UNCERTAINTY.md#g-s3-uncertainty-protocol-20261008),
 [modelkode](../../src/method/bm_1_s3_uncertainty.py) og
-[indgang/eksport](../../src/exe/run_model/bm_1/s3_uncertainty.py).
+[indgang/eksport](../../archive/bm/ORIGINALS.md#original-tree).
 
 #### Matematik og fortolkning
 
@@ -86,8 +86,8 @@ under den erklærede udviklingsapproksimation. Afvist q bruges aldrig skjult.
 Kør fra repository-roden med det eksisterende videnskabelige Python-miljø:
 
 ```text
-python -B -m src.exe.run_model.bm_1.s3_uncertainty diagnose --snapshot S3_SNAPSHOT.json --raw-csv HISTORY.csv --output NEW_AUDIT_DIR --seconds 60
-python -B -m src.exe.run_model.bm_1.s3_uncertainty predict --snapshot S3_SNAPSHOT.json --inputs-csv FUTURE.csv --sigma-x 0.2 --output NEW_PROCESS_DIR --observations-csv OBSERVED.csv
+python -B -m src.exe.run_model.bm_1.s3 point-process diagnose --snapshot S3_SNAPSHOT.json --raw-csv HISTORY.csv --output NEW_AUDIT_DIR --seconds 60
+python -B -m src.exe.run_model.bm_1.s3 point-process predict --snapshot S3_SNAPSHOT.json --inputs-csv FUTURE.csv --sigma-x 0.2 --output NEW_PROCESS_DIR --observations-csv OBSERVED.csv
 ```
 
 .2 er kun en illustrationsstyrke per sqrt(time), ikke et accepteret fit.
@@ -232,7 +232,7 @@ Johan godkendte8.oktober et enkelt, tydeligt mærket statistisk udviklingslag.
 G's deterministiske intervalmodel, proces-scenarievej og fysisk styring bevares.
 F/bank/BM2 ændres ikke. Se [fast protokol](G_UNCERTAINTY.md#g-s3-residual-protocol-20261008),
 [metode](../../src/method/bm_1_s3_residual.py) og
-[kørbar indgang](../../src/exe/run_model/bm_1/s3_residual.py).
+[kørbar indgang](../../archive/bm/ORIGINALS.md#original-tree).
 
 #### Matematik og fortolkning
 
@@ -297,8 +297,8 @@ hour_start er Johans usikre arbejdsantagelse.
 #### Brug
 
 ```text
-python -B -m src.exe.run_model.bm_1.s3_residual fit --snapshot INTERVAL_FIT/interval_snapshot.json --raw-csv HISTORY.csv --seconds 30 --output NEW_RESIDUAL_FIT
-python -B -m src.exe.run_model.bm_1.s3_residual predict --snapshot INTERVAL_FIT/interval_snapshot.json --residual-snapshot NEW_RESIDUAL_FIT/residual_snapshot.json --inputs-csv FUTURE.csv --observations-csv OBSERVED.csv --output NEW_RESIDUAL_FORECAST
+python -B -m src.exe.run_model.bm_1.s3 residual fit --snapshot INTERVAL_FIT/interval_snapshot.json --raw-csv HISTORY.csv --seconds 30 --output NEW_RESIDUAL_FIT
+python -B -m src.exe.run_model.bm_1.s3 residual predict --snapshot INTERVAL_FIT/interval_snapshot.json --residual-snapshot NEW_RESIDUAL_FIT/residual_snapshot.json --inputs-csv FUTURE.csv --observations-csv OBSERVED.csv --output NEW_RESIDUAL_FORECAST
 ```
 
 Fitnavnet angiver estimering af fejlloven; der er **nul optimizerkald**.
