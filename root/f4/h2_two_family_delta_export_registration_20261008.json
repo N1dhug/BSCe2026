@@ -1,0 +1,1 @@
+{"source_sha256":"abfdc486758dc65c9010dcd544d2fe402fa2f8ccbb747ec73b7ee83d425ae5b8","cap_seconds":8,"model_propagations_allowed":0,"scope":"Audit new raw jobs/adoptions; SHA-reverify old rawfiles/adoptions and original archivebytes; omit hash-identical already-saved metadata with explicit archive/hash dependencies. Same ceilings and model controller."}
