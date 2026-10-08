@@ -47,16 +47,14 @@ def _propagate_one_hour(init, U, O, r, dt, hour, steps_per_hour):
     return np.array([state["F"][-1], state["R"][-1]], dtype=float)
 
 
-def _fit_recent_state(model, observed, U, O, r, current_hour, steps_per_hour, observations=6, f_bounds=(-1.0, 1.0), r_bounds=(-1.0, 1.0)):
-    current_hour, observations = int(current_hour), int(observations)
-    if observations < 3: raise ValueError("backfit observations must be at least 3.")
-    first_hour = max(0, current_hour - observations + 1)
-    obs_hours = np.arange(first_hour, current_hour + 1, dtype=int)
+def _fit_available_state(model, observed, U, O, r, current_hour, steps_per_hour, f_bounds=(-1.0, 1.0), r_bounds=(-1.0, 1.0)):
+    current_hour = int(current_hour)
+    obs_hours = np.arange(0, current_hour + 1, dtype=int)
     if len(obs_hours) < 3: raise ValueError("At least three observations are required for adaptive backfitting.")
 
-    start_step = first_hour * int(steps_per_hour)
+    start_step = 0
     end_step = current_hour * int(steps_per_hour)
-    sample_steps = (obs_hours - first_hour) * int(steps_per_hour)
+    sample_steps = obs_hours * int(steps_per_hour)
 
     def response(init):
         state = _simulate_segment(init, U, O, r, model.dt, start_step, end_step)
@@ -77,7 +75,7 @@ def _fit_recent_state(model, observed, U, O, r, current_hour, steps_per_hour, ob
     residual = fitted_I - np.asarray(observed, dtype=float)[obs_hours]
     current = np.array([state["F"][-1], state["R"][-1]], dtype=float)
     return {
-        "first_hour": int(first_hour),
+        "first_hour": 0,
         "observations": int(len(obs_hours)),
         "window_init": np.asarray(init, dtype=float),
         "current_state": current,
@@ -98,7 +96,7 @@ def _forecast_from_state(init, U, O, r, dt, origin_hour, max_horizon, steps_per_
     return forecasts
 
 
-def day_result(frame, start, baseline_weeks, steps_per_hour, backfit_observations=6, max_horizon=8, **fit_kwargs):
+def day_result(frame, start, baseline_weeks, steps_per_hour, max_horizon=8, **fit_kwargs):
     start = day_start(start)
     output_model, _, fit, _ = fit_history_optimized(
         frame, start, baseline_weeks, steps_per_hour, **fit_kwargs,
@@ -132,9 +130,8 @@ def day_result(frame, start, baseline_weeks, steps_per_hour, backfit_observation
             r_update_state[1] = R_observed[hour]
 
             if hour >= 2:
-                backfit = _fit_recent_state(
+                backfit = _fit_available_state(
                     model, observed, U, O, fit["r"], hour, steps_per_hour,
-                    observations=backfit_observations,
                 )
                 backfit_state = np.array([
                     backfit["current_state"][0],
@@ -269,7 +266,7 @@ def save_plot(summary, path):
     fig, ax = plt.subplots(1, 1, figsize=(12, 7))
     ax.plot(horizon, summary["static_rmse"], marker="o", label="Static historical F0 + observed R0")
     ax.plot(horizon, summary["adaptive_r_rmse"], marker="o", label="Adaptive observed-R update")
-    ax.plot(horizon, summary["adaptive_backfit_rmse"], marker="o", label="Adaptive backfit F + observed R")
+    ax.plot(horizon, summary["adaptive_backfit_rmse"], marker="o", label="Adaptive all-history backfit F + observed R")
     ax.plot(horizon, summary["O_rmse"], marker="o", label="O(t)")
     ax.set_ylabel("Cumulative RMSE")
     ax.set_xlabel("Forecast horizon from each update (hours)")
@@ -315,7 +312,7 @@ def print_summary(cumulative, lead, skipped):
         for day, reason in skipped: print(f"{day:%Y-%m-%d}: {reason}")
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, backfit_observations=6, max_horizon=8, fail_fast=False, **fit_kwargs):
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, max_horizon=8, fail_fast=False, **fit_kwargs):
     start, end = day_start(start), day_start(end)
     if end < start: raise ValueError("end must be on or after start.")
     forecasts, states, skipped = [], [], []
@@ -324,7 +321,6 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
         try:
             day_forecasts, day_states = day_result(
                 frame, day, baseline_weeks, steps_per_hour,
-                backfit_observations=backfit_observations,
                 max_horizon=max_horizon,
                 **fit_kwargs,
             )
@@ -344,12 +340,11 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
 
 
 def main():
-    parser = ArgumentParser(description="Evaluate causal WM4 rolling state updates after each new hourly observation. Compare the static historical-F0 + observed-R0 forecast with an observed-R adaptive update and a recent-window F backfit + observed-R update.")
+    parser = ArgumentParser(description="Evaluate causal WM4 rolling state updates after each new hourly observation. Compare the static historical-F0 + observed-R0 forecast with an observed-R adaptive update and an expanding-history F backfit + observed-R update.")
     parser.add_argument("--start-day", default=START_DAY)
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
-    parser.add_argument("--backfit-observations", type=int, default=6)
     parser.add_argument("--max-horizon", type=int, default=8)
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
@@ -358,12 +353,10 @@ def main():
     args = parser.parse_args()
 
     if args.max_horizon < 1 or args.max_horizon > DAY_HOURS - 1: raise ValueError(f"max-horizon must lie in [1, {DAY_HOURS - 1}].")
-    if args.backfit_observations < 3: raise ValueError("backfit-observations must be at least 3.")
 
     frame, _ = aligned_wm4_data("MED")
     forecasts, states, skipped = run_all_days(
         frame, args.start_day, args.end_day, args.baseline_weeks, args.steps_per_hour,
-        backfit_observations=args.backfit_observations,
         max_horizon=args.max_horizon,
         fail_fast=args.fail_fast,
         max_state_iter=args.max_state_iter,
@@ -384,7 +377,7 @@ def main():
     save_plot(cumulative, output / "adaptive_cumulative_rmse.png")
 
     print()
-    print(f"days={forecasts['day'].nunique()}, forecasts={len(forecasts)}, backfit_observations={args.backfit_observations}")
+    print(f"days={forecasts['day'].nunique()}, forecasts={len(forecasts)}, backfit=all observations available since day start")
     print_summary(cumulative, lead, skipped)
     print(f"output={output}")
 
