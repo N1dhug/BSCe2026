@@ -528,6 +528,8 @@ def main(argv=None):
     parser.add_argument('--max-seconds', type=float, help='Pause between complete hours after this invocation time limit.')
     parser.add_argument('--workers', type=int, help='Frequency workers (1..8).')
     args = parser.parse_args(argv)
+    input_started = perf_counter()
+    print('F4: validating input/workbook metadata; no model propagation.', file=sys.stderr, flush=True)
     try:
         config = json.loads(args.config.read_text(encoding='utf-8-sig'))
         if not isinstance(config, dict):
@@ -541,8 +543,14 @@ def main(argv=None):
         workers = args.workers if args.workers is not None else config.get('workers', 4)
         _execution_limits(max_seconds, workers)
         data = prepare(config)
+    except KeyboardInterrupt:
+        print(f'F4 input control stopped after {perf_counter()-input_started:.3f}s; no run created.',
+              file=sys.stderr, flush=True)
+        return 2
     except (OSError, ValueError, TypeError, KeyError) as exc:
         parser.error(f'F4 input check failed: {exc}')
+    print(f'F4 input control complete in {perf_counter()-input_started:.3f}s; no model propagation yet.',
+          file=sys.stderr, flush=True)
     print(json.dumps(dict(filter_hours=data['filter_hours'], forecast_hours=config['forecast_hours'],
         models=config['models'], grid=config['grid'], missing_filter_hours=data['manifest']['missing_filter_hours'],
         filter_start=data['manifest']['start'], forecast_origin=data['manifest']['origin'],

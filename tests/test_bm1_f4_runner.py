@@ -45,7 +45,7 @@ class PortableF4Tests(unittest.TestCase):
         output = io.StringIO()
         with patch.object(runner, 'read_raw_power_window', return_value=measured), \
                 patch.object(runner, 'read_raw_spot_window', return_value=prices), \
-                patch.object(runner, 'run') as run, redirect_stdout(output):
+                patch.object(runner, 'run') as run, redirect_stdout(output), redirect_stderr(io.StringIO()) as progress:
             result = runner.main(['--check', '--filter-start', start.isoformat(),
                 '--forecast-origin', cutoff.isoformat(), '--forecast-hours', '6',
                 '--model', 'linear', '--grid', 'fine'])
@@ -58,6 +58,8 @@ class PortableF4Tests(unittest.TestCase):
         self.assertEqual(pd.Timestamp(plan['forecast_origin']), cutoff)
         self.assertEqual(pd.Timestamp(plan['forecast_end_exclusive']), cutoff+pd.Timedelta(hours=6))
         self.assertIn('Working assumption', plan['observation_contract']['unit_status'])
+        self.assertIn('validating input/workbook metadata', progress.getvalue())
+        self.assertIn('input control complete in', progress.getvalue())
         for args, message in [(['--workers', '0'], 'positive integer'),
                               (['--max-seconds', 'nan'], 'finite and at least 15'),
                               (['--forecast-hours', '0'], 'positive integer'),
@@ -74,6 +76,14 @@ class PortableF4Tests(unittest.TestCase):
                 self.assertIn(message, errors.getvalue())
                 run.assert_not_called()
                 read.assert_not_called()
+
+    def test_cli_interrupted_input_control_does_not_create_a_run(self):
+        with patch.object(runner, 'prepare', side_effect=KeyboardInterrupt), \
+                patch.object(runner, 'run') as run, redirect_stderr(io.StringIO()) as progress:
+            self.assertEqual(runner.main(['--check']), 2)
+        self.assertIn('input control stopped after', progress.getvalue())
+        self.assertIn('no run created', progress.getvalue())
+        run.assert_not_called()
 
     def test_workbook_preparation_masks_incomplete_group_and_uses_only_past_prices(self):
         config = json.loads((runner.ROOT/'root/f4_quick.json').read_text())
