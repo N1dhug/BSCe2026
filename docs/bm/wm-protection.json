@@ -1,6 +1,6 @@
 {
   "repo": "C:\\Users\\jvils\\OneDrive\\Skrivebord\\Til VS\\fag\\7 semester\\BSCe2026",
-  "baseline": "89e8337b6857b148c48e6880473984c3ae4574a0",
+  "baseline": "7249bf9c318b20f45aa0c3a64b3c6c3b75afaa82",
   "scope": "Conservative static WM closure + WM named files + shared environment + linked BM_REFERENCE + all present inputs and WM results. New undeclared dynamic paths remain manual-review limitation.",
   "files": [
     {

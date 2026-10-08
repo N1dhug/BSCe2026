@@ -1,3 +1,5 @@
+Første runde nedenfor er historisk; gældende udvidelse står i sidste afsnit.
+
 BM-F/G — konkret filplan før ændringer, 9. oktober 2026
 
 Baseline: cleanup/bm-fg-review-20261008 fra 89e8337b6857b148c48e6880473984c3ae4574a0.
@@ -61,3 +63,30 @@ Et fuldt F-ugebenchmark og nye F-weekday-fits er ikke autoriseret. Runtime-måle
 kan derfor kun markeres opfyldt, hvis allerede gyldig end-to-end-evidens findes.
 Arbejdet fortsætter nu med disse reversible rettelser og bevaring; matematiske
 modelændringer og nye historiske fitstudier forelægges særskilt.
+
+
+ANDEN RUNDE FRA7249bf9 — 9. oktober 2026
+Brugerens fortsættelse er indarbejdet i STARTPROMPT og har forrang.
+- BEHOLD aktuel WM-lukning117, alle input/resultater og vejledermateriale.
+  Ny baseline fastlagt efter fetch;73 nye/ændrede lokale filer byteverificeret
+  i round2/start-local-delta.zip. Ny full-sourceZIP/all-refs bundle er bevaret.
+- GENNEMGÅ ALLE resterende BM-noter og root/f4,g7,g8-forsøg. Fil-for-fil-
+  disposition før deletion; saml gældende matematik/validering og historiske
+  emner, fjern afløste arbejdsordrer. Ingen udflytning uden brugbar fremstilling.
+- VURDER originale historiske træer i restore-verificerede pakker ved hash-
+  eller sti-binding. Aktivt nødvendige filer bevares eller migreres eksplicit.
+  Arkivering rapporteres særskilt fra reel tekst-/kodededuplikering.
+- FORENKL BM-kode/imports/wrappers efter afhængighedskort; G-numerik og gemte
+  snapshots skal fortsat kunne genbruges. Ingen hashbypass. Tests bevares.
+- DIAGNOSTICÉR F med tidsmærker: én30s import/adgangsprobe, ved nyinformation
+  én60s faseopdelt inputkontrol. Eksternt stop; samlet indledende cap90s.
+  Korte kontroller/prognose aftales som konkret næste trin i status ud fra
+  diagnosen; ingen dyre fits eller forventede>600s kørsler igangsættes.
+- VURDER/IMPLEMENTÉR korrekt F-weekdayadapter ud fra eksisterende native-
+  likelihood, egen baseline/prior og kontinuerlig state. Hvis komponenten
+  reelt mangler, navngives kodekontrakten; øvrig oprydning fortsætter.
+- FÆLLES F/G/WM-evaluering/modelrangering er udskudt af Johan. Genbrug G-resultater;
+  ingen genkørsel af seksugersstudie. Output skal stadig være sammenligningsklart.
+- Root ejer STATUS/AGENTS/BM_GUIDE/COMPARISON og småcommits. F-agent ejer F4/input.
+  Strukturagent ejer bred notesamling/disposition; kodeagent ejer øvrig BM-kode.
+  Konkrete filplaner/receipts gemmes under round2, ikke nye daterede dagbøger.
