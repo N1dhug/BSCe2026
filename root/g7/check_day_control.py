@@ -50,12 +50,14 @@ def main(output):
     plan = json.loads((root/'root/g7/integration_design.json').read_bytes())
     fixed = build_problem().parameters; logs = np.full(5, -np.log(5))
     origins = {}
-    for cells in (257,513):
+    # Cheap fixture grids retain real typed M254 laws and unchanged comparison
+    # gates. Production CONFIGS remains257/513 outside this scoped mock.
+    for cells in (17,33):
         edges = np.linspace(0,1,cells+1); basis = bernstein_basis(edges)
         c = np.full((5,255), 1/255)
         mass = c@basis/cells
         for name, backend in [('m254','mixture'),('fv','fv')]:
-            level = 'coarse' if cells == 257 else 'fine'
+            level = 'coarse' if cells == 17 else 'fine'
             origins[name+'_'+level] = G8BankOrigin(12, fixed, RHO_VALUES, logs, edges,
                 mass, backend=backend, conditional_coefficients=c if name=='m254' else None,
                 basis=basis if name=='m254' else None,
@@ -93,6 +95,7 @@ def main(output):
                 breakpoints=np.array(price_edges[1:-1]),
                 validate_prices=lambda p:np.asarray(p,float), parameters_for_prices=parameters))
         e.supports = tuple(supports); e.projector = None
+        origin_hash=digest(origin.to_record())
         if backend == 'mixture':
             e.projector = SimpleNamespace(dx=dx, basis=origin.basis,
                 projection_solver=ProjectionStub(origin.basis,dx))
@@ -108,7 +111,7 @@ def main(output):
         def forward(prices,index):
             counts['forward']+=1
             events.append(dict(kind='forward',time=origin.time,index=index,backend=backend,
-                cells=cells,origin_sha256=digest(origin.to_record())))
+                cells=cells,origin_sha256=origin_hash))
             s=e.supports[index]; mass=origin.conditional_mass[index]
             c=None if backend=='fv' else origin.conditional_coefficients[index]
             if c is not None:
@@ -158,9 +161,12 @@ def main(output):
         native_source_path=root/'src/method/bm_1_g7_jobs.py',
         native_source_sha256=manifest['src/method/bm_1_g7_jobs.py'])
     store=Guard(output/'fixture_campaign',prior_debit=0,ceiling=300,max_new_seconds=300)
-    reservations={name:1. for name in COUNTS}
+    reservations={name:5. for name in COUNTS}
+    fixture_configs=dict(m254_coarse=('mixture',17,1/96),m254_fine=('mixture',33,1/192),
+                         fv_coarse=('fv',17,1/96),fv_fine=('fv',33,1/192))
     checks=[]
-    with patch.object(day,'OwnedBankPriceEvaluator',evaluator), \
+    with patch.dict(day.CONFIGS,fixture_configs,clear=True), \
+         patch.object(day,'OwnedBankPriceEvaluator',evaluator), \
          patch.object(phase,'OwnedBankPriceEvaluator',evaluator), \
          patch.object(native,'OwnedBankPriceEvaluator',evaluator), \
          patch.object(native,'bm1_observation_update',likelihood), \
@@ -189,7 +195,7 @@ def main(output):
             price_edges=[12,18,24,30,36],numerics=BM1ControlNumerics(x_steps=257),
             backend='mixture'),store,source_root=root,source_sha256=manifest)
         before=counts.copy(); old_bytes={p.name:p.read_bytes() for p in (store.root/'nodes').glob('*.json')}
-        restored=control.evaluate(saved['prices'],seconds_per_node=.2)
+        restored=control.evaluate(saved['prices'],seconds_per_node=1)
         update=control.assimilate(restored,packet['observation']['value'],
             seconds=1,forward_receipts=saved['receipts'])
         assert counts==before
@@ -225,7 +231,8 @@ def main(output):
         native_likelihood_evaluations=0,native_projection_solves=0,
         scientific_accept=False,numerical_scientific_validation=False,
         fixture_graph_completed=True,actual_full_day_experiment_completed=False,
-        note='Four/five fixture midpoint intervals; numeric kernels and Powell are stubs. Real orchestration, sampling/coupling, audit/store, Bayes weight algebra and native comparisons.')
+        fixture_cells=[17,33],production_cells=[257,513],
+        note='Small17/33-cell fixtures, four/eight day midpoint intervals; numeric kernels and Powell are stubs. Real orchestration, sampling/coupling, audit/store, Bayes weight algebra and native comparisons. Production grids/gates unchanged.')
     atomic_json(output/'check_result.json',report)
     print(json.dumps(report,indent=2))
 
