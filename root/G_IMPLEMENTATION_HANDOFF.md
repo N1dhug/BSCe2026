@@ -1,3 +1,17 @@
+## Aktuel G-plan og næste implementering, 8. oktober 2026
+
+WM-koden er nu gennemgået. Læs [den samlede aktive plan](G_COMPLETION_PLAN_8H_20261008.md),
+[WM/G-reviewet](G_WM_ALIGNMENT_REVIEW_20261008.md) og
+[næste arbejdsinstruks](G_NEXT_STEP_20261008.md).
+Næste trin er S3 lambda=0 fit/snapshot/predict i G-chatten, Sol High;
+derefter ét afgrænset WM-lignende variansfit/støjlag med egne gyldighedschecks.
+Parameterbank/M254/filterdemo er bispor. Eksisterende deterministisk
+prisstyring bevares. F's undersøgelser bliver ikke G-opgaver.
+Den aktive plan erstatter ældre G-prioriteringer nedenfor, herunder krav
+om obligatorisk bankdemo. Historiske resultater og numeriske gates ændres
+ikke. Ingen ny G6a/G7-accept er erklæret. Otte-timers-rammen nulstilles ikke.
+Johan har autoriseret merge af færdige egne branches efter kontrol.
+
 ## F/G-afgrænsning, præciseret 8. oktober 2026
 
 G har et mere deterministisk grundlag, F et mere stokastisk. Undersøgelser
