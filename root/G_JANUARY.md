@@ -1,3 +1,16 @@
+## G7 genoptaget efter slettet chat 8 oktober 2026
+
+Holdestedet er genfundet i det gemte completion-review: fixturekontrol består,
+men numerisk døgnforsøg og alle16 kompatible whole-job-rater er stadig åbne.
+Git-arkivets50 filer/41 kilder og begge egne M254-origins vedtime12 er
+hashkontrolleret og gendannet uden modelpropagation eller projektion.
+De to egne FV-filterorigins mangler stadig. Ældre auxiliary-FV-forwards
+startede fra M254-inputs; de kan ikke ommærkes til egne FV-filterposteriorer.
+Hent de oprindelige G8-råreferencer fra Library. Historiske charges og alle
+numeriske gates bevares; intet nyt numerisk scope er kørt eller admitted.
+Læs [genoptagelsesnote og konkret fortsættelse](G7_CHAT_RECOVERY_20261008.md).
+Den efterfølgende completion-status og øvrig G/F/WM-historik bevares.
+
 ## G7: gemte døgn-fixturekvitteringer kontrolleret, 8. oktober2026
 
 Johan godkendte det konkrete +20s-scope kl.15:59 Copenhagen. Separat
