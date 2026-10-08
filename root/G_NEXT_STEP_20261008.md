@@ -6,8 +6,8 @@ vinduet flyttes en uge. Seks egne origins er kørt. Tre tidlige testuger
 kalibrerer standardizedabsoluteerrorbands; samme q bruges på tre senere
 testuger. Alle deres bandforecasts er frosset før senere Y-scoring.
 
-[Matematik/brug](G_WEEKDAY_ROLLING_GUIDE_20261008.md) og
-[aktiv protokol](G_MULTIPERIOD_BANDS_PROTOCOL_20261008.md) samler kalender,
+[Matematik/brug](../docs/bm/G_WEEKDAY_STUDY.md#g-weekday-rolling-guide-20261008) og
+[aktiv protokol](../docs/bm/G_WEEKDAY_STUDY.md#g-multiperiod-bands-protocol-20261008) samler kalender,
 træningsmasker, baseline/skala, ligninger, coarse/finechecks, snapshots,
 solverbudgetundtagelser, outputlag og finite-rank-båndets præcise begrænsning.
 46 fokuserede tests består; endelige numeriske checks består. Originale
@@ -47,7 +47,7 @@ reviewtid umålt, så exact samlet restbudget kan ikke beregnes fra receipts.
 # Historisk holdested: godkendt residuallag implementeret; stop udvidelser
 
 Johan valgte et enkelt særskilt outputresiduallag, tydeligt udviklingsmodel.
-Se [brug, matematik og resultat](G_S3_RESIDUAL_GUIDE_20261008.md). E er pooled
+Se [brug, matematik og resultat](../docs/bm/G_UNCERTAINTY.md#g-s3-residual-guide-20261008). E er pooled
 empirical Y−G fra own frozenmedianhistorisk replay; nul model/baselinefit.
 Parent/time/FV/F er uændret.29 tests består; RMSE.377901 med lag modpureG.378396.
 95%-bånd dækker120/168=71.43%; lag1≈.38. Ingen kalibreringsaccept.
@@ -65,7 +65,7 @@ så en præcis samlet resttid kan ikke beregnes ud fra implementeringskvittering
 
 # Historisk holdested: timeoperator udført, observeret usikkerhed stadig åben
 
-Johan bad om fortsættelse. [Timeversionen](G_S3_INTERVAL_GUIDE_20261008.md)
+Johan bad om fortsættelse. [Timeversionen](../docs/bm/G_INTERVAL_MODEL.md#g-s3-interval-guide-20261008)
 er nu implementeret: own intervalfit/snapshot, integrated-feature baseline,
 input-only hourly-average forecast og integrerede procesmomenter. 25 fokuserede
 checks består samlet. Demand antages hour_start(10→10–11) efter Johans
@@ -81,7 +81,7 @@ historik; start ikke automatisk nye støjfits eller gentag den færdige operator
 # Historisk holdested: grundimplementering afleveret, intervaloperator næste trin
 
 S3 fit/snapshot/predict/score og en afgrænset, kontrolleret FV-procesvej er
-nu implementeret. Se [samlet brug, matematik og faktisk status](G_S3_UNCERTAINTY_GUIDE_20261008.md).
+nu implementeret. Se [samlet brug, matematik og faktisk status](../docs/bm/G_UNCERTAINTY.md#g-s3-uncertainty-guide-20261008).
 Historisk støjfit er afvist; eksplicit valgt sigma er et processcenarie,
 ikke et accepteret kalibreret bånd for målingerne. Johans nyeste oplysninger:
 timeværdien dækker forbrug over en hel time; Demand er efter hans erindring

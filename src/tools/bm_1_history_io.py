@@ -8,6 +8,7 @@ out-of-window measurement cells are not decoded into observations.
 
 from contextlib import contextmanager
 from datetime import datetime, time
+from functools import lru_cache
 import hashlib
 from pathlib import Path
 import posixpath
@@ -239,6 +240,13 @@ def read_raw_power_window(path, *, columns, start, end, timezone,
         raise ValueError('Declare demand timestamp timezone.')
     local_start, local_end = (t.tz_convert(timezone).tz_localize(None) for t in (start, end))
     from src.tools.import_data.import_input import input_data
+
+    @lru_cache(maxsize=128, typed=True)
+    def metadata_time_delta(raw_time):
+        # Clock labels repeat across dates. Cache only this pure conversion,
+        # per read, retaining every row's timestamp and selection checks below.
+        return input_data._time_delta(pd.Series([raw_time])).iloc[0]
+
     times, readings = [], []
     with _workbook(path) as book:
         header = book.headers(sheet, 2)
@@ -269,7 +277,7 @@ def read_raw_power_window(path, *, columns, start, end, timezone,
                 # them at microsecond precision, not spurious nanoseconds.
                 delta = pd.Timedelta(microseconds=round(raw_time*86400*1e6))
             else:
-                delta = input_data._time_delta(pd.Series([raw_time])).iloc[0]
+                delta = metadata_time_delta(raw_time)
             naive = previous_date+delta
             if pd.isna(naive):
                 raise ValueError(f'Row {row_number} has invalid timestamp metadata.')

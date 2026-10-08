@@ -132,6 +132,30 @@ class HistoryWorkbookTests(unittest.TestCase):
             start=self.start, end=self.end, timezone='Europe/Copenhagen')
         np.testing.assert_array_equal(data.iloc[0], [6., 4.])
 
+    def test_repeated_clock_metadata_is_cached_without_caching_observations(self):
+        from src.tools.import_data.import_input import input_data
+        rows = [['31-01-2022', 1, 'excluded earlier value', '=1/0'],
+                ['01-02-2022', 1, 4., 6.],
+                ['02-02-2022', 1, 'excluded later value', '=1/0']]
+        self.write_power(rows)
+        with patch.object(input_data, '_time_delta', wraps=input_data._time_delta) as parsed, \
+                patch.object(io, '_numeric', wraps=io._numeric) as decoded:
+            data = io.read_raw_power_window(self.input, columns=('meter_B', 'meter_A'),
+                start=self.start, end=self.end, timezone='Europe/Copenhagen')
+        self.assertEqual(parsed.call_count, 1)
+        self.assertEqual(decoded.call_count, 2)
+        expected = pd.DataFrame([[np.nan, np.nan], [6., 4.]],
+            index=pd.date_range(self.start, self.end, freq='h', inclusive='left'), columns=['meter_B', 'meter_A'])
+        pd.testing.assert_frame_equal(data, expected)
+        # A second selected occurrence remains a duplicate, even when its
+        # clock conversion came from the cache; it is never collapsed.
+        self.write_power([*rows[:2], ['01-02-2022', 1, 7., 8.], rows[2]])
+        with patch.object(input_data, '_time_delta', wraps=input_data._time_delta) as parsed:
+            with self.assertRaisesRegex(ValueError, 'duplicate or off-grid'):
+                io.read_raw_power_window(self.input, columns=('meter_B', 'meter_A'),
+                    start=self.start, end=self.end, timezone='Europe/Copenhagen')
+        self.assertEqual(parsed.call_count, 1)
+
     def test_ambiguous_demand_dst_is_not_guessed_and_utc_price_dst_is_preserved(self):
         start = pd.Timestamp('2022-10-30T01:00:00+02:00').tz_convert('Europe/Copenhagen')
         end = pd.Timestamp('2022-10-30T04:00:00+01:00').tz_convert('Europe/Copenhagen')

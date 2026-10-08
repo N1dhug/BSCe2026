@@ -46,7 +46,7 @@ Præcis testliste og begrænsning står i [kontrolkvitteringen](g_code_review_ch
 
 | Kilde | Beslutning | Betydning nu |
 |---|---|---|
-| [G.md](G.md), reviderede G0–G8-krav | G6b, G8 og G7 er obligatoriske; G6a alene er utilstrækkelig. G5's brede benchmark må ikke blokere kernen. | Bevares. En punktprognose alene afslutter ikke G. |
+| [G.md](../archive/bm/G/legacy-development.md#g), reviderede G0–G8-krav | G6b, G8 og G7 er obligatoriske; G6a alene er utilstrækkelig. G5's brede benchmark må ikke blokere kernen. | Bevares. En punktprognose alene afslutter ikke G. |
 | [G4-januarpilot](G4_JANUARY_PILOT_REVIEW.md) | Lineær model beholdes i det lille januar/Februar-forsøg. | Gyldig lokal beslutning; den er ældre end S3-valget. |
 | [G4, uger 13–18](G4_VALIDATION_WEEKS_13_18_REVIEW.md) | S3 uden straf vælges efter den på forhånd fastlagte regel. | Aktiv historisk modelopskrift; ingen ny lambda-/kurvesøgning. |
 | [G8-M254-review](G8_M254_REFINEMENT_REVIEW.md) | Vejlederens normaliserede Bernstein/Beta-familie med M=254 er primær. | Bevares i den stokastiske demo; lokal 42-basis er referencehistorik. |
@@ -316,7 +316,7 @@ de to egne M254-origins ved time 12. De oprindelige to egne FV-filterorigins
 er endnu ikke gendannet her; den gamle reference, som starter fra M254-law,
 er fortsat en sådan reference. De tre ældre manglende projektionsaudits
 for quadnode 0/1/2 er heller ikke genskabt. Se
-[recovery-noten](G7_CHAT_RECOVERY_20261008.md).
+[recovery-noten](../archive/bm/G/control-checkpoints.md#g7-chat-recovery-20261008).
 
 Rå input-workbooks findes i Git-træet (`files/input/data/input.xlsx` og
 `prices.xlsx`), men var ikke med i dette sparse review-checkout. Det er ikke

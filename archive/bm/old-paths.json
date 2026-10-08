@@ -1,0 +1,728 @@
+{
+  "schema": "bm-document-consolidation-v1",
+  "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+  "source_archive": "cleanup_work/recovery/start-source-89e8337.zip",
+  "originals": {
+    "root/F4_CRASH_RECOVERY_20261007.md": {
+      "destination": "archive/bm/F/h2-early-recovery.md",
+      "anchor": "f4-crash-recovery-20261007",
+      "source_sha256": "31e0b6a9c262094bf9a57f426c6820587191e61549277a6c9b4643011c32f907",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_CRASH_RECOVERY_20261007.md",
+      "heading_anchors": {
+        "f4-h2-gendannelse-efter-crash-7-oktober-2026": "f4-crash-recovery-20261007--f4-h2-gendannelse-efter-crash-7-oktober-2026",
+        "resultat": "f4-crash-recovery-20261007--resultat",
+        "præcist-stopsted": "f4-crash-recovery-20261007--præcist-stopsted",
+        "budget-og-hvorfor-modellen-ikke-blev-startet-igen": "f4-crash-recovery-20261007--budget-og-hvorfor-modellen-ikke-blev-startet-igen",
+        "miljø": "f4-crash-recovery-20261007--miljø",
+        "næste-arbejde": "f4-crash-recovery-20261007--næste-arbejde",
+        "gemte-filer": "f4-crash-recovery-20261007--gemte-filer"
+      },
+      "source_lines": 111
+    },
+    "root/F4_H2_PROGRESS_20261007.md": {
+      "destination": "archive/bm/F/h2-early-recovery.md",
+      "anchor": "f4-h2-progress-20261007",
+      "source_sha256": "ab0f1de6d0bc1ecffd81fd4fc0883946aeb0cab4f599984a14b7e1218cf6be48",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_H2_PROGRESS_20261007.md",
+      "heading_anchors": {
+        "f4-h2-gemt-fremdrift-efter-afbrydelse-7-oktober": "f4-h2-progress-20261007--f4-h2-gemt-fremdrift-efter-afbrydelse-7-oktober",
+        "resultater-som-faktisk-er-opnået": "f4-h2-progress-20261007--resultater-som-faktisk-er-opnået",
+        "afbrydelser-og-budget": "f4-h2-progress-20261007--afbrydelser-og-budget",
+        "præcis-fortsættelse": "f4-h2-progress-20261007--præcis-fortsættelse"
+      },
+      "source_lines": 69
+    },
+    "root/F4_NIGHT_CHECKPOINT_20261007.md": {
+      "destination": "archive/bm/F/h2-early-recovery.md",
+      "anchor": "f4-night-checkpoint-20261007",
+      "source_sha256": "715c123130025167c24a4fab566c71ee1b7182783ed11c83b8b053aeba9c5ce3",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_NIGHT_CHECKPOINT_20261007.md",
+      "heading_anchors": {
+        "f4-nattearbejde-7-oktober-2026": "f4-night-checkpoint-20261007--f4-nattearbejde-7-oktober-2026",
+        "f4-h2-crash-gendannet-videre-kørsel-budgetblokeret-7-oktober": "f4-night-checkpoint-20261007--f4-h2-crash-gendannet-videre-kørsel-budgetblokeret-7-oktober",
+        "genoptagelse": "f4-night-checkpoint-20261007--genoptagelse",
+        "bindende-udgangspunkt": "f4-night-checkpoint-20261007--bindende-udgangspunkt",
+        "status": "f4-night-checkpoint-20261007--status",
+        "aktiv-kørsel-og-sidste-holdbare-kilde": "f4-night-checkpoint-20261007--aktiv-kørsel-og-sidste-holdbare-kilde"
+      },
+      "source_lines": 142
+    },
+    "root/H2_SOFT_STOP_RECOVERY_20261007.md": {
+      "destination": "archive/bm/F/h2-early-recovery.md",
+      "anchor": "h2-soft-stop-recovery-20261007",
+      "source_sha256": "e4309870e18997483da1ab02ef40cabaee2f9458fb097783f947a1945b2424c1",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/H2_SOFT_STOP_RECOVERY_20261007.md",
+      "heading_anchors": {
+        "f4-h2-kontrolleret-tidligt-blokstop": "h2-soft-stop-recovery-20261007--f4-h2-kontrolleret-tidligt-blokstop"
+      },
+      "source_lines": 46
+    },
+    "root/F4_H_CHECKPOINT_AUDIT_STATE.md": {
+      "destination": "archive/bm/F/h2-early-recovery.md",
+      "anchor": "f4-h-checkpoint-audit-state",
+      "source_sha256": "2421e7580a5092c72ef2e129e2d319b7312b5da5a46fa78b8a3adbc4817f47db",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_H_CHECKPOINT_AUDIT_STATE.md",
+      "heading_anchors": {
+        "f4-h-recovery-and-checkpoint-audit--session-state": "f4-h-checkpoint-audit-state--f4-h-recovery-and-checkpoint-audit--session-state",
+        "repository-and-ownership": "f4-h-checkpoint-audit-state--repository-and-ownership",
+        "status": "f4-h-checkpoint-audit-state--status",
+        "recovery-events-and-exact-commands": "f4-h-checkpoint-audit-state--recovery-events-and-exact-commands",
+        "scientific-findings-and-limits": "f4-h-checkpoint-audit-state--scientific-findings-and-limits",
+        "tests-actually-run": "f4-h-checkpoint-audit-state--tests-actually-run",
+        "review-ledger": "f4-h-checkpoint-audit-state--review-ledger",
+        "durable-artifacts": "f4-h-checkpoint-audit-state--durable-artifacts",
+        "next-concrete-actions": "f4-h-checkpoint-audit-state--next-concrete-actions"
+      },
+      "source_lines": 218
+    },
+    "root/F4_H2_TERMINAL_20261007_2310.md": {
+      "destination": "archive/bm/F/h2-terminal-recovery.md",
+      "anchor": "f4-h2-terminal-20261007-2310",
+      "source_sha256": "77daca54ce33affa52de8b7cd8f7c3faef782922517f331c1b0bbf79bbc0a912",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_H2_TERMINAL_20261007_2310.md",
+      "heading_anchors": {
+        "f4-h2-terminal-numerical-stop-7-october-2026-2310-copenhagen": "f4-h2-terminal-20261007-2310--f4-h2-terminal-numerical-stop-7-october-2026-2310-copenhagen",
+        "preserved-progress": "f4-h2-terminal-20261007-2310--preserved-progress",
+        "actual-failure": "f4-h2-terminal-20261007-2310--actual-failure",
+        "accounting-and-reproducibility": "f4-h2-terminal-20261007-2310--accounting-and-reproducibility"
+      },
+      "source_lines": 63
+    },
+    "root/F4_H2_SUPPLEMENT_TERMINAL_20261008.md": {
+      "destination": "archive/bm/F/h2-terminal-recovery.md",
+      "anchor": "f4-h2-supplement-terminal-20261008",
+      "source_sha256": "7a46804f28a6d12f4b863140af9ce34247570da86ecb15b52a995e682b566bfb",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_H2_SUPPLEMENT_TERMINAL_20261008.md",
+      "heading_anchors": {
+        "f4-h2-resultatfortsættelse-og-terminalt-mappetab": "f4-h2-supplement-terminal-20261008--f4-h2-resultatfortsættelse-og-terminalt-mappetab",
+        "faktisk-resultat": "f4-h2-supplement-terminal-20261008--faktisk-resultat",
+        "hvad-der-stoppede-og-hvad-der-er-ukendt": "f4-h2-supplement-terminal-20261008--hvad-der-stoppede-og-hvad-der-er-ukendt",
+        "recovery-og-kontrol": "f4-h2-supplement-terminal-20261008--recovery-og-kontrol",
+        "næste-konkrete-beslutning": "f4-h2-supplement-terminal-20261008--næste-konkrete-beslutning"
+      },
+      "source_lines": 99
+    },
+    "root/F4_H2_FILESYSTEM_TAKEOVER_20261008.md": {
+      "destination": "archive/bm/F/h2-terminal-recovery.md",
+      "anchor": "f4-h2-filesystem-takeover-20261008",
+      "source_sha256": "ad068429beab9079f5c1164ab042eddb61bc6489162635d8cb1ba41774f745f4",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_H2_FILESYSTEM_TAKEOVER_20261008.md",
+      "heading_anchors": {
+        "f4-h2-overtagelse-efter-stop-8-oktober-2026": "f4-h2-filesystem-takeover-20261008--f4-h2-overtagelse-efter-stop-8-oktober-2026",
+        "gennemført-arbejde": "f4-h2-filesystem-takeover-20261008--gennemført-arbejde",
+        "nye-stop-og-deres-begrænsninger": "f4-h2-filesystem-takeover-20261008--nye-stop-og-deres-begrænsninger",
+        "holdbart-checkpoint-og-budget": "f4-h2-filesystem-takeover-20261008--holdbart-checkpoint-og-budget",
+        "konkret-klargjort-fortsættelse": "f4-h2-filesystem-takeover-20261008--konkret-klargjort-fortsættelse"
+      },
+      "source_lines": 102
+    },
+    "root/F4_H2_CANDIDATE49_TERMINAL_20261008.md": {
+      "destination": "archive/bm/F/h2-terminal-recovery.md",
+      "anchor": "f4-h2-candidate49-terminal-20261008",
+      "source_sha256": "f03bd5ee04974ded8c0a3909b3f627f88b3f13aad5ae52f79223ced396b55166",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_H2_CANDIDATE49_TERMINAL_20261008.md",
+      "heading_anchors": {
+        "f4-h2-teknisk-recovery-afsluttet-firestykkefit-rammer-kandidatloftet": "f4-h2-candidate49-terminal-20261008--f4-h2-teknisk-recovery-afsluttet-firestykkefit-rammer-kandidatloftet",
+        "faktisk-afgørelse": "f4-h2-candidate49-terminal-20261008--faktisk-afgørelse",
+        "opstart-kontrol-og-bevaringsregler": "f4-h2-candidate49-terminal-20261008--opstart-kontrol-og-bevaringsregler",
+        "budget-og-durable-resultat": "f4-h2-candidate49-terminal-20261008--budget-og-durable-resultat",
+        "næste-metodebeslutning": "f4-h2-candidate49-terminal-20261008--næste-metodebeslutning"
+      },
+      "source_lines": 100
+    },
+    "root/F4_SAME_DAY_REMAINING_PLAN_20261007.md": {
+      "destination": "archive/bm/F/h2-runtime-decisions.md",
+      "anchor": "f4-same-day-remaining-plan-20261007",
+      "source_sha256": "7f274f987a9fd1e233bbeba11a63b3d05b170ab885442b97208c0b27e9c9e7d2",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_SAME_DAY_REMAINING_PLAN_20261007.md",
+      "heading_anchors": {
+        "f4-restarbejde-og-mulighed-for-afslutning-7-oktober-2026": "f4-same-day-remaining-plan-20261007--f4-restarbejde-og-mulighed-for-afslutning-7-oktober-2026",
+        "hvad-der-faktisk-er-gjort": "f4-same-day-remaining-plan-20261007--hvad-der-faktisk-er-gjort",
+        "tidsgrundlag": "f4-same-day-remaining-plan-20261007--tidsgrundlag",
+        "korteste-forsvarlige-udførelse": "f4-same-day-remaining-plan-20261007--korteste-forsvarlige-udførelse",
+        "hvorfor-der-ikke-er-omskrevet-en-solver": "f4-same-day-remaining-plan-20261007--hvorfor-der-ikke-er-omskrevet-en-solver",
+        "konkret-budgetvalg-endnu-ikke-godkendt": "f4-same-day-remaining-plan-20261007--konkret-budgetvalg-endnu-ikke-godkendt",
+        "afslutningens-faglige-scope": "f4-same-day-remaining-plan-20261007--afslutningens-faglige-scope"
+      },
+      "source_lines": 124
+    },
+    "root/F4_H2_TERMINAL_AND_NEXT_DECISION_20261007.md": {
+      "destination": "archive/bm/F/h2-runtime-decisions.md",
+      "anchor": "f4-h2-terminal-and-next-decision-20261007",
+      "source_sha256": "d6be52dfef36042aaeda70ab93f42efb2517bda7ca81d4d9bf54f744953ffff4",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_H2_TERMINAL_AND_NEXT_DECISION_20261007.md",
+      "heading_anchors": {
+        "f4-h2-terminalstatus-og-konkret-fortsættelsesforslag-7-oktober-2026": "f4-h2-terminal-and-next-decision-20261007--f4-h2-terminalstatus-og-konkret-fortsættelsesforslag-7-oktober-2026",
+        "faktisk-resultat": "f4-h2-terminal-and-next-decision-20261007--faktisk-resultat",
+        "budget-og-bevaret-historik": "f4-h2-terminal-and-next-decision-20261007--budget-og-bevaret-historik",
+        "hvad-der-mangler": "f4-h2-terminal-and-next-decision-20261007--hvad-der-mangler",
+        "konkret-metodeændring-til-godkendelse--ikke-udført": "f4-h2-terminal-and-next-decision-20261007--konkret-metodeændring-til-godkendelse--ikke-udført"
+      },
+      "source_lines": 86
+    },
+    "root/H2_BUDGET_BOUNDARY_20261008.md": {
+      "destination": "archive/bm/F/h2-runtime-decisions.md",
+      "anchor": "h2-budget-boundary-20261008",
+      "source_sha256": "cabfff4a051c2a17cf0b5438b46025de7c07c19eec96c8e27c73c4696ec6ece3",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/H2_BUDGET_BOUNDARY_20261008.md",
+      "heading_anchors": {
+        "h2-budgetstop-efter43-kald-8-oktober": "h2-budget-boundary-20261008--h2-budgetstop-efter43-kald-8-oktober",
+        "tidsbehov-og-konkret-forslag": "h2-budget-boundary-20261008--tidsbehov-og-konkret-forslag",
+        "forberedt-implementation-og-kontrol": "h2-budget-boundary-20261008--forberedt-implementation-og-kontrol"
+      },
+      "source_lines": 55
+    },
+    "root/H2_CAP_EXTENSION_20261007.md": {
+      "destination": "archive/bm/F/h2-runtime-decisions.md",
+      "anchor": "h2-cap-extension-20261007",
+      "source_sha256": "df927496105a600f1102426e97bb02c02e712118955f0f743adbb81be539b7fc",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/H2_CAP_EXTENSION_20261007.md",
+      "heading_anchors": {
+        "f4-h2-eksplicit-fortsættelse-efter-kandidatloftet-7-oktober-2026": "h2-cap-extension-20261007--f4-h2-eksplicit-fortsættelse-efter-kandidatloftet-7-oktober-2026",
+        "beslutning-og-begrundelse": "h2-cap-extension-20261007--beslutning-og-begrundelse",
+        "bevaring-genbrug-og-ny-identitet": "h2-cap-extension-20261007--bevaring-genbrug-og-ny-identitet",
+        "rækkefølge-og-accept": "h2-cap-extension-20261007--rækkefølge-og-accept"
+      },
+      "source_lines": 62
+    },
+    "root/H2_COMPACT_STAGED_RUN.md": {
+      "destination": "archive/bm/F/h2-runtime-decisions.md",
+      "anchor": "h2-compact-staged-run",
+      "source_sha256": "cf08720aa773966d06d274bd4baf6a07713062291b21e3e0bd0ee1cc051e7a83",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/H2_COMPACT_STAGED_RUN.md",
+      "heading_anchors": {
+        "f4-h2-etapeopdelt-natplan-og-kørselskontrakt": "h2-compact-staged-run--f4-h2-etapeopdelt-natplan-og-kørselskontrakt",
+        "hvorfor-rækkefølgen-ændres": "h2-compact-staged-run--hvorfor-rækkefølgen-ændres",
+        "fast-rækkefølge": "h2-compact-staged-run--fast-rækkefølge",
+        "hvad-prøverne-kan-og-ikke-kan-dokumentere": "h2-compact-staged-run--hvad-prøverne-kan-og-ikke-kan-dokumentere",
+        "crash-og-aflevering": "h2-compact-staged-run--crash-og-aflevering"
+      },
+      "source_lines": 88
+    },
+    "root/H2_SAME_DAY_EXECUTION_20261007.md": {
+      "destination": "archive/bm/F/h2-runtime-decisions.md",
+      "anchor": "h2-same-day-execution-20261007",
+      "source_sha256": "3286fdf8186349327ca3e6573235a3f7a3250357fe60344f21440fb735576dc4",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/H2_SAME_DAY_EXECUTION_20261007.md",
+      "heading_anchors": {
+        "f4-h2-godkendt-dagsfortsættelse-7-oktober-2026": "h2-same-day-execution-20261007--f4-h2-godkendt-dagsfortsættelse-7-oktober-2026",
+        "budget-og-uændret-model": "h2-same-day-execution-20261007--budget-og-uændret-model",
+        "admission-og-rækkefølge": "h2-same-day-execution-20261007--admission-og-rækkefølge",
+        "reproduktion": "h2-same-day-execution-20261007--reproduktion"
+      },
+      "source_lines": 71
+    },
+    "root/F4_H2_TWO_FAMILY_PREFINAL_20261008.md": {
+      "destination": "archive/bm/F/h2-selection-and-handoff.md",
+      "anchor": "f4-h2-two-family-prefinal-20261008",
+      "source_sha256": "e13daac67fea07fbe7374387c6e98c556c67767c3049d6a99f6a43443172b535",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_H2_TWO_FAMILY_PREFINAL_20261008.md",
+      "heading_anchors": {
+        "f4-h2-godkendt-afgrænsning-modelvalg-og-frosset-ugeprognose": "f4-h2-two-family-prefinal-20261008--f4-h2-godkendt-afgrænsning-modelvalg-og-frosset-ugeprognose",
+        "modelvalg-og-betydning": "f4-h2-two-family-prefinal-20261008--modelvalg-og-betydning",
+        "faktisk-implementering-og-verifikation": "f4-h2-two-family-prefinal-20261008--faktisk-implementering-og-verifikation",
+        "holdbare-artefakter-og-regnskab": "f4-h2-two-family-prefinal-20261008--holdbare-artefakter-og-regnskab",
+        "resterende": "f4-h2-two-family-prefinal-20261008--resterende"
+      },
+      "source_lines": 100
+    },
+    "root/F4_H2_TWO_FAMILY_FINAL_PROGRESS_20261008.md": {
+      "destination": "archive/bm/F/h2-selection-and-handoff.md",
+      "anchor": "f4-h2-two-family-final-progress-20261008",
+      "source_sha256": "733f3d216f3e4aeb9862431fc4f0372eb5df7762bc9a0773f02fd8ed83faaeda",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_H2_TWO_FAMILY_FINAL_PROGRESS_20261008.md",
+      "heading_anchors": {
+        "f4-h2-faktisk-slutvurdering-og-næste-admissiongrænse": "f4-h2-two-family-final-progress-20261008--f4-h2-faktisk-slutvurdering-og-næste-admissiongrænse",
+        "slutvurderingens-aktuelle-resultat": "f4-h2-two-family-final-progress-20261008--slutvurderingens-aktuelle-resultat",
+        "regnskab-og-konkret-pending-forslag": "f4-h2-two-family-final-progress-20261008--regnskab-og-konkret-pending-forslag",
+        "fortsat-faglig-status": "f4-h2-two-family-final-progress-20261008--fortsat-faglig-status"
+      },
+      "source_lines": 66
+    },
+    "root/F4_H2_IJ_RESULT_REVIEW_20261007.md": {
+      "destination": "archive/bm/F/h2-selection-and-handoff.md",
+      "anchor": "f4-h2-ij-result-review-20261007",
+      "source_sha256": "bd5b8616737cb3d2f80887af25808576c4d8dd769c1d8c5d314a5e658ba9aad1",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_H2_IJ_RESULT_REVIEW_20261007.md",
+      "heading_anchors": {
+        "f4-h2--ij-resultatreview-7-oktober-2026": "f4-h2-ij-result-review-20261007--f4-h2--ij-resultatreview-7-oktober-2026",
+        "den-konkrete-opgave": "f4-h2-ij-result-review-20261007--den-konkrete-opgave",
+        "matematik-og-kode": "f4-h2-ij-result-review-20261007--matematik-og-kode",
+        "i-handoff-og-finale": "f4-h2-ij-result-review-20261007--i-handoff-og-finale",
+        "faktiske-resultater-og-afslutning": "f4-h2-ij-result-review-20261007--faktiske-resultater-og-afslutning"
+      },
+      "source_lines": 186
+    },
+    "root/F4_I_IMPLEMENTATION_PREPARATION_20261008.md": {
+      "destination": "archive/bm/F/h2-selection-and-handoff.md",
+      "anchor": "f4-i-implementation-preparation-20261008",
+      "source_sha256": "07c90c131f7d8b2cacc65da3d9069437517c91066df9c4b36e60d32d0b3765e3",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_I_IMPLEMENTATION_PREPARATION_20261008.md",
+      "heading_anchors": {
+        "faktisk-hi-efter-den-kontrollerede-fortsættelse": "f4-i-implementation-preparation-20261008--faktisk-hi-efter-den-kontrollerede-fortsættelse",
+        "i1-faktisk-origin-frem-for-en-ny-demonstration": "f4-i-implementation-preparation-20261008--i1-faktisk-origin-frem-for-en-ny-demonstration",
+        "i2-forecastkontrakter-der-skal-holdes-adskilt": "f4-i-implementation-preparation-20261008--i2-forecastkontrakter-der-skal-holdes-adskilt",
+        "i3-eksisterende-f3-evaluator-med-faktisk-h-belief": "f4-i-implementation-preparation-20261008--i3-eksisterende-f3-evaluator-med-faktisk-h-belief",
+        "j-og-afslutning": "f4-i-implementation-preparation-20261008--j-og-afslutning"
+      },
+      "source_lines": 64
+    },
+    "root/F4_REMAINING_PLAN_20261008.md": {
+      "destination": "archive/bm/F/h2-selection-and-handoff.md",
+      "anchor": "f4-remaining-plan-20261008",
+      "source_sha256": "11affcf5f3b703c593d1aee8979afe4c5964cefd7f7d63c537812a9ee64b0379",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/F4_REMAINING_PLAN_20261008.md",
+      "heading_anchors": {
+        "f4-h2-slutvurdering-gemt-i-tre-blokke-eksportgrænse-nået-8-oktober-2026": "f4-remaining-plan-20261008--f4-h2-slutvurdering-gemt-i-tre-blokke-eksportgrænse-nået-8-oktober-2026",
+        "f4-h2-godkendt-tofamilie-modelvalg-og-ugeprognose-frosset-8-oktober": "f4-remaining-plan-20261008--f4-h2-godkendt-tofamilie-modelvalg-og-ugeprognose-frosset-8-oktober",
+        "f4-h2-kandidat49-fuldt-sikret-maxfev-stop-8-oktober-2026": "f4-remaining-plan-20261008--f4-h2-kandidat49-fuldt-sikret-maxfev-stop-8-oktober-2026",
+        "f4-h2-takeover-sikret-importkontrol-kræver-mere-plads-8-oktober": "f4-remaining-plan-20261008--f4-h2-takeover-sikret-importkontrol-kræver-mere-plads-8-oktober",
+        "f4-h2-48-kaldstrace-terminalt-mappetab-8-oktober-2026": "f4-remaining-plan-20261008--f4-h2-48-kaldstrace-terminalt-mappetab-8-oktober-2026",
+        "f4-h2-normalt-budgetstop43-kald-sikret-8-oktober": "f4-remaining-plan-20261008--f4-h2-normalt-budgetstop43-kald-sikret-8-oktober",
+        "f4-h2-ny-frist-godkendt-separat-fortsættelse-startet": "f4-remaining-plan-20261008--f4-h2-ny-frist-godkendt-separat-fortsættelse-startet",
+        "aktuel-restplan-for-hele-f4--8-oktober-2026": "f4-remaining-plan-20261008--aktuel-restplan-for-hele-f4--8-oktober-2026",
+        "én-rækkefølge": "f4-remaining-plan-20261008--én-rækkefølge",
+        "næste-udførbare-trin-er-klart": "f4-remaining-plan-20261008--næste-udførbare-trin-er-klart",
+        "beregningstid-og-konkret-beslutning": "f4-remaining-plan-20261008--beregningstid-og-konkret-beslutning",
+        "i-og-j-efter-h": "f4-remaining-plan-20261008--i-og-j-efter-h"
+      },
+      "source_lines": 276
+    },
+    "root/G7_NIGHT_CHECKPOINT.md": {
+      "destination": "archive/bm/G/control-checkpoints.md",
+      "anchor": "g7-night-checkpoint",
+      "source_sha256": "95ecc6f479a6ef7ed1c86f626562cc95458abe8eba59f9a6c9c91e840331da66",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/G7_NIGHT_CHECKPOINT.md",
+      "heading_anchors": {
+        "g7-nattecheckpoint--færdigt-deterministisk-delstudie-7-oktober-2026": "g7-night-checkpoint--g7-nattecheckpoint--færdigt-deterministisk-delstudie-7-oktober-2026",
+        "oprindelig-registrering-bevaret-som-historik": "g7-night-checkpoint--oprindelig-registrering-bevaret-som-historik",
+        "g7-nattecheckpoint--7-oktober-2026": "g7-night-checkpoint--g7-nattecheckpoint--7-oktober-2026",
+        "autoriseret-arbejde": "g7-night-checkpoint--autoriseret-arbejde",
+        "budget-og-accept": "g7-night-checkpoint--budget-og-accept",
+        "matematisk-beslutning-før-forsøg": "g7-night-checkpoint--matematisk-beslutning-før-forsøg",
+        "genoptagelse": "g7-night-checkpoint--genoptagelse"
+      },
+      "source_lines": 51
+    },
+    "root/G7_NODE_JOB_CHECKPOINT.md": {
+      "destination": "archive/bm/G/control-checkpoints.md",
+      "anchor": "g7-node-job-checkpoint",
+      "source_sha256": "a0d7013e0906fbe1a1eff03ed1a4baff95a1492dc6d8813d5bad1471934af008",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/G7_NODE_JOB_CHECKPOINT.md",
+      "heading_anchors": {
+        "g7-nodecheckpoint--registrering-7-oktober-2026": "g7-node-job-checkpoint--g7-nodecheckpoint--registrering-7-oktober-2026",
+        "afsluttet-delopgave": "g7-node-job-checkpoint--afsluttet-delopgave"
+      },
+      "source_lines": 34
+    },
+    "root/G7_CHAT_RECOVERY_20261008.md": {
+      "destination": "archive/bm/G/control-checkpoints.md",
+      "anchor": "g7-chat-recovery-20261008",
+      "source_sha256": "6235def968b121f8dc61640c93e65d016f93ecb2556aeb0fd268424ce5aafefa",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/G7_CHAT_RECOVERY_20261008.md",
+      "heading_anchors": {
+        "genoptagelse-af-g7-efter-slettet-chat": "g7-chat-recovery-20261008--genoptagelse-af-g7-efter-slettet-chat",
+        "genfundet-holdepunkt": "g7-chat-recovery-20261008--genfundet-holdepunkt",
+        "gendannede-bytes": "g7-chat-recovery-20261008--gendannede-bytes",
+        "hvorfor-to-fv-origins-stadig-mangler": "g7-chat-recovery-20261008--hvorfor-to-fv-origins-stadig-mangler",
+        "næste-trin": "g7-chat-recovery-20261008--næste-trin"
+      },
+      "source_lines": 39
+    },
+    "root/G_S3_STANDALONE_RUN_20261008.md": {
+      "destination": "archive/bm/G/s3-transition-history.md",
+      "anchor": "g-s3-standalone-run-20261008",
+      "source_sha256": "cf54034025355a83482024e8676ab3e9abaec973a30312278bc00b55bd7a320b",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/G_S3_STANDALONE_RUN_20261008.md",
+      "heading_anchors": {
+        "s3-grundversion-registreret-historisk-udviklingseksempel": "g-s3-standalone-run-20261008--s3-grundversion-registreret-historisk-udviklingseksempel"
+      },
+      "source_lines": 38
+    },
+    "root/G_PARAMETER_BANK_EXTENSION_20261008.md": {
+      "destination": "archive/bm/G/s3-transition-history.md",
+      "anchor": "g-parameter-bank-extension-20261008",
+      "source_sha256": "b09c927e11395616e6df95a4378e5bec707c945e73e158e51de2857df42ac22c",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/G_PARAMETER_BANK_EXTENSION_20261008.md",
+      "heading_anchors": {
+        "g-bevaret-parameterbank--og-filterstyringsudvidelse": "g-parameter-bank-extension-20261008--g-bevaret-parameterbank--og-filterstyringsudvidelse",
+        "mindste-komplette-forløb": "g-parameter-bank-extension-20261008--mindste-komplette-forløb",
+        "hvad-referencesporene-betyder": "g-parameter-bank-extension-20261008--hvad-referencesporene-betyder",
+        "kontroller-b": "g-parameter-bank-extension-20261008--kontroller-b"
+      },
+      "source_lines": 86
+    },
+    "root/G.md": {
+      "destination": "archive/bm/G/legacy-development.md",
+      "anchor": "g",
+      "source_sha256": "8e275d28eda4427c9e22870ea6fce88d985fe3e2a92a1b27022c3bff9a922373",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/G.md",
+      "heading_anchors": {
+        "aktuel-g-plan-og-næste-implementering-8-oktober-2026": "g--aktuel-g-plan-og-næste-implementering-8-oktober-2026",
+        "aktiv-g-afslutning-otte-timers-grundversion-8-oktober-2026": "g--aktiv-g-afslutning-otte-timers-grundversion-8-oktober-2026",
+        "samlet-matematik-og-argumentation-8-oktober-2026": "g--samlet-matematik-og-argumentation-8-oktober-2026",
+        "g7-genoptaget-efter-slettet-chat-8-oktober-2026": "g--g7-genoptaget-efter-slettet-chat-8-oktober-2026",
+        "g7-gemte-døgn-fixturekvitteringer-kontrolleret-8-oktober2026": "g--g7-gemte-døgn-fixturekvitteringer-kontrolleret-8-oktober2026",
+        "g7-døgn-fixture-timing-og-budgetstop-8-oktober-2026": "g--g7-døgn-fixture-timing-og-budgetstop-8-oktober-2026",
+        "g7-samlet-døgnstyring-implementeret-ikke-kørt-8-oktober": "g--g7-samlet-døgnstyring-implementeret-ikke-kørt-8-oktober",
+        "g7-durable-feedback-og-v2-budgetgate-kontrolleret-8-oktober": "g--g7-durable-feedback-og-v2-budgetgate-kontrolleret-8-oktober",
+        "g7-pr115116-merged-atomisk-audit-kontrolleret-7-oktober": "g--g7-pr115116-merged-atomisk-audit-kontrolleret-7-oktober",
+        "g7-recovery-afsluttet-fuld-quadbank-åben-projektionsaudit-7-oktober": "g--g7-recovery-afsluttet-fuld-quadbank-åben-projektionsaudit-7-oktober",
+        "g7-pr114-merged-coarse-prissøgning-færdig-quad-partial-7-oktober": "g--g7-pr114-merged-coarse-prissøgning-færdig-quad-partial-7-oktober",
+        "g7-pr114-merged-launcher-og-særskilt-præregistrering-færdige-7-oktober": "g--g7-pr114-merged-launcher-og-særskilt-præregistrering-færdige-7-oktober",
+        "aktiv-afgrænsning-bm-færdig-først-wm-sammenligning-bagefter": "g--aktiv-afgrænsning-bm-færdig-først-wm-sammenligning-bagefter",
+        "g7-merges-verified-bounded-pricequad-design-ready-7-oktober": "g--g7-merges-verified-bounded-pricequad-design-ready-7-oktober",
+        "g7-receipt-genbrug-og-writer-guards-færdige-7-oktober": "g--g7-receipt-genbrug-og-writer-guards-færdige-7-oktober",
+        "g7-seed-rettelse-og-kort-emfeedback-kontrol-færdig-7-oktober": "g--g7-seed-rettelse-og-kort-emfeedback-kontrol-færdig-7-oktober",
+        "g7-neutral-auxiliary-kørsel-færdig-råreview-begrænser-accept-7-oktober": "g--g7-neutral-auxiliary-kørsel-færdig-råreview-begrænser-accept-7-oktober",
+        "g7-auxiliary-budget-og-integrationsdesign-færdigt-7-oktober": "g--g7-auxiliary-budget-og-integrationsdesign-færdigt-7-oktober",
+        "g7-eget-m254-nodeforsøg-gennemført-7-oktober": "g--g7-eget-m254-nodeforsøg-gennemført-7-oktober",
+        "g7-egne-nodecheckpoints-implementeret-7-oktober": "g--g7-egne-nodecheckpoints-implementeret-7-oktober",
+        "g7-deterministisk-døgnkontrol-med-bevaret-forbrug-7-oktober": "g--g7-deterministisk-døgnkontrol-med-bevaret-forbrug-7-oktober",
+        "g7-fælles-bmwm-kontrakt-og-frozen-fit-prisrespons-7-oktober": "g--g7-fælles-bmwm-kontrakt-og-frozen-fit-prisrespons-7-oktober",
+        "aktiv-kontrolprioritet--johan-7-oktober-2026": "g--aktiv-kontrolprioritet--johan-7-oktober-2026",
+        "aktiv-basisbeslutning--johan-6-oktober-2026": "g--aktiv-basisbeslutning--johan-6-oktober-2026",
+        "g-plan--deterministisk-bm-kerne-stokastisk-udvidelse-og-wm4-sammenligning": "g--g-plan--deterministisk-bm-kerne-stokastisk-udvidelse-og-wm4-sammenligning",
+        "arbejdsregel-fra-johan-5-oktober-adskil-gf-og-minimér-kontrolarbejdet": "g--arbejdsregel-fra-johan-5-oktober-adskil-gf-og-minimér-kontrolarbejdet",
+        "grundarbejde-til-næste-implementation-5-oktober": "g--grundarbejde-til-næste-implementation-5-oktober",
+        "afgrænsningsreview-5-oktober-2026": "g--afgrænsningsreview-5-oktober-2026",
+        "aktuel-g0g3-leverance-5-oktober": "g--aktuel-g0g3-leverance-5-oktober",
+        "0-bachelorens-formål-og-krav": "g--0-bachelorens-formål-og-krav",
+        "hvad-wm-faktisk-gør": "g--hvad-wm-faktisk-gør",
+        "1-leverancer-og-rækkefølge": "g--1-leverancer-og-rækkefølge",
+        "1a-bindende-genbrug-fra-wm4": "g--1a-bindende-genbrug-fra-wm4",
+        "2-første-trin-samme-bm1-uden-processtøj": "g--2-første-trin-samme-bm1-uden-processtøj",
+        "eksakt-og-billig-reference-for-lineære-kurver": "g--eksakt-og-billig-reference-for-lineære-kurver",
+        "3-parameterestimation": "g--3-parameterestimation",
+        "små-identifikationskontroller": "g--små-identifikationskontroller",
+        "4-data-initialisering-og-retfærdig-wm4-sammenligning": "g--4-data-initialisering-og-retfærdig-wm4-sammenligning",
+        "5-fleksible-fg-i-et-lille-ekstra-trin": "g--5-fleksible-fg-i-et-lille-ekstra-trin",
+        "første-g4-pilot-matematisk-definition-og-forsvar": "g--første-g4-pilot-matematisk-definition-og-forsvar",
+        "afgrænsning-og-efterfølgende-kurvevalg": "g--afgrænsning-og-efterfølgende-kurvevalg",
+        "6-beregningsbudget-og-stopregler": "g--6-beregningsbudget-og-stopregler",
+        "7-kodens-placering-kontrol-og-output": "g--7-kodens-placering-kontrol-og-output",
+        "8-obligatorisk-stokastik-kontrol-og-rekursiv-estimation": "g--8-obligatorisk-stokastik-kontrol-og-rekursiv-estimation",
+        "g6a-billig-variansreference-med-bms-egen-diffusion": "g--g6a-billig-variansreference-med-bms-egen-diffusion",
+        "g6b-fokkerplanck-beta-mixture-og-eulermaruyama": "g--g6b-fokkerplanck-beta-mixture-og-eulermaruyama",
+        "g8-rekursiv-estimation-og-handoff-til-kontrol": "g--g8-rekursiv-estimation-og-handoff-til-kontrol",
+        "g7-obligatorisk-stokastisk-prisstyring-med-single-shooting": "g--g7-obligatorisk-stokastisk-prisstyring-med-single-shooting",
+        "små-budgetter-og-afslutningskriterier": "g--små-budgetter-og-afslutningskriterier",
+        "beslutning-5-oktober-genbrug-wms-ugeprognose-med-fælles-langt-fit": "g--beslutning-5-oktober-genbrug-wms-ugeprognose-med-fælles-langt-fit",
+        "det-konkrete-wm-princip-og-genbrug": "g--det-konkrete-wm-princip-og-genbrug",
+        "informationsgrænsen-i-ugeprognosen": "g--informationsgrænsen-i-ugeprognosen",
+        "hvornår-yderligere-implementation-bliver-nødvendig": "g--hvornår-yderligere-implementation-bliver-nødvendig",
+        "9-kilder-og-første-konkrete-opgave": "g--9-kilder-og-første-konkrete-opgave",
+        "januar-håndtering-af-huller-5-oktober-2026": "g--januar-håndtering-af-huller-5-oktober-2026"
+      },
+      "source_lines": 1684
+    },
+    "root/G_IMPLEMENTATION_HANDOFF.md": {
+      "destination": "archive/bm/G/legacy-development.md",
+      "anchor": "g-implementation-handoff",
+      "source_sha256": "65981b272420bfde0f90b371a7c0eaefa0f47f65ed7eef492241d46e833ca904",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/G_IMPLEMENTATION_HANDOFF.md",
+      "heading_anchors": {
+        "aktuel-g-plan-og-næste-implementering-8-oktober-2026": "g-implementation-handoff--aktuel-g-plan-og-næste-implementering-8-oktober-2026",
+        "fg-afgrænsning-præciseret-8-oktober-2026": "g-implementation-handoff--fg-afgrænsning-præciseret-8-oktober-2026",
+        "aktiv-g-afslutning-otte-timers-grundversion-8-oktober-2026": "g-implementation-handoff--aktiv-g-afslutning-otte-timers-grundversion-8-oktober-2026",
+        "genfundet-matematisk-grundlag-8-oktober-2026": "g-implementation-handoff--genfundet-matematisk-grundlag-8-oktober-2026",
+        "g7-genoptaget-efter-slettet-chat-8-oktober-2026": "g-implementation-handoff--g7-genoptaget-efter-slettet-chat-8-oktober-2026",
+        "g7-gemte-døgn-fixturekvitteringer-kontrolleret-8-oktober2026": "g-implementation-handoff--g7-gemte-døgn-fixturekvitteringer-kontrolleret-8-oktober2026",
+        "g7-døgn-fixture-timing-og-budgetstop-8-oktober-2026": "g-implementation-handoff--g7-døgn-fixture-timing-og-budgetstop-8-oktober-2026",
+        "g7-samlet-døgnstyring-implementeret-ikke-kørt-8-oktober": "g-implementation-handoff--g7-samlet-døgnstyring-implementeret-ikke-kørt-8-oktober",
+        "g7-durable-feedback-og-v2-budgetgate-kontrolleret-8-oktober": "g-implementation-handoff--g7-durable-feedback-og-v2-budgetgate-kontrolleret-8-oktober",
+        "g7-pr115116-merged-atomisk-audit-kontrolleret-7-oktober": "g-implementation-handoff--g7-pr115116-merged-atomisk-audit-kontrolleret-7-oktober",
+        "g7-recovery-afsluttet-fuld-quadbank-åben-projektionsaudit-7-oktober": "g-implementation-handoff--g7-recovery-afsluttet-fuld-quadbank-åben-projektionsaudit-7-oktober",
+        "g7-pr114-merged-coarse-prissøgning-færdig-quad-partial-7-oktober": "g-implementation-handoff--g7-pr114-merged-coarse-prissøgning-færdig-quad-partial-7-oktober",
+        "g7-pr114-merged-launcher-og-særskilt-præregistrering-færdige-7-oktober": "g-implementation-handoff--g7-pr114-merged-launcher-og-særskilt-præregistrering-færdige-7-oktober",
+        "aktiv-afgrænsning-bm-færdig-først-wm-sammenligning-bagefter": "g-implementation-handoff--aktiv-afgrænsning-bm-færdig-først-wm-sammenligning-bagefter",
+        "g7-merges-verified-bounded-pricequad-design-ready-7-oktober": "g-implementation-handoff--g7-merges-verified-bounded-pricequad-design-ready-7-oktober",
+        "g7-receipt-genbrug-og-writer-guards-færdige-7-oktober": "g-implementation-handoff--g7-receipt-genbrug-og-writer-guards-færdige-7-oktober",
+        "g7-seed-rettelse-og-kort-emfeedback-kontrol-færdig-7-oktober": "g-implementation-handoff--g7-seed-rettelse-og-kort-emfeedback-kontrol-færdig-7-oktober",
+        "g7-neutral-auxiliary-kørsel-færdig-råreview-begrænser-accept-7-oktober": "g-implementation-handoff--g7-neutral-auxiliary-kørsel-færdig-råreview-begrænser-accept-7-oktober",
+        "g7-auxiliary-budget-og-integrationsdesign-færdigt-7-oktober": "g-implementation-handoff--g7-auxiliary-budget-og-integrationsdesign-færdigt-7-oktober",
+        "g7-eget-m254-nodeforsøg-gennemført-7-oktober": "g-implementation-handoff--g7-eget-m254-nodeforsøg-gennemført-7-oktober",
+        "g7-egne-nodecheckpoints-implementeret-7-oktober": "g-implementation-handoff--g7-egne-nodecheckpoints-implementeret-7-oktober",
+        "g7-deterministisk-døgnkontrol-med-bevaret-forbrug-7-oktober": "g-implementation-handoff--g7-deterministisk-døgnkontrol-med-bevaret-forbrug-7-oktober",
+        "g7-fælles-bmwm-kontrakt-og-frozen-fit-prisrespons-7-oktober": "g-implementation-handoff--g7-fælles-bmwm-kontrakt-og-frozen-fit-prisrespons-7-oktober",
+        "aktiv-kontrolprioritet--johan-7-oktober-2026": "g-implementation-handoff--aktiv-kontrolprioritet--johan-7-oktober-2026",
+        "aktiv-basisbeslutning--johan-6-oktober-2026": "g-implementation-handoff--aktiv-basisbeslutning--johan-6-oktober-2026",
+        "g3-og-frem--grundlag-og-overdragelse-til-sol": "g-implementation-handoff--g3-og-frem--grundlag-og-overdragelse-til-sol",
+        "ny-beslutning-langt-fit-og-genbrug-af-wms-ugeprognose": "g-implementation-handoff--ny-beslutning-langt-fit-og-genbrug-af-wms-ugeprognose",
+        "opgaven-og-det-allerede-kendte": "g-implementation-handoff--opgaven-og-det-allerede-kendte",
+        "fund-der-skal-håndteres-før-historisk-g3-accept": "g-implementation-handoff--fund-der-skal-håndteres-før-historisk-g3-accept",
+        "p0--datakontrakt-fitarkiv-og-inputaudit": "g-implementation-handoff--p0--datakontrakt-fitarkiv-og-inputaudit",
+        "p1--gemt-fit--frosset-forecast-origin": "g-implementation-handoff--p1--gemt-fit--frosset-forecast-origin",
+        "p2--g3-prognose-varig-eksport-og-særskilt-scoring": "g-implementation-handoff--p2--g3-prognose-varig-eksport-og-særskilt-scoring",
+        "p3--lille-g4-og-ét-fælles-modelinterface": "g-implementation-handoff--p3--lille-g4-og-ét-fælles-modelinterface",
+        "p4--g6b-lille-fpmixtureem-panel": "g-implementation-handoff--p4--g6b-lille-fpmixtureem-panel",
+        "p5--g8-rekursiv-staterho-bank-og-ærligt-posterior-handoff": "g-implementation-handoff--p5--g8-rekursiv-staterho-bank-og-ærligt-posterior-handoff",
+        "p6--g7-single-shooting-med-samme-stokastiske-objective": "g-implementation-handoff--p6--g7-single-shooting-med-samme-stokastiske-objective",
+        "leverancer-testscope-og-næste-sessions-start": "g-implementation-handoff--leverancer-testscope-og-næste-sessions-start",
+        "reserveret-til-senere-astra-review": "g-implementation-handoff--reserveret-til-senere-astra-review"
+      },
+      "source_lines": 1084
+    },
+    "root/G_JANUARY.md": {
+      "destination": "archive/bm/G/legacy-development.md",
+      "anchor": "g-january",
+      "source_sha256": "790a0a151ea144e873e76ae7a19059719885cb37a2e6f4b74b1b54c5a2ec4c9e",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "original_archive_member": "root/G_JANUARY.md",
+      "heading_anchors": {
+        "aktuel-g-plan-og-næste-implementering-8-oktober-2026": "g-january--aktuel-g-plan-og-næste-implementering-8-oktober-2026",
+        "aktiv-g-afslutning-otte-timers-grundversion-8-oktober-2026": "g-january--aktiv-g-afslutning-otte-timers-grundversion-8-oktober-2026",
+        "matematikken-samlet-efter-chatsletning-8-oktober-2026": "g-january--matematikken-samlet-efter-chatsletning-8-oktober-2026",
+        "g7-genoptaget-efter-slettet-chat-8-oktober-2026": "g-january--g7-genoptaget-efter-slettet-chat-8-oktober-2026",
+        "g7-gemte-døgn-fixturekvitteringer-kontrolleret-8-oktober2026": "g-january--g7-gemte-døgn-fixturekvitteringer-kontrolleret-8-oktober2026",
+        "g7-døgn-fixture-timing-og-budgetstop-8-oktober-2026": "g-january--g7-døgn-fixture-timing-og-budgetstop-8-oktober-2026",
+        "g7-samlet-døgnstyring-implementeret-ikke-kørt-8-oktober": "g-january--g7-samlet-døgnstyring-implementeret-ikke-kørt-8-oktober",
+        "g7-durable-feedback-og-v2-budgetgate-kontrolleret-8-oktober": "g-january--g7-durable-feedback-og-v2-budgetgate-kontrolleret-8-oktober",
+        "g7-pr115116-merged-atomisk-audit-kontrolleret-7-oktober": "g-january--g7-pr115116-merged-atomisk-audit-kontrolleret-7-oktober",
+        "g7-recovery-afsluttet-fuld-quadbank-åben-projektionsaudit-7-oktober": "g-january--g7-recovery-afsluttet-fuld-quadbank-åben-projektionsaudit-7-oktober",
+        "aktiv-afgrænsning-bm-færdig-først-wm-sammenligning-bagefter": "g-january--aktiv-afgrænsning-bm-færdig-først-wm-sammenligning-bagefter",
+        "historisk-g7-neutral-auxiliary-før-seed-rettelsen-7-oktober": "g-january--historisk-g7-neutral-auxiliary-før-seed-rettelsen-7-oktober",
+        "g7-auxiliary-budget-og-integrationsdesign-færdigt-7-oktober": "g-january--g7-auxiliary-budget-og-integrationsdesign-færdigt-7-oktober",
+        "g7-eget-m254-nodeforsøg-gennemført-7-oktober": "g-january--g7-eget-m254-nodeforsøg-gennemført-7-oktober",
+        "g7-egne-nodecheckpoints-implementeret-7-oktober": "g-january--g7-egne-nodecheckpoints-implementeret-7-oktober",
+        "g7-deterministisk-døgnkontrol-med-bevaret-forbrug-7-oktober": "g-january--g7-deterministisk-døgnkontrol-med-bevaret-forbrug-7-oktober",
+        "g7-fælles-bmwm-kontrakt-og-frozen-fit-prisrespons-7-oktober": "g-january--g7-fælles-bmwm-kontrakt-og-frozen-fit-prisrespons-7-oktober",
+        "aktiv-kontrolprioritet--johan-7-oktober-2026": "g-january--aktiv-kontrolprioritet--johan-7-oktober-2026",
+        "g0g4-januar-fit-frosset-ugeprognose-og-lille-kurvepilot": "g-january--g0g4-januar-fit-frosset-ugeprognose-og-lille-kurvepilot",
+        "g4-fra-original-train-eksport--gennemført-pilot-og-bevarede-kommandoer": "g-january--g4-fra-original-train-eksport--gennemført-pilot-og-bevarede-kommandoer",
+        "g3-kommandoen-bevaret-til-frosset-replay": "g-january--g3-kommandoen-bevaret-til-frosset-replay",
+        "vis-fittet-for-januar": "g-january--vis-fittet-for-januar",
+        "kørsel-på-eksisterende-checkout": "g-january--kørsel-på-eksisterende-checkout",
+        "fit-og-beregningslofter": "g-january--fit-og-beregningslofter",
+        "data-og-evidensgrænse": "g-january--data-og-evidensgrænse",
+        "output-og-kontroller": "g-january--output-og-kontroller",
+        "minimumskontrol-for-g0g3": "g-january--minimumskontrol-for-g0g3"
+      },
+      "source_lines": 881
+    },
+    "root/G_S3_INTERVAL_GUIDE_20261008.md": {
+      "destination": "docs/bm/G_INTERVAL_MODEL.md",
+      "anchor": "g-s3-interval-guide-20261008",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "source_sha256": "64411096d7c5b0470c17be1c5e9162830ca4106b8830d4c0bd7ff417c65a8fbe",
+      "before_apply_sha256": "64411096d7c5b0470c17be1c5e9162830ca4106b8830d4c0bd7ff417c65a8fbe",
+      "original_archive_member": "root/G_S3_INTERVAL_GUIDE_20261008.md",
+      "source_lines": 216,
+      "heading_anchors": {
+        "g-s3-timegennemsnit-med-integreret-proceskovarians": "g-s3-interval-guide-20261008--g-s3-timegennemsnit-med-integreret-proceskovarians",
+        "observation-og-baseline": "g-s3-interval-guide-20261008--observation-og-baseline",
+        "procesmiddel-og-varians-gennem-timen": "g-s3-interval-guide-20261008--procesmiddel-og-varians-gennem-timen",
+        "den-særskilte-kalibreringsdiagnose": "g-s3-interval-guide-20261008--den-særskilte-kalibreringsdiagnose",
+        "brug-og-kontrakt": "g-s3-interval-guide-20261008--brug-og-kontrakt",
+        "faktiske-udviklingsresultater": "g-s3-interval-guide-20261008--faktiske-udviklingsresultater",
+        "kontroller-og-næste-holdested": "g-s3-interval-guide-20261008--kontroller-og-næste-holdested"
+      },
+      "representation": "Full mathematical guide/protocol, with only obsolete final work orders removed"
+    },
+    "root/G_S3_INTERVAL_PROTOCOL_20261008.md": {
+      "destination": "docs/bm/G_INTERVAL_MODEL.md",
+      "anchor": "g-s3-interval-protocol-20261008",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "source_sha256": "31d563f89903e0548b25bf74061911b038045d226071766ca90976119b055993",
+      "before_apply_sha256": "31d563f89903e0548b25bf74061911b038045d226071766ca90976119b055993",
+      "original_archive_member": "root/G_S3_INTERVAL_PROTOCOL_20261008.md",
+      "source_lines": 75,
+      "heading_anchors": {
+        "g-s3-timegennemsnit-protokol-før-faktisk-fit-og-proceskørsel": "g-s3-interval-protocol-20261008--g-s3-timegennemsnit-protokol-før-faktisk-fit-og-proceskørsel",
+        "fast-kørsel": "g-s3-interval-protocol-20261008--fast-kørsel",
+        "nødvendig-baselinekorrektion-efter-første-kørsel": "g-s3-interval-protocol-20261008--nødvendig-baselinekorrektion-efter-første-kørsel"
+      },
+      "representation": "Full mathematical guide/protocol, with only obsolete final work orders removed"
+    },
+    "root/G_S3_UNCERTAINTY_GUIDE_20261008.md": {
+      "destination": "docs/bm/G_UNCERTAINTY.md",
+      "anchor": "g-s3-uncertainty-guide-20261008",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "source_sha256": "3c22784a2698b8647c580f22e89ae82a0425de27a2405fd019f34c69c0df60a7",
+      "before_apply_sha256": "3c22784a2698b8647c580f22e89ae82a0425de27a2405fd019f34c69c0df60a7",
+      "original_archive_member": "root/G_S3_UNCERTAINTY_GUIDE_20261008.md",
+      "source_lines": 160,
+      "heading_anchors": {
+        "g-s3-grundversion-med-afgrænset-procesusikkerhed": "g-s3-uncertainty-guide-20261008--g-s3-grundversion-med-afgrænset-procesusikkerhed",
+        "matematik-og-fortolkning": "g-s3-uncertainty-guide-20261008--matematik-og-fortolkning",
+        "brug": "g-s3-uncertainty-guide-20261008--brug",
+        "faktisk-feb7-udviklingskørsel": "g-s3-uncertainty-guide-20261008--faktisk-feb7-udviklingskørsel",
+        "slutstatus-og-senere-arbejde": "g-s3-uncertainty-guide-20261008--slutstatus-og-senere-arbejde"
+      },
+      "representation": "Full mathematical guide/protocol, with only obsolete final work orders removed"
+    },
+    "root/G_S3_UNCERTAINTY_PROTOCOL_20261008.md": {
+      "destination": "docs/bm/G_UNCERTAINTY.md",
+      "anchor": "g-s3-uncertainty-protocol-20261008",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "source_sha256": "41b298df562ea6d099f95c990210a97fff7cfd38f07f9483303274e93916ef0a",
+      "before_apply_sha256": "41b298df562ea6d099f95c990210a97fff7cfd38f07f9483303274e93916ef0a",
+      "original_archive_member": "root/G_S3_UNCERTAINTY_PROTOCOL_20261008.md",
+      "source_lines": 47,
+      "heading_anchors": {
+        "afgrænset-s3-proceslag-protokol-før-historisk-kørsel": "g-s3-uncertainty-protocol-20261008--afgrænset-s3-proceslag-protokol-før-historisk-kørsel",
+        "kørsel-og-stopregler": "g-s3-uncertainty-protocol-20261008--kørsel-og-stopregler"
+      },
+      "representation": "Full mathematical guide/protocol, with only obsolete final work orders removed"
+    },
+    "root/G_S3_RESIDUAL_GUIDE_20261008.md": {
+      "destination": "docs/bm/G_UNCERTAINTY.md",
+      "anchor": "g-s3-residual-guide-20261008",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "source_sha256": "14da0c00aa56a0b37d387e4b030e34237ddbf78763d7663791c0983e220708ef",
+      "before_apply_sha256": "14da0c00aa56a0b37d387e4b030e34237ddbf78763d7663791c0983e220708ef",
+      "original_archive_member": "root/G_S3_RESIDUAL_GUIDE_20261008.md",
+      "source_lines": 135,
+      "heading_anchors": {
+        "g-særskilt-empirisk-residuallag": "g-s3-residual-guide-20261008--g-særskilt-empirisk-residuallag",
+        "matematik-og-fortolkning": "g-s3-residual-guide-20261008--matematik-og-fortolkning",
+        "brug": "g-s3-residual-guide-20261008--brug",
+        "faktisk-udviklingsresultat": "g-s3-residual-guide-20261008--faktisk-udviklingsresultat",
+        "holdested": "g-s3-residual-guide-20261008--holdested"
+      },
+      "representation": "Full mathematical guide/protocol, with only obsolete final work orders removed"
+    },
+    "root/G_S3_RESIDUAL_PROTOCOL_20261008.md": {
+      "destination": "docs/bm/G_UNCERTAINTY.md",
+      "anchor": "g-s3-residual-protocol-20261008",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "source_sha256": "4e58619adeb41372740317728fe3f5af338cfba22b2df93d02336d0a5a59f35f",
+      "before_apply_sha256": "4e58619adeb41372740317728fe3f5af338cfba22b2df93d02336d0a5a59f35f",
+      "original_archive_member": "root/G_S3_RESIDUAL_PROTOCOL_20261008.md",
+      "source_lines": 40,
+      "heading_anchors": {
+        "g-afgrænset-empirisk-outputfejl-før-faktisk-kørsel": "g-s3-residual-protocol-20261008--g-afgrænset-empirisk-outputfejl-før-faktisk-kørsel"
+      },
+      "representation": "Full mathematical guide/protocol, with only obsolete final work orders removed"
+    },
+    "root/G_WEEKDAY_ROLLING_GUIDE_20261008.md": {
+      "destination": "docs/bm/G_WEEKDAY_STUDY.md",
+      "anchor": "g-weekday-rolling-guide-20261008",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "source_sha256": "df70bd7e4ec229fcb679b2a8bee01dff5e469194bf179b4ddc4518b7de1a3040",
+      "before_apply_sha256": "df70bd7e4ec229fcb679b2a8bee01dff5e469194bf179b4ddc4518b7de1a3040",
+      "original_archive_member": "root/G_WEEKDAY_ROLLING_GUIDE_20261008.md",
+      "source_lines": 187,
+      "heading_anchors": {
+        "gwm-fem-tilsvarende-ugedage-tilpasning-sjette-uge-test": "g-weekday-rolling-guide-20261008--gwm-fem-tilsvarende-ugedage-tilpasning-sjette-uge-test",
+        "hvad-et-vindue-bruger": "g-weekday-rolling-guide-20261008--hvad-et-vindue-bruger",
+        "baseline-og-g-matematik": "g-weekday-rolling-guide-20261008--baseline-og-g-matematik",
+        "wm-matematik-og-sammenligning": "g-weekday-rolling-guide-20261008--wm-matematik-og-sammenligning",
+        "residualer-og-forbedrede-bånd": "g-weekday-rolling-guide-20261008--residualer-og-forbedrede-bånd",
+        "kørsel-og-artefakter": "g-weekday-rolling-guide-20261008--kørsel-og-artefakter"
+      },
+      "representation": "Full mathematical guide/protocol, with only obsolete final work orders removed"
+    },
+    "root/G_MULTIPERIOD_BANDS_PROTOCOL_20261008.md": {
+      "destination": "docs/bm/G_WEEKDAY_STUDY.md",
+      "anchor": "g-multiperiod-bands-protocol-20261008",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "source_sha256": "a8d917c1ba9fb1417a760cad8609f6c54764b67ed8199c523b5b926040f46751",
+      "before_apply_sha256": "a8d917c1ba9fb1417a760cad8609f6c54764b67ed8199c523b5b926040f46751",
+      "original_archive_member": "root/G_MULTIPERIOD_BANDS_PROTOCOL_20261008.md",
+      "source_lines": 124,
+      "heading_anchors": {
+        "aktiv-g-protokol-rullende-seksugersvinduer-og-frosne-usikkerhedsbånd": "g-multiperiod-bands-protocol-20261008--aktiv-g-protokol-rullende-seksugersvinduer-og-frosne-usikkerhedsbånd",
+        "kalender-og-information": "g-multiperiod-bands-protocol-20261008--kalender-og-information",
+        "fit-og-initialisering": "g-multiperiod-bands-protocol-20261008--fit-og-initialisering",
+        "solverbudget-og-numerik": "g-multiperiod-bands-protocol-20261008--solverbudget-og-numerik",
+        "ét-afgrænset-båndforsøg": "g-multiperiod-bands-protocol-20261008--ét-afgrænset-båndforsøg",
+        "leverance-og-provenance": "g-multiperiod-bands-protocol-20261008--leverance-og-provenance"
+      },
+      "representation": "Full mathematical guide/protocol, with only obsolete final work orders removed"
+    }
+  },
+  "retained_entry_originals": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "0235c7d9d6d770339465627a487b534408908a4172d16dd90a8c965bbac773c5",
+      "original_archive_member": "AGENTS.md",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "action": "retain active entry; original preserved in verified source archive"
+    },
+    {
+      "path": "root/F4.md",
+      "sha256": "f96d3fe24bc18b445ed672e71a9697eeed14ef10292c75b42bde361f812bdf85",
+      "original_archive_member": "root/F4.md",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "action": "retain active entry; original preserved in verified source archive"
+    },
+    {
+      "path": "root/BM_GUIDE.md",
+      "sha256": "4ce5ecd7b45b5a269fb2229252c6c03522940b79c90295c94627033f44c2c97c",
+      "original_archive_member": "root/BM_GUIDE.md",
+      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
+      "action": "retain active entry; original preserved in verified source archive"
+    }
+  ],
+  "consolidation_method": "Curated event/result synopses replace repeated status and work orders; selected unique mathematical passages retained verbatim; all full originals SHA256-verified in source archive.",
+  "exact_prose_duplicates": [],
+  "note": "Historical immutable manifests retain original paths. Restore original source tree for old controllers/checkpoints.",
+  "guide_consolidation": {
+    "method": "Eight guide/protocol files grouped by model responsibility; unique mathematics, gates and negative evidence preserved. Only obsolete final work orders removed.",
+    "groups": {
+      "docs/bm/G_INTERVAL_MODEL.md": [
+        "G_S3_INTERVAL_GUIDE_20261008.md",
+        "G_S3_INTERVAL_PROTOCOL_20261008.md"
+      ],
+      "docs/bm/G_UNCERTAINTY.md": [
+        "G_S3_UNCERTAINTY_GUIDE_20261008.md",
+        "G_S3_UNCERTAINTY_PROTOCOL_20261008.md",
+        "G_S3_RESIDUAL_GUIDE_20261008.md",
+        "G_S3_RESIDUAL_PROTOCOL_20261008.md"
+      ],
+      "docs/bm/G_WEEKDAY_STUDY.md": [
+        "G_WEEKDAY_ROLLING_GUIDE_20261008.md",
+        "G_MULTIPERIOD_BANDS_PROTOCOL_20261008.md"
+      ]
+    },
+    "omitted_obsolete_sections": {
+      "root/G_S3_INTERVAL_GUIDE_20261008.md": {
+        "marker": "Timeoperator og procesmomenter er færdige.",
+        "removed_lines": 10,
+        "removed_sha256_utf8": "de8a1d2d38d22e1d14ebbe455d48ab658090ccf72e79b1e6a3aba741c00b6480",
+        "reason": "Superseded next-work/chat instructions; complete original remains in verified source archive"
+      },
+      "root/G_S3_UNCERTAINTY_GUIDE_20261008.md": {
+        "marker": "Grundimplementeringen er færdig til undersøgelse",
+        "removed_lines": 15,
+        "removed_sha256_utf8": "040f951f3fc24495a5f92c834718ed185387052ad97dd68c967c6178dea1c941",
+        "reason": "Superseded next-work/chat instructions; complete original remains in verified source archive"
+      },
+      "root/G_S3_RESIDUAL_GUIDE_20261008.md": {
+        "marker": "## Holdested",
+        "removed_lines": 10,
+        "removed_sha256_utf8": "a76cd52177171970559cc1803a545a79e0039114d870ccd417f6f7d7ab553b5d",
+        "reason": "Superseded next-work/chat instructions; complete original remains in verified source archive"
+      }
+    },
+    "historical_JSON_unchanged": true
+  }
+}

@@ -1,0 +1,89 @@
+BM-F/G oprydning — verificeret afleveringsstatus, 9. oktober 2026
+
+Faste indgange: STARTPROMPT.txt og denne STATUS.txt. FILE_PLAN.txt er filplanen.
+Branch: cleanup/bm-fg-review-20261008
+Base: 89e8337b6857b148c48e6880473984c3ae4574a0 (inkl. nyeste WM-MPC)
+Seneste kodecommit: 185b55c; tidligere delmål ff39db7 (F), 070fa3b (G).
+Current HEAD: kontrollér med git rev-parse HEAD; denne status indgår selv i
+afsluttende dokumentcommit. Kontrollér også git status --short ved genstart.
+Hovedrepo: C:/Users/jvils/OneDrive/Skrivebord/Til VS/fag/7 semester/BSCe2026
+Kontrol/recovery-rod: C:/Users/jvils/.codex/.chatgpt-projects/g-p-6aaef4dd0ec48191922398dc4cb17b90/cleanup_work
+Alle korte evidensstier nedenfor er relative til kontrol/recovery-roden.
+
+AFSLUTTEDE DELMÅL OG ÆNDREDE FILER
+- Ren start, fast-forward a83c6a5 til 89e8337, særskilt branch. Historiske
+  preview/G-branches bevaret i verificerede all-refs Git-bundles.
+- 3279 lokale filer / 3282396591 bytes sikret i recovery/pre-cleanup-local-material.zip;
+  hver post SHA256/CRC-verificeret. Original kildebase i start-source-89e8337.zip.
+  Ingen ændring af synced sources/ eller publicering af lokale rådata.
+- 117 beskyttede WM-filer/input/dokumenter/fælles afhængigheder uændrede.
+  Manifest: docs/bm/wm-protection.json; oprindeligt eksemplar i recovery-roden.
+- F: src/exe/run_model/bm_1_f4.py og src/tools/bm_1_history_io.py samt deres
+  to tests. Direkte datovalg, interval/UTC, ens metricsmasker, enhedsforbehold,
+  tidskvitteringer, sikker completed-resume og cache af gentagen clock-parsing.
+  Cache ændrer ikke datavalidering, observationsudvælgelse eller numerik.
+- G: src/exe/run_model/bm_1_g.py, src/method/bm_1_bands.py og to nye tests.
+  Gemte weekday-exports bruges uden fit/replay; fri båndkalender med frysning,
+  source/receiptkontrol og targetisolering. Gamle 20 numeriske kilder urørte.
+- AGENTS.md, root/F4.md og root/BM_GUIDE.md forkortet. F4_RUN er detaljeret guide.
+  36 root-noter samlet i 7 arkivemner + 3 G-fagnoter. Links migreret; gamle
+  bytes/hash/stier bevaret. Ingen numerisk kerne, test eller resultat slettet.
+  Matematik, før/efter, accept og sammenligning: docs/bm/MATHEMATICS.md og COMPARISON.md.
+- Historisk F-eksport recovery/f4_delivery_source matcher alle 215 sourcehashes,
+  model/config/begge inputs; fitted+linear origin genindlæst. G-pakke316 hashes består.
+  f4_historical_export_audit.json erstatter den foreløbige F-mismatch i artifact_integrity.json.
+
+TESTS, TID OG RESULTATER
+- Integreret slutkontrol: 57 tests består, 23.373 s test / 27.121 s proces
+  (final_tests.json). Efter sidste cache/progressændring: 16 berørte tests
+  består, 4.834 s / 8.517 s proces. Ingen test slettet eller tolerance lempet.
+- Tidligere delkontroller: baseline18 8.118 s proces; F5 5.481 s og 5.522 s;
+  G9 3.274 s, afsluttende G12 4.083 s; loader10 3.469 s. Dette er korte
+  regressionskontroller, ikke skjulte historiske modelkampagner.
+- G gemt uge28/2-2022: 168 timer på 3.070 s samlet proces inkl. import/load,
+  forecast, scoring, figur/export; predict0.231 s. Maks numerisk forskel
+  2.45e-15 rå og 8.89e-16 normaliseret i20 kolonner. g_saved_reference bevares.
+  Sidste wrapper-QA er testet separat; numeriske20 kildeidentiteter er uændrede.
+- F første fulde input-only --check stoppet efter526.270 s uden model/output.
+  Én efterfølgende kontrol var eksplicit godkendt med120 s loft; automatisk
+  stoppet ved120 s (kvittering120.026 s inkl. afslutning), ingen fit/prognose.
+  Output tomt: stoppested før første progresslinje kan ikke bestemmes. Dette
+  dokumenterer uafsluttet opstarts-/inputkontrol, ikke120 s målt workbook-scan.
+  f_actual_check.json og f_bounded_check.json er afsluttede; ingen automatisk retry.
+- Afgrænset100-rækkers metadata-profil: 1.275 ->0.745 s, parserkald98 ->24;
+  ingen targetmålinger fra februar blev læst. Ingen fuld-load-speedup påstås.
+  f_metadata_prefix_comparison.json; øvrige korte profiler bevares i samme mappe.
+- De to fulde F-inputforsøg brugte tilsammen646.296 s. Ny real-data G-regression
+  3.070 s. Nye historiske fits0 s, nye seksugerskampagner0 s. Backup-I/O32.004 s.
+- Dokumentlinks/TeX-inputs og Python-parse kontrolleres i afsluttende receipt
+  final_verification.json; fil/linjeopgørelse i reduction_counts.json.
+
+KENDTE BEGRÆNSNINGER OG ACCEPT
+- Dokumentoprydning og bevaring er gennemført; kode/importkæder er ikke markant
+  reduceret. De store uændrede afhængigheder og kildebundne scripts er begrundet
+  i matematikoversigt/arkiv. Samlet filreduktion er beskeden; se COMPARISON.
+- Enhed/timezone/hour-start er arbejdsantagelser, ikke verificeret metadata.
+- F's faktiske native weekday-estimator mangler. Den kræver genbrugelig TRAIN-
+  likelihood, fagligt valg af baseline/prior og særskilt fitbudget. Det faste
+  F4-fit kan ikke ommærkes. H/I/J-restpunkter og negative resultater er bevaret.
+- F fuld inputkontrol og uge-runtime er ikke bestået; fælles F/G/WM-prognosekvalitet
+  er ikke dokumenteret. G-runtime gælder kun den ene gemte udviklingsuge.
+- Original WM4-CLI, WM4-timeadapter og oracle-diagnostik er forskellige protokoller.
+- G har ingen deltime-resume; afbrudt mappe bevares, genbrug snapshot i ny mappe.
+  F gamle checkpoints kræver deres originale source; guards er ikke omgået.
+- Johans faktiske brugertest afventer. Guide og syntetisk pause/genoptagelse er
+  kontrolleret; F's fulde lokale eksempel er ikke afleveret som færdig ny kørsel.
+- Ingen resterende adgangsblokering. Tidlig AGENTS-afvisning fra auto-review blev
+  afklaret med startpromptens eksplicitte ordre og afgrænset godkendt retry.
+
+GENOPTAGELSE OG NÆSTE PRÆCISE HANDLING
+1. Læs prompt/status; kontrollér branch, Git-diff og processer. Ingen aktive
+   Python/modelprocesser ved sidste afslutningskontrol; verificér på ny, antag ikke.
+2. Genbrug g_saved_reference og det lokale Git-ignorerede eksempel
+   files/output/bm_1/examples/g_saved_week_20220228. Afsluttede resultater overskrives ikke.
+3. Før næste F-måling: aftal konkret opstarts-/inputbudget og brug trinvise
+   import/inputtidsmærker for at lokalisere stoppet. Ingen ny måling autoriseret nu.
+4. Før F-weekday-fit: konkretisér native-likelihood, baseline/prior og fitbudget.
+   Før fælles kvalitetstest: afstem population, rå enhed, scenarie og tidsmasker.
+5. Johan kan udføre brugerprøven i BM_GUIDE; udfald gemmes i denne status.
+Ingen push, merge, nyt fit eller gentagelse af afsluttede kampagner udført.

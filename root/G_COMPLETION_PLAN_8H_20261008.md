@@ -11,7 +11,7 @@ Samme oprindelige8h-ramme og tidligere charges bevares; reviewtid er umålt.
 Historiske statusafsnit følger; de er ikke nye automatiske fitbestillinger.
 
 Johan godkendte et enkelt mærket statistisk outputresidual som udviklingslag.
-[Empirisk residualvej](G_S3_RESIDUAL_GUIDE_20261008.md) er nu kørbar uden
+[Empirisk residualvej](../docs/bm/G_UNCERTAINTY.md#g-s3-residual-guide-20261008) er nu kørbar uden
 nyt G/baselinefit;29 tests består. PureG og observeret middel/bånd bevares
 særskilt. Nominelt95%-bånd giver71.43% udviklingsdækning, ikke kalibreringsaccept.
 Ingen proces-/residualdobbelttælling, ændret styring eller F-udvidelse.
@@ -19,7 +19,7 @@ Stop nye modeludvidelser; næste er én afgrænset G/WM-sammenligning eller sene
 separat validering. Det er fortsat samme oprindelige otte-timers-forløb.
 Historiske statusafsnit nedenfor læses med dette seneste holdested.
 
-Seneste fortsættelse: [timeoperator, integreret baseline og proceskovarians](G_S3_INTERVAL_GUIDE_20261008.md)
+Seneste fortsættelse: [timeoperator, integreret baseline og proceskovarians](../docs/bm/G_INTERVAL_MODEL.md#g-s3-interval-guide-20261008)
 er udført med25 fokuserede slutchecks. To nødvendige udviklingsfits er bevaret;
 120s/1000kald-loftet blev ikke nulstillet (samlet33.455508s/226kald). Timeværdier
 tolkes som gennemsnitlig effekt; hour_start er Johans eksplicit usikre antagelse.
@@ -49,7 +49,7 @@ af obligatorisk parameterbank/demo. Den bygger på Johans seneste instrukser,
 Review og afgrænsning er udført. Den selvstændige deterministiske S3-vej
 er nu implementeret og kørt; se [brug og resultat](G_S3_STANDALONE_GUIDE_20261008.md).
 Et afgrænset, numerisk kontrolleret proces-scenarielag og slutgennemgang er
-nu udført; [brug, matematik og afvisningsstatus](G_S3_UNCERTAINTY_GUIDE_20261008.md).
+nu udført; [brug, matematik og afvisningsstatus](../docs/bm/G_UNCERTAINTY.md#g-s3-uncertainty-guide-20261008).
 Historisk støjkalibrering er afvist i udviklingseksemplet. Fysisk kalibreret
 observeret totalusikkerhed er fortsat åben. Ingen ny G7-accept er erklæret.
 Johan har præciseret, at målingen dækker en hel time, og at Demand efter
@@ -74,7 +74,7 @@ automatisk G-opgaver; F's kode, resultater og budgetter ændres ikke her.
   ind i G som en ny model. Start med procesusikkerhed betinget på P0=0.
 - Parameterbank/M254/filter→styring er et **bispor**, ikke et færdigkrav
   eller en automatisk anvendelse af tidsreserven. Detaljerne er bevaret i
-  [udvidelsesplanen](G_PARAMETER_BANK_EXTENSION_20261008.md).
+  [udvidelsesplanen](../archive/bm/G/s3-transition-history.md#g-parameter-bank-extension-20261008).
 - Eksisterende deterministisk prisstyring og fixed-target-sammenligning
   bevares. Udsættelse af banken fjerner ikke dette udførte arbejde.
 
@@ -185,7 +185,7 @@ Nye udviklingskørsler registreres særskilt, ikke som omskrevet gammel accept.
 
 Næste trin køres i **denne G-chat, GPT-6.1 Sol, High** med
 [den færdige S3-brugsvej](G_S3_STANDALONE_GUIDE_20261008.md) og
-[procesvejens slutstatus](G_S3_UNCERTAINTY_GUIDE_20261008.md). Grundimplementeringen
+[procesvejens slutstatus](../docs/bm/G_UNCERTAINTY.md#g-s3-uncertainty-guide-20261008). Grundimplementeringen
 er udført, og timeoperator er efterfølgende udført i egen version. Næste
 modelbeslutning er residual/observationslag og fysisk metadata; gyldig
 observeret usikkerhedskalibrering er ikke afsluttet. Færdige egne branches merges

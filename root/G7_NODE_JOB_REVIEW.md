@@ -2,7 +2,7 @@
 
 7. oktober 2026. Afsluttet implementering og afgrænset stubkontrol; **ingen ny
 M254/FV/EM-propagation, fit, optimizer eller numerisk G7-accept**.
-Forudregistrering: [nodejobplan](G7_NODE_JOB_CHECKPOINT.md).
+Forudregistrering: [nodejobplan](../archive/bm/G/control-checkpoints.md#g7-node-job-checkpoint).
 Tidligere deterministiske resultater: [bevaret forbrug](G7_ENERGY_NEUTRAL_REVIEW.md).
 Vejlederens normaliserede Bernstein/Beta-basis M254 er fortsat primær.
 F/WM, deres budgetter og fælles numeriske kerner er uændrede.

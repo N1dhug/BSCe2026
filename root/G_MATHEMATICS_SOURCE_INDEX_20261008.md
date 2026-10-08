@@ -6,7 +6,7 @@ Alle 38 G-noter og begge BM-grundlagsnoter fra repositoryversion `56f7fc0a184d2e
 
 | Originalnote | Dokumenttitel | Bytes |
 |---|---|---:|
-| [G.md](G.md) | G-plan — deterministisk BM-kerne, stokastisk udvidelse og WM4-sammenligning | 114113 |
+| [G.md](../archive/bm/G/legacy-development.md#g) | G-plan — deterministisk BM-kerne, stokastisk udvidelse og WM4-sammenligning | 114113 |
 | [G4_JANUARY_PILOT_REVIEW.md](G4_JANUARY_PILOT_REVIEW.md) | G4 — januar-pilot og frosset februarprognose, 5. oktober 2026 | 10490 |
 | [G4_STRATEGIES_12_WEEKS_REVIEW.md](G4_STRATEGIES_12_WEEKS_REVIEW.md) | G4: tre rullende strategier og straf på de første 12 uger | 16427 |
 | [G4_VALIDATION_WEEKS_13_18_REVIEW.md](G4_VALIDATION_WEEKS_13_18_REVIEW.md) | G4-afslutning: fast S3-sammenligning på nye uger 13–18 | 13123 |
@@ -18,7 +18,7 @@ Alle 38 G-noter og begge BM-grundlagsnoter fra repositoryversion `56f7fc0a184d2e
 | [G7_AUXILIARY_RUNTIME_REVIEW.md](G7_AUXILIARY_RUNTIME_REVIEW.md) | G7 neutral auxiliary: afsluttet kørsel og crash-recovery, 7. oktober 2026 | 9268 |
 | [G7_BOUNDED_LAUNCHER_REVIEW.md](G7_BOUNDED_LAUNCHER_REVIEW.md) | G7: launcher og særskilt præregistrering, 7. oktober 2026 | 17140 |
 | [G7_BOUNDED_PRICE_QUADRATURE_DESIGN.md](G7_BOUNDED_PRICE_QUADRATURE_DESIGN.md) | G7: begrænset prissøgning og selvstændig costkvadratur, 7. oktober 2026 | 11490 |
-| [G7_CHAT_RECOVERY_20261008.md](G7_CHAT_RECOVERY_20261008.md) | Genoptagelse af G7 efter slettet chat | 5047 |
+| [G7_CHAT_RECOVERY_20261008.md](../archive/bm/G/control-checkpoints.md#g7-chat-recovery-20261008) | Genoptagelse af G7 efter slettet chat | 5047 |
 | [G7_COMPLETE_QUAD_RECOVERY_REVIEW.md](G7_COMPLETE_QUAD_RECOVERY_REVIEW.md) | G7: afsluttet knuderecovery og fuld tidsopdelingssammenligning | 9849 |
 | [G7_DAY_CHECK_AND_RATE_REVIEW.md](G7_DAY_CHECK_AND_RATE_REVIEW.md) | G7 day graph fixture and standalone native timing | 6892 |
 | [G7_DAY_COMPLETION_REVIEW.md](G7_DAY_COMPLETION_REVIEW.md) | G7 approved saved-fixture completion review | 5418 |
@@ -29,8 +29,8 @@ Alle 38 G-noter og begge BM-grundlagsnoter fra repositoryversion `56f7fc0a184d2e
 | [G7_INTEGRATED_EXPERIMENT_DESIGN.md](G7_INTEGRATED_EXPERIMENT_DESIGN.md) | G7: konkret forslag til samlet syntetisk kontrolforsøg | 9040 |
 | [G7_M254_RUNTIME_JOB_REVIEW.md](G7_M254_RUNTIME_JOB_REVIEW.md) | G7 M254: runtime- og jobdesignreview efter deterministisk nattearbejde | 7725 |
 | [G7_MATCHED_CONTROL_REVIEW.md](G7_MATCHED_CONTROL_REVIEW.md) | G7: fælles deterministisk BM/WM-kontrakt og frozen-fit-prisrespons | 18310 |
-| [G7_NIGHT_CHECKPOINT.md](G7_NIGHT_CHECKPOINT.md) | G7 nattecheckpoint — færdigt deterministisk delstudie, 7. oktober 2026 | 3007 |
-| [G7_NODE_JOB_CHECKPOINT.md](G7_NODE_JOB_CHECKPOINT.md) | G7 nodecheckpoint — registrering 7. oktober 2026 | 1935 |
+| [G7_NIGHT_CHECKPOINT.md](../archive/bm/G/control-checkpoints.md#g7-night-checkpoint) | G7 nattecheckpoint — færdigt deterministisk delstudie, 7. oktober 2026 | 3007 |
+| [G7_NODE_JOB_CHECKPOINT.md](../archive/bm/G/control-checkpoints.md#g7-node-job-checkpoint) | G7 nodecheckpoint — registrering 7. oktober 2026 | 1935 |
 | [G7_NODE_JOB_REVIEW.md](G7_NODE_JOB_REVIEW.md) | G7: egne nodecheckpoints og komplet budgetgraf | 9672 |
 | [G7_NODE_RUNTIME_REVIEW.md](G7_NODE_RUNTIME_REVIEW.md) | G7: kort runtimeforsøg fra egne gemte M254-posteriorer | 11432 |
 | [G7_OWNED_HANDOFF_REVIEW.md](G7_OWNED_HANDOFF_REVIEW.md) | G7 — vejlederens M254-posterior til prisstyring og ny observation | 14161 |
@@ -42,8 +42,8 @@ Alle 38 G-noter og begge BM-grundlagsnoter fra repositoryversion `56f7fc0a184d2e
 | [G8_M254_REFINEMENT_REVIEW.md](G8_M254_REFINEMENT_REVIEW.md) | G8 — eget Bernstein M254-filter: parret 513-forfining | 13199 |
 | [G8_POINT_BANK_REVIEW.md](G8_POINT_BANK_REVIEW.md) | G8 — punktfilter, rho-bank og posterior til kontrol | 11635 |
 | [G8_POSTERIOR_BASIS_REVIEW.md](G8_POSTERIOR_BASIS_REVIEW.md) | G8 — posterior-basis: udledning, én kandidat og målrettet forfining | 23127 |
-| [G_IMPLEMENTATION_HANDOFF.md](G_IMPLEMENTATION_HANDOFF.md) | G3 og frem — grundlag og overdragelse til Sol | 76208 |
-| [G_JANUARY.md](G_JANUARY.md) | G0–G4: januar-fit, frosset ugeprognose og lille kurvepilot | 57276 |
+| [G_IMPLEMENTATION_HANDOFF.md](../archive/bm/G/legacy-development.md#g-implementation-handoff) | G3 og frem — grundlag og overdragelse til Sol | 76208 |
+| [G_JANUARY.md](../archive/bm/G/legacy-development.md#g-january) | G0–G4: januar-fit, frosset ugeprognose og lille kurvepilot | 57276 |
 | [BM_GUIDE.md](BM_GUIDE.md) | F4-H2 method decision (6 October 2026) | 95669 |
 | [BM_REFERENCE.md](BM_REFERENCE.md) | BM-reference — afsluttet F1–F3 | 14223 |
 

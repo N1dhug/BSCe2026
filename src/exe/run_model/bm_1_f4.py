@@ -37,6 +37,14 @@ from src.tools.bm_1_reports import _atomic_report, _read_array_checkpoint, _RunL
 
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA = 'bm1-f4-runnable-v1'
+OBSERVATION_CONTRACT = {
+    'operator': 'Mean demand over [timestamp, interval_end), one elapsed hour.',
+    'unit_status': 'Working assumption; consumption units and hour-start labels are not independently verified.',
+    'observed_unit_assumed': 'kWh per hour; numerically equal to interval-average kW for this one-hour interval.',
+    'prediction_unit_assumed': 'kW',
+    'quantile_probabilities': [.05, .50, .95],
+    'uncertainty': 'Marginal initial-state/process and nominal Gaussian observation uncertainty; no parameter/input uncertainty or coverage calibration.',
+}
 
 
 def file_hash(path):
@@ -53,8 +61,11 @@ def _timestamp(value, timezone):
     result = pd.Timestamp(value)
     if pd.isna(result):
         raise ValueError('A valid timestamp is required.')
-    result = (result.tz_localize(timezone, ambiguous='raise', nonexistent='raise')
-              if result.tzinfo is None else result.tz_convert(timezone))
+    try:
+        result = (result.tz_localize(timezone, ambiguous='raise', nonexistent='raise')
+                  if result.tzinfo is None else result.tz_convert(timezone))
+    except Exception as exc:
+        raise ValueError(f'Invalid or ambiguous local timestamp {value!r}; supply an explicit UTC offset. {exc}') from exc
     if result.minute or result.second or result.microsecond or result.nanosecond:
         raise ValueError('Use whole-hour interval boundaries.')
     return result
@@ -64,6 +75,14 @@ def _positive_integer(value, name):
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError(f'{name} must be a positive integer.')
     return value
+
+
+def _execution_limits(max_seconds, workers):
+    if isinstance(max_seconds, bool) or not np.isfinite(max_seconds) or max_seconds < 15:
+        raise ValueError('max_seconds must be finite and at least 15.')
+    _positive_integer(workers, 'workers')
+    if workers > 8:
+        raise ValueError('Use at most eight frequency workers.')
 
 
 def _state(logs, cells):
@@ -189,6 +208,7 @@ def prepare(config):
         start=start.isoformat(), origin=cutoff.isoformat(), end=horizon.isoformat(),
         filter_hours=count, forecast_hours=hours, quantile_hours=quantiles,
         missing_filter_hours=int((~observed).sum()), price_source=price_source,
+        observation_contract=OBSERVATION_CONTRACT,
         scientific_acceptance=False, initial_state_policy='Fresh declared Beta prior at filter_start; continuous assimilation, no daily reset.',
         includes_parameter_uncertainty=False, includes_input_uncertainty=False)
     return dict(config=config, manifest=manifest, model=model, paths=paths,
@@ -263,11 +283,12 @@ def _export(directory, data, saved, *, status, elapsed):
         first = frame[frame['model'] == data['config']['models'][0]]
         t = pd.to_datetime(first['timestamp'], utc=True).dt.tz_convert(data['model']['timezone'])
         axes[0].plot(t, first['baseline_kW'], '--', label='baseline')
-        axes[0].scatter(t, first['observed_kWh'], color='black', s=12, label='observed hourly kWh (= average kW over 1h)')
+        axes[0].scatter(t, first['observed_kWh'], color='black', s=12, label='observed hourly consumption (assumed kWh)')
         for ax in axes:
             ax.axvline(pd.Timestamp(data['manifest']['origin']), color='grey', linestyle=':')
             ax.grid(alpha=.2); ax.legend(fontsize=8)
-        axes[0].set_ylabel('Hourly average power [kW]')
+        axes[0].set_ylabel('Hourly average power [assumed kW]')
+        axes[0].set_title('Unit and hour-start interpretation are working assumptions', fontsize=9)
         axes[1].set_ylabel('Endpoint state X'); axes[1].set_ylim(0, 1)
         fig.autofmt_xdate(); fig.tight_layout()
         fig.savefig(directory/'comparison.png', dpi=140); plt.close(fig)
@@ -281,11 +302,17 @@ def _export(directory, data, saved, *, status, elapsed):
                 error = np.array([r['prediction_kW']-r['observed_kWh'] for r in seen])
                 baseline_error = np.array([r['baseline_kW']-r['observed_kWh'] for r in seen])
                 metrics[name][phase] = dict(observed_hours=len(seen), rmse_kW=float(np.sqrt(np.mean(error**2))),
-                    mae_kW=float(np.mean(np.abs(error))), baseline_rmse_kW=float(np.sqrt(np.mean(baseline_error**2))))
+                    mse_kW2=float(np.mean(error**2)), mae_kW=float(np.mean(np.abs(error))),
+                    bias_kW=float(np.mean(error)), baseline_rmse_kW=float(np.sqrt(np.mean(baseline_error**2))),
+                    baseline_mse_kW2=float(np.mean(baseline_error**2)),
+                    baseline_mae_kW=float(np.mean(np.abs(baseline_error))), baseline_bias_kW=float(np.mean(baseline_error)))
     summary = dict(schema=SCHEMA, identity=saved['identity'], status=status,
         elapsed_seconds=elapsed, completed_hours={k:len(v['rows']) for k,v in saved['streams'].items()},
         planned_hours_per_model=len(data['index']), metrics=metrics,
         missing_filter_hours=data['manifest']['missing_filter_hours'], scientific_acceptance=False,
+        observation_contract=OBSERVATION_CONTRACT,
+        metric_mask='Same finite fixed-population observations for model and baseline within each phase.',
+        bias_definition='prediction minus observation',
         meaning='Fixed nominal physical parameters and shared fitted response. Development replay; no refit or population calibration.',
         forecast_assimilated_observations=0,
         forecast_targets_read=saved.get('evaluation_complete', False))
@@ -331,13 +358,10 @@ def load_origin(directory, *, model='fitted'):
         item['x_edges'], np.exp(item['log_state']))
 
 
-def run(data, *, directory, resume=False, max_seconds=600., workers=4):
+def run(data, *, directory, resume=False, max_seconds=600., workers=4, invocation_started=None):
     begun = perf_counter()
-    if not np.isfinite(max_seconds) or max_seconds < 15:
-        raise ValueError('max_seconds must be finite and at least 15.')
-    _positive_integer(workers, 'workers')
-    if workers > 8:
-        raise ValueError('Use at most eight frequency workers.')
+    _execution_limits(max_seconds, workers)
+    timing_start = begun if invocation_started is None else invocation_started
     directory = Path(directory)
     with _RunLock(directory):
         if (directory/'FAILED.json').exists():
@@ -369,6 +393,23 @@ def run(data, *, directory, resume=False, max_seconds=600., workers=4):
             _state(stream['log_state'], cells)
             if len(stream['rows']) > len(data['index']):
                 raise ValueError('Checkpoint exceeds the declared period.')
+        summary_path = directory/'summary.json'
+        if resume and summary_path.exists():
+            previous = json.loads(summary_path.read_text(encoding='utf-8'))
+            if previous.get('status') == 'complete':
+                counts = {name:len(stream['rows']) for name, stream in saved['streams'].items()}
+                if (previous.get('identity') != identity
+                        or set(counts) != set(data['config']['models'])
+                        or previous.get('completed_hours') != counts
+                        or any(count != len(data['index']) for count in counts.values())
+                        or (data['config'].get('evaluate_forecast', True) and not saved.get('evaluation_complete'))):
+                    raise ValueError('Completed summary/checkpoint disagree; preserve this run and use a new directory.')
+                for stream in saved['streams'].values():
+                    _state(stream['origin_log_state'], cells)
+                if any(not (directory/name).is_file() for name in ('predictions.csv', 'comparison.png', 'origin.npz')):
+                    raise ValueError('Completed run has missing exports; restore its original package or use a new directory.')
+                print('F4 already complete; saved results and timing receipts are unchanged.', flush=True)
+                return 'complete'
         pool = FrequencyPool(workers, begun+max_seconds-5.)
         plan = interval_cdf_plan(data['model']['physical']['sigma_y'])
         initial_completed = sum(len(s['rows']) for s in saved['streams'].values())
@@ -404,6 +445,10 @@ def run(data, *, directory, resume=False, max_seconds=600., workers=4):
                     p = np.exp(next_logs); x = operator['x']
                     power = data['model']['scales']['power_kW']
                     row = dict(timestamp=data['index'][hour].isoformat(),
+                        timestamp_utc=data['index'][hour].tz_convert('UTC').isoformat(),
+                        interval_end=(data['index'][hour]+pd.Timedelta(hours=1)).isoformat(),
+                        interval_end_utc=(data['index'][hour]+pd.Timedelta(hours=1)).tz_convert('UTC').isoformat(),
+                        interval_hours=1.,
                         phase='filter' if hour < split else 'forecast', horizon_hour=None if hour < split else forecast_hour,
                         baseline_kW=float(data['baseline'][hour]), spot_price_DKK_MWh=float(data['prices'][hour]),
                         prediction_kW=predicted['interval_mean']*power,
@@ -451,23 +496,68 @@ def run(data, *, directory, resume=False, max_seconds=600., workers=4):
         finally:
             pool.close()
             _origin(directory, data, saved)
-            _export(directory, data, saved, status=status, elapsed=perf_counter()-begun)
+            summary = _export(directory, data, saved, status=status, elapsed=perf_counter()-begun)
+            # Measure through finished CSV/figure/origin export, then persist the
+            # timing receipt. Abruptly killed invocations cannot report their time.
+            elapsed = perf_counter()-timing_start
+            timings = saved.setdefault('invocation_timings', [])
+            timings.append(dict(seconds=elapsed, includes_prepare=invocation_started is not None, status=status))
+            _checkpoint(directory, saved)
+            summary['timing'] = dict(last_invocation_seconds=elapsed,
+                recorded_invocations=len(timings),
+                cumulative_recorded_seconds=sum(t['seconds'] for t in timings),
+                includes_prepare_all_invocations=all(t['includes_prepare'] for t in timings),
+                scope='CLI main (or direct run call) through completed result export; excludes interpreter/module imports and final timing writes. Killed invocations without a timing receipt are not included.',
+                legacy_elapsed_seconds_scope='Current run call through origin export, before CSV/figure export.')
+            _atomic_report(directory/'summary.json', summary, replace_existing=True)
         return status
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Run fixed-curve F4 filtering and an open hourly forecast.')
+    invocation_started = perf_counter()
+    parser = argparse.ArgumentParser(description='Reuse the saved F4 curve fit, filter from a fresh Beta prior, and forecast hourly averages. No parameter refit.')
     parser.add_argument('--config', type=Path, default=ROOT/'root/f4_quick.json')
+    parser.add_argument('--filter-start', help='First assimilated hour (local time or explicit UTC offset); overrides config.')
+    parser.add_argument('--forecast-origin', help='First forecast hour, after the saved fit cutoff; overrides config.')
+    parser.add_argument('--forecast-hours', type=int, help='Number of elapsed forecast hours (1..168); overrides config.')
+    parser.add_argument('--model', nargs='+', choices=('fitted', 'linear'), help='Saved response model(s); overrides config models.')
+    parser.add_argument('--grid', choices=('base', 'fine'), help='Original numerical grid; overrides config.')
     parser.add_argument('--output', type=Path, help='New output directory, relative to repository root or absolute.')
     parser.add_argument('--resume', action='store_true', help='Continue the exact same saved run.')
     parser.add_argument('--check', action='store_true', help='Validate inputs and show planned work; no numerical propagation.')
     parser.add_argument('--max-seconds', type=float, help='Pause between complete hours after this invocation time limit.')
     parser.add_argument('--workers', type=int, help='Frequency workers (1..8).')
     args = parser.parse_args(argv)
-    config = json.loads(args.config.read_text(encoding='utf-8-sig'))
-    data = prepare(config)
+    input_started = perf_counter()
+    print('F4: validating input/workbook metadata; no model propagation.', file=sys.stderr, flush=True)
+    try:
+        config = json.loads(args.config.read_text(encoding='utf-8-sig'))
+        if not isinstance(config, dict):
+            raise ValueError('The configuration must be a JSON object.')
+        for key in ('filter_start', 'forecast_origin', 'forecast_hours', 'grid'):
+            if getattr(args, key) is not None:
+                config[key] = getattr(args, key)
+        if args.model is not None:
+            config['models'] = args.model
+        max_seconds = args.max_seconds if args.max_seconds is not None else config.get('max_seconds', 600)
+        workers = args.workers if args.workers is not None else config.get('workers', 4)
+        _execution_limits(max_seconds, workers)
+        data = prepare(config)
+    except KeyboardInterrupt:
+        print(f'F4 input control stopped after {perf_counter()-input_started:.3f}s; no run created.',
+              file=sys.stderr, flush=True)
+        return 2
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        parser.error(f'F4 input check failed: {exc}')
+    print(f'F4 input control complete in {perf_counter()-input_started:.3f}s; no model propagation yet.',
+          file=sys.stderr, flush=True)
     print(json.dumps(dict(filter_hours=data['filter_hours'], forecast_hours=config['forecast_hours'],
         models=config['models'], grid=config['grid'], missing_filter_hours=data['manifest']['missing_filter_hours'],
+        filter_start=data['manifest']['start'], forecast_origin=data['manifest']['origin'],
+        forecast_end_exclusive=data['manifest']['end'],
+        fit_policy='Reused fixed fit; no parameter estimation.',
+        curve_information_cutoff=data['model']['curve_information_cutoff'],
+        observation_contract=OBSERVATION_CONTRACT,
         identity=data['manifest']['identity']), indent=2), flush=True)
     if args.check:
         return 0
@@ -475,8 +565,7 @@ def main(argv=None):
     if not directory.is_absolute():
         directory = ROOT/directory
     status = run(data, directory=directory, resume=args.resume,
-        max_seconds=args.max_seconds if args.max_seconds is not None else config.get('max_seconds', 600),
-        workers=args.workers if args.workers is not None else config.get('workers', 4))
+        max_seconds=max_seconds, workers=workers, invocation_started=invocation_started)
     print(f'F4 {status}: {directory.resolve()}', flush=True)
     return 0 if status == 'complete' else 2
 
