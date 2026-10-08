@@ -160,6 +160,14 @@ grid og manglende convergenceclaim på exportgriddet markeres eksplicit.
 No-convergedfit eller failedprecision/budget giver afvisning; ingen provisional
 accept, større cap eller fallbackmodel. Originalfile/receipts bevares.
 
+Én eksplicit solver-undtagelse er registreret før senere testscore: hvis et
+WMfit ramte400calls uden convergence men havde tid tilbage, kan den valgte
+continuation bruge `--wm-extra-calls1200` (med mellemrum i faktisk CLI).
+Samme model/objektiv/seeds/tolerances får én1200-callkørsel inden **resten af
+den oprindelige10s**. Snapshot beholder oldfailure og kumulative calls≤1600,
+tid≤10s; default0 udfører ingen retry. Ingen yderligere forlængelse eller
+provisionalaccept. Undtagelsen er solverkonvergens, ikke valg efter test-Y.
+
 ```powershell
 python -B -m src.exe.run_model.bm_1.g_band_evaluation calibrate --forecasts OUT/20220228 OUT/20220307 OUT/20220314 --observations Y_20220228.csv Y_20220307.csv Y_20220314.csv --output CAL
 python -B -m src.exe.run_model.bm_1.g_band_evaluation evaluate --calibration CAL/calibration_snapshot.json --forecasts OUT/20220321 OUT/20220328 OUT/20220404 --observations Y_20220321.csv Y_20220328.csv Y_20220404.csv --output EVAL

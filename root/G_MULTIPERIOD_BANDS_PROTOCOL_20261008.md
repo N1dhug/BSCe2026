@@ -1,5 +1,19 @@
 # G: rullende seksugersvinduer og usikkerhedsbånd, revideret protokol
 
+## Én solvercall-undtagelse, original WM-vægttid uændret
+
+En WM-ugedag nåede400rawcalls udenconvergedfit, langt inden sin10s-wallcap.
+Inden nogen senere testscore tillades netop dette unfinishedfit **én eksplicit**
+extension: højst1200ekstracalls, højst1600inklusive de400første, og kun
+resterende10s minus allerede forbrugtfitvægttid. Det er en deklareret revision
+af callcap, ikke nulstillet forbrug eller en claimedno-retry. Samme ligninger,
+variable-projectionloss,bounds,seeds,tolerances; ingen dataset/model/q-ændring.
+Oldfailure/attempts/kald/tid bindes i finalrecord. Ingen provisionalaccept og
+ingen yderligere extension ved failure. Dette erstatter den tidligere
+no-call-extension-regel for den ene diagnosticerede solverstop; øvrige fits
+bevarer deres oprindelige caps. Formålet er at gennemføre den bestilte
+sammenlignelige serie uden at bruge mere end dens allerede aftalte solvervægttid.
+
 ## Afgrænset fortsættelse ved afbrudt finer-grid-optimering
 
 En senere origin gennemførte nogle ugedage og ramte derefter rawcallcap

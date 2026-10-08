@@ -11,6 +11,7 @@ from src.method import g_weekday_rolling as rolling
 from src.method import g_weekday_export as numerical
 from src.method import g_prequential_bands as bands
 from src.exe.run_model.bm_1.g_weekday_continue import check_saved_converged
+from src.exe.run_model.bm_1.g_wm_solver_extension import fit_extension
 
 
 def packet(origin,error=1.):
@@ -123,6 +124,20 @@ class RollingTests(unittest.TestCase):
         self.assertEqual(checked['numerical_check_optimizer_calls'],0);self.assertLess(checked['seconds'],30.)
         g['attempts']=[]
         with self.assertRaises(RuntimeError):check_saved_converged(g,frame,rolling.load_baseline(day['baseline']),day['training_days'])
+
+    def test_explicit_WM_extension_preserves_failed_calls_and_original_time_cap(self):
+        true=[-4.,-2.,-7.];items=[]
+        for d in range(5):
+            price=.6*np.sin(np.arange(24)*(.25+.1*d)+d);baseline=np.full(24,.5)
+            y=rolling.wm.solve(price,baseline,true,[.1*d,.03*(d+1)])['prediction']
+            items.append({'price':price,'baseline':baseline,'observed':y,'mask':np.ones(24,dtype=bool)})
+        previous={'status':'unfinished','calls':400,'seconds':.5,'attempts':[{'converged':False}]}
+        fit=fit_extension(items,previous)
+        self.assertEqual(fit['status'],'complete');self.assertEqual(fit['previous_failed_fit'],previous)
+        self.assertEqual(fit['calls'],400+fit['new_calls']);self.assertLessEqual(fit['calls'],1600);self.assertLess(fit['seconds'],10.)
+        np.testing.assert_allclose(fit['r_per_day'],true,atol=.02)
+        previous['seconds']=10.
+        with self.assertRaises(RuntimeError):fit_extension(items,previous)
 
 
 class BandTests(unittest.TestCase):

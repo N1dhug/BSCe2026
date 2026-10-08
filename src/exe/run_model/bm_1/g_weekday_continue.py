@@ -22,6 +22,7 @@ from src.method.g_prequential_bands import CALIBRATION_ORIGINS
 from src.tools.bm_1_deterministic_data import raw_csv
 from src.tools.bm_1_reports import _atomic_report
 from src.exe.run_model.bm_1.s3_forecast import write_forecast
+from src.exe.run_model.bm_1.g_wm_solver_extension import fit_extension
 
 
 def check_saved_converged(g,frame,baseline,names):
@@ -50,12 +51,15 @@ def check_saved_converged(g,frame,baseline,names):
 def main(argv=None):
     parser=ArgumentParser(description=__doc__)
     for name in ('previous-output','raw-csv','inputs-csv','output'):parser.add_argument('--'+name,required=True)
+    parser.add_argument('--wm-extra-calls',type=int,choices=(0,1200),default=0)
     args=parser.parse_args(argv);old=Path(args.previous_output);directory=Path(args.output);directory.mkdir(parents=True,exist_ok=False)
     receipt=json.loads((old/'invocation.json').read_text());previous=json.loads((old/'fit_report.json').read_text())
     begun=perf_counter();origin=receipt['origin']
     lineage={'previous_output':str(old),'previous_fit_report_sha256':hashlib.sha256((old/'fit_report.json').read_bytes()).hexdigest(),
         'driver_sha256':hashlib.sha256(Path(__file__).read_bytes().replace(b'\r\n',b'\n')).hexdigest(),
-        'optimizer_retry':False,'original_per_weekday_caps_preserved':True}
+        'optimizer_retry':args.wm_extra_calls!=0,'original_per_weekday_wall_caps_preserved':True,
+        'WM_extra_calls_explicit':args.wm_extra_calls,
+        'WM_extension_driver_sha256':hashlib.sha256(Path(__file__).with_name('g_wm_solver_extension.py').read_bytes().replace(b'\r\n',b'\n')).hexdigest()}
     _atomic_report(directory/'invocation.json',{'utc':datetime.now(timezone.utc).isoformat(),'origin':origin,**lineage})
     try:
         if previous['status']!='unfinished' or receipt['baseline_policy']!='weekday':raise ValueError('Only an unfinished own weekday series can continue.')
@@ -83,7 +87,10 @@ def main(argv=None):
                 items.append({'price':inp.prices[24:],'baseline':inp.b_mean[24:],'observed':y,'mask':np.isfinite(y),'index':index[24:],'day':name})
             if saved is not None and 'WM' in saved:
                 w=saved['WM']
-                if w['status']!='complete':raise RuntimeError('Saved WM budget is unfinished; no optimizer retry permitted.')
+                if w['status']!='complete':
+                    if args.wm_extra_calls==0:raise RuntimeError('Saved WM budget is unfinished; no optimizer retry permitted.')
+                    w=fit_extension(items,w,extra_calls=args.wm_extra_calls)
+                    checkpoint({'weekday':d,'stage':'WM_extension','fit':w})
             else:w=model.fit_wm(items,checkpoint=lambda x:checkpoint({'weekday':d,'stage':'WM','fit':x}))
             if w['status']!='complete':raise RuntimeError('New WM weekday fit unfinished; no retry.')
             ge=[];we=[];maximum=0
@@ -117,7 +124,7 @@ def main(argv=None):
             'utc':datetime.now(timezone.utc).isoformat(),'target_observation_file_opened':False,'total_seconds':perf_counter()-begun,
             'G_calls':sum(d['G']['calls'] for d in days),'WM_calls':sum(d['WM']['calls'] for d in days),'counts_include_reused':True,
             'artifact_sha256':{name:hashlib.sha256((directory/name).read_bytes()).hexdigest() for name in files}})
-        print(f'{origin}: own weekday forecast frozen; caps preserved.',flush=True);return 0
+        print(f'{origin}: own weekday forecast frozen; cumulative wall caps preserved.',flush=True);return 0
     except (ValueError,OSError,KeyError,RuntimeError) as exc:
         _atomic_report(directory/'failure.json',{'status':'failed','origin':origin,'seconds':perf_counter()-begun,'error':str(exc),'optimizer_retry':False})
         print(str(exc),file=sys.stderr,flush=True);return 2
