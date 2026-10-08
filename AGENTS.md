@@ -1,4 +1,23 @@
-## Aktuel G-status: grundimplementering og procesvej udført, 8. oktober 2026
+## Aktuel G-status: timeversion og integreret proceskovarians udført, 8. oktober 2026
+
+G's nye aktive timevej er `src.exe.run_model.bm_1.s3_interval`: own hourly-mean
+fit/snapshot/predict/score og procesmomenter gennem hele timen. Baselinefit
+integrerer WM-features over samme60-sample/h-grid med præcise minuttimestamps.
+Punktversion/snapshots er bevaret. 25 fokuserede G-kontroller består samlet.
+Korrigeret Feb7-fit20.995493s/118kald; ODE-RMSE.378396 mod meanbaseline.379144.
+Proces-sigma=.2 består128/256-gridchecks; ingen intervalbånd opfindes fra to
+momenter. Historisk intervalstøjfit afvises:662/720 støttebrud og Pmax33.153>.25.
+Begge udviklingsfits/mellemtrin er lokale; samlet33.455508s/226kald inden120s/1000.
+Johan antager hour_start(10→10–11), men er ikke sikker; Demand er efter hans
+erindring Power over timen. Labels/enhed er derfor working assumptions.
+Læs root/G_S3_INTERVAL_GUIDE_20261008.md og seneste G_NEXT_STEP. Timeoperator
+er udført. Næste særskilte beslutning er baseline/modelresidual/observationslag,
+ikke nye sigma-/bankforsøg for at skjule støttebrud. Kalibrerede observerede
+bånd, direkte WM-benchmark og historisk closed loop er fortsat åbne.
+F's kode/studier/budget bevares. Rådata/tidsserier forbliver lokale; kun kode,
+syntetiske tests og aggregerede resultater sendes/merges under Johans tilladelse.
+
+## Historisk G-status: punktgrundversion og procesvej udført, 8. oktober 2026
 
 S3 fit/snapshot/predict/score er færdig. Ny separat FV-procesvej beregner
 middel/varians/kvantiler ved eksplicit sigma uden refit; 16 fokuserede
