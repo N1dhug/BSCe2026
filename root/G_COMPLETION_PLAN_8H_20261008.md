@@ -1,4 +1,13 @@
-# Aktiv G-plan: grundversion og timeoperator udført inden for samme arbejdsramme
+# Aktiv G-plan: grundversion, timeoperator og godkendt residuallag udført
+
+Johan godkendte et enkelt mærket statistisk outputresidual som udviklingslag.
+[Empirisk residualvej](G_S3_RESIDUAL_GUIDE_20261008.md) er nu kørbar uden
+nyt G/baselinefit;29 tests består. PureG og observeret middel/bånd bevares
+særskilt. Nominelt95%-bånd giver71.43% udviklingsdækning, ikke kalibreringsaccept.
+Ingen proces-/residualdobbelttælling, ændret styring eller F-udvidelse.
+Stop nye modeludvidelser; næste er én afgrænset G/WM-sammenligning eller senere
+separat validering. Det er fortsat samme oprindelige otte-timers-forløb.
+Historiske statusafsnit nedenfor læses med dette seneste holdested.
 
 Seneste fortsættelse: [timeoperator, integreret baseline og proceskovarians](G_S3_INTERVAL_GUIDE_20261008.md)
 er udført med25 fokuserede slutchecks. To nødvendige udviklingsfits er bevaret;
