@@ -1,3 +1,29 @@
+## F4-H2: slutvurdering gemt i tre blokke; eksportgrænse nået, 8. oktober 2026
+
+Den godkendte lineær/tostykke-afgrænsning er udført til næste budgetgrænse.
+Tostykkemodellen blev valgt på begge egne grids; alle700 åbne prognosejobs
+og168h forecast er frosset før slut-Y. Modelvalget ændres ikke af slutugen.
+Tre finalprequential blokke afsluttede normalt med123/124/98 nye jobs:
+345 af1344 planlagte slutjobs er nu gemt. Lineær/base168h er komplet;
+øvrige model/grid-strømme og samlede finalmetrics er stadig ufuldstændige.
+Ingen rawjobfailure eller ny optimizerkørsel. Checkpoint04/05/06 er auditeret
+og sikret som deltaarkiver med eksplicit fuld predecessor-kæde.
+
+Lukket V8: H49805.8944273059/72000s, native1136.465941387039/1140s.
+Der er3.534058612961s native tilbage; næste blok kræver8s beskyttet eksport.
+Ingen proces kører. Ingen yderligere modelblok kan admitted under dette loft.
+Separat V4-kilde/forslag er kun klargjort, approved=false/execution_started=false:
++60s kontrol/eksport1140→1200 inden samme20h og23:55 Copenhagen; ingen ny fit,
+kernel/gate/candidatecap/deadlineændring. Det kræver Johans konkrete beslutning.
+Gamle reserved5s/600s og alle failures/charges forbliver præcist bevaret.
+
+Læs root/F4_H2_TWO_FAMILY_FINAL_PROGRESS_20261008.md og
+root/f4/h2_two_family_v4_native_supplement_proposal_20261008.json.
+Efter særskilt godkendelse: fortsæt finalprequential fra gemte egne states,
+derefter H→I originreview og selvstændig I/F3-admission/evidens samt J.
+H/I/J/F4 er stadig åbne; ingen blind holdout/populationskalibreringsaccept.
+G/WM og droppede F4-G2b/G2c bevares. Følgende F-status er historik.
+
 ## Aktuel G-plan og næste implementering, 8. oktober 2026
 
 WM-koden er nu gennemgået. Læs [den samlede aktive plan](root/G_COMPLETION_PLAN_8H_20261008.md),
