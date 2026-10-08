@@ -1,17 +1,22 @@
-## F4-H2:45 kald og checkpoint08 sikret; aktiv20h-fortsættelse
+## F4-H2: 48-kaldstrace; terminalt mappetab, 8. oktober 2026
 
-PR122 er merged52006d77. Alle originaldata og kildefiler er gendannet;
-input.xlsx er hash-identisk og tilgængelig til export efter forecastfreeze.
-Ingen slut-Y er læst. Checkpoint01–08 sikrer1300 nye råjobs og450 adoptioner.
-45 firestykkekald er komplette, kandidat46 har28/72 timer. Første supplement-
-blok ramte hård watchdog; fuld600s-charge bevares. Næste blok lukkede rent
-med tidligere STOP-pause ved480s; dens originale marker er bevaret under
-supplement_block02_preserved_STOP.txt før autoriseret fortsættelse. Alle
-numeriske kilder/caps/guards er uændrede. Nye blokke får samme ekstra
-shutdownmargin. Aktuelle output ligger på PR123 mens arbejdet kører.
-H/I/J/F4 er fortsat åbne; ingen convergence eller modelvinder hævdes.
-20h total/native1080s og23:55-frist gælder. G/WM-status bevares.
-Følgende ældre F-statusafsnit er historik.
+Den godkendte20h-fortsættelse er kørt; PR123 sikrer checkpoint07–12 og
+lukket v4-ledger. 47 kald var fuldt durable før sidste blok; log/trace når48.
+Mappen fra den gamle chat forsvandt under kørsel. Næste kandidats time0-
+prediction fejlede med FileNotFoundError; årsagen til mappefjernelsen er ukendt.
+16 af blok6's27 rapporterede nye rawjobs er bevaret og auditeret; kandidat48
+mangler11 råtimer (nulbaseret45–55). Råevidenshullet er eksplicit dokumenteret.
+1477 fortsættelsesjobs +3655 predecessorjobs og450 adoptioner er sikret;
+alle73 frosne sourcefiler og to supplementkontroller består.0 recovery-
+propagationer, ingen retry. Original workbook er hashverificeret, slut-Y ulæst.
+H46710.38319202991/72000s; native1060.6012936430393/1080s. Alle gamle
+crashcharges/failures bevares. Der findes ingen firestykkers termination,
+selectionfreeze eller ugeforecast; H/I/J/F4 er fortsat åbne.
+Separat recoveryforslag: ny execution med rawadoption/48-tracereplay,
+samme20h-total/deadline23:55/calls25/49/pair73, native+60s til1140 indenfor
+20h. IKKE godkendt/kørt; originalt terminalt run må ikke genoptages.
+Læs root/F4_H2_SUPPLEMENT_TERMINAL_20261008.md og terminal/proposal-JSON.
+G/G7/WM og droppede F4-G2b/G2c bevares. Ældre statusafsnit er historik.
 
 ## F4-H2: normalt budgetstop;43 kald sikret, 8. oktober
 

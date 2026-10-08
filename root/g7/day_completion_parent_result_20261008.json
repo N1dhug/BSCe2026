@@ -1,0 +1,13 @@
+{
+  "schema": "g7-day-completion-parent-result-v1",
+  "status": "completed",
+  "exit_code": 0,
+  "parent_wall_seconds": 4.686100441000235,
+  "conservative_charge_seconds": 20,
+  "campaign_debit_seconds": 1927.3372718589885,
+  "campaign_ceiling_seconds": 1930,
+  "remaining_seconds": 2.6627281410114847,
+  "all_registered_immutable_input_bytes_unchanged": true,
+  "scientific_validation": false,
+  "native_scientific_evolutions": 0
+}

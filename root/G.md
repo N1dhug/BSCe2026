@@ -1,3 +1,72 @@
+## G7: gemte døgn-fixturekvitteringer kontrolleret, 8. oktober2026
+
+Johan godkendte det konkrete +20s-scope kl.15:59 Copenhagen. Separat
+præregistrering a24c828c9a82257f00258555ca5911e33ea09c70 blev committed
+og alle3 filer læst tilbage før én invocation. Kontrollen består:
+132 eksakte native store-receipts genbrugt uden compute,4 posteriorupdates
+algebraisk valideret, M254-koefficienter og rå evidence-vægte bevaret.
+Samme MC-input giver nul forskel; ændret inputfingerprint afvises.
+Alle registrerede input-, ledger-, receipt- og sourcebytes er uændrede.
+OS-lockens ownerPID er eksplicit mutable metadata, ikke en sciencekvittering.
+
+Den gennemførte stub-graf fra PR124 og dette særskilte saved-receipt-review
+udgør nu en bestået sammensat fixturekontrol. Den oprindelige enkelte
+check-invocation fejlede fortsat historisk; den rettede checker er ikke
+genkørt. Ingen numerisk modelpropagation, likelihood eller projektionssolve
+blev udført nu, og ingen scientific/full-day/historical accept.
+
+Parentwall4.686100441s/body2.529463034s; fuld konservativ scopecharge20s
+bevares. G debit1927.3372718589885, loft1930, rest2.6627281410114847.
+Loftets1800s stammer fra G-planens FORSLAG om30min-panel, ikke en genfundet
+eksplicit brugergrænse. Brugergodkendelserne +110s og nu+20s er eksplicitte.
+Historiske regnskaber/failures bevares; budget er runtimeplanlægning, ingen
+matematisk modelgrænse. Den gamle uautoriserede20s-proposal er superseded
+af day_completion_approval_20261008.json.
+
+Native deterministisk standalone24h-rate fra PR124 består fortsat:
+2.331360998s ved neutralpris/J=.121203829307. De16 kompatible integrerede
+whole-job-rates er stadig unknown, fordi fire-origins/contextbinding mangler.
+Næste: pin fire egne produktionsorigins, afgræns rate-målingerne, samlet
+admission, separat immutable numerisk præregistrering og faktisk døgnforsøg.
+Ingen ny rate-/modelkørsel er autoriseret af dette20s-reviewscope.
+Læs root/G7_DAY_COMPLETION_REVIEW.md og opdaterede G-statusfiler.
+Følgende G-statusser/failurebeskrivelser er historik; F/WM bevares.
+
+## G7: døgn-fixture, timing og budgetstop, 8. oktober 2026
+
+Døgn-driverens stub-forløb gennemførte begge prissøgninger, tre frosne
+styringer, fem forward-kontekster, fælles EM-krydskontrol, en observation,
+fire egne posterioropdateringer og fortsættelsen. Dette er kontrol af
+orchestration med stub-kernels; ingen numerisk validering af døgnforsøget.
+
+Den samlede kontrolpakke er IKKE bestået. Første scope stoppede på en for
+kort node-reservation; næste ramte parent-loftet; tredje gennemførte
+døgnforløbet men fejlede ved den ekstra genbrugstest, som konstruerede et
+andet numerisk kontrakt-id. Den korrekte kontraktforskel blev afvist.
+Genbrugstesten er rettet til driverens make_control, men rettelsen er ikke
+runtime-verificeret. En separat read-only audit af gemte resultater nåede
+også sit parent-loft. Ingen fejl eller fulde reservationscharges slettes.
+
+En særskilt preregistreret native deterministisk 24h-målfunktion ved
+u=(.5,.5,.5,.5) blev færdig:2.3313609979995817s, J=.12120382930681177,
+MAP-node3 (nulbaseret), x12=.5062519458461637. Dette er én timing, ingen
+prissøgning, ingen optimumclaim. Native kilder/kernels er uændrede.
+Raten er standalone med én hash-verificeret egen M254-origin; den er endnu
+ikke et kompatibelt ratepacket for hele grafens fire origins/source-context.
+
+Konservative scopecharges:15+8+20+5+8=56s. G debit1907.3372718589885,
+ceiling1910, rest2.6627281410114847s. Alle16 kompatible whole-job rater
+står fortsat unknown; ingen samlet budgetadmission, fuld døgnpræregistrering,
+numerisk døgnkørsel eller scientific_accept. Ingen bruger-PC-kørsel kræves.
+
+Læs root/G7_DAY_CHECK_AND_RATE_REVIEW.md og
+root/g7/day_check_and_rate_status_20261008.json.
+Næste konkrete forslag er +20s til én sidste read-only completion-audit,
+worker18s/reserve2s. Forslaget er IKKE godkendt og starter ingen proces.
+Først derefter egne fire origins, kompatible rater, samlet admission,
+særskilt immutable præregistrering og numerisk døgnforsøg.
+Følgende G-afsnit/statusser er historik; samtidige F-afsnit bevares.
+
 ## G7: samlet døgnstyring implementeret, ikke kørt, 8. oktober
 
 Denne levering bygger på den mergede feedbackintegration PR119/main7586a9d2.

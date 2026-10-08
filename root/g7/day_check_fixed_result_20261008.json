@@ -1,0 +1,11 @@
+{
+  "schema": "g7-day-check-parent-result-v1",
+  "status": "hard-stop",
+  "exit_code": null,
+  "parent_wall_seconds": 6.0850600190005935,
+  "conservative_charge_seconds": 8,
+  "campaign_debit_seconds": 1874.3372718589885,
+  "remaining_seconds": 35.662728141011485,
+  "all_source_hashes_unchanged": true,
+  "scientific_validation": false
+}

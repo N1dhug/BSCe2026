@@ -1,17 +1,56 @@
-## F4-H2:45 kald og checkpoint08 sikret; aktiv20h-fortsættelse
+## F4-H2: 48-kaldstrace; terminalt mappetab, 8. oktober 2026
 
-PR122 er merged52006d77. Alle originaldata og kildefiler er gendannet;
-input.xlsx er hash-identisk og tilgængelig til export efter forecastfreeze.
-Ingen slut-Y er læst. Checkpoint01–08 sikrer1300 nye råjobs og450 adoptioner.
-45 firestykkekald er komplette, kandidat46 har28/72 timer. Første supplement-
-blok ramte hård watchdog; fuld600s-charge bevares. Næste blok lukkede rent
-med tidligere STOP-pause ved480s; dens originale marker er bevaret under
-supplement_block02_preserved_STOP.txt før autoriseret fortsættelse. Alle
-numeriske kilder/caps/guards er uændrede. Nye blokke får samme ekstra
-shutdownmargin. Aktuelle output ligger på PR123 mens arbejdet kører.
-H/I/J/F4 er fortsat åbne; ingen convergence eller modelvinder hævdes.
-20h total/native1080s og23:55-frist gælder. G/WM-status bevares.
-Følgende ældre F-statusafsnit er historik.
+Den godkendte20h-fortsættelse er kørt; PR123 sikrer checkpoint07–12 og
+lukket v4-ledger. 47 kald var fuldt durable før sidste blok; log/trace når48.
+Mappen fra den gamle chat forsvandt under kørsel. Næste kandidats time0-
+prediction fejlede med FileNotFoundError; årsagen til mappefjernelsen er ukendt.
+16 af blok6's27 rapporterede nye rawjobs er bevaret og auditeret; kandidat48
+mangler11 råtimer (nulbaseret45–55). Råevidenshullet er eksplicit dokumenteret.
+1477 fortsættelsesjobs +3655 predecessorjobs og450 adoptioner er sikret;
+alle73 frosne sourcefiler og to supplementkontroller består.0 recovery-
+propagationer, ingen retry. Original workbook er hashverificeret, slut-Y ulæst.
+H46710.38319202991/72000s; native1060.6012936430393/1080s. Alle gamle
+crashcharges/failures bevares. Der findes ingen firestykkers termination,
+selectionfreeze eller ugeforecast; H/I/J/F4 er fortsat åbne.
+Separat recoveryforslag: ny execution med rawadoption/48-tracereplay,
+samme20h-total/deadline23:55/calls25/49/pair73, native+60s til1140 indenfor
+20h. IKKE godkendt/kørt; originalt terminalt run må ikke genoptages.
+Læs root/F4_H2_SUPPLEMENT_TERMINAL_20261008.md og terminal/proposal-JSON.
+G/G7/WM og droppede F4-G2b/G2c bevares. Ældre statusafsnit er historik.
+
+## G7: gemte døgn-fixturekvitteringer kontrolleret, 8. oktober2026
+
+Johan godkendte det konkrete +20s-scope kl.15:59 Copenhagen. Separat
+præregistrering a24c828c9a82257f00258555ca5911e33ea09c70 blev committed
+og alle3 filer læst tilbage før én invocation. Kontrollen består:
+132 eksakte native store-receipts genbrugt uden compute,4 posteriorupdates
+algebraisk valideret, M254-koefficienter og rå evidence-vægte bevaret.
+Samme MC-input giver nul forskel; ændret inputfingerprint afvises.
+Alle registrerede input-, ledger-, receipt- og sourcebytes er uændrede.
+OS-lockens ownerPID er eksplicit mutable metadata, ikke en sciencekvittering.
+
+Den gennemførte stub-graf fra PR124 og dette særskilte saved-receipt-review
+udgør nu en bestået sammensat fixturekontrol. Den oprindelige enkelte
+check-invocation fejlede fortsat historisk; den rettede checker er ikke
+genkørt. Ingen numerisk modelpropagation, likelihood eller projektionssolve
+blev udført nu, og ingen scientific/full-day/historical accept.
+
+Parentwall4.686100441s/body2.529463034s; fuld konservativ scopecharge20s
+bevares. G debit1927.3372718589885, loft1930, rest2.6627281410114847.
+Loftets1800s stammer fra G-planens FORSLAG om30min-panel, ikke en genfundet
+eksplicit brugergrænse. Brugergodkendelserne +110s og nu+20s er eksplicitte.
+Historiske regnskaber/failures bevares; budget er runtimeplanlægning, ingen
+matematisk modelgrænse. Den gamle uautoriserede20s-proposal er superseded
+af day_completion_approval_20261008.json.
+
+Native deterministisk standalone24h-rate fra PR124 består fortsat:
+2.331360998s ved neutralpris/J=.121203829307. De16 kompatible integrerede
+whole-job-rates er stadig unknown, fordi fire-origins/contextbinding mangler.
+Næste: pin fire egne produktionsorigins, afgræns rate-målingerne, samlet
+admission, separat immutable numerisk præregistrering og faktisk døgnforsøg.
+Ingen ny rate-/modelkørsel er autoriseret af dette20s-reviewscope.
+Læs root/G7_DAY_COMPLETION_REVIEW.md og opdaterede G-statusfiler.
+Følgende G-statusser/failurebeskrivelser er historik; F/WM bevares.
 
 ## G7: døgn-fixture, timing og budgetstop, 8. oktober 2026
 
