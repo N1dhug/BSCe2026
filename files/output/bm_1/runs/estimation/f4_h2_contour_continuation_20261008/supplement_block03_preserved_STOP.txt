@@ -1,0 +1,1 @@
+Explicit earlier pause for supplement block03; ongoing continuation is authorized after preserving this marker.

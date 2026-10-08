@@ -1,0 +1,1 @@
+{"schema":"f4-h2-earlier-file-pause-v1","source_commit":"b53e337b47613b1070037223b79befd96b0900d8","production_started_utc_seconds":1791467248.1320372,"pause_age_seconds":480.0,"reason":"Additional60s shutdown margin after first block hard watchdog; declared600s cap and minimum60s reserve unchanged.","uses_existing_STOP_interface":true,"numerical_source_changes":0}
