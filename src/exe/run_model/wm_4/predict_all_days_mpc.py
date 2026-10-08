@@ -9,7 +9,7 @@ from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, aligned_
 from src.exe.run_model.wm_4.predict_all_days_optimized import END_DAY, START_DAY
 from src.exe.run_model.wm_4.predict_daily import deviation_metrics
 from src.model.wm_4 import wm_4
-from src.params.wm_4 import optimized_qp_params
+from src.params.wm_4 import constant_diffusion_qp, optimized_qp_params
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -77,12 +77,54 @@ def _fit_shifted_history(frame, origin, baseline_weeks, steps_per_hour, output_m
         **fit_kwargs,
     )
     fit["training_origins"] = training_origins
-    return fit, model
+    return fit, model, datasets
+
+
+def _fit_stochastic_variance(model, fit, datasets, steps_per_hour):
+    hourly_index = np.arange(DAY_HOURS, dtype=int) * int(steps_per_hour)
+    residuals = np.vstack([
+        np.asarray(data["I"], dtype=float)[hourly_index] - np.asarray(state["I"], dtype=float)[hourly_index]
+        for data, state in zip(datasets, fit["deterministic_states"])
+    ])
+    ddof = 1 if residuals.shape[0] > 1 else 0
+    observed_variance = np.var(residuals, axis=0, ddof=ddof)
+    kernel = model.process_variance_kernel(fit["deterministic_state"], hourly_index)
+    fit_mask = np.arange(DAY_HOURS, dtype=int) > 0
+    diffusion = constant_diffusion_qp(model).fit(
+        kernel,
+        observed_variance,
+        initial_variance=np.zeros(DAY_HOURS, dtype=float),
+        fit_mask=fit_mask,
+    )
+    return {
+        **diffusion,
+        "training_residual_variance": observed_variance,
+        "training_residuals": residuals,
+    }
+
+
+def _stochastic_forecast_variance(model, state, fit, diffusion, max_horizon, steps_per_hour):
+    lead_steps = np.arange(1, int(max_horizon) + 1, dtype=int) * int(steps_per_hour)
+    sensitivity = model.sensitivity({"r": fit["r"]})["input"][lead_steps]
+    F_variance = float(np.asarray(fit.get("x_cov", np.cov(np.asarray(fit["init_cond"], dtype=float), rowvar=False, ddof=1)), dtype=float)[0, 0])
+    F_variance = max(F_variance, 0.0)
+    P0 = np.array([[F_variance, 0.0], [0.0, 0.0]], dtype=float)
+    initial_variance = np.einsum("ni,ij,nj->n", sensitivity, P0, sensitivity)
+    kernel = model.process_variance_kernel(state, lead_steps)
+    process_variance = kernel @ np.full(model.t_steps, float(diffusion["q"]), dtype=float)
+    total_variance = np.maximum(initial_variance + process_variance, 0.0)
+    return {
+        "F_variance": F_variance,
+        "initial_variance": np.maximum(initial_variance, 0.0),
+        "process_variance": np.maximum(process_variance, 0.0),
+        "variance": total_variance,
+        "std": np.sqrt(total_variance),
+    }
 
 
 def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max_horizon, **fit_kwargs):
     origin = pd.Timestamp(origin)
-    fit, _ = _fit_shifted_history(
+    fit, fit_model, datasets = _fit_shifted_history(
         frame, origin, baseline_weeks, steps_per_hour, output_model, **fit_kwargs,
     )
 
@@ -95,11 +137,19 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
     R_observed = float(prepared["I"][0] - prepared["O"][0])
     init = np.array([historical[0], R_observed], dtype=float)
     state = helper._state_from_parameters(prepared, init, fit["r"], full=True)
+    diffusion = _fit_stochastic_variance(fit_model, fit, datasets, steps_per_hour)
+    stochastic = _stochastic_forecast_variance(
+        model, state, fit, diffusion, max_horizon, steps_per_hour,
+    )
 
     rows = []
     for lead in range(1, int(max_horizon) + 1):
         step = lead * int(steps_per_hour)
         target_time = origin + pd.Timedelta(hours=lead)
+        variance = float(stochastic["variance"][lead - 1])
+        std = float(stochastic["std"][lead - 1])
+        error = float(prepared["I"][step] - state["I"][step])
+        z = error / std if std > 1e-12 else np.nan
         rows.append({
             "origin": origin,
             "origin_day": origin.normalize(),
@@ -122,6 +172,21 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
             "training_R_std": float(np.std(np.asarray(fit["init_cond"], dtype=float)[:, 1])),
             "state_iterations": int(fit["state_iterations"]),
             "qp_loss": float(fit["qp_loss"]),
+            "diffusion_q": float(diffusion["q"]),
+            "diffusion_sigma": float(diffusion["sigma"]),
+            "initial_F_variance": float(stochastic["F_variance"]),
+            "initial_variance": float(stochastic["initial_variance"][lead - 1]),
+            "process_variance": float(stochastic["process_variance"][lead - 1]),
+            "predicted_variance": variance,
+            "predicted_std": std,
+            "forecast_error": error,
+            "z_score": z,
+            "within_1sigma": bool(abs(error) <= std),
+            "within_95": bool(abs(error) <= 1.96 * std),
+            "lower_68": float(state["I"][step] - std),
+            "upper_68": float(state["I"][step] + std),
+            "lower_95": float(state["I"][step] - 1.96 * std),
+            "upper_95": float(state["I"][step] + 1.96 * std),
         })
     state_row = {
         "origin": origin,
@@ -139,8 +204,44 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
         "training_R_std": float(np.std(np.asarray(fit["init_cond"], dtype=float)[:, 1])),
         "state_iterations": int(fit["state_iterations"]),
         "qp_loss": float(fit["qp_loss"]),
+        "diffusion_q": float(diffusion["q"]),
+        "diffusion_sigma": float(diffusion["sigma"]),
+        "initial_F_variance": float(stochastic["F_variance"]),
+        "training_diffusion_variance_rmse": float(diffusion["variance_rmse"]),
+        "training_diffusion_std_rmse": float(diffusion["std_rmse"]),
     }
     return rows, state_row
+
+
+def _stochastic_metrics(part):
+    error = part["forecast_error"].to_numpy(dtype=float)
+    variance = part["predicted_variance"].to_numpy(dtype=float)
+    std = np.sqrt(np.maximum(variance, 0.0))
+    valid = np.isfinite(part["z_score"].to_numpy(dtype=float))
+    z = part.loc[valid, "z_score"].to_numpy(dtype=float)
+    error_std = float(np.std(error, ddof=1)) if error.size > 1 else 0.0
+    rms_std = float(np.sqrt(np.mean(variance)))
+    z_mean = float(np.mean(z)) if z.size else np.nan
+    z_std = float(np.std(z, ddof=1)) if z.size > 1 else np.nan
+    if z.size > 2 and z_std > 0.0:
+        centered = (z - z_mean) / z_std
+        z_skew = float(np.mean(centered ** 3))
+        z_excess_kurtosis = float(np.mean(centered ** 4) - 3.0)
+    else:
+        z_skew, z_excess_kurtosis = np.nan, np.nan
+    return {
+        "empirical_error_std": error_std,
+        "predicted_rms_std": rms_std,
+        "std_to_rmse_ratio": rms_std / float(np.sqrt(np.mean(error ** 2))) if np.any(np.isfinite(error)) and np.mean(error ** 2) > 0.0 else np.nan,
+        "coverage_68_pct": 100.0 * float(np.mean(part["within_1sigma"].to_numpy(dtype=bool))),
+        "coverage_95_pct": 100.0 * float(np.mean(part["within_95"].to_numpy(dtype=bool))),
+        "z_mean": z_mean,
+        "z_std": z_std,
+        "z_skew": z_skew,
+        "z_excess_kurtosis": z_excess_kurtosis,
+        "mean_sigma": float(part["diffusion_sigma"].mean()),
+        "mean_initial_F_std": float(np.sqrt(np.maximum(part["initial_F_variance"].to_numpy(dtype=float), 0.0)).mean()),
+    }
 
 
 def summary_by_lead(forecasts):
@@ -156,6 +257,7 @@ def summary_by_lead(forecasts):
             **{f"mpc_{key}": value for key, value in mpc.items()},
             **{f"O_{key}": value for key, value in baseline.items()},
             "mpc_gain_vs_O_pct": 100.0 * (1.0 - mpc["rmse"] / baseline["rmse"]) if baseline["rmse"] > 0.0 else np.nan,
+            **_stochastic_metrics(part),
         })
     return pd.DataFrame(rows)
 
@@ -176,6 +278,7 @@ def cumulative_summary(forecasts, horizons=HORIZONS):
             **{f"mpc_{key}": value for key, value in mpc.items()},
             **{f"O_{key}": value for key, value in baseline.items()},
             "mpc_gain_vs_O_pct": 100.0 * (1.0 - mpc["rmse"] / baseline["rmse"]) if baseline["rmse"] > 0.0 else np.nan,
+            **_stochastic_metrics(part),
         })
     return pd.DataFrame(rows)
 
@@ -225,6 +328,33 @@ def save_plot(cumulative, lead, path):
     plt.close(fig)
 
 
+def save_stochastic_plot(lead, path):
+    lead_h = lead["lead_hours"].to_numpy(dtype=int)
+    fig, axes = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+
+    axes[0].plot(lead_h, lead["mpc_rmse"], marker="o", label="Empirical MPC RMSE")
+    axes[0].plot(lead_h, lead["predicted_rms_std"], marker="o", label="Predicted stochastic RMS std")
+    axes[0].set_ylabel("Error / predicted standard deviation")
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.25)
+
+    axes[1].plot(lead_h, lead["coverage_68_pct"], marker="o", label="Observed ±1σ coverage")
+    axes[1].plot(lead_h, lead["coverage_95_pct"], marker="o", label="Observed 95% coverage")
+    axes[1].axhline(68.27, linestyle="--", linewidth=0.8, label="Gaussian 68.27%")
+    axes[1].axhline(95.0, linestyle="--", linewidth=0.8, label="Gaussian 95%")
+    axes[1].set_ylabel("Coverage (%)")
+    axes[1].set_xlabel("Lead time (hours)")
+    axes[1].set_xticks(lead_h)
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.25)
+
+    fig.suptitle("WM4 MPC stochastic variance calibration")
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
 def print_summary(cumulative, lead, skipped):
     print("cumulative RMSE from each hourly MPC update:")
     print(f"{'hours':>7}{'MPC':>12}{'O(t)':>12}{'gain':>12}{'origins':>12}")
@@ -246,6 +376,21 @@ def print_summary(cumulative, lead, skipped):
             f"{row['mpc_rmse']:>12.8f}"
             f"{row['O_rmse']:>12.8f}"
             f"{row['mpc_gain_vs_O_pct']:>11.2f}%"
+        )
+
+    print()
+    print("stochastic calibration by exact lead:")
+    print(f"{'lead':>7}{'RMSE':>12}{'pred std':>12}{'ratio':>10}{'z mean':>10}{'z std':>10}{'cov68':>10}{'cov95':>10}")
+    for _, row in lead.iterrows():
+        print(
+            f"{int(row['lead_hours']):>7d}"
+            f"{row['mpc_rmse']:>12.8f}"
+            f"{row['predicted_rms_std']:>12.8f}"
+            f"{row['std_to_rmse_ratio']:>10.3f}"
+            f"{row['z_mean']:>10.3f}"
+            f"{row['z_std']:>10.3f}"
+            f"{row['coverage_68_pct']:>9.2f}%"
+            f"{row['coverage_95_pct']:>9.2f}%"
         )
 
     if skipped:
@@ -321,10 +466,17 @@ def main():
     lead.to_csv(output / "lead_time_summary.csv", index=False)
     cumulative.to_csv(output / "cumulative_horizon_summary.csv", index=False)
     origin_hour.to_csv(output / "origin_hour_summary.csv", index=False)
+    lead[[
+        "lead_hours", "origins", "days", "mpc_bias", "mpc_rmse",
+        "empirical_error_std", "predicted_rms_std", "std_to_rmse_ratio",
+        "coverage_68_pct", "coverage_95_pct", "z_mean", "z_std",
+        "z_skew", "z_excess_kurtosis", "mean_sigma", "mean_initial_F_std",
+    ]].to_csv(output / "stochastic_calibration_by_lead.csv", index=False)
     if skipped:
         pd.DataFrame([{"origin": origin, "reason": reason} for origin, reason in skipped]).to_csv(output / "skipped_origins.csv", index=False)
 
     save_plot(cumulative, lead, output / "mpc_vs_output_rmse.png")
+    save_stochastic_plot(lead, output / "stochastic_variance_calibration.png")
     print()
     print(f"days={forecasts['origin_day'].nunique()}, MPC origins={forecasts['origin'].nunique()}, forecasts={len(forecasts)}")
     print_summary(cumulative, lead, skipped)
