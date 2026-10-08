@@ -162,7 +162,7 @@ accept, større cap eller fallbackmodel. Originalfile/receipts bevares.
 
 Én eksplicit solver-undtagelse er registreret før senere testscore: hvis et
 WMfit ramte400calls uden convergence men havde tid tilbage, kan den valgte
-continuation bruge `--wm-extra-calls1200` (med mellemrum i faktisk CLI).
+continuation bruge `--wm-extra-calls 1200`.
 Samme model/objektiv/seeds/tolerances får én1200-callkørsel inden **resten af
 den oprindelige10s**. Snapshot beholder oldfailure og kumulative calls≤1600,
 tid≤10s; default0 udfører ingen retry. Ingen yderligere forlængelse eller
