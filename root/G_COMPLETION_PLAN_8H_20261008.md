@@ -35,7 +35,7 @@ at G slår WM. Negative, men korrekt beregnede resultater er gyldige.
 2. Den oprindelige lineære januar→168h-vej bevares som reference med eget
    protokolnavn. Den erstatter ikke stiltiende S3 og bruges ikke som bevis
    for, at S3's fremtidige selvstændige forecast-indgang allerede findes.
-3. **Stokastisk hovedvej: den eksisterende M254-mixture og fem rho-hypoteser**
+3. **Den afgrænsede demos stokastiske vej: M254-mixture og fem rho-hypoteser**
    med egne betingede laws. FV og rå EM er kontroller; de erstatter ikke den
    primære model for at gøre den hurtigere.
 4. G7's deterministiske reference bruger MAP-rho og dens egen betingede
@@ -45,8 +45,15 @@ at G slår WM. Negative, men korrekt beregnede resultater er gyldige.
    kontrakter. Den historiske punktapproksimation mærkes tydeligt; demoen
    bruger egentlige syntetiske punktmålinger. Et nyt intervalfilter er ikke
    en skjult del af denne afslutning.
-6. F-arbejdet holdes adskilt. G genbruger de allerede delte metoder; denne
-   plan ændrer ikke F-forsøg, F-budgetter eller WM's modeldefinition.
+6. **G har et mere deterministisk grundlag; F har et mere stokastisk
+   grundlag**, som Johan har præciseret efter reviewet. F's undersøgelser
+   overføres ikke automatisk til G. Genbrug af fælles kode er ikke genbrug
+   af hele F's forskningsprogram eller færdigkriterier. Hver ny G-opgave
+   skal begrundes i G's egne aftalte leverancer og WM-sammenlignelighed.
+   Den deterministiske historiske prognose har førsteprioritet; den aftalte
+   filter→prisstyringsdemo er en afgrænset stokastisk del. Nødvendige
+   korrekthedschecks for G's anvendte kode bevares. F's egne forsøg,
+   resultater og budgetter samt WM's modeldefinition ændres ikke.
 
 ## 3. Leverance A: selvstændig historisk S3-prognose
 
