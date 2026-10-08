@@ -1,4 +1,12 @@
 ## F4-H2: slutvurdering gemt i tre blokke; eksportgrænse nået, 8. oktober 2026
+G-S3's første praktiske milepæl er nu implementeret og kørt. Se
+[brug og faktisk historisk resultat](root/G_S3_STANDALONE_GUIDE_20261008.md).
+Fit/snapshot/predict/score fungerer; 8 fokuserede kontroller består.
+Feb7-eksemplet: 18,400 s fit, 168 forecasttimer, bestået demandforfining;
+RMSE .377435 mod baseline .378180 i uverificerede rå workbook-enheder.
+Kun én historisk fitinvocation; ingen ny G6a/G7-accept eller F-ændring.
+Næste er et enkelt G-egnet usikkerhedslag og slutgennemgang. Den ældre
+arbejdsinstruks om at bygge S3 fra bunden nedenfor er nu udført.
 
 Den godkendte lineær/tostykke-afgrænsning er udført til næste budgetgrænse.
 Tostykkemodellen blev valgt på begge egne grids; alle700 åbne prognosejobs

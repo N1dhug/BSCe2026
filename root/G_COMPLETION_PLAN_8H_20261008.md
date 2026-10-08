@@ -17,8 +17,9 @@ modulgrænser og et versionsmærket snapshot er tilstrækkeligt.
 af obligatorisk parameterbank/demo. Den bygger på Johans seneste instrukser,
 [kode-/matematikreviewet](G_CODE_MATH_REVIEW_20261008.md) og
 [gennemgangen af faktisk WM-kode](G_WM_ALIGNMENT_REVIEW_20261008.md).
-Review og afgrænsning er udført. De nye implementeringsleverancer nedenfor
-er endnu ikke færdige. Ingen ny historisk eller numerisk G7-accept er erklæret.
+Review og afgrænsning er udført. Den selvstændige deterministiske S3-vej
+er nu implementeret og kørt; se [brug og resultat](G_S3_STANDALONE_GUIDE_20261008.md).
+Støjlaget og den samlede slutgennemgang er fortsat åbne. Ingen ny historisk eller numerisk G7-accept er erklæret.
 
 ## 1. Mål og faste valg
 
@@ -130,9 +131,9 @@ ikke dokumenterer en kausal eller historisk styringsgevinst.
 | Del | Oprindeligt afsat | Slutpunkt/status |
 |---|---:|---|
 | WM/G-review og kontrakter | 0,5 h | Udført; findings og kontrolkvittering gemt. Faktisk samlet reviewtid er ikke målt. |
-| S3 fit/snapshot/predict | 2,0 h | Næste opgave; kode, snapshot, fokuserede kontraktchecks. |
+| S3 fit/snapshot/predict | 2,0 h | Udført: kode, komplet snapshot, 8 kontroller og faktisk historisk eksempel. |
 | Enkelt G-egnet støjlag efter fungerende kerne | Højst 2,0 h | Særskilt status; må vige for at afslutte den brugbare kerne. |
-| Historisk eksempel og fælles outputs | 1,0 h | Rigtige data/resultater, scorer og figur. |
+| Historisk eksempel og fælles outputs | 1,0 h | Udført for S3: 168 timer, rådata, scorer og figur; støjoutput åbent. |
 | Samlet brugsvej, review og merge | 1,0 h | Dokumentation og færdige dele integreret; eksisterende styringsvej henvist. |
 | Reserve | 1,5 h | Konkrete fejl og inputadgang; ingen udvidelser. |
 | **Oprindelig ramme** | **8,0 h** | **Ingen automatisk nulstilling af arbejdsbudgettet.** |
@@ -147,7 +148,8 @@ Nye udviklingskørsler registreres særskilt, ikke som omskrevet gammel accept.
 ## 6. Klar til fortsættelse
 
 Næste trin køres i **denne G-chat, GPT-6.1 Sol, High** med
-[den færdige arbejdsinstruks](G_NEXT_STEP_20261008.md). Ingen ny generel
+[den færdige S3-brugsvej](G_S3_STANDALONE_GUIDE_20261008.md). S3-instruksen
+er udført; næste er afgrænset usikkerhed og samlet slutgennemgang. Ingen ny generel
 planrunde eller godkendelse er nødvendig. Færdige egne branches merges
 efter relevante kontroller som autoriseret af Johan.
 
@@ -158,3 +160,10 @@ evidens og åbne gates bevares. Første grundversion er færdig, når fit,
 gem/genindlæs, prognose, valgfri scoring og et dokumenteret faktisk eksempel
 virker med relevante korrekthedschecks. Støjlaget har særskilt status;
 kun et gyldigt lag mærkes færdigt. BM2/flere parametre er senere udvidelser.
+
+Målt implementeringspas startet 17:09:27 UTC. Kontrolkvitteringen viser
+ca. 0,92 h til den første komplette pakning, eksklusive efterfølgende
+dokumentation/merge. Tidligere reviews er ikke målt. Aktuelt restskøn efter
+S3-milepælen: ca. 2–4 h til støjlagets afgrænsede vurdering/implementering
+og samlet aflevering, afhængigt af dets gyldighed. Dette er et estimat,
+ikke en ny otte-timers-ramme eller en garanti for et gyldigt støjlag.
