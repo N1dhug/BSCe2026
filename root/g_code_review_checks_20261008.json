@@ -1,0 +1,46 @@
+{
+  "schema": "g-code-math-review-checks-v1",
+  "date": "2026-10-08",
+  "source_commit": "d19259c9292bd9bc6b0dd2ff037973d5613ef8fc",
+  "mode": "focused-existing-algebra-and-contract-tests",
+  "test_classes": [
+    "tests.test_bm1_objective.StochasticObjectiveTheoryTests",
+    "tests.test_bm1_objective.AuditControlCostTests",
+    "tests.test_bm1_estimation.BayesPrimitiveTests",
+    "tests.test_bm1_estimation.ConservativeTransferTests",
+    "tests.test_bm1_sde.DriftAndDiffusionTests",
+    "tests.test_bm1_g8_owned_reload.OwnedBasisReloadTests"
+  ],
+  "command": "python -B -m unittest tests.test_bm1_objective.StochasticObjectiveTheoryTests tests.test_bm1_objective.AuditControlCostTests tests.test_bm1_estimation.BayesPrimitiveTests tests.test_bm1_estimation.ConservativeTransferTests tests.test_bm1_sde.DriftAndDiffusionTests tests.test_bm1_g8_owned_reload.OwnedBasisReloadTests",
+  "blas_environment": {
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1"
+  },
+  "python_runtime_path": "C:\\Users\\jvils\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+  "result": {
+    "tests_run": 39,
+    "unittest_seconds_excluding_imports": 0.664,
+    "exit_code": 0,
+    "status": "OK"
+  },
+  "observed_output": "Ran 39 tests in 0.664s\n\nOK\n",
+  "new_model_fits": 0,
+  "new_research_transport_runs": 0,
+  "full_day_scientific_acceptance": false,
+  "historical_acceptance_from_this_review": false,
+  "unchanged_historical_campaign_debit_seconds": 1927.3372718589885,
+  "unchanged_historical_campaign_ceiling_seconds": 1930,
+  "limits": [
+    "No exhaustive source-line review or full test suite claim.",
+    "No historical fit/forecast replay or native full-day filter-control run.",
+    "Owned-basis reload test does not exercise bank_filter continuation.",
+    "Unittest duration excludes interpreter startup and dependency import time."
+  ],
+  "test_source_sha256_lf": {
+    "tests/test_bm1_estimation.py": "4098992318701d8dc5b306cc900be818939a929a8cc94f8b8b9dc23f92c0fd89",
+    "tests/test_bm1_g8_owned_reload.py": "42926c0572f1330ea4b88777ff27a9a2f2c9137759f51f8a39b089674600490b",
+    "tests/test_bm1_objective.py": "20695e721e5902adc2b3bf936118d2226fa5b73005eeb51db381c58e18b71166",
+    "tests/test_bm1_sde.py": "0fcf8f887cda2eb14604b54564e35c0d50e74d627e4a2f33443ef849670a4b2f"
+  }
+}
