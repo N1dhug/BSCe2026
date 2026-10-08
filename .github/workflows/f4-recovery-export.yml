@@ -1,0 +1,28 @@
+name: F4 recovery bytes
+on:
+  pull_request:
+    types: [opened]
+permissions:
+  contents: read
+jobs:
+  export:
+    if: github.head_ref == 'feature/f4-h2-approved-resume-20261008'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export existing immutable data only
+        run: |
+          mkdir -p f4-recovery-bytes
+          cp files/output/bm_1/runs/estimation/f4_h2_*checkpoint*.zip f4-recovery-bytes/
+          cp files/output/bm_1/runs/estimation/f4_h2_compact*review*.zip f4-recovery-bytes/
+          cp files/input/data/input.xlsx f4-recovery-bytes/
+          cd f4-recovery-bytes
+          sha256sum * > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: f4-recovery-bytes-20261008
+          path: f4-recovery-bytes/
+          retention-days: 2
+          compression-level: 0
+          if-no-files-found: error
