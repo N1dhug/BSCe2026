@@ -1,5 +1,22 @@
 # G: rullende seksugersvinduer og usikkerhedsbånd, revideret protokol
 
+## Numerisk eksport før nogen targetscore
+
+Første Feb28-weekdayfit gennemførte alle syv G/WM-fit, men input-onlyforecast
+afviste refinementgate. Original fit/checkpoints/snapshot/failure og tid
+bevares. Ingen targetY eller calibration/evalscore var åbnet. En separat
+source-bound numericalexport replay bruger **60/120 minute-aligned grids**
+for alle perioder, med identiske fittedparametre/baselines/scales og <=1e−5.
+Medianstarts og historicalresidualreplay genberegnes på dette net; ingen
+optimizer, ny model, toleranceændring eller target-informeret parameterfit.
+Det originale snapshot er parent og gemmes uændret i eget derivedrecord.
+Hver numericalexport har15s cap; alle seks giver højst90s ekstra replay,
+uden nulstilling af tidligere fitforbrug. Ny modeloutputprotokol er
+`G-WM-five-matching-weekdays-hourly-export60-v1`; band-v2 uændret. Det
+komplette første fit eksporteres separat, ikke genfittes; øvrige origins
+anvender samme minute-aligned export direkte efter egne fits. Hvis denne
+eksport også fejler, hævdes ingen bestået forecast og ingen autogenkørsel.
+
 ## Endelig kalender efter ren datadækningskontrol
 
 Den krævede femugersserie har et rent manglende-demandhul Jan13–Jan17.

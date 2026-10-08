@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from src.method import g_weekday_rolling as rolling
+from src.method import g_weekday_export as numerical
 from src.method import g_prequential_bands as bands
 
 
@@ -22,7 +23,7 @@ def packet(origin,error=1.):
     for c in raw:
         normalized[c]=raw[c]/4 if c.endswith('_output_variance') else (raw[c]-6)/2
     result={'predictions':raw,'normalized_predictions':normalized,'manifest':{
-        'comparison_protocol':rolling.PROTOCOL,'source_sha256':rolling.source_hashes(),
+        'comparison_protocol':numerical.PROTOCOL,'source_sha256':numerical.source_hashes(),
         'cutoff':str(start),'end_exclusive':str(end),'demand_used':False,'g_residual_attached':True,
         'demand_timestamp_label':'hour_start','scales':{'demand_min':6.,'demand_scale':2.}},
         'scoring':{'status':'not-scored'},'status':'complete-development-comparison'}
@@ -98,6 +99,19 @@ class RollingTests(unittest.TestCase):
         self.assertEqual(fitted['status'],'complete')
         self.assertLess(fitted['fit']['mse'],1e-10)
         np.testing.assert_allclose(fitted['r_per_day'],true,atol=.02)
+
+    def test_minute_export_preserves_parameters_and_uses_no_optimizer(self):
+        parent=self.result['snapshot']
+        with patch.object(rolling,'fit_g',side_effect=AssertionError('refit')),patch.object(rolling,'fit_wm',side_effect=AssertionError('refit')):
+            exported=numerical.refine_for_export(parent,self.raw)['snapshot']
+            prediction=numerical.predict_comparison(exported,self.raw[['Price','Temp']])
+        self.assertEqual(exported['optimizer_calls'],0)
+        self.assertEqual(prediction['manifest']['parent_snapshot_sha256'],rolling.residual.snapshot_fingerprint(parent))
+        for old,new in zip(parent['days'],exported['refined_view']['days']):
+            self.assertEqual(old['G']['parameters'],new['G']['parameters'])
+            self.assertEqual(old['WM'],new['WM']);self.assertEqual(old['baseline'],new['baseline'])
+        changed=deepcopy(exported);changed['refined_view']['days'][0]['G']['parameters']=[700.,.2,.5,.5]
+        with self.assertRaises(ValueError):numerical.validate_export(changed)
 
 
 class BandTests(unittest.TestCase):

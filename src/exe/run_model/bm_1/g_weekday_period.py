@@ -7,6 +7,7 @@ from time import perf_counter
 import sys
 
 from src.method import g_weekday_rolling as model
+from src.method import g_weekday_export as numerical
 from src.method.g_prequential_bands import CALIBRATION_ORIGINS,EVALUATION_ORIGINS
 from src.tools.bm_1_deterministic_data import raw_csv
 from src.tools.bm_1_reports import _atomic_report
@@ -30,13 +31,17 @@ def main(argv=None):
         def checkpoint(record):
             _atomic_report(directory/f"weekday_{record['weekday']}_{record['stage']}.json",model.interval.point._plain(record),replace_existing=True)
             if record['stage']=='complete':print(f"{args.origin}: weekday {record['weekday']} frozen",flush=True)
-        fitted=model.fit_rolling(raw_csv(args.raw_csv),args.origin,baseline_policy=args.baseline_policy,checkpoint=checkpoint)
+        raw=raw_csv(args.raw_csv)
+        fitted=model.fit_rolling(raw,args.origin,baseline_policy=args.baseline_policy,checkpoint=checkpoint)
         _atomic_report(directory/'fit_report.json',model.interval.point._plain({k:v for k,v in fitted.items() if k not in ('snapshot','historical_replay')}))
         if fitted['status']!='complete':raise RuntimeError('Weekday fit incomplete; no automatic retry or pooled fallback.')
         _atomic_report(directory/'weekday_snapshot.json',fitted['snapshot'])
         fitted['historical_replay'].to_csv(directory/'historical_replay_normalized.csv',index_label='Datetime')
-        forecast=model.predict_comparison(fitted['snapshot'],raw_csv(args.inputs_csv,require_demand=False));write_forecast(directory,forecast)
-        files=('weekday_snapshot.json','forecast.json','forecast.csv','forecast_normalized.csv')
+        exported=numerical.refine_for_export(fitted['snapshot'],raw)
+        _atomic_report(directory/'weekday_export_snapshot.json',exported['snapshot'])
+        exported['historical_replay'].to_csv(directory/'export_replay_normalized.csv',index_label='Datetime')
+        forecast=numerical.predict_comparison(exported['snapshot'],raw_csv(args.inputs_csv,require_demand=False));write_forecast(directory,forecast)
+        files=('weekday_snapshot.json','weekday_export_snapshot.json','forecast.json','forecast.csv','forecast_normalized.csv')
         _atomic_report(directory/'forecast_freeze.json',{'status':'frozen-input-only','origin':args.origin,'phase':phase,
             'utc':datetime.now(timezone.utc).isoformat(),'total_seconds':perf_counter()-begun,
             'target_observation_file_opened':False,'G_calls':sum(d['G']['calls'] for d in fitted['snapshot']['days']),

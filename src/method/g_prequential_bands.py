@@ -11,7 +11,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from src.method import g_weekday_rolling as comparison
+from src.method import g_weekday_export as comparison
 from src.method import bm_1_s3_interval as interval
 from src.method import bm_1_s3_residual as residual
 
