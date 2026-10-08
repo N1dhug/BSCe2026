@@ -1,4 +1,14 @@
-# Aktiv G-plan: grundversion, timeoperator og godkendt residuallag udført
+# Aktiv G-plan: afgrænsede grundleverancer og fælles timebenchmark udført
+
+[G/WM-timebenchmark](G_WM_HOURLY_GUIDE_20261008.md) er nu kørbar/kørt med
+samme baseline, skala, cutoff, population, inputscenarie og timeoperator.
+WM4 er en tydeligt mærket hourly adapter med nyt free-run fit; native WM/G/F
+ændres ikke. Én WM-fit2.527086s/148calls, nul G-fit; pureG.378396/adaptedWM.379297
+RMSE. Empirical95%-bånd underdækker begge (71.43/72.02%). Ingen holdout-,
+kalibrerings- eller kontrolaccept. Grundimplementeringerne er udført; senere
+perioder/kalibrering/fysiske closedloopstudier er selvstændige udvidelser.
+Samme oprindelige8h-ramme og tidligere charges bevares; reviewtid er umålt.
+Historiske statusafsnit følger; de er ikke nye automatiske fitbestillinger.
 
 Johan godkendte et enkelt mærket statistisk outputresidual som udviklingslag.
 [Empirisk residualvej](G_S3_RESIDUAL_GUIDE_20261008.md) er nu kørbar uden

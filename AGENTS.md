@@ -1,4 +1,23 @@
-## Aktuel G-status: empirisk outputresidual implementeret, 8. oktober 2026
+## Aktuel G-status: afgrænset fælles timebenchmark udført, 8. oktober 2026
+
+Johan bad om fortsættelse til G/WM. Ny separat `src.exe.run_model.bm_1.g_wm_hourly`
+bruger same frozenbaseline/scales/cutoff/population/weatherprice/timeoperator.
+G/time/residual/FV og eksisterende WM/F-kode er uændrede. WM4's samme affine
+model får exact hourly operator og ny variable-projection free-run fit,
+targetinitials uden warmup; det er ikke det gamle punkt-QP-resultat.
+Én WM-fit2.527086s/148calls inden60s/400; nul G-fit. PureG RMSE.378396,
+adaptedWM.379297; empiricalmeanG.377901/WM.380183.95%-band dækkerG71.43%/
+WM72.02%, ingen kalibrerings-/holdout-/kausalaccept. WM-pricecoeff≈0.
+34 fokuserede tests består før science;5 nye består efter nødvendig export-
+quantilekorrektion. Ét oprindeligt fit941f4f1 bevares; explicit locally
+reviewed snapshotmigration ændrer kun kvantilkonvention til standaloneG,
+ikke parametre/errorbank. Ingen refit; finalexport a184d2e i separat mappe.
+Læs root/G_WM_HOURLY_GUIDE_20261008.md og seneste G_NEXT_STEP. Afgrænsede
+grundleverancer er kørbare; stop nye studier indtil Johan vælger udvidelse.
+Rå artefakter/pakker lokale; kode/authorizedaggregates kan merges. F/bank/BM2
+og oprindelig8h-ramme bevares; tidligere reviewtid umålt. Ældre status følger.
+
+## Historisk G-status: empirisk outputresidual implementeret, 8. oktober 2026
 
 Johan godkendte et enkelt tydeligt mærket residuallag. Ny separat indgang
 `src.exe.run_model.bm_1.s3_residual` estimerer en pooled empirical output-error
