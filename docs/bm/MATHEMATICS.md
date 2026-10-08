@@ -132,18 +132,101 @@ verificerer hverken kildens enhed eller label. Ingen reskalering sker i oprydnin
 F og G har forskellige populationsmasker, prisinformation, baselines, cutoffs
 og usikkerhedslag; se [sammenligningen](COMPARISON.md).
 
-## Nødvendig F-tilslutning og resterende forskning
+## F-weekday: implementeret native fit-adapter
 
-Den eksisterende `weekday_backtest` kalender/callbackkontrakt genbruges.
-En rigtig F-adapter skal fitte på fem tilladte ugedage med kontinuerlig state
-gennem de mellemliggende dage og kun pre-origin targets. Det faste F4-fit
-opfylder ikke den kontrakt. Den generiske `fit_shared_curve_pair` bruger en
-ældre intervalsolver, mens den moderne native optimizer er bundet til en
-historisk 72-timers kampagne og dens ledgers. Ukritisk indpakning er ikke korrekt.
+[FWeekdayAdapter](../../src/tools/f_weekday_backtest_adapter.py) er nu koblet
+til den eksisterende `weekday_backtest`-kalender. Den laver **nye tostykkefits**
+med `fit_shared_curve_pair`; de gemte F4-kurvelogits bruges ikke som fitresultat.
+Likelihood, nominelle fysiske parametre, Beta-prior, intervaloperator og
+frossen F-baseline bevarer deres egne betydninger.
 
-Næste særskilte udvikling er en genbrugelig native TRAIN-likelihood, valg af
-baseline/prior og et afgrænset fitbudget. Cirka 840 kontinuerlige timer per
-kandidat/ugedag kan ikke budgetteres fra det gamle korte fit alene. F's gamle
-H/I/J-accept, manglende firestykkekonvergens og negative numerikresultater
-bevares. Nye baselinefamilier, parameterbanker og blind prognosekampagne er
-yderligere forskning, som denne oprydning ikke igangsætter.
+Kontrakten kræver en eksplicit, hashbundet F-baseline-/skalapakke med cutoff
+senest ved hele femugershistorikkens begyndelse. Den medfølgende F4-profil
+har cutoff 16. februar; første mulige mandagsorigin for femugershistorik er
+derfor 28. marts 2022. Profilen er tidligere frosset, ikke nytilpasset til de
+fem mandage. Det er et deklareret valg; den erstattes ikke af G's dagsbaseline.
+Den nominelle prior/fysik er betingelser, ikke historisk identificerede parametre.
+
+For hver ugedag starter hver kandidat fra sin egen Beta-prior ved historikkens
+begyndelse og propagérer gennem **alle fysiske timer**. `split_weekday` maskerer
+targets uden for de fem matchende dage, mens inputs og tilstand fortsætter.
+Manglende observationer giver ingen logevidence og intet dagligt state-reset.
+Optimeringen bruger hele denne TRAIN-likelihood plus den deklarerede
+kurvestraf. `replay_native_record` forbinder responsoptimereren med
+`replay_native_candidate`; de seks eksisterende native beregningsfunktioner
+er uændrede. Der er ingen ny PDE-solver eller punkt-/Gaussian-mean-erstatning.
+
+Valgte logits skal være identiske med et faktisk succesfuldt optimizerresultat.
+Timeout, budgetstop, ufuldstændig replay eller numerisk fejl giver ingen gyldig
+fit-score eller forecastaccept. Hele den valgte historik kontrolleres på
+base/fine: samlet logscoreforskel højst .05, statemiddelforskel .002 og
+konservativ L1 .05 ved hver fysisk time. Forecast kontrollerer tilsvarende
+state- og intervalmomentgates. Disse er numeriske gates, ikke et bevis på
+identifikation, globalt optimum eller statistisk modelaccept.
+
+Hvert af de syv fits fryser sin egen posterior ved mandagsorigin og føres
+gennem hele det targetfri prognosepræfiks frem til sin ugedag. Resultatet
+samler syv selvstændige, kontinuerlige kandidatbaner; det er ikke én fælles
+168-timers posteriorbane med daglige parameterskift. Den almindelige F4-CLI
+har fortsat én åben bane med ét gemt fit. Middel og baseline skaleres med
+effektskalaen, varians med dens kvadrat. Native observationsvarians omfatter
+den nominelle Gaussian-støj; der påstås ingen kalibreret bånddækning.
+
+Native checkpoints binder backendversion, alle kildehashes, Python/NumPy/
+SciPy/Numba/llvmlite-versioner, konkrete kandidatlogits, inputspecifikation,
+grid, kronologi, observationer og evidenschecksum. Endelig logmasse bevarer
+underflow-haler; sande nuller gemmes som JSON null og indlæses som −∞.
+Precise- og native-checkpoints kan ikke ombyttes implicit. Den native kerne
+har testet pause/resume. **Hele weekday-CLI'en er stadig fresh-output-only**:
+dens fit-/forecastartefakter gemmes til recovery, men læses ikke automatisk
+som en fortsat optimizer-/ugekørsel.
+
+De nye [adaptertests](../../tests/test_f_weekday_adapter.py) omfatter rigtig
+kort native kurveoptimering, nulmasse/underflow, ændret kandidat/source/runtime,
+cutoff, populationskontrakt, DST og targetisolering. En firetimers case med
+ikke-nul drift/diffusion, inputskift, gap, midnat og resume stemmer med den
+bevarede precise-kerne. 29 nye/berørte native-, response- og kalenderkontroller
+består; seks eksisterende F4-tests består også efter integrationen.
+
+**Ingen historisk femugers-fit er kørt.** Et sådant fit kræver omtrent 840
+historiktimer pr. kandidat og ugedag (DST kan ændre antallet). De eksplicitte
+budgetter i [eksempelkonfigurationen](../../root/f_weekday_adapter.example.json)
+er korte stopgrænser, ikke målte produktionsbudgetter. Budgetkontrol sker
+kooperativt før/efter nativeblokke og timer; den stopper ikke en igangværende
+kernel midt i et trin. En senere konkret fitplan skal have sit eget samlede
+budget og eventuelt et eksternt processtop. Populationens komplette måler-
+maske er callerens kontrakt og kan ikke verificeres fra et allerede beregnet
+`Demand`-gennemsnit alene. Brug og CSV-format står i
+[kalendervejledningen](../../root/WEEKDAY_BACKTEST_GUIDE.md).
+
+## Kodestruktur efter gennemgangen
+
+| Ansvar | Beholdt ejer og begrundelse |
+|---|---|
+| BM-ligninger og fælles input/output | Beskyttede model-/WM-afhængigheder; samme fysiske betydning. |
+| F intervalnumerik | Native, precise/characteristic og intervalmomenter har adskilte produktions-/referenceopgaver; referencekontroller er ikke dubletsolvere. |
+| Kurvefit | `bm_1_response` ejer kurver og optimizer; solverimports udføres ved replay/fit. Ny native replay er en eksplicit backendtilslutning. |
+| G gemt intervalprognose | `g_weekday_export/rolling` og de 20 bundne kilder bevares til eksisterende snapshots. |
+| G7/G8 bank og kontrol | Basis og jobbudget er samlet hos basis-/jobejerne; posterior, kontrol og forfining bevarer særskilte ansvar. |
+| Ældre S3-indgange | Én `s3`-CLI, eksplicit interval/residual/point-process. Den særskilte `s3_forecast`-API beholdes af hensyn til WM-brugere. |
+| H/I/J og valideringsharnesses | Bevar konkrete tests, negative resultater og forskningskontrakter; tre afsluttede H2-kampagnedrivere er i originalarkivet. |
+| Kalender og eksport | F/G genbruger den samme kalender, targetisolering, freeze/scoring og rå intervalfelter; ingen ny sammenligningsramme. |
+
+Gamle kildeidentiteter håndteres i [det gendannelige originaltræ](../../archive/bm/ORIGINALS.md).
+En pakket kopi tælles ikke som en forenklet kodefil. De faktiske ændringer og
+før/efter-tal står i [sammenligningen](COMPARISON.md).
+
+## Metadata og øvrige åbne modelvalg
+
+Anden rundes read-only audit af workbook-docProps, sharedStrings og headerne
+på forbrugs-/labelark fandt `Dato`, `Time`, `DateTime` samt MED/UDEN-grupper.
+Den fandt ingen leverandørdefinition af fysisk enhed, intervalstart/slut eller
+tidszone. Dette supplerer dokumentgennemgangen og begrunder fortsat den mærkede
+arbejdsantagelse; hverken et kolonnenavn eller talstørrelsen beviser kWh/kW.
+Evidens: `round2/f_runtime/resolved_metadata.json` under recovery-roden i status.
+
+F's gamle H/I/J-accept, manglende firestykkekonvergens og negative
+numerikresultater bevares i det tematiske arkiv. G's rankmangel, baselineklipning,
+ekstrapolation og empiriske bånd er fortsat begrænsninger, ikke skjult rettet af
+filoprydningen. Nye baselinefamilier, støjlag og parameterbanker er forskning.
+Den fælles F/G/WM-evalueringskampagne er eksplicit udskudt af Johan.
