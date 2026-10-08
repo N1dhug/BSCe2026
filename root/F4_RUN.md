@@ -15,7 +15,7 @@ python -m src.exe.run_model.bm_1_f4
 
 I PowerShell kan du også bruge `./run_f4.cmd` fra projektmappen. Den vælger
 automatisk projektets rod og videresender samme argumenter, f.eks.
-`./run_f4.cmd --config root/f4_week.json --resume`.
+`./run_f4.cmd --check`.
 
 `--check` læser og kontrollerer de valgte input uden at starte modelberegninger.
 Terminalen viser den effektive filter-/prognoseperiode og det gemte fits cutoff.
@@ -49,9 +49,10 @@ python -m src.exe.run_model.bm_1_f4 --filter-start 2022-02-21T00:00:00+01:00 --f
 
 Fjern `--check` for at beregne. Argumenterne har forrang for konfigurationen.
 Brug `--model fitted linear` for begge modeller. Der er ingen `--week`, fordi
-F4 genbruger et fast fit; WM4's `--week` vælger derimod fit-ugen. Den fælles
-ugedagskalender har endnu ingen F-estimator, som fitter på fem historiske
-mandage osv. Det faste F4-fit må ikke betegnes som et sådant ugedagsfit.
+F4 genbruger et fast fit; WM4's `--week` vælger derimod fit-ugen. En særskilt
+F-weekday-estimator har egen kontrakt og nye fitbudgetter; se
+[matematikoversigten](../docs/bm/MATHEMATICS.md). Det faste F4-fit må ikke
+betegnes som et nyt fit på fem tidligere mandage osv.
 
 | Felt | Betydning |
 |---|---|
@@ -72,16 +73,29 @@ Eksplicitte UTC-offsets kan bruges. Det gemte kurvefit har informationscutoff
 21. februar 2022 kl. 00:00; tidligere prognoseorigins afvises. Baseline og skala
 er frosset på historik frem til 16. februar. Filtrering må ikke starte tidligere.
 
-`root/f4_week.json` er et eksempel med 24 timers filtrering efterfulgt af
-168 fysiske timers prognose, for både fitted og lineær model:
+Den gamle `root/f4_week.json` deklarerer 24 filtertimer og 168 prognosetimer.
+Den er bevaret som oprindelig konfiguration, men **afvises på de lokale data**:
+filterdøgnet indeholder 17 negative målerceller fordelt på seks timer.
+Første fejl er 21. februar 2022 kl. 10, bl.a. −0,30 i `5080166_MED`.
+F-inputfejlen viser nu tidspunkt, målerkolonne og værdi. Betydningen af de
+negative værdier er ikke dokumenteret; de klippes eller udelades ikke.
+
+En åben prognose behøver ingen fremtidige målinger. `evaluate_forecast: false`
+giver derfor prognose/eksport uden efterfølgende scoring, men ændrer ikke
+valideringen af filterhistorikken. Den særskilte runtimekontrol bruger det
+allerede gyldige korte filter 21. februar kl. 00→01 og derefter 168 timer.
+Den må ikke forveksles med det afviste filterdøgn eller en kvalitetsevaluering.
+Denne case er nu gemt i `root/f4_open_week.json` og gennemførte på **93,472 s**
+inklusive import, input og eksport: filter 12,854 s, forecast 69,138 s.
+Alle 168 timer og syv kvantilhorisonter er verificeret. Kør den i en ny mappe:
 
 ```powershell
-python -m src.exe.run_model.bm_1_f4 --config root/f4_week.json
+python -m src.exe.run_model.bm_1_f4 --config root/f4_open_week.json --output files/output/bm_1/runs/my_f_open_week
 ```
 
-Ugekørslen er ikke automatisk startet som del af leveringen. Den kan kræve flere
-tidsblokke. Programmet viser et groft tidsestimat baseret på nye færdige timer;
-timer med filtrering og kvantiler har forskellig beregningspris.
+Den præcise målte kildeversion, konfiguration og output er bevaret. Den korte
+case tog 35,876 s og matchede den gamle fitted-reference eksakt. Fuld
+faseopdeling og begrænsninger står i [sammenligningen](../docs/bm/COMPARISON.md).
 
 ## Pause og fortsættelse
 
@@ -89,7 +103,6 @@ Ved tidsstop er status `paused`, og programmet returnerer exitkode 2. Fortsæt:
 
 ```powershell
 python -m src.exe.run_model.bm_1_f4 --resume
-python -m src.exe.run_model.bm_1_f4 --config root/f4_week.json --resume --max-seconds 600
 ```
 
 Du kan også afbryde med Ctrl+C eller oprette en fil med navnet `STOP` i
@@ -97,8 +110,9 @@ resultatmappen. Fjern `STOP` før fortsættelse. Der gemmes efter hver færdig t
 en halvfærdig time må beregnes igen. Tidsrammen kontrolleres før en ny time og
 under frekvensjobs; en igangværende skalarberegning kan afslutte efter rammen.
 Indlæsning af Excel-data og eksporter er uden for modeldelens tidsramme.
-Et fuldt F4-ugeforløb under ti minutter er endnu ikke dokumenteret; flere
-blokke eller en større `--max-seconds` er ikke bevis på, at målet er opfyldt.
+Den ovenfor målte åbne uge er under ti minutter. Det er ingen garanti for
+andre filterlængder, fine-grid eller to modeller; flere blokke eller et større
+`--max-seconds` er ikke bevis på, at et andet forløb opfylder målet.
 Denne oprydning giver ikke tilladelse til et nyt langt benchmark eller fit.
 
 Konfiguration, input, model og kildekode skal være identiske ved resume.
@@ -163,14 +177,20 @@ dækningskalibrering og er ikke G's 2,5–97,5%-bånd.
 
 Summary viser RMSE, MSE, MAE og bias for model og baseline på samme observerede
 timer, særskilt for filter og forecast. Bias er prognose minus observation.
-`timing` viser sidste invocation og summen af gemte tidskvitteringer, inklusive
-inputkontrol og resultat-/figureksport ved CLI-kørsel. Interpreter-/modulimport
-og de sidste tidskvitteringers skrivning er udenfor. Direkte Python-kald til
-`run` medregner ikke en tidligere `prepare`; det fremgår af metadata.
-En hårdt dræbt proces kan mangle en tidskvittering. Det gamle `elapsed_seconds`
-er bevaret og omfatter kun den aktuelle `run` frem til CSV-/figureksport.
-Et egentligt ende-til-ende benchmark skal derfor stadig måles omkring hele
-kommandoen, med første kompilering og senere varm kørsel vist særskilt.
+`summary.timing.last_invocation_phases` indeholder UTC-start, varighed og
+status for kontrolsummer, demand, priser, hver filter-/prognosetime,
+evalueringsinput, worker-lukning og eksport. Timerne omfatter deres
+checkpointskrivning. Første brug af JIT og workers ligger i den pågældende
+filter-/prognosefase; en selvstændig kompileringstid er ikke målt.
+
+`import_phase.seconds` måler den udførende forældreproces efter de indledende
+standardbiblioteksimports. `last_invocation_seconds` og
+`cumulative_recorded_seconds` omfatter CLI-forberedelse gennem eksport, men
+udelader imports og de sidste tidskvitteringers skrivning. Direkte kald til
+`run` omfatter ikke en tidligere `prepare`. Den eksterne proceskvittering er
+derfor den fulde ende-til-ende-måling. Caches blev ikke nulstillet; målingen
+kaldes ikke en kontrolleret kold kompilering. En hårdt dræbt proces kan mangle
+sin sidste tidskvittering. Afsluttet kompatibel resume omskriver ingen resultater.
 
 Tilstanden starter på ny ved `filter_start`. Denne nye filtreringskørsel er
 ikke en gendannelse af H-studiets oprindelige cutoff-posterior. Vælg en længere

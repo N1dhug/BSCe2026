@@ -67,103 +67,164 @@ fælles fuldt observerede timer/population, eksplicit samme pris-/vejrinformatio
 intervaloperator og horisont samt et autoriseret F-forløb. Manglende F-resultat
 udfyldes ikke med interpolation, modelomdøbning eller en ny skjult fitkampagne.
 
-## Tid, genbrug og accept
+## Faktisk runtime og genbrug
 
-G's tidligere log viser samlet optimizer/checktid 285.825 s for seks origins
-og 24.322 s numerisk export. Det er ikke fuld kold/varm brugerkommando.
-F's 600-sekunders pausegrænse beviser ikke, at en uge afsluttes under ti minutter.
-En konkret saved-fit-regression for G/WM-timeadapteren, 28. februar 2022,
-gennemførte 168 timer på **3.070 s** inklusive processtart/import, indlæsning,
-forecast, scoring, figur og eksport. Forecastdelen tog 0.231 s. De 20 gemte
-numeriske kolonner matcher før-versionen med højst $2.45\cdot10^{-15}$ rå
-forskel. Det opfylder 600-sekundersmålet for denne gemte uge, ikke alle perioder
-eller F. Ingen fit eller historisk replay blev genkørt. Sidste input-/receipt-QA
-ændrede kun wrappervalidering/metadata; kilderne for numerikken er identiske.
+Målingerne nedenfor er fulde lokale proceskørsler. Imports, input og eksport
+er med i totaltiden. Caches blev ikke nulstillet; særskilt kold kompilering
+er ikke målt. Første F-filtertime indeholder workerstart og eventuel JIT.
 
-Korte kontroller og den faktiske F-inputtid registreres i [status](STATUS.txt).
-F's workbook-scan er en del af brugerens opstart, selv ved `--check`, og kan
-ikke skjules bag den tidligere 46.465 s modelmåling.
+| Kontrol | Samlet proces | Resultat |
+|---|---:|---|
+| F opstartsprobe + faseopdelt fuld inputkontrol | 2,713 + 6,850 s | Bestået; ingen modelberegning. |
+| F kort fitted/base, 1 filtertime + 3 forecasttimer | 35,876 s | Bestået; 18 fælles CSV-felter og begge 1921-cellers logstates matcher tidligere fitted-reference eksakt. |
+| F oprindelig uge med 24 filtertimer | 7,992 s | Afvist før modelstart på negative råmålinger; ingen uge beregnet. |
+| F særskilt åben uge, 1 filtertime + 168 forecasttimer | **93,472 s** | Bestået; 7 kvantilhorisonter, ingen fremtidige observationer/scoring. |
+| G/WM-timeadapter, gemt 168-timersuge 28. februar | **3,070 s** | Første rundes regression genbrugt; højst 2,45e-15 rå forskel i 20 numeriske kolonner. |
+| G gemt snapshot, runde 2 `--check` | 2,470 s | Bestået; ingen propagation eller nyt fit. |
 
-Der er ikke bevilget et nyt historisk fitbudget eller samlet benchmarkbudget.
-En eventuel næste måling skal afgrænses til én gemt model, navngiven periode,
-ny outputmappe og et konkret tidsloft. En ny F-weekday-estimator er en særskilt
-implementering med validering og fitbudget; [matematikoversigten](MATHEMATICS.md)
-forklarer hvorfor en callback omkring det faste fit er utilstrækkelig.
+Den åbne F-uge bruger `root/f4_open_week.json`: 21. februar 2022 kl. 00→01
+filtreres, derefter prognosticeres 168 fysiske timer fra kl. 01. Priserne
+gentager den foregående uge. Den er gennemført under 600 sekunder med
+gemt fit, uændret base-grid og normal indlæsning/eksport. Dette beviser
+hverken runtime for fine-grid/længere filtrering/to modeller eller ugefejlmål.
 
-## Fund og restarbejde
+| F-fase i den åbne uge | Sekunder |
+|---|---:|
+| Imports efter indledende standardbibliotek | 1,133 |
+| Demand / priser / kontrolsummer | 5,671 / 0,105 / 0,063 |
+| Én filtertime inkl. første worker/JIT-arbejde | 12,854 |
+| 168 forecasttimer inklusive syv kvantilberegninger | 69,138 |
+| Worker-lukning / eksport | 2,004 / 0,960 |
 
-| Klasse | Fund / handling |
-|---|---|
-| Rettelse | F-enhedsmærkning er betinget; direkte datovalg og interval/UTC-output er tilføjet. |
-| Nødvendig funktion | Gemte G-exports bruges direkte; generisk båndbrug er tilføjet med egne receipts. |
-| Nødvendig senere funktion | Rigtig native F-weekday-estimator og fælles F/G/WM-resultat. |
-| Begrænsning | Kildeenhed/hour-start mangler verificeret leverandørmetadata; ingen fysisk accept. |
-| Begrænsning | F's fulde uge-runtime og brede prognosekvalitet er ikke fastslået. |
-| Begrænsning | Gamle direkte G-input kan reindexere ugyldig DST-time væk; ny indgang validerer. |
-| Valgfri forskning | Ny baseline, fysisk identifikation, andre støjlag og blind evalueringskampagne. |
+Fasesummen udelader små orkestreringsmellemrum; totalen kommer fra den
+eksterne proceskvittering. Maksimal masserest var 1,381e-12. De fulde
+kildeversioner er bevaret i `short_source.zip` og `open_week_source.zip`
+under recovery-roden i [status](STATUS.txt), sammen med logs og kvitteringer.
+De kræves til præcis genindlæsning efter senere kildeændringer.
 
-<!-- FINAL_ACCEPTANCE -->
-## Konkret før/efter og accept
+De tidligere tavse inputforsøg på 526 og 120 sekunder kunne ikke lokalisere
+flaskehalsen. Normal terminalkørsel gennemførte nu fuld prepare på 4,328 s
+inden for procesmålingen på 6,850 s. En forskel i proces-/adgangsmiljø er
+sandsynlig, men er ikke bevist ved en kontrolleret årsagssammenligning.
+Der er ikke foretaget en ny lempelse af inputvalideringen for at opnå tiden.
 
-Opgørelsen bruger udvidet kildebase `89e8337` og den aktuelle arbejdsgren;
-117 beskyttede WM-stier er udeladt i begge kolonner. Tekstlinjer tælles i
-ukomprimerede filer. En backup-ZIP regnes aldrig som kodeforenkling.
+## Konkrete databegrænsninger
+
+Én afgrænset read-only kontrol på 6,221 s lokaliserede den afviste gamle uge:
+122 negative MED-celler i 44 af dens 192 filter-/prognosetimer, ingen uendelige
+eller manglende værdier. Filterdøgnet har 17 negative celler fordelt på seks
+timer; prognoseperioden har 105 i 38 timer. Kun tre gruppemidler er negative,
+men F's eksisterende kontrakt kontrollerer hver valgt måler før aggregering.
+Man må derfor ikke erstatte kontrollen med en kontrol af gennemsnittet alene.
+
+Første fejl er 21. februar kl. 10; minimum er −4,02 i `5080166_MED` den
+27. februar kl. 12. De præcise lokale celler er registreret i
+`round2/f_runtime/week_data_findings.json`. Workbookmetadata og eksisterende
+noter afgør ikke nettoeksport kontra målefejl. Hverken fortegn, manglende
+værdier eller målerpopulation er ændret. F's fejlmeddelelse viser nu tid,
+kolonne og rå værdi. Den åbne uge bruger en gyldig filtertime og åbner ingen
+fremtidig demand; den er ikke en skjult reparation af de afviste data.
+
+Enhed, intervalstart/slut og demandtidszone er fortsat arbejdsantagelser.
+G's rankmangel, baselineklipning, ekstrapolation og empiriske bånd er bevaret
+som begrænsninger. Der er ingen ny fysisk identifikation eller ny støjfamilie.
+
+## Kode- og noteoprydning
+
+Starten på denne runde er mergecommit `7249bf9` fra PR145. Første runde gav
+1052→1038 ubeskyttede filer og 141→143 aktive kildefiler. Den brede anden
+gennemgang bruger samme konservative kildeafgrænsning: alle ubeskyttede
+Pythonfiler under `src`, også forsøgs- og valideringskode.
 
 <!-- COUNT_TABLE -->
-| Afgrænsning | Filer før -> efter | Tekstlinjer før -> efter |
+| Afgrænsning | Filer før → efter | Tekstlinjer før → efter |
 |---|---:|---:|
-| Aktiv BM-kode | 141 -> 143 | 40298 -> 40807 |
-| Aktive noter/kontrolindgange | 8 -> 15 | 8447 -> 3220 |
-| Historisk materiale/arkiv | 430 -> 405 | 56147 -> 50898 |
-| Tests | 78 -> 80 | 14479 -> 14816 |
-| Versionsstyrede genererede resultater | 382 -> 382 | 28000 -> 28000 |
-| Øvrig konfiguration/reference | 13 -> 13 | 13418 -> 13418 |
-| Hele ubeskyttede kildetræ | 1052 -> 1038 | 160789 -> 151159 |
-| Heraf direkte filer i root/ | 109 -> 73 | 39815 -> 27187 |
-| Lokalt resultatlager (separat) | 1411 -> 1428 | 1329827 -> 1330893 |
+| Aktiv BM-kode | 143 → 133 | 40.807 → 39.653 |
+| Aktive noter og kontrolindgange | 15 → 15 | 3.220 → 2.920 |
+| Løst historisk materiale og arkivmetadata | 405 → 32 | 50.898 → 33.761 |
+| Tests | 80 → 81 | 14.816 → 15.090 |
+| Versionsstyrede genererede resultater | 382 → 382 | 28.000 → 28.000 |
+| Øvrig konfiguration/reference | 13 → 10 | 13.418 → 521 |
+| Hele løse ubeskyttede træ, inkl. ZIP-beholder | 1038 → 653 | 151.159 → 119.945 |
+| Heraf root med undermapper, ubeskyttet | 409 → 22 | 63.411 → 4.599 |
+| Heraf direkte filer i root, ubeskyttet | 73 → 17 | 27.187 → 1.063 |
 <!-- END_COUNT_TABLE -->
 
-Aktive noter omfatter også startprompt, status, filplan og det nye maskinlæsbare
-WM-manifest. Historisk materiale omfatter kildebundne scripts på deres gamle
-stier. Kategorien aktiv BM-kode tæller konservativt alle ubeskyttede Pythonfiler
-under src, også genbrugte forsøgs-/valideringsindgange. Resultatlageret tælles
-separat og lægges ikke oven i kildetræets tal. Råfiler er ikke slettet.
+117 beskyttede WM-filer er udeladt i begge kolonner. Versionsstyrede
+resultater holdes særskilt; ingen resultater eller rådata er slettet. Antallet
+af løse filer beskriver det træ, man navigerer i. Det er **ikke** et globalt
+deduplikeringstal: originalpakken tælles nedenfor også udfoldet.
 
-De 36 udvalgte noter med 7009 linjer er samlet i 10 emnefiler med 1730 linjer;
-indeks/stikort kommer oveni. Det er en afgrænset deduplikering, ikke den samlede
-filreduktion. AGENTS er 1803 ->45 linjer, F4-indgangen 4135 ->42. Ingen fil er
-blot flyttet for at tælle som global reduktion. Otte G-guider bliver tre større
-fagnoter med bevaret matematik; her hævdes kun fem færre filer, ikke færre linjer.
+Den konkrete faglige sammenlægning er 61 noter med 13.418 linjer til ni
+fagtemaer med 2.434 linjer og otte kompatibilitetshenvisninger med 135 linjer.
+Der blev gennemgået 364 lignings-/algoritmeblokke og 475 afsnitsoverskrifter.
+Unikke KKT-, covariance-/SE-, LS-gap-, basis- og intervaludledninger er med;
+negative numerik- og identifikationsresultater er bevaret. Tre tidligere
+G-arkivtemaer er indarbejdet i de nye, frem for at ligge som dubletter.
+De tre aktuelle G-noter er desuden strammet fra 1.051 til 583 linjer med
+43 bevarede ankre. Gamle kørselsordrer er fjernet; unik matematik, faktiske
+retry-/budgetforløb og negative resultater står som dateret evidens.
+En arvet notation er præciseret fra a=.5 til historisk x0=.5; den fit-kurve
+havde g(.5) tæt ved −1. Det er en dokumentrettelse, ingen ændring af modellen.
 
-De centrale statiske importlukninger er F4 **72 ->72** filer (47 beskyttede)
-og G-weekday-export **88 ->88** (56 beskyttede). Ny G-CLI har90 inkl. indgangen;
-den bruger den eksisterende kæde. Antallene er en konservativ AST-kortlægning,
-ikke dynamisk runtime-tracing. [Matematikoversigten](MATHEMATICS.md) viser ansvar
-og konkrete funktioner. De brede imports er fortsat en læsbarhedsbegrænsning.
-WM-fællesmoduler, native produktionsnumerik under validation og sourcebundne
-G-kilder kan ikke flyttes/slettes som almindelige døde hjælpefiler. Historiske
-root/f4- og root/g7-scripts bevares pga. stier, ledgers og reproduktionskontrakter.
+336 afsluttede root-forsøgsfiler er **arkiveret**, ikke kaldt deduplikeret:
+113 Python, 216 JSON, 5 PowerShell, én SVG og én log. Originalpakken indeholder
+766 filer i deres eksakte gamle stier, 7.732.773 bytes udfoldet / 2.560.128
+bytes ZIP. Alle rå hashes, Git-korrespondance og faktisk sikker gendannelse
+er kontrolleret. Input/output følger ikke med denne kildepakke; de er bevaret
+i den tidligere verificerede lokale backup. [Stikort og indeks](../../archive/bm/INDEX.md)
+fører fra gamle filer til emne, aktiv ejer og originalversion.
 
-| Krav | Evidens | Status og restarbejde |
-|---|---|---|
-| Struktur/læsbarhed | Kort guide, 36 noter samlet, før/efter og importkæder | Delvist bestået; bred kode/importforenkling ikke opnået. |
-| Brugervenlighed | Help, dato/cutoff/inputfejl, G-eksempel og alternativt udsnit kontrolleret | Delvist bestået; fuld F-inputkontrol og Johans brugertest afventer. |
-| Matematisk/numerisk regression | 57 integrerede tests; derefter16 berørte tests; G-output afvigelse <=2.45e-15 | Bestået for kontrolleret scope; ingen fysisk enheds- eller generel modelvalidering. |
-| WM-beskyttelse | 117 uændrede hashes, inkl. nye MPC/fælles afhængigheder | Bestået; WM urørt. |
-| Reproducerbarhed | Verificeret3.28GB backup/bundles; F215 sourcehashes+origin-load, G316 packagehashes | Bestået bevaringsprøve; gamle F-runs bruger original source. |
-| Pause/genindlæsning | F kort kernelcase matcher uafbrudt forløb; completed-resume bevarer bytes/mtime | Bestået F-test; G har snapshotgenbrug, ikke deltime-resume. |
-| Sammenlignelighed | Samme G/WM-timeadaptermasker; F-protokolforskelle navngivet | Ikke bestået fælles F/G/WM-tabel/figur; mangler korrekt F-adapter og fælles dataaftale. |
-| Runtime | G168 timer3.070 s; F fuld inputkontrol stoppet ved120 s | G bestået for én gemt uge; F-målet ikke dokumenteret. |
-| Prognosekvalitet | Seks gemte udviklingsorigins; fejl/båndbredde/negative resultater bevaret | Ingen generel vinder eller blind test; F ikke fællesevalueret. |
+Den egentlige kodesammenlægning samler Bernstein-basis, G7-jobbudget,
+response-job og sole-owner syntetisk fixture hos deres eksisterende ejere.
+Tre S3-CLI'er bliver én med eksplicit `interval`, `residual` og `point-process`.
+To afløste faste studiedrivere og tre gamle H2-kampagneindgange er udfaset
+fra den aktive kode; genbrugelige numeriske metoder og alle tests beholdes.
+Rene curve- og metrics-importer trækker først solver-/optimizerkoden ind ved
+brug. Ved selve konsolideringen var 17 flyttede/berørte funktioner AST-identiske
+bortset fra imports og den private fixtures navn/docstring. Den efterfølgende
+F-integration tilføjer en eksplicit native-gren i responskoden; de seks gamle
+native beregningsfunktioner er stadig uændrede. Begge trin har egne tests.
 
-Den seneste F-inputkontrol brugte det ene godkendte120-sekundersbudget og
-blev stoppet automatisk uden modelberegning. Tomt output kan ikke lokalisere
-stoppet; første fremdriftslinje ligger efter imports. Den afgrænsede100-rækkers
-cacheprofil er forbedret, men dette beviser ikke fuld opstarts- eller uge-runtime.
-Der gives derfor ingen samlet påstand om, at alle slutkrav er opfyldt.
+Fire F-historiktemaer bevares om konkrete ledgers, terminale fejl, admission og
+H→I/J. De tre aktuelle G-noter beskriver senere interval/residual/weekday-
+protokoller, forskelligt fra punktmodelarkivet. `root/f4` beholder TeX-kilder
+og buildindgang med aktive CI-/testkontrakter. G7/G8, F's numeriske referencer
+og testharnesses har forskellige matematiske ansvar og er ikke samlet i
+én stor modelfil. WM og fælles afhængigheder er urørte.
 
-Johans korte brugerprøve følger [BM-guiden](../../root/BM_GUIDE.md): læs help,
-brug G-eksemplet, vælg24 timer og en ny mappe, find CSV/figur/parametre/metrics,
-og prøv en dato uden for snapshotugen for den kontrollerede fejl. F's
-pause/genoptagelse er testet syntetisk; en ny fuld lokal F-kørsel kræver først
-afklaring af opstart/inputtid. Johans egen vurdering registreres som afventer.
+<!-- IMPORT_COUNTS -->
+Det samlede roottræ inklusive syv beskyttede filer er **416 → 29**; to nye
+genbrugelige F-konfigurationer kommer oven i strukturdelens 27 filer.
+Original-ZIP'ens 766 medlemmer omfatter 656 ubeskyttede filer med 123.159
+tekstlinjer og 110 beskyttede kildefiler. De er bevaringskopier, ofte også af
+beholdt kode, og må hverken regnes som én forenklet kilde eller lægges oven i
+den aktive kode som selvstændige modeller. Arkivets løse linjetal inkluderer
+maskinlæsbare hash-/stikort; det er ikke alene fagprosa. Øvrig-kategoriens
+reduktion omfatter gamle G-kildebundter i originalpakken og to nye F-configs.
+
+Samme konservative AST-kortlægning på begge versioner giver F4's statiske
+importlukning **72 → 73** filer, gemt G-CLI **90 → 89** og G-exportkernen
+**78 → 78**. Imports inde i funktioner tælles også med. Den nye F-integration
+tilføjer ansvar; der påstås ingen dramatisk reduktion af den samlede modelkæde.
+De rene curve-/metrics-kald indlæser først tunge solvere, når de bruges.
+<!-- END_IMPORT_COUNTS -->
+
+## Verifikation og resterende arbejde
+
+- Kodekonso: 29 relevante tests; F-faser: seks runner-tests og målrettet
+  fejlkonteksttest. Første rundes 57 integrations- og 16 inputtests genbruges.
+- F's korte numeriske regression og fulde åbne uge er verificeret; G's
+  eksisterende uge/snapshots genbruges. Ingen seksugerskampagne genkørt.
+- WM's 117 rå hashes er uændrede. Arkivrestore, kildeidentiteter, stier og
+  dokumentlinks kontrolleres efter ændringerne. Gamle hashguards omgås ikke.
+- F4 pause/resume og completed-resume er testet; G genbruger snapshots og
+  har ingen deltime-resume. Ny F-weekday-integration dokumenteres særskilt
+  i [matematikoversigten](MATHEMATICS.md), med korte tests og uden historisk fit.
+- Fælles F/G/WM-evaluering og rangering er **udskudt af Johan**. Et korrekt
+  input-/populationsgrundlag og særskilt fitbudget kræves før en sådan kampagne.
+- Afklaring af negative råmålinger og leverandørmetadata samt oprindelig
+  H/I/J-accept og uafsluttet firestykkefit er fortsat åbne faglige spørgsmål.
+- Johans faktiske brugerprøve **afventer**. Den korte prøve står i
+  [BM-guiden](../../root/BM_GUIDE.md); den automatiske kontrol erstatter ikke
+  hans vurdering af læsbarhed og brugervenlighed.

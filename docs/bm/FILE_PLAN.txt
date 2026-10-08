@@ -1,92 +1,67 @@
-Første runde nedenfor er historisk; gældende udvidelse står i sidste afsnit.
+BM-F/G — gældende filplan og disposition
 
-BM-F/G — konkret filplan før ændringer, 9. oktober 2026
+Autoritet: STARTPROMPT.txt med Johans fortsættelse efter PR145. Aktuel faktisk
+status og præcis næste handling står kun i STATUS.txt. Tidligere planer er
+historik i Git og det verificerede originaltræ; de er ikke nye arbejdsordrer.
+Runde2 starter på main/origin/main 7249bf9, branch cleanup/bm-fg-simplification-20261009.
 
-Baseline: cleanup/bm-fg-review-20261008 fra 89e8337b6857b148c48e6880473984c3ae4574a0.
-Seneste main tilføjede WM4 MPC aggregate-evaluering efter G's 1279d60;
-den er medtaget og beskyttet. Rene arbejdsfiler og ingen modelprocesser før branchskift.
-773 kode-/dokumentfiler inventorieret; 116 filer/input beskyttet med SHA256.
-18 eksisterende korte F4/kalenderregressioner består (3.283 s testtid).
+BESKYTTET OG BEVARET
+- Alle 117 stier i wm-protection.json er bytebeskyttede, inklusive nyere WM-MPC,
+  fælles afhængigheder og BM-navngivne WM-indgange. sources/ er skrivebeskyttet.
+- Rådata, gemte G-resultater og lokale/ignorerede F-resultater beholdes.
+  Der køres ikke en ny seksugerskampagne eller fælles F/G/WM-evaluering.
+- Alle eksisterende tests beholdes; nye tests dækker den nye integration.
+- Startmaterialet er sikret i den verificerede 3,28GB backup, 73-fil-delta,
+  Git-bundles og sourcearkiver. Stier/kvitteringer findes i STATUS.txt.
 
-Sikring:
-- recovery/pre-cleanup-local-material.zip: 3.279 filer / 3.282.396.591 bytes;
-  hvert medlem genlæst med SHA256/CRC. Omfatter fuldt repo, F4_code og G-projekt
-  uden Git/caches/synkroniserede sources. Intet slettet/flyttet fra originaler.
-- To verificerede Git-bundles bevarer alle refs inkl. preview og G-standalone.
-- recovery/start-source-89e8337.zip bevarer kildetræet på nyeste startversion.
-- Historiske checkpoints genoptages med deres originale kildeversion, aldrig
-  med deaktiverede guards. F4 binder hele src; dette er en konkret migrationsgrænse.
+ANVENDT STRUKTURPLAN
+- Alle 416 oprindelige rootfiler har filvis action, begrundelse og referencer:
+  archive/bm/root-file-plan.json. Fordeling før ændring:12 aktive, 7 beskyttede,
+  53 noter til konsolidering,8 kompatibilitetshenvisninger, 336 historiske forsøg.
+- Ni samlede F/G-fagtemaer er placeret under archive/bm/F og archive/bm/G.
+  61 noter/13.418 linjer bliver 2.434 temalinjer + 135 henvisningslinjer. Unik matematik,
+  negative resultater og beslutningsgrundlag er gennemgået; ikke kun pakket væk.
+- Fire særskilte F-ledger/recovery/H→I-temaer beholdes; tre tidligere G-temaer
+  er indarbejdet i de nye. De tre aktuelle G-modelnoter i docs/bm beholdes.
+- Præcis 336 historiske rootfiler arkiveres med uændrede indbyrdes
+  stier: 113 py, 216 json, 5 ps1, 1 svg, 1 log. Dette er arkivering, ikke deduplikering.
+- archive/bm/originals/source-7249bf9.zip bevarer 766 startfiler uden input/output.
+  Alle SHA256/CRC, Git-korrespondance og faktisk restore er kontrolleret.
+  archive/bm/restore_original.py kræver ny destination og kontrollerer før skrivning.
+- archive/bm/old-paths.json forbinder gamle noter/kilder med faglige emner,
+  aktive ejere og originale ZIP-medlemmer. Gamle hashguards omgås aldrig.
+- root/f4/build.py og TeX-kilder beholdes pga. aktive CI-/test-/matematikkontrakter.
+  Seks tomme historiske undermapper er fjernet efter kontrol af præcis sti/tomhed.
 
-Filhandlinger i rækkefølge:
-1. BEHOLD alle filer i wm_protection.json, WM/MPC/input og fælles afhængigheder
-   byte-identisk. Behold sources/, tests og resultatpakker på deres pladser.
-2. BEHOLD numeriske G-metoder, kildebundne snapshots og historiske F4-kerner.
-   BEHOLD root/f4, root/g7 og deres interne manifests/kontrollører; paths er
-   del af reproduktionskontrakten. 15 hash-dubletgrupper slettes ikke mekanisk.
-3. RET src/exe/run_model/bm_1_f4.py: tydelige dato-/horisont-overrides, rå-enheds-
-   forbehold, UTC/intervalslut, relevante metrics og ærlig invocationstid.
-   Ingen lignings-, solver-, parameter- eller identitetsændring. Kort regression.
-4. TILFØJ src/exe/run_model/bm_1_g.py: enkel forecast fra valideret gemt weekday-
-   export, uden refit/replay. Genbrug eksisterende predict/scoring; cutoff og
-   informationsvilkår valideres. Beskyt afsluttede output mod overskrivning.
-5. VURDER/IMPLEMENTÉR generisk båndbrug i nyt BM-modul med eksplicit protokol,
-   frie datoer og verificerede freeze-receipts. Genbrug eksisterende matematik;
-   gamle kalibrerings-/kildemanifests ændres ikke. Ingen ny historisk kalibrering.
-6. SAMMENFAT AGENTS.md til aktuelle regler. Bevar den historiske kilde i
-   verificeret Git/snapshot og arkivets old-path-kort.
-7. BEHOLD root/BM_REFERENCE.md (beskyttet) og root/F4.md + root/BM_GUIDE.md
-   (testede indgange). Forkort F4/status og guide med links til gældende matematik,
-   brug og evidens. RET root/F4_RUN.md til portable, klare kommandoer.
-8. SAMMENLÆG udvalgte afløste topniveau-F/G-noter i emneopdelt archive/bm med
-   indholdsliste og old-path→afsnit/oprindelig hash. Det endelige fil-for-fil-kort
-   genereres før sletning. Kontroller kode/test/CLI-links, og bevar originaler
-   i genskabelig historisk source. Arkivflytning tælles separat fra reel reduktion.
-9. TILFØJ kompakt docs/bm-matematik, sammenligning og acceptstatus. Genbrug G's
-   eksisterende 503/1007-timers resultater og F's korte resultat; ingen falsk
-   F/G/WM-rangliste uden fælles population/input/intervalmasker.
-10. KONTROLLÉR efter hvert delmål WM-hashes, berørte regressioner, links,
-    genindlæsning/resume og før/efter antal/linjer/importkæder. Små lokale commits.
+ANVENDT KODEPLAN
+- Bernsteinhjælpere samles i bm_1_g8_basis; jobbudget i bm_1_g7_jobs;
+  response-job i response_numerics; syntetisk januarfixture hos eneste CLI-ejer.
+- Tre S3-indgange samles i src/exe/run_model/bm_1/s3.py med eksplicit variant.
+  Matematik og observationstype ændres ikke. Beskyttede WM's s3_forecast-API består.
+- To afløste faste G-studiedrivere og tre afsluttede H2-kampagne-CLI'er arkiveres.
+  H2 precise, native/FV/characteristic, G7/G8, estimation og nødvendige referencer
+  beholdes med separate formål. Kildepakker håndterer historisk kompatibilitet.
+- Tunge response-/metrics-importer flyttes til de funktioner, der bruger dem.
+  Ved konsolideringen var 17 berørte funktioner AST-identiske bortset fra imports/navn/docstring.
+- F4 får faseoutput før imports og gennem input/filter/forecast/eksport samt
+  præcis ugyldig måler/tid/værdi. Acceptkriterier, solver og grids beholdes.
+- root/f4_open_week.json er en ny, faktisk gennemført saved-fit ugekonfiguration:
+  én filtertime, 168 prognosetimer, ingen targetscoring. Gamle f4_week.json bevares
+  med dokumenteret inputafvisning; negative råceller fjernes ikke stiltiende.
+- F-weekday-tilslutningen bruger egen native interval-likelihood, tidligere
+  frossen baseline/skala/prior og nye kurvefits. Den genbruger eksisterende
+  optimizer og kalender. Konkrete guards/tests/begrænsninger står i MATHEMATICS.
+  Korte syntetiske kontroller er tilladt; intet nyt dyrt historisk fit er udført.
 
-Faglige risici / eksplicitte grænser:
-- Demand-enhed/hour-start er fortsat arbejdsantagelser; ingen metadataforfalskning.
-- WM4 CLI, WM4 timeadapter og oracle-diagnostik navngives separat.
-- F's rigtige weekday-estimator kræver ny native-likelihood-integration og
-  afklaring af baseline/initialisering/budget. Et fast F4-fit kan ikke opfylde
-  den kontrakt. Dette afgrænses konkret som nødvendig resterende udvikling.
-- G's gemte bånd er udviklingsevidens, og negative resultater bevares.
-
-Tid og beregning:
-Ingen historiske fits eller brede benchmarks. De næste kontroller er korte
-syntetiske regressioner samt én gemt G-reference ved uændret numerik; forventet
-sekunder pr. case. Stop og forelæg konkret budget, hvis dette ændrer karakter.
-Et fuldt F-ugebenchmark og nye F-weekday-fits er ikke autoriseret. Runtime-målet
-kan derfor kun markeres opfyldt, hvis allerede gyldig end-to-end-evidens findes.
-Arbejdet fortsætter nu med disse reversible rettelser og bevaring; matematiske
-modelændringer og nye historiske fitstudier forelægges særskilt.
-
-
-ANDEN RUNDE FRA7249bf9 — 9. oktober 2026
-Brugerens fortsættelse er indarbejdet i STARTPROMPT og har forrang.
-- BEHOLD aktuel WM-lukning117, alle input/resultater og vejledermateriale.
-  Ny baseline fastlagt efter fetch;73 nye/ændrede lokale filer byteverificeret
-  i round2/start-local-delta.zip. Ny full-sourceZIP/all-refs bundle er bevaret.
-- GENNEMGÅ ALLE resterende BM-noter og root/f4,g7,g8-forsøg. Fil-for-fil-
-  disposition før deletion; saml gældende matematik/validering og historiske
-  emner, fjern afløste arbejdsordrer. Ingen udflytning uden brugbar fremstilling.
-- VURDER originale historiske træer i restore-verificerede pakker ved hash-
-  eller sti-binding. Aktivt nødvendige filer bevares eller migreres eksplicit.
-  Arkivering rapporteres særskilt fra reel tekst-/kodededuplikering.
-- FORENKL BM-kode/imports/wrappers efter afhængighedskort; G-numerik og gemte
-  snapshots skal fortsat kunne genbruges. Ingen hashbypass. Tests bevares.
-- DIAGNOSTICÉR F med tidsmærker: én30s import/adgangsprobe, ved nyinformation
-  én60s faseopdelt inputkontrol. Eksternt stop; samlet indledende cap90s.
-  Korte kontroller/prognose aftales som konkret næste trin i status ud fra
-  diagnosen; ingen dyre fits eller forventede>600s kørsler igangsættes.
-- VURDER/IMPLEMENTÉR korrekt F-weekdayadapter ud fra eksisterende native-
-  likelihood, egen baseline/prior og kontinuerlig state. Hvis komponenten
-  reelt mangler, navngives kodekontrakten; øvrig oprydning fortsætter.
-- FÆLLES F/G/WM-evaluering/modelrangering er udskudt af Johan. Genbrug G-resultater;
-  ingen genkørsel af seksugersstudie. Output skal stadig være sammenligningsklart.
-- Root ejer STATUS/AGENTS/BM_GUIDE/COMPARISON og småcommits. F-agent ejer F4/input.
-  Strukturagent ejer bred notesamling/disposition; kodeagent ejer øvrig BM-kode.
-  Konkrete filplaner/receipts gemmes under round2, ikke nye daterede dagbøger.
+KANONISK BRUG OG SLUTKONTROL
+- root/BM_GUIDE.md: almindelig start og kort brugerprøve; root/F4_RUN.md: F-detaljer.
+- docs/bm/MATHEMATICS.md: ligninger → funktioner/tests, antagelser og åbne grænser.
+- docs/bm/COMPARISON.md: genbrugte resultater, faktisk runtime, før/efter og accept.
+- archive/bm/INDEX.md: historiske emner og originalversioner; ingen aktuelle ordrer.
+- Ingen personlige absolutte kørselstier i aktive src/root-guider/configs. Lokale
+  recoveryplaceringer i status og startprompten er bevidst maskinspecifikke.
+- Kontroller berørte tests, anbefalede CLI'er, dokumentlinks, WM 117, aktive G 20,
+  originalarchive og uændrede input/resultater. Mål kode/noter/arkiv/resultater
+  hver for sig; en ZIP må ikke opgøres som én forenklet kildefil.
+- Gem små commits efter delmål. Johans brugerprøve, fælles evaluering, enheds-
+  og negativ-data-afklaring samt historisk H/I/J-accept står afventer.

@@ -81,7 +81,9 @@ Et senere autoriseret fit bruger samme kommando uden `--plan-only`, plus
 `--observations-csv observations.csv`. Historien har `Datetime,Demand,Price`,
 inputs har `Datetime,Price`. Demand skal være middel af præcis de erklærede
 MED-målere og NaN, hvis blot ét medlem mangler. CSV'ens færdige gennemsnit
-kan ikke i sig selv bevise målerpopulationen. Negative historiske gruppemidler,
+kan ikke i sig selv bevise målerpopulationen. F's rå målerkontrol skal udføres
+før aggregering; negative enkeltmålinger må ikke skjules af et positivt middel.
+Negative historiske gruppemidler,
 manglende priser og værdier uden for den frosne prisskala afvises.
 
 Hver ugedags kandidat får frisk Beta-prior ved femugersstart og ét
