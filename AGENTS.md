@@ -27,6 +27,21 @@ Konkret tofamilie-forslag er pending/approved=false; original plan bevares.
 Læs root/F4_H2_CANDIDATE49_TERMINAL_20261008.md og proposal/review-JSON.
 G/G7/WM og droppede F4-G2b/G2c bevares. Følgende afsnit er historik.
 
+## G-matematik genfundet og samlet, 8. oktober 2026
+
+Johan bad om al matematik og argumentation for det udførte G-arbejde.
+`root/G_MATHEMATICS_RECOVERY_20261008.md` samler model/balance/feasibility,
+fit/forecast/G4, G6a/G6b, Bayes/parameterbank, Bernstein/M254 og G7-kontrol
+med udledninger, implementeringskobling, faktiske resultater og forbehold.
+`root/G_MATHEMATICS_SOURCE_INDEX_20261008.md` indekserer samtlige 38
+G-originalnoter og to BM-grundlagsnoter fra main 56f7fc0. Manifestet
+`root/g_mathematics_recovery_manifest_20261008.json` fastlåser de originale
+Git-bytes, read-only uploads og faktisk gendannet evidens. Lokal ZIP og
+separat pakkekvittering bevarer materialet med CRC/SHA256-kontrol.
+Ingen numeriske kerner eller tidligere modeltests er genkørt. G7's science-
+status, gamle charges og manglende FV-origins/quad-audits er uændrede.
+Kun-chat-forklaringer og utilgængelige Library-råarkiver hævdes ikke genfundet.
+
 ## F4-H2: takeover sikret; importkontrol kræver mere plads, 8. oktober
 
 Johan bad kl.17:08 om overtagelse efter at have forsøgt at stoppe sidste chat.

@@ -1,3 +1,12 @@
+## Genfundet matematisk grundlag, 8. oktober 2026
+
+[Den samlede matematikgennemgang](G_MATHEMATICS_RECOVERY_20261008.md) forbinder
+G0–G4, G6a/G6b, G8 og G7 med udledninger, kode, gemte forsøg og forbehold.
+[Originalindekset](G_MATHEMATICS_SOURCE_INDEX_20261008.md) og filmanifestet
+bevarer version og SHA256 for 38 G-noter, to BM-grundlagsnoter, uploadkilder
+og tilgængelig kode/evidens. Samlingen er dokumentrecovery, ingen ny
+numerisk validering. Fortsæt G7 fra egen-origin-/rateopgaven nedenfor.
+
 ## G7 genoptaget efter slettet chat 8 oktober 2026
 
 Holdestedet er genfundet i det gemte completion-review: fixturekontrol består,
