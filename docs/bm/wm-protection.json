@@ -1,0 +1,709 @@
+{
+  "repo": "C:\\Users\\jvils\\OneDrive\\Skrivebord\\Til VS\\fag\\7 semester\\BSCe2026",
+  "baseline": "89e8337b6857b148c48e6880473984c3ae4574a0",
+  "scope": "Conservative static WM closure + WM named files + shared environment + linked BM_REFERENCE + all present inputs and WM results. New undeclared dynamic paths remain manual-review limitation.",
+  "files": [
+    {
+      "path": "files/input/data/input.xlsx",
+      "sha256": "3ce534b533e0da472cd72ae599916fa6209eccd10ad4c021a76ac5cfba3586d4",
+      "bytes": 21816710,
+      "reason": "WM input/output dependency family (all existing files)"
+    },
+    {
+      "path": "files/input/data/prices.xlsx",
+      "sha256": "9321b4eaa2986ca20dbbdcd0f3f7d8fb5aab64fc71cd22b7ba6e3723dff319df",
+      "bytes": 371934,
+      "reason": "WM input/output dependency family (all existing files)"
+    },
+    {
+      "path": "files/input/data/weather_cache/dmi_mean_temp_hour_20211231T230000Z_20220131T230000Z.csv",
+      "sha256": "441386143c3392d639b97be6f46c70d5ed39baf468f6b278b395bccf217b6c45",
+      "bytes": 23113,
+      "reason": "WM input/output dependency family (all existing files)"
+    },
+    {
+      "path": "files/input/data/weather_cache/dmi_mean_temp_hour_20220131T230000Z_20220207T230000Z.csv",
+      "sha256": "e0523f56f4089855a034c6c2cd075794b5fb79ac1d8d7d153a38e3d9d82d4623",
+      "bytes": 5233,
+      "reason": "WM input/output dependency family (all existing files)"
+    },
+    {
+      "path": "files/output/graphs/wm_1/wm_1_fp_price_step.png",
+      "sha256": "ab81cda2be37460404b3bdb0d816e0d4030df053d8fbc849181bba798539ef8a",
+      "bytes": 470843,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "files/output/graphs/wm_2/wm_2_fp_price_step.png",
+      "sha256": "7ecb03b610d6b3159ef918bedcec09144a805a859babc0ea45104016ea832529",
+      "bytes": 671121,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "files/output/graphs/wm_3/wm_3_fit_simulated_data.png",
+      "sha256": "77ce2b46931333b4b5d7a2f8e51123d4468df0e6d3cb298f962db32d2374eb0b",
+      "bytes": 716288,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "root/BM_REFERENCE.md",
+      "sha256": "791f6276f3827204c05d46ceb2216c67a91594c6d370aa1b591e7c4be37ff584",
+      "bytes": 14471,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "root/G_WM_ALIGNMENT_REVIEW_20261008.md",
+      "sha256": "073287c44c6ac681ad267364c1362a462a462d24e7009997931b0ba122ee5429",
+      "bytes": 10057,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "root/G_WM_HOURLY_GUIDE_20261008.md",
+      "sha256": "29a33c44056929cb44dd4a7b902871170e8da213abb0c3306150793d231ed385",
+      "bytes": 9412,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "root/G_WM_HOURLY_PROTOCOL_20261008.md",
+      "sha256": "6ddf33cbb0b11b1a745d55d06183a0780efde60d39b7b391a308b4c9e86bbbfd",
+      "bytes": 5207,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "root/environment.yml",
+      "sha256": "49508606b52912d9ced3ce4482d3eab92caf4bf0b326499b39c7775ae29b7cc4",
+      "bytes": 196,
+      "reason": "Manual shared environment dependency, verified equal to original baseline before extending guard"
+    },
+    {
+      "path": "root/g_review/check_wm_alignment.py",
+      "sha256": "b3ecaae2dc6954f228ffb52b782059deffa702512508cc1899b8c0abeb6a565b",
+      "bytes": 3683,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "root/g_wm_alignment_checks_20261008.json",
+      "sha256": "60af34b7036433c90eb2fc1463c2075202091f299ecc92593c9828c0668f9fbf",
+      "bytes": 2331,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "src/__init__.py",
+      "sha256": "2d2447f045959ef78ecc7e43322a7d2b0d9d94e6c28ebe5b31177092038800a6",
+      "bytes": 168,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/diagnostics/__init__.py",
+      "sha256": "2f380afa71e76e2fa9a0557bfae639af494747047acec88458ad62103fc03a09",
+      "bytes": 707,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/diagnostics/bm_1.py",
+      "sha256": "1598971fce0c03be0417db98890a2aee55516df22d0376c8e8def9953e9d3a94",
+      "bytes": 9469,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/diagnostics/stochastic.py",
+      "sha256": "2a7391f63154274c9f6636256b27ce822516c16bb6b8f994395532f346172d39",
+      "bytes": 2210,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/__init__.py",
+      "sha256": "92b1c354092cfc62f8767d0b9ffda38c4eaab43d2029f42de1d2f9241c3f77e1",
+      "bytes": 176,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g_wm_hourly.py",
+      "sha256": "9d9e9361045a735bee9509057ba6fcc2946a4d2eb5b75837104d23596944aa8e",
+      "bytes": 4465,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g_wm_period.py",
+      "sha256": "352555d5f95b59b2b259e2ca7be253d077e565fc106337f3091d81efea5eefae",
+      "bytes": 5327,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g_wm_solver_extension.py",
+      "sha256": "4b159b6c2fed745cea08e1400bbb5279fcb78f60df62273e38eefc351f4153cc",
+      "bytes": 2877,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "src/exe/run_model/wm_1/fp_price_step.py",
+      "sha256": "2ddae893f261524c748665aa30179a4dfc238a9dc9e909dd7be621d991e9745f",
+      "bytes": 4986,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_2/fp_price_step.py",
+      "sha256": "30a421b53ff598eeb778158e6ae9f2c03b016148425729a3c49bfc2ec4df08b6",
+      "bytes": 8496,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_3/fit_daily.py",
+      "sha256": "9e835725488c514de7258a138f8cf9166da1ee291d9c8d7a06b33cc2c3bf5a7b",
+      "bytes": 9185,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_3/fit_fixed_features.py",
+      "sha256": "2dd97c2ffabbcd7f16ca10a05cfe90b68cbcc06755a65b6e0edf80719dbe8eaf",
+      "bytes": 5702,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_3/fit_linear.py",
+      "sha256": "3e1bf62a194cfcd2873a15c79de435dd82ffb6b9d86f731e4acf1b438c8e5c22",
+      "bytes": 11024,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_3/fit_long_run.py",
+      "sha256": "91aebc1f47053da00f1e1e9ba236f25f4620a24b9258209c71536331f2379158",
+      "bytes": 9995,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_3/fit_no_features.py",
+      "sha256": "5c65d674e64bd6c6133b31b3534c1f6239addc2c99d1bcb50dac1a4364f03768",
+      "bytes": 8944,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_3/fit_weekly.py",
+      "sha256": "58eea2b526c47eb3221cba60885432d114045e2199ff25bdf37f0204b2f173be",
+      "bytes": 15843,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_all_days_observation_uncertainty.py",
+      "sha256": "9eab12cfe0cddfbccc02f49450ed18a5b553b3acfbd0ee624b38b0346f137137",
+      "bytes": 9326,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_f0_null.py",
+      "sha256": "6a35ec39970b878c904fc148279bcc25fa622d3fce3b1308a37e02930b5afb28",
+      "bytes": 9014,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_fitters.py",
+      "sha256": "ad851787060ab842866fa6ee8dbc15a2617c42d43338409f550b007205735dcc",
+      "bytes": 9337,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_initial_state_parameters.py",
+      "sha256": "612e0643d5df9c0a5ee910de3beabb27d9cc18cbf862dbb4a9f870fd3321da35",
+      "bytes": 13788,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_initial_state_uncertainty_horizon.py",
+      "sha256": "636c10518f4e7029a7ecee8de4a3cc06d9a9bac1fc3b89721bf0aa18a18a2cb9",
+      "bytes": 19744,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_initial_state_uncertainty_horizon_observed_p0.py",
+      "sha256": "acff80362557e44c6c0127995e6a7b959ca8531e0c1b14e152bc640fd8b0e441",
+      "bytes": 15148,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_observation_uncertainty.py",
+      "sha256": "f78f10352ea110212eeae513f0b8871323f428d0eba1e312f1a91e76b8b1e626",
+      "bytes": 7793,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_optimized_qp.py",
+      "sha256": "9027bf90eb8297ac949628c708a77a51c6ea02133f4b434c3a4af16eb0a4815b",
+      "bytes": 11357,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_parameter_initial_state_correlation.py",
+      "sha256": "1559a58dd72d3e7e09776bf1eec3eeaf7b480ae89fec59be0b0ceb7ba9215eb5",
+      "bytes": 16382,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_performance.py",
+      "sha256": "5785869361ffd1462d9d966bee2715732fddac5f7f633a9a73cb25e1327722db",
+      "bytes": 6808,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_r0_null.py",
+      "sha256": "324a724af30d2c697b9feb5cd7ccbdcd2b7e04debfeb8b8680df0075b2fa0f60",
+      "bytes": 9007,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_top_end.py",
+      "sha256": "27f5606916bb27b24b817ab5557d1f74611e9625dffb0d6b4010032283346a4c",
+      "bytes": 17129,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/analyze_weekday_parameters.py",
+      "sha256": "b94ae6a11289ab56551dee11d733dc0ed0f7b4d5b4cfbba07ee25f2e363133c3",
+      "bytes": 12760,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/brute_force_f0.py",
+      "sha256": "ae16fc90415ba8e262a3d72569a3d8d59168ef417731bf5acfebefb3a22a24f7",
+      "bytes": 6906,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/calibrate_mpc_sigma.py",
+      "sha256": "cfeb65acacd7ffe56e2d84c8ff636ae148a9d7da3410d3ef5b3aeda7a4f2f7e5",
+      "bytes": 22117,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/compare_initial_state_oracle_day.py",
+      "sha256": "6eeb4499f66dfbc0a34f88450b0872b751cc8fc484c7b518f7fd34494347df2f",
+      "bytes": 13742,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/evaluate_mpc_uncertainty_aggregate.py",
+      "sha256": "c256bfbbed79cef5952697d85db93edc575b444b64cba20b097be47184165b2d",
+      "bytes": 14577,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/fit_constant_diffusion_qp.py",
+      "sha256": "9f84032632d14aa855de71905acb0e4771eb7c21878e321a19ec951092d9880e",
+      "bytes": 7151,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/fit_daily.py",
+      "sha256": "07587281813701845b73c02f2d70ade134f85356e0c4509358089af1aedcf236",
+      "bytes": 9287,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/output_model.py",
+      "sha256": "091542287b04508cf19f82ce766b6e81a93be99d9d873eeb06f376221e8f9a3a",
+      "bytes": 6796,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/plot_diffusion_weekdays.py",
+      "sha256": "d39409f7039567e0c689ecec253e2aa1256503975549a1276c26bb5b5f46c3b1",
+      "bytes": 4515,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/plot_mpc_day_heatmaps.py",
+      "sha256": "3661e95ff19d7b93857ba03bdc1b26d326b40481e09d8cf99cfd1d685d21f43b",
+      "bytes": 8630,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days.py",
+      "sha256": "728500efcbfe26e2030e8a9e25bc0d626f86d47675ea2eaf902ad7e6806719d9",
+      "bytes": 8080,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_adaptive.py",
+      "sha256": "96ef3937936e5d0bf6b310cf7dd5b2f5d81e97732b46297772e4ec16313bfb5e",
+      "bytes": 16668,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_adaptive_traceback.py",
+      "sha256": "f93dbc1f114e23c1245d55aa498895c8c04210e3c7079ebc52b59bfd220329f5",
+      "bytes": 12960,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_brute_force.py",
+      "sha256": "1e464a08cd6b66b3af073dd75c39efe6918b36398c57e8f0eb509385e994d5b4",
+      "bytes": 12769,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_fixed_tracebacks.py",
+      "sha256": "ba891c9fd6e9ec5785a484857c57444d0a0dfd5da4d7fd352f77f02fbf102449",
+      "bytes": 12303,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_i0_initial_state.py",
+      "sha256": "f92d4dcba2c5d549b3b4b014770ab7a8cfce710bf4acf52ca22e6af377397acc",
+      "bytes": 18782,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_initial_state_uncertainty.py",
+      "sha256": "15dcf2c9bcf61ed4ed4ab16860a8d334f31d80d2943d2d6b5814dd283670af1b",
+      "bytes": 17990,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_mpc.py",
+      "sha256": "c0889b69a9099a9ce013021ed4a519d64e19a78f68b8f277d2be5a92453ecf89",
+      "bytes": 22603,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_optimized.py",
+      "sha256": "e7a1de178ce7b8112459f7af58542604ca6b4158b22c09b459b7589e8b6b19a2",
+      "bytes": 14102,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_oracle_diffusion.py",
+      "sha256": "ca060681a7a3e06193d8103f97e6f9d4c6691bbdfe00f5a96d84186c89f15b7e",
+      "bytes": 9985,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_oracle_price_effect.py",
+      "sha256": "d5900cd169f3ed14397cf6ad9593bd8eb7b60cc3629c3d156d0944e244dbc28d",
+      "bytes": 13800,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_recent_r0.py",
+      "sha256": "fb214499ada22c6861872ed5f13fb486a64e1ebba87faac12748e275cc24b42e",
+      "bytes": 31614,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_shared_initial_state.py",
+      "sha256": "727df7dcfd9d441b6032d941b18782adcca92c6290d18ac5c5bb53989780d8ae",
+      "bytes": 22123,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_all_days_uncertainty.py",
+      "sha256": "f8f4b8f317b4bc57c17e0894584bff3eb63da4ef250057b966eeb1f671745bc0",
+      "bytes": 14870,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_daily.py",
+      "sha256": "0761c70eef3d1f0a7c500df27adb55950fcfe2fced85bd19833285070f8a407b",
+      "bytes": 9786,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_initial_state_uncertainty.py",
+      "sha256": "76e38cad69b18f2a54e6d7b678ecb97248520c928cae6a48f3b6fc8488990f89",
+      "bytes": 6309,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/predict_weekly.py",
+      "sha256": "f610f6fa3fa62c9b105b39905a8f1b61756c9bfcff113a28d96f5d95bbee0d91",
+      "bytes": 8862,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/exe/run_model/wm_4/test_initial_f0_sensitivity.py",
+      "sha256": "093257074e4d8868cc306ec01dfbc016febcf44aed3abb250bf1aa56f97dab4a",
+      "bytes": 11541,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/method/__init__.py",
+      "sha256": "3c333db9d121e59e62d884cd33706130c93b432e5a88e82d4fad2c535abea150",
+      "bytes": 346,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/method/euler_maruyama.py",
+      "sha256": "7be1e75a806b34a5e190dd00a3c259f203754651301f27f101bac5e58c165807",
+      "bytes": 6569,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/method/fokker_planc.py",
+      "sha256": "97e30241003149b4c8ec4343d5be41ef1037870ec2ebed683548641ec1295a96",
+      "bytes": 9069,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/method/g_wm_hourly.py",
+      "sha256": "e92485ca6ef94068344cd8a29500bfdc748ae0d1475f21f85db09f12e70c9602",
+      "bytes": 15661,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "src/method/objective.py",
+      "sha256": "809cefcb147c7e5cba06a7d6fddb887fb459a16324f20f6f0043aa4887abaa9a",
+      "bytes": 461,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/model/__init__.py",
+      "sha256": "1bcc55904c2ca9da916567741b258e249453668ab61a5ef631481c4c8cab6c81",
+      "bytes": 241,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/model/base/__init__.py",
+      "sha256": "923d30ab3c713caf7f3659db23dddceb980608475d1f81558cf9705ca6cf4c49",
+      "bytes": 98,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/model/base/bm.py",
+      "sha256": "c8a8a403eef0beff7906af40f185e4e708236e25ccff85f07878b65c4597d512",
+      "bytes": 3787,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/model/base/wm.py",
+      "sha256": "e4a6810d8e772f3562aa666541c133befd3923a8e5f710e08ba4050f72e59432",
+      "bytes": 898,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/model/bm_1.py",
+      "sha256": "ca435e9ed73152f3c3f184195c5f61263346e7b89340eac1eda5cc20163f1063",
+      "bytes": 15450,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/model/wm_1.py",
+      "sha256": "b5565f51b3d45a09f939afba86bb4ba96dc7e6602bbe1cfbe89fac8e7e6db619",
+      "bytes": 5747,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/model/wm_2.py",
+      "sha256": "7ccfd9e1f643b86a01d44e0db15c3829cf41b11b0e8a7a09350d6e9ebdbf6344",
+      "bytes": 9067,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/model/wm_3.py",
+      "sha256": "8a7033c428ff88e272816e58b0d8c835edee26a69e36d5fd21fedd69c8f259cc",
+      "bytes": 10199,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/model/wm_4.py",
+      "sha256": "6416b3dafea798166687159199387a36af89416dd076dd27457ba24100075060",
+      "bytes": 7462,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/params/__init__.py",
+      "sha256": "f79540022d84dfd0a5510150fc62ab4cdb661d7e35896b12866ca678b7ed8e3c",
+      "bytes": 388,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/params/wm_2.py",
+      "sha256": "e8fdc73052d2c63885a89320de2726e5171729f0c498e0e6cf07259c97e01b39",
+      "bytes": 22821,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/params/wm_3.py",
+      "sha256": "e0f73a17029290a0504c2751b361acaf199df4190e7d80ea3635c613f7619099",
+      "bytes": 22799,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/params/wm_4.py",
+      "sha256": "69f5d904ec0f1b8fc66a8789fb664e92594a94a206339d3bceeaef0124d25eed",
+      "bytes": 35981,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/solver/__init__.py",
+      "sha256": "c162f7952ff6b37e42f3eb77dcf0b3cfb4fca28ca25ac272b9ba412a60f2daab",
+      "bytes": 209,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/solver/active_set.py",
+      "sha256": "1c61fb0023e9200568fbc7f8c2a9ebe2110ff70f4a701992458c402f9427e90b",
+      "bytes": 8082,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/solver/finite_volume.py",
+      "sha256": "765de87ff8418676e3b9ec4182c3f2ae35c834f599aee00fadbd5c2f5714b266",
+      "bytes": 25824,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/tools/__init__.py",
+      "sha256": "6d04949aef35e7f5e3fef707b73bbb9d10d4816c289a0e8de2683550a3f9dd0b",
+      "bytes": 134,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/tools/import_data/import_input.py",
+      "sha256": "96560de6528a9f28457cefc66a27de39060c9463497197da391b5a8ec83bc4e2",
+      "bytes": 8104,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/tools/import_data/import_prices.py",
+      "sha256": "090ab1d661eee75d2de0947aee18ab8205153bd29a421dea3f37dfd5b90ff620",
+      "bytes": 5108,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/tools/import_data/import_weather.py",
+      "sha256": "70edd627b2ef67937f2224896ce67d1a20256205467f97ddf7f907725562533b",
+      "bytes": 6228,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/tools/input_generator/input_builder.py",
+      "sha256": "a6414ba4ffeb6a8a5f786fdc1ab8a567458bacc88d33fdc63be47f99d043f85d",
+      "bytes": 5842,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/__init__.py",
+      "sha256": "7117d2518cf32ef1a22a0e912d3d2598276955bfd9162e8f00d948a37a2405c1",
+      "bytes": 189,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/control.py",
+      "sha256": "6bc2a18bc953112fe634be1960db7504b8c7fd118ba92c3681b355c084629016",
+      "bytes": 1746,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/diagnostics/__init__.py",
+      "sha256": "0be921b6835a04be2d34fdbe47b017bb16ab37bfd82c2b749571b078f92f7128",
+      "bytes": 147,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/diagnostics/bm_1.py",
+      "sha256": "fc924b8f6dd9f001808b553ec67893fb1ba133423139a2120e33a5c2190d1892",
+      "bytes": 5322,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/method/__init__.py",
+      "sha256": "e4a573c33aa81b57b010ef33b71432c5c4e99465da08c5d87fe7e1f80e2dd02f",
+      "bytes": 376,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/method/euler_maruyama.py",
+      "sha256": "8b3322bc4e304454f1298610d283661a0042105f839c19c1503cf8b0e33dfa73",
+      "bytes": 7816,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/method/fokker_planc.py",
+      "sha256": "de240e0c10c746733cf514c990259107568584acbc98886765de83669603d78f",
+      "bytes": 9749,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/method/objective.py",
+      "sha256": "aa9d43a4ca097d327ac266773050c30cfbd5670fa1703f5b350cf78b58e5b855",
+      "bytes": 1522,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/model/__init__.py",
+      "sha256": "7d58b3d256e306d58126309fa55a6c9482f9d8ec52e7cb0c011e26c79fdcd2c3",
+      "bytes": 345,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/model/bm.py",
+      "sha256": "58021227c5f21f7d07a64dd25ae043c6c57710dc58ab7d83807cd233c1c9a18a",
+      "bytes": 6292,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/model/bm_1.py",
+      "sha256": "8b8b60d495ef266d5dead1c4ba057f7149f4306a9ddfa60546639fb403c10224",
+      "bytes": 7258,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/model/wm_1.py",
+      "sha256": "3b98a169729d8f7499052fd2de8f3b8cec8ebfc551290f5f0002a5ec9652bb90",
+      "bytes": 6563,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/model/wm_2.py",
+      "sha256": "71bc93e7200ca2f68359ccc502c39d343a86c270e701a7e7684c395e0c87804c",
+      "bytes": 15395,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/model/wm_3.py",
+      "sha256": "421d0d7b76d1cd36ba28afd41c24c383d9fe152c93bd7791c1d1b9de2451288f",
+      "bytes": 7030,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/model/wm_4.py",
+      "sha256": "f7903c3e5844ea20e84d37206f3e4ec16e162c0d11d2011effdc6899e132b38e",
+      "bytes": 7105,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/solver/__init__.py",
+      "sha256": "a8dfc0855285fcca13a4852ece9cb5cc8b0d112b127a06c907f06e69342468c3",
+      "bytes": 272,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/solver/active_set.py",
+      "sha256": "016b7643a1976ef924f32276231de8156038b884321a88bf4597b6ec56779984",
+      "bytes": 5703,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/solver/finite_volume.py",
+      "sha256": "99270578ad8569e14eed2d639806ee26ee83b56a9b79568707e3b9ad2250d4c2",
+      "bytes": 7365,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/tools/__init__.py",
+      "sha256": "4a8c1936c6858576fc6c111510b17e1291234ce1e5de7dfc83df4f11972856c3",
+      "bytes": 159,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/tools/input_generator/input_builder.py",
+      "sha256": "4299563db731c2c5909f7b037512666df32da69efeea9d10498a1e60133e2454",
+      "bytes": 4927,
+      "reason": "static WM import closure"
+    },
+    {
+      "path": "tests/test_g_wm_hourly.py",
+      "sha256": "6385636cb305b78f20915f575a8aba505ff5d4aefb7761be666fdde3b6fb59e5",
+      "bytes": 5923,
+      "reason": "WM named code/document/config/test or linked shared model reference"
+    }
+  ]
+}

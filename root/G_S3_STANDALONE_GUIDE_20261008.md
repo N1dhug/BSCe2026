@@ -79,7 +79,7 @@ viser G, baseline, observationer og priser. Den komplette rå input-/
 resultatpakke sendes ikke til GitHub; kode og denne resultatsammenfatning
 er den remote leverance. Automatisk godkendelsesreview afviste den første
 fulde datapakke som potentielt følsom; kodeleverancen er derfor afgrænset. Fit-registreringen er
-[bevaret separat](G_S3_STANDALONE_RUN_20261008.md).
+[bevaret separat](../archive/bm/G/s3-transition-history.md#g-s3-standalone-run-20261008).
 
 ## Kontroller og holdested
 
@@ -90,7 +90,7 @@ før scoringfejl og budgetstop uden snapshot. Seks kørt i 1,098 s og de to
 yderligere fitkontroller i 1,471 s. Alle tre nye Python-filer AST-parser.
 Det historiske fit og CLI-forecast er reelt udført, ikke testfixtures.
 
-Efterfølgende er [det afgrænsede proceslag](G_S3_UNCERTAINTY_GUIDE_20261008.md)
+Efterfølgende er [det afgrænsede proceslag](../docs/bm/G_UNCERTAINTY.md#g-s3-uncertainty-guide-20261008)
 implementeret og numerisk kontrolleret. Historisk kalibrering er afvist;
 G6a's tidligere failure står ved magt. Den deterministiske prisstyring er stadig den
 eksisterende selvstændige vej; den er ikke koblet til historisk closed loop.

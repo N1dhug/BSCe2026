@@ -1,0 +1,63 @@
+BM-F/G — konkret filplan før ændringer, 9. oktober 2026
+
+Baseline: cleanup/bm-fg-review-20261008 fra 89e8337b6857b148c48e6880473984c3ae4574a0.
+Seneste main tilføjede WM4 MPC aggregate-evaluering efter G's 1279d60;
+den er medtaget og beskyttet. Rene arbejdsfiler og ingen modelprocesser før branchskift.
+773 kode-/dokumentfiler inventorieret; 116 filer/input beskyttet med SHA256.
+18 eksisterende korte F4/kalenderregressioner består (3.283 s testtid).
+
+Sikring:
+- recovery/pre-cleanup-local-material.zip: 3.279 filer / 3.282.396.591 bytes;
+  hvert medlem genlæst med SHA256/CRC. Omfatter fuldt repo, F4_code og G-projekt
+  uden Git/caches/synkroniserede sources. Intet slettet/flyttet fra originaler.
+- To verificerede Git-bundles bevarer alle refs inkl. preview og G-standalone.
+- recovery/start-source-89e8337.zip bevarer kildetræet på nyeste startversion.
+- Historiske checkpoints genoptages med deres originale kildeversion, aldrig
+  med deaktiverede guards. F4 binder hele src; dette er en konkret migrationsgrænse.
+
+Filhandlinger i rækkefølge:
+1. BEHOLD alle filer i wm_protection.json, WM/MPC/input og fælles afhængigheder
+   byte-identisk. Behold sources/, tests og resultatpakker på deres pladser.
+2. BEHOLD numeriske G-metoder, kildebundne snapshots og historiske F4-kerner.
+   BEHOLD root/f4, root/g7 og deres interne manifests/kontrollører; paths er
+   del af reproduktionskontrakten. 15 hash-dubletgrupper slettes ikke mekanisk.
+3. RET src/exe/run_model/bm_1_f4.py: tydelige dato-/horisont-overrides, rå-enheds-
+   forbehold, UTC/intervalslut, relevante metrics og ærlig invocationstid.
+   Ingen lignings-, solver-, parameter- eller identitetsændring. Kort regression.
+4. TILFØJ src/exe/run_model/bm_1_g.py: enkel forecast fra valideret gemt weekday-
+   export, uden refit/replay. Genbrug eksisterende predict/scoring; cutoff og
+   informationsvilkår valideres. Beskyt afsluttede output mod overskrivning.
+5. VURDER/IMPLEMENTÉR generisk båndbrug i nyt BM-modul med eksplicit protokol,
+   frie datoer og verificerede freeze-receipts. Genbrug eksisterende matematik;
+   gamle kalibrerings-/kildemanifests ændres ikke. Ingen ny historisk kalibrering.
+6. SAMMENFAT AGENTS.md til aktuelle regler. Bevar den historiske kilde i
+   verificeret Git/snapshot og arkivets old-path-kort.
+7. BEHOLD root/BM_REFERENCE.md (beskyttet) og root/F4.md + root/BM_GUIDE.md
+   (testede indgange). Forkort F4/status og guide med links til gældende matematik,
+   brug og evidens. RET root/F4_RUN.md til portable, klare kommandoer.
+8. SAMMENLÆG udvalgte afløste topniveau-F/G-noter i emneopdelt archive/bm med
+   indholdsliste og old-path→afsnit/oprindelig hash. Det endelige fil-for-fil-kort
+   genereres før sletning. Kontroller kode/test/CLI-links, og bevar originaler
+   i genskabelig historisk source. Arkivflytning tælles separat fra reel reduktion.
+9. TILFØJ kompakt docs/bm-matematik, sammenligning og acceptstatus. Genbrug G's
+   eksisterende 503/1007-timers resultater og F's korte resultat; ingen falsk
+   F/G/WM-rangliste uden fælles population/input/intervalmasker.
+10. KONTROLLÉR efter hvert delmål WM-hashes, berørte regressioner, links,
+    genindlæsning/resume og før/efter antal/linjer/importkæder. Små lokale commits.
+
+Faglige risici / eksplicitte grænser:
+- Demand-enhed/hour-start er fortsat arbejdsantagelser; ingen metadataforfalskning.
+- WM4 CLI, WM4 timeadapter og oracle-diagnostik navngives separat.
+- F's rigtige weekday-estimator kræver ny native-likelihood-integration og
+  afklaring af baseline/initialisering/budget. Et fast F4-fit kan ikke opfylde
+  den kontrakt. Dette afgrænses konkret som nødvendig resterende udvikling.
+- G's gemte bånd er udviklingsevidens, og negative resultater bevares.
+
+Tid og beregning:
+Ingen historiske fits eller brede benchmarks. De næste kontroller er korte
+syntetiske regressioner samt én gemt G-reference ved uændret numerik; forventet
+sekunder pr. case. Stop og forelæg konkret budget, hvis dette ændrer karakter.
+Et fuldt F-ugebenchmark og nye F-weekday-fits er ikke autoriseret. Runtime-målet
+kan derfor kun markeres opfyldt, hvis allerede gyldig end-to-end-evidens findes.
+Arbejdet fortsætter nu med disse reversible rettelser og bevaring; matematiske
+modelændringer og nye historiske fitstudier forelægges særskilt.

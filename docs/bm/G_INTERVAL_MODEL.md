@@ -1,4 +1,25 @@
-# G-S3: timegennemsnit med integreret proceskovarians
+# G: timeoperator, baseline og integrerede procesmomenter
+
+Intervalmiddel og punktværdi er forskellige observationsoperatorer. Denne vej bevarer egen intervalfitidentitet. Procesmomenter giver middel og varians gennem timen; de giver ikke intervalkvantiler. Demand-enhed og hour-start er fortsat arbejdsantagelser.
+
+Aktuel brugerindgang: [BM-guiden](../../root/BM_GUIDE.md). Afsnit mærket protokol bevarer det allerede udførte forsøgs numerik, stopregler og provenance; deres gamle kørselsordrer er historiske. Nye fits eller brede benchmarkkørsler kræver særskilt budget.
+
+Statusord i de bevarede originalafsnit beskriver den daværende delundersøgelse. Den aktuelle samlede accept og senere udførte arbejde står i [sammenligningen](COMPARISON.md) og [status](STATUS.txt); ældre formuleringer som endnu ikke udført må ikke læses som global slutstatus.
+
+Originale kilder og SHA256 findes i [arkivets stikort](../../archive/bm/old-paths.json). De oprindelige snapshots/protokoller er uændrede; dokumentkonsolideringen ændrer ingen matematisk model.
+
+<a id="g-s3-interval-guide-20261008"></a>
+<a id="g-s3-interval-guide-20261008--g-s3-timegennemsnit-med-integreret-proceskovarians"></a>
+<a id="g-s3-interval-guide-20261008--observation-og-baseline"></a>
+<a id="g-s3-interval-guide-20261008--procesmiddel-og-varians-gennem-timen"></a>
+<a id="g-s3-interval-guide-20261008--den-særskilte-kalibreringsdiagnose"></a>
+<a id="g-s3-interval-guide-20261008--brug-og-kontrakt"></a>
+<a id="g-s3-interval-guide-20261008--faktiske-udviklingsresultater"></a>
+<a id="g-s3-interval-guide-20261008--kontroller-og-næste-holdested"></a>
+
+## Model, anvendelse og bevaret evidens: G_S3_INTERVAL_GUIDE_20261008.md
+
+### G-S3: timegennemsnit med integreret proceskovarians
 
 G har nu sin egen timeversion: fit, komplet snapshot, input-only forecast,
 scoring og procesmiddel/varians for forbrug gennem en hel fysisk time.
@@ -14,13 +35,13 @@ Effektens enhed er stadig uverificeret. Rå tal behandles som gennemsnitlig
 effekt over fysiske en-timers intervaller; for en energi/time-konvention
 skal den præcise enhed afklares før fysisk kapacitet eller styringsgevinst.
 
-Se [præregistreret kørsel og korrektion](G_S3_INTERVAL_PROTOCOL_20261008.md),
-[fit/snapshot/predict](../src/method/bm_1_s3_interval.py),
-[baselinefeatures](../src/method/bm_1_s3_interval_baseline.py),
-[integrerede procesmomenter og diagnose](../src/method/bm_1_s3_interval_process.py)
-og [indgang/eksport](../src/exe/run_model/bm_1/s3_interval.py).
+Se [præregistreret kørsel og korrektion](G_INTERVAL_MODEL.md#g-s3-interval-protocol-20261008),
+[fit/snapshot/predict](../../src/method/bm_1_s3_interval.py),
+[baselinefeatures](../../src/method/bm_1_s3_interval_baseline.py),
+[integrerede procesmomenter og diagnose](../../src/method/bm_1_s3_interval_process.py)
+og [indgang/eksport](../../src/exe/run_model/bm_1/s3_interval.py).
 
-## Observation og baseline
+#### Observation og baseline
 
 Den eksisterende BM1-lov er uændret:
 \(dX=(D(X,U,B)-B)dt/C+\sigma_xX(1-X)dW\), timer, X i [0,1].
@@ -54,7 +75,7 @@ bruger heltalsminutter/sekunder. En uafhængig harmonisk integralreference
 består den analytiske trapezoidgrænse omega²/(12·60²), ikke en efterfølgende
 tilpasset testtolerance. DST bruger fysisk tid og lokale kalenderfeatures.
 
-## Procesmiddel og varians gennem timen
+#### Procesmiddel og varians gennem timen
 
 I SDE gælder \(\int Ddt=\int Bdt+C\Delta X-C\int b(X)dW\). Den
 deterministiske endpointidentitet må derfor ikke genbruges til tilfældige
@@ -97,7 +118,7 @@ ikke beregnet**: to momenter bestemmer ikke en ikke-lineær intervalfordeling.
 Punktbånd, Gauss-antagelse, bånddækning eller intervalscore genbruges ikke
 skjult. Måle-/modelfejl, parameter-, baseline- og inputusikkerhed er udeladt.
 
-## Den særskilte kalibreringsdiagnose
+#### Den særskilte kalibreringsdiagnose
 
 Langs den deterministiske bane lineariseres stateafvigelse eta og aktuelt
 timeintegral z: \(d\eta=a\eta dt+b_0dW\), \(dz=c\eta dt\), med
@@ -120,7 +141,7 @@ statebane i [0,1] har timeforbrug inden for disse grænser. Større sigma
 kan ikke få en observation uden for dem til at passe til et støjfrit
 observationsmodel under samme frosne parametre og baseline.
 
-## Brug og kontrakt
+#### Brug og kontrakt
 
 Kør fra repoets rod med det eksisterende videnskabelige Python-miljø:
 
@@ -154,7 +175,7 @@ start/end. Råvarians er normaliseret varians gange demand_scale². Forecast
 gemmes før observationer åbnes; scoring følger samme finite measured maske
 og råenhedens MSE/RMSE/MAE/bias. CLI returnerer2 ved afvist diagnose/fejl.
 
-## Faktiske udviklingsresultater
+#### Faktiske udviklingsresultater
 
 OriginFeb7,168 fysiske målte forecasttimer,720/840 historiske targettimer.
 Realiseret pris/temperatur, MED-gennemsnit over tilgængelige observerede
@@ -193,7 +214,7 @@ forecast-modelvalg. Samlet fitcharge33,455508s/226kald er inden for oprindelige
 og diagnoseinvocations: første mellemtrin og én nødvendig kildekorrektion,
 ikke skjulte retries. Ekstra FV-grid blev ikke brugt.
 
-## Kontroller og næste holdested
+#### Kontroller og næste holdested
 
 Ni nye fokuserede metoder dækker integrerede baselineharmonics, snapshot-
 roundtrip uden fit, punkt/mean-adskillelse, fremtidsuafhængighed, endlabel-
@@ -205,12 +226,85 @@ gamle punkt-snapshots, det nye own snapshot, positive fuldtime-varianser,
 råvariansskalering og state-bound. Rå inputs/tidsserier/pakker er lokale;
 remote leverance er kode, syntetiske tests og godkendte aggregerede resultater.
 
-Timeoperator og procesmomenter er færdige. Kalibrerede observerede bånd er
-fortsat åbne, og den frosne proces-only model er utilstrækkelig til de rå
-målespredninger. Næste særskilte beslutning er model/baseline-residual eller
-et eksplicit observationslag; flere sigma-/bankforsøg løser ikke støttebrud.
-Intervalkvantiler og direkte WM-benchmark er ikke udført. WM-sammenligning
-skal matche timeoperator, informationscutoff, population, scenarie og råenhed;
-de fælles scorer gør dette praktisk uden krav om samme interne solver.
-F, bank/BM2 og historisk closed-loop-kontrol er fortsat særskilte udvidelser.
-Denne G-chat på Sol High er passende til næste almindelige implementering.
+<a id="g-s3-interval-protocol-20261008"></a>
+<a id="g-s3-interval-protocol-20261008--g-s3-timegennemsnit-protokol-før-faktisk-fit-og-proceskørsel"></a>
+<a id="g-s3-interval-protocol-20261008--fast-kørsel"></a>
+<a id="g-s3-interval-protocol-20261008--nødvendig-baselinekorrektion-efter-første-kørsel"></a>
+
+## Historisk forsøgsprotokol: G_S3_INTERVAL_PROTOCOL_20261008.md
+
+### G-S3 timegennemsnit: protokol før faktisk fit og proceskørsel
+
+Pas startet 18:41:05 UTC, 8. oktober 2026. Johan bad om fortsættelse efter
+grundversionen og oplyste, at Demand dækker forbrug over en hel time og
+efter hans erindring er Power. Kl.10 tolkes foreløbigt som kl.10–11 efter
+hans antagelse; det er ikke verificerede kildemetadata. F holdes adskilt.
+
+Den nye vej er et selvstændigt interval-snapshot. G's punktkode/snapshots
+ændres ikke og migreres ikke skjult. S3 lambda=0, lineær f, to-stykkers g,
+fælles C/k/Xi/a, 35 egne histories med 24 timers warm-up, egne syv medianstarts
+og mandagsfrossen origin bevares. Eksogen WM-baseline genbruges som frosset
+kontinuerlig inputmodel; det er ikke en ny baseline- eller F-undersøgelse.
+
+#### Fast kørsel
+
+1. Én ny `fit_interval` på det eksisterende lokale Jan1–Feb14 input med
+   origin Feb7 og demand-label hour_start. Kun komplette intervaller med
+   end<=origin indgår. Maksimum 120 sekunder og 1000 residualkald samlet,
+   750 per start, eksisterende 12/24/48 RK4-grids og demandforfining<=1e-5.
+   Ingen punkt-fitparametre genmærkes som intervalfit. Ingen modeludvælgelse.
+2. Én input-only deterministisk intervaluge, gemt før scoring på 168 timer.
+   CSV indeholder point-readout særskilt fra hourly-average forecast og
+   integrated baseline. UTC-start/end deklarerer de fysiske intervaller.
+3. Én intervalprocesuge med eksplicit illustrations-sigma=.2 per sqrt(time),
+   128/256 celler, trin<=1/24 og 1/48 time og 120 sekunders loft. Samme
+   konservative FV-generator og implicit tridiagonal solve som punktvejen.
+   Middel/varians af timeintegralet beregnes med tre joint state/rewardfelter.
+   Kontroller normaliseret demand/state meanfejl<=.005 og variansfejl<=.002,
+   masserror<=1e-10, finitte felter, ikke-negativ varians. Ingen klipning,
+   observationstøj, normalisering eller efterfølgende sigmajustering.
+   Kun hvis første grid numerisk afvises: én yderligere 256/512-forfining
+   med trin<=1/48 og 1/96 og 120-sekunders loft. Ingen flere retries.
+4. Én historisk intervalstøjdiagnose, højst60s. Matching-weekday raw sample-
+   varians ddof=1, mindst to målte værdier/bin. Unitprofiler bruger joint
+   lineær (state,integreret-output)-kovarians med positiv 3-node Gauss-
+   støjkvadratur, P0=0 efterwarmup; hver timers outputaccumulator nulstilles.
+   Time0 indgår nu: den første HELE time har processpredning selv ved P0=0.
+   q>=0 varians-LS bruger alle24 timer. Historisk meanforfining<=1e-5,
+   unit- og fitted profil-stdforfining<=1e-4. P>1/4 og målte gennemsnit uden
+   for den frosne integrerede demandstøtte er hver sin afvisningsgrund.
+   En kandidat kræver særskilt ikke-lineær validering; q bruges aldrig
+   automatisk i den illustrative procesprognose.
+
+Output er E[hourly-average D] og Var[hourly-average D], ikke middel/varians
+af endpoint-D og ikke gennemsnittet af marginalvarianser. Intervalkvantiler
+og dækning beregnes ikke fra kun to momenter; punktbånd genbruges ikke som
+timebånd. Score råenheds MSE/RMSE/MAE/bias på samme finite måltemaske efter
+forecastexport. Intet bredt støjfit, parameterbank eller nyt F-studie.
+
+Kontroller før historisk kørsel omfatter snapshotroundtrip, point/mean
+adskillelse, future-demand-uafhængighed, endlabel-cutoff, forårs-DST,
+integreret Brownsk kovarians, uafhængig Van-Loan-reference, analytisk
+telegraph-integral, konservativ FV og nulstøj/nulfleksibilitetsgrænser.
+Rå input/resultattidsserier bevares lokale. Johans tilladelse til kode,
+syntetiske tests og aggregerede resultater/merge gælder samme eksempel.
+
+#### Nødvendig baselinekorrektion efter første kørsel
+
+Første kode/faktiske fit er bevaret ved5189844. Fit12.4600146s/108kald,
+point-feature baseline, meanRMSE.386778 og bestået numerik. Det er et
+mellemtrin: den punktfittede statistiske featurekurve blev efterfølgende
+integreret, hvilket ikke matcher timebaseret baselinefit og giver fasefejl.
+Ingen baselinefamilie/hyperparameter eller modelvalg ændres efter scoring.
+Featuredesignet skal integreres over samme fysiske time, før det eksisterende
+robuste WM-fit bruges. Der anvendes samme60-sample/h trapezoidgrid, kendt
+historisk temperaturinterpolation og clamping af sidste temperatur ved cutoff.
+Regression integrerer de lineære features; WM's begrænsede baselinefortsættelse
+med clipping bevares eksplicit. Det er stadig en statistisk inputmodel.
+
+Én nødvendig korrigeret fitinvocation tillades inden for OPRINDELIGE120s/1000
+residualkald: restloft107.53s og892kald. Ingen udvælgelse mellem de to fits
+efter score: den korrigerede observationsdesign-vej er den aktive. Første fit
+og resultater slettes ikke. Én korrigeret forecast/procesuge og diagnose køres
+på samme grids/gates/runtime. Dette er begrundet kildekorrektion, ikke et
+numerisk retry eller en skjult nulstilling af budgettet. Ingen accept erklæres.

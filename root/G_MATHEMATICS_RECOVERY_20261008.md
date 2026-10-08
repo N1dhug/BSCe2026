@@ -8,15 +8,15 @@ Samlet 8. oktober 2026 efter genoptagelsen af den slettede chat. Grundlag: repos
 
 | Del | Hvad vi har lavet | Status og vigtigste originalnoter |
 |---|---|---|
-| G0–G1 | Fælles inputkontrakt, deterministisk BM-forward, enheder, balance og eksakt konstant-input-reference | Implementeret; [G-planen](G.md), [januargrundlaget](G_JANUARY.md), [BM-reference](BM_REFERENCE.md) |
-| G2–G3 | Januarfit og frosset 168-timers prognose fra egen sluttilstand | Gennemført udviklingsforsøg; historisk målesemantik/population stadig et forbehold; [januar](G_JANUARY.md) |
+| G0–G1 | Fælles inputkontrakt, deterministisk BM-forward, enheder, balance og eksakt konstant-input-reference | Implementeret; [G-planen](../archive/bm/G/legacy-development.md#g), [januargrundlaget](../archive/bm/G/legacy-development.md#g-january), [BM-reference](BM_REFERENCE.md) |
+| G2–G3 | Januarfit og frosset 168-timers prognose fra egen sluttilstand | Gennemført udviklingsforsøg; historisk målesemantik/population stadig et forbehold; [januar](../archive/bm/G/legacy-development.md#g-january) |
 | G4 | To-stykkers prisrespons, strafprøve, weekday- og 35-dagesstrategier | Afgrænset punktprotokol gennemført; S3 uden straf valgt; [uger 13–18](G4_VALIDATION_WEEKS_13_18_REVIEW.md) |
 | G5 | Figurer, fejlmål, forklaringer og faglig dokumentation | Udviklet løbende; denne samling er ikke en særskilt afsluttet slutrapport eller et mundtligt forsvar |
 | G6a | Lineær støjapproksimation og spredningskalibrering | Gennemført negativ undersøgelse: båndene er ikke accepteret som brugbare 95 %-intervaller; [review](G6A_LINEAR_NOISE_REVIEW.md) |
 | G6b | Fokker–Planck/FV, mixture og Euler–Maruyama på samme syntetiske case | Numerisk sammenligning gennemført; M20 afvist, M38 brugbar i denne åbne case; [review](G6B_DISTRIBUTION_PANEL_REVIEW.md) |
 | G8 | Punktfilter, fem-node-parameterbank, posterior-basis og M254-forfining | Eget M254513-filter og faktisk resume består deklarerede syntetiske gates; [forfining](G8_M254_REFINEMENT_REVIEW.md) |
 | G7, deterministisk | Fireblok-prisstyring og særskilt variant med bevaret døgnforbrug | Små forsøg gennemført; lokale BM-løsninger, ikke generel optimalitet; [kontrol](G7_DETERMINISTIC_CONTROL_REVIEW.md), [balancekrav](G7_ENERGY_NEUTRAL_REVIEW.md) |
-| G7, stokastisk | Egne posterior-forwards, kort EM/feedback-kontrol, tre-plan-søgning og implementeret døgnstyring | Korte numeriske forsøg og orchestration med stubkerner gennemført. **Det fulde numeriske døgnforsøg er ikke gennemført eller accepteret**; [seneste kontrol](G7_DAY_COMPLETION_REVIEW.md), [recovery](G7_CHAT_RECOVERY_20261008.md) |
+| G7, stokastisk | Egne posterior-forwards, kort EM/feedback-kontrol, tre-plan-søgning og implementeret døgnstyring | Korte numeriske forsøg og orchestration med stubkerner gennemført. **Det fulde numeriske døgnforsøg er ikke gennemført eller accepteret**; [seneste kontrol](G7_DAY_COMPLETION_REVIEW.md), [recovery](../archive/bm/G/control-checkpoints.md#g7-chat-recovery-20261008) |
 
 Den aktuelle prioritet er at færdiggøre BM. De tidligere BM/WM-kontrolforsøg nedenfor bevares som historik; de er ikke en endelig rangering af modellerne. F4-H2 er et andet arbejdsforløb og indgår ikke i G's resultater eller tab.
 
@@ -54,7 +54,7 @@ $$C_d=C_h/24,\qquad \sigma_{x,d}=\sqrt{24}\,\sigma_{x,h},\qquad J_h=24J_d.$$
 
 Diffusionens kvadratrodsfaktor følger af Brownsk tidsskalering. Tid, inputbrud og integrationsmål skal omregnes samtidig.
 
-Kilder: [G-kontrakten](G.md), [januargrundlaget](G_JANUARY.md), [matched kontrol](G7_MATCHED_CONTROL_REVIEW.md), [BM-reference](BM_REFERENCE.md).
+Kilder: [G-kontrakten](../archive/bm/G/legacy-development.md#g), [januargrundlaget](../archive/bm/G/legacy-development.md#g-january), [matched kontrol](G7_MATCHED_CONTROL_REVIEW.md), [BM-reference](BM_REFERENCE.md).
 
 ## 3. Batterimodellen, balance og gennemførlighed
 
@@ -114,7 +114,7 @@ $$\widehat y_j=B+\frac{C(x_{j+1}-x_j)}{h_j}.$$
 
 Den eksakte formel er en billig, uafhængig kontrol og en mulig intervaloperator under dens antagelser. Den må ikke anvendes som erstatning for januarbaselinens faktisk varierende, lineært interpolerede forløb. Det gennemførte januarfit bruger skalær RK4 med 60 trin/time og kontrol på 120; max-demand-forskellen skal være højst $10^{-5}$. Den eksisterende segmenterede `solve_ivp` og konstant-input-løsningen er separate referencer.
 
-Kilder: [BM-reference, afsnit 1](BM_REFERENCE.md), [G, afsnit 2–3](G.md), [januarnumerik](G_JANUARY.md). Implementation: [BM-kernen](../src/model/bm_1.py), [deterministisk benchmark](../src/method/bm_1_deterministic_benchmark.py).
+Kilder: [BM-reference, afsnit 1](BM_REFERENCE.md), [G, afsnit 2–3](../archive/bm/G/legacy-development.md#g), [januarnumerik](../archive/bm/G/legacy-development.md#g-january). Implementation: [BM-kernen](../src/model/bm_1.py), [deterministisk benchmark](../src/method/bm_1_deterministic_benchmark.py).
 
 ## 4. Estimation, baseline og frosset prognose
 
@@ -135,7 +135,7 @@ G3 fryser fit, baseline, skala og egen simuleret sluttilstand ved cutoff. De næ
 
 På den eksponerede februaruge er den gemte rå-MSE baseline $0.06934621735$, lineær BM $0.06951591504$ og WM $0.07099789830$. BM er her cirka 0.245 % dårligere end baseline. Dette negative baseline-resultat er bevaret. Der er 168 scorede timer; historisk målesemantik og populationsaudit begrænser accepten.
 
-Kilder: [januar og snapshot](G_JANUARY.md), [overdragelse P0–P2](G_IMPLEMENTATION_HANDOFF.md). Implementation: [fit](../src/method/bm_1_deterministic_fit.py), [snapshot](../src/tools/bm_1_deterministic_snapshot.py), [data](../src/tools/bm_1_deterministic_data.py).
+Kilder: [januar og snapshot](../archive/bm/G/legacy-development.md#g-january), [overdragelse P0–P2](../archive/bm/G/legacy-development.md#g-implementation-handoff). Implementation: [fit](../src/method/bm_1_deterministic_fit.py), [snapshot](../src/tools/bm_1_deterministic_snapshot.py), [data](../src/tools/bm_1_deterministic_data.py).
 
 ## 5. G4: fleksibel prisrespons og hvorfor straf ikke blev beholdt
 
@@ -532,7 +532,7 @@ hvor $r_k$ skal være kompatible målte whole-job-rater. En ukendt rate forblive
 
 Ved seneste afsluttede G-review var den bevarede debit 1927.3372718589885 s, registreret loft 1930 s og rest 2.6627281410114847 s. Alle 16 kompatible døgnrater var stadig ukendte. Denne dokumentindsamling genkører ingen numeriske kerner og giver ingen nye modelberegningstider eller nulstilling af tidligere charges.
 
-Kilder: [day completion](G7_DAY_COMPLETION_REVIEW.md), [day check/rate](G7_DAY_CHECK_AND_RATE_REVIEW.md), [recovery](G7_CHAT_RECOVERY_20261008.md), [budgetintegration](g7/integrated_budget.py).
+Kilder: [day completion](G7_DAY_COMPLETION_REVIEW.md), [day check/rate](G7_DAY_CHECK_AND_RATE_REVIEW.md), [recovery](../archive/bm/G/control-checkpoints.md#g7-chat-recovery-20261008), [budgetintegration](g7/integrated_budget.py).
 
 ## 13. Oprindelse: vejleder, litteratur og vores valg
 
