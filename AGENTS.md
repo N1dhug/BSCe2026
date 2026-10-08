@@ -14,6 +14,21 @@ Rå input-/tidsseriepakker forbliver lokale; kode og aggregerede resultater
 må sendes og merges efter Johans eksplicitte tilladelse. Tidligere G-status
 nedenfor er historik. F-status og F-budget bevares selvstændigt.
 
+## F4: kørbar forsøgsudgave prioriteret af Johan, 8. oktober 2026
+
+Johan har bedt om den korteste vej til selv at kunne køre F4 på datasættene
+i dag og derefter sagt: "Jeg er paa sol high, du gaar igang". Den aktive
+leverance er nu en minimal indgang til eksisterende tostykkefit/lineær reference,
+filtrering, åben intervalprognose, resultatfiler og kort kørevejledning.
+Store ekstra valideringer, nye firestykkefits, nye F3-optimeringsforsøg og fuld
+J-rapport udskydes til efter den kørbare forsøgsudgave. Nødvendige data- og
+numerikkontroller bevares; denne afgrænsning er ikke historisk H/I/J-slutaccept.
+Læs `root/F4_RUN.md`; indgang `src/exe/run_model/bm_1_f4.py`, standardkonfiguration
+`root/f4_quick.json`. Ny periode starter på en deklareret Beta-prior; den må
+ikke beskrives som den gamle H-kampagnes cutoff-posterior. Eksisterende
+forsøgsbudgetter/checkpoints/failures bevares, og den nye indgang genoptager
+ikke automatisk den gamle kampagne. Følgende status er historik.
+
 ## F4-H2: slutvurdering gemt i tre blokke; eksportgrænse nået, 8. oktober 2026
 G-S3's første praktiske milepæl er nu implementeret og kørt. Se
 [brug og faktisk historisk resultat](root/G_S3_STANDALONE_GUIDE_20261008.md).
