@@ -1,4 +1,24 @@
-# Seneste holdested: godkendt residuallag implementeret; stop udvidelser
+# Seneste holdested: afgrænset G/WM-timebenchmark udført
+
+Johan fortsatte på Sol High. [Fælles timebenchmark](G_WM_HOURLY_GUIDE_20261008.md)
+er implementeret/kørt med same frozenbaseline/scales/cutoff/population og
+168h input-only scenario. Own WM4 hourly free-run fit/exactoperator, én
+fit2.527086s/148calls; ingen G/WM/F-kernelændring eller G-fit. PureG RMSE.378396,
+adaptedWM.379297.95%-empiricalbandsG71.43%/WM72.02%, ikke kalibreret accept.
+Fit941f4f1/mellemoutput bevares; a184d2e export-only quantilekorrektion via
+explicit reviewed snapshotmigration og0refit sikrer samme G-kvantilregel.
+34 tests består før science;5 nye består efter korrektion. Pakker/journaler
+og rådata holdes lokale; kode og godkendte aggregater merges.
+
+Der mangler ingen implementering til de udførte afgrænsede grundleverancer.
+Stop yderligere fits/model-/bank-/AR-/F-studier her. Senere udvidelse vælges
+af Johan: flere matched origins med frossen protokol, separat out-of-sample
+residualkalibrering, fysisk metadata/identifikation eller closedloop.
+Ingen generel modelrangering eller95%-accept fra den allerede sete Feb7-uge.
+Denne G-chat på Sol High er passende. Original8h nulstilles ikke; tidligere
+reviewtid umålt, så exact samlet restbudget kan ikke beregnes fra receipts.
+
+# Historisk holdested: godkendt residuallag implementeret; stop udvidelser
 
 Johan valgte et enkelt særskilt outputresiduallag, tydeligt udviklingsmodel.
 Se [brug, matematik og resultat](G_S3_RESIDUAL_GUIDE_20261008.md). E er pooled
