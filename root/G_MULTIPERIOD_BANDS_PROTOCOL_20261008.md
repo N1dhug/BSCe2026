@@ -1,4 +1,56 @@
-# G: bestilte flere perioder og usikkerhedsbånd, fast protokol
+# G: rullende seksugersvinduer og usikkerhedsbånd, revideret protokol
+
+## Johans præcisering før den nye forsøgsserie
+
+Johan præciserede, at fem foregående mandage skal tilpasse mandagsmodellen,
+fem tirsdage tirsdagsmodellen osv.; derefter testes sjette uge, og vinduet
+flyttes én uge. Den nedenstående tidligere pooled-plan er derfor **afløst**.
+To allerede frosne pooled-forecasts bevares lokalt med deres oprindelige
+receipts og tidsforbrug, men indgår ikke i den nye kalibrering/evaluering.
+Ingen gammel fit omdøbes eller genbruges som et separat ugedagsfit.
+
+Aktiv modelprotokol: `G-WM-five-matching-weekdays-hourly-v1`.
+Aktiv båndprotokol: `G-weekday-rolling-prequential-bands-v2`.
+Samme seks mandagsorigins nedenfor: første træningsvindue Jan10→Feb14;
+første testuge Feb14→Feb21. Næste vindue Jan17→Feb21 med test Feb21→Feb28,
+osv. De tre tidlige testuger kalibrerer bånd; tre senere testuger vurderer
+den uændrede regel. Alle seks uger får egne femugersfit og separate scores.
+
+**Pr. origin er der syv separate G-fit og syv separate WM-fit.** Hvert fit
+bruger kun fem tilsvarende ugedages målte targets; missing Y udfyldes ikke.
+Baseline tilpasses også separat på disse fem dage, med samme WM-featurefamilie,
+minuteintegrerede design, ridge/Huber-IRLS og bounded continuation som før.
+Den generiske baselines gamle minimum168målinger kan ikke opfyldes af fem
+mandage; den nye adapter kræver eksplicit alle fem dage og mindst to målte
+timer på hver. Den kopierer regressionen uden at duplikere observationer.
+Der rapporteres samples/features, konditionering og udviklingsbegrænsning;
+120målinger til denne featurefamilie giver ingen stærk identifikationsgaranti.
+En eksplicit `shared` baselinevariant er til rådighed ved andet brugerønske,
+men denne kampagne anvender `weekday`; intet resultatbaseret variantvalg.
+
+G/WM deler præcis samme baseline for den relevante ugedag. Fælles normalisering
+beregnes kun på hele de fem træningsuger; ingen expanding Jan1-baseline.
+G's24h-warmup bruger Price/Temp og neutral .5; ekstra søndag før ældste
+mandag har eksplicit NaN-demand og indgår ikke i nogen loss/baseline/skala.
+WM har fortsat egen targetinitial/variable projection uden warmup. Begge
+forecaststarts er median af fem egne historiske starts, frozen Monday.
+Residualbanken er nu **separat for hver ugedag/model**, fra fem frozen-median
+replays; hverdagens egen mean/SD bruges til dens output og calibration score.
+
+Faste nye caps: pr. ugedag G30s/750rawcalls, WM10s/400rawcalls. Ingen automatisk
+genkørsel eller pooled fallback. Seks origins giver højst1680s optimizer-
+vægttid, eksklusive baseline/replay/I/O/tests; tidligere forbrug bevares.
+G-gridrækken12/24/48/**60** deler samme weekday-cap.60 aligner eksisterende
+minutebaselines knæk med RK4-gridet; fine120 er kontrol, ikke et nyt
+baseline-/modelvalg. Samme <=1e−5 gate, samme bounds/seeds/lambda0.
+Ingen forhøjelse af caps eller numerisk tolerance efter nye resultater.
+
+Kalender, cutoffMar7, q-regel, minimum300scores/model, held-out-dataregler,
+fortolkning, lokale resultater og publiceringsgrænse nedenfor gælder fortsat.
+Den oprindelige8h-ramme nulstilles ikke. Kode/protokol fryses og syntetiske
+tests udføres før disse nye own weekday fits. F-kode/studier er uberørte.
+
+## Tidligere protokol, bevaret som historik
 
 Pas startet8.oktober2026 kl.20:32:13 UTC (22:32:13 Copenhagen). Johan bestilte
 flere testperioder og usikkerhedsbånd efter estimat1–2h/2–4h. F, bank/BM2,
