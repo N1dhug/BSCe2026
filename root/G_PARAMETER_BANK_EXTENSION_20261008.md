@@ -84,4 +84,3 @@ erstattede numeriske funktioner er ikke tilstrækkelig slutkontrol.
 kontroller og en læsbar resultatsammenfatning. Hvis en gate fejler, gemmes
 resultatet som fejlet/ufærdigt, og kun den konkrete fejl undersøges indenfor
 reserven. Stor døgnaccept og historisk kontrolaccept står fortsat åbne.
-
