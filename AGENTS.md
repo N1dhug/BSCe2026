@@ -1,4 +1,20 @@
-## Aktuel G-status: timeversion og integreret proceskovarians udført, 8. oktober 2026
+## Aktuel G-status: empirisk outputresidual implementeret, 8. oktober 2026
+
+Johan godkendte et enkelt tydeligt mærket residuallag. Ny separat indgang
+`src.exe.run_model.bm_1.s3_residual` estimerer en pooled empirical output-error
+law fra samme fem uger og frozenweekdaymedian-replay; nul model/baselinefit.
+Parent/time/proces/F-kode er uændret. Snapshot binder parentfingerprint/kilder.
+Alle29 G-tests består13.518s. Én replay1.525249s og én input-only forecast:
+pureG RMSE.378396, residualmean.377901;95%-band dækker kun120/168=71.43%.
+Lag1.380915 viser iid-begrænsning;662/720 fysisk støttebrud bevares.
+Det er in-sample udviklingsfejl, ikke identificeret målerstøj eller accepteret
+kalibrering. Ingen kombination med sigma/FV, clipping eller fysisk kontrolbrug.
+Læs root/G_S3_RESIDUAL_GUIDE_20261008.md og G_NEXT_STEP. Stop yderligere
+støj/modeludvidelser nu; næste er afgrænset matched G/WM eller senere separat
+validering. G/F og den oprindelige budgetramme holdes adskilt/bevares.
+Rå fejlbank/tidsserier/pakker forbliver lokale; kode/aggregater må merges.
+
+## Historisk G-status: timeversion og integreret proceskovarians udført, 8. oktober 2026
 
 G's nye aktive timevej er `src.exe.run_model.bm_1.s3_interval`: own hourly-mean
 fit/snapshot/predict/score og procesmomenter gennem hele timen. Baselinefit

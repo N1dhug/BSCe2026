@@ -1,4 +1,23 @@
-# Seneste holdested: timeoperator udført, observeret usikkerhed stadig åben
+# Seneste holdested: godkendt residuallag implementeret; stop udvidelser
+
+Johan valgte et enkelt særskilt outputresiduallag, tydeligt udviklingsmodel.
+Se [brug, matematik og resultat](G_S3_RESIDUAL_GUIDE_20261008.md). E er pooled
+empirical Y−G fra own frozenmedianhistorisk replay; nul model/baselinefit.
+Parent/time/FV/F er uændret.29 tests består; RMSE.377901 med lag modpureG.378396.
+95%-bånd dækker120/168=71.43%; lag1≈.38. Ingen kalibreringsaccept.
+Rå fejl, snapshots og output er sikret lokalt; kun kode/aggregater merges.
+
+Det godkendte lag er færdigt; gentag ikke replay eller støjfit og start ikke
+automatisk AR/OU/bank/BM2. Næste trin i G-chatten på Sol High er afgrænsning
+af én direkte G/WM-sammenligning: samme fysisk timeoperator, cutoff, målere,
+råenhed og inputscenarie, med puremeans og særskilt mærkede usikkerhedslag.
+Den nuværende WM-punktvej er ikke allerede en timegennemsnitsbenchmark.
+Uafhængig kalibrering kræver en senere periode/protokol uden modelvalg på
+den allerede sete Feb7-uge. F's egne planer/studier ændres ikke.
+Otte-timers-rammen er ikke nulstillet; tidligere reviewtid er ikke målt,
+så en præcis samlet resttid kan ikke beregnes ud fra implementeringskvitteringer.
+
+# Historisk holdested: timeoperator udført, observeret usikkerhed stadig åben
 
 Johan bad om fortsættelse. [Timeversionen](G_S3_INTERVAL_GUIDE_20261008.md)
 er nu implementeret: own intervalfit/snapshot, integrated-feature baseline,
