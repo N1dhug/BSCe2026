@@ -16,6 +16,7 @@ from src.method.bm_1_g8 import G8BankOrigin
 
 def main(run, output, source):
     start=perf_counter();run=Path(run);output=Path(output);source=Path(source)
+    registration=json.loads((output/'registration.json').read_bytes())
     manifest=json.loads((run/'source_manifest.json').read_bytes())
     assert all(hashlib.sha256((source/p).read_bytes()).hexdigest()==h for p,h in manifest.items())
     result=json.loads((run/'day_result.json').read_bytes())
@@ -46,14 +47,17 @@ def main(run, output, source):
         assert updates==4 and len(em)==5
         assert store.ledger_path.read_bytes()==ledger_before
         assert all((store.root/'nodes'/name).read_bytes()==raw for name,raw in before.items())
-    em.sort(key=lambda v:v['index']);changed=copy.deepcopy(em);changed[0]['input_sha256']='0'*64
+    em.sort(key=lambda v:v['index'])
+    assert paired_improvement(em,em,np.full(5,.2))['mean']==0
+    changed=copy.deepcopy(em);changed[0]['input_sha256']='0'*64
     try:paired_improvement(em,changed,np.full(5,.2))
     except ValueError:pass
     else:raise AssertionError('Unpaired input accepted')
     plan=json.loads((source/'root/g7/integration_design.json').read_bytes())
-    budget=price_plan(plan,{},prior_debit=1899.3372718589885,ceiling=1910,source_fingerprint=standard_digest(manifest),origin_fingerprint='fixture-only',versions={'numpy':np.__version__,'scipy':__import__('scipy').__version__},reserve_seconds=2)
+    budget=price_plan(plan,{},prior_debit=registration['prior_debit'],ceiling=registration['campaign_ceiling'],source_fingerprint=standard_digest(manifest),origin_fingerprint='fixture-only',versions={'numpy':np.__version__,'scipy':__import__('scipy').__version__},reserve_seconds=2)
     assert not budget['budget_admitted'] and budget['estimated_seconds'] is None and len(budget['unknown'])==16
-    report=dict(schema='g7-day-fixture-completion-review-v1',passed=True,fixture_graph_completed=True,actual_full_day_experiment_completed=False,scientific_accept=False,numerical_scientific_validation=False,completed_receipts_reused_without_compute=reuse,posterior_updates_validated=updates,raw_bytes_and_ledger_unchanged=True,unpaired_mc_rejected=True,unknown_scientific_rates=budget['unknown'],full_day_budget_admitted=False,body_wall_seconds=perf_counter()-start,source_hashes_unchanged=True,note='Review of completed stub graph after original auxiliary reuse assertion used a different exact contract. No scientific kernel executed; no failed parent result overwritten.')
+    assert all(hashlib.sha256((source/p).read_bytes()).hexdigest()==h for p,h in manifest.items())
+    report=dict(schema='g7-day-fixture-completion-review-v1',passed=True,fixture_graph_completed=True,actual_full_day_experiment_completed=False,scientific_accept=False,numerical_scientific_validation=False,completed_receipts_reused_without_compute=reuse,posterior_updates_validated=updates,raw_bytes_and_ledger_unchanged=True,unpaired_mc_rejected=True,identical_mc_pair_has_zero_difference=True,unknown_scientific_rates=budget['unknown'],full_day_budget_admitted=False,body_wall_seconds=perf_counter()-start,source_hashes_unchanged=True,note='Review of completed stub graph after original auxiliary reuse assertion used a different exact contract. No scientific kernel executed; no failed parent result overwritten.')
     (output/'review_result.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
 
 
