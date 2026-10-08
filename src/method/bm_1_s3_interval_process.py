@@ -110,9 +110,10 @@ def process_interval(snapshot,raw_inputs,*,sigma_x,cells=128,max_step=1/24,secon
         checks={'passed':True,'zero_diffusion':'exact own hourly-mean RK4 forecast'}
     else:
         origin=interval.point._origin(s['origin']);scale=s['scales']
-        frame=pd.DataFrame({'U':2*(raw_inputs.Price-scale['price_min'])/scale['price_scale']-1,
-            'Temp':raw_inputs.Temp},index=raw_inputs.index)
-        baseline=restore_baseline(s['baseline']);curve=BM1PiecewiseResponse.from_record(s['price_response'])
+        scenario=raw_inputs.loc[(raw_inputs.index>=origin)&(raw_inputs.index<origin+pd.Timedelta(days=7)),['Price','Temp']]
+        frame=pd.DataFrame({'U':2*(scenario.Price-scale['price_min'])/scale['price_scale']-1,
+            'Temp':scenario.Temp},index=scenario.index)
+        baseline=interval.restore_interval_baseline(s['baseline']);curve=BM1PiecewiseResponse.from_record(s['price_response'])
         fine_results=[]
         for d in range(7):
             inp,_=interval.day_inputs(frame,baseline,origin+pd.Timedelta(days=d),steps=s['numerics']['steps_per_hour'])
@@ -195,7 +196,7 @@ def diagnose_interval(snapshot,raw_history,*,seconds=60.):
     if interval.point._fingerprint(train)!=s['training_fingerprint']:raise ValueError('Own fitted history is required.')
     scale=s['scales'];frame,_=interval.prepare_frame(train,*s['normalization_window'],
         price_bounds=(scale['price_min'],scale['price_min']+scale['price_scale']))
-    baseline=restore_baseline(s['baseline']);curve=BM1PiecewiseResponse.from_record(s['price_response'])
+    baseline=interval.restore_interval_baseline(s['baseline']);curve=BM1PiecewiseResponse.from_record(s['price_response'])
     empirical=np.full((7,24),np.nan);counts=np.zeros((7,24),int)
     profiles=[np.full((7,24),np.nan),np.full((7,24),np.nan)]
     max_state_unit=[0.,0.];outside=0;measured=0;demand_error=0.;unit_std_error=0.

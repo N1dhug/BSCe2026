@@ -53,3 +53,23 @@ integreret Brownsk kovarians, uafhængig Van-Loan-reference, analytisk
 telegraph-integral, konservativ FV og nulstøj/nulfleksibilitetsgrænser.
 Rå input/resultattidsserier bevares lokale. Johans tilladelse til kode,
 syntetiske tests og aggregerede resultater/merge gælder samme eksempel.
+
+## Nødvendig baselinekorrektion efter første kørsel
+
+Første kode/faktiske fit er bevaret ved5189844. Fit12.4600146s/108kald,
+point-feature baseline, meanRMSE.386778 og bestået numerik. Det er et
+mellemtrin: den punktfittede statistiske featurekurve blev efterfølgende
+integreret, hvilket ikke matcher timebaseret baselinefit og giver fasefejl.
+Ingen baselinefamilie/hyperparameter eller modelvalg ændres efter scoring.
+Featuredesignet skal integreres over samme fysiske time, før det eksisterende
+robuste WM-fit bruges. Der anvendes samme60-sample/h trapezoidgrid, kendt
+historisk temperaturinterpolation og clamping af sidste temperatur ved cutoff.
+Regression integrerer de lineære features; WM's begrænsede baselinefortsættelse
+med clipping bevares eksplicit. Det er stadig en statistisk inputmodel.
+
+Én nødvendig korrigeret fitinvocation tillades inden for OPRINDELIGE120s/1000
+residualkald: restloft107.53s og892kald. Ingen udvælgelse mellem de to fits
+efter score: den korrigerede observationsdesign-vej er den aktive. Første fit
+og resultater slettes ikke. Én korrigeret forecast/procesuge og diagnose køres
+på samme grids/gates/runtime. Dette er begrundet kildekorrektion, ikke et
+numerisk retry eller en skjult nulstilling af budgettet. Ingen accept erklæres.

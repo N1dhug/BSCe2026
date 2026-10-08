@@ -14,7 +14,7 @@ from src.method.bm_1_deterministic_response import BM1ResponseInputs
 from src.method.bm_1_deterministic_weekday import BM1PooledInputs
 from src.method.bm_1_deterministic_strategy import fit_strategy
 from src.params.bm_1_response import BM1PiecewiseResponse
-from src.exe.run_model.wm_4.output_model import statistical_output
+from src.method.bm_1_s3_interval_baseline import IntervalStatisticalBaseline,IMPLEMENTATION,restore_interval_baseline
 from src.exe.run_model.bm_1.deterministic_strategies import ZONE
 from src.tools.bm_1_deterministic_snapshot import baseline_settings, restore_baseline
 from src.tools.bm_1_deterministic_data import prepare_frame
@@ -22,7 +22,7 @@ from src.tools.bm_1_deterministic_data import prepare_frame
 ROOT=Path(__file__).resolve().parents[2]
 PROTOCOL='G-S3-five-weeks-Monday-frozen-hourly-mean-v1'
 CONTRACT='hourly-mean-power-development-units-unverified'
-SOURCES=(*point.SOURCES,'src/method/bm_1_s3_interval.py')
+SOURCES=(*point.SOURCES,'src/method/bm_1_s3_interval.py','src/method/bm_1_s3_interval_baseline.py')
 
 
 def source_hashes():
@@ -66,7 +66,18 @@ def training_frame(raw, origin, label):
 
 def day_inputs(frame, baseline, day, *, history=False, steps=12):
     original,index=point._day_inputs(frame,baseline,day,history=history,steps=steps)
-    return BM1ResponseInputs(original.time,original.baseline,original.prices,original.observations,
+    # Use the next declared temperature if it is in this historical/scenario
+    # frame. At the information/window boundary hold the last known value.
+    start=index[0].tz_localize(ZONE).tz_convert('UTC')
+    end=(start+pd.Timedelta(hours=original.n_hours)).tz_convert(ZONE).tz_localize(None)
+    temp=frame.reindex(index).Temp.to_numpy(float);hours=np.arange(len(index),dtype=float)
+    if end in frame.index:
+        value=float(frame.loc[end,'Temp'])
+        if not np.isfinite(value):raise ValueError('Finite declared endpoint temperature required.')
+        temp=np.r_[temp,value];hours=np.r_[hours,len(index)]
+    fine_index=(start+pd.to_timedelta(np.arange(len(original.time)),unit='min')).tz_convert(ZONE)
+    B=baseline.predict(fine_index,np.interp(original.time,hours,temp))
+    return BM1ResponseInputs(original.time,B,original.prices,original.observations,
         observation_contract='hourly-mean',warmup_hours=original.warmup,
         steps_per_hour=steps,observation_mask=original.observation_mask),index
 
@@ -85,6 +96,8 @@ def validate_snapshot(snapshot):
         common=deepcopy(s)
         common.update(kind='G-S3-fit',protocol=point.PROTOCOL,
             observation_contract='hourly-point-development-approximation',source_sha256=point.source_hashes())
+        restore_interval_baseline(s['baseline'])
+        common['baseline']['implementation']='statistical_output'
         point.validate_snapshot(common)
         return s
     except (KeyError,TypeError,OverflowError) as exc:
@@ -111,7 +124,7 @@ def fit_interval(raw,origin,*,demand_label,reference=(12.,2.,.5,.5),calibration_
     b=origin if calibration_end is None else pd.Timestamp(calibration_end)
     if not a<b<=origin:raise ValueError('Normalization must precede cutoff.')
     frame,scales=prepare_frame(train,a,b,price_bounds=price_bounds)
-    baseline=statistical_output().fit(frame[['I','Temp']],origin)
+    baseline=IntervalStatisticalBaseline().fit(frame[['I','Temp']],origin)
     histories=[];days=[]
     for weekday in range(7):
         group=[]
@@ -140,7 +153,7 @@ def fit_interval(raw,origin,*,demand_label,reference=(12.,2.,.5,.5),calibration_
         error=float(np.max(abs(coarse['demand']-fine['demand'])))
         attempts[-1]['history_max_demand_error']=error
         if error>point.TOLERANCE:previous=best;continue
-        record=point._plain({'implementation':'statistical_output','settings':baseline_settings(baseline),
+        record=point._plain({'implementation':IMPLEMENTATION,'settings':baseline_settings(baseline),
             'coef':baseline.coef,'feature_mean':baseline.feature_mean,'feature_scale':baseline.feature_scale,
             'metadata':baseline.metadata})
         s={'schema_version':1,'kind':'G-S3-interval-fit','protocol':PROTOCOL,'origin':str(origin),
@@ -170,7 +183,7 @@ def predict_interval(snapshot,raw_inputs):
     if not np.isfinite(scenario.to_numpy(float)).all():raise ValueError('Finite future price/temperature required.')
     scales=s['scales'];frame=pd.DataFrame({'U':2*(scenario.Price-scales['price_min'])/scales['price_scale']-1,
         'Temp':scenario.Temp},index=scenario.index)
-    baseline=restore_baseline(s['baseline']);curve=BM1PiecewiseResponse.from_record(s['price_response'])
+    baseline=restore_interval_baseline(s['baseline']);curve=BM1PiecewiseResponse.from_record(s['price_response'])
     rows=[];errors=[]
     for d in range(7):
         inp,index=day_inputs(frame,baseline,origin+pd.Timedelta(days=d),steps=s['numerics']['steps_per_hour'])

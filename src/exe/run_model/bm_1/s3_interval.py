@@ -19,10 +19,10 @@ def plot_interval(directory,result):
     axes[0].plot(p.index,p.baseline,label='Integrated baseline',alpha=.7)
     if 'process_mean' in p:axes[0].plot(p.index,p.process_mean,ls='--',label='Process E[hourly average]')
     if 'observed' in p:axes[0].scatter(p.index,p.observed,s=8,label='Measured hourly consumption')
-    axes[0].set_ylabel(result['manifest']['demand_unit']);axes[0].legend()
+    axes[0].set_ylabel('Mean power (raw units; unit unverified)');axes[0].legend()
     if 'process_variance' in p:
         axes[1].plot(p.index,p.process_variance**.5)
-        axes[1].set_ylabel('Process-only interval standard deviation')
+        axes[1].set_ylabel('Process SD (raw units)')
     else:axes[1].step(p.index,p.price,where='post');axes[1].set_ylabel('Declared raw price')
     axes[1].set_xlabel('Physical hourly intervals, Europe/Copenhagen start labels')
     fig.suptitle('G-S3: hourly-average observation operator; conditional development')

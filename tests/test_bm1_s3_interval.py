@@ -15,6 +15,7 @@ from src.method import bm_1_s3_interval as interval
 from src.method import bm_1_s3_interval_process as process
 from src.method.bm_1_deterministic_response import BM1ResponseInputs
 from src.params.bm_1_response import BM1PiecewiseResponse
+from src.method.bm_1_s3_interval_baseline import IntervalStatisticalBaseline,mean_features
 
 
 class S3IntervalTests(unittest.TestCase):
@@ -49,6 +50,21 @@ class S3IntervalTests(unittest.TestCase):
         self.assertEqual(self.snapshot,other)
         pd.testing.assert_frame_equal(interval.predict_interval(self.snapshot,self.raw)['predictions'],
             interval.predict_interval(self.snapshot,changed)['predictions'])
+        changed.loc[changed.index>=self.origin,['Price','Temp']]=1e20
+        with patch('src.method.bm_1_s3_interval.fit_strategy',side_effect=self.mock_fit):
+            no_future=interval.fit_interval(changed,self.origin,demand_label='hour_start')['snapshot']
+        self.assertEqual(self.snapshot,no_future)
+
+    def test_baseline_design_integrates_harmonics_over_the_observed_hour(self):
+        model=IntervalStatisticalBaseline(hour_harmonics=1,season_harmonics=0)
+        source=pd.Series([5.,5.],index=pd.date_range('2022-02-07 10:00',periods=2,freq='h'))
+        row=mean_features(model,source.index[:1],source)[0]
+        omega=2*np.pi/24
+        exact=np.array([1.,(np.cos(10*omega)-np.cos(11*omega))/omega,
+            (np.sin(11*omega)-np.sin(10*omega))/omega])
+        # Composite trapezoid bound: max|f''|/(12*N^2), N=60 on one hour.
+        np.testing.assert_allclose(row[:3],exact,atol=omega**2/(12*60**2)+1e-12,rtol=0)
+        self.assertGreater(abs(row[1]-np.sin(10*omega)),.01)
 
     def test_end_label_availability_at_cutoff_and_scoring_alignment(self):
         index=pd.date_range('2022-02-06 22:00',periods=4,freq='h')
