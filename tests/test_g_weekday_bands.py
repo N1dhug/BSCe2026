@@ -10,6 +10,7 @@ import pandas as pd
 from src.method import g_weekday_rolling as rolling
 from src.method import g_weekday_export as numerical
 from src.method import g_prequential_bands as bands
+from src.exe.run_model.bm_1.g_weekday_continue import check_saved_converged
 
 
 def packet(origin,error=1.):
@@ -112,6 +113,16 @@ class RollingTests(unittest.TestCase):
             self.assertEqual(old['WM'],new['WM']);self.assertEqual(old['baseline'],new['baseline'])
         changed=deepcopy(exported);changed['refined_view']['days'][0]['G']['parameters']=[700.,.2,.5,.5]
         with self.assertRaises(ValueError):numerical.validate_export(changed)
+
+    def test_exhausted_grid_refit_reuses_only_saved_converged_parameters(self):
+        _,frame,_,start,origin=rolling.training_data(self.raw,self.origin)
+        day=self.result['snapshot']['days'][0];g=deepcopy(day['G']);g['status']='unfinished';g['calls']=750;g['seconds']=1.
+        with patch.object(rolling.interval,'fit_strategy',side_effect=AssertionError('new optimizer')):
+            checked=check_saved_converged(g,frame,rolling.load_baseline(day['baseline']),day['training_days'])
+        self.assertEqual(checked['parameters'],g['parameters']);self.assertEqual(checked['calls'],750)
+        self.assertEqual(checked['numerical_check_optimizer_calls'],0);self.assertLess(checked['seconds'],30.)
+        g['attempts']=[]
+        with self.assertRaises(RuntimeError):check_saved_converged(g,frame,rolling.load_baseline(day['baseline']),day['training_days'])
 
 
 class BandTests(unittest.TestCase):

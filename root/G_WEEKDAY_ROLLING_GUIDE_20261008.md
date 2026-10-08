@@ -150,6 +150,16 @@ retry, capforhøjelse eller pooledfallback. Fit/checkpoints/failure og elapsed
 forbrug bevares. Forecastfiler og SHA256freeze skrives før scoring; genbrug
 kræver uændrede kilder/artefakter, ikke et nyt fit.
 
+Hvis en finer-grid-refit brugte sin rawcallcap efter et tidligere converged
+fit, kan `src.exe.run_model.bm_1.g_weekday_continue` fortsætte med
+`--previous-output OLD --raw-csv RAW.csv --inputs-csv FUTURE.csv --output NEW`.
+Doneugedage genbruges; den afbrudte dags **savedconverged** parametre kontrolleres
+numerisk60/120 uden optimizer inden resten af samme30s-budget. Kun endnu
+ukørte dage har nye, første optimizerinvocations. Faktisk coarseobjective-
+grid og manglende convergenceclaim på exportgriddet markeres eksplicit.
+No-convergedfit eller failedprecision/budget giver afvisning; ingen provisional
+accept, større cap eller fallbackmodel. Originalfile/receipts bevares.
+
 ```powershell
 python -B -m src.exe.run_model.bm_1.g_band_evaluation calibrate --forecasts OUT/20220228 OUT/20220307 OUT/20220314 --observations Y_20220228.csv Y_20220307.csv Y_20220314.csv --output CAL
 python -B -m src.exe.run_model.bm_1.g_band_evaluation evaluate --calibration CAL/calibration_snapshot.json --forecasts OUT/20220321 OUT/20220328 OUT/20220404 --observations Y_20220321.csv Y_20220328.csv Y_20220404.csv --output EVAL

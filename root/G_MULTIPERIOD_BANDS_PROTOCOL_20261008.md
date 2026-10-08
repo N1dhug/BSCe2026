@@ -1,5 +1,23 @@
 # G: rullende seksugersvinduer og usikkerhedsbånd, revideret protokol
 
+## Afgrænset fortsættelse ved afbrudt finer-grid-optimering
+
+En senere origin gennemførte nogle ugedage og ramte derefter rawcallcap
+under grid-refit, selv om et tidligere grid allerede havde et optimizer-
+convergedfit. Ingen targetY/score var åbnet. Den nye continuationdriver
+bevarer completedweekdayrecords; den gentager ingen råfit for dem eller
+for den afbrudte dag. Et **eksisterende convergedfit**, aldrig bestprovisional,
+kan numerisk kontrolleres60/120 inden resten af samme oprindelige30s cap.
+750rawcalls nulstilles/udvides ikke. Ingen ny optimizer på denne dag.
+Fitobjective's faktiske coarsegrid deklareres; ingen optimizerconvergence
+på exportgriddet påstås. Passed60/120mean og stabilfrossetstate er eget krav.
+Kun ugedage, der endnu ikke var kørt, får deres første oprindelige fitbudget.
+Baseline for en ikkefærdig dag genskabes deterministisk fra samme fem egne
+targets/inputfile; donebaselines genbruges. Snapshot/receipts binder den
+oprindelige fitreport og driverhash; før-/efterreport bevares. Dette er
+numerisk acceptance af et savedconvergedfit og fortsættelse af unused days,
+ikke en capforhøjelse, optimizerretry eller valg efter testresultater.
+
 ## Numerisk eksport før nogen targetscore
 
 Første Feb28-weekdayfit gennemførte alle syv G/WM-fit, men input-onlyforecast
