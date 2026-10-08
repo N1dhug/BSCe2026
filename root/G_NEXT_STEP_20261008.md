@@ -1,4 +1,19 @@
-# Seneste holdested: grundimplementering afleveret, intervaloperator næste faglige trin
+# Seneste holdested: timeoperator udført, observeret usikkerhed stadig åben
+
+Johan bad om fortsættelse. [Timeversionen](G_S3_INTERVAL_GUIDE_20261008.md)
+er nu implementeret: own intervalfit/snapshot, integrated-feature baseline,
+input-only hourly-average forecast og integrerede procesmomenter. 25 fokuserede
+checks består samlet. Demand antages hour_start(10→10–11) efter Johans
+arbejdsantagelse; Power/enhed er ikke verificeret. Ingen skjult punktmigration.
+Historisk intervalstøjfit afvises trods bestået numerik (662/720 støttebrud,
+Pmax33.153>.25). Sigma alene kan ikke forklare målespredningen i frosne D/B.
+Næste afgrænsede faglige beslutning er model/baseline-residual eller eksplicit
+observationslag. Der er ikke tilføjet ny observationsstøj eller intervalbånd
+ud fra to momenter. Direkte WM-benchmark, bank/BM2 og F er særskilte spor.
+Denne G-chat, Sol High, er fortsat passende. Status/instrukser nedenfor er
+historik; start ikke automatisk nye støjfits eller gentag den færdige operator.
+
+# Historisk holdested: grundimplementering afleveret, intervaloperator næste trin
 
 S3 fit/snapshot/predict/score og en afgrænset, kontrolleret FV-procesvej er
 nu implementeret. Se [samlet brug, matematik og faktisk status](G_S3_UNCERTAINTY_GUIDE_20261008.md).

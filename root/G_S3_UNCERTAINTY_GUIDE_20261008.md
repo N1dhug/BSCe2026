@@ -1,5 +1,11 @@
 # G-S3 grundversion med afgrænset procesusikkerhed
 
+Efterfølgende er [den selvstændige timeversion](G_S3_INTERVAL_GUIDE_20261008.md)
+implementeret med integrerede baselinefeatures og joint state/output-momenter.
+Den er den aktive hourly-average vej. Denne punktversion bevares selvstændigt;
+dens bånd er ikke timebånd. Begge historiske processtøjdiagnoser er afvist.
+De senere åbne punkter beskrives i timevejens seneste holdested.
+
 Den deterministiske fit/snapshot/predict/score-vej er færdig. G kan nu også
 beregne en ikke-lineær procesfordeling fra samme fitted model og eksportere
 middel, varians, punktvise kvantiler og fælles fejlmål. **Historisk kalibrering

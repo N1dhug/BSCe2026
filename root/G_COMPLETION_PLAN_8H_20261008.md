@@ -1,4 +1,14 @@
-# Aktiv G-plan: færdig grundversion inden for otte timers arbejde
+# Aktiv G-plan: grundversion og timeoperator udført inden for samme arbejdsramme
+
+Seneste fortsættelse: [timeoperator, integreret baseline og proceskovarians](G_S3_INTERVAL_GUIDE_20261008.md)
+er udført med25 fokuserede slutchecks. To nødvendige udviklingsfits er bevaret;
+120s/1000kald-loftet blev ikke nulstillet (samlet33.455508s/226kald). Timeværdier
+tolkes som gennemsnitlig effekt; hour_start er Johans eksplicit usikre antagelse.
+Historisk intervalstøjkalibrering er afvist, ikke erklæret færdig. Kvantiler/
+observerede kalibrerede bånd og direkte WM-benchmark er åbne. Næste særskilte
+modelbeslutning er baseline-/modelresidual eller observationslag. Punktversionen
+og F's separate arbejde bevares. Den oprindelige budgetramme er samme forløb;
+følgende plantrin læses med denne seneste status, ikke som nye fitbestillinger.
 
 Seneste præcisering fra Johan: Førsteprioriteten er fungerende G-kode,
 som kan køres, undersøges og senere udvides med BM2 eller flere parametre.
@@ -23,10 +33,10 @@ Et afgrænset, numerisk kontrolleret proces-scenarielag og slutgennemgang er
 nu udført; [brug, matematik og afvisningsstatus](G_S3_UNCERTAINTY_GUIDE_20261008.md).
 Historisk støjkalibrering er afvist i udviklingseksemplet. Fysisk kalibreret
 observeret totalusikkerhed er fortsat åben. Ingen ny G7-accept er erklæret.
-Johan har nu præciseret, at målingen dækker en hel time, og at Demand efter
-hans erindring er Power. Punktoperatoren er derfor fortsat en mærket
-udviklingsapproksimation; intervaloperator og præcis fysisk enhed er næste
-faglige opgave, ikke en skjult ændring af den afleverede S3-model.
+Johan har præciseret, at målingen dækker en hel time, og at Demand efter
+hans erindring er Power. Intervaloperator er efterfølgende implementeret
+som egen snapshot-/kodevej. Præcis fysisk enhed og timestampmetadata er
+fortsat working assumptions; punktmodellen er bevaret separat.
 
 ## 1. Mål og faste valg
 
@@ -138,8 +148,8 @@ ikke dokumenterer en kausal eller historisk styringsgevinst.
 | Del | Oprindeligt afsat | Slutpunkt/status |
 |---|---:|---|
 | WM/G-review og kontrakter | 0,5 h | Udført; findings og kontrolkvittering gemt. Faktisk samlet reviewtid er ikke målt. |
-| S3 fit/snapshot/predict | 2,0 h | Udført: kode, komplet snapshot, 8 kontroller og faktisk historisk eksempel. |
-| Enkelt G-egnet støjlag efter fungerende kerne | Højst 2,0 h | Udført procesvej med eksplicit sigma; historisk kalibrering afvist. |
+| S3 fit/snapshot/predict | 2,0 h | Udført for punkt- og own timeversion, snapshots og faktiske historiske eksempler. |
+| Enkelt G-egnet støjlag efter fungerende kerne | Højst 2,0 h | Udført punkt-/integreret procesvej med eksplicit sigma; historisk kalibrering afvist. |
 | Historisk eksempel og fælles outputs | 1,0 h | Udført for S3 og procesvej: 168 timer, scorer, figur og numerik; råpakke lokal. |
 | Samlet brugsvej, review og merge | 1,0 h | Dokumentation og færdige dele integreret; eksisterende styringsvej henvist. |
 | Reserve | 1,5 h | Konkrete fejl og inputadgang; ingen udvidelser. |
@@ -157,8 +167,9 @@ Nye udviklingskørsler registreres særskilt, ikke som omskrevet gammel accept.
 Næste trin køres i **denne G-chat, GPT-6.1 Sol, High** med
 [den færdige S3-brugsvej](G_S3_STANDALONE_GUIDE_20261008.md) og
 [procesvejens slutstatus](G_S3_UNCERTAINTY_GUIDE_20261008.md). Grundimplementeringen
-er udført. Næste udvidelse er intervaloperator/enheder og derefter gyldig
-usikkerhedskalibrering; dette er ikke allerede afsluttet. Færdige egne branches merges
+er udført, og timeoperator er efterfølgende udført i egen version. Næste
+modelbeslutning er residual/observationslag og fysisk metadata; gyldig
+observeret usikkerhedskalibrering er ikke afsluttet. Færdige egne branches merges
 efter relevante kontroller som autoriseret af Johan.
 
 Udskudt: parameterbank/filterdemo, fuldt G7-døgnforsøg, historisk
