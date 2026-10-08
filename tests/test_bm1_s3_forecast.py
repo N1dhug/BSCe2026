@@ -63,6 +63,19 @@ class S3ForecastTests(unittest.TestCase):
         e=scored['predictions'].prediction-scored['predictions'].observed
         self.assertAlmostEqual(scored['scoring']['metrics']['prediction']['mse'],float((e*e).mean()))
 
+    def test_fit_snapshot_is_independent_of_future_observations(self):
+        changed=self.raw.copy();changed.loc[changed.index>=self.origin,'Demand']=1e12
+        fitted=deepcopy(self.snapshot['fit'])
+        with patch('src.method.bm_1_s3_forecast.fit_strategy',return_value=fitted):
+            alternate=fit_s3(changed,self.origin)['snapshot']
+        self.assertEqual(alternate,self.snapshot)
+
+    def test_exhausted_fit_budget_never_exports_a_snapshot(self):
+        result=fit_s3(self.raw,self.origin,max_calls=1,seconds=30.)
+        self.assertEqual(result['status'],'unfinished')
+        self.assertIsNone(result['snapshot'])
+        self.assertEqual(result['calls_used'],1)
+
     def test_snapshot_rejects_incomplete_or_inconsistent_fitted_data(self):
         edits=[lambda s:s.update(schema_version=2),lambda s:s.update(forecast_states=[.5]*6),
             lambda s:s['numerics'].update(fine_steps_per_hour=13),
