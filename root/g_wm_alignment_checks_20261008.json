@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-08",
+  "base_commit": "a06a2fcd3640b141dc89edf9d07554bc97d3cd33",
+  "scope": "small algebra checks and static source review; no historical fit or G stochastic acceptance",
+  "checks": {
+    "wm_kernel_matches_direct_covariance_recursion": {
+      "max_abs_error": 2.7755575615628914e-17
+    },
+    "wm_qp_matches_scalar_ridge_solution": {
+      "absolute_error": 3.092589517805777e-10
+    },
+    "wm_initial_variance_subtracted_in_core": true,
+    "wm_nonnegative_q_boundary": true,
+    "std_fit_is_not_variance_fit": {
+      "sigma_std_fit": 0.6,
+      "sigma_variance_fit": 0.5423261445466404
+    },
+    "wm_wrapper_unbound_name_static_only": {
+      "name": "deterministic",
+      "line": 80,
+      "full_wrapper_executed": false
+    }
+  },
+  "seconds_excluding_imports": 0.02440609992481768,
+  "sources": {
+    "src/model/wm_4.py": "6416b3dafea798166687159199387a36af89416dd076dd27457ba24100075060",
+    "src/params/wm_4.py": "69f5d904ec0f1b8fc66a8789fb664e92594a94a206339d3bceeaef0124d25eed",
+    "src/exe/run_model/wm_4/fit_constant_diffusion_qp.py": "9f84032632d14aa855de71905acb0e4771eb7c21878e321a19ec951092d9880e",
+    "src/exe/run_model/wm_4/predict_all_days_uncertainty.py": "f8f4b8f317b4bc57c17e0894584bff3eb63da4ef250057b966eeb1f671745bc0",
+    "src/exe/run_model/wm_4/predict_initial_state_uncertainty.py": "76e38cad69b18f2a54e6d7b678ecb97248520c928cae6a48f3b6fc8488990f89",
+    "src/exe/run_model/wm_4/analyze_observation_uncertainty.py": "f78f10352ea110212eeae513f0b8871323f428d0eba1e312f1a91e76b8b1e626",
+    "src/exe/run_model/wm_4/predict_daily.py": "0761c70eef3d1f0a7c500df27adb55950fcfe2fced85bd19833285070f8a407b",
+    "src/exe/run_model/wm_4/predict_all_days_optimized.py": "e7a1de178ce7b8112459f7af58542604ca6b4158b22c09b459b7589e8b6b19a2",
+    "src/exe/run_model/wm_3/fit_weekly.py": "58eea2b526c47eb3221cba60885432d114045e2199ff25bdf37f0204b2f173be",
+    "src/method/bm_1_linear_noise.py": "bba55b9c43dba54d2d47425078ca59a29a699b053a478121ca78020c6e566228",
+    "src/exe/run_model/bm_1/linear_noise.py": "9baf03a07bdf4a5002620123cc4fe95efdc4d305632c76412399c1049e98e866"
+  },
+  "setup_correction": "First synthetic r=[-1,-.2,-.5] was correctly rejected by WM domain validation; changed to admissible [-1,-.2,-2]. No production code changed."
+}

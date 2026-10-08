@@ -1,14 +1,16 @@
-## Seneste G-prioritet: WM-lignende stokastik; parameterbank er bispor
+## Aktuel G-plan og næste implementering, 8. oktober 2026
 
-Johan har 8. oktober 2026 bekræftet: G har deterministisk grundlag, og dets
-stokastiske elementer skal introduceres relativt som i WM med sammenlignelige
-output og checks. Parameterbanken er fin som bispor/udvidelse, men er ikke
-hovedspor eller færdigkrav for grundversionen. Den faktiske stokastiske WM-kode
-og validering gennemgås før videre stokastisk G-implementering. Bevar eksisterende
-bank-/M254-kode og evidens; lad ikke dens forsøg blokere G eller bruge reserven
-automatisk. F's undersøgelser bliver fortsat ikke automatisk G-opgaver.
-Denne nyere instruktion afløser ældre krav nedenfor om obligatorisk bankdemo.
-Læs [den opdaterede aktive plan](G_COMPLETION_PLAN_8H_20261008.md), afsnit 0.
+WM-koden er nu gennemgået. Læs [den samlede aktive plan](G_COMPLETION_PLAN_8H_20261008.md),
+[WM/G-reviewet](G_WM_ALIGNMENT_REVIEW_20261008.md) og
+[næste arbejdsinstruks](G_NEXT_STEP_20261008.md).
+Næste trin er S3 lambda=0 fit/snapshot/predict i G-chatten, Sol High;
+derefter ét afgrænset WM-lignende variansfit/støjlag med egne gyldighedschecks.
+Parameterbank/M254/filterdemo er bispor. Eksisterende deterministisk
+prisstyring bevares. F's undersøgelser bliver ikke G-opgaver.
+Den aktive plan erstatter ældre G-prioriteringer nedenfor, herunder krav
+om obligatorisk bankdemo. Historiske resultater og numeriske gates ændres
+ikke. Ingen ny G6a/G7-accept er erklæret. Otte-timers-rammen nulstilles ikke.
+Johan har autoriseret merge af færdige egne branches efter kontrol.
 
 ## Aktiv G-afslutning: otte timers grundversion, 8. oktober 2026
 
