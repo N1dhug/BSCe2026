@@ -60,7 +60,7 @@ def main(argv=None):
     try:
         if previous['status']!='unfinished' or receipt['baseline_policy']!='weekday':raise ValueError('Only an unfinished own weekday series can continue.')
         digest=hashlib.sha256(Path(args.raw_csv).read_bytes()).hexdigest()
-        if digest!=receipt['input_sha256'][args.raw_csv]:raise ValueError('Exact original raw input file required.')
+        if digest!=receipt['input_sha256'][str(Path(args.raw_csv))]:raise ValueError('Exact original raw input file required.')
         raw=raw_csv(args.raw_csv);train,frame,scales,start,t=model.training_data(raw,origin);days=[];reports=[]
         def checkpoint(record):_atomic_report(directory/f"weekday_{record['weekday']}_{record['stage']}.json",model.interval.point._plain(record),replace_existing=True)
         for d in range(7):
