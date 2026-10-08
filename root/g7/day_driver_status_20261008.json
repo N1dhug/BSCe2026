@@ -1,9 +1,9 @@
 {
   "schema": "g7-full-day-driver-status-v1",
   "date": "2026-10-08",
-  "campaign_debit": 1851.3372718589885,
+  "campaign_debit": 1907.3372718589885,
   "campaign_ceiling": 1910,
-  "remaining_seconds": 58.662728141011485,
+  "remaining_seconds": 2.6627281410114847,
   "unknown_rates": [
     "setup",
     "search_deterministic",
@@ -52,17 +52,32 @@
   "new_native_likelihood_evaluations": 0,
   "new_native_projection_solves": 0,
   "minimum_remaining": [
-    "one focused full-graph stub/receipt/callback check before numerical execution",
-    "concrete raw-reviewed whole-job rates or separately bounded measurement scope",
-    "complete graph admission and separate immutable numerical registration",
+    "complete saved fixture/receipt review after separately approved +20s scope",
+    "pin four separate own production origins and compatible representative whole-job rates",
+    "complete graph budget admission and separate immutable numerical preregistration",
     "execute and review actual full-day experiment"
   ],
   "native_frozen_source_count": 41,
   "native_frozen_sources_unchanged": true,
   "code_base": "7586a9d2fae9092ad62307eaddf84cfe6c6792d2",
-  "runtime_validation_performed": false,
-  "stub_validation_performed": false,
+  "runtime_validation_performed": true,
+  "stub_validation_performed": true,
   "full_day_experiment_completed": false,
   "local_user_run_required": false,
-  "new_scientific_compute_charge": 0
+  "new_scientific_compute_charge": 56,
+  "scientific_compute_and_validation_scope_charge": 56,
+  "new_native_ode_solves": 1,
+  "full_graph_stub_check_passed": false,
+  "fixture_graph_completed": true,
+  "auxiliary_reuse_check_passed": false,
+  "read_only_completion_review_passed": false,
+  "whole_graph_control_review_complete": false,
+  "standalone_deterministic_rate": {
+    "seconds": 2.3313609979995817,
+    "J": 0.12120382930681177,
+    "horizon_hours": 24,
+    "whole_graph_compatible": false,
+    "complete": true,
+    "raw_reviewed": true
+  }
 }

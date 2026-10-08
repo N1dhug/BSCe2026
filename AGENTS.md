@@ -1,3 +1,59 @@
+## G7: døgn-fixture, timing og budgetstop, 8. oktober 2026
+
+Døgn-driverens stub-forløb gennemførte begge prissøgninger, tre frosne
+styringer, fem forward-kontekster, fælles EM-krydskontrol, en observation,
+fire egne posterioropdateringer og fortsættelsen. Dette er kontrol af
+orchestration med stub-kernels; ingen numerisk validering af døgnforsøget.
+
+Den samlede kontrolpakke er IKKE bestået. Første scope stoppede på en for
+kort node-reservation; næste ramte parent-loftet; tredje gennemførte
+døgnforløbet men fejlede ved den ekstra genbrugstest, som konstruerede et
+andet numerisk kontrakt-id. Den korrekte kontraktforskel blev afvist.
+Genbrugstesten er rettet til driverens make_control, men rettelsen er ikke
+runtime-verificeret. En separat read-only audit af gemte resultater nåede
+også sit parent-loft. Ingen fejl eller fulde reservationscharges slettes.
+
+En særskilt preregistreret native deterministisk 24h-målfunktion ved
+u=(.5,.5,.5,.5) blev færdig:2.3313609979995817s, J=.12120382930681177,
+MAP-node3 (nulbaseret), x12=.5062519458461637. Dette er én timing, ingen
+prissøgning, ingen optimumclaim. Native kilder/kernels er uændrede.
+Raten er standalone med én hash-verificeret egen M254-origin; den er endnu
+ikke et kompatibelt ratepacket for hele grafens fire origins/source-context.
+
+Konservative scopecharges:15+8+20+5+8=56s. G debit1907.3372718589885,
+ceiling1910, rest2.6627281410114847s. Alle16 kompatible whole-job rater
+står fortsat unknown; ingen samlet budgetadmission, fuld døgnpræregistrering,
+numerisk døgnkørsel eller scientific_accept. Ingen bruger-PC-kørsel kræves.
+
+Læs root/G7_DAY_CHECK_AND_RATE_REVIEW.md og
+root/g7/day_check_and_rate_status_20261008.json.
+Næste konkrete forslag er +20s til én sidste read-only completion-audit,
+worker18s/reserve2s. Forslaget er IKKE godkendt og starter ingen proces.
+Først derefter egne fire origins, kompatible rater, samlet admission,
+særskilt immutable præregistrering og numerisk døgnforsøg.
+Følgende G-afsnit/statusser er historik; samtidige F-afsnit bevares.
+
+## F4-H2: godkendt 20h-fortsættelse, 8. oktober kl.15.17
+
+Johan: "det er godkendt bare skynd dig". Det pending +7200s-forslag er
+registreret i separat v4-campaign: H72000s, native1080s, calls25/49,
+paircap73, invocation600s og stop/export60s. Brugerens aktuelle resume
+superseder den passerede08:00-frist; nyt bounded stop er23:55 Copenhagen.
+V3's43780.468989510904s og alle gamle reservationscharges bevares byte-identisk.
+Forberedelse5s + lokal recovery/scoped kontrol35s giver43820.468989510904s;
+native1015.3882277010393s. Alle69+4 numeriske kildehashes, frozen input,
+environment og3655 predecessor-råjobs er verificeret;8 scoped guards består
+med0 propagation/reservationer. Checkpoint01–06's1166 nye jobs er gendannet.
+Original input.xlsx er nu genfundet/hashverificeret; ingen slut-Y er læst.
+Recoverybytes er holdbart sikret. Midlertidig GitHub-byteeksport kørte ingen
+model/test og er fjernet. Controllerb53e337b47613b1070037223b79befd96b0900d8
+fortsætter fra kandidat44, ikke en ny optimizerstart.43 færdige kald er
+historisk boundary; aktuelle supplementresults kommer i separat receipt.
+H-fit/selection/forecast/finale og I/J/F4 er fortsat åbne. Ingen ny numerical
+retry eller capudvidelse. G/WM-status og droppede F4-G2b/G2c bevares.
+Læs root/f4/h2_budget_supplement_approval_20261008.json og recoveryreceipt.
+Følgende ældre status-/approvalafsnit er historik.
+
 ## F4-H2: normalt budgetstop;43 kald sikret, 8. oktober
 
 PR118 er merged. Blok6 stoppede rent for at beskytte restvalidation, ikke pga

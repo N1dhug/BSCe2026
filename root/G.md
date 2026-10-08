@@ -1,3 +1,38 @@
+## G7: døgn-fixture, timing og budgetstop, 8. oktober 2026
+
+Døgn-driverens stub-forløb gennemførte begge prissøgninger, tre frosne
+styringer, fem forward-kontekster, fælles EM-krydskontrol, en observation,
+fire egne posterioropdateringer og fortsættelsen. Dette er kontrol af
+orchestration med stub-kernels; ingen numerisk validering af døgnforsøget.
+
+Den samlede kontrolpakke er IKKE bestået. Første scope stoppede på en for
+kort node-reservation; næste ramte parent-loftet; tredje gennemførte
+døgnforløbet men fejlede ved den ekstra genbrugstest, som konstruerede et
+andet numerisk kontrakt-id. Den korrekte kontraktforskel blev afvist.
+Genbrugstesten er rettet til driverens make_control, men rettelsen er ikke
+runtime-verificeret. En separat read-only audit af gemte resultater nåede
+også sit parent-loft. Ingen fejl eller fulde reservationscharges slettes.
+
+En særskilt preregistreret native deterministisk 24h-målfunktion ved
+u=(.5,.5,.5,.5) blev færdig:2.3313609979995817s, J=.12120382930681177,
+MAP-node3 (nulbaseret), x12=.5062519458461637. Dette er én timing, ingen
+prissøgning, ingen optimumclaim. Native kilder/kernels er uændrede.
+Raten er standalone med én hash-verificeret egen M254-origin; den er endnu
+ikke et kompatibelt ratepacket for hele grafens fire origins/source-context.
+
+Konservative scopecharges:15+8+20+5+8=56s. G debit1907.3372718589885,
+ceiling1910, rest2.6627281410114847s. Alle16 kompatible whole-job rater
+står fortsat unknown; ingen samlet budgetadmission, fuld døgnpræregistrering,
+numerisk døgnkørsel eller scientific_accept. Ingen bruger-PC-kørsel kræves.
+
+Læs root/G7_DAY_CHECK_AND_RATE_REVIEW.md og
+root/g7/day_check_and_rate_status_20261008.json.
+Næste konkrete forslag er +20s til én sidste read-only completion-audit,
+worker18s/reserve2s. Forslaget er IKKE godkendt og starter ingen proces.
+Først derefter egne fire origins, kompatible rater, samlet admission,
+særskilt immutable præregistrering og numerisk døgnforsøg.
+Følgende G-afsnit/statusser er historik; samtidige F-afsnit bevares.
+
 ## G7: samlet døgnstyring implementeret, ikke kørt, 8. oktober
 
 Denne levering bygger på den mergede feedbackintegration PR119/main7586a9d2.

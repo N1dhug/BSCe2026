@@ -191,9 +191,7 @@ def main(output):
         checks.append('updated coarse M254 chooses next price; all four own posterior laws pass actual comparison algebra')
         packet=json.loads((output/'generated_feedback_inputs.json').read_bytes())
         name='m254_coarse'; saved=packet['forwards'][name]
-        control=FeedbackBankControl(evaluator(origins[name],horizon=(12,36),
-            price_edges=[12,18,24,30,36],numerics=BM1ControlNumerics(x_steps=257),
-            backend='mixture'),store,source_root=root,source_sha256=manifest)
+        control=day.make_control(origins[name],name,store,root,manifest)
         before=counts.copy(); old_bytes={p.name:p.read_bytes() for p in (store.root/'nodes').glob('*.json')}
         restored=control.evaluate(saved['prices'],seconds_per_node=1)
         update=control.assimilate(restored,packet['observation']['value'],
