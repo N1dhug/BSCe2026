@@ -1,3 +1,11 @@
+## Matematikken samlet efter chatsletning, 8. oktober 2026
+
+[Den samlede gennemgang](G_MATHEMATICS_RECOVERY_20261008.md) bevarer og forklarer
+januarfit/forecast, G4's kurver og strategier samt de senere G6/G8/G7-trin.
+Se også [indekset til originalnoterne](G_MATHEMATICS_SOURCE_INDEX_20261008.md).
+Den gamle punktkontrakt, populations-/enhedsforbehold og negative resultater
+er bevaret. Ingen januarfit eller anden modelkørsel er gentaget.
+
 ## G7 genoptaget efter slettet chat 8 oktober 2026
 
 Holdestedet er genfundet i det gemte completion-review: fixturekontrol består,

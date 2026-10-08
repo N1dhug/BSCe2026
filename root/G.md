@@ -1,3 +1,12 @@
+## Samlet matematik og argumentation, 8. oktober 2026
+
+Læs [den genfundne matematik og faglige begrundelser](G_MATHEMATICS_RECOVERY_20261008.md)
+og [indekset til alle 38 G-originalnoter](G_MATHEMATICS_SOURCE_INDEX_20261008.md).
+Samlingen indeholder udledninger, metodevalg, implementeringskobling,
+gennemførte resultater og åbne spørgsmål fra det bevarede G-arbejde.
+Originaler og read-only kilder er hashregistreret; ingen model er genkørt,
+og det fulde numeriske G7-døgnforsøg er fortsat åbent.
+
 ## G7 genoptaget efter slettet chat 8 oktober 2026
 
 Holdestedet er genfundet i det gemte completion-review: fixturekontrol består,
