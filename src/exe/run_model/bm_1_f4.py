@@ -138,6 +138,17 @@ def _path(config, key):
     return path.resolve() if path.is_absolute() else (ROOT / path).resolve()
 
 
+def _consumption_values(frame, *, phase):
+    raw = frame.to_numpy(dtype=float)
+    invalid = np.isinf(raw) | (np.isfinite(raw) & (raw < 0))
+    if invalid.any():
+        row, column = np.argwhere(invalid)[0]
+        raise ValueError('Consumption must be finite/nonnegative or explicitly missing. '
+            f'First invalid {phase} cell: timestamp={frame.index[row].isoformat()}, '
+            f'column={frame.columns[column]!r}, value={raw[row, column]!r}.')
+    return raw
+
+
 def prepare(config, *, progress=None):
     """Freeze inputs before numerical work; forecast targets are read later."""
     phases = []
@@ -181,9 +192,7 @@ def prepare(config, *, progress=None):
         measurements = read_raw_power_window(paths['input_workbook'],
             columns=model['measurement_columns'], start=start, end=cutoff,
             timezone=zone, sheet=model['input_sheet'])
-    raw = measurements.to_numpy(dtype=float)
-    if np.isinf(raw).any() or np.any(raw[np.isfinite(raw)] < 0):
-        raise ValueError('Consumption must be finite/nonnegative or explicitly missing.')
+    raw = _consumption_values(measurements, phase='filter')
     # Fixed-population mean: any missing house masks the entire hour.
     observed = np.isfinite(raw).all(axis=1)
     values = np.full(count, np.nan)
@@ -525,9 +534,8 @@ def run(data, *, directory, resume=False, max_seconds=600., workers=4, invocatio
                     measured = read_raw_power_window(data['paths']['input_workbook'],
                         columns=data['model']['measurement_columns'], start=pd.Timestamp(data['manifest']['origin']),
                         end=pd.Timestamp(data['manifest']['end']), timezone=data['model']['timezone'],
-                        sheet=data['model']['input_sheet']).to_numpy(dtype=float)
-                    if np.isinf(measured).any() or np.any(measured[np.isfinite(measured)] < 0):
-                        raise ValueError('Invalid forecast evaluation observations.')
+                        sheet=data['model']['input_sheet'])
+                    measured = _consumption_values(measured, phase='forecast evaluation')
                     seen = np.isfinite(measured).all(axis=1)
                     means = np.full(len(measured), np.nan)
                     means[seen] = measured[seen].mean(axis=1)

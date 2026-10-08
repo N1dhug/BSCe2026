@@ -110,6 +110,21 @@ class PortableF4Tests(unittest.TestCase):
         self.assertEqual(price_reader.call_args.kwargs['end'], cutoff)
         expected = prices.reindex(data['index'][2:]-pd.Timedelta(days=7)).to_numpy()
         np.testing.assert_array_equal(data['prices'][2:], expected)
+        invalid = measured.copy()
+        invalid.columns = [f'house_{i}_MED' for i in range(13)]
+        for value in (-.3, np.inf):
+            invalid.iloc[0, 3] = value
+            with self.subTest(value=value), patch.object(runner, 'read_raw_power_window', return_value=invalid), \
+                    patch.object(runner, 'read_raw_spot_window') as price_reader:
+                with self.assertRaises(ValueError) as error:
+                    runner.prepare(config)
+                message = str(error.exception)
+                self.assertIn('finite/nonnegative or explicitly missing', message)
+                self.assertIn('First invalid filter cell', message)
+                self.assertIn(start.isoformat(), message)
+                self.assertIn("column='house_3_MED'", message)
+                self.assertIn(f'value={value!r}', message)
+                price_reader.assert_not_called()
         config['forecast_origin'] = '2022-02-20T12:00:00+01:00'
         config['filter_start'] = '2022-02-20T00:00:00+01:00'
         with self.assertRaisesRegex(ValueError, 'curve fit/selection cutoff'):
