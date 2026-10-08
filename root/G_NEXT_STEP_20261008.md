@@ -1,5 +1,18 @@
 # Næste trin: selvstændig S3 fit/snapshot/predict
 
+Seneste præcisering fra Johan: Førsteprioriteten er fungerende G-kode,
+som kan køres, undersøges og senere udvides med BM2 eller flere parametre.
+G optimeres med metoder egnet til G inden for tidsrammen. WM er en konceptuel
+reference, ikke et krav om 1:1-behandling. Solvere, fitkriterier, intern
+skalering og modelspecifikke checks må variere med en kort faglig begrundelse.
+En sammenligning skal have sammenlignelig opgave, information og horisont
+og vurderes i fælles enheder på et tydeligt observationsgrundlag.
+Første milepæl er en fungerende deterministisk grundversion. Støjlaget har
+særskilt status og må ikke blokere denne milepæl alene af hensyn til WM.
+Variansfit er en kandidat, ikke en binding til WM's metode. Ingen lange
+metodesøgninger, fuld WM-paritet eller generel BM2-arkitektur nu; enkle
+modulgrænser og et versionsmærket snapshot er tilstrækkeligt.
+
 Klar arbejdsinstruks, 8. oktober 2026. Brug denne G-chat med **GPT-6.1 Sol,
 High**. En ny chat er ikke nødvendig; hvis kontekstskift er praktisk, kopier
 denne instruks ind i en særskilt G-chat og læs repoets nyeste AGENTS først.
@@ -79,6 +92,6 @@ budgeterede historiske eksempel; ellers skriv præcis manglende input og
 fortsæt uafhængige kontraktchecks. Merge færdig egen branch efter relevante
 kontroller som autoriseret af Johan. Ingen ny generel plangodkendelse kræves.
 
-Derefter: det nye navngivne WM-lignende variansfit og én afgrænset
-stokastisk pilot. Ingen parameterbank, G7-døgnkørsel eller F-forsøg i dette
+Derefter: det enkleste fagligt gyldige G-støjlag inden for tidsrammen.
+Det beskrevne variansfit er en kandidat, ikke et krav om at kopiere WM. Ingen parameterbank, G7-døgnkørsel eller F-forsøg i dette
 første implementeringstrin. G6a's tidligere failure står uændret.

@@ -1,10 +1,23 @@
 ## Aktuel G-plan og næste implementering, 8. oktober 2026
 
+Seneste præcisering fra Johan: Førsteprioriteten er fungerende G-kode,
+som kan køres, undersøges og senere udvides med BM2 eller flere parametre.
+G optimeres med metoder egnet til G inden for tidsrammen. WM er en konceptuel
+reference, ikke et krav om 1:1-behandling. Solvere, fitkriterier, intern
+skalering og modelspecifikke checks må variere med en kort faglig begrundelse.
+En sammenligning skal have sammenlignelig opgave, information og horisont
+og vurderes i fælles enheder på et tydeligt observationsgrundlag.
+Første milepæl er en fungerende deterministisk grundversion. Støjlaget har
+særskilt status og må ikke blokere denne milepæl alene af hensyn til WM.
+Variansfit er en kandidat, ikke en binding til WM's metode. Ingen lange
+metodesøgninger, fuld WM-paritet eller generel BM2-arkitektur nu; enkle
+modulgrænser og et versionsmærket snapshot er tilstrækkeligt.
+
 WM-koden er nu gennemgået. Læs [den samlede aktive plan](root/G_COMPLETION_PLAN_8H_20261008.md),
 [WM/G-reviewet](root/G_WM_ALIGNMENT_REVIEW_20261008.md) og
 [næste arbejdsinstruks](root/G_NEXT_STEP_20261008.md).
 Næste trin er S3 lambda=0 fit/snapshot/predict i G-chatten, Sol High;
-derefter ét afgrænset WM-lignende variansfit/støjlag med egne gyldighedschecks.
+derefter et enkelt G-egnet støjlag inden for tidsrammen, med særskilt status.
 Parameterbank/M254/filterdemo er bispor. Eksisterende deterministisk
 prisstyring bevares. F's undersøgelser bliver ikke G-opgaver.
 Den aktive plan erstatter ældre G-prioriteringer nedenfor, herunder krav

@@ -1,5 +1,18 @@
 # Aktiv G-plan: færdig grundversion inden for otte timers arbejde
 
+Seneste præcisering fra Johan: Førsteprioriteten er fungerende G-kode,
+som kan køres, undersøges og senere udvides med BM2 eller flere parametre.
+G optimeres med metoder egnet til G inden for tidsrammen. WM er en konceptuel
+reference, ikke et krav om 1:1-behandling. Solvere, fitkriterier, intern
+skalering og modelspecifikke checks må variere med en kort faglig begrundelse.
+En sammenligning skal have sammenlignelig opgave, information og horisont
+og vurderes i fælles enheder på et tydeligt observationsgrundlag.
+Første milepæl er en fungerende deterministisk grundversion. Støjlaget har
+særskilt status og må ikke blokere denne milepæl alene af hensyn til WM.
+Variansfit er en kandidat, ikke en binding til WM's metode. Ingen lange
+metodesøgninger, fuld WM-paritet eller generel BM2-arkitektur nu; enkle
+modulgrænser og et versionsmærket snapshot er tilstrækkeligt.
+
 8. oktober 2026. Denne samlede plan erstatter de tidligere prioriteringer
 af obligatorisk parameterbank/demo. Den bygger på Johans seneste instrukser,
 [kode-/matematikreviewet](G_CODE_MATH_REVIEW_20261008.md) og
@@ -53,13 +66,13 @@ og fuld gammel fitpakke er endnu ikke verificeret lokalt. Implementeringens
 små kontraktchecks kan udføres, mens dataadgangen afklares.
 Januar og uger 6–18 er allerede inspiceret og er ikke nye blinde testdata.
 
-## 3. Dernæst: ét WM-lignende støjlag med tydelig gyldighed
+## 3. Dernæst: et enkelt støjlag egnet til G
 
 WM tilpasser q=σ² til empirisk varians efter deterministisk fit. G6a
 tilpassede σ til standardafvigelse; det er et andet problem. Den gamle
 G6a-underkendelse bevares og kan ikke omdøbes til ny accept.
 
-Indfør et særskilt navngivet variansfit med én q per mandagsfrossen uge,
+En billig foreløbig kandidat er et særskilt variansfit med én q per mandagsfrossen uge,
 de 35 historiske forløb og P0=0 ved hver forecaststart. Empirisk varians
 beregnes per ugedag/time af målte data; mindst to observationer per bin.
 G's kernelprofil er gennemsnittet af fem historiske enhedsvarianser.
@@ -81,7 +94,8 @@ et sådant ikke-lineært støjfit er ikke automatisk det simple WM-QP.
 Ingen bred solver-/kalibreringssøgning eller bank startes automatisk.
 Hvis et gyldigt støjlag kræver mere tid, afsluttes den fungerende
 deterministiske del med støjlaget eksplicit åbent og en konkret restopgave.
-Det fulde mål er da ikke nået; overskridelse forklares før den gennemføres.
+Den deterministiske grundversion kan afsluttes som brugbar milepæl; støjlaget
+er fortsat åbent. Eventuel nødvendig overskridelse forklares før gennemførelse.
 
 ## 4. Fælles output og checks
 
@@ -96,12 +110,13 @@ Punktvise 95%-bånd er ikke 95% samtidig ugedækning. I ikke-lineær G er
 deterministisk forecast ikke nødvendigvis den stokastiske middelprognose.
 Empirisk spredningsfit identificerer ikke isoleret fysisk processtøj.
 
-WM-sammenligningen bruger samme population, rådata, informationsgrænse,
-skalaer, pris/temperaturscenarie og scoremaske. Signed WM-pris er U=2u−1;
+Direkte WM-sammenligning bruger sammenlignelig population, opgave, information
+og pris/temperaturscenarie; der scores i fælles råenheder og på fælles
+observationsmaske. Intern skalering må variere mellem modellerne. Signed WM-pris er U=2u−1;
 WM bruger dage, G timer. Den gamle WM-indlæsnings sæson-/helårsskalaer og
 dagligt opdaterede fits må ikke umærket bruges som fælles benchmark.
-En tynd adapter og scorerparitet er med i grundversionen; bred WM-rangering
-er udskudt. G-status og tilgængelig WM-sammenligningsstatus er særskilte.
+Grundversionen eksporterer forståelige prognoser og standardscorer. En WM-adapter
+tilføjes kun, hvis den er en lille opgave; bred WM-rangering er udskudt. G-status og tilgængelig WM-sammenligningsstatus er særskilte.
 
 Historiske timemålingers fysiske enhed og punkt/intervalfortolkning
 verificeres; ellers mærkes den eksisterende udviklingsapproksimation,
@@ -116,7 +131,7 @@ ikke dokumenterer en kausal eller historisk styringsgevinst.
 |---|---:|---|
 | WM/G-review og kontrakter | 0,5 h | Udført; findings og kontrolkvittering gemt. Faktisk samlet reviewtid er ikke målt. |
 | S3 fit/snapshot/predict | 2,0 h | Næste opgave; kode, snapshot, fokuserede kontraktchecks. |
-| Variansfit og afgrænset støjpilot | 2,0 h | Implementeret metode, checks og gyldig/underkendt status. |
+| Enkelt G-egnet støjlag efter fungerende kerne | Højst 2,0 h | Særskilt status; må vige for at afslutte den brugbare kerne. |
 | Historisk eksempel og fælles outputs | 1,0 h | Rigtige data/resultater, scorer og figur. |
 | Samlet brugsvej, review og merge | 1,0 h | Dokumentation og færdige dele integreret; eksisterende styringsvej henvist. |
 | Reserve | 1,5 h | Konkrete fejl og inputadgang; ingen udvidelser. |
@@ -139,6 +154,7 @@ efter relevante kontroller som autoriseret af Johan.
 Udskudt: parameterbank/filterdemo, fuldt G7-døgnforsøg, historisk
 interval-likelihood, nye kurvefamilier, global parametersøgning, nye
 risikomål, bredt benchmark og F's undersøgelser. Deres eksisterende kode,
-evidens og åbne gates bevares. Grundversionen er færdig, når prognosevejen,
-det gyldige afgrænsede støjlag og deres aftalte checks virker; en afvist
-støjapproksimation alene opfylder ikke dette færdigkriterium.
+evidens og åbne gates bevares. Første grundversion er færdig, når fit,
+gem/genindlæs, prognose, valgfri scoring og et dokumenteret faktisk eksempel
+virker med relevante korrekthedschecks. Støjlaget har særskilt status;
+kun et gyldigt lag mærkes færdigt. BM2/flere parametre er senere udvidelser.
