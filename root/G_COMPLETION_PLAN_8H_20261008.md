@@ -1,298 +1,144 @@
-# Aktiv G-afslutningsplan: grundversion inden for otte timers arbejde
+# Aktiv G-plan: færdig grundversion inden for otte timers arbejde
 
-8. oktober 2026. Denne plan er den aktuelle prioritering af det resterende
-G-arbejde. Den bygger på [kodereviewet](G_CODE_MATH_REVIEW_20261008.md) og den
-[genfundne matematik](G_MATHEMATICS_RECOVERY_20261008.md).
-**Planstatus: fastlagt; leverancerne nedenfor er endnu ikke færdigimplementeret
-eller kørt af dette review.** Der er ikke erklæret ny numerisk G7-accept.
+8. oktober 2026. Denne samlede plan erstatter de tidligere prioriteringer
+af obligatorisk parameterbank/demo. Den bygger på Johans seneste instrukser,
+[kode-/matematikreviewet](G_CODE_MATH_REVIEW_20261008.md) og
+[gennemgangen af faktisk WM-kode](G_WM_ALIGNMENT_REVIEW_20261008.md).
+Review og afgrænsning er udført. De nye implementeringsleverancer nedenfor
+er endnu ikke færdige. Ingen ny historisk eller numerisk G7-accept er erklæret.
 
-## 0. Seneste prioritering: WM-lignende stokastik før parameterbank
+## 1. Mål og faste valg
 
-Johan har efter den første plan præciseret og bekræftet, at stokastikken i
-G skal introduceres relativt som i WM, med sammenlignelige output og checks.
-**Parameterbanken er et bispor/en udvidelse, ikke grundversionens hovedspor
-eller en betingelse for at gøre den færdig.** Dette erstatter den tidligere
-prioritering af M254-parameterbankdemoen som obligatorisk leverance B.
+G skal have et deterministisk grundlag, en brugbar historisk prognose og
+et afgrænset stokastisk lag indført relativt som i WM. Input, output og
+relevante checks skal gøre sammenligning let. F's undersøgelser er ikke
+automatisk G-opgaver; F's kode, resultater og budgetter ændres ikke her.
 
-Det aktive forløb er deterministisk G → afgrænset stokastisk lag med WM som
-metodisk reference → sammenlignelige prognoseoutput og validering. G beholder
-sin egen dynamik. WM's faktiske stokastiske implementation skal først
-gennemgås for støjantagelser, estimering, initialusikkerhed, propagation og
-observationer; en konkret kobling til G fastlægges derefter. Der vælges ikke
-stiltiende en ny støjmodel eller en allerede underkendt G6a-approksimation.
+- Bevar **S3, lambda=0**: lineær f, to-stykkers g, fælles C/k/Xi/a fra
+  de fem foregående kalenderugers 35 dagsforløb. Ingen ny modeludvælgelse.
+- Hver historisk bane starter x=.5 og har 24 fysiske warm-up-timer.
+  De syv forecaststarts er historiske medianstates for hver ugedag.
+  Alle syv dagsprognoser fryses mandag; de er ikke én kontinuerlig ugebane.
+- Bevar G's SDE med diffusion σ_x x(1−x), timer og frosne deterministiske
+  parametre. WM er metodisk reference; dens additive R-støj kopieres ikke
+  ind i G som en ny model. Start med procesusikkerhed betinget på P0=0.
+- Parameterbank/M254/filter→styring er et **bispor**, ikke et færdigkrav
+  eller en automatisk anvendelse af tidsreserven. Detaljerne er bevaret i
+  [udvidelsesplanen](G_PARAMETER_BANK_EXTENSION_20261008.md).
+- Eksisterende deterministisk prisstyring og fixed-target-sammenligning
+  bevares. Udsættelse af banken fjerner ikke dette udførte arbejde.
 
-Fælles output skal omfatte middelprognose, baseline, observationer og
-usikkerhedsbånd med eksplicit betydning. Relevante fælles checks omfatter
-deterministisk grænsetilfælde, numerisk forfining, prognosefejl, dækning,
-intervalbredde og intervalscore ved samme informationsgrænse, horisonter og
-nominelle niveau. Proces-, observations- og parameterusikkerhed holdes
-adskilt; modelspecifikke nødvendige checks kommer oveni. Samme output kræver
-ikke identiske interne solvere eller fysisk identiske støjkoefficienter.
+## 2. Først: selvstændig historisk S3-prognose
 
-Parameterbank-, M254- og filter→styringsarbejdet bevares som en særskilt,
-allerede udviklet udvidelse. Afsnit 4 beskriver dette bispor; dets krav gælder
-kun, hvis det faktisk køres. Det må ikke blokere hovedsporet eller automatisk
-forbruge otte-timers-reserven. F's undersøgelser overføres fortsat ikke til G.
+Byg et lille fit → komplet snapshot → predict → valgfri score-forløb,
+der genbruger de eksisterende matematiske kerner. Den konkrete
+[arbejdsinstruks](G_NEXT_STEP_20261008.md) er klar til næste trin.
 
-## 1. Bestillingen og dens afgrænsning
+Snapshot gemmer protokol/version, cutoff, population, træningsmaske,
+råskalaer/enheder, prisdomæne, baselinekoefficienter og standardisering,
+alle baselineindstillinger, C/k/Xi/a, syv egne starts, grids, forfiningsstatus
+og input-/kildehashes. Den gamle januar/lineære snapshot-type erstatter
+ikke et S3-snapshot. Metadata alene er ikke et komplet baselinefit.
 
-Johan har valgt:
+Forecast kræver kun snapshot og fremtidige priser/temperaturer. Ingen refit
+og ingen fremtidig demand. Observationer lægges til ved scoring. Kontroller
+roundtrip, fravær af fitkald, uafhængighed af fremtidige observationer,
+korrekte starts, kalender/DST, endelige tal og coarse/fine-demandfejl ≤1e-5.
+Ikke-understøttede kalenderdata afvises tydeligt; timer må ikke tabes skjult.
 
-- Implementeringen skal helst være færdig inden for otte timers arbejde;
-  kun strengt nødvendigt arbejde må begrunde en overskridelse.
-- Hovedleverancen er en **WM-sammenlignelig historisk prognose med
-  deterministisk grundlag og et afgrænset, WM-lignende stokastisk lag**.
-  Den tidligere aftalte parameterbank/filter→prisstyringsdemo er nu bispor.
-- G skal fortsat ligne WM i de opgaver, input og output, man ønsker at
-  sammenligne. Metodiske udvidelser skal kunne begrundes ud fra disse opgaver.
+Lever ét faktisk historisk udviklingseksempel med CSV/JSON, figur og
+numerikstatus. Genbrug komplet verificeret gammelt fit, ellers ét
+budgeteret S3-fit med lambda=0. Workbooks findes i Git, men temperaturcache
+og fuld gammel fitpakke er endnu ikke verificeret lokalt. Implementeringens
+små kontraktchecks kan udføres, mens dataadgangen afklares.
+Januar og uger 6–18 er allerede inspiceret og er ikke nye blinde testdata.
 
-Otte timer er arbejdsrammen for afslutningen, inklusive nødvendige checks,
-kørsler og dokumentation. Det er ikke otte timers nye numeriske søgninger.
-Registrér faktisk brugt tid ved delafleveringer; der er ikke grundlag her
-for at oplyse et præcist hidtidigt tidsforbrug for den slettede chat.
+## 3. Dernæst: ét WM-lignende støjlag med tydelig gyldighed
 
-Den første grundversion skal ikke omfatte en sammenhængende historisk kæde
-fra fit gennem filter til løbende styring. Den skal heller ikke dokumentere,
-at G slår WM. Negative, men korrekt beregnede resultater er gyldige.
+WM tilpasser q=σ² til empirisk varians efter deterministisk fit. G6a
+tilpassede σ til standardafvigelse; det er et andet problem. Den gamle
+G6a-underkendelse bevares og kan ikke omdøbes til ny accept.
 
-## 2. Frosne valg — undgå at starte modeludviklingen forfra
+Indfør et særskilt navngivet variansfit med én q per mandagsfrossen uge,
+de 35 historiske forløb og P0=0 ved hver forecaststart. Empirisk varians
+beregnes per ugedag/time af målte data; mindst to observationer per bin.
+G's kernelprofil er gennemsnittet af fem historiske enhedsvarianser.
+Time 0 udelades fra fit og rapporteres særskilt. Denne en-q/uge-kontrakt
+adskiller sig fra WM's gamle q/dag-wrapper og deklareres i output.
+Ingen parameter-, baseline- eller særskilt observationsstøj tilføjes nu.
 
-1. **Historisk hovedvariant: S3, lambda=0.** Lineær f; fælles (C,k,Xi,a)
-   fra de fem foregående kalenderugers 35 dagsforløb. To-stykkers g beholdes.
-   De syv dagsstarter er de respektive historiske medianstates. Hele ugens
-   prognoser fryses ved mandagens cutoff. Ingen ny kurve-/lambdaudvælgelse.
-2. Den oprindelige lineære januar→168h-vej bevares som reference med eget
-   protokolnavn. Den erstatter ikke stiltiende S3 og bruges ikke som bevis
-   for, at S3's fremtidige selvstændige forecast-indgang allerede findes.
-3. **Bisporets stokastiske vej: M254-mixture og fem rho-hypoteser**
-   med egne betingede laws. FV og rå EM er kontroller; de erstatter ikke den
-   primære model for at gøre den hurtigere.
-4. I parameterbankbisporet bruger G7's deterministiske reference MAP-rho og dens egen betingede
-   middelstate, sigma_x=0. Dette følger den seneste implementation og
-   afløser middelrho-formuleringen i det ældre døgnforslag.
-5. De historiske og syntetiske observationer har forskellige erklærede
-   kontrakter. Den historiske punktapproksimation mærkes tydeligt; demoen
-   bruger egentlige syntetiske punktmålinger. Et nyt intervalfilter er ikke
-   en skjult del af denne afslutning.
-6. **G har et mere deterministisk grundlag; F har et mere stokastisk
-   grundlag**, som Johan har præciseret efter reviewet. F's undersøgelser
-   overføres ikke automatisk til G. Genbrug af fælles kode er ikke genbrug
-   af hele F's forskningsprogram eller færdigkriterier. Hver ny G-opgave
-   skal begrundes i G's egne aftalte leverancer og WM-sammenlignelighed.
-   Den deterministiske historiske prognose har førsteprioritet, fulgt af
-   WM-lignende stokastik; parameterbankdemoen er bispor. Nødvendige
-   korrekthedschecks for G's anvendte kode bevares. F's egne forsøg,
-   resultater og budgetter samt WM's modeldefinition ændres ikke.
+Genbrug først den billige lokale G-enhedspropagation som **kandidat**.
+Bevar forfiningskrav for center 1e-5 og std/profil 1e-4; kontrollér q=0,
+ikke-negativitet, stategrænser, varians og en repræsentativ ikke-lineær
+FV-reference med faste parametre. Pilotens konkrete grids, tolerancer,
+antal kald og runtime fastlægges før kørsel, efter S3-snapshot foreligger.
+Varians over .25 på [0,1] er en afvisningsgrund; varians under .25 er ikke
+i sig selv accept. Ingen klipning af bånd/states eller σ for at få et pass.
 
-## 3. Leverance A: selvstændig historisk S3-prognose
+Ved afvisning gemmes resultatet ærligt. Fast-parameter FV kan vurderes
+inden for samme tidsramme som propagation af den eksisterende SDE;
+et sådant ikke-lineært støjfit er ikke automatisk det simple WM-QP.
+Ingen bred solver-/kalibreringssøgning eller bank startes automatisk.
+Hvis et gyldigt støjlag kræver mere tid, afsluttes den fungerende
+deterministiske del med støjlaget eksplicit åbent og en konkret restopgave.
+Det fulde mål er da ikke nået; overskridelse forklares før den gennemføres.
 
-### Brugerforløb
+## 4. Fælles output og checks
 
-Et lille fælles indgangslag skal kunne: (a) fitte én valgt historisk origin,
-(b) gemme et komplet fitted snapshot, (c) indlæse det og forudsige den næste
-uge fra priser/temperatur uden refit, (d) score bagefter, hvis demand findes.
-Brugeren skal ikke manuelt samle en seksugers forskningskørsel for at få én
-uge ud. Eksisterende målfunktion, RK4, warm-up, baseline og numeriske
-forfiningskrav genbruges.
+Fælles resultat: tidsstempel/offset, cutoff, protokol, baseline, pris,
+deterministisk prognose, stokastisk middel/approksimationsstatus, observation
+når tilgængelig, måltemaske, proces-/initial-/totalvarians og bånd.
+Rå og normaliserede værdier holdes sammen med deres skalaer. Kun relevante
+felter udfyldes; fraværende eller underkendt støjlag er ikke nul usikkerhed.
 
-S3 skal have egen versionsmærket snapshot-type. Den skal gemme:
+Brug samme MSE/RMSE/MAE/bias, dækning, middelbredde og intervalscore.
+Punktvise 95%-bånd er ikke 95% samtidig ugedækning. I ikke-lineær G er
+deterministisk forecast ikke nødvendigvis den stokastiske middelprognose.
+Empirisk spredningsfit identificerer ikke isoleret fysisk processtøj.
 
-- cutoff, protokol, population, normaliseringsskalaer og eksplicitte enheder;
-- fitted baselinekoefficienter, standardisering og alle indstillinger;
-- C,k,Xi,a, responskurver og de syv **egne** historiske forecaststates;
-- ODE-/baselinegrids, bestået forfiningscheck og kilde/inputfingerprints;
-- træningsmaske og tidsvindue, prisdomæne, warm-up og status for identifikation;
-- scenarieantagelsen om fremtidig pris/temperatur, uden fremtidig demand.
+WM-sammenligningen bruger samme population, rådata, informationsgrænse,
+skalaer, pris/temperaturscenarie og scoremaske. Signed WM-pris er U=2u−1;
+WM bruger dage, G timer. Den gamle WM-indlæsnings sæson-/helårsskalaer og
+dagligt opdaterede fits må ikke umærket bruges som fælles benchmark.
+En tynd adapter og scorerparitet er med i grundversionen; bred WM-rangering
+er udskudt. G-status og tilgængelig WM-sammenligningsstatus er særskilte.
 
-`fit_strategy`, `BM1PooledInputs`, `calendar_inputs` og den eksisterende
-baseline bruges direkte gennem små adapters. `checked_task`'s gamle
-to-lambda-forsøg gentages ikke for en valgt model. Genoptagelse af et afbrudt
-optimizerfit må ikke forveksles med at genindlæse et færdigt snapshot.
+Historiske timemålingers fysiske enhed og punkt/intervalfortolkning
+verificeres; ellers mærkes den eksisterende udviklingsapproksimation,
+og kun den konkret manglende metadata efterspørges. Realiserede fremtidige
+temperaturer er betingede scenarieinputs, ikke en historisk vejrudsigt.
+Svagt identificeret prisrespons betyder, at forecastfejl og model-cost
+ikke dokumenterer en kausal eller historisk styringsgevinst.
 
-### WM-kontrakten
+## 5. Rækkefølge og arbejdsramme
 
-Fælles resultatkolonner: tidspunkt, baseline, G-prognose, pris, enheder og
-protokol. Ved scoring tilføjes observation, fælles scoremaske og
-MSE/RMSE/MAE/bias. Tilstande og fitted parametre gemmes som egen diagnostik.
-Bevar både rå og normaliserede tal. Skeln gennemsnitlige dagsmål fra pooled
-fejl. Genbrug WM's scorer/rapportkonvention eller bevis paritet på faste tal.
-
-En senere direkte WM-kørsel skal bruge samme informationsgrænse, baseline,
-pris/temperaturscenarie og observationsudvalg. Modelspecificiteten i
-initialisering og fit oplyses. Dagligt opdateret WM må ikke umærket
-sammenlignes med S3, hvor alle syv dage er frosset mandag. Det er ikke et
-krav at indføre identiske interne tilstande, fitalgoritmer eller parametertal.
-
-G's gennemførelse og WM-sammenligningens tilgængelighed får hver sin status.
-Det brede benchmark og en rangering af G mod WM udskydes. En fælles
-output-/scoringskontrol er med i grundversionen.
-
-### Færdigkriterier A
-
-- Ét faktisk historisk, klart mærket udviklingseksempel med komplet pakke.
-  Genbrug et verificerbart gammelt fit, hvis hele fitted pakken findes.
-  Ellers udfør ét afgrænset nyt S3-fit fra dokumenterede inputs; ikke seks
-  uger med to lambdaer. Git indeholder rå input-workbooks; adgang til den
-  konkrete temperaturserie og historiske fitpakke kontrolleres først.
-- Snapshot→forecast giver samme resultat uden kald til G-fit eller
-  baselinefit. Forecast-API'et behøver ingen fremtidig demand.
-- Fjernelse/ændring af fremtidige observationer ændrer kun scorerne.
-- Syv historiske initialiseringer, 24 fysiske warm-up-timer og kalender/DST
-  håndteres som i den valgte opskrift. Ikke-understøttede datovinduer
-  afvises tydeligt fremfor at fremstille 168 fysiske timer på alle kalenderuger.
-- Bestået bevaret coarse/fine-krav for demand (1e-5 normaliseret), finitte
-  output og ingen skjult state-/prisklipning.
-- CSV/JSON og en oversigtsfigur viser baseline, G, observationer når de
-  findes, og pris. Rapporten viser runtime, numerik og databegrænsninger.
-
-Januar/Februar og ugerne 6–18 er allerede inspiceret. De kan være
-reproduktions-/udviklingseksempler, men bliver ikke nye blinde sluttestdata.
-
-## 4. Bispor: en kort, reel filter→prisstyringsdemo
-
-Følgende design bevares til en senere udvidelse. Det er ikke længere en
-obligatorisk leverance indenfor otte timer; se den nyere beslutning i afsnit 0.
-
-### Mindste komplette forløb
-
-Brug de verificerede egne M254257/513-origins ved t=12 fra recovery.
-Bevar oprindelsesfilerne uændret. Det korte forløb er:
-
-1. Vælg en prisplan for [12,14] fra en lille **på forhånd fastlagt** familie.
-2. Propagér under den valgte pris. Generér én syntetisk punktobservation
-   ved t=14 fra en særskilt deklareret sand bane og observationsstøj.
-3. Udfør den rigtige Bayes-opdatering af hver nodes law og bankens vægte,
-   og gem både rå evidence og posteriorprojektionens kontroller.
-4. Vælg en ny prisplan fra den opdaterede posterior for [14,16], og
-   gennemfør en faktisk continuation. Brug samme observation i referencesporene.
-
-Den primære **basisafslutning** bruger to prisblokke per 2h-vindue og tre
-registreret ordnede kandidater: neutral (.5,.5), (.3,.7), (.7,.3).
-Prisvalg er argmin af de fuldt gennemførte bankomkostninger, med første
-registreret kandidat ved eksakt lighed. Alle tre skal være beregnet før en
-færdig kandidatbeslutning erklæres. Det giver et reelt afgrænset kontrolvalg,
-men rapporteres som **bedst af tre**, ikke som kontinuerlig prisoptimering.
-
-Beregn også den deterministiske MAP-references valg indenfor samme familie,
-og sammenlign dens valgte pris og neutralprisen på samme stokastiske J.
-Denne afgrænsning er ny: den reducerer 24h/96-kalds-forslaget, ikke det
-matematiske objective. Den eksisterende kontinuerte optimizerkode bevares
-og kan senere kobles til samme adapter; ingen ny optimizer udvikles nu.
-
-Baseline B(t)=.5+.1sin(2*pi*t/24), A=.5, priser i [0,1], timer, sigma_y=.03,
-de fem eksisterende rho-knuder og faste øvrige parametre bevares fra den
-syntetiske case. Terminal-/glathedsstraffe er nul; ingen ny energilighed.
-Observationens sande rho og tilfældighedsstrømme fastlægges før prisresultater
-ses. Der må ikke vælges en observation, som får feedbacken til at se god ud.
-
-### Hvad referencesporene betyder
-
-Manglende gamle **egne FV-filterorigins** må ikke blokere denne anderledes,
-afgrænsede demo. Til en kontrol af fremadudvikling og opdatering kan FV
-starte fra samme eksplicit repræsenterede M254-prior på hvert grid. Det
-mærkes `FV-reference fra fælles M254-startlaw`, ikke `egen G8-FV-posterior`.
-Efter observationen fører hvert spor sin egen opdaterede law videre.
-
-Denne reference undersøger den korte kæde fra det fælles informationspunkt.
-Den validerer ikke hele det tidligere FV-filterforløb fra t=0 og opfylder
-ikke automatisk den gamle døgnplans krav om fire egne t=12-filterorigins.
-Der er derfor ingen grund til at svække eller omgå den gamle døgnlauncher;
-den nye demo får sin egen korte run-kontrakt og status.
-
-### Kontroller B
-
-Genbrug `OwnedBankPriceEvaluator`, den eksisterende auditerede
-receipt-/feedbackadapter, native FP/projektion/Bayes og review-algebra.
-Tilføj kun den nødvendige korte orkestrering og eksport. En fixture med
-erstattede numeriske funktioner er ikke tilstrækkelig slutkontrol.
-
-- Alle kandidater begynder ved samme uændrede posterior; parameter/state-
-  afhængigheden bevares. Input og output bindes til præcise kilde-/inputhashes.
-- M254257/513-forfining, FV-reference og ændret costpartition kontrollerer
-  de frosne valgte priser. Ingen fine/FV-udvælgelse af nye vindere.
-- Gem projektions-L1 og optimalitetskontrol for hver hypotese **under**
-  forward og Bayes. En manglende audit er ikke en nulfejl.
-- Bevar de relevante eksisterende numeriske tolerancer: masse 1e-9,
-  conditional/marginal/projektions-L1 .05, bankvægte .03, log-evidence .05,
-  middelstate/demand .005, varians .002 og J-forskel max(.001,.02*abs(fine_J)).
-  Eksisterende CDF-/kvantilchecks bevares, hvor de bruges. Definitioner og
-  faktisk omfang fryses før kørsel; tolerancer tilpasses ikke til resultater.
-- Én afgrænset rå EM-krydskontrol bruger koblede coarse/fine-steps og samme
-  starttræk/Brownian-støj mellem de sammenlignede priser. Brug eksisterende
-  fem gange 256 baner, stratificeret SE, ingen randkorrektion og de eksisterende
-  EM/FV-kriterier. Observationens støj har separat stream.
-- Gem en fuldstændig opdateret origin. Genindlæsning bevarer egne vægte,
-  koefficienter, basis og cutoff. Den sidste 2h-forward skal faktisk bruge
-  denne posterior, ikke den oprindelige t=12-law eller en kopieret FV-law.
-- Rapportér også hvis samme pris vælges før/efter observationen, eller
-  neutral er bedst. Det er ikke i sig selv en fejl eller en forbedringsclaim.
-
-**Færdig B** kræver en reel gennemført kort kæde, beståede deklarerede
-kontroller og en læsbar resultatsammenfatning. Hvis en gate fejler, gemmes
-resultatet som fejlet/ufærdigt, og kun den konkrete fejl undersøges indenfor
-reserven. Stor døgnaccept og historisk kontrolaccept står fortsat åbne.
-
-## 5. Arbejdsbudget og rækkefølge
-
-| Del | Planlagt tid | Konkret slutpunkt |
+| Del | Oprindeligt afsat | Slutpunkt/status |
 |---|---:|---|
-| Konkret WM/G-kobling for stokastik og frosne kontrakter | 0,5 h | Faktisk WM-kode gennemgået; fælles output/checks og forskelle er entydige. |
-| Historisk S3-indgang, snapshot og prognoseeksport | 2,0 h | Leverance A's kode og fokuserede kontraktchecks. |
-| Afgrænset WM-lignende stokastisk lag og output | 2,0 h | Den aftalte WM/G-kobling implementeret uden krav om parameterbank. |
-| Historisk eksempel og fælles relevante stokastiske checks | 1,0 h | Gemte råresultater, numeriske checks og ærlig status. |
-| Samlet gennemgang, fælles outputkontrol, dokumentation og merge | 1,0 h | Brugbar startvej, figurer og genoptagelsesnoter. |
-| Reserve til konkrete fejl, inputadgang og uventet køretid | 1,5 h | Kun nødvendige rettelser; ingen nye modeludvidelser. |
-| **I alt** | **8,0 h** | **Deterministisk grundversion med afgrænset WM-lignende stokastik.** |
+| WM/G-review og kontrakter | 0,5 h | Udført; findings og kontrolkvittering gemt. Faktisk samlet reviewtid er ikke målt. |
+| S3 fit/snapshot/predict | 2,0 h | Næste opgave; kode, snapshot, fokuserede kontraktchecks. |
+| Variansfit og afgrænset støjpilot | 2,0 h | Implementeret metode, checks og gyldig/underkendt status. |
+| Historisk eksempel og fælles outputs | 1,0 h | Rigtige data/resultater, scorer og figur. |
+| Samlet brugsvej, review og merge | 1,0 h | Dokumentation og færdige dele integreret; eksisterende styringsvej henvist. |
+| Reserve | 1,5 h | Konkrete fejl og inputadgang; ingen udvidelser. |
+| **Oprindelig ramme** | **8,0 h** | **Ingen automatisk nulstilling af arbejdsbudgettet.** |
 
-Tiderne er estimater, ikke dokumenteret runtime. Kodningen behøver ikke vente
-på lange modelkørsler. Efter prognoseindgangen og det stokastiske lag føres en kort faktisk tidsstatus.
-Ved ca. 6,5 timer fryses nye funktioner; resten bruges til at få de aftalte
-forløb til at virke og til at dokumentere dem. En forventet overskridelse
-forklares med konkret blokering og mindst nødvendige ekstra arbejde;
-rammen udvides ikke stiltiende.
+Tallene er estimater, ikke målt forbrug. Vi kan ikke udlede præcis resterende
+tid fra dem. Registrér faktisk tid fra næste trin og efter hver del;
+fratræk kendt forbrug fra rammen. Omkring 6,5 h fryses nye funktioner.
+Kørsler får eget konkret loft med tid til eksport; ingen skjulte retries.
+Det gamle G-forsøgs 1927.3372718589885/1930 s ledger forbliver historik.
+Nye udviklingskørsler registreres særskilt, ikke som omskrevet gammel accept.
 
-Numeriske budgetter fryses for hver konkret invocation med reserve til
-stop og eksport. Mål repræsentativ køretid for den valgte WM-lignende vej
-før større kørsler. Hvis parameterbankbisporet senere køres, omfatter dets
-rateenhed alle fem knuder, ikke kun den billigste. Ingen gentagne automatiske
-retryforsøg, skjulte budgetnulstillinger eller store globale søgninger.
-Et afsluttet job genbruges kun under den samme verificerede kontrakt.
+## 6. Klar til fortsættelse
 
-Den gamle forskningskampagnes debit 1927.3372718589885 af loft 1930 s
-og alle dens hændelser bevares som historik. Johans nye arbejdsramme
-autoriserer arbejdet med denne grundversion, men gør ikke det gamle
-døgnforsøgs rate-/inputkontroller beståede. Nye udviklingschecks og den
-afgrænsede demos konkrete compute-scope registreres særskilt, med reference
-til denne bestilling; de bogføres ikke ved at omskrive gamle ledgerfiler.
+Næste trin køres i **denne G-chat, GPT-6.1 Sol, High** med
+[den færdige arbejdsinstruks](G_NEXT_STEP_20261008.md). Ingen ny generel
+planrunde eller godkendelse er nødvendig. Færdige egne branches merges
+efter relevante kontroller som autoriseret af Johan.
 
-## 6. Bevidst udskudt
-
-- Det fulde 24h-forsøg med to kontinuerte søgninger og den store 16-jobgraf.
-- Historisk interval-likelihood og en samlet historisk fit→filter→styringskæde.
-- Flere parametre i banken, ny basis, nye kurvefamilier, lambda-søgning,
-  globale optimizerstudier og gentagne MPC-cykler.
-- Profit-/indkøbsmodeller og nye risikomål.
-- Bredt måneds-/årsbenchmark, nye blinde testperioder og endelig WM-rangering.
-
-Den nye prioritering erstatter de ældre planers krav om fuld G6b/G8/G7-bankkæde
-som adgang til en færdig grundversion. Eksisterende kode og evidens bevares;
-udsættelse af bisporet er ikke en påstand om, at dets numeriske gates består.
-
-## 7. Holdested til næste arbejdspas
-
-Reviewet er færdigt på den angivne kilderevision; 39 afgrænsede tests består.
-Modelkode er uændret i reviewleverancen. **Første implementering er den
-selvstændige S3 fit/snapshot/predict-vej**. Før stokastikken implementeres
-videre, gennemgås WM's faktiske stokastiske kode og checks og kobles til G.
-Parameterbankdemo og nyt G7-døgnforsøg er ikke næste obligatoriske opgave.
-
-Find/verificér det konkrete historiske input og eventuelle komplette
-S3-arkiv, mens den lille indgang bygges. Hvis dataenes måleenhed eller
-timeintervalfortolkning ikke kan genfindes, behold den eksisterende tydeligt
-mærkede udviklingskontrakt og spørg Johan om den manglende metadata;
-opfind ingen fysisk enhed. Der er ikke behov for at bede om en ny godkendelse
-af den allerede valgte otte-timers-afgrænsning eller af rutinemæssige fixes.
-
-Gem efter hver færdig del: hvad der virker, udførte checks, resterende
-begrænsninger, faktisk tidsforbrug og præcist næste trin. Færdige egne
-branches merges efter relevante kontroller som tidligere instrueret.
+Udskudt: parameterbank/filterdemo, fuldt G7-døgnforsøg, historisk
+interval-likelihood, nye kurvefamilier, global parametersøgning, nye
+risikomål, bredt benchmark og F's undersøgelser. Deres eksisterende kode,
+evidens og åbne gates bevares. Grundversionen er færdig, når prognosevejen,
+det gyldige afgrænsede støjlag og deres aftalte checks virker; en afvist
+støjapproksimation alene opfylder ikke dette færdigkriterium.
