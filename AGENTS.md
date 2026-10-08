@@ -1,3 +1,19 @@
+## Aktuel G-status: grundimplementering og procesvej udført, 8. oktober 2026
+
+S3 fit/snapshot/predict/score er færdig. Ny separat FV-procesvej beregner
+middel/varians/kvantiler ved eksplicit sigma uden refit; 16 fokuserede
+S3/proceskontroller består. Feb7 processcenarie sigma=.2 består numerik,
+mens det historiske støjfit afvises (Pmax28.744>.25; 657/720 point-supportbrud).
+Observeret bånddækning4.17%; ingen kalibrerings- eller totalusikkerhedsaccept.
+Johan oplyser: timeværdi er forbrug over en time; Demand er efter hans
+erindring Power. Præcis enhed og intervaloperator er næste faglige opgave;
+afleveret point-output er fortsat deklareret udviklingsapproksimation.
+Læs root/G_S3_UNCERTAINTY_GUIDE_20261008.md og opdateret G_NEXT_STEP.
+Grundmilepælen er afleveret; ingen ny fit/støjsøgning/bank/F-opgave automatisk.
+Rå input-/tidsseriepakker forbliver lokale; kode og aggregerede resultater
+må sendes og merges efter Johans eksplicitte tilladelse. Tidligere G-status
+nedenfor er historik. F-status og F-budget bevares selvstændigt.
+
 ## F4: kørbar forsøgsudgave prioriteret af Johan, 8. oktober 2026
 
 Johan har bedt om den korteste vej til selv at kunne køre F4 på datasættene

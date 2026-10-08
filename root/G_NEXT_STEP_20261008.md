@@ -1,4 +1,20 @@
-# Næste trin: selvstændig S3 fit/snapshot/predict
+# Seneste holdested: grundimplementering afleveret, intervaloperator næste faglige trin
+
+S3 fit/snapshot/predict/score og en afgrænset, kontrolleret FV-procesvej er
+nu implementeret. Se [samlet brug, matematik og faktisk status](G_S3_UNCERTAINTY_GUIDE_20261008.md).
+Historisk støjfit er afvist; eksplicit valgt sigma er et processcenarie,
+ikke et accepteret kalibreret bånd for målingerne. Johans nyeste oplysninger:
+timeværdien dækker forbrug over en hel time; Demand er efter hans erindring
+Power. Verificér præcis enhed og brug derefter en timeintervaloperator.
+Punktoutput er fortsat deklareret udviklingsapproksimation. Stokastiske
+timegennemsnit kræver tidskovarians/integreret output; de kan ikke rekonstrueres
+korrekt fra FV-marginalbånd alene. Ingen sådan udvidelse er udført nu.
+
+Den første praktiske milepæl er færdig. Denne G-chat, Sol High, er fortsat
+passende til almindelig implementering. F/bank/BM2 er særskilte spor.
+Instruksen nedenfor er historisk og allerede udført, ikke en bestilling om refit.
+
+# Historisk arbejdsinstruks: selvstændig S3 fit/snapshot/predict
 
 Seneste præcisering fra Johan: Førsteprioriteten er fungerende G-kode,
 som kan køres, undersøges og senere udvides med BM2 eller flere parametre.
