@@ -1,3 +1,14 @@
+## G7 genoptaget efter slettet chat 8 oktober 2026
+
+Holdested: root/G7_DAY_COMPLETION_REVIEW.md; fixturekontrol består,
+numerisk døgnforsøg og16 kompatible rater er stadig åbne. Git-arkivets
+50 filer/41 kilder og begge M254-origins vedtime12 er hashkontrolleret og
+gendannet. De to egne FV-filterorigins kræver originale G8-råreferencer
+fra Library. Auxiliary-FV-forwards startede fra M254-inputs og må ikke
+ommærkes til egne FV-filterposteriorer. Ingen nye modeljobs/projektioner,
+ingen budgetændring eller scienceaccept. Læs root/G7_CHAT_RECOVERY_20261008.md
+og root/g7/day_origin_recovery_20261008.json. F/WM-status bevares nedenfor.
+
 ## F4-H2: 48-kaldstrace; terminalt mappetab, 8. oktober 2026
 
 Den godkendte20h-fortsættelse er kørt; PR123 sikrer checkpoint07–12 og
