@@ -63,7 +63,7 @@ SHA25638781041efea0274a71cf438de5bea5341fb834d8d98b1c41ce3695db222e0c3,
 | Bevaret H-charge efter PR123 |46710.38319202991|
 | Første source/input-preparation inkl. timestamprettelse |5|
 | Prepare/adoption/tracekontrol |3.8554854530011653|
-| Production-startstop,0 nye modeljobs |3.3295204859968215|
+| Production-startstop,0 nye modeljobs |3.329520485998728|
 | Durable raw/adoption/ZIP-audit |1.4782123219993082|
 | Ancillary restoration/static closure |2|
 | Importkontrolens fuldt bevarede watchdogreservation |5|
