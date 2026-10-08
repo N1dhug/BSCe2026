@@ -1,4 +1,28 @@
-## Aktuel G-status: afgrænset fælles timebenchmark udført, 8. oktober 2026
+## Aktuel G-status: rullende ugedagsfit og frosne bånd udført, 8. oktober 2026
+
+Johan bestilte flere testperioder/bånd og præciserede fem matchingweekdaydage
+til fit, sjette uge test, derefter vinduet en uge frem. Ny separat indgang
+`g_weekday_period` tilpasser baseline/G/WM separat pr. ugedag; samme G/WM-
+baseline og femugersskala. Seks kronologiske origins er kørt; tre tidligere
+testuger kalibrerer, tre senere vurderer samme frosne regel. Egen ugeY er
+udelukket fra fit; senere rollingfits må kausalt bruge tidligere testuger.
+46 fokuserede tests består. Endelige60/120exports består mean/timebalance;
+originalfits/checkpoints/failures bevares. Én savedconverged coarsefit blev
+numerisk kontrolleret uden nye optimizerkald; en eksplicit WMcall-extension
+inkluderer gammel failure og deler oprindelig wallcap. Se protokol/guide.
+
+Læs `root/G_WEEKDAY_ROLLING_GUIDE_20261008.md`,
+`root/G_MULTIPERIOD_BANDS_PROTOCOL_20261008.md` og nyeste `G_NEXT_STEP`.
+Nye numeriske resultater, rawdata, bank/snapshots/figurer og pakke er lokale
+under G-weekday-bands-20261008, ikke godkendt til ekstern metricpublicering.
+Kode/protokol/generiske guides må merges. Gamle interval/FV/G7/F/WM-kilder
+er uændrede; samtidig WM-MPC-arbejde bevares. Betydningen af Demandenhed/
+labels er fortsat arbejdsantagelse. Dækning er udviklingsdiagnose, ikke
+universel95%- eller fysiskstyringsaccept. F/bank/BM2 er separate spor;
+oprindelig8h og tidligere forbrug nulstilles ikke. Stop nye studier her,
+til Johan vælger næste ændring. Historiske instrukser/statusser følger.
+
+## Historisk G-status: afgrænset fælles timebenchmark udført, 8. oktober 2026
 
 Johan bad om fortsættelse til G/WM. Ny separat `src.exe.run_model.bm_1.g_wm_hourly`
 bruger same frozenbaseline/scales/cutoff/population/weatherprice/timeoperator.

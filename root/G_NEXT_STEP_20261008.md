@@ -1,4 +1,30 @@
-# Seneste holdested: afgrænset G/WM-timebenchmark udført
+# Seneste holdested: bestilt rullende ugedagsserie og bånd udført
+
+Johans seksugersregel er implementeret: fem matchingmandage/tirsdage/etc.
+til baseline og separate G-/WM-parameterfit; sjette uge forecast/test;
+vinduet flyttes en uge. Seks egne origins er kørt. Tre tidlige testuger
+kalibrerer standardizedabsoluteerrorbands; samme q bruges på tre senere
+testuger. Alle deres bandforecasts er frosset før senere Y-scoring.
+
+[Matematik/brug](G_WEEKDAY_ROLLING_GUIDE_20261008.md) og
+[aktiv protokol](G_MULTIPERIOD_BANDS_PROTOCOL_20261008.md) samler kalender,
+træningsmasker, baseline/skala, ligninger, coarse/finechecks, snapshots,
+solverbudgetundtagelser, outputlag og finite-rank-båndets præcise begrænsning.
+46 fokuserede tests består; endelige numeriske checks består. Originale
+fits/failures/receipts bevares; færdige fit gentages ikke. Ingen gamle
+snapshots relabelled og ingen targetstyret q-retuning.
+
+Nye resultater/plots/scoredCSV/alle rå artefakter og samlet pakke forbliver
+lokale i `G-weekday-bands-20261008`; se dens `RESULTATER.md`/`results.json`.
+Repoet indeholder alene kode/protokol/generiskguide/syntetiske tests.
+De fire tidligere observationspunkter er nu afgrænset således: flere
+perioder/båndforsøg udført; metadataverifikation og praktisk styringsgevinst
+er stadig særskilte, ikke startet. Båndets empiriske vurdering indebærer
+ingen universel95%-accept. Baseline/parameteridentifikation kan undersøges
+ved et senere brugerønske; ingen automatisk ny variant/familie/F/bank/BM2.
+Oprindelig8h-ramme og tidligere tidsforbrug bevares; tidlig reviewtid umålt.
+
+# Historisk holdested: afgrænset G/WM-timebenchmark udført
 
 Johan fortsatte på Sol High. [Fælles timebenchmark](G_WM_HOURLY_GUIDE_20261008.md)
 er implementeret/kørt med same frozenbaseline/scales/cutoff/population og
