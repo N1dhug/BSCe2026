@@ -6,10 +6,9 @@ De fysiske parametre er faste nominelle antagelser. Første korte kørsel bruger
 
 ## Første kørsel
 
-Åbn en terminal i projektets mappe. I denne lokale kopi er det:
+Åbn en terminal i repositoryets rod (mappen med `src`, `root` og `files`):
 
 ```powershell
-Set-Location 'C:\Users\jvils\.codex\.chatgpt-projects\g-p-6aaef4dd0ec48191922398dc4cb17b90\F4_code'
 python -m src.exe.run_model.bm_1_f4 --check
 python -m src.exe.run_model.bm_1_f4
 ```
@@ -19,14 +18,17 @@ automatisk projektets rod og videresender samme argumenter, f.eks.
 `./run_f4.cmd --config root/f4_week.json --resume`.
 
 `--check` læser og kontrollerer de valgte input uden at starte modelberegninger.
+Terminalen viser den effektive filter-/prognoseperiode og det gemte fits cutoff.
+Der udføres intet nyt parameterfit.
 Første beregning kan bruge ekstra tid på at kompilere den eksisterende Numba-kerne.
 Der installeres ingen pakker automatisk. Python 3.11/3.12 med NumPy, SciPy,
 Pandas, OpenPyXL, Matplotlib og Numba er nødvendigt for denne indgang.
 
 Resultater ligger som standard i `files/output/bm_1/runs/f4_quick`:
 
-- `predictions.csv`: prognose, baseline, observationer, tilstand, varianser og
-  5/50/95%-kvantiler ved de valgte prognosetimer.
+- `predictions.csv`: lokale og UTC-tidsstempler for intervalstart/-slut,
+  prognose, baseline, observationer, tilstand, varianser og 5/50/95%-kvantiler
+  ved de valgte prognosetimer. Enhedsnavnene bygger på antagelsen nedenfor.
 - `comparison.png`: demand og tilstand over tid. Den lodrette streg er forecast-origin.
 - `summary.json`: status, målefejl og antal færdige timer.
 - `manifest.json`: konfiguration, model, inputidentiteter og kildeidentiteter.
@@ -38,6 +40,18 @@ Resultater ligger som standard i `files/output/bm_1/runs/f4_quick`:
 Ret `root/f4_quick.json`, eller kopier filen og brug `--config din_config.json`.
 Relative input-/outputstier regnes fra projektets rod; selve `--config` kan være
 en absolut sti eller en sti fra terminalens aktuelle mappe.
+
+Datoer, horisont, model og grid kan også ændres direkte. Eksempel på inputkontrol:
+
+```powershell
+python -m src.exe.run_model.bm_1_f4 --filter-start 2022-02-21T00:00:00+01:00 --forecast-origin 2022-02-21T02:00:00+01:00 --forecast-hours 6 --model fitted --grid base --output files/output/bm_1/runs/f4_six_hours --check
+```
+
+Fjern `--check` for at beregne. Argumenterne har forrang for konfigurationen.
+Brug `--model fitted linear` for begge modeller. Der er ingen `--week`, fordi
+F4 genbruger et fast fit; WM4's `--week` vælger derimod fit-ugen. Den fælles
+ugedagskalender har endnu ingen F-estimator, som fitter på fem historiske
+mandage osv. Det faste F4-fit må ikke betegnes som et sådant ugedagsfit.
 
 | Felt | Betydning |
 |---|---|
@@ -59,7 +73,7 @@ Eksplicitte UTC-offsets kan bruges. Det gemte kurvefit har informationscutoff
 er frosset på historik frem til 16. februar. Filtrering må ikke starte tidligere.
 
 `root/f4_week.json` er et eksempel med 24 timers filtrering efterfulgt af
-168 timers prognose, for både fitted og lineær model:
+168 fysiske timers prognose, for både fitted og lineær model:
 
 ```powershell
 python -m src.exe.run_model.bm_1_f4 --config root/f4_week.json
@@ -75,7 +89,7 @@ Ved tidsstop er status `paused`, og programmet returnerer exitkode 2. Fortsæt:
 
 ```powershell
 python -m src.exe.run_model.bm_1_f4 --resume
-python -m src.exe.run_model.bm_1_f4 --config root/f4_week.json --resume --max-seconds 1800
+python -m src.exe.run_model.bm_1_f4 --config root/f4_week.json --resume --max-seconds 600
 ```
 
 Du kan også afbryde med Ctrl+C eller oprette en fil med navnet `STOP` i
@@ -83,11 +97,25 @@ resultatmappen. Fjern `STOP` før fortsættelse. Der gemmes efter hver færdig t
 en halvfærdig time må beregnes igen. Tidsrammen kontrolleres før en ny time og
 under frekvensjobs; en igangværende skalarberegning kan afslutte efter rammen.
 Indlæsning af Excel-data og eksporter er uden for modeldelens tidsramme.
+Et fuldt F4-ugeforløb under ti minutter er endnu ikke dokumenteret; flere
+blokke eller en større `--max-seconds` er ikke bevis på, at målet er opfyldt.
+Denne oprydning giver ikke tilladelse til et nyt langt benchmark eller fit.
 
 Konfiguration, input, model og kildekode skal være identiske ved resume.
 Arbejderantal og tidsramme må ændres. Brug en ny outputmappe ved ændret periode
 eller model. Numeriske fejl giver `FAILED.json`; ret årsagen og brug en ny mappe.
 Der foretages ingen automatisk genstart efter en numerisk fejl.
+
+Resume-identiteten indeholder alle Python-filer under `src`, også filer uden
+for F. Ændret kildekode betyder derfor en ny kørsel. Gamle checkpoints bevares
+sammen med den oprindelige kildeversion og skal genoptages dér med samme
+konfiguration og input. Hashkontroller og gamle manifests må ikke omskrives
+for at indlæse dem med ny kode. Ved CLI-overrides skal de samme argumenter
+gentages ved `--resume`.
+En allerede færdig, kompatibel kørsel returnerer `complete` uden at ændre
+resultater eller tidskvitteringer. Identiteterne kontrolleres først. Hvis en
+færdig pakke mangler eksportfiler eller har modstridende status, afvises den;
+gendan originalpakken eller vælg en ny mappe frem for at overskrive den.
 
 ## Fremtidige priser
 
@@ -112,9 +140,13 @@ vurderes særskilt. Priser uden for den frosne normaliseringsskala afvises.
 
 ## Resultaternes betydning
 
-Målingerne fortolkes som kWh i en time med hour-start-tidsstempel.
+**Enhed og tidsmærkning er arbejdsantagelser, ikke verificerede målerdata.**
+Målingerne fortolkes foreløbigt som kWh i en time med hour-start-tidsstempel.
 Én times kWh er numerisk lig den gennemsnitlige kW i samme interval. Model og
 målinger sammenlignes på dette intervalgrundlag, ikke som punktmålinger.
+CSV-felternes `kW`/`kWh`-navne er bevaret af hensyn til eksisterende læsere;
+manifest, summary og figur angiver antagelsen. Et interval er altid én fysisk
+time `[timestamp, interval_end)`, også hen over et sommertidsskift.
 Gruppens time er manglende, hvis blot ét af de 13 MED-huse mangler. Tilstanden
 forudsiges gennem hullet uden en Bayes-opdatering; målinger udfyldes ikke.
 
@@ -126,6 +158,19 @@ læses først, når samtlige modelprognoser er gemt, og påvirker kun fejlmål/f
 Kvantilerne er marginaler for timegennemsnit med den deklarerede Gaussian
 observationsstøj, ikke samtidige bånd over hele ugen. De øvrige timer har mean
 og variance, men tomme kvantilfelter. Parameter- og inputusikkerhed er udeladt.
+5–95%-intervallet er et nominelt 90%-bånd; det har ingen dokumenteret
+dækningskalibrering og er ikke G's 2,5–97,5%-bånd.
+
+Summary viser RMSE, MSE, MAE og bias for model og baseline på samme observerede
+timer, særskilt for filter og forecast. Bias er prognose minus observation.
+`timing` viser sidste invocation og summen af gemte tidskvitteringer, inklusive
+inputkontrol og resultat-/figureksport ved CLI-kørsel. Interpreter-/modulimport
+og de sidste tidskvitteringers skrivning er udenfor. Direkte Python-kald til
+`run` medregner ikke en tidligere `prepare`; det fremgår af metadata.
+En hårdt dræbt proces kan mangle en tidskvittering. Det gamle `elapsed_seconds`
+er bevaret og omfatter kun den aktuelle `run` frem til CSV-/figureksport.
+Et egentligt ende-til-ende benchmark skal derfor stadig måles omkring hele
+kommandoen, med første kompilering og senere varm kørsel vist særskilt.
 
 Tilstanden starter på ny ved `filter_start`. Denne nye filtreringskørsel er
 ikke en gendannelse af H-studiets oprindelige cutoff-posterior. Vælg en længere
