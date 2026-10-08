@@ -1,3 +1,15 @@
+## Seneste G-prioritet: WM-lignende stokastik; parameterbank er bispor
+
+Johan har 8. oktober 2026 bekræftet: G har deterministisk grundlag, og dets
+stokastiske elementer skal introduceres relativt som i WM med sammenlignelige
+output og checks. Parameterbanken er fin som bispor/udvidelse, men er ikke
+hovedspor eller færdigkrav for grundversionen. Den faktiske stokastiske WM-kode
+og validering gennemgås før videre stokastisk G-implementering. Bevar eksisterende
+bank-/M254-kode og evidens; lad ikke dens forsøg blokere G eller bruge reserven
+automatisk. F's undersøgelser bliver fortsat ikke automatisk G-opgaver.
+Denne nyere instruktion afløser ældre krav nedenfor om obligatorisk bankdemo.
+Læs [den opdaterede aktive plan](root/G_COMPLETION_PLAN_8H_20261008.md), afsnit 0.
+
 ## F og G: særskilte formål, præciseret af Johan 8. oktober 2026
 
 G har et mere deterministisk grundlag; F har et mere stokastisk grundlag.
