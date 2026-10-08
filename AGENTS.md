@@ -1,3 +1,28 @@
+## F4-H2: takeover sikret; importkontrol kræver mere plads, 8. oktober
+
+Johan bad kl.17:08 om overtagelse efter at have forsøgt at stoppe sidste chat.
+Separat recovery under uændret20h/native1080s blev registered4da71be8;
+en fokuseret kontrol replayer48 cached COBYQA-kald præcist til kandidat49,
+verificerer1477+3655 rawfilhashes og exact-adoption/prior-dtype-rejection,
+med0 propagationer. Den første kontrol dækkede ikke hele importkæden.
+Én produktionsblok på27f23297 stoppede før nye modeljobs pga manglende
+src.tools.import_data.import_prices. Failure/report bevares; ingen retry.
+Recoverycheckpointet består raw/adoption/ZIP-audit på1.4782s og er holdbart
+sikret:libfile_6072a4db3f448191ac30dad9a9de061a, SHA38781041efea0274a71cf438de5bea5341fb834d8d98b1c41ce3695db222e0c3.
+65 F-importmoduler er siden statisk gendannet fra immutableb53e337b.
+Den særskilt registered5s importkontrol ramte watchdog; hele5s-charge og
+reserved-status bevares. Runtime-importaccept er derfor fortsatfalse.
+H46732.04641029091/72000s, native1078.9349914180398/1080s;1.065s tilbage.
+Gamle fejl, originalt terminalt run og alle reservationer er uændrede.
+V2-controller/proposal er konkret klargjort, statisk parset og approved=false:
+ny separate execution, +60s native til1140 inden samme20h/23:55/caps25/49,
+én15s prepare+import+adoption+tracekontrol før production,8s checkpointcap.
+Ingen V2-invocation eller ny modelpropagation er startet. Native-udvidelsen
+kræver eksplicit brugerbeslutning; den gamle generic resume ændrede ikke loftet.
+Læs root/F4_H2_FILESYSTEM_TAKEOVER_20261008.md og proposal/review-JSON.
+H/I/J/F4 er fortsat åbne. G/WM og droppede F4-G2b/G2c bevares.
+Følgende statusafsnit er historik.
+
 ## G7 genoptaget efter slettet chat 8 oktober 2026
 
 Holdested: root/G7_DAY_COMPLETION_REVIEW.md; fixturekontrol består,
