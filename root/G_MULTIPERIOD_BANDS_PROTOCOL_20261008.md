@@ -1,5 +1,22 @@
 # G: rullende seksugersvinduer og usikkerhedsbånd, revideret protokol
 
+## Endelig kalender efter ren datadækningskontrol
+
+Den krævede femugersserie har et rent manglende-demandhul Jan13–Jan17.
+Feb14-forsøget afviste derfor før første optimizerkald; dets failure/forbrug
+bevares lokalt. Det første fuldt målte femugersvindue begynder Jan24.
+**Aktive kalibreringsorigins: Feb28, Mar7, Mar14. Aktive evalorigins:
+Mar21, Mar28, Apr4. Frosset båndcutoff: Mar21.** Alle datoer er2022.
+Dette afløser datoerne i de tidligere afsnit, inden nye weekday-resultater
+undersøges. Valget skyldes kun observationers tilstedeværelse; ingen score-
+baseret ugeudskiftning. Stadig seks origins, syv separate fit pr. model/origin,
+samme pr. ugedag-caps og én uændret regel til de tre senere testuger.
+Spring-DST håndteres også i træningsvinduer: fysisk kalender839timer,
+ikke en opfundet02:00 eller demand-/prisfyldning. Komplette finite Price/Temp
+kræves; demandmasker bevares. Den tidligere naive January-skalering genbruges
+derfor ikke på vinduer, der krydser sommertidsdagen. Normaliseringsmatematikken
+og ex-ante-prisgrænserne er uændrede.
+
 ## Johans præcisering før den nye forsøgsserie
 
 Johan præciserede, at fem foregående mandage skal tilpasse mandagsmodellen,

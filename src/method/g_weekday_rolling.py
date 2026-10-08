@@ -39,7 +39,20 @@ def training_data(raw,origin):
     warmup=(start.tz_localize(interval.ZONE)-pd.Timedelta(hours=24)).tz_localize(None)
     train=train.loc[train.index>=warmup].copy()
     train.loc[train.index<start,'Demand']=np.nan
-    frame,scales=interval.prepare_frame(train,start,origin,price_bounds=(-500.,6000.))
+    # Physical calendar is essential when a training window crosses spring DST.
+    # The older January adapter's naive reindex would invent a missing02:00.
+    index=pd.date_range(warmup.tz_localize(interval.ZONE),origin.tz_localize(interval.ZONE),freq='h',inclusive='left').tz_localize(None)
+    if index.has_duplicates:raise ValueError('Ambiguous autumn local-hour labels are unsupported.')
+    train=train.reindex(index).apply(pd.to_numeric,errors='coerce').replace([np.inf,-np.inf],np.nan)
+    window=train.loc[train.index>=start]
+    if (window.Demand.count()<168 or not np.isfinite(train[['Price','Temp']].to_numpy(float)).all()
+            or window.Price.min()<-500 or window.Price.max()>6000):
+        raise ValueError('Need measured training demand and complete finite physical-hour Price/Temp within declared bounds.')
+    scales={'demand_min':float(window.Demand.min()),'demand_scale':float(window.Demand.max()-window.Demand.min()),
+        'price_min':-500.,'price_scale':6500.,'price_scale_source':'declared-ex-ante'}
+    if scales['demand_scale']<=0:raise ValueError('Training demand must vary.')
+    frame=pd.DataFrame({'I':(train.Demand-scales['demand_min'])/scales['demand_scale'],
+        'U':2*(train.Price+500)/6500-1,'Temp':train.Temp},index=train.index)
     return train,frame,scales,start,origin
 
 

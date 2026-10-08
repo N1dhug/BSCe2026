@@ -113,10 +113,10 @@ class BandTests(unittest.TestCase):
         packets=[packet(day,error=i+1.) for i,day in enumerate(bands.CALIBRATION_ORIGINS)]
         a=bands.calibrate(packets)['snapshot'];self.assertEqual(a['models']['g_prediction']['samples'],504)
         self.assertEqual(a['models']['g_prediction']['rank'],480)
-        for p in packets:p['observations']=pd.concat([p['observations'],pd.Series(1e20,index=pd.date_range('2022-03-07',periods=168,freq='h'))])
+        for p in packets:p['observations']=pd.concat([p['observations'],pd.Series(1e20,index=pd.date_range(bands.FREEZE_CUTOFF,periods=168,freq='h'))])
         self.assertEqual(a,bands.calibrate(packets)['snapshot'])
         with self.assertRaises(ValueError):bands.calibrate(packets[::-1])
-        with self.assertRaises(ValueError):bands.calibrate([packet('2022-03-07'),*packets[1:]])
+        with self.assertRaises(ValueError):bands.calibrate([packet(bands.EVALUATION_ORIGINS[0]),*packets[1:]])
         bad=deepcopy(a);bad['models']['g_prediction']['q']+=1
         with self.assertRaises(ValueError):bands.validate_calibration(bad)
         bad=packet('2022-03-07')['forecast'];bad['predictions']['g_prediction_output_variance']=0
@@ -138,10 +138,19 @@ class BandTests(unittest.TestCase):
             p=packet(day,error=[1.,2.,4.][i]);p['observations'].iloc[0]=np.nan
             result=bands.score_calibrated(bands.apply_calibration(p['forecast'],record),p['observations']);scored.append(result)
             self.assertEqual(result['scoring']['calibrated_bands']['g_prediction']['samples'],len(p['observations'])-1)
-        report=bands.pooled_report(scored);counts=np.array([167,167,166]);errors=np.array([1.,2.,4.])
+        report=bands.pooled_report(scored);counts=np.array([166,167,167]);errors=np.array([1.,2.,4.])
         self.assertAlmostEqual(report['metrics']['g_prediction']['rmse'],np.sqrt(np.sum(counts*errors**2)/counts.sum()))
         self.assertAlmostEqual(scored[-1]['scoring']['calibrated_bands']['g_prediction']['mean_interval_score'],84.)
         self.assertEqual(report['scored_samples'],500)
+
+    def test_training_calendar_skips_nonexistent_hour_without_price_filling(self):
+        index=pd.date_range('2022-02-20','2022-04-04',freq='h',inclusive='left')
+        index=index[index!=pd.Timestamp('2022-03-27 02:00')];n=np.arange(len(index))
+        raw=pd.DataFrame({'Demand':10+np.sin(n/3),'Price':100.,'Temp':5.},index=index)
+        train,frame,scales,start,origin=rolling.training_data(raw,'2022-04-04')
+        self.assertEqual(len(train.loc[train.index>=start]),839)
+        self.assertNotIn(pd.Timestamp('2022-03-27 02:00'),frame.index)
+        self.assertEqual(frame.loc[frame.index>=start].I.count(),839)
 
 
 if __name__=='__main__':unittest.main()

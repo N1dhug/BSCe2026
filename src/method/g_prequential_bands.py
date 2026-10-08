@@ -16,9 +16,9 @@ from src.method import bm_1_s3_interval as interval
 from src.method import bm_1_s3_residual as residual
 
 PROTOCOL='G-weekday-rolling-prequential-bands-v2'
-CALIBRATION_ORIGINS=('2022-02-14','2022-02-21','2022-02-28')
-EVALUATION_ORIGINS=('2022-03-07','2022-03-14','2022-03-21')
-FREEZE_CUTOFF='2022-03-07 00:00:00'
+CALIBRATION_ORIGINS=('2022-02-28','2022-03-07','2022-03-14')
+EVALUATION_ORIGINS=('2022-03-21','2022-03-28','2022-04-04')
+FREEZE_CUTOFF='2022-03-21 00:00:00'
 MODELS=('g_prediction','wm_prediction')
 
 
