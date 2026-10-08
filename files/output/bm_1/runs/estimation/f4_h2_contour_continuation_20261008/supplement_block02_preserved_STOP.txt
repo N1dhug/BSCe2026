@@ -1,0 +1,1 @@
+Explicit earlier pause for supplement block02; authorized ongoing continuation after preserving this marker. Model source and all cached jobs remain unchanged.
