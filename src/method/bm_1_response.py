@@ -11,15 +11,11 @@ from copy import deepcopy
 from time import perf_counter
 
 import numpy as np
-from scipy.optimize import minimize
 from scipy.special import softmax
 
-from src.method.bm_1_estimation import run_fv_filter
-from src.model.bm_1 import bm_1
 from src.params.bm_1 import BM1ObservationSeries
 from src.params.bm_1_interval import BM1IntervalObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
-from src.solver.finite_volume import finite_volume_1d_cached, finite_volume_1d_fitted
 from src.validation import estimation as checks
 from src.validation.model.bm import bm_validation
 
@@ -118,6 +114,10 @@ def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
     Vectorized input sampling retains the identical solver grid and exact cache
     keys. It never shares an operator or posterior across curve candidates.
     """
+    from src.method.bm_1_estimation import run_fv_filter
+    from src.model.bm_1 import bm_1
+    from src.solver.finite_volume import finite_volume_1d_cached, finite_volume_1d_fitted
+
     if not isinstance(record, CurveTrainingRecord):
         raise TypeError('A declared curve training/development record is required.')
     cells = checks.positive_integer(cells, 'cells', minimum=3)
@@ -189,6 +189,8 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
     to source/data/numerics first. A per-invocation pause never expands the total
     candidate budget or claims optimizer success.
     """
+    from scipy.optimize import minimize
+
     # Validate the family and all starts before doing any likelihood work.
     pieces = checks.positive_integer(pieces, 'pieces', minimum=2)
     curve_pair_from_logits(np.zeros(2*(pieces-1)), pieces)

@@ -3,7 +3,7 @@ from time import perf_counter
 import unittest
 import numpy as np
 from src.exe.run_model.bm_1.curves import _NumericalJobs
-from src.validation.bm_1.response_jobs import run_h1_job
+from src.validation.bm_1.response_numerics import run_h1_job
 
 class HParallelTests(unittest.TestCase):
     def specs(self):

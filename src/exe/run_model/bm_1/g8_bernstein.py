@@ -16,7 +16,7 @@ import scipy
 from src.exe.run_model.bm_1.g8 import plain, TOLERANCES, retain_bank, compare
 from src.exe.run_model.bm_1.g8_basis import node_comparison, projection_max
 from src.method.bm_1_g8 import context, bank_filter, G8BankOrigin, RHO_VALUES
-from src.method.bm_1_g8_bernstein import BASIS_KIND
+from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND
 from src.params.bm_1 import BM1ObservationSeries
 
 

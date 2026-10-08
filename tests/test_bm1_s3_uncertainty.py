@@ -18,7 +18,7 @@ from src.method.bm_1_s3_uncertainty import (
 from src.method.bm_1_deterministic_response import BM1ResponseInputs
 from src.params.bm_1_response import BM1PiecewiseResponse
 from src.model.bm_1 import bm_1
-from src.exe.run_model.bm_1.s3_uncertainty import main
+from src.exe.run_model.bm_1.s3 import main
 
 
 class S3UncertaintyTests(unittest.TestCase):
@@ -114,9 +114,58 @@ class S3UncertaintyTests(unittest.TestCase):
             root=Path(d);save_snapshot(root/'s.json',self.snapshot)
             self.raw[['Price','Temp']].to_csv(root/'inputs.csv',index_label='Datetime')
             with redirect_stdout(io.StringIO()),redirect_stderr(io.StringIO()):
-                code=main(['predict','--snapshot',str(root/'s.json'),'--inputs-csv',str(root/'inputs.csv'),
+                code=main(['point-process','predict','--snapshot',str(root/'s.json'),'--inputs-csv',str(root/'inputs.csv'),
                     '--sigma-x','0','--output',str(root/'out'),'--observations-csv',str(root/'missing.csv')])
             self.assertEqual(code,2);self.assertTrue((root/'out/forecast.json').exists())
+
+
+class S3CommandTests(unittest.TestCase):
+    def test_variants_keep_explicit_observation_semantics(self):
+        from src.exe.run_model.bm_1.s3 import parser
+        common = ['--snapshot', 'saved.json', '--inputs-csv', 'inputs.csv', '--output', 'out']
+        interval = parser().parse_args(['interval', 'predict', *common])
+        self.assertIsNone(interval.sigma_x)
+        process = parser().parse_args(['point-process', 'predict', *common, '--sigma-x', '.2'])
+        self.assertEqual(process.sigma_x, .2)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser().parse_args(['point-process', 'predict', *common])
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser().parse_args(['residual', 'diagnose', *common])
+
+    def test_all_prediction_variants_persist_before_target_access(self):
+        from contextlib import ExitStack
+        from src.exe.run_model.bm_1.s3 import parser, _predict
+        cases = [
+            ('point-process', ['--sigma-x', '.2'], 'bm_1_s3_uncertainty.process_forecast'),
+            ('interval', [], 'bm_1_s3_interval.predict_interval'),
+            ('interval', ['--sigma-x', '.2'], 'bm_1_s3_interval_process.process_interval'),
+            ('residual', ['--residual-snapshot', 'r.json'], 'bm_1_s3_residual.predict_residual'),
+        ]
+        for variant, extra, function in cases:
+            with self.subTest(variant=variant, extra=extra), ExitStack() as stack:
+                events = []
+                snapshot = {'unchanged': 'saved snapshot'}
+                inputs = object()
+                result = {'unchanged': 'numerical result'}
+                args = parser().parse_args([variant, 'predict', '--snapshot', 's.json',
+                    '--inputs-csv', 'inputs.csv', '--output', 'out',
+                    '--observations-csv', 'missing.csv', *extra])
+                stack.enter_context(patch('src.tools.bm_1_deterministic_data.raw_csv', return_value=inputs))
+                stack.enter_context(patch('src.method.bm_1_s3_forecast.load_snapshot', return_value=snapshot))
+                stack.enter_context(patch('src.method.bm_1_s3_interval.load_snapshot', return_value=snapshot))
+                stack.enter_context(patch('pathlib.Path.read_text', return_value='{}'))
+                predict = stack.enter_context(patch('src.method.'+function, return_value=result))
+                write = stack.enter_context(patch('src.exe.run_model.bm_1.s3_forecast.write_forecast',
+                    side_effect=lambda *a, **kw: events.append('forecast persisted')))
+                def open_targets(*a, **kw):
+                    self.assertEqual(events, ['forecast persisted'])
+                    raise FileNotFoundError('missing target file')
+                stack.enter_context(patch('pandas.read_csv', side_effect=open_targets))
+                with self.assertRaises(FileNotFoundError):
+                    _predict(args, Path('out'))
+                self.assertIs(predict.call_args.args[0], snapshot)
+                self.assertIs(predict.call_args.args[-1], inputs)
+                write.assert_called_once_with(Path('out'), result)
 
 
 if __name__=='__main__':unittest.main()

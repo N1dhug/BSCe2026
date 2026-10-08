@@ -15,7 +15,7 @@ from src.exe.run_model.bm_1.g8_bernstein import SolverAudit, save_partial, sha, 
 from src.exe.run_model.bm_1.g8 import summarize, compare, TOLERANCES
 from src.exe.run_model.bm_1.g8_basis import node_comparison, projection_max
 from src.method.bm_1_g8 import bank_filter, context, G8BankOrigin, RHO_VALUES
-from src.method.bm_1_g8_bernstein import BASIS_KIND
+from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND
 from src.params.bm_1 import BM1ObservationSeries
 
 
