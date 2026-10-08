@@ -1,0 +1,17 @@
+{
+  "schema": "g7-day-completion-artifact-location-v1",
+  "archive_name": "day_completion_artifacts_20261008.zip",
+  "archive_bytes": 17444,
+  "archive_sha256": "2b475d9ef9efd79d5bc332f9344b88152f06f36ac4a5adba3a774596f073a521",
+  "previous_archive_library_file_id": "libfile_6a350bb71ec88191a93c1507d4229436",
+  "previous_archive_contains_all_original_fixture_receipts": true,
+  "items": {
+    "registration.json": "13bde6dcc79a82f152d123e89aae3b4faef3807b32296aa4d623f1843e56696c",
+    "review_result.json": "c21a068f788f19c8cd11f84038bee629c32bdcaa81e53079885eae3e9495a4f8",
+    "invocation.json": "2453e9a6c99a951ba2eb6e89d2da4781ca7c7d98a0165edb5ecc64ef5c5bee7e",
+    "parent_result.json": "c7755b78f2347b18c23ed81771e14aa5a6e6eb25b2f206824b3d51b4de0bc934",
+    "check.log": "c21a068f788f19c8cd11f84038bee629c32bdcaa81e53079885eae3e9495a4f8"
+  },
+  "archive_library_file_id": "libfile_f8884a773f8481919e0e90e00eedcaff",
+  "archive_library_path": "/BSCe Batterimodel 2026 det/day_completion_artifacts_20261008.zip"
+}
