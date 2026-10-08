@@ -1,3 +1,34 @@
+## F4-H2: godkendt tofamilie-modelvalg og ugeprognose frosset, 8. oktober
+
+Johan kl.17:54: "denne agraensing godkender jeg, fortsaet". Studiet beholder
+lineær/tostykke; firestykkers49-kalds maxfev-resultat forbliver ufuldstændigt.
+Separat scope/admission a6b9ead6 og own cached base/fine TRAIN48/selection24
+består med0 propagationer. Begge grids vælger tostykkemodellen uden ambiguity:
+selection-logscore base23.2678879187 mod lineær13.7893997938;
+normaliseret RMSE .0721944742 mod .0860703965. Ingen ny optimizerkørsel.
+JSON-nøglers int→string krævede separat V2-repræsentationsrettelse; oprindelig
+kontrol,0-job-failure og forkert admissionargument/charges er bevaret.
+V2 gemte500 nye open-forecastjobs, men worker-pool-close hang efterdeadline;
+watchdog124, fuld600s-reservation/statusreserved bevares. Ingen rawjobfailure.
+Separat V3 bevarer samme manifest/tokens/source/data/modelvalg. Bounded close
+afprøvet mod faktisk2-worker-pool med pending nonmodeltask:2.0017s,0 modeljobs.
+V3 gennemførte de sidste200 jobs og afsluttede normalt. Alle700 open-jobs,
+begge egne grids,168h og CDF-horisonter1/6/12/24/48/72/168 består. Forecast-
+freeze4f78a4f6 og conditional handoffca358bc3 er sikret før slutdataadgang.
+Alle168 final-observationer21.–28.februar2022 er derefter eksporteret fra
+originalt hashverificeret workbook; finalprequential evaluering er IKKE kørt.
+Checkpoint01/02/03 er durable og raw/adoption/CRC-auditerede;03 udelader kun
+hash-identisk allerede gemt metadata via eksplicit tidligere-arkivafhængighed.
+H48259.3884600449/72000s, native1124.6457150090405/1140s; alle gamle charges
+og failures er præcist bevaret. Numbeholdte kilde-/præcisionsgates er uændrede.
+Næste er betinget finalprequential gren fra begge egne cutoff-states; frosset
+open-forecast/modelvalg ændres aldrig. Derefter faktisk H→I-originreview,
+selvstændig I-admission/evidens og J-review. H/I/J/F4 er stadig åbne.
+Scope er godkendt indsnævret development-studie, ikke oprindeligt trefamilie-H,
+blind holdout eller populationskalibrering. G/WM og droppede G2b/G2c bevares.
+Læs root/F4_H2_TWO_FAMILY_PREFINAL_20261008.md og scope-/checkpointreferencer.
+Følgende statusafsnit er historik.
+
 ## F og G: særskilte formål, præciseret af Johan 8. oktober 2026
 
 G har et mere deterministisk grundlag; F har et mere stokastisk grundlag.
