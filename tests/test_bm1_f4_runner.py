@@ -60,6 +60,13 @@ class PortableF4Tests(unittest.TestCase):
         self.assertIn('Working assumption', plan['observation_contract']['unit_status'])
         self.assertIn('validating input/workbook metadata', progress.getvalue())
         self.assertIn('input control complete in', progress.getvalue())
+        phases = plan['preparation_phases']
+        self.assertEqual([p['phase'] for p in phases],
+            ['input_hash_before', 'demand_input', 'price_input', 'input_hash_after', 'source_model_hash'])
+        self.assertTrue(all(p['seconds'] >= 0 and p['status'] == 'complete' for p in phases))
+        self.assertTrue(all(pd.Timestamp(p['started_at_utc']).utcoffset().total_seconds() == 0 for p in phases))
+        self.assertIn('demand_input started', progress.getvalue())
+        self.assertIn('source_model_hash complete', progress.getvalue())
         for args, message in [(['--workers', '0'], 'positive integer'),
                               (['--max-seconds', 'nan'], 'finite and at least 15'),
                               (['--forecast-hours', '0'], 'positive integer'),
@@ -146,6 +153,12 @@ class PortableF4Tests(unittest.TestCase):
             self.assertEqual(pd.Timestamp(row['timestamp_utc']), pd.Timestamp(row['timestamp']))
             self.assertEqual(pd.Timestamp(row['interval_end_utc']), pd.Timestamp(row['interval_end']))
             summary = json.loads((a/'summary.json').read_text())
+            phases = summary['timing']['last_invocation_phases']
+            self.assertEqual([p['phase'] for p in phases],
+                ['filtering', 'forecast', 'forecast', 'evaluation_input', 'worker_shutdown', 'export'])
+            self.assertTrue(all(p['seconds'] >= 0 and p['status'] == 'complete' for p in phases))
+            receipts = runner._read_array_checkpoint((a/'checkpoint.npz').read_bytes())['invocation_timings']
+            self.assertEqual(receipts[-1]['phases'], phases)
             forecast = sa['rows'][1:]
             error = np.array([r['prediction_kW']-r['observed_kWh'] for r in forecast])
             baseline_error = np.array([r['baseline_kW']-r['observed_kWh'] for r in forecast])
