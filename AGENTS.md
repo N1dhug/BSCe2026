@@ -1,3 +1,32 @@
+## F4-H2: kandidat49 fuldt sikret; maxfev-stop, 8. oktober 2026
+
+Johan: "du gaar bare igang" godkender det konkrete +60s-forslag:
+native1140s inden uændret H72000s/23:55 Copenhagen/caps25/49/pair73.
+Præregistrering e33b3d3d; V2-startup ramte file-lock-path før reservation.
+Separat V2a80646167 retter kun stdlib-låsesti; fejl og konservativ charge bevares.
+Samlet import/adoption/rawhash/48-kalds-replay består på2.3338s,0 propagationer.
+Kontrol/manifest registered cdf7d379 før production. Første admission afviste
+forkert kontrolargument før Engine;2.8376s-charge og fejl er bevaret.
+Korrekt invocation gennemførte72 nye råjobs for kandidat49 på465.7950s;
+lineær/tostykke egen validering blev adopteret, ingen gamle successjobs genkørt.
+COBYQA nfev49/status5/maxfev: converged=false. Bedste TRAIN objective
+-43.348281253447624, score47.04005545171794, penalty3.691774198270319.
+Dette er ikke numerisk kernesvigt eller bevis for dårlig model; convergence
+mangler. Ingen firestykkers egen fine-validering, selectionfreeze, ugeforecast,
+slut-Y-decode eller H/I/J/F4-accept. Ingen automatisk retry/capændring.
+Alle72 nye rawjobs og427 adoption receipts består checkpointaudit/ZIP-CRC
+på3.8068s. Arkiv libfile_f5c64d9cada08191829336f7ba67f3a1,
+SHA26b7120ae163abb21cc60da0337f61b85a1716f3c7cc13363f776aac76294263.
+Original kandidat48's11 tabte råtimer er stadig tabt; ingen genfundsclaim.
+Autoritativ lukket v6-ledger: H47211.81961026791/72000s,
+native1090.0755659060392/1140s; rest24788.18038973209/49.9244340939608s.
+Alle gamle charges inkl reserved5s-watchdog bevares. Ingen proces kører.
+Næste er en eksplicit metodebeslutning: enten scopeændring til eksisterende
+konvergerede lineær/tostykke-familier eller nyt admitted firestykkeforsøg.
+Konkret tofamilie-forslag er pending/approved=false; original plan bevares.
+Læs root/F4_H2_CANDIDATE49_TERMINAL_20261008.md og proposal/review-JSON.
+G/G7/WM og droppede F4-G2b/G2c bevares. Følgende afsnit er historik.
+
 ## F4-H2: takeover sikret; importkontrol kræver mere plads, 8. oktober
 
 Johan bad kl.17:08 om overtagelse efter at have forsøgt at stoppe sidste chat.
