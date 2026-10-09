@@ -1,15 +1,11 @@
-# Rullende ugedagstest for F og G
+# Rullende ugedagstest for G og WM
 
 Den fælles forsøgsramme bruger fem kalenderuger til tilpasning og den sjette
 til test. Mandagens baseline og parametre får de fem foregående mandage,
 tirsdagens de fem tirsdage osv. Derefter flyttes vinduet én uge frem.
 Datoerne er frie; den tidligere G-kørsel med seks faste datoer er bevaret.
 
-G og WM-timeadapteren bruger deres eksisterende ugedagsfit. F er tilsluttet
-med egen native interval-likelihood og nye kurvefits under en eksplicit tidligere
-frossen F-baseline/skala/prior. F4's hurtigkørsel er fortsat genbrug af ét gemt fit.
-Den fælles evalueringskampagne er udskudt; vejledningen giver indgangene til
-senere arbejde og starter ingen historiske studier.
+G og WM-timeadapteren bruger deres eksisterende ugedagsfit.
 
 ## Planlæg perioder uden at starte modellerne
 
@@ -56,60 +52,6 @@ stopper forsøget og bevarer checkpoints. Der er ingen automatisk genkørsel,
 udvidelse af budgettet eller overgang til fælles parametre. Den gamle
 eksplicitte fortsættelsesvej kan vurderes separat.
 
-## F: nyt weekday-fit med native interval-likelihood
-
-Den konkrete indgang er `--adapter F --adapter-config ...`. Kopiér
-[eksempelkonfigurationen](f_weekday_adapter.example.json) og erklær egne
-budgetter og tilgængelighed af prisinput. Dens `model_file` er relativ til
-configfilens mappe; SHA256 skal matche den tidligere frosne F-pakke.
-Pakken leverer baseline, skala, population, prior og nominelle parametre.
-De gamle fitted kurver bruges ikke som nye fitresultater.
-
-Planlæg uden datalæsning eller fit:
-
-```powershell
-python -m src.exe.run_model.weekday_backtest --adapter F --adapter-config root/f_weekday_adapter.example.json --first-origin 2022-03-28 --last-origin 2022-03-28 --output files/output/bm_1/runs/my_f_calendar --plan-only
-```
-
-Plan-only kontrollerer kalenderen; den validerer ikke data eller estimerer
-modellen. Den medfølgende baselines cutoff er 16. februar 2022. Den skal
-ligge senest ved hele femugershistorikkens begyndelse, så en tidligere
-mandagsorigin end 28. marts passer ikke denne konkrete baselinepakke.
-
-Et senere autoriseret fit bruger samme kommando uden `--plan-only`, plus
-`--history-csv history.csv --inputs-csv inputs.csv` og eventuelt
-`--observations-csv observations.csv`. Historien har `Datetime,Demand,Price`,
-inputs har `Datetime,Price`. Demand skal være middel af præcis de erklærede
-MED-målere og NaN, hvis blot ét medlem mangler. CSV'ens færdige gennemsnit
-kan ikke i sig selv bevise målerpopulationen. F's rå målerkontrol skal udføres
-før aggregering; negative enkeltmålinger må ikke skjules af et positivt middel.
-Negative historiske gruppemidler,
-manglende priser og værdier uden for den frosne prisskala afvises.
-
-Hver ugedags kandidat får frisk Beta-prior ved femugersstart og ét
-sammenhængende forløb gennem alle timer. Kun de fem matchende dage har
-observationer i likelihooden. Syv egne fitted posteriors fryses ved mandag;
-hver føres gennem prognosepræfikset frem til sin valgte dag uden targets.
-Der foretages ingen daglige state-resets eller overførsel af G's estimator.
-
-Eksemplets tre 15-sekundersbudgetter og 12 kandidat-/4 iterationslofter er
-**korte stopgrænser, ikke et dokumenteret tilstrækkeligt historisk fitbudget**.
-Budgetterne gælder pr. ugedag og fase og summeres over alle valgte uger.
-Kontrollen er kooperativ mellem nativeblokke/timer. Et ufuldstændigt eller
-ikke-konvergeret fit stopper og bliver aldrig et godkendt fast-fit-fallback.
-Denne oprydning har kun kørt korte syntetiske tests, intet historisk F-fit.
-
-Native kernecheckpoints kan genoptages med matchende kandidat, inputs, kilde
-og runtime. Den samlede weekday-CLI kræver fortsat en ny outputmappe og har
-**ingen automatisk fit-/uge-resume**. Den bevarer konkrete partialkandidater,
-optimizertrace og forecastcheckpoints til recovery. F4's separate `--resume`
-er uændret. Ligninger, numeriske gates og tests står i
-[matematikoversigten](../docs/bm/MATHEMATICS.md).
-
-Andre adapters kan bruge `WeekdayCallbacks` eller `forecast_week` fra
-`src.tools.weekday_backtest`; kalenderen ejer ikke modellernes likelihood,
-baseline, prior eller konvergensregler. Nye adapters kræver deres egen kontrakt.
-
 ## Tid, manglende data og usikkerhed
 
 Data skal allerede være tilpasset til timeintervallernes begyndelse. En
@@ -153,9 +95,7 @@ publiceringsaftale. Generisk kode, vejledning og syntetiske tests kan merges.
 Fokuserede kontroller:
 
 ```powershell
-python -B -m unittest tests.test_weekday_backtest tests.test_g_weekday_bands tests.test_f_weekday_adapter
+python -B -m unittest tests.test_weekday_backtest tests.test_g_weekday_bands
 ```
 
-Tests af F-tilslutningen bruger en lille syntetisk model og ændrer hverken
-F4's fysiske model eller dens videnskabelige accept. Den nye G-indgang
-delegerer til den allerede testede G/WM-matematik.
+G-indgangen delegerer til den eksisterende G/WM-matematik.

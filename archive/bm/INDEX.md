@@ -1,23 +1,9 @@
 # BM: faglig historik og bevarede originaler
 
 <a id="g-mathematics-source-index-20261008"></a>
-Aktuel brug: [BM-guide](../../root/BM_GUIDE.md). Gældende F/G-overblik:
+Aktuel brug: [BM-guide](../../root/BM_GUIDE.md). Gældende G-overblik:
 [matematik](../../docs/bm/MATHEMATICS.md). Seneste faktisk verificerede arbejde:
 [status](../../docs/bm/STATUS.txt). Arkivtekster giver ingen ny kørselsordre.
-
-## F: model, numerik og historisk accept
-
-- [Population, metadata og frosne inputs](F/data-contract.md)
-- [Interval-likelihood, positive operatorer og terminale tilts](F/interval-likelihood.md)
-- [Intervalmomenter, CDF og åben prognose](F/interval-forecast.md)
-- [Estimation, identifikation og beregningsgraf](F/estimation-and-identification.md)
-- [Numeriske fejl og kontroller](F/numerical-evidence.md)
-- [Tidlige H2-afbrydelser](F/h2-early-recovery.md), [terminale stop](F/h2-terminal-recovery.md), [budgetvalg](F/h2-runtime-decisions.md), [slutvalg og H→I/J](F/h2-selection-and-handoff.md)
-
-De fire sidstnævnte recoverytemaer bevarer lukkede ledgers, mistede jobs,
-source-/checkpointadmission og H→I/J-kontrakten. De fem fagtemaer ovenfor
-beskriver data, operatorer, estimation og numeriske fejl; gamle kørselsordrer
-genaktiveres ikke, og budget-/genskabelsesoplysninger gentages ikke som ny matematik.
 
 ## G: udvikling, fordelinger og styring
 

@@ -53,7 +53,7 @@ $$C_d=C_h/24,\qquad \sigma_{x,d}=\sqrt{24}\,\sigma_{x,h},\qquad J_h=24J_d.$$
 
 Diffusionens kvadratrodsfaktor følger af Brownsk tidsskalering. Tid, inputbrud og integrationsmål skal omregnes samtidig.
 
-Kilder: [G-kontrakten](forecast-development.md#legacy-development), [januargrundlaget](forecast-development.md#legacy-development), [matched kontrol](control-and-evidence.md#g7-matched-control-review), [BM-reference](../../../root/BM_REFERENCE.md).
+Kilder: [G-kontrakten](forecast-development.md#legacy-development), [januargrundlaget](forecast-development.md#legacy-development), [matched kontrol](control-and-evidence.md#g7-matched-control-review), [BM-reference](https://github.com/N1dhug/BSCe2026/blob/archive/f-main-20261009/root/BM_REFERENCE.md).
 
 ## 3. Batterimodellen, balance og gennemførlighed
 
@@ -113,7 +113,7 @@ $$\widehat y_j=B+\frac{C(x_{j+1}-x_j)}{h_j}.$$
 
 Den eksakte formel er en billig, uafhængig kontrol og en mulig intervaloperator under dens antagelser. Den må ikke anvendes som erstatning for januarbaselinens faktisk varierende, lineært interpolerede forløb. Det gennemførte januarfit bruger skalær RK4 med 60 trin/time og kontrol på 120; max-demand-forskellen skal være højst $10^{-5}$. Den eksisterende segmenterede `solve_ivp` og konstant-input-løsningen er separate referencer.
 
-Kilder: [BM-reference, afsnit 1](../../../root/BM_REFERENCE.md), [G, afsnit 2–3](forecast-development.md#legacy-development), [januarnumerik](forecast-development.md#legacy-development). Implementation: [BM-kernen](../../../src/model/bm_1.py), [deterministisk benchmark](../../../src/method/bm_1_deterministic_benchmark.py).
+Kilder: [BM-reference, afsnit 1](https://github.com/N1dhug/BSCe2026/blob/archive/f-main-20261009/root/BM_REFERENCE.md), [G, afsnit 2–3](forecast-development.md#legacy-development), [januarnumerik](forecast-development.md#legacy-development). Implementation: [BM-kernen](../../../src/model/bm_1.py), [deterministisk benchmark](../../../src/method/bm_1_deterministic_benchmark.py).
 
 ## 4. Estimation, baseline og frosset prognose
 

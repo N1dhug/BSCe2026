@@ -110,7 +110,7 @@ I G6b var fine FV-J $0.2386252699$, M38-J $0.2386779220$ og EM-J $0.2376740757$ 
 
 Registrerede praktiske kontroller omfattede middel 0.005, varians 0.002, CDF 0.03, kvantiler 0.02, relativ J 2 %, masse $10^{-9}$ og initial-L1 0.05. Punktvise EM-standardfejl er ikke simultane konfidensbånd, og god agreement på én syntetisk case er ikke historisk modelvalidering.
 
-Kilder: [G6b-review](stochastic-distributions.md#g6b-distribution-panel-review), [BM-reference, afsnit 2–3](../../../root/BM_REFERENCE.md). Implementation: [distribution panel](../../../src/method/bm_1_distribution_panel.py), [fælles BM-control](../../../src/control/bm_1.py).
+Kilder: [G6b-review](stochastic-distributions.md#g6b-distribution-panel-review), [BM-reference, afsnit 2–3](https://github.com/N1dhug/BSCe2026/blob/archive/f-main-20261009/root/BM_REFERENCE.md). Implementation: [distribution panel](../../../src/method/bm_1_distribution_panel.py), [fælles BM-control](../../../src/control/bm_1.py).
 
 
 ## Tolerancer og fortolkning
