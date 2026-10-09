@@ -1,22 +1,18 @@
-# BM: faglig historik og bevarede originaler
+# BM: arkiver og sporbarhed
 
-<a id="g-mathematics-source-index-20261008"></a>
-Aktuel brug: [BM-guide](../../root/BM_GUIDE.md). Gældende G-overblik:
-[matematik](../../docs/bm/MATHEMATICS.md). Seneste faktisk verificerede arbejde:
-[status](../../docs/bm/STATUS.txt). Arkivtekster giver ingen ny kørselsordre.
+Main indeholder G's deterministiske grundmodel og WM med fælles afhængigheder.
+Aktuel [brug](../../root/BM_GUIDE.md), [matematik](../../docs/bm/MATHEMATICS.md)
+og [status](../../docs/bm/STATUS.txt) beskriver denne version.
 
-## G: udvikling, fordelinger og styring
+G-udvidelserne før beskæring er bevaret på
+[archive/g-udvidelser-20261009](https://github.com/N1dhug/BSCe2026/tree/archive/g-udvidelser-20261009).
+Arkivbranchens seneste grundlag er 0f28fc5a349c9da4c44428ff6aa6a7b19e4b04ff.
+Den indeholder bank/filter/basis, støj og bånd, styring, G/WM-studier,
+deres tests, noter og resultater. Skrivebordskopien hedder G-udvidelser-2026-10-09.
 
-- [Dynamik, punktprognoser og S3-valget](G/forecast-development.md)
-- [Processtøj, FV/mixture/EM og negative båndresultater](G/stochastic-distributions.md)
-- [Bayes-bank og Bernstein/Beta-basis](G/posterior-and-basis.md)
-- [Prisstyring, energiligevægt og uafsluttet stokastisk evidens](G/control-and-evidence.md)
-- Senere timeprotokol: [interval](../../docs/bm/G_INTERVAL_MODEL.md), [residual/usikkerhed](../../docs/bm/G_UNCERTAINTY.md), [weekday/bånd](../../docs/bm/G_WEEKDAY_STUDY.md)
+F er bevaret på archive/f-main-20261009 og nyere lokalt arbejde separat på
+archive/f-local-20261009. Arkiver er ikke nye kørselsordrer.
 
-## Genskabelse og sporbarhed
-
-[Originaltræet](ORIGINALS.md) indeholder de præcise tidligere scripts, noter,
-ledgers, src og tests i deres oprindelige indbyrdes stier. [Stikortet](old-paths.json)
-forbinder alle fjernede/forkortede noter med emner og originalhashes. Historiske
-JSON-manifests omskrives ikke. ZIP-pakning er arkivering og tælles med sit
-udfoldede filantal; faglig konsolidering opgøres separat.
+[Tidligere originaltræ](ORIGINALS.md) og [stikort](old-paths.json) bevarer
+oprindelige kilder og kildeidentiteter. Historiske manifests omskrives ikke.
+Gamle kildebundne checkpoints kræver deres præcise oprindelige kilder.

@@ -1,4 +1,4 @@
-"""Arbitrary rolling five-week / sixth-week tests; G and custom model adapters."""
+"""Arbitrary rolling five-week / sixth-week tests; explicit custom model adapters."""
 import os
 for _name in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS'):
     os.environ.setdefault(_name, '1')
@@ -30,7 +30,7 @@ def main(argv=None):
     parser.add_argument('--observations-csv', help='Optional scoring only, opened after all forecasts are frozen.')
     parser.add_argument('--zone', default='Europe/Copenhagen')
     parser.add_argument('--plan-only', action='store_true', help='Save calendar plan without loading data or fitting.')
-    parser.add_argument('--adapter', default='G', help='G or module:zero_argument_factory.')
+    parser.add_argument('--adapter', help='Explicit module:zero_argument_factory for model runs.')
     args = parser.parse_args(argv)
     windows = rolling_windows(args.first_origin, args.last_origin, zone=args.zone)
     if args.plan_only:
@@ -39,15 +39,13 @@ def main(argv=None):
         return 0
     if not args.history_csv or not args.inputs_csv:
         parser.error('--history-csv and --inputs-csv are required unless --plan-only is used.')
-    if args.adapter == 'G':
-        from src.tools.g_weekday_backtest_adapter import make_adapter
-        adapter = make_adapter()
-    else:
-        module, separator, name = args.adapter.partition(':')
-        if not separator or not module or not name:
-            parser.error('Custom adapter must be module:zero_argument_factory.')
-        make_adapter = getattr(importlib.import_module(module), name)
-        adapter = make_adapter()
+    if not args.adapter:
+        parser.error('--adapter is required for model execution.')
+    module, separator, name = args.adapter.partition(':')
+    if not separator or not module or not name:
+        parser.error('Custom adapter must be module:zero_argument_factory.')
+    make_adapter = getattr(importlib.import_module(module), name)
+    adapter = make_adapter()
     load_targets = None
     if args.observations_csv:
         load_targets = lambda: _csv(args.observations_csv)[adapter.target_column]

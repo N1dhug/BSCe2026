@@ -12,7 +12,6 @@ import pandas as pd
 from src.tools.bm_1_reports import _atomic_report
 from src.tools.weekday_backtest import (WeekWindow, WeekdayCallbacks, rolling_windows,
     split_week, split_weekday, run_backtest, score_predictions)
-from src.tools.g_weekday_backtest_adapter import GWeekdayAdapter
 from src.exe.run_model.weekday_backtest import main
 
 
@@ -90,8 +89,6 @@ class CalendarTests(unittest.TestCase):
         self.assertTrue(data.inputs.index.is_unique)
         naive = raw.copy(); naive.index = naive.index.tz_localize(None)
         with self.assertRaises(ValueError): split_week(naive,naive,WeekWindow('2022-10-24'))
-        g = GWeekdayAdapter()
-        with self.assertRaises(ValueError): g.forecast_week(data,Path('unused'))
 
     def test_no_older_future_or_other_weekday_targets_leak(self):
         raw = raw_frame(); w = WeekWindow('2022-03-21')
@@ -202,37 +199,6 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'artifacts changed'):
                 run_backtest(raw,raw,rolling_windows('2022-03-21','2022-03-21'),callbacks('F',[]),out,load_observations=load)
             self.assertFalse((out/'20220321'/'scores.json').exists())
-
-    def test_G_adapter_reuses_existing_math_and_budget_stop(self):
-        raw=raw_frame(); data=split_week(raw,raw,WeekWindow('2022-04-11'),warmup_hours=24)
-        g=GWeekdayAdapter()
-        with tempfile.TemporaryDirectory() as temp, patch('src.tools.g_weekday_backtest_adapter.model.fit_rolling') as fit:
-            fit.return_value={'status':'unfinished','reports':[],'snapshot':None,'seconds':0.}
-            with self.assertRaisesRegex(RuntimeError,'no automatic retry'):
-                g.forecast_week(data,Path(temp))
-            self.assertEqual(fit.call_count,1)
-            self.assertEqual(fit.call_args.kwargs['baseline_policy'],'weekday')
-            pd.testing.assert_frame_equal(fit.call_args.args[0],data.history)
-            self.assertEqual(g.metadata['fit_budget']['per_weekday']['G_calls'],750)
-
-    def test_G_success_writes_own_snapshots_and_exports_before_return(self):
-        raw=raw_frame(); data=split_week(raw,raw,WeekWindow('2022-04-11'),warmup_hours=24)
-        table=pd.DataFrame({'baseline':1.,'g_prediction_output_mean':2.,'wm_prediction_output_mean':3.},index=data.inputs.index)
-        fitted={'status':'complete','snapshot':{'own':'parent'},'historical_replay':data.history,'seconds':0.}
-        refined={'snapshot':{'own':'derived'},'historical_replay':data.history}
-        with tempfile.TemporaryDirectory() as temp, \
-             patch('src.tools.g_weekday_backtest_adapter.model.fit_rolling',return_value=fitted) as fit, \
-             patch('src.tools.g_weekday_backtest_adapter.numerical.refine_for_export',return_value=refined) as refine, \
-             patch('src.tools.g_weekday_backtest_adapter.numerical.predict_comparison',return_value={'predictions':table}) as predict, \
-             patch('src.tools.g_weekday_backtest_adapter.write_forecast') as write:
-            result=GWeekdayAdapter().forecast_week(data,Path(temp))
-            pd.testing.assert_frame_equal(result,table)
-            self.assertTrue((Path(temp)/'weekday_snapshot.json').exists())
-            self.assertTrue((Path(temp)/'weekday_export_snapshot.json').exists())
-            self.assertEqual(refine.call_args.args[0],fitted['snapshot'])
-            self.assertEqual(predict.call_args.args[0],refined['snapshot'])
-            pd.testing.assert_frame_equal(predict.call_args.args[1],data.inputs)
-            write.assert_called_once()
 
     def test_plan_only_requires_no_data_and_does_not_load_G(self):
         with tempfile.TemporaryDirectory() as temp, patch('src.exe.run_model.weekday_backtest._csv',side_effect=AssertionError('no data')):

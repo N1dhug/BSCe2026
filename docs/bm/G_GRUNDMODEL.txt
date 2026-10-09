@@ -1,0 +1,61 @@
+G: den grundlæggende deterministiske model
+
+G beskriver en lagertilstand og et forbrug, der reagerer på pris og baseline.
+Tid måles i timer. Ligningerne er skrevet som almindelig tekst.
+
+| Symbol | Betydning |
+|---|---|
+| x | Lagertilstand mellem 0 og 1 |
+| u | Pris normaliseret til mellem 0 og 1 |
+| B | Baselineforbrug mellem 0 og 1 |
+| D | Modellens forbrug mellem 0 og 1 |
+| C | Lagerets tids-/kapacitetsskala; positiv |
+| k | Responsens stejlhed; positiv |
+| Xi | Fleksibilitetens størrelse mellem 0 og 1 |
+| a | Prisrespons ved u = 0,5; mellem −1 og 1 |
+
+Tilstandsrespons: f(x) = 1 − 2x.
+
+Prisresponsen er to rette linjer gennem punkterne (0, 1), (0,5, a), (1, −1).
+For u ≤ 0,5: g(u) = 1 + 2 · (a − 1) · u.
+For u > 0,5: g(u) = a − 2 · (a + 1) · (u − 0,5).
+
+Samlet respons: delta = tanh[0,5 · k · (f(x) + g(u))].
+
+For delta ≥ 0: D = B + Xi · (1 − B) · delta.
+For delta < 0: D = B + Xi · B · delta.
+
+Tilstandens ændringshastighed: dx/dt = (D − B) / C.
+Forbrug over baseline fylder lageret; forbrug under baseline tømmer det.
+En starttilstand x(t0) = x0 skal angives.
+
+Samlet merforbrug over et interval er C · (sluttilstand − starttilstand).
+Det følger direkte ved at integrere tilstandsligningen. Lagerets grænser
+begrænser derfor, hvor meget forbrug modellen kan flytte i tid.
+
+Timegennemsnit = gennemsnitlig baseline +
+C · (sluttilstand − starttilstand) / intervallets varighed i timer.
+
+Parametrene C, k, Xi og a vælges ved at minimere gennemsnittet af
+(modelleret timegennemsnit − målt timegennemsnit)² på træningsdata.
+Fit er deterministisk og uden ekstra kurvestraf. Pris og baseline er input.
+Baselinefamilien og den eksisterende bounded fortsættelse genbruges.
+
+Den bevarede S3-fitopskrift bruger 35 historiske targetdage fra fem uger,
+med 24 timers input-only warmup for hvert eget dagsforløb. Ved mandagscutoff
+fryses parametre, baseline, skalaer og syv weekday-medianstarts.
+Hver forecastdag begynder fra sin egen gemte median; ugen er syv separate
+dagsbaner. Der tilføjes ingen stateopdatering fra fremtidige målinger.
+
+Kernen bruger samme kontrollerede RK4-integration og timeoperator som før
+beskæringen. Prisresponsens a fastholdes som fitparameter; at sætte a til 0
+ville være en særskilt ændring af modellen.
+
+Demand-enhed og hour-start/hour-end skal angives. Den historiske fysiske
+enhed er fortsat en arbejdsantagelse, og C er derfor ikke verificeret fysisk
+batterikapacitet. Fremtidig pris/temperatur er et erklæret scenarieinput.
+
+Brug: BM-guide.
+Kode: drift og output,
+fit og prognose,
+indgang.

@@ -1,11 +1,15 @@
-# G og WM: fortolkning
+# Aktuel modelafgrænsning
 
-G bruger timeintegreret demand og empiriske residualer. WM-timeadapteren
-bruger WM-ligninger med eget fit. Den er ikke identisk med WM4s oprindelige CLI.
-Demand-enhed, tidszone og hour-start er arbejdsantagelser. Ingen modelrangering
-eller ny kalibreringsgaranti følger af kodeoprydningen.
+| Område | På main efter beskæring |
+|---|---|
+| G | Deterministisk respons, baseline, energibalance, timegennemsnit, C/k/Xi/a-fit og prognose |
+| G-udvidelser | Arkiveret: bank, Bayes-filter, Bernstein/Beta, støj, residualer, bånd, kontrol- og G/WM-studier |
+| WM og WM-MPC | Bevarede med nødvendige fælles afhængigheder |
+| F | Tidligere arkiveret på archive/f-main-20261009; genindføres ikke af G-beskæringen |
 
-Se [timeprotokol](G_INTERVAL_MODEL.md), [usikkerhed](G_UNCERTAINTY.md)
-og [udviklingsresultater](G_WEEKDAY_STUDY.md).
+G-kernen er uændret. De fælles moduler kan fortsat indeholde stokastisk numerik,
+som WM eller historiske referencekontroller bruger. Det er ikke en del af G's aktive indgang.
+Der udføres ingen ny fælles modelrangering eller historisk fitkampagne.
 
-Tidligere fælles rapport er bevaret på [arkivbranchen](https://github.com/N1dhug/BSCe2026/blob/archive/f-main-20261009/docs/bm/COMPARISON.md).
+Læs [grundmodel](G_INTERVAL_MODEL.md), [brug](../../root/BM_GUIDE.md) og
+[arkivoversigt](../../archive/bm/INDEX.md).

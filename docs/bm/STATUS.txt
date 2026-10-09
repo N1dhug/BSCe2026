@@ -1,27 +1,26 @@
-BM-G og WM på main — 9. oktober 2026
+G — AKTUEL STATUS, 9. OKTOBER 2026
 
-BM-F er taget ud af main efter Johans anmodning.
-Main før udskillelsen: 09c602f327a3497a763c47e734fac4a38b12227d.
-Arkivbranch: archive/f-main-20261009. Nyere lokalt arbejde: archive/f-local-20261009.
-Verificeret lokal kopi: Skrivebord/BM-F-arkiv-20261009.
+Main indeholder G's deterministiske grundmodel: respons, baseline, balance,
+timegennemsnit, C/k/Xi/a-fit, gemt snapshot og prognose.
+Parameteren a bevares. Fit og prognose bruger de uændrede numeriske kerner.
+Parameterbank, Bayes-filter, Bernstein/Beta, processtøj, residualer, bånd,
+G/WM-studieadaptere og kontrolkampagner er arkiveret.
+88 G-filer er taget ud af main; øvrige G-indgange/noter er forenklet.
 
-G/WM-kode, input og resultater er bevaret. Fælles matematiske moduler,
-som G eller WM importerer, bliver på main. Ingen nye fits er startet.
-Brug root/BM_GUIDE.md og docs/bm/G_INTERVAL_MODEL.md.
-Den separate lokale cleanup-branch er ikke merged af denne ændring.
+Arkivbranch: archive/g-udvidelser-20261009.
+Seneste grundlag før beskæring: 0f28fc5a349c9da4c44428ff6aa6a7b19e4b04ff.
+Skrivebordskopi: G-udvidelser-2026-10-09, med originale og nyere kilder.
+F's seneste oprydning i c7cf811 er bevaret uden genindførte F-filer. WM og fælles afhængigheder er uændrede.
 
-Kontrol: 39 relevante G/kalender/checkpoint-tests bestået på 10,865 sekunder.
-206 Python-filer parser; alle 31 tilbageværende testmoduler kan importeres.
-Ingen brudte lokale dokumentlinks. 165 fælles/G/WM-kildefiler er uændrede.
-472 F-filer og blandede originalarkivfiler er fjernet fra dette træ.
-Den F1-F3-specifikke BM_REFERENCE er også arkiveret; G/WM-kode er uændret.
-Publicering er udtrykkeligt godkendt af Johan efter den første automatiske
-afvisning. Arkivbranches publiceres sammen med main uden nye lokale rådata.
-Dobbelttjek: gamle F-poster i arkivregisteret er også fjernet. Historiske
-F-betegnelser i fælles G/WM-kode er bevaret med de uændrede kildehashes.
+VERIFIKATION
+47 relevante G-/fit-/timeoperator-/kalendertests består på den seneste main.
+156 aktuelle Python-filer kan parses. Ingen tilbageværende import eller
+dokumentlink peger på de fjernede filer. Alle 88 fjernede filer er bevaret
+med præcis indholdskontrol mod main før beskæring i den nyere ZIP-pakke.
+Tilbageværende WM-beskyttede filer og G's deterministiske kerner er uændrede.
+Ingen historiske modelkørsler genstartes af beskæringen.
 
-Efterkontrol: commits 6f2a327 og 0f28fc5 genindførte F efter udskillelsen.
-116 genindførte F-filer er fjernet igen; fem nye G-filer er bevaret.
-Den genindførte version er sikret på archive/f-reintroduced-20261009
-og i skrivebordsarkivet. Den konkrete lokale F4-indgang er fjernet.
-39 G/kalender/checkpoint-tests består på 10,510 sekunder.
+Modelbegrænsninger: fysisk demand-enhed og timeetiketter er fortsat
+arbejdsantagelser; fremtidig pris/temperatur er erklærede scenarieinput.
+Parameteridentifikation og ekstrapolation er fortsat åbne modelspørgsmål.
+Gamle kildebundne checkpoints bruges med egne arkivkilder og uændrede guards.

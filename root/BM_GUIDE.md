@@ -1,72 +1,38 @@
-# Kør BM-G
+# G: brug af den deterministiske grundmodel
 
-Brug Python 3.11/3.12 og [requirements-bm.txt](../requirements-bm.txt).
-Input og gemte modeller vælges eksplicit.
+Main indeholder G's deterministiske grundmodel samt WM og nødvendige fælles moduler.
+Den læsbare matematik står i [grundmodellen](../docs/bm/G_INTERVAL_MODEL.md).
 
-## G: prognose fra gemt weekday-export
+Installer projektets afhængigheder med `python -m pip install -r requirements-bm.txt`.
+Kør kommandoerne fra projektets rod, og brug en ny outputmappe hver gang.
 
-```powershell
-python -m src.exe.run_model.bm_1_g --help
-python -m src.exe.run_model.bm_1_g bands --help
-```
-
-G's nye indgang genbruger `weekday_export_snapshot.json` og et eksplicit
-Price/Temp-scenarie. Den udfører hverken nyt fit eller historisk replay.
-Snapshotets mandagsorigin og informationscutoff er faste; `--start` og
-`--hours` vælger en del af den gemte uge. En anden uge kræver sit eget fit.
-Det allerede gemte lokale eksempel er klargjort under `files/output/bm_1/examples/g_saved_week_20220228`:
+## Fit
 
 ```powershell
-python -m src.exe.run_model.bm_1_g --snapshot files/output/bm_1/examples/g_saved_week_20220228/snapshot.json --inputs-csv files/output/bm_1/examples/g_saved_week_20220228/inputs.csv --check
-python -m src.exe.run_model.bm_1_g --snapshot files/output/bm_1/examples/g_saved_week_20220228/snapshot.json --inputs-csv files/output/bm_1/examples/g_saved_week_20220228/inputs.csv --score files/output/bm_1/examples/g_saved_week_20220228/observations.csv --output files/output/bm_1/runs/my_g_week
+python -m src.exe.run_model.bm_1_g fit --raw-csv historik.csv --origin 2022-03-28 --demand-label hour_start --output g-fit
 ```
 
-Tilføj `--start "2022-02-28 06:00" --hours 24` og vælg en ny outputmappe
-for at se et andet gyldigt udsnit. Hele den gemte uge beregnes stadig til
-numerikkontrol; udsnittet er ingen ny fit-origin. Input-CSV har kolonnerne
-`Datetime,Price,Temp`; observationsfilen har `Datetime,Demand` og åbnes først
-efter frysning. Der foretages ingen automatisk vejrdownload.
+CSV skal have Datetime, Price, Temperature og Demand. Angiv målerpopulation og
+verificeret enhed med `--population` og `--demand-unit`, når disse er kendt.
+Der bruges fem tidligere uger, egen opvarmning og syv gemte ugedagsstarter.
+Parametrene er C, k, Xi og a. `--seconds` og `--max-calls` begrænser fitbudgettet.
+Kun et færdigt fit producerer et brugbart `interval_snapshot.json`.
 
-Find `forecast.csv`, `scored.csv`, `comparison.png`, `saved_snapshot.json`
-og `summary.json` i outputmappen. Tabellen viser rå enheder, UTC-intervaller,
-horisont, pris/temperatur og modeltilstande. Gamle ukalibrerede empiriske bånd
-vises ærligt; læs protokol og cutoff i `forecast.json`. Færdige mapper afvises
-ved nyt kald. Ved afbrydelse bevares mappen; brug snapshot og en ny mappe.
-Den korte G-propagation har ingen deltime-resume.
-
-Eksemplet er lokalt og ignoreret af Git. En anden maskine skal have eget
-verificeret snapshot/scenarieinput; rådata publiceres ikke med koden.
-
-Generiske bånddatoer kan vælges med `bm_1_g bands calibrate/evaluate`.
-Brug `--help` for begge trin. Kalibrering kræver hele tidligere forecastuger,
-matchende informationskontrakt og mindst 300 målte scores; evaldatoer angives
-på forhånd med `--evaluation-origins`. Evaluering kræver den uændrede
-`calibration_snapshot.json` sammen med scores og freeze-receipt. Alle
-prognoser fryses før evalueringens observationer åbnes. Det er et genbrugeligt
-brugstrin, ikke en ny autorisation til historiske studier.
-
-For ny fitplan bruges den eksisterende kalender:
+## Prognose fra eget gemt fit
 
 ```powershell
-python -m src.exe.run_model.weekday_backtest --help
+python -m src.exe.run_model.bm_1_g predict --snapshot g-fit/interval_snapshot.json --inputs-csv prognoseinput.csv --output g-prognose
 ```
 
-Kalenderen bruger G som standard. Se [kalendervejledningen](WEEKDAY_BACKTEST_GUIDE.md).
+Inputs indeholder Datetime, Price og Temperature for prognoseperioden.
+Forecast og baseline gemmes som timegennemsnit. Et billede viser forbrug og pris.
+Eventuelle målinger læses først bagefter, via `--observations-csv`, til scoring.
+Fremtidig pris og temperatur er erklærede scenarieinput.
 
-De ældre S3-værktøjer er samlet under ét modul med eksplicit modelvariant:
+Der er ingen parameterbank, Bayes-filter, ekstra kurvebasis, processtøj,
+residualmodel eller usikkerhedsbånd i denne G-indgang.
+Gamle snapshots og kildebundne checkpoints bruges med deres egne arkivkilder.
 
-```powershell
-python -m src.exe.run_model.bm_1.s3 interval --help
-python -m src.exe.run_model.bm_1.s3 residual --help
-python -m src.exe.run_model.bm_1.s3 point-process --help
-```
-
-Variantnavnet efterfølges af `fit`, `predict` eller `diagnose`, hvor det er
-tilgængeligt. [Arkivet](../archive/bm/INDEX.md) forklarer deres betydning og
-bevarer de gamle kommandoers præcise kildeversion. Gamle kildebundne
-G7/G8/H2-kørsler hører til i det gendannede originaltræ.
-
-
-## Videre læsning
-
-[Matematik](../docs/bm/MATHEMATICS.md), [status](../docs/bm/STATUS.txt) og [arkiv](../archive/bm/INDEX.md).
+G-udvidelser: [arkivbranch](https://github.com/N1dhug/BSCe2026/tree/archive/g-udvidelser-20261009).
+F: [F-arkiv](https://github.com/N1dhug/BSCe2026/tree/archive/f-main-20261009).
+Status: [STATUS.txt](../docs/bm/STATUS.txt).
