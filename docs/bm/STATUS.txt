@@ -27,6 +27,14 @@ harnesses til egen kort ejer; alle ti native definitioner er AST-identiske.
 Kort faktisk F-run23,525s mod35,876s:22CSVfelter ogbegge1921logstates eksakte.
 F-shortrun ogkildepakke ligger round3/f; cachesikke nulstillet.
 
+AFSLUTTET GENOPTAGELSE
+F-weekday ogfælleskalender har eksplicit --resume med source/runtime/model/
+config/population/input-identitet ogOS-runlock. Færdigefits/dage/uger genbruges;
+ufærdigeforsøgbevares oggenstarteskunvedeksplicitresume. Ingenoptimizerresume.
+26 kalender/recovery/gruppekontrakttests består6,266sproces. Rigtige native-
+fit/nulmasse-tests fra F-delen består; reviewfandt ogrettede strenggruppe-
+validering ogtomme før-modelcrashgrænser. Allefrysninger skerfør scoring.
+
 PLAN OG AKTUELLE EJERE
 1. F-data og normal modelvej: verificer metadata, bind gruppe/artefakt,
    saml inputvalidering, isoler interval-likelihoods numeriske primitives fra

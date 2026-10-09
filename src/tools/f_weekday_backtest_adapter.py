@@ -18,11 +18,12 @@ from src.method.bm_1_response import CurveTrainingRecord, curve_pair_from_logits
 from src.method.bm_1_interval_native import (advance_frequency_block, compare_native_states,
     freeze_native_operator, replay_native_record, native_runtime)
 from src.method.bm_1_interval_forecast import native_interval_moments, compare_interval_moments
-from src.method.bm_1_interval_contour_extension import EXTENDED_CENTERS
+from src.method.bm_1_interval_likelihood import EXTENDED_CENTERS
 from src.params.bm_1_interval import BM1IntervalObservationSeries
 from src.tools.input_generator.input_builder import input_builder
 from src.tools.bm_1_reports import _atomic_report
-from src.tools.weekday_backtest import split_weekday, _fingerprint
+from src.tools.weekday_backtest import (split_weekday, _fingerprint, _verify_artifacts,
+    _atomic_csv, _read_predictions)
 
 
 def _plain(value):
@@ -47,6 +48,7 @@ def _sha(path):
 
 class FWeekdayAdapter:
     name = 'F-native-weekday'
+    supports_resume = True
     warmup_hours = 0
     input_columns = ('Price',)
     target_column = 'Demand'
@@ -63,6 +65,17 @@ class FWeekdayAdapter:
                 or config['measurement_columns'] != model['measurement_columns']
                 or config['aggregation'] != 'fixed-population mean; any missing member makes Demand NaN'):
             raise ValueError('Declare the frozen F population and complete-group masking contract.')
+        columns = model['measurement_columns']
+        if (not isinstance(columns, list) or not columns or any(not isinstance(c, str) for c in columns)
+                or len(set(columns)) != len(columns)):
+            raise ValueError('Frozen F population requires a nonempty unique meter list.')
+        groups = {column.rsplit('_', 1)[-1] for column in columns}
+        if len(groups) != 1 or not groups <= {'MED', 'UDEN'}:
+            raise ValueError('Frozen F population must contain one separate MED or UDEN group.')
+        self.group = next(iter(groups))
+        if (not model['population_id'].startswith(self.group+'_')
+                or config.get('group', self.group) != self.group):
+            raise ValueError('Requested group differs from the frozen F measurement population.')
         if model['timezone'] != 'Europe/Copenhagen':
             raise ValueError('The registered F weekday profile uses Europe/Copenhagen.')
         self.cutoff = pd.Timestamp(model['baseline_information_cutoff'])
@@ -108,7 +121,7 @@ class FWeekdayAdapter:
         return dict(fit_budget={key:self.config[key] for key in ('fit_seconds','validation_seconds',
             'forecast_seconds','max_evaluations','max_iterations')},
             initialization_policy='Fresh declared Beta at five-week history start per candidate/weekday; continuous state, no daily resets.',
-            population=self.model['population_id'], measurement_columns=self.model['measurement_columns'],
+            group=self.group, population=self.model['population_id'], measurement_columns=self.model['measurement_columns'],
             aggregation=self.config['aggregation'], target_unit=self.config['target_unit'],
             input_scenario_policy=self.config['input_scenario_policy'],
             source_sha256={p.relative_to(root).as_posix():_sha(p) for p in sorted((root/'src').rglob('*.py'))},
@@ -217,7 +230,8 @@ class FWeekdayAdapter:
         # inputs contains the entire origin-to-target-day prefix and no Demand.
         edges, b, u, local = self._signals(inputs)
         deadline = perf_counter()+self.config['forecast_seconds']
-        states = {grid:np.asarray(candidate[grid+'_log_state']).copy() for grid in ('base','fine')}
+        states = {grid:np.asarray([float('-inf') if x is None else x
+                  for x in candidate[grid+'_log_state']], dtype=float) for grid in ('base','fine')}
         specs = {grid:dict(settings=self._settings(grid), physical=self.model['physical'],
             input_edges=edges, baseline=b, price=u, horizon=[edges[0], edges[-1]]) for grid in states}
         rows = []
@@ -245,21 +259,57 @@ class FWeekdayAdapter:
                 status='complete-prefix' if hour+1 == len(inputs) else 'paused')), replace_existing=True)
         return pd.DataFrame(rows, index=inputs.index)
 
-    def forecast_week(self, data, directory):
+    def forecast_week(self, data, directory, *, resume=False):
+        """Reuse complete, hash-bound fits; restart one interrupted attempt explicitly.
+
+        Each unfinished attempt stays in its own directory. Optimizer internals
+        and partial forecast prefixes are not resumed or silently accepted.
+        """
         if data.window.zone != self.model['timezone']:
             raise ValueError('F profile and calendar timezone differ.')
         manifest = dict(metadata=self.metadata, model=self.model, history_sha256=_fingerprint(data.history),
             inputs_sha256=_fingerprint(data.inputs), test_targets_used=False)
-        _atomic_report(directory/'f_adapter_freeze.json', manifest)
+        path = directory/'f_adapter_freeze.json'
+        if resume and path.exists():
+            if json.loads(path.read_text(encoding='utf-8')) != json.loads(json.dumps(manifest)):
+                raise ValueError('F resume model/source/runtime/config/input identity changed.')
+        elif resume and any(p.name != 'window.json' and not p.name.endswith('.partial') for p in directory.iterdir()):
+            raise ValueError('Missing F identity with existing work; no implicit migration.')
+        else:
+            _atomic_report(path, manifest)
         forecasts = []
         for weekday in range(7):
             day = split_weekday(data, weekday)
-            dest = directory/f'weekday_{weekday}'
-            dest.mkdir()
-            candidate = self._fit(day, dest)
-            prefix = data.inputs.loc[data.inputs.index <= day.inputs.index[-1], list(self.input_columns)]
-            predictions = self._predict(prefix, candidate, dest).loc[day.inputs.index]
-            predictions.to_csv(dest/'predictions.csv', index_label='Datetime')
+            dest = directory/f'weekday_{weekday}'; dest.mkdir(exist_ok=resume)
+            attempts = sorted(dest.glob('attempt_[0-9][0-9][0-9][0-9]'))
+            previous = attempts[-1] if attempts else None
+            fit_receipt = previous/'fit_complete.json' if previous else None
+            if resume and fit_receipt is not None and fit_receipt.exists():
+                attempt = previous
+                _verify_artifacts(attempt, json.loads(fit_receipt.read_text(encoding='utf-8'))['artifact_sha256'])
+                frozen = json.loads((attempt/'frozen_fit.json').read_text(encoding='utf-8'))
+                if frozen['history_sha256'] != _fingerprint(day.context) or not frozen['new_curve_fit']:
+                    raise ValueError('Frozen weekday fit history or fit identity changed.')
+                candidate = {key:frozen[key] for key in ('logits','pieces','base_log_state','fine_log_state')}
+                print(f'F weekday {weekday}: reused verified fit', flush=True)
+            else:
+                attempt = dest/f'attempt_{len(attempts)+1:04d}'; attempt.mkdir()
+                print(f'F weekday {weekday}: new fit attempt {attempt.name}; earlier partial work retained', flush=True)
+                candidate = self._fit(day, attempt)
+                hashes = {p.name:_sha(p) for p in attempt.iterdir() if p.is_file() and not p.name.endswith('.partial')}
+                if 'frozen_fit.json' not in hashes:
+                    raise RuntimeError('Fit returned without an atomic frozen fit artifact.')
+                _atomic_report(attempt/'fit_complete.json', {'status':'complete', 'artifact_sha256':hashes})
+            receipt = attempt/'forecast_complete.json'
+            if resume and receipt.exists():
+                _verify_artifacts(attempt, json.loads(receipt.read_text(encoding='utf-8'))['artifact_sha256'])
+                predictions = _read_predictions(attempt/'predictions.csv', day.inputs.index)
+            else:
+                prefix = data.inputs.loc[data.inputs.index <= day.inputs.index[-1], list(self.input_columns)]
+                predictions = self._predict(prefix, candidate, attempt).loc[day.inputs.index]
+                _atomic_csv(attempt/'predictions.csv', predictions)
+                _atomic_report(receipt, {'status':'complete', 'artifact_sha256':
+                    {name:_sha(attempt/name) for name in ('predictions.csv','fit_complete.json')}})
             forecasts.append(predictions)
         if self.metadata['source_sha256'] != manifest['metadata']['source_sha256']:
             raise RuntimeError('F source changed during fit/forecast; no accepted week.')

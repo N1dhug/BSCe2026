@@ -25,6 +25,7 @@ def main(argv=None):
     parser = ArgumentParser(description=__doc__)
     for name in ('first-origin', 'last-origin', 'output'):
         parser.add_argument('--'+name, required=True)
+    parser.add_argument('--resume', action='store_true', help='Reuse verified complete weeks/F weekday fits; one incomplete F attempt restarts with its original budget.')
     parser.add_argument('--history-csv')
     parser.add_argument('--inputs-csv')
     parser.add_argument('--observations-csv', help='Optional scoring only, opened after all forecasts are frozen.')
@@ -34,6 +35,8 @@ def main(argv=None):
     parser.add_argument('--adapter-config', help='Required for F: explicit earlier frozen baseline, population and new-fit budgets.')
     args = parser.parse_args(argv)
     windows = rolling_windows(args.first_origin, args.last_origin, zone=args.zone)
+    if args.plan_only and args.resume:
+        parser.error('--resume applies to a model run, not --plan-only.')
     if args.plan_only:
         directory = Path(args.output); directory.mkdir(parents=True, exist_ok=False)
         _atomic_report(directory/'calendar_plan.json', {'windows':[w.record() for w in windows], 'model_executed':False})
@@ -62,7 +65,7 @@ def main(argv=None):
     if args.observations_csv:
         load_targets = lambda: _csv(args.observations_csv)[adapter.target_column]
     summary = run_backtest(_csv(args.history_csv), _csv(args.inputs_csv, adapter.input_columns), windows, adapter,
-                           args.output, load_observations=load_targets)
+                           args.output, load_observations=load_targets, resume=args.resume)
     print(json.dumps(summary, allow_nan=False)); return 0
 
 

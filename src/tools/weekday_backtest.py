@@ -6,6 +6,7 @@ the adapter. No fitting algorithm or automatic retry lives in this module.
 """
 from dataclasses import dataclass
 import hashlib
+import json
 from pathlib import Path
 from time import perf_counter
 from typing import Callable
@@ -13,7 +14,7 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
-from src.tools.bm_1_reports import _atomic_report
+from src.tools.bm_1_reports import _atomic_report, _RunLock
 
 PROTOCOL = 'five-weeks-by-weekday-backtest-v1'
 
@@ -237,19 +238,52 @@ def score_predictions(predictions, observations, prediction_columns):
     return out
 
 
+def _verify_artifacts(directory, hashes):
+    """Validate exact saved bytes, refusing paths outside this run directory."""
+    for name, expected in hashes.items():
+        path = (directory/name).resolve()
+        if not path.is_relative_to(directory.resolve()) or not path.is_file():
+            raise ValueError('Invalid or missing frozen artifact path.')
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise ValueError('Frozen forecast/model artifacts changed before reuse or scoring.')
+
+
 def _verify_freezes(forecasts):
     for directory, _, hashes in forecasts:
-        for name, expected in hashes.items():
-            if hashlib.sha256((directory/name).read_bytes()).hexdigest() != expected:
-                raise ValueError('Frozen forecast/model artifacts changed before scoring.')
+        _verify_artifacts(directory, hashes)
 
 
-def run_backtest(history, inputs, windows, adapter, output, *, load_observations=None):
-    """Freeze ALL requested forecasts before opening optional scoring targets.
+def _atomic_csv(path, frame):
+    temporary = path.with_suffix(path.suffix+'.partial')
+    frame.to_csv(temporary, index_label='Datetime')
+    temporary.replace(path)
 
-    A later rolling fit may use the earlier test week once it is historical.
-    Fresh output only; errors stop the run and retain checkpoints. No skipped
-    periods, automatic retry, budget increase or parameter pooling.
+
+def _read_predictions(path, index):
+    frame = pd.read_csv(path, float_precision='round_trip')
+    stamps = pd.to_datetime(frame.pop('Datetime'), utc=index.tz is not None)
+    actual = pd.DatetimeIndex(stamps)
+    if index.tz is not None:
+        actual = actual.tz_convert(index.tz)
+    if not actual.equals(index):
+        raise ValueError('Saved prediction calendar changed.')
+    frame.index = index.copy()
+    return frame
+
+
+def _check_predictions(predictions, data, adapter):
+    if (not isinstance(predictions, pd.DataFrame) or not predictions.index.equals(data.inputs.index)
+            or not predictions.columns.is_unique or set(adapter.prediction_columns.values()) - set(predictions.columns)
+            or not np.isfinite(predictions[list(adapter.prediction_columns.values())].to_numpy(float)).all()
+            or adapter.target_column in predictions.columns):
+        raise ValueError('Complete input-only forecast on the exact physical test calendar required.')
+
+
+def run_backtest(history, inputs, windows, adapter, output, *, load_observations=None, resume=False):
+    """Freeze all forecasts before targets; explicit resume reuses verified boundaries.
+
+    Completed weeks can be reused for any adapter. Partial weeks require an
+    adapter with its own explicit resume contract. No automatic retry occurs.
     """
     windows = tuple(windows)
     if (not windows or any(not isinstance(w, WeekWindow) for w in windows)
@@ -257,46 +291,100 @@ def run_backtest(history, inputs, windows, adapter, output, *, load_observations
         raise ValueError('Require consecutive chronological Monday windows in one zone.')
     if not adapter.prediction_columns or len(set(adapter.prediction_columns.values())) != len(adapter.prediction_columns):
         raise ValueError('Declare distinct scored prediction columns.')
-    root = Path(output); root.mkdir(parents=True, exist_ok=False)
-    begun = perf_counter(); origin = None; forecasts = []
-    _atomic_report(root/'plan.json', {'protocol':PROTOCOL, 'adapter':adapter.name, 'adapter_metadata':adapter.metadata,
-        'windows':[w.record() for w in windows], 'prediction_columns':adapter.prediction_columns,
+    # Only selected historical targets and exogenous future inputs enter this identity.
+    selected = [split_week(history, inputs, w, target_column=adapter.target_column,
+        input_columns=adapter.input_columns, warmup_hours=adapter.warmup_hours) for w in windows]
+    records = [{**d.window.record(), 'history_sha256':_fingerprint(d.history),
+        'inputs_sha256':_fingerprint(d.inputs), 'test_targets_passed_to_adapter':False} for d in selected]
+    plan = {'protocol':PROTOCOL, 'resume_schema':'completed-boundaries-v1',
+        'adapter':adapter.name, 'adapter_metadata':adapter.metadata, 'windows':records,
+        'prediction_columns':adapter.prediction_columns,
         'runner_sha256':hashlib.sha256(Path(__file__).read_bytes().replace(b'\r\n',b'\n')).hexdigest(),
+        'runtime':{'numpy':np.__version__, 'pandas':pd.__version__},
         'warmup_hours':adapter.warmup_hours, 'input_columns':list(adapter.input_columns),
-        'target_column':adapter.target_column, 'automatic_retry':False, 'scoring_targets_opened':False})
+        'target_column':adapter.target_column, 'scoring_requested':load_observations is not None,
+        'automatic_retry':False, 'scoring_targets_opened':False}
+    root = Path(output)
+    if resume:
+        if not root.is_dir():
+            raise ValueError('Resume requires an existing run directory.')
+    else:
+        root.mkdir(parents=True, exist_ok=False)
+    with _RunLock(root):
+        plan_path = root/'plan.json'
+        if resume and plan_path.exists():
+            saved = json.loads(plan_path.read_text(encoding='utf-8'))
+            if saved != json.loads(json.dumps(plan, allow_nan=False)):
+                raise ValueError('Resume source/runtime/config/model/calendar/input identity changed.')
+        elif resume and any(p.name != 'run.lock' and not p.name.endswith('.partial') for p in root.iterdir()):
+            raise ValueError('Missing run plan with existing work; preserve artifacts and use a new directory.')
+        else:
+            _atomic_report(plan_path, plan)
+        return _run_windows(selected, records, adapter, root, load_observations, resume)
+
+
+def _run_windows(selected, records, adapter, root, load_observations, resume):
+    begun = perf_counter(); origin = None; forecasts = []; reused = 0
     try:
-        for window in windows:
-            origin = str(window.origin); directory = root/window.origin.strftime('%Y%m%d'); directory.mkdir()
-            data = split_week(history, inputs, window, target_column=adapter.target_column,
-                              input_columns=adapter.input_columns, warmup_hours=adapter.warmup_hours)
-            _atomic_report(directory/'window.json', {**window.record(), 'history_sha256':_fingerprint(data.history),
-                'inputs_sha256':_fingerprint(data.inputs), 'test_targets_passed_to_adapter':False})
-            predictions = adapter.forecast_week(data, directory)
-            if (not isinstance(predictions, pd.DataFrame) or not predictions.index.equals(data.inputs.index)
-                    or not predictions.columns.is_unique or set(adapter.prediction_columns.values()) - set(predictions.columns)
-                    or not np.isfinite(predictions[list(adapter.prediction_columns.values())].to_numpy(float)).all()
-                    or adapter.target_column in predictions.columns):
-                raise ValueError('Complete input-only forecast on the exact physical test calendar required.')
-            path = directory/'predictions.csv'; predictions.to_csv(path, index_label='Datetime')
-            # Bind every adapter artifact, including its saved model checkpoints.
-            hashes = {p.relative_to(directory).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
-                      for p in sorted(directory.rglob('*')) if p.is_file()}
-            _atomic_report(directory/'forecast_freeze.json', {'origin':origin, 'status':'frozen-input-only',
-                'scoring_targets_opened':False, 'artifact_sha256':hashes})
-            hashes['forecast_freeze.json'] = hashlib.sha256((directory/'forecast_freeze.json').read_bytes()).hexdigest()
+        for data, record in zip(selected, records):
+            window = data.window; origin = str(window.origin)
+            directory = root/window.origin.strftime('%Y%m%d')
+            freeze_path = directory/'forecast_freeze.json'
+            reuse_window = resume and freeze_path.exists()
+            if reuse_window:
+                frozen = json.loads(freeze_path.read_text(encoding='utf-8'))
+                hashes = frozen['artifact_sha256']
+                _verify_artifacts(directory, hashes)
+                if json.loads((directory/'window.json').read_text(encoding='utf-8')) != record:
+                    raise ValueError('Saved window identity changed.')
+                predictions = _read_predictions(directory/'predictions.csv', data.inputs.index)
+                reused += 1
+            else:
+                partial = directory.exists()
+                if partial and (not resume or not getattr(adapter, 'supports_resume', False)):
+                    raise ValueError('Partial week requires an adapter supporting explicit resume; artifacts retained.')
+                directory.mkdir(exist_ok=partial)
+                if partial and (directory/'window.json').exists():
+                    if json.loads((directory/'window.json').read_text(encoding='utf-8')) != record:
+                        raise ValueError('Partial window identity changed.')
+                elif partial and any(not p.name.endswith('.partial') for p in directory.iterdir()):
+                    raise ValueError('Missing window identity with existing artifacts.')
+                else:
+                    _atomic_report(directory/'window.json', record)
+                predictions = (adapter.forecast_week(data, directory, resume=True) if partial
+                               else adapter.forecast_week(data, directory))
+                _check_predictions(predictions, data, adapter)
+                _atomic_csv(directory/'predictions.csv', predictions)
+                hashes = {p.relative_to(directory).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
+                          for p in sorted(directory.rglob('*')) if p.is_file() and not p.name.endswith('.partial')}
+                _atomic_report(freeze_path, {'origin':origin, 'status':'frozen-input-only',
+                    'scoring_targets_opened':False, 'artifact_sha256':hashes})
+            _check_predictions(predictions, data, adapter)
+            hashes = dict(hashes, **{'forecast_freeze.json':hashlib.sha256(freeze_path.read_bytes()).hexdigest()})
             forecasts.append((directory, predictions.copy(), hashes))
-            print(f'{adapter.name}: {window.origin.date()} frozen ({len(predictions)} hours)', flush=True)
+            print(f'{adapter.name}: {window.origin.date()} frozen ({len(predictions)} hours; reused={reuse_window})', flush=True)
         _verify_freezes(forecasts)
-        _atomic_report(root/'all_forecasts_frozen.json', {'origins':[str(w.origin) for w in windows],
+        receipt = {'origins':[str(d.window.origin) for d in selected],
             'freeze_sha256':{d.name:hashlib.sha256((d/'forecast_freeze.json').read_bytes()).hexdigest() for d,_,_ in forecasts},
-            'scoring_targets_opened':False})
+            'scoring_targets_opened':False}
+        if (root/'all_forecasts_frozen.json').exists():
+            if json.loads((root/'all_forecasts_frozen.json').read_text(encoding='utf-8')) != receipt:
+                raise ValueError('All-forecast freeze identity changed.')
+        else:
+            _atomic_report(root/'all_forecasts_frozen.json', receipt)
+        if resume and (root/'summary.json').exists():
+            summary = json.loads((root/'summary.json').read_text(encoding='utf-8'))
+            if summary['status'] != 'complete':
+                raise ValueError('Unexpected saved completion status.')
+            print('complete: all frozen weeks reused; no model work or rescoring', flush=True)
+            return summary
         reports = []
         if load_observations is not None:
             observations = load_observations()
             _verify_freezes(forecasts)
             for directory, predictions, _ in forecasts:
                 scores = score_predictions(predictions, observations, adapter.prediction_columns)
-                _atomic_report(directory/'scores.json', scores); reports.append(scores)
+                _atomic_report(directory/'scores.json', scores, replace_existing=resume); reports.append(scores)
         pooled = {}
         for name in adapter.prediction_columns:
             rows = [r[name] for r in reports]; n = sum(r['samples'] for r in rows)
@@ -304,11 +392,15 @@ def run_backtest(history, inputs, windows, adapter, output, *, load_observations
                             'mae':sum(r['absolute_error_sum'] for r in rows)/n if n else None,
                             'bias':sum(r['error_sum'] for r in rows)/n if n else None}
         summary = {'status':'complete', 'protocol':PROTOCOL, 'adapter':adapter.name,
-                   'weeks':len(windows), 'scored':load_observations is not None, 'pooled':pooled,
-                   'seconds':perf_counter()-begun, 'automatic_retry':False}
+                   'weeks':len(selected), 'scored':load_observations is not None, 'pooled':pooled,
+                   'seconds':perf_counter()-begun, 'reused_weeks':reused, 'automatic_retry':False}
         _atomic_report(root/'summary.json', summary)
+        _atomic_report(root/'run_status.json', summary, replace_existing=True)
         return summary
-    except Exception as exc:
-        _atomic_report(root/'failure.json', {'status':'failed', 'origin':origin, 'error_type':type(exc).__name__,
-            'error':str(exc), 'seconds':perf_counter()-begun, 'automatic_retry':False})
+    except (Exception, KeyboardInterrupt) as exc:
+        failure = {'status':'paused' if isinstance(exc, (KeyboardInterrupt, TimeoutError)) else 'failed',
+            'origin':origin, 'error_type':type(exc).__name__, 'error':str(exc),
+            'seconds':perf_counter()-begun, 'automatic_retry':False}
+        _atomic_report(root/'failure.json', failure, replace_existing=True)
+        _atomic_report(root/'run_status.json', failure, replace_existing=True)
         raise
