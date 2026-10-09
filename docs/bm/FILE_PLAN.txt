@@ -1,35 +1,27 @@
-BM-F/G — gennemført filplan fra 26bdd15
+BM-F/G — femte gennemgang, strukturel disposition fra c504806
 
-Kun egne F/G-oprettelser ændret; Git-introduktioner og præcise gamle hashes
-findes i archive/bm/old-paths.json og recovery/round4/qa_structure.json.
+Kun egne F/G-filer; Git-ejerskab og WM149 kontrolleres før hver mutation.
+Matematik/grids/tolerancer/seeds og eksisterende outputkontrakter bevares.
 
-AKTIV KODE
-src/method/bm_1_interval_precise.py → bm_1_interval_likelihood.py:
-fælles time-/checkpointkontrakt; uafhængig replay bevares med lokale imports.
-src/method/bm_1_g7_energy.py + bm_1_g7_matched.py → bm_1_g7_deterministic.py:
-energiligning og uafhængig box-QP/KKT; ubrugte historiske hjælpere fjernet.
-src/method/bm_1_g8_basis.py → bm_1_g8.py: basis hos bankfilterets ejer.
-src/exe/run_model/bm_1_h2_precise.py, bm_1_interval_characteristic.py og
-bm_1_parameter_pilot.py: afsluttede kampagnedrivere pensioneret; præcise
-originaler i eksisterende ZIP. Metoder og relevante tests er bevaret.
-weekday_backtest: ubenyttet callback-klasse fjernet; direkte adaptere.
-G-adapter, deployment og CLI: én inputvalidator, fælles artefaktkontrol og
-eksportejer; fitpopulation bindes til snapshots/TRAIN og videreføres til output.
-Ingen nye kildefiler, frameworks, grids, tolerancer eller modelparametre.
+PARAMS (let): Saml punkt/interval-observationsbeholdere i bm_1.py; vurder
+Bayes/masselogik hos eksisterende numeriske ejere. Beskyttet response/deterministic bevares.
+METHOD (meget stærk): Interval-filter hos interval-likelihood; G7-jobkontrakt
+hos G7-evaluator; fjern døde egne varianter. Gemte artefakter bruger originalkilder.
+VALIDATION (stærk): Saml response_cases/response_numerics/response_fit_checks
+i response.py. Fjern afsluttet estimate/joint-styring fra aktiv kode; behold
+uafhængige kerne-/referenceberegninger og relevante matematiske tests.
+Estimation/mixture_estimation gennemgås for kampagneløkker og genbrugelige
+dele; control/numerics gennemgås funktion for funktion med konkrete brugere.
+TOOLS (mellem): Fjern distribueret gammel kampagnestyring sammen med joint;
+behold workbookloader, data/skala-kontrakter og modelpakker med selvstændige roller.
+OUTPUT: Undersøg alle hovedgrupper og referencer; flyt komplette egne cleanup-
+pakker til runs/checks hvis læsning/resume-identitet er placeringsuafhængig.
+Slet kun bytekopier med keeper/backup eller verificerede egne caches; ingen unik evidens.
+EXE/TESTS: Pensionér gammel estimate-CLI; bevar aktive modeller/referencekommandoer.
+Historiske kampagnetests har deres eksakte originalversion; aktive numeriske
+tests og fixtures konsolideres uden fjernelse af nødvendig matematisk dækning.
+DOCS/ROOT/CONFIGS: Opdatér eksisterende guide, korte begrænsninger og stioversigt;
+ingen nye permanente daterede rapporter eller ny flad arkivmappe.
 
-BRUG OG TEKST
-configs/bm/f4_week.json: fjernet dublet; negativt 24h-check angives i CLI.
-Quick/open-week/frozen model og særskilte F/G-fitkontrakter bevares.
-README ejer kommandoer; MATHEMATICS model/data; COMPARISON evidens/tællinger;
-STATUS genoptagelse. Eksisterende arkivlinks og stikort er opdateret.
-Der er ikke oprettet nye daterede rapporter i repoet.
-
-BEVARELSE OG AFGRÆNSNING
-Syv kildefiler og én config fjernet; nul fysiske mapper fjernet.
-Alle berørte forældremapper er fortsat i brug, også med skjult/ignoreret indhold.
-bm_1_history har aktive kurve-/CLI-brugere; curve_control og terminal_tilt
-har selvstændige referencer/checkpoints. De bevares. season_overview har andet
-eller uklart ejerskab og berøres ikke. Root-links med beskyttede brugere bevares.
-WM149, fire råinput og alle 781 eksisterende outputs er byteuændrede.
-Originalarkivets 766 medlemmer og G-driver-delta genbruges. G8-basis' eksakte
-senere version findes i komplet Git26bdd15/startsource; ingen hashguard svækkes.
+Kontrol: højst300s samlet nye tests/modelprocesser, inklusive gentagelser.
+Ingen historiske fits eller ny faglig undersøgelse. Midlertidige audits i recovery/round5.

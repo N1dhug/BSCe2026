@@ -1,57 +1,16 @@
-BM-F/G — fjerde gennemgang, klar til lokal review
-Dato: 9. oktober 2026. Ingen push eller automatisk merge.
-Branch: cleanup/bm-fg-active-models-20261009
-Start: 26bdd150a8514c759ca266416454fb6cd9a19ed9, ren og stadig aktuel.
-Fetchet main: 09c602f327a3497a763c47e734fac4a38b12227d; main er urørt.
-Opgave: STARTPROMPT.txt. Faktiske dispositioner: FILE_PLAN.txt.
+BM-F/G — femte strukturelle gennemgang, i gang
+Start: c504806e3275840de0390e89bf69ab9e6982f5d0; branch cleanup/bm-fg-active-models-20261009, ren ved start.
+main/origin-main: 09c602f327a3497a763c47e734fac4a38b12227d, fetchet og uændret.
+Ingen opgaveprocesser kørte ved start. Gældende opgave: STARTPROMPT.txt.
+Konkrete dispositioner: FILE_PLAN.txt. Budget: højst300s nye test-/modelprocesser.
 
-RETTELSER
-G: nyt fit → export-model → forecast → resultat bevarer gruppe, målerliste,
-observation/enhed og binding til begge snapshots, TRAIN, skala og baselines.
-Markerede fit kræver binding; før-markør-fit kræver original freeze/proof.
-Declared-unverified bliver ikke verified; ægte legacy kræver eksplicit flag.
-F: fælles likelihood/checkpoint-ejer og lokale referenceimports; native fit
-kan køre med referenceimports blokeret. Uafhængig reference er bevaret.
-G7/G8: energy/matched og basis samlet hos eksisterende numeriske ejere.
-Syv aktive kildefiler og én dubletconfig fjernet; ingen fysisk mappe fjernet.
-Tre normale CLI'er består. Matematik, grids, tolerancer og seeds er uændrede.
+Gennemført: WM149 verificeret, fuld tracked råbyte-startZIP CRC-verificeret,
+faktisk output/input-hashinventar og Git/brugerkort gemt. Originale backups
+og runde4-evidens genbruges. Ingen kode-/numerikændring endnu.
+Næste: udfør params/interval og H1-sammenlægninger; derefter historisk joint-
+retirement, kontrol/estimation, outputorganisering og målrettet verifikation.
 
-FAKTISK KONTROL
-41 F-tests, 30 G-tests, 10 G7/G8-tests og 54 fælles kalender/layout/arkivtests
-bestod; suiterne overlapper. To udvidede tests blev gentaget målrettet.
-G-kædens test bruger syntetisk/mocket fit og rigtig forecast; intet historisk
-fit er kørt. Originalmodel og beskyttede legacy-validatorer er også kontrolleret.
-F: 1 filtertime + 3 forecasttimer, 47,258s; alle 4×22 CSV-felter, PNG og
-origin/final-logstates (1921 celler) eksakte mod runde3. Færdig resume
-genberegner intet og efterlader alle outputbytes uændrede.
-F's oprindelige 24h-filter afvises fortsat med måler/tid/råværdi.
-G: ny 168h-uge 7.–14. marts fra gemt fit, 4,919s; alle 15 numeriske
-CSV-felter eksakte mod runde3. Begge resultaters hashkontrollerede genlæsning består.
-F168h67,888s og tidligere 101 uafhængige tests genbruges som versionsbundet
-evidens; ingen ny fuld F-uge eller fælles F/G/WM-kampagne.
-Tests+originalvalidator: 87.826s; integration: 88.469s;
-separat importkontrol: 4.462s. Samlet 180.757/300s. Ingen modelgentagelser.
-Tre fejl i den eksterne kontrolhjælper blev rettet ved at læse færdige outputs;
-modelprocesserne var afsluttet korrekt. Kvitteringer bevarer hele forløbet.
-WM149, 4 råinput og 781 eksisterende resultater er SHA-identiske med starten.
-299 Pythonfiler parser; ingen brudte aktive imports/kommandoer/dokumentlinks.
-Eksisterende 766-medlems originalarkiv og nødvendigt G-delta er bevaret.
-
-ÅBEN FAGLIG GRÆNSE
-Leverandøren skal afgøre: er negative celler signeret nettoimport eller fejl/støj
-i bruttoforbrug? Indtil da bevares hver-måler-afvisning; ingen clipping, offset,
-udeladelse eller mean-onlykontrol. MED/UDEN er elvarmegrupper, ikke solcellebevis.
-Enhed/tidslabels er antagelser. UDEN kræver eget fit og passende datakontrakt.
-Historisk F-weekday-fit/konvergens, brugerprøve og fælles rangering afventer.
-
-GENOPTAGELSE OG GENDANNELSE
-Recovery-rod: C:\Users\jvils\.codex\.chatgpt-projects\g-p-6aaef4dd0ec48191922398dc4cb17b90\cleanup_work
-Round4: start.json, start-local-delta.zip, start-source-26bdd15.zip,
-implementation_commits.json, budget_final.json, qa_structure.json og counts.json.
-integration/ indeholder source.zip, config, logs, modeller, hashes og receipt.
-Tidligere fuldbackup og round3/delivery-branch-delta.bundle bevares; slutcommit sikres også
-som en lille Git-delta-bundle med separat kvittering. Originalkilder: archive/bm/ORIGINALS.md.
-Ved genoptagelse: kontrollér HEAD/diff, aktive processer og eksisterende receipts.
-Genstart intet automatisk. Gamle model-/sourceidentiteter må ikke omskrives.
-Næste handling: gennemgå den rene lokale branch og tag leverandørens datadefinition
-videre. Ingen yderligere modelkørsel er nødvendig for denne kodegennemgang.
+Recovery: C:\Users\jvils\.codex\.chatgpt-projects\g-p-6aaef4dd0ec48191922398dc4cb17b90\cleanup_work\round5
+start.json + start-working-bytes.zip + inventory.json. Kontrollér HEAD/diff,
+processer og færdige receipts ved afbrydelse; genstart intet automatisk.
+F-negative/UDEN/fælles faglig accept er korte kendte grænser, ikke denne rundes arbejde.

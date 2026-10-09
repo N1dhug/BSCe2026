@@ -1,206 +1,231 @@
-Fortsæt rettelse, oprydning og optimering af vores BM-F- og BM-G-arbejde.
+Gennemfør en mere omfattende STRUKTUREL oprydning af vores F/G-kode og tilhørende filer.
 
-HOVEDFORMÅL
+FORMÅL OG PRIORITERING
 
-Et hovedformål er stadig renere, enklere og mere læsbar kode: færre unødvendige filer, mindre overflødig tekst og kode, færre mellemled og en tydeligere mappestruktur.
+Jeg vil nu have overskuelighed, før jeg undersøger output, bygger videre på modellerne og vurderer deres kvalitet.
 
-De foregående runder har forbedret projektet, men den aktive implementering er kun moderat forenklet. Denne gang skal reel forenkling af den aktive kode prioriteres sammen med de konkrete rettelser nedenfor. Aflever ikke blot flere analyser, kontrolfiler og dokumenter.
+Denne opgaves hovedresultat skal være:
+- Renere og enklere aktiv kode.
+- Færre overflødige filer og mapper.
+- Sammenlægning af filer, som ikke behøver stå alene.
+- Mindre gentagen tekst og kode.
+- Tydelige placeringer og ansvar.
+- Et projekt, jeg selv kan finde rundt i og forstå.
 
-OMFANG OG EJERSKAB
+Bevar modellernes eksisterende funktionalitet. Kendte faglige begrænsninger må gerne stå kort dokumenteret, men de skal IKKE overtage denne opgave. Start ikke en ny undersøgelse af negative målinger, modelkvalitet, historiske fits eller fælles F/G/WM-evaluering.
 
-Arbejd i:
+Vi accepterer ikke endnu en aflevering, hvor hovedresultatet er mere dokumentation og kun ganske få kosmetiske ændringer. Gennemfør den forsvarlige forenkling, som den konkrete kode giver mulighed for.
+
+ARBEJDSMAPPE OG UDGANGSPUNKT
+
+Repository:
 C:\Users\jvils\OneDrive\Skrivebord\Til VS\fag\7 semester\BSCe2026
 
-Oprydning, sammenlægning, flytning og sletning må KUN omfatte de filer og mapper, vi selv har oprettet som led i F- og G-projekterne.
-
-- Et BM-navn eller en placering under src er ikke i sig selv bevis på ejerskab.
-- Brug Git-historik og eksisterende oversigter til at identificere vores materiale.
-- Ved blandet eller uklart ejerskab: bevar materialet og registrér kort begrænsningen.
-- Slet ikke en hel mappe, hvis den indeholder andres, beskyttet, skjult, ignoreret eller ukendt materiale.
-- WM, WM4, WM-MPC og deres kode, fælles afhængigheder, dokumentation, input og resultater skal være uændrede.
-- sources/ og vejledermateriale er skrivebeskyttet.
-- Rådata og unikke resultater må ikke slettes eller ændres som oprydning.
-
-KENDT UDGANGSPUNKT
-
-Senest gennemgåede branch:
+Senest kontrollerede branch:
 cleanup/bm-fg-active-models-20261009
-Senest gennemgåede commit: 26bdd15.
 
-Den var endnu ikke merget ved seneste gennemgang. Kontrollér den faktiske status og eventuelle nyere ændringer. Fortsæt på den relevante arbejdsbranch, hvis den stadig er aktuel. Overskriv eller kassér ikke lokale ændringer, og merge ikke automatisk.
+Senest kontrollerede commit:
+c504806e3275840de0390e89bf69ab9e6982f5d0
 
-Læs de gældende repositoryinstruktioner samt docs/bm/STATUS.txt, README.md, MATHEMATICS.md, COMPARISON.md og FILE_PLAN.txt. Tidligere arbejdsordrer er kontekst; dette prompt fastlægger den nye prioritering.
+Branchen var ren og endnu ikke merget. Kontrollér den aktuelle status og eventuelle nyere ændringer. Fortsæt på den relevante branch uden at overskrive andres arbejde. Ingen automatisk merge.
 
-Seneste uafhængige kontrol fandt:
-- 101 relevante tests bestod.
-- 149 beskyttede filer var uændrede.
-- Originalarkivets 766 medlemmer var verificeret.
-- F-inputkontrol og genlæsning af gemt F-uge bestod.
-- En ny G-uge på 168 timer matchede 15 numeriske felter præcist.
-- Aktiv BM-kode var reduceret fra 133 til 122 filer og 39.653 til 38.299 linjer med samme afgrænsning.
-- De samlede statiske afhængighedskæder var næsten uændrede.
+Læs gældende instruktioner og eksisterende status. Dette prompt erstatter tidligere prioritering af nye funktioner og faglig afklaring med strukturel oprydning.
 
-Genbrug gyldig evidens. Gentag ikke hele gennemgangen eller dyre kørsler uden konkret grund.
+EJERSKAB OG BESKYTTELSE
 
-1. RET G’S MANGLENDE POPULATIONSBINDING
+Oprydning må kun omfatte de filer og mapper, vi selv har oprettet i F- og G-projekterne.
 
-Den nye G-fitvej gemmer målerliste, datakontrakt og tilhørende binding i fit_population_binding.json. Den selvstændige export-model-vej bruger kun snapshottet og producerer stadig population med meters=None og legacy-unverified.
+- Kontrollér ejerskab gennem Git-historik og eksisterende oversigter.
+- Et BM-navn er ikke alene bevis på ejerskab.
+- Bevar andres arbejde og materiale med uklart eller blandet ejerskab.
+- WM, WM4, WM-MPC og beskyttede fælles afhængigheder skal være uændrede.
+- Vores egne filer, som WM afhænger af, er også beskyttet i denne opgave.
+- sources/, rådata og vejledermateriale må ikke ændres.
+- Bevar unikke resultater og nødvendig matematisk viden.
 
-Ret den samlede kæde:
-nyt fit → eksport af gemt model → ny prognose → resultatmetadata.
+Skeln mellem:
+1. Filer, vi ejer og frit kan omstrukturere.
+2. Egne filer med beskyttede brugere, som skal bevares.
+3. Andres eller uklart ejede filer, som ikke må berøres.
 
-Krav:
-- Nye modelpakker bevarer den erklærede målerliste, gruppe, aggregering, enheds-/observationsdeklaration og binding til det korrekte fit.
-- Kontrollér, at bindingsfilen tilhører netop de snapshots og træningsdata, den beskriver.
-- Skeln fortsat mellem dokumenteret medlemskab og declared-unverified. Et selvangivet manifest beviser ikke aggregeringen.
-- Gamle modeller uden denne information må fortsat være tydeligt legacy-unverified.
-- Forkert, manglende eller ændret binding må ikke lydløst få en ny model til at fremstå verificeret.
-- Tilføj en målrettet test af hele overførslen og af afvisning ved forkert binding.
+Brug ikke en beskyttet enkeltfil som begrundelse for at undlade oprydning i resten af en mappe.
 
-Brug eksisterende modelpakker og metadataformater, hvor det er muligt. Undgå et nyt generisk manifestframework og flere næsten ens kontrolfiler.
+ØNSKET STYRKE PR. MAPPE
 
-2. AFKLAR F’S NEGATIVE OBSERVATIONER UDEN AT SKJULE PROBLEMET
+src/params: LET OPRYDNING
 
-Metadata viser MED = med elvarme og UDEN = uden elvarme. Grupperne dokumenterer ikke solceller.
+Undersøg, om vores BM1-indhold faktisk hører til i params.
 
-F’s Gaussian-likelihood kan matematisk modtage negative observationer, men den arvede inputpolitik afviser hver negativ måler før aggregering. Den oprindelige 24-timers filterperiode virker derfor stadig ikke. En positiv filtertime er ikke en løsning.
+- Behold parameterdefinitioner og tæt tilknyttet parameterlogik, hvor det passer til projektets eksisterende praksis.
+- Vurdér placeringen af observationsbeholdere, Bayes-opdateringer, massetransformationer og andre numeriske funktioner.
+- Flyt kun ved en tydelig forbedring af ansvar og afhængigheder.
+- Saml små beslægtede filer, når de ikke har et selvstændigt formål.
+- Fjern ubrugte egne definitioner og imports.
+- Undgå en stor omorganisering for navngivningens skyld.
 
-Gennemgå kort og konkret:
-- Den modellerede observerede størrelse og dens fysiske betydning.
-- Om den nuværende afvisning er nødvendig for modellen eller en arvet databegrænsning.
-- Hvordan negative værdier påvirker baseline, skalering, likelihood og fortolkning.
-- Hvilken eksisterende dokumentation der kan afgøre netto-/bruttoforbrug og fortegn.
+src/tools: MELLEMSTÆRK OPRYDNING
 
-Ret kun det, evidensen og den gældende model begrunder. Tillad ikke negative data alene, fordi en Gaussian-funktion kan evaluere dem.
+- Adskil generelle hjælpere fra modelspecifik matematik og historisk forsøgsstyring.
+- Saml beslægtet indlæsning, modelpakkehåndtering og eksport, hvor datakontrakten er den samme.
+- Fjern overlappende wrappers og hjælpefiler med kun én reel bruger.
+- Undgå flere næsten identiske funktioner til samme fil-, konfigurations- eller rapportopgave.
+- Undersøg om model-/fitlogik ligger forkert i tools.
+- Bevar én tydelig ejer af hver funktion uden at samle alt i en generisk utils-fil.
 
-Ingen clipping, vilkårlige offsets, fjernelse af målere, skjult populationsskift eller kontrol af gennemsnittet alene som genvej.
+src/validation/bm_1: STÆRK TIL MEGET STÆRK OPRYDNING
 
-Hvis en afgørende datadefinition stadig mangler, beskriv én konkret nødvendig beslutning og den mindste forsvarlige løsning. Fortsæt resten af oprydningen; start ikke et nyt forskningsprojekt.
+Denne mappe skal prioriteres højt. Den indeholder omkring 30 filer og 14.300 linjer, herunder store forsøgsmoduler.
 
-UDEN skal fortsat afvises tydeligt, hvor der ikke findes en passende model og datakontrakt. Et MED-fit må ikke ommærkes til UDEN.
+Skeln konkret mellem:
+- Input- og parameterkontrol nødvendig ved almindelig kørsel.
+- Genbrugelige numeriske referenceberegninger.
+- Testfixtures og testhjælpere.
+- Historiske forsøgs- og kampagnedrivere.
+- Ubrugte eller afløste funktioner.
 
-3. FORENKL DEN AKTIVE KODE MERE GRUNDIGT
+Især estimation.py, control.py og joint_*-familien skal gennemgås for aktive brugere, gentagelser og historisk forsøgsstyring.
 
-Brug mit tidligere WM4-eksempel som kvalitetsmål: forståelige imports, synlige ligninger, klare parametre, korte forklaringer og et beregningsforløb, man kan følge.
+- Fjern afsluttede kampagner fra det aktive normalforløb.
+- Saml små moduler med samme ansvar.
+- Flyt kun kode, når placeringen reelt bliver mere logisk.
+- Bevar uafhængige numeriske referencer og nødvendig testdækning.
+- Lad ikke en hel historisk kampagne forblive aktiv, alene fordi én lille genbrugelig funktion stadig bruges.
+- Udskil i sådanne tilfælde det nødvendige indhold til en passende eksisterende ejer.
+- Undgå blot at flytte hele rodet til tests eller en ny research-mappe.
+
+src/method: MEGET STÆRK OPRYDNING
+
+Gennemgå alle vores egne, ubeskyttede F/G-metoder med henblik på reel konsolidering.
+
+- Saml metoder, der har samme matematiske eller numeriske ansvar.
+- Fjern unødvendige lag mellem almindelig modelkørsel og beregningerne.
+- Fjern dokumenteret dublering og ubrugte varianter.
+- Adskil produktionskode fra historiske forsøg.
+- Fjern forsøgsstyring og rapportering fra matematiske metoder, hvor det gør koden enklere.
+- Sørg for, at en normal F- eller G-prognose ikke trækker unødvendigt forsøgsapparat ind.
+- Bevar reelt forskellige solvere, observationstyper og referenceberegninger.
+
+Målet er færre og mere sammenhængende moduler, ikke én kæmpe fil eller en kort facade over samme gamle kompleksitet.
+
+files/output/bm_1: GENEREL OPRYDNING, OGSÅ MAPPER
+
+Undersøg hele strukturen, inklusive benchmarks, examples, f3_b, real_data og runs.
+
+- Skeln mellem aktuelle brugseksempler, modelartefakter, faglige resultater, oprydningskontroller og historiske forsøg.
+- Gør det tydeligt, hvilke få mapper en almindelig bruger skal åbne.
+- Gennemgå gentagne cleanup-/kontrolkørsler og overlappende resultater.
+- Fjern kun dokumenterede overflødige kopier og genskabelige mellemprodukter, når nødvendige referencer og bevaringskrav er kontrolleret.
+- Flyt om nødvendigt hele resultatpakker med deres interne struktur intakt.
+- Bevar model-, input-, kilde- og checkpointbindinger.
+- Opdatér aktive eksempler og henvisninger ved flytning.
+- Hvis en flytning vil bryde en historisk identitet, bevar pakken og organisér adgangen til den uden at ommærke dens kontrolsummer.
+- Bevar unikke resultater. Genskabelighed alene er ikke tilstrækkelig grund til at slette dyr eller vigtig evidens.
+- Ryd tomme mapper efterfølgende, men kontrollér også skjulte, ignorerede og ikke-versionsstyrede filer.
+
+Lav ikke blot en ny flad arkivmappe med samme rod. Brug det eksisterende arkiv og højst en kort, nyttig oversigt over aktive resultatpakker.
+
+YDERLIGERE OMRÅDER
+
+Inddrag også vores egne F/G-filer i følgende områder, når det understøtter hovedopgaven:
+
+- src/exe/run_model: fjern afløste indgange og gentagen argumentbehandling; gør de normale kommandoer tydelige.
+- src/model og src/control: kontrollér, om modeller og styringskode er placeret logisk. Beskyttede filer forbliver urørte.
+- tests: saml gentagne fixtures og næsten identiske tests uden at miste faglig dækning eller uafhængige referencer.
+- configs/bm: færre, velvalgte eksempler og ingen unødvendige dubletkonfigurationer.
+- docs/bm og root: fjern gentagne forklaringer, afløste arbejdsordrer og overflødige henvisningsfiler.
+- Vores egne genererede caches og midlertidige filer: fjern kun klart regenererbart materiale i verificerede, afgrænsede placeringer. Rør ikke miljøer eller andres caches.
+
+KVALITETSMÅL: MIT WM4-EKSEMPEL
+
+Jeg har givet WM4’s grundmodel som eksempel på læsbar kode, inklusive imports.
 
 Eksemplet findes om tilgængeligt her:
 C:\Users\jvils\.codex\attachments\8e4f42fa-6672-4a2e-9e85-c498416d71ed\Pasted text.txt
 
-Den aktuelle WM4-kode må også læses som reference, men ikke ændres.
+Læs det eller den aktuelle WM4-model som skrivebeskyttet reference.
 
-En kort modelfil er ikke nok, hvis kompleksiteten blot er flyttet til mange hjælpefiler. Samtidig skal vi undgå enorme filer, som blander alle ansvar.
+BM-koden skal bevæge sig mod:
+- Synlige ligninger og observationsdefinitioner.
+- Forståelige imports.
+- Tydelige parametre og tilstande.
+- Et normalt beregningsforløb, man kan følge.
+- Kommentarer, der forklarer væsentlig matematik og valg.
+- Færre historiske betegnelser og mellemled, hvor de ikke længere hjælper forståelsen.
 
-Kortlæg kun så meget, som er nødvendigt for at gennemføre ændringerne. Find især:
-- Små filer uden selvstændigt ansvar, som naturligt kan indgå hos deres eneste bruger.
-- Hjælpefunktioner og klasser, der kun videresender argumenter.
-- Gentagen validering, konfigurationsbehandling, eksport og statuslogik.
-- Flere implementeringer af samme beregning.
-- Afløste kompatibilitetslag og indgange uden aktive brugere.
-- Forsøgsstyring og historiske afhængigheder i normale modelkørsler.
-- Ubrugte funktioner, argumenter, imports og grene.
-- Mapper med kun én triviel fil eller en unødvendig ekstra hierarkiniveau.
-- For lange funktioner med gentagelser eller uklart ansvar.
+Kopiér ikke WM’s matematik eller kræv samme filantal. Forkort ikke ved at gøre kode tættere, mere implicit eller sværere at læse.
 
-Gennemfør konkrete sammenlægninger og fjernelser. Manglende statiske imports er ikke alene bevis for, at noget er ubrugt; kontrollér også CLI’er, tests, dynamiske kald og gemte artefakter.
+ARBEJDSMETODE
 
-Bevar matematiske metoder med forskellige formål. Produktionssolver, uafhængig numerisk reference og relevante tests er ikke automatisk dubletter.
+Lav først en kort, konkret disposition i den eksisterende filplan:
+behold, sammenlæg, flyt, fjern fra aktiv kode eller slet.
 
-Foretræk:
-- Få tydelige ejere af matematik, numerik og brugerbetjening.
-- Direkte funktioner og forståelige data.
-- Eksisterende projektstruktur.
-- Et overskueligt normalt forløb fra input til output.
+Kortlæg kun det nødvendige for at træffe beslutninger. Brug imports, faktiske kald, CLI’er, tests, dynamiske referencer og artefaktbindinger. Manglende statiske imports er ikke alene bevis for, at en fil er ubrugt.
 
-Undgå:
-- Nye generiske frameworks, registreringssystemer og abstraktionslag.
-- Flere hjælpefiler for at gøre én anden fil kunstigt kort.
-- Sammenpresning til svært læselige enlinjefunktioner.
-- Store samlefiler, der blot flytter kompleksiteten.
-- At fjerne nødvendige kontroller for at reducere linjetal.
+Udfør derefter dispositionerne mappevis. Stop ikke efter inventaret.
 
-4. SKÆR OVERFLØDIG TEKST, FILER OG MAPPER VÆK
+For hver større sammenlægning:
+- Angiv den nye tydelige ejer.
+- Opdatér alle aktive brugere.
+- Fjern den gamle fil, hvis den ikke behøver bestå.
+- Bevar kun en kompatibilitetswrapper, hvis der findes en konkret nødvendig bruger.
+- Kontrollér, at den nye struktur er lettere at følge.
 
-Gennemgå vores F/G-materiale både i root, docs, configs, src, tests og arkivets læsbare dele.
+Historisk Git-historik er ikke i sig selv en aktiv bruger. Gamle resultater med nødvendige kildeidentiteter skal kunne genskabes fra deres originale version; de skal ikke tvinge al gammel forsøgsstyring til at blive i den aktive kode.
 
-- Saml filer, der beskriver eller implementerer samme ansvar.
-- Fjern gentagne forklaringer mellem vejledninger, modelnoter, status og planer.
-- Bevar ét autoritativt sted for hvert aktuelt fagligt emne.
-- Forkort kommentarer og docstrings, der blot gentager koden eller gammel samtalehistorik.
-- Bevar forklaringer af antagelser, ikke-oplagte ligninger og begrundede valg.
-- Fjern afløste arbejdsordrer fra aktive dokumenter.
-- Fjern unødvendige henvisningsfiler, hvor ingen beskyttede eller aktive links kræver dem.
-- Saml eksempelkonfigurationer med samme formål; undgå mange næsten identiske eksempler.
-- Fjern tomme og ubrugte mapper efter kontrol af hele deres indhold og ejerskab.
-- Opdatér imports, kommandoer, links og relevante tests ved flytninger.
+Indfør ikke nye frameworks, registreringssystemer eller omfattende abstraktioner. Undgå nye permanente kontrolrapporter for hvert lille trin. Genbrug status, filplan, arkiv og eksisterende evidens.
 
-Historik skal kunne findes og genskabes, men behøver ikke ligge som gentagen aktiv tekst. Genbrug det eksisterende arkiv og Git-historikken. Bevar nødvendige eksakte kildepakker til gamle resultater; deres identitetskontroller må ikke omgås.
+Bevar det matematiske indhold, grids, tolerancer, seeds, observationskontrakter og normale output. Denne opgave autoriserer strukturel oprydning, ikke skjulte modelændringer.
 
-Opret ikke nye daterede statusrapporter for hvert lille trin. Opdatér de eksisterende autoritative dokumenter. Midlertidige undersøgelser skal ikke automatisk blive nye permanente projektfiler.
+KONTROL OG KØRSELSBUDGET
 
-Filreduktion er et vigtigt mål, men ikke en blind procentkvote. Rapportér reelle reduktioner i aktivt materiale; omklassificering og ZIP-arkivering er ikke det samme som forenkling.
+Brug målrettede tests og korte kontroller til at bevise, at oprydningen bevarer funktionaliteten.
 
-5. BEVAR OG FORBEDR DEN ALMINDELIGE BRUG
+- Kontroller ændrede imports og normale kommandoer.
+- Kontroller relevante numeriske regressioner efter sammenlægninger.
+- Bevar populationsbinding, kildeidentiteter og genoptagelse.
+- Kontroller beskyttede filer efter delmål.
+- Kontroller links og gendannelse, hvor filer eller resultatpakker flyttes.
+- Genbrug eksisterende modelresultater, når det er tilstrækkeligt.
 
-Efter sammenlægningerne skal F/G fortsat kunne bruges uden chat:
-- WM-lignende python -m-kommandoer.
-- Let valg af periode, horisont, modelartefakt og output.
-- Tydelig forskel mellem nyt fit, ny prognose med gemt fit og genlæsning af resultater.
-- Forståelige fejl ved forkert gruppe, periode eller model.
-- Ingen personlige absolutte stier i normale eksempler.
-- Ingen ny GUI eller menu.
+Ingen historiske fits, lange modelkørsler, brede benchmarkkampagner eller fælles modelrangering. Brug højst 300 sekunders samlet ny test-/modelprocestid i første omgang; gentagne kontroller tæller med. Hvis det ikke er tilstrækkeligt, afslut uafhængigt strukturarbejde og angiv præcist, hvilken kontrol der mangler og hvorfor. Budgettet er et loft, ikke et forbrugsmål.
 
-Bevar sammenlignelige outputfelter og eksplicitte oplysninger om population, tid, enhed, baseline, fit-cutoff og inputscenarie. BM sammenlignes med WM; WM ændres ikke.
+F’s negative observationer, UDEN-understøttelse og den senere faglige sammenligning skal blot bevares som korte kendte begrænsninger. Brug ikke denne runde på at genundersøge dem.
 
-Den store fælles F/G/WM-evaluering og modelrangering er fortsat udskudt. Vi kontrollerer funktionalitet og sammenligningsgrundlag nu.
+AFBRYDELSER
 
-6. OPTIMÉR KUN KONKRETE FLASKEHALSE
+Lav små, sammenhængende commits. Hold én kanonisk status med:
+- gennemførte ændringer,
+- faktiske kontroller,
+- resterende strukturelt arbejde,
+- næste præcise handling.
 
-Prioritér enkel kode og undgå gentaget arbejde:
-- Gentagen indlæsning og klargøring.
-- Unødvendige imports.
-- Beregninger af uændrede størrelser inde i løkker.
-- Gentagen serialisering og eksport.
-- Dobbelt modelarbejde i almindelige kommandoer.
+Kontrollér processer og eksisterende resultater efter afbrydelser. Genstart ikke automatisk, og overskriv ikke gamle artefakter eller kontrolsummer.
 
-Profilér målrettet. Brug ikke omfattende benchmarking som erstatning for oprydning.
+FÆRDIGKRITERIER
 
-Bevar matematisk model, grids, tolerancer og seeds ved ren optimering. Hvis en ændring påvirker numerik eller modelbetydning, skal den fremgå særskilt.
+Denne strukturelle runde er færdig, når:
+- Alle nævnte mapper er gennemgået med den ønskede styrke.
+- De forsvarlige sammenlægninger og fjernelser faktisk er udført.
+- Aktive F/G-forløb er lettere at læse og navigere.
+- Overflødige egne filer og ubrugte egne mapper er fjernet.
+- Historisk forsøgsstyring ikke unødvendigt belaster normal brug.
+- Outputmapperne har en tydelig praktisk organisering.
+- Relevant funktionalitet og faglig testdækning er bevaret.
+- WM, andres arbejde, rådata og unikke resultater er urørte.
 
-En uges prognose med gemt fit skal helst være under 10 minutter inklusive input og eksport. Ingen nye dyre historiske fits, 30–60-minutters kørsler eller brede datakampagner uden særskilt tilladelse. Mange små gentagelser må ikke omgå budgettet.
+Der er ingen fast procentkvote. Men en lille reduktion skal forklares konkret pr. område, hvis gennemgangen viser, at mere ikke er forsvarligt. Henvis ikke blot generelt til “kompleksitet” eller “tests”.
 
-7. KONTROL, GENOPTAGELSE OG AFLEVERING
+AFLEVERING
 
-Arbejd i små sammenhængende commits. Hold én aktuel status med ændringer, testresultater, åbne spørgsmål og næste konkrete handling.
+Aflever kort og konkret:
+1. Før/efter pr. ønsket mappe: aktive filer, mapper og kodelinjer med samme afgrænsning.
+2. De vigtigste sammenlægninger og placeringer.
+3. Hvad der nu er enklere i forhold til WM4-eksemplet.
+4. Hvilke få filer og mapper jeg skal begynde med for at forstå og bruge F/G.
+5. De gennemførte kontroller og eventuelle mangler.
+6. Præcise begrundelser for væsentligt materiale, som måtte bevares.
+7. En ren branch klar til review; ingen automatisk merge.
 
-Ved afbrydelse:
-- Kontrollér aktive processer og eksisterende resultater.
-- Genstart ikke automatisk.
-- Genbrug færdigt, verificeret arbejde.
-- Bevar model-/data-/kildeidentiteter.
-- Lad ikke delvise output fremstå færdige.
+Skeln mellem reel kodeforenkling, flytning, arkivering og sletning. En ZIP må ikke tælles som én forenklet kildefil.
 
-Kør relevante tests efter funktionelle ændringer og en samlet, afgrænset slutkontrol. Bevar faglig testdækning, når tests samles eller flyttes. Slet ikke tests blot for at få kontrollerne grønne.
-
-Slutkontrollen skal omfatte:
-- G-populationsbinding fra nyt fit til prognose.
-- F’s faktisk understøttede forløb og tydelige databegrænsninger.
-- Normal CLI-brug og ændring af periode/parametre.
-- Numerisk regression på samme input.
-- Relevante pause-/genoptagelsesforløb.
-- Output og modelartefakters integritet.
-- Beskyttede filer og rådata uændrede.
-- Ingen brudte aktive imports, kommandoer eller dokumentlinks.
-- Arkiv og nødvendige historiske resultater bevaret.
-
-Aflever kort:
-1. Hvad der konkret er rettet.
-2. Hvilke filer og mapper der er sammenlagt eller fjernet, og hvorfor.
-3. Før/efter for aktiv kode, kodelinjer, noter, mapper og normale afhængigheder med samme afgrænsning.
-4. Hvordan den normale F/G-kode nu er lettere at læse i forhold til WM4-eksemplet.
-5. Hvilke kontroller der faktisk er kørt og bestået.
-6. Resterende funktionelle eller faglige begrænsninger.
-7. En ren branch klar til gennemgang; ingen automatisk merge.
-
-Påstå ikke, at hele opgaven er afsluttet, hvis kendte centrale mangler består. Skeln mellem bevaret funktion, dokumenteret forbedring og endnu ikke afprøvet funktion.
-
-Gå i gang. Lav først en kort konkret prioritering, og udfør derefter rettelserne og den videre forenkling uden at stoppe for rutinemæssige spørgsmål.
+Gå i gang og gennemfør den strukturelle oprydning. Træf almindelige organisatoriske valg selv, og fortsæt på uafhængige områder, hvis ét område har en konkret beskyttelsesbegrænsning.
