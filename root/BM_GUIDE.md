@@ -35,4 +35,6 @@ Gamle snapshots og kildebundne checkpoints bruges med deres egne arkivkilder.
 
 G-udvidelser: [arkivbranch](https://github.com/N1dhug/BSCe2026/tree/archive/g-udvidelser-20261009).
 F: [F-arkiv](https://github.com/N1dhug/BSCe2026/tree/archive/f-main-20261009).
+Seneste oprydning: [F-rester og ekstra indgange](https://github.com/N1dhug/BSCe2026/tree/archive/f-og-ekstra-grundmodel-20261009),
+med komplette kilder fra main 4011c10 og tilhørende tests.
 Status: [STATUS.txt](../docs/bm/STATUS.txt).

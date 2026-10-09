@@ -9,11 +9,14 @@ import unittest
 from unittest.mock import patch
 
 import pandas as pd
+import numpy as np
 
 from src.exe.run_model import bm_1_g
 from src.exe.run_model.bm_1 import s3
 from src.method import bm_1_s3_interval as interval
 from tests import test_bm1_s3_interval as fixture
+from tests.g_fixtures import synthetic_history
+from src.tools.bm_1_deterministic_data import prepare_frame
 
 
 class GBasicTests(unittest.TestCase):
@@ -36,6 +39,33 @@ class GBasicTests(unittest.TestCase):
             s3.parser().parse_args([*predict,'--sigma-x','.2'])
         self.assertEqual(error.exception.code,2)
         self.assertIn('unrecognized arguments: --sigma-x',stderr.getvalue())
+
+    def test_future_measurements_do_not_change_training_or_scales(self):
+        raw,origin,_=synthetic_history()
+        start=origin-pd.Timedelta(weeks=5)
+        before,scales=prepare_frame(raw,start,origin)
+        changed=raw.copy()
+        changed.loc[changed.index>=origin,['Demand','Price','Temp']]=1e8
+        after,new_scales=prepare_frame(changed,start,origin)
+        self.assertEqual(scales,new_scales)
+        pd.testing.assert_frame_equal(before.loc[start:origin-pd.Timedelta(hours=1)],
+                                      after.loc[start:origin-pd.Timedelta(hours=1)])
+
+    def test_training_gaps_preserve_missing_demand_and_require_prices(self):
+        raw,origin,_=synthetic_history()
+        start=origin-pd.Timedelta(weeks=5)
+        last=origin-pd.Timedelta(hours=1)
+        raw.loc[[start,last],'Temp']=np.nan
+        raw.loc[start,'Demand']=np.nan
+        raw.loc[origin,'Temp']=1e8
+        frame,_=prepare_frame(raw,start,origin)
+        self.assertTrue(np.isnan(frame.loc[start,'I']))
+        self.assertEqual(frame.loc[start,'Temp'],raw.loc[start+pd.Timedelta(hours=1),'Temp'])
+        self.assertEqual(frame.loc[last,'Temp'],raw.loc[last-pd.Timedelta(hours=1),'Temp'])
+        self.assertTrue(frame.loc[[start,last],'temperature_imputed'].all())
+        raw.loc[start,'Price']=np.nan
+        with self.assertRaisesRegex(ValueError,'complete prices'):
+            prepare_frame(raw,start,origin)
 
     def test_input_only_prediction_completes_without_refit_and_creates_plot(self):
         with tempfile.TemporaryDirectory() as tmp:

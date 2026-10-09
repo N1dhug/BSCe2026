@@ -102,27 +102,6 @@ class bm_validation:
         values[5] = cls.unit_scalar(Xi, "Xi")
         return values
 
-    @classmethod
-    def response_endpoints(cls, f, g):
-        """Check the canonical F2 endpoint normalization once at entry.
-
-        This is not a proof of monotonicity, interior range or Lipschitz
-        regularity for arbitrary callables.  Those remain model assumptions;
-        response_values checks the range at evaluated points during a solve.
-        The original callables are returned without rescaling or clipping.
-        """
-        for response, name in ((f, "f"), (g, "g")):
-            cls.callable_input(response, name)
-            values = np.array([
-                cls.finite_scalar(response(0.0), f"{name}(0)"),
-                cls.finite_scalar(response(1.0), f"{name}(1)"),
-            ])
-            if not np.allclose(values, [1.0, -1.0], atol=1.0e-10, rtol=0.0):
-                raise ValueError(
-                    f"F2 requires {name}(0) = 1 and {name}(1) = -1 "
-                    "under the canonical BM1 normalization."
-                )
-        return f, g
 
     @classmethod
     def initial_condition(cls, init_cond):
@@ -144,14 +123,6 @@ class bm_validation:
             raise ValueError("state must contain a state-of-charge value.")
         return values
 
-    @classmethod
-    def diffusion(cls, X, sigma_x):
-        # Verify inputs
-        values = cls.finite_array(X, "X")
-        sigma_x = cls.finite_scalar(sigma_x, "sigma_x")
-        if sigma_x < 0.0:
-            raise ValueError("sigma_x must be non-negative.")
-        return values, sigma_x
 
     @classmethod
     def dynamics(cls, U, f, g, C, k, Xi):

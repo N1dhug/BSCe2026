@@ -22,7 +22,7 @@ def raw_frame():
 
 
 def callbacks(name, calls, *, fail=False):
-    """Synthetic F/G interface fixture, not either physical model's estimator."""
+    """Synthetic independent adapters for the shared calendar."""
     def baseline(day):
         calls.append((name, 'baseline', day))
         assert len(day.records) == 5
@@ -33,16 +33,13 @@ def callbacks(name, calls, *, fail=False):
         calls.append((name, 'fit', day))
         if fail:
             raise RuntimeError('Synthetic own-model budget exhausted')
-        residuals = pd.concat(day.records).Demand.dropna().to_numpy() - baseline
-        return {'variance':float(np.mean(residuals**2))} if name == 'F' else {'offset':0.}
+        return {'offset':.1 if name=='A' else 0.}
     def predict(day, baseline, parameters):
         assert not day.records and 'Demand' not in day.context and 'Demand' not in day.inputs
         assert day.context.index[-1] == day.inputs.index[-1]
         assert day.context.loc[day.inputs.index[0]].Temp == day.inputs.iloc[0].Temp
         calls.append((name, 'predict', day))
-        result = pd.DataFrame({'prediction':baseline}, index=day.inputs.index)
-        if name == 'F':
-            result['variance'] = parameters['variance']
+        result = pd.DataFrame({'prediction':baseline+parameters['offset']}, index=day.inputs.index)
         return result
     def save(day, baseline, parameters, directory):
         _atomic_report(directory/f'model_{day.weekday}.json', {'baseline':baseline, 'parameters':parameters})
@@ -120,9 +117,9 @@ class CalendarTests(unittest.TestCase):
 
 
 class RunnerTests(unittest.TestCase):
-    def test_F_and_G_callbacks_are_separate_and_all_predictions_precede_scoring(self):
+    def test_independent_adapters_freeze_all_predictions_before_scoring(self):
         raw = raw_frame(); windows = rolling_windows('2022-03-21','2022-03-28')
-        for name in ('F','G'):
+        for name in ('A','B'):
             with self.subTest(model=name), tempfile.TemporaryDirectory() as temp:
                 out = Path(temp)/'run'; calls=[]
                 def load():
@@ -144,14 +141,14 @@ class RunnerTests(unittest.TestCase):
                     if c[1]=='fit':
                         self.assertLess(c[2].context.index.max(),c[2].inputs.index.min())
                 first=pd.read_csv(out/'20220321'/'predictions.csv')
-                self.assertEqual('variance' in first,name=='F')
+                self.assertNotIn('Demand',first)
                 with self.assertRaises(FileExistsError): run_backtest(raw,raw,windows,callbacks(name,[]),out)
 
     def test_failure_preserves_artifacts_does_not_retry_or_open_targets(self):
         with tempfile.TemporaryDirectory() as temp:
             raw=raw_frame(); out=Path(temp)/'run'; calls=[]; opened=[]
             with self.assertRaisesRegex(RuntimeError,'budget exhausted'):
-                run_backtest(raw,raw,rolling_windows('2022-03-21','2022-03-28'),callbacks('F',calls,fail=True),out,
+                run_backtest(raw,raw,rolling_windows('2022-03-21','2022-03-28'),callbacks('A',calls,fail=True),out,
                              load_observations=lambda:opened.append(True))
             self.assertFalse(opened); self.assertEqual([c[1] for c in calls],['baseline','fit'])
             self.assertTrue((out/'20220321'/'window.json').exists())
@@ -162,7 +159,7 @@ class RunnerTests(unittest.TestCase):
     def test_nonfinite_or_incomplete_forecast_is_not_frozen(self):
         for bad in ('missing','nan','target'):
             with self.subTest(bad=bad), tempfile.TemporaryDirectory() as temp:
-                raw=raw_frame(); adapter=callbacks('G',[])
+                raw=raw_frame(); adapter=callbacks('B',[])
                 def broken(data,directory):
                     df=pd.DataFrame({'prediction':1.},index=data.inputs.index)
                     if bad=='missing': return df.iloc[:-1]
@@ -176,19 +173,19 @@ class RunnerTests(unittest.TestCase):
 
     def test_pooling_uses_observation_counts_not_mean_week_RMSE(self):
         with tempfile.TemporaryDirectory() as temp:
-            raw=raw_frame(); adapter=callbacks('G',[])
+            raw=raw_frame(); adapter=callbacks('B',[])
             adapter.forecast_week=lambda data,directory: pd.DataFrame({'prediction':0.},index=data.inputs.index)
             truth=raw.Demand.copy(); truth.loc['2022-03-21':'2022-03-27 23:00']=1.
             truth.loc['2022-03-28':'2022-04-03 23:00']=3.
             truth.loc['2022-03-28 00:00']=np.nan
             report=run_backtest(raw,raw,rolling_windows('2022-03-21','2022-03-28'),adapter,Path(temp)/'run',load_observations=lambda:truth)
-            self.assertEqual(report['pooled']['G']['samples'],334)
-            self.assertAlmostEqual(report['pooled']['G']['rmse'],np.sqrt(5.))
+            self.assertEqual(report['pooled']['B']['samples'],334)
+            self.assertAlmostEqual(report['pooled']['B']['rmse'],np.sqrt(5.))
             idx=pd.date_range('2022-01-01',periods=2,freq='h')
-            scores=score_predictions(pd.DataFrame({'p':1.},index=idx),pd.Series(np.nan,index=idx),{'G':'p'})
-            self.assertIsNone(scores['G']['rmse']); self.assertEqual(scores['G']['samples'],0)
-            scores=score_predictions(pd.DataFrame({'p':1.},index=idx),pd.Series(2.,index=idx),{'G':'p'})
-            self.assertEqual(scores['G']['bias'],-1.)
+            scores=score_predictions(pd.DataFrame({'p':1.},index=idx),pd.Series(np.nan,index=idx),{'B':'p'})
+            self.assertIsNone(scores['B']['rmse']); self.assertEqual(scores['B']['samples'],0)
+            scores=score_predictions(pd.DataFrame({'p':1.},index=idx),pd.Series(2.,index=idx),{'B':'p'})
+            self.assertEqual(scores['B']['bias'],-1.)
 
     def test_modified_frozen_artifact_blocks_scoring(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -197,10 +194,10 @@ class RunnerTests(unittest.TestCase):
                 path=out/'20220321'/'predictions.csv'; path.write_text('modified',encoding='utf-8')
                 return raw.Demand
             with self.assertRaisesRegex(ValueError,'artifacts changed'):
-                run_backtest(raw,raw,rolling_windows('2022-03-21','2022-03-21'),callbacks('F',[]),out,load_observations=load)
+                run_backtest(raw,raw,rolling_windows('2022-03-21','2022-03-21'),callbacks('A',[]),out,load_observations=load)
             self.assertFalse((out/'20220321'/'scores.json').exists())
 
-    def test_plan_only_requires_no_data_and_does_not_load_G(self):
+    def test_plan_only_requires_no_data_or_adapter(self):
         with tempfile.TemporaryDirectory() as temp, patch('src.exe.run_model.weekday_backtest._csv',side_effect=AssertionError('no data')):
             out=Path(temp)/'plan'
             self.assertEqual(main(['--first-origin','2023-01-02','--last-origin','2023-01-16',

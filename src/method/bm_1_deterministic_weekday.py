@@ -1,7 +1,4 @@
-"""G development: five independent matching weekdays, pooled G4 loss.
-
-This adapter reuses the G4 optimizer and forward kernel. It never concatenates
-separated calendar days into a fictitious continuous state trajectory.
+"""Independent historical G day trajectories, pooled without joining state paths.
 """
 import numpy as np
 from src.method.bm_1_deterministic_response import BM1ResponseInputs
@@ -11,7 +8,7 @@ class BM1PooledInputs(BM1ResponseInputs):
     def __init__(self, trajectories):
         self.trajectories = tuple(trajectories)
         if not self.trajectories or not all(isinstance(t, BM1ResponseInputs) for t in self.trajectories):
-            raise ValueError('Require independent G4 trajectories.')
+            raise ValueError('Require independent G trajectories.')
         first = self.trajectories[0]
         if any(t.n_hours not in (47,48) or t.warmup != 24 or t.observations is None for t in self.trajectories):
             raise ValueError('Each history needs 24 h warm-up and a 23/24 h target.')
@@ -41,11 +38,3 @@ class BM1PooledInputs(BM1ResponseInputs):
 
     def refined(self):
         return type(self)([t.refined() for t in self.trajectories])
-
-
-class BM1WeekdayInputs(BM1PooledInputs):
-    def __init__(self, trajectories):
-        trajectories = tuple(trajectories)
-        if len(trajectories) != 5:
-            raise ValueError('Require exactly five independent G4 trajectories.')
-        super().__init__(trajectories)

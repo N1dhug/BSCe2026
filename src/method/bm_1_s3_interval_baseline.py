@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.output_model import statistical_output
-from src.exe.run_model.bm_1.deterministic_strategies import ZONE
-from src.tools.bm_1_deterministic_snapshot import restore_baseline
+from src.tools.bm_1_g_contract import ZONE
+from src.tools.bm_1_g_baseline import restore_baseline
 
 IMPLEMENTATION='statistical_output_hourly_mean_features_v1'
 

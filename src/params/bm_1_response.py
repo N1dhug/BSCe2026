@@ -1,4 +1,4 @@
-"""H1's immutable continuous monotone response family; no fitting at import."""
+"""G's immutable two-piece price response; no fitting at import."""
 
 from dataclasses import dataclass
 
@@ -9,12 +9,10 @@ from src.validation import estimation as checks
 
 @dataclass(frozen=True)
 class BM1PiecewiseResponse:
-    """Shared f(x) or g(u), selected by argument value rather than date.
+    """Two straight pieces through (0,1), (0.5,a) and (1,-1).
 
-    Endpoints are fixed at 1 and -1; ordered inner values give continuity and
-    non-increasing response without clipping or projection. The same object
-    can be passed to every day's BM1Parameters. Curve fitting, population,
-    normalization and blind split metadata belong to the eventual H study.
+    The default a=0 gives the linear state response. Fitted a describes price
+    response. Geometry is continuous and monotone without clipping.
     """
 
     knots: object
@@ -23,8 +21,8 @@ class BM1PiecewiseResponse:
     def __post_init__(self):
         knots = checks.increasing_grid(self.knots, 'response knots').copy()
         values = checks.finite_vector(self.values, 'response values').copy()
-        if knots[0] != 0. or knots[-1] != 1. or values.shape != knots.shape:
-            raise ValueError('Matching response knots must span exactly [0,1].')
+        if not np.array_equal(knots,[0.,.5,1.]) or values.shape != knots.shape:
+            raise ValueError('G response knots must be exactly [0,0.5,1].')
         if values[0] != 1. or values[-1] != -1. or np.any(np.diff(values) > 0.):
             raise ValueError('Response values must decrease from exactly 1 to -1.')
         knots.setflags(write=False)
@@ -34,20 +32,20 @@ class BM1PiecewiseResponse:
 
     @classmethod
     def from_inner_values(cls, inner_values, *, pieces):
-        """The declared two-/four-piece families, with all pieces coupled."""
+        """The two-piece price response with one fitted midpoint."""
         pieces = checks.positive_integer(pieces, 'pieces', minimum=2)
-        if pieces not in (2, 4):
-            raise ValueError('H1 declares two or four pieces.')
+        if pieces != 2:
+            raise ValueError('G declares two price-response pieces.')
         inner = checks.finite_vector(inner_values, 'inner values')
         if inner.size != pieces - 1:
             raise ValueError('One shared value is needed at each inner knot.')
         return cls(np.linspace(0., 1., pieces + 1), np.r_[1., inner, -1.])
 
     @classmethod
-    def linear(cls, *, pieces=4):
+    def linear(cls, *, pieces=2):
         pieces = checks.positive_integer(pieces, 'pieces', minimum=2)
-        if pieces not in (2, 4):
-            raise ValueError('H1 declares two or four pieces.')
+        if pieces != 2:
+            raise ValueError('G declares two response pieces.')
         knots = np.linspace(0., 1., pieces + 1)
         return cls(knots, 1. - 2. * knots)
 

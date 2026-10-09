@@ -1,4 +1,4 @@
-"""G1/G2: linear-response BM1, cheap deterministic propagation and bounded LS.
+"""Linear-response G propagation and exact constant-input reference.
 
 The scalar RK4 kernel is the standard BM1 equation, with parity checked against
 bm_1.deterministic_solver. Fixed input interpolation avoids adaptive-step noise
@@ -7,8 +7,6 @@ in finite differences. No clipping, filtering, stochastic or price optimization.
 from math import tanh, sinh, asinh, exp
 from time import perf_counter
 import numpy as np
-from scipy.optimize import least_squares
-from src.params.bm_1_deterministic import BM1DeterministicConfig
 
 
 class BudgetStop(RuntimeError):
@@ -31,7 +29,7 @@ def linear_demand(x, u, baseline, k, xi):
 
 
 def exact_linear_interval(x, baseline, u, hours, C_hours, k, xi):
-    """F1 reference for genuinely constant inputs; not used for WM baseline fit."""
+    """Analytic reference for genuinely constant inputs; not used for WM baseline fit."""
     _parameters((C_hours, k, xi, x))
     if not (0 <= baseline <= 1 and 0 <= u <= 1 and np.isfinite(hours) and hours > 0):
         raise ValueError('Invalid constant interval.')
@@ -142,92 +140,3 @@ class BM1DeterministicInputs:
                           fine_demand=np.array([linear_demand(x,u,b,k,xi)
                                                 for x,u,b in zip(fine_states,fine_u,self.b_edge)]))
         return result
-
-
-def fit_deterministic(inputs, config=None, *, checkpoint=None, progress=None):
-    """Bounded TRF with explicit counts including every finite-difference solve."""
-    config = config or BM1DeterministicConfig()
-    if inputs.observations is None:
-        raise ValueError('Fitting requires observed demand.')
-    started = perf_counter()
-    deadline = started + config.seconds
-    counts = {'residual_calls': 0, 'forward_solves': 0, 'rhs_evaluations': 0}
-    completed, provisional, best = [], None, None
-    last_save = started
-    mask = inputs.observation_mask.copy()
-    mask[:inputs.warmup] = False
-    n_observed = int(mask.sum())
-    if not n_observed or not np.isfinite(inputs.observations[mask]).all():
-        raise ValueError('Fit needs finite measured demand after warm-up.')
-    lower, upper = np.array(config.lower), np.array(config.upper)
-    # log C/log k; amplitudes/state remain in their bounded physical domains.
-    active = 4 if config.fixed_x0 is None else 3
-    coordinate_names = ['log_C_hours','log_k','Xi','x0'][:active]
-    def pack(p): return np.r_[np.log(p[:2]), p[2:active]]
-    def unpack(p):
-        values = np.r_[np.exp(p[:2]), p[2:]]
-        return values if active == 4 else np.r_[values, config.fixed_x0]
-
-    def snapshot(status):
-        return {'status': status, 'counts': dict(counts), 'seconds': perf_counter()-started,
-                'starts': list(completed), 'best_converged': best, 'best_provisional': provisional,
-                'optimized_coordinates': coordinate_names, 'fixed_x0': config.fixed_x0,
-                'observed_samples':n_observed, 'unscored_hours':inputs.n_hours-n_observed}
-
-    for start_index, start in enumerate(config.starts):
-        begin_calls = counts['residual_calls']
-        def residual(v):
-            nonlocal provisional, last_save
-            if counts['residual_calls'] >= config.max_calls:
-                raise BudgetStop('total residual-call limit')
-            if counts['residual_calls'] - begin_calls >= config.calls_per_start:
-                raise BudgetStop('per-start residual-call limit')
-            if perf_counter() >= deadline:
-                raise BudgetStop('wall-time limit')
-            counts['residual_calls'] += 1
-            counts['forward_solves'] += 1
-            p = unpack(v)
-            try:
-                out = inputs.solve(p, deadline=deadline)
-            finally:
-                counts['rhs_evaluations'] += inputs.last_rhs_evaluations
-            values = (out['demand'] - inputs.observations)[mask]
-            mse = float(np.mean(values**2))
-            if provisional is None or mse < provisional['mse']:
-                provisional = {'parameters': p.tolist(), 'mse': mse, 'start': start_index}
-            now = perf_counter()
-            if checkpoint is not None and now-last_save >= 2.:
-                checkpoint(snapshot('running'))
-                last_save = now
-            if progress is not None and counts['residual_calls'] % 25 == 0:
-                progress(snapshot('running'))
-            return values / np.sqrt(len(values))
-        try:
-            result = least_squares(residual, pack(np.asarray(start)), bounds=(pack(lower), pack(upper)),
-                                   method='trf', jac='2-point', diff_step=1e-4, loss='linear',
-                                   x_scale='jac', ftol=1e-7, xtol=1e-7, gtol=1e-7,
-                                   max_nfev=config.calls_per_start)
-            record = {'start': start_index, 'parameters': unpack(result.x).tolist(),
-                      'mse': float(np.mean((result.fun*np.sqrt(n_observed))**2)),
-                      'converged': bool(result.success), 'stop': result.message,
-                      'residual_calls': counts['residual_calls']-begin_calls,
-                      'active_bounds': result.active_mask.tolist()}
-            if result.success:
-                singular = np.linalg.svd(result.jac, compute_uv=False)
-                record['scaled_jacobian_singular_values'] = singular.tolist()
-                record['local_rank'] = int(np.count_nonzero(singular > singular[0]*1e-8)) if singular[0] else 0
-                if best is None or record['mse'] < best['mse']:
-                    best = dict(record)
-            completed.append(record)
-        except BudgetStop as exc:
-            completed.append({'start': start_index, 'converged': False, 'stop': str(exc),
-                              'residual_calls': counts['residual_calls']-begin_calls})
-            if 'per-start' not in str(exc):
-                break
-        if checkpoint is not None:
-            checkpoint(snapshot('between-starts'))
-    status = 'converged' if best is not None else 'unfinished'
-    answer = snapshot(status)
-    if checkpoint is not None:
-        checkpoint(answer)
-    return answer

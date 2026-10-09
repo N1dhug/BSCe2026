@@ -6,6 +6,8 @@
 - Bevar WM, WM-MPC og deres fælles afhængigheder.
 - G på main er den deterministiske grundmodel: respons, balance, timegennemsnit, fit og prognose.
   Udvidelser er bevaret på archive/g-udvidelser-20261009 og må ikke genindføres automatisk.
+- Resterende F-kode og gamle benchmark-, punktprognose- og studieindgange er
+  bevaret på archive/f-og-ekstra-grundmodel-20261009, fra main 4011c10.
 - Synkroniserede sources/ er skrivebeskyttede. Bevar lokale og ignorerede data.
 - Arbejd i eksisterende checkout; beskyt lokale ændringer og aktive beregninger.
 - Ingen nye historiske fits eller genstart af gamle studier uden konkret opgave.

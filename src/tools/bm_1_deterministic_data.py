@@ -1,35 +1,7 @@
-"""G0 data contract: raw aggregates, train-only scales, common WM4 baseline."""
-from pathlib import Path
-import hashlib
+"""Raw G CSV input and historical-only normalization; no benchmark or workbook driver."""
 import numpy as np
 import pandas as pd
-from src.exe.run_model.wm_3.fit_weekly import consumption_series, price_series, temperature_series
-from src.tools.import_data.import_input import input_data, interpolate_time_gaps
-from src.tools.import_data.import_prices import spot_price_data
-from src.tools.import_data.import_weather import weather_data
-
-
-def load_raw_frame(data_directory, start, end, tag='MED', *, cutoff=None):
-    directory = Path(data_directory)
-    # observed_data retains missing observations: never use the importer's
-    # season-wide imputation or WM's season-wide min/max for this experiment.
-    demand = consumption_series(input_data(directory/'input.xlsx'), tag)
-    price = price_series(spot_price_data(directory/'prices.xlsx', price_area='DK1'))
-    # Weather must cover the requested origin even if the first observed
-    # consumption timestamp is later. Missing demand is audited separately.
-    history_start = min(pd.Timestamp(start),max(demand.index.min(),price.index.min()))
-    weather = weather_data(cache_dir=directory/'weather_cache')
-    if cutoff is None:
-        raise ValueError('Declare forecast cutoff before fetching/imputing weather.')
-    # The existing weather importer interpolates gaps. Separate requests prevent
-    # any forecast temperature being used to fill a training-boundary gap.
-    historical = temperature_series(weather, history_start, cutoff)
-    pieces = [historical]
-    if pd.Timestamp(end) > pd.Timestamp(cutoff):
-        pieces.append(temperature_series(weather, cutoff, end))
-    temp = pd.concat(pieces).sort_index()
-    return pd.concat((demand.rename('Demand'), price.rename('Price'), temp.rename('Temp')), axis=1).sort_index()
-
+from src.tools.import_data.import_input import interpolate_time_gaps
 
 def raw_csv(path, *, require_demand=True):
     frame = pd.read_csv(path, index_col='Datetime', parse_dates=['Datetime'])
@@ -37,50 +9,6 @@ def raw_csv(path, *, require_demand=True):
     if set(required) - set(frame):
         raise ValueError('CSV needs Datetime,'+','.join(required)+' in raw units.')
     return frame
-
-
-def load_forecast_inputs(data_directory, start, end):
-    """Price/weather only: no demand workbook or fitting history is opened."""
-    directory = Path(data_directory)
-    price = price_series(spot_price_data(directory/'prices.xlsx', price_area='DK1'))
-    temp = temperature_series(weather_data(cache_dir=directory/'weather_cache'), start, end)
-    index = pd.date_range(start, end, freq='h', inclusive='left')
-    return pd.DataFrame({'Price': price.reindex(index), 'Temp': temp.reindex(index)}, index=index)
-
-
-def load_forecast_observations(data_directory, start, end, tag):
-    """Optional legacy aggregate for scoring only, after predictions are saved."""
-    values = consumption_series(input_data(Path(data_directory)/'input.xlsx'), tag)
-    return values.reindex(pd.date_range(start, end, freq='h', inclusive='left'))
-
-
-def prepare_forecast_frame(raw, scales, start, end):
-    """Apply frozen scales to declared future inputs; never inspect Demand."""
-    if not isinstance(raw.index, pd.DatetimeIndex) or raw.index.has_duplicates or not raw.index.is_monotonic_increasing or raw.index.tz is not None:
-        raise ValueError('Forecast requires sorted unique local-naive DatetimeIndex.')
-    start, end = pd.Timestamp(start), pd.Timestamp(end)
-    if end <= start or start != start.floor('h') or end != end.floor('h'):
-        raise ValueError('Forecast requires ordered hour edges.')
-    if not {'Price', 'Temp'}.issubset(raw):
-        raise ValueError('Forecast requires Price and Temp only, in original raw units.')
-    off_grid = raw.index[(raw.index >= start)&(raw.index < end)&(raw.index != raw.index.floor('h'))]
-    if len(off_grid):
-        raise ValueError('Forecast inputs contain off-hour timestamps.')
-    index = pd.date_range(start, end, freq='h', inclusive='left')
-    inputs = raw.reindex(index)[['Price', 'Temp']].apply(pd.to_numeric, errors='coerce')
-    audit = {'start': str(start), 'end_exclusive': str(end), 'expected_hours': len(index),
-             'valid_hours': {name: int(np.isfinite(inputs[name]).sum()) for name in inputs},
-             'scales': dict(scales), 'demand_used': False,
-             'fingerprint': hashlib.sha256(pd.util.hash_pandas_object(inputs,index=True).values.tobytes()).hexdigest(),
-             'endpoint': 'hold final declared hourly input'}
-    if not np.isfinite(inputs.to_numpy(dtype=float)).all():
-        raise ValueError('Forecast price/temperature inputs must be complete and finite.')
-    frame = pd.DataFrame({'U': 2*(inputs.Price-scales['price_min'])/scales['price_scale']-1,
-                          'Temp': inputs.Temp}, index=index)
-    if np.any(np.abs(frame.U.to_numpy(dtype=float)) > 1):
-        raise ValueError('Price outside frozen training domain; no clipping, future rescaling or refit.')
-    return frame, audit
-
 
 def training_data_audit(raw, train_start, train_end):
     """Explain raw coverage before validation, scaling or optimization."""
@@ -115,7 +43,6 @@ def training_data_audit(raw, train_start, train_end):
             'columns':columns,
             'off_hour_timestamps':len(off_grid),'first_off_hour':[str(t) for t in off_grid[:8]]}
 
-
 def training_audit_text(audit):
     parts = [f"TRAIN data: {audit['complete_hours']}/{audit['expected_hours']} complete hours; fit_ready={audit['fit_ready']}"]
     for name,info in audit['columns'].items():
@@ -125,7 +52,6 @@ def training_audit_text(audit):
     if not audit['raw_complete']:
         parts.append('TRAIN gap policy: interpolate Demand/Temp within training only; fit/score measured demand; no price filling here.')
     return '\n'.join(parts)
-
 
 def prepare_frame(raw, train_start, train_end, *, price_bounds=None):
     """No future values affect scales or baseline training; no clipping."""
@@ -159,43 +85,3 @@ def prepare_frame(raw, train_start, train_end, *, price_bounds=None):
     frame.loc[train.index,'temperature_imputed'] = temperature_missing
     frame.attrs['gap_audit'] = audit
     return frame, scales
-
-
-def common_inputs(frame, baseline_model, start, end, *, observations=False, steps_per_hour=60):
-    """Common fine baseline and held prices, without requiring future I."""
-    start, end = pd.Timestamp(start), pd.Timestamp(end)
-    hours = (end-start).total_seconds()/3600
-    if hours < 1 or int(hours) != hours or int(steps_per_hour) != steps_per_hour or steps_per_hour < 2:
-        raise ValueError('Require integer hours and at least two fine samples/hour.')
-    hours, steps_per_hour = int(hours), int(steps_per_hour)
-    index = pd.date_range(start, end, freq='h', inclusive='left')
-    index.tz_localize('Europe/Copenhagen',ambiguous='raise',nonexistent='raise')
-    if start.tz_localize('Europe/Copenhagen').utcoffset() != end.tz_localize('Europe/Copenhagen').utcoffset():
-        raise ValueError('This January adapter does not yet support a DST-transition window.')
-    columns = ['U','Temp'] + (['I'] if observations else [])
-    source = frame.reindex(index)[columns]
-    if not np.all(np.isfinite(source[['U','Temp']].to_numpy(dtype=float))):
-        raise ValueError(f'Incomplete declared inputs/observations for {start} to {end}.')
-    if np.any(np.abs(source.U.to_numpy()) > 1):
-        raise ValueError('Price outside training domain: declare a common ex-ante scale; never clip or fit it on test data.')
-    elapsed = np.arange(hours*steps_per_hour+1, dtype=float)/steps_per_hour
-    fine_index = start + pd.to_timedelta(elapsed, unit='h')
-    # Endpoint: hold the final known sample. Training never reads a test demand.
-    temp = np.interp(elapsed, np.arange(hours), source.Temp.to_numpy(dtype=float))
-    raw_baseline = baseline_model._standardize(baseline_model._features(fine_index, temp)) @ baseline_model.coef
-    baseline = baseline_model.predict(fine_index, temp)
-    price_hour = source.U.to_numpy(dtype=float)
-    price = price_hour[np.minimum(np.floor(elapsed+1e-12).astype(int), hours-1)]
-    result = {'index': index, 'fine_index': fine_index, 'time': elapsed, 'baseline': baseline,
-              'price_hour': price_hour, 'price': price,
-              'baseline_clipped_samples': int(np.count_nonzero((raw_baseline < 0) | (raw_baseline > 1)))}
-    if observations:
-        result['observed'] = source.I.to_numpy(dtype=float)
-        result['observation_mask'] = np.isfinite(result['observed'])
-        if not result['observation_mask'].any():
-            raise ValueError('Training trajectory has no measured demand.')
-        filled = interpolate_time_gaps(source.I.where(result['observation_mask']))
-        result['demand_input'] = filled.to_numpy(dtype=float)
-        result['fine_observed'] = np.interp(elapsed, np.arange(hours), result['demand_input'])
-        result['temperature_imputed'] = frame.reindex(index)['temperature_imputed'].fillna(False).to_numpy(dtype=bool)
-    return result

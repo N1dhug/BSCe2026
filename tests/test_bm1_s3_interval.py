@@ -8,7 +8,7 @@ from unittest.mock import patch
 import numpy as np
 import pandas as pd
 
-from tests import test_bm1_s3_forecast as fixture
+from tests.g_fixtures import synthetic_history
 from src.method import bm_1_s3_interval as interval
 from src.method.bm_1_s3_interval_baseline import IntervalStatisticalBaseline,mean_features
 
@@ -16,11 +16,10 @@ from src.method.bm_1_s3_interval_baseline import IntervalStatisticalBaseline,mea
 class S3IntervalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        fixture.S3ForecastTests.setUpClass();cls.raw=fixture.S3ForecastTests.raw
-        cls.origin=fixture.S3ForecastTests.origin
+        cls.raw,cls.origin,cls.best=synthetic_history()
         def fit(inputs,*args,**kwargs):
             assert all(t.contract=='hourly-mean' for t in inputs.trajectories)
-            return {'status':'converged','best_converged':deepcopy(fixture.S3ForecastTests.best),
+            return {'status':'converged','best_converged':deepcopy(cls.best),
                 'counts':{'residual_calls':0},'observed_samples':int(inputs.observation_mask.sum())}
         cls.mock_fit=staticmethod(fit)
         with patch('src.method.bm_1_s3_interval.fit_strategy',side_effect=fit):
@@ -35,8 +34,8 @@ class S3IntervalTests(unittest.TestCase):
                 a=interval.predict_interval(interval.load_snapshot(path),self.raw[['Price','Temp']])
         self.assertEqual(a['status'],'complete')
         self.assertGreater(float(abs(a['predictions'].prediction-a['predictions'].point_prediction).max()),.001)
-        with self.assertRaises(ValueError):interval.validate_snapshot(fixture.S3ForecastTests.snapshot)
-        with self.assertRaises(ValueError):interval.point.validate_snapshot(s)
+        incompatible=deepcopy(s);incompatible['kind']='G-S3-fit'
+        with self.assertRaises(ValueError):interval.validate_snapshot(incompatible)
 
     def test_fit_and_forecast_ignore_unavailable_future_values(self):
         changed=self.raw.copy();changed.loc[changed.index>=self.origin,'Demand']=1e20
@@ -77,6 +76,23 @@ class S3IntervalTests(unittest.TestCase):
         # Composite trapezoid bound: max|f''|/(12*N^2), N=60 on one hour.
         np.testing.assert_allclose(row[:3],exact,atol=omega**2/(12*60**2)+1e-12,rtol=0)
         self.assertGreater(abs(row[1]-np.sin(10*omega)),.01)
+
+    def test_missing_or_invalid_forecast_inputs_fail_without_repair(self):
+        for column,value in [('Price',1e8),('Price',np.nan),('Temp',np.inf)]:
+            with self.subTest(column=column,value=value):
+                raw=self.raw.copy();raw.loc[self.origin,column]=value
+                with self.assertRaises(ValueError):interval.predict_interval(self.snapshot,raw)
+        with self.assertRaises(ValueError):
+            interval.predict_interval(self.snapshot,self.raw.drop(self.origin))
+
+    def test_autumn_repeated_local_hours_are_explicitly_rejected(self):
+        s=deepcopy(self.snapshot);origin=pd.Timestamp('2022-10-24');s['origin']=str(origin)
+        s['history']['days_by_weekday']=[[str((origin+pd.Timedelta(days=d)-pd.Timedelta(weeks=w)).date())
+            for w in range(1,6)] for d in range(7)]
+        index=pd.date_range(origin,origin+pd.Timedelta(days=7),freq='h',inclusive='left')
+        raw=pd.DataFrame({'Price':100.,'Temp':5.},index=index)
+        with self.assertRaisesRegex(ValueError,'Autumn DST'):
+            interval.predict_interval(s,raw)
 
     def test_end_label_availability_at_cutoff_and_scoring_alignment(self):
         index=pd.date_range('2022-02-06 22:00',periods=4,freq='h')

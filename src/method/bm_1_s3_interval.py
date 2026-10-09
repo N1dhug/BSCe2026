@@ -1,4 +1,4 @@
-"""Separate S3 hourly-average fit/snapshot/predict; point snapshots stay frozen."""
+"""Deterministic G hourly-average fit, frozen snapshot and prediction."""
 from copy import deepcopy
 import hashlib
 import json
@@ -8,21 +8,21 @@ from time import perf_counter
 import numpy as np
 import pandas as pd
 
-from src.method import bm_1_s3_forecast as point
+from src.tools import bm_1_g_contract as contract
 from src.method.bm_1_deterministic_fit import BudgetStop, _parameters
 from src.method.bm_1_deterministic_response import BM1ResponseInputs
 from src.method.bm_1_deterministic_weekday import BM1PooledInputs
 from src.method.bm_1_deterministic_strategy import fit_strategy
 from src.params.bm_1_response import BM1PiecewiseResponse
 from src.method.bm_1_s3_interval_baseline import IntervalStatisticalBaseline,IMPLEMENTATION,restore_interval_baseline
-from src.exe.run_model.bm_1.deterministic_strategies import ZONE
-from src.tools.bm_1_deterministic_snapshot import baseline_settings, restore_baseline
+from src.tools.bm_1_g_contract import ZONE
+from src.tools.bm_1_g_baseline import baseline_settings
 from src.tools.bm_1_deterministic_data import prepare_frame
 
 ROOT=Path(__file__).resolve().parents[2]
 PROTOCOL='G-S3-five-weeks-Monday-frozen-hourly-mean-v1'
 CONTRACT='hourly-mean-power-development-units-unverified'
-SOURCES=(*point.SOURCES,'src/method/bm_1_s3_interval.py','src/method/bm_1_s3_interval_baseline.py')
+SOURCES=('src/method/bm_1_s3_interval.py', 'src/method/bm_1_s3_interval_baseline.py', 'src/method/bm_1_deterministic_fit.py', 'src/method/bm_1_deterministic_response.py', 'src/method/bm_1_deterministic_weekday.py', 'src/method/bm_1_deterministic_strategy.py', 'src/tools/bm_1_g_contract.py', 'src/tools/bm_1_g_baseline.py', 'src/tools/bm_1_deterministic_data.py', 'src/params/bm_1_response.py', 'src/validation/estimation.py', 'src/exe/run_model/wm_4/output_model.py')
 
 
 def source_hashes():
@@ -54,7 +54,7 @@ def align_demand(observations, label):
 
 
 def training_frame(raw, origin, label):
-    point._frame(raw,('Demand','Price','Temp'))
+    contract._frame(raw,('Demand','Price','Temp'))
     # End-labelled observation at the cutoff describes the preceding hour;
     # future exogenous inputs and later observations remain unavailable.
     end=raw.index<=origin if label=='hour_end' else raw.index<origin
@@ -65,7 +65,7 @@ def training_frame(raw, origin, label):
 
 
 def day_inputs(frame, baseline, day, *, history=False, steps=12):
-    original,index=point._day_inputs(frame,baseline,day,history=history,steps=steps)
+    original,index=contract._day_inputs(frame,baseline,day,history=history,steps=steps)
     # Use the next declared temperature if it is in this historical/scenario
     # frame. At the information/window boundary hold the last known value.
     start=index[0].tz_localize(ZONE).tz_convert('UTC')
@@ -83,30 +83,72 @@ def day_inputs(frame, baseline, day, *, history=False, steps=12):
 
 
 def validate_snapshot(snapshot):
+    """Fail closed on incompatible fitted data; no fits or source migrations."""
     try:
-        s=deepcopy(snapshot)
-        if (s['kind']!='G-S3-interval-fit' or s['protocol']!=PROTOCOL or s['schema_version']!=1
-                or s['observation_contract']!=CONTRACT or s['demand_timestamp_label'] not in ('hour_start','hour_end')
-                or s['timestamp_interpretation_status']!='caller working assumption; not independently verified'
-                or s['source_sha256']!=source_hashes() or s['fit']['objective_operator']!='hourly-mean'):
-            raise ValueError('Require an own compatible hourly-mean S3 fit; point snapshots cannot be relabelled.')
-        # Only the common structural invariants are delegated: bounds, fitted
-        # baseline, 35 masks, own starts, cutoff and RK4 grids. This internal
-        # view is neither a point forecast nor a saved snapshot migration.
-        common=deepcopy(s)
-        common.update(kind='G-S3-fit',protocol=point.PROTOCOL,
-            observation_contract='hourly-point-development-approximation',source_sha256=point.source_hashes())
-        restore_interval_baseline(s['baseline'])
-        common['baseline']['implementation']='statistical_output'
-        point.validate_snapshot(common)
+        s = deepcopy(snapshot)
+        if (type(s['schema_version']) is not int or s['schema_version'] != 1
+                or s['kind'] != 'G-S3-interval-fit' or s['protocol'] != PROTOCOL):
+            raise ValueError('Unsupported S3 snapshot version/protocol.')
+        origin = contract._origin(s['origin'])
+        if s['source_sha256'] != source_hashes():
+            raise ValueError('S3 numerical sources changed; an explicit reviewed migration is required.')
+        if (s['time_unit'] != 'hours' or s['timezone'] != ZONE
+                or s['observation_contract'] != CONTRACT
+                or s['demand_timestamp_label'] not in ('hour_start','hour_end')
+                or s['timestamp_interpretation_status'] != 'caller working assumption; not independently verified'
+                or s['fit']['objective_operator'] != 'hourly-mean'
+                or s['lambda'] != 0 or s['fit']['status'] != 'converged'):
+            raise ValueError('Snapshot must be a converged S3 lambda=0 fit with declared units.')
+        p = _parameters(s['parameters'])
+        if p[3] != .5 or not 1 <= p[0] <= 744 or not .05 <= p[1] <= 10:
+            raise ValueError('Snapshot parameters disagree with S3 fit bounds/neutral history start.')
+        curve = BM1PiecewiseResponse.from_record(s['price_response'])
+        if not np.array_equal(curve.knots, [0., .5, 1.]):
+            raise ValueError('S3 needs the selected two-piece price response.')
+        best = s['fit']['best_converged']
+        if not np.array_equal(p, best['parameters']) or curve.values[1] != best['g_mid']:
+            raise ValueError('Saved fit and response parameters disagree.')
+        n = s['numerics']
+        steps = n['steps_per_hour']
+        if type(steps) is not int or steps not in (12, 24, 48) or n['fine_steps_per_hour'] != 2*steps:
+            raise ValueError('Invalid S3 coarse/fine grids.')
+        if n['tolerance'] != contract.TOLERANCE or not n['passed'] or not 0 <= n['history_max_demand_error'] <= contract.TOLERANCE:
+            raise ValueError('Snapshot requires the passed S3 historical refinement check.')
+        for name in ('forecast_states', 'fine_forecast_states'):
+            states = np.asarray(s[name], float)
+            if states.shape != (7,) or not np.isfinite(states).all() or np.any((states < 0) | (states > 1)):
+                raise ValueError('Snapshot requires seven own finite daily starts in [0,1].')
+        history = s['history']
+        expected = [[str((origin+pd.Timedelta(days=d)-pd.Timedelta(weeks=w)).date())
+                     for w in range(1, 6)] for d in range(7)]
+        if (history['days_by_weekday'] != expected or history['warmup_physical_hours'] != 24
+                or history['start_state'] != .5 or history['forecast_start_rule'] != 'median of five own states after 24 physical hours'):
+            raise ValueError('Snapshot history/initialization contract disagrees with S3.')
+        masks = history['target_measured_masks']
+        if len(masks) != 35 or any(len(mask) not in (23, 24) or any(type(v) is not bool for v in mask) for mask in masks):
+            raise ValueError('Snapshot needs the 35 historical target masks.')
+        if sum(sum(mask) for mask in masks) != s['fit']['observed_samples']:
+            raise ValueError('Fit sample count and historical masks disagree.')
+        scales = s['scales']
+        v = np.array([scales[k] for k in ('demand_min', 'demand_scale', 'price_min', 'price_scale')], float)
+        if not np.isfinite(v).all() or v[1] <= 0 or v[3] <= 0:
+            raise ValueError('Invalid frozen scales.')
+        a, b = map(pd.Timestamp, s['normalization_window'])
+        if a.tz is not None or b.tz is not None or not a < b <= origin:
+            raise ValueError('Normalization must use historical data only.')
+        baseline = restore_interval_baseline(s['baseline'])
+        if pd.Timestamp(baseline.metadata['fit_end']) >= origin:
+            raise ValueError('Baseline metadata crosses forecast cutoff.')
+        if not isinstance(s['training_fingerprint'], str) or len(s['training_fingerprint']) != 64:
+            raise ValueError('Missing historical input fingerprint.')
         return s
-    except (KeyError,TypeError,OverflowError) as exc:
-        raise ValueError('Incomplete hourly-mean S3 snapshot.') from exc
+    except (KeyError, TypeError, OverflowError) as exc:
+        raise ValueError('Incomplete or malformed S3 snapshot.') from exc
 
 
 def save_snapshot(path,snapshot):
     from src.tools.bm_1_reports import _atomic_report
-    _atomic_report(Path(path),point._plain(validate_snapshot(snapshot)))
+    _atomic_report(Path(path),contract._plain(validate_snapshot(snapshot)))
 
 
 def load_snapshot(path):
@@ -116,7 +158,7 @@ def load_snapshot(path):
 def fit_interval(raw,origin,*,demand_label,reference=(12.,2.,.5,.5),calibration_start=None,
                  calibration_end=None,price_bounds=(-500.,6000.),seconds=600.,max_calls=3000,
                  checkpoint=None,population='declared raw aggregate',demand_unit='raw average-power units; physical unit unverified'):
-    started=perf_counter();origin=point._origin(origin);reference=_parameters(reference)
+    started=perf_counter();origin=contract._origin(origin);reference=_parameters(reference)
     if (not np.isfinite(seconds) or not 0<seconds<=600 or type(max_calls) is not int or not 1<=max_calls<=3000):
         raise ValueError('Fit budget must be <=600 seconds and <=3000 residual calls.')
     train=training_frame(raw,origin,demand_label)
@@ -137,7 +179,7 @@ def fit_interval(raw,origin,*,demand_label,reference=(12.,2.,.5,.5),calibration_
         if remaining<1 or perf_counter()-started>=seconds:break
         while histories[0].steps<steps:histories=[h.refined() for h in histories]
         pool=BM1PooledInputs(histories)
-        fitted=fit_strategy(pool,reference,'joint',0.,max_calls=remaining,calls_per_start=min(750,remaining),
+        fitted=fit_strategy(pool,reference,max_calls=remaining,calls_per_start=min(750,remaining),
             seconds=seconds-(perf_counter()-started),checkpoint=checkpoint,
             initial_records=[previous] if previous is not None else None)
         fitted['objective_operator']='hourly-mean'
@@ -152,8 +194,8 @@ def fit_interval(raw,origin,*,demand_label,reference=(12.,2.,.5,.5),calibration_
             attempts[-1]['numerical_check_status']='budget-stop';break
         error=float(np.max(abs(coarse['demand']-fine['demand'])))
         attempts[-1]['history_max_demand_error']=error
-        if error>point.TOLERANCE:previous=best;continue
-        record=point._plain({'implementation':IMPLEMENTATION,'settings':baseline_settings(baseline),
+        if error>contract.TOLERANCE:previous=best;continue
+        record=contract._plain({'implementation':IMPLEMENTATION,'settings':baseline_settings(baseline),
             'coef':baseline.coef,'feature_mean':baseline.feature_mean,'feature_scale':baseline.feature_scale,
             'metadata':baseline.metadata})
         s={'schema_version':1,'kind':'G-S3-interval-fit','protocol':PROTOCOL,'origin':str(origin),
@@ -163,12 +205,12 @@ def fit_interval(raw,origin,*,demand_label,reference=(12.,2.,.5,.5),calibration_
             'forecast_states':[float(np.median(coarse['historical_start_states'][5*d:5*d+5])) for d in range(7)],
             'fine_forecast_states':[float(np.median(fine['historical_start_states'][5*d:5*d+5])) for d in range(7)],
             'baseline':record,'scales':scales,'normalization_window':[str(a),str(b)],
-            'population':population,'demand_unit':demand_unit,'training_fingerprint':point._fingerprint(train),
+            'population':population,'demand_unit':demand_unit,'training_fingerprint':contract._fingerprint(train),
             'source_sha256':source_hashes(),'history':{'days_by_weekday':days,'warmup_physical_hours':24,
                 'start_state':.5,'forecast_start_rule':'median of five own states after 24 physical hours',
                 'target_measured_masks':[h.observation_mask[24:].tolist() for h in histories]},
             'fit':fitted,'numerics':{'steps_per_hour':steps,'fine_steps_per_hour':2*steps,
-                'tolerance':point.TOLERANCE,'history_max_demand_error':error,'passed':True}}
+                'tolerance':contract.TOLERANCE,'history_max_demand_error':error,'passed':True}}
         return {'status':'complete','snapshot':validate_snapshot(s),'attempts':attempts,
             'seconds':perf_counter()-started,'calls_used':max_calls-remaining,
             'budget':{'seconds':seconds,'max_calls':max_calls}}
@@ -177,8 +219,8 @@ def fit_interval(raw,origin,*,demand_label,reference=(12.,2.,.5,.5),calibration_
 
 
 def predict_interval(snapshot,raw_inputs):
-    started=perf_counter();s=validate_snapshot(snapshot);origin=point._origin(s['origin']);end=origin+pd.Timedelta(days=7)
-    point._frame(raw_inputs,('Price','Temp'))
+    started=perf_counter();s=validate_snapshot(snapshot);origin=contract._origin(s['origin']);end=origin+pd.Timedelta(days=7)
+    contract._frame(raw_inputs,('Price','Temp'))
     scenario=raw_inputs.loc[(raw_inputs.index>=origin)&(raw_inputs.index<end),['Price','Temp']].copy()
     if not np.isfinite(scenario.to_numpy(float)).all():raise ValueError('Finite future price/temperature required.')
     scales=s['scales'];frame=pd.DataFrame({'U':2*(scenario.Price-scales['price_min'])/scales['price_scale']-1,
@@ -200,22 +242,22 @@ def predict_interval(snapshot,raw_inputs):
     table['interval_end_utc']=(physical+pd.Timedelta(hours=1)).astype(str)
     table['elapsed_hours']=np.arange(len(table));raw=table.copy()
     for col in ('prediction','baseline','point_prediction'):raw[col]=scales['demand_min']+scales['demand_scale']*table[col]
-    return {'status':'complete' if max(errors)<=point.TOLERANCE else 'numerics-failed',
+    return {'status':'complete' if max(errors)<=contract.TOLERANCE else 'numerics-failed',
         'predictions':raw,'normalized_predictions':table,'manifest':{'protocol':PROTOCOL,'cutoff':str(origin),
             'end_exclusive':str(end),'timezone':ZONE,'physical_hours':len(table),'scales':deepcopy(scales),
             'population':s['population'],'demand_unit':s['demand_unit'],'observation_contract':CONTRACT,
             'demand_timestamp_label':s['demand_timestamp_label'],'output_timestamp_label':'hour_start',
             'timestamp_interpretation_status':s['timestamp_interpretation_status'],
-            'observation_available':'interval_end','scenario_fingerprint':point._fingerprint(scenario),
+            'observation_available':'interval_end','scenario_fingerprint':contract._fingerprint(scenario),
             'demand_used':False,'model_refitted':False,'baseline_refitted':False,
             'scenario':'conditional on future price/temperature','state_path':'seven independent daily paths frozen Monday',
-            'stochastic_status':'not-attached'},'numerics':{'passed':max(errors)<=point.TOLERANCE,
-                'tolerance':point.TOLERANCE,'daily_max_demand_errors':errors},
+            'stochastic_status':'not-attached'},'numerics':{'passed':max(errors)<=contract.TOLERANCE,
+                'tolerance':contract.TOLERANCE,'daily_max_demand_errors':errors},
         'scoring':{'status':'not-scored'},'seconds':perf_counter()-started}
 
 
 def score_interval(result,observations):
     aligned=align_demand(observations,result['manifest']['demand_timestamp_label'])
-    out=point.score_s3(result,aligned)
+    out=contract.score_forecast(result,aligned)
     out['scoring']['policy']='raw average-power units; completed physical hour; same finite measured mask; no filling'
     return out

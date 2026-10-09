@@ -2,19 +2,7 @@ from src.validation.model.bm import bm_validation
 import numpy as np
 
 class bm:
-    """Shared deterministic BM primitives and the F2 diffusion amplitude.
-
-    F2 uses the Ito equation dX = (D - B) / C dt + b(X) dW, with
-    b(X) = sigma_x * X * (1 - X) and Var(dW) = dt.  D and B are
-    normalized powers; C = C_phys / P_scale has the same time unit as T,
-    and sigma_x has units time**(-1/2).  Xi does not scale process noise.
-
-    The canonical response functions decrease from 1 to -1 on [0, 1].
-    Together with suitable Lipschitz regularity, inward boundary drift
-    and vanishing boundary diffusion keep the continuous state in [0, 1].
-    This is not a guarantee for a finite Euler-Maruyama step.
-    See root/BM_REFERENCE.md for the model contract and numerical limitations.
-    """
+    """Deterministic BM response and normalized energy balance."""
     def __init__(self, B, A, T, t_steps):
         B, A, T, t_steps = bm_validation.constructor(B, A, T, t_steps)
         self.B = B
@@ -60,23 +48,9 @@ class bm:
         Xi = bm_validation.unit_scalar(Xi, "Xi")
         return Bt + delta * Xi * ((delta >= 0) * (1 - Bt) + (delta < 0) * Bt)
 
-    def dXdt(self, t, state, U, f, g, C, k, Xi, stochastic=False):
+    def dXdt(self, t, state, U, f, g, C, k, Xi):
         U, f, g, C, k, Xi = bm_validation.dynamics(U, f, g, C, k, Xi)
         state = bm_validation.state(state)
         Xt = state.reshape(-1)[0]
-        if stochastic and hasattr(Xt, "item"):
-            try:
-                Xt = Xt.item()
-            except (ValueError, RuntimeError):
-                pass
         _, Bt, _, _, _, Dt = self.eval(t, Xt, U, f, g, k, Xi)
         return [(Dt - Bt) / C]
-
-    def diffusion_coefficient(self, X, sigma_x):
-        """Return b(X), not b(X)**2 or a time-scaled Brownian increment.
-
-        The numerical method supplies sqrt(dt).  No clipping, reflection,
-        capacity factor or Xi factor is introduced here.
-        """
-        X, sigma_x = bm_validation.diffusion(X, sigma_x)
-        return sigma_x * X * (1 - X)

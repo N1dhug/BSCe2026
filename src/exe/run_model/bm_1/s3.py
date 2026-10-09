@@ -10,7 +10,7 @@ import sys
 from src.method import bm_1_s3_interval as interval
 from src.tools.bm_1_deterministic_data import raw_csv
 from src.tools.bm_1_reports import _atomic_report
-from src.exe.run_model.bm_1.s3_forecast import write_forecast
+from src.tools.bm_1_g_reports import write_forecast
 
 
 def parser():
@@ -66,9 +66,9 @@ def main(argv=None):
                 seconds=args.seconds,max_calls=args.max_calls,reference=args.reference,
                 population=args.population,demand_unit=args.demand_unit,
                 checkpoint=lambda value:_atomic_report(directory/'fit_checkpoint.json',
-                    interval.point._plain(value),replace_existing=True))
+                    interval.contract._plain(value),replace_existing=True))
             _atomic_report(directory/'fit_result.json',
-                interval.point._plain({k:v for k,v in result.items() if k!='snapshot'}))
+                interval.contract._plain({k:v for k,v in result.items() if k!='snapshot'}))
             if result['snapshot'] is not None:
                 interval.save_snapshot(directory/'interval_snapshot.json',result['snapshot'])
         else:

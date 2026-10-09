@@ -1,8 +1,4 @@
-"""Bounded least squares for G's three declared rolling-week strategies.
-
-Reuses response geometry and the established forward kernel. A separate fit
-interface permits free k, or a-only fits; it never changes the archived G4 fit.
-"""
+"""Bounded C/k/Xi/a least squares for deterministic G; no strategy or penalty studies."""
 from time import perf_counter
 import numpy as np
 from scipy.optimize import least_squares
@@ -10,42 +6,29 @@ from src.method.bm_1_deterministic_fit import BudgetStop, _parameters
 from src.params.bm_1_response import BM1PiecewiseResponse
 
 
-def fit_strategy(inputs, reference, mode, strength, *, max_calls=1500,
+def fit_strategy(inputs, reference, *, max_calls=1500,
                  calls_per_start=750, seconds=600, checkpoint=None, initial_records=None):
-    if mode not in ('linear', 'g-only', 'joint') or strength not in (0., .001):
-        raise ValueError('Use the predeclared strategy and penalty.')
     p = _parameters(reference)
     mask = inputs.observation_mask.copy()
     n = int(mask.sum())
     if not n:
         raise ValueError('Measured training demand is required.')
-    bounds = {'linear': ([0., np.log(.05), 0.], [np.log(744.), np.log(10.), 1.]),
-              'g-only': ([-1.], [1.]),
-              'joint': ([0., np.log(.05), 0., -1.], [np.log(744.), np.log(10.), 1., 1.])}
-    if mode == 'g-only':
-        seeds = [np.array([a]) for a in (0., .25)]
-    else:
-        seeds = [np.r_[np.log(p[:2]), p[2]], np.array([np.log(12.), np.log(2.), .5])]
-        if mode == 'joint':
-            seeds = [np.r_[seeds[0], 0.], np.r_[seeds[1], .25]]
+    bounds=([0.,np.log(.05),0.,-1.],[np.log(744.),np.log(10.),1.,1.])
+    seeds=[np.r_[np.log(p[:2]),p[2],0.],np.array([np.log(12.),np.log(2.),.5,.25])]
     if initial_records is not None:
         if not 1 <= len(initial_records) <= 2:
             raise ValueError('A checkpoint continuation needs one or two saved seeds.')
         seeds=[]
         for record in initial_records:
             saved=_parameters(record['parameters'])
-            seeds.append(np.array([record['g_mid']]) if mode=='g-only' else
-                         np.r_[np.log(saved[:2]),saved[2],record['g_mid']] if mode=='joint' else
-                         np.r_[np.log(saved[:2]),saved[2]])
+            seeds.append(np.r_[np.log(saved[:2]),saved[2],record['g_mid']])
     begun = perf_counter(); deadline = begun+seconds
     counts = {'residual_calls': 0, 'pooled_solves': 0, 'rhs_evaluations': 0}
     records = []; best = None; provisional = None; last_save = begun
     def decode(v):
-        if mode == 'g-only':
-            return p.copy(), float(v[0])
-        return np.r_[np.exp(v[:2]), v[2], .5], float(v[3]) if mode == 'joint' else 0.
+        return np.r_[np.exp(v[:2]),v[2],.5],float(v[3])
     def snapshot(status):
-        return {'status': status, 'mode': mode, 'lambda': strength,
+        return {'status': status, 'mode': 'joint', 'lambda': 0.,
                 'seconds': perf_counter()-begun, 'counts': counts.copy(),
                 'starts': records.copy(), 'best_converged': best,
                 'best_provisional': provisional, 'observed_samples': n,
@@ -68,22 +51,22 @@ def fit_strategy(inputs, reference, mode, strength, *, max_calls=1500,
             finally:
                 counts['rhs_evaluations'] += inputs.last_rhs_evaluations
             values = (solved['demand']-inputs.observations)[mask]/np.sqrt(n)
-            objective = float(values@values)+strength*a*a
+            objective = float(values@values)
             if provisional is None or objective < provisional['objective']:
                 provisional = {'parameters': parameters.tolist(), 'g_mid': a,
                     'mse': float(values@values), 'objective': objective}
             if checkpoint is not None and perf_counter()-last_save >= 2:
                 checkpoint(snapshot('running')); last_save = perf_counter()
-            return np.r_[values, np.sqrt(strength)*a]
+            return values
         try:
-            fit = least_squares(residual, seed, bounds=bounds[mode], method='trf',
+            fit = least_squares(residual, seed, bounds=bounds, method='trf',
                 jac='2-point', diff_step=1e-4, loss='linear', x_scale='jac',
                 ftol=1e-7, xtol=1e-7, gtol=1e-7, max_nfev=calls_per_start)
             parameters, a = decode(fit.x)
-            data_mse = float(fit.fun[:-1]@fit.fun[:-1])
-            singular = np.linalg.svd(fit.jac[:-1], compute_uv=False)
+            data_mse = float(fit.fun@fit.fun)
+            singular = np.linalg.svd(fit.jac, compute_uv=False)
             record = {'start': number, 'parameters': parameters.tolist(), 'g_mid': a,
-                'mse': data_mse, 'objective': data_mse+strength*a*a,
+                'mse': data_mse, 'objective': data_mse,
                 'converged': bool(fit.success), 'stop': fit.message,
                 'residual_calls': counts['residual_calls']-initial_count,
                 'active_bounds': fit.active_mask.tolist(),

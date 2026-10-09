@@ -13,6 +13,12 @@ deres tests, noter og resultater. Skrivebordskopien hedder G-udvidelser-2026-10-
 F er bevaret på archive/f-main-20261009 og nyere lokalt arbejde separat på
 archive/f-local-20261009. Arkiver er ikke nye kørselsordrer.
 
+Den efterfølgende oprydning af resterende F-kode og ekstra indgange er sikret på
+[archive/f-og-ekstra-grundmodel-20261009](https://github.com/N1dhug/BSCe2026/tree/archive/f-og-ekstra-grundmodel-20261009).
+Grundlag: 4011c1029339c70e67fa7ea5a4a472a48445b75a. Arkivet indeholder de
+29 fjernede filer og de oprindelige versioner af de forenklede moduler og tests.
+Skrivebordskopien hedder F-og-ekstra-grundmodel-2026-10-09.
+
 [Tidligere originaltræ](ORIGINALS.md) og [stikort](old-paths.json) bevarer
 oprindelige kilder og kildeidentiteter. Historiske manifests omskrives ikke.
 Gamle kildebundne checkpoints kræver deres præcise oprindelige kilder.
