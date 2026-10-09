@@ -50,7 +50,7 @@ class WeekdayInputsTests(unittest.TestCase):
                  'g_mid': middle, 'mse': 0., 'active_bounds': [0, 0, 0]}}
                 for strength, middle in [(0., 0.), (.001, .1)]]}
         with TemporaryDirectory() as folder, patch(
-                'src.exe.run_model.bm_1.deterministic_weekday.fit_response', fake_fit):
+                'src.method.bm_1_deterministic_response.fit_response', fake_fit):
             for name, data in [('original', raw), ('changed', changed)]:
                 run(data, p, day, 1, Path(folder)/name, steps=2)
             relative = Path('2022-02-07/forecast_normalized.csv')

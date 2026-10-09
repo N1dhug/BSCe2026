@@ -18,7 +18,8 @@ from src.method.bm_1_deterministic_benchmark import (run_benchmark, forecast_fro
 from src.params.bm_1_deterministic import BM1DeterministicConfig
 from src.tools.bm_1_deterministic_snapshot import (export_fit_snapshot, load_fit_snapshot,
                                                  migrate_legacy_fit, validate_snapshot,
-                                                 source_hashes, LEGACY_SOURCES, ROOT)
+                                                 source_hashes, LEGACY_SOURCES, ROOT,
+                                                 REVIEWED_WM4_H5_HASH)
 
 
 class FrozenForecastTests(unittest.TestCase):
@@ -136,14 +137,8 @@ class FrozenForecastTests(unittest.TestCase):
         for crlf in (False, True):
             with self.subTest(crlf=crlf), tempfile.TemporaryDirectory() as temporary:
                 directory=Path(temporary); self.write_legacy(directory,crlf=crlf)
-                # Use the actual old WM4 digest from Johan's 07fad9f source.
-                digest = '8e92c6bca6d1de2dcbf971bf2d752b4992f236171fa3209e6da1b408684a2f71' if crlf else '38853b1b0992c76039c6c17e941aa2d1b35ee030fc63e5edeb05abd3d6abd6d6'
-                manifest=json.loads((directory/'manifest.json').read_text())
-                result=json.loads((directory/'result.json').read_text())
-                manifest['source_sha256']['src/model/wm_4.py']=digest
-                result['manifest']=manifest
-                (directory/'manifest.json').write_text(json.dumps(manifest))
-                (directory/'result.json').write_text(json.dumps(result))
+                # The fixture was produced by the current sources, in LF/CRLF.
+                # Historical WM4 compatibility has its own conditional guard test.
                 before={p.name:p.read_bytes() for p in directory.iterdir()}
                 actual=migrate_legacy_fit(directory)
                 self.assertEqual(actual['provenance']['mode'],'verified-legacy-import')
@@ -154,6 +149,24 @@ class FrozenForecastTests(unittest.TestCase):
                 fine.iloc[:-1].to_csv(directory/'fit_signals_normalized.csv',index=False)
                 with self.assertRaisesRegex(ValueError,'exact training start and cutoff'):
                     migrate_legacy_fit(directory)
+
+    def test_historical_wm_hash_is_accepted_only_for_the_reviewed_source_pair(self):
+        digest='38853b1b0992c76039c6c17e941aa2d1b35ee030fc63e5edeb05abd3d6abd6d6'
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary);self.write_legacy(directory)
+            manifest=json.loads((directory/'manifest.json').read_text())
+            result=json.loads((directory/'result.json').read_text())
+            manifest['source_sha256']['src/model/wm_4.py']=digest
+            result['manifest']=manifest
+            (directory/'manifest.json').write_text(json.dumps(manifest))
+            (directory/'result.json').write_text(json.dumps(result))
+            before={p.name:p.read_bytes() for p in directory.iterdir()}
+            if source_hashes()['src/model/wm_4.py']==REVIEWED_WM4_H5_HASH:
+                self.assertEqual(migrate_legacy_fit(directory)['provenance']['mode'],'verified-legacy-import')
+            else:
+                with self.assertRaisesRegex(ValueError,'Cannot verify legacy'):
+                    migrate_legacy_fit(directory)
+            self.assertEqual(before,{p.name:p.read_bytes() for p in directory.iterdir()})
 
     def test_legacy_without_proven_numerical_source_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -13,7 +13,7 @@ Skrivebordskopi: G-udvidelser-2026-10-09, med originale og nyere kilder.
 F's seneste oprydning i c7cf811 er bevaret uden genindførte F-filer. WM og fælles afhængigheder er uændrede.
 
 VERIFIKATION
-47 relevante G-/fit-/timeoperator-/kalendertests består på den seneste main.
+Den oprindelige beskæring bestod 47 relevante G-/fit-/kalendertests.
 156 aktuelle Python-filer kan parses. Ingen tilbageværende import eller
 dokumentlink peger på de fjernede filer. Alle 88 fjernede filer er bevaret
 med præcis indholdskontrol mod main før beskæring i den nyere ZIP-pakke.
@@ -24,3 +24,15 @@ Modelbegrænsninger: fysisk demand-enhed og timeetiketter er fortsat
 arbejdsantagelser; fremtidig pris/temperatur er erklærede scenarieinput.
 Parameteridentifikation og ekstrapolation er fortsat åbne modelspørgsmål.
 Gamle kildebundne checkpoints bruges med egne arkivkilder og uændrede guards.
+
+TESTGENNEMGANG — 9. OKTOBER 2026
+Alle 138 tilbageværende tests består ved samlet discovery på Windows,
+35,690 sekunder, uden udeladte tests. Otte nye tests dækker grundindgangen,
+fit/prognose, budgetstop, scoring, numeriske fejl og snapshot-/kildeguards.
+En målefil uden Demand giver nu en håndteret fejl, mens forecast bevares.
+Testen for fjernede indstillinger bruger gyldige grundargumenter, så den
+ikke kan bestå alene på grund af manglende obligatoriske argumenter.
+To ældre tests er rettet: forkert mock-import og antagelsen om en gammel
+WM4-kildehash. Hashguards og matematiske kerner er uændrede.
+CSV-vejledningen angiver nu det rigtige kolonnenavn Temp.
+Kun korte syntetiske testcases er kørt; ingen historiske kampagner.

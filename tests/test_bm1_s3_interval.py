@@ -1,4 +1,4 @@
-"""Interval semantics, analytic time covariance, conservation and cutoff."""
+"""Hourly-mean fit, frozen snapshots, integrated baseline and causal cutoff."""
 from copy import deepcopy
 from pathlib import Path
 import tempfile
@@ -49,6 +49,23 @@ class S3IntervalTests(unittest.TestCase):
         with patch('src.method.bm_1_s3_interval.fit_strategy',side_effect=self.mock_fit):
             no_future=interval.fit_interval(changed,self.origin,demand_label='hour_start')['snapshot']
         self.assertEqual(self.snapshot,no_future)
+
+    def test_interval_snapshot_rejects_changed_sources_and_incompatible_data(self):
+        edits={
+            'changed source':lambda s:s['source_sha256'].update({'src/method/bm_1_s3_interval.py':'wrong'}),
+            'point operator':lambda s:s['fit'].update(objective_operator='hourly-point'),
+            'unknown labels':lambda s:s.update(demand_timestamp_label='unspecified'),
+            'point baseline':lambda s:s['baseline'].update(implementation='statistical_output'),
+            'future baseline':lambda s:s['baseline']['metadata'].update(fit_end=s['origin']),
+            'invalid daily starts':lambda s:s.update(forecast_states=[float('nan')]*7),
+            'inconsistent curve':lambda s:s['fit']['best_converged'].update(g_mid=-.9),
+            'failed refinement':lambda s:s['numerics'].update(passed=False),
+            'missing history':lambda s:s.pop('history'),
+        }
+        for name,edit in edits.items():
+            with self.subTest(name=name):
+                snapshot=deepcopy(self.snapshot);edit(snapshot)
+                with self.assertRaises(ValueError):interval.validate_snapshot(snapshot)
 
     def test_baseline_design_integrates_harmonics_over_the_observed_hour(self):
         model=IntervalStatisticalBaseline(hour_harmonics=1,season_harmonics=0)

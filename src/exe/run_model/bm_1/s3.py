@@ -77,7 +77,10 @@ def main(argv=None):
             write_forecast(directory,result)
             if args.observations_csv:
                 import pandas as pd
-                y=pd.read_csv(args.observations_csv,index_col='Datetime',parse_dates=['Datetime']).Demand
+                observations=pd.read_csv(args.observations_csv,index_col='Datetime',parse_dates=['Datetime'])
+                if 'Demand' not in observations:
+                    raise ValueError('Observation CSV needs Datetime,Demand.')
+                y=observations['Demand']
                 result=interval.score_interval(result,y)
                 write_forecast(directory,result,prefix='scored')
             plot(directory,result)
