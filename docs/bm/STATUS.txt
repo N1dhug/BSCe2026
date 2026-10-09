@@ -20,3 +20,12 @@ Recovery: C:\Users\jvils\.codex\.chatgpt-projects\g-p-6aaef4dd0ec48191922398dc4c
 start.json/start-working-bytes.zip, merge/campaign/followup receipts, tests.json.
 Kontrollér HEAD/diff/processer/receipts ved afbrydelse; genstart ikke automatisk.
 Kendte F-negative/UDEN/faglig accept-grænser bevares kort i MATHEMATICS.md.
+
+Delmål: control1436→828, optimize688→331; bånd-CLI hos bm_1_g, fælles
+artifactkontrol genbrugt, død G7-jobplan pensioneret. Dataindlæsning adskilt
+fra real_data-rapportering. Fem cleanup-pakker/35 filer flyttet til runs/checks;
+alle749 BM-outputfiler bevaret bytepræcist. Verificeret tom egen cachemappe fjernet.
+Tests budget 125.731s/300s. Control/numerics-kontrol
+nåede alle disse tests, men blev stoppet under importtest. Båndfejl og historisk
+terminalguard korrigeret og præcis de to tests gentaget grønt. Næste: korte
+F/G-regressioner og resterende målrettede imports/adaptertests; opdater docs/arkiv.

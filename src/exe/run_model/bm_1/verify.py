@@ -6,13 +6,12 @@ Model equations and experiment calculations live in model/method/validation.
 
 from argparse import ArgumentParser
 from pathlib import Path
-import json
 
 import numpy as np
 
 from src.control import bm_1 as control
 from src.method.euler_maruyama import euler_maruyama
-from src.validation.bm_1 import cases, control as control_cases, deterministic, mixture, stochastic
+from src.validation.bm_1 import cases, deterministic, mixture, stochastic
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -530,37 +529,6 @@ def run_objective(args):
     return result
 
 
-def run_benchmark(args):
-    """Time the two FV backends only after checking that their results agree."""
-    result = control_cases.run_benchmark(
-        args.cells,
-        args.repeats,
-        args.optimize,
-        print if args.verbose else None,
-    )
-    _table(
-        'FV timing (this machine/run)',
-        ('cells', 'reference [s]', 'fast [s]', 'speedup'),
-        [
-            (
-                row['cells'],
-                f"{row['reference_seconds']:.6f}",
-                f"{row['fast_seconds']:.6f}",
-                f"{row['speedup']:.2f}x",
-            )
-             for row in result['fixed_price']
-        ],
-    )
-    if args.optimize:
-        _diagnostics(result['optimization'], True)
-    if args.save or args.output:
-        path = Path(args.output) if args.output else OUTPUT_DIR / 'fast_fv_benchmark.json'
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
-        print(f'Saved benchmark to {path}')
-    return result
-
-
 def main(argv=None):
     """Parse once, select one experiment, and leave numerical choices explicit."""
     parser = ArgumentParser(description=__doc__)
@@ -576,7 +544,6 @@ def main(argv=None):
         'mixture': run_mixture,
         'conditioning': run_conditioning,
         'objective': run_objective,
-        'benchmark': run_benchmark,
     }
     for name, handler in handlers.items():
         command = commands.add_parser(name, help=handler.__doc__)
@@ -588,11 +555,6 @@ def main(argv=None):
             command.add_argument('--mc-paths', type=int, default=default_paths)
         if name in ('fv', 'mc-fv', 'objective'):
             command.add_argument('--cells', type=int, default=cases.X_STEPS)
-        if name == 'benchmark':
-            command.add_argument('--cells', type=int, nargs='+', default=[201, 1001])
-            command.add_argument('--repeats', type=int, default=7)
-            command.add_argument('--optimize', action='store_true')
-            command.add_argument('--output', type=Path, help='Explicit path for a saved benchmark JSON.')
     args = parser.parse_args(argv)
     if hasattr(args, 'mc_paths') and args.mc_paths < 2:
         parser.error('Monte Carlo comparisons require at least two paths.')

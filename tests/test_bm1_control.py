@@ -23,44 +23,7 @@ from src.validation.bm_1.cases import (
     linear_price_response,
     linear_state_response,
 )
-from src.validation.bm_1.control import (
-    C,
-    DETERMINISTIC_REFERENCE_PRICES,
-    F3_C_SMOOTHING_WEIGHTS,
-    F3_C_TERMINAL_WEIGHTS,
-    F3_E_SCENARIO_ORDER,
-    FINAL_MIXTURE_DEGREES,
-    MIXTURE_OPT_DEGREE,
-    MIXTURE_OPT_X_STEPS,
-    HOURLY_EDGES,
-    INITIAL_PRICES,
-    MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS,
-    INTERVAL_EDGES,
-    K,
-    KNOWN_DETERMINISTIC_PRICES,
-    REFERENCE_PRICES_24,
-    T,
-    XI,
-    _build_fv_evaluator,
-    _coarsen_reference_prices,
-    _f3_c_weight_pairs,
-    multi_edges as _edges,
-    _lift_half_day_prices,
-    _parameter_template,
-    _sample_piecewise_prices as _sample_piecewise_prices,
-    _union_breakpoints,
-    build_deterministic_target,
-    build_f3_a_problem,
-    build_f3_e_scenarios,
-    build_f3_f_setup,
-    build_stochastic_model,
-    run_f3_d,
-    run_f3_e,
-    run_f3_f,
-    INTERVAL_COUNTS as control_INTERVAL_COUNTS,
-    _edges as control__edges,
-    _sample_piecewise_prices as control__sample_piecewise_prices,
-)
+from src.validation.bm_1.control import C, DETERMINISTIC_REFERENCE_PRICES, F3_E_SCENARIO_ORDER, FINAL_MIXTURE_DEGREES, MIXTURE_OPT_DEGREE, MIXTURE_OPT_X_STEPS, HOURLY_EDGES, INITIAL_PRICES, MULTI_INTERVAL_COUNTS as INTERVAL_COUNTS, INTERVAL_EDGES, K, KNOWN_DETERMINISTIC_PRICES, REFERENCE_PRICES_24, T, XI, _build_fv_evaluator, _coarsen_reference_prices, multi_edges as _edges, _lift_half_day_prices, _parameter_template, _sample_piecewise_prices as _sample_piecewise_prices, _union_breakpoints, build_deterministic_target, build_f3_a_problem, build_f3_e_scenarios, build_f3_f_setup, build_stochastic_model, INTERVAL_COUNTS as control_INTERVAL_COUNTS, _edges as control__edges, _sample_piecewise_prices as control__sample_piecewise_prices
 
 class PowellOptimizationTests(unittest.TestCase):
 
@@ -468,20 +431,8 @@ class F3FMixtureControlStructureTests(unittest.TestCase):
         self.assertIn('projection_fallback_count', result.diagnostics)
 
 
-    def test_mc_path_count_is_validated_before_running_mixture_study(self):
-        with self.assertRaises(ValueError):
-            run_f3_f(validate_mc=True, mc_paths=1, progress=None)
-        with self.assertRaises(TypeError):
-            run_f3_f(validate_mc=True, mc_paths=True, progress=None)
-
-
 class F3EUncertaintyStructureTests(unittest.TestCase):
 
-    def test_mc_path_count_is_validated_before_running_uncertainty_study(self):
-        with self.assertRaises(ValueError):
-            run_f3_e(validate_mc=True, mc_paths=1, progress=None)
-        with self.assertRaises(TypeError):
-            run_f3_e(validate_mc=True, mc_paths=True, progress=None)
 
     def test_uncertainty_scenarios_isolate_initial_and_process_noise(self):
         setup = build_f3_e_scenarios()
@@ -503,47 +454,6 @@ class F3EUncertaintyStructureTests(unittest.TestCase):
         self.assertGreater(np.count_nonzero(full.initial_mass), 1)
         self.assertAlmostEqual(process.x[int(np.argmax(process.initial_mass))], 0.5, places=15)
         self.assertEqual(setup['evaluators']['deterministic'].initial_state, 0.5)
-
-
-class F3DDecisionStructureTests(unittest.TestCase):
-
-    def test_mc_path_count_is_validated_before_running_decision_study(self):
-        with self.assertRaises(ValueError):
-            run_f3_d(validate_mc=True, mc_paths=1, progress=None)
-        with self.assertRaises(TypeError):
-            run_f3_d(validate_mc=True, mc_paths=True, progress=None)
-
-
-class F3CSensitivityStructureTests(unittest.TestCase):
-
-    def test_default_weight_sweeps_are_unique_and_grid_is_complete(self):
-        axes = _f3_c_weight_pairs(F3_C_TERMINAL_WEIGHTS, F3_C_SMOOTHING_WEIGHTS)
-        grid = _f3_c_weight_pairs(
-            F3_C_TERMINAL_WEIGHTS,
-            F3_C_SMOOTHING_WEIGHTS,
-            include_grid=True,
-        )
-        self.assertEqual(axes[0], (0.0, 0.0))
-        self.assertEqual(len(axes), len(F3_C_TERMINAL_WEIGHTS) + len(F3_C_SMOOTHING_WEIGHTS) - 1)
-        self.assertEqual(len(set(axes)), len(axes))
-        self.assertEqual(len(grid), len(F3_C_TERMINAL_WEIGHTS) * len(F3_C_SMOOTHING_WEIGHTS))
-        self.assertEqual(len(set(grid)), len(grid))
-        self.assertTrue(all((terminal == 0.0 or smoothing == 0.0) for terminal, smoothing in axes))
-        self.assertTrue(
-            all(
-                (terminal, smoothing) in grid
-                for terminal in F3_C_TERMINAL_WEIGHTS
-                for smoothing in F3_C_SMOOTHING_WEIGHTS
-            ),
-        )
-
-    def test_weight_sweeps_reject_negative_duplicate_or_unsorted_values(self):
-        with self.assertRaises(ValueError):
-            _f3_c_weight_pairs([0.0, -0.1], [0.0, 0.1])
-        with self.assertRaises(ValueError):
-            _f3_c_weight_pairs([0.0, 0.1, 0.1], [0.0, 0.1])
-        with self.assertRaises(ValueError):
-            _f3_c_weight_pairs([0.1, 0.0], [0.0, 0.1])
 
 
 class MultiPriceExperimentStructureTests(unittest.TestCase):

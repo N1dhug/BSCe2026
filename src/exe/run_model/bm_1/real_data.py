@@ -31,6 +31,45 @@ MC_BROWNIAN_SEED = 2092
 TARGET_MODES = ('baseline', 'observed')
 
 
+def _objective_dict(evaluation):
+    objective = evaluation.objective
+    return {
+        'total': float(objective.total),
+        'bias': float(objective.bias),
+        'variance': float(objective.variance),
+    }
+
+def _mc_summary(item):
+    """Serialize one MonteCarloCandidateResult using its complete control cost."""
+    return {'total': float(item.total), 'standard_error': float(item.standard_error)}
+
+def _price_correlation(observed, optimized):
+    observed = np.asarray(observed, dtype=float)
+    optimized = np.asarray(optimized, dtype=float)
+    if np.std(observed) <= 1e-15 or np.std(optimized) <= 1e-15:
+        return float('nan')
+    return float(np.corrcoef(observed, optimized)[0, 1])
+
+def _json_safe(value):
+    """Recursively convert diagnostics to strict JSON (undefined values become null)."""
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return _json_safe(value.tolist())
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    raise TypeError(f'Cannot serialize {type(value).__name__}.')
+
 @dataclass(frozen=True)
 class DayExperiment:
     signals: data.DaySignals
@@ -237,11 +276,11 @@ def _result_record(result):
         'normalized_observed_price': signals.observed_price,
         'optimized_price': optimized,
         'price_correlation': (
-            data._price_correlation(signals.observed_price, optimized)
+            _price_correlation(signals.observed_price, optimized)
             if optimized is not None else None
         ),
         'objective': {
-            name: data._objective_dict(evaluation)
+            name: _objective_dict(evaluation)
              for name, evaluation in result.evaluations.items()
         },
         'optimization': (
@@ -254,7 +293,7 @@ def _result_record(result):
         'plot': _plot_location(result.plot_path),
     }
     if result.mc is not None:
-        record['mc'] = {name: data._mc_summary(item) for name, item in result.mc.items()}
+        record['mc'] = {name: _mc_summary(item) for name, item in result.mc.items()}
         record['fixed_paired_mc'] = result.fixed_paired_mc
         record['paired_mc'] = result.paired_mc
     return record
@@ -488,7 +527,7 @@ def report_day(result, *, verbose=False):
         print('Observed prices:', result.problem.observed_prices)
         if fit is not None:
             print('Optimized alternative prices:', np.asarray(fit.best.x))
-            print('Price correlation:', data._price_correlation(result.problem.observed_prices, fit.best.x))
+            print('Price correlation:', _price_correlation(result.problem.observed_prices, fit.best.x))
     if result.plot_path is not None:
         print('Saved graph to', result.plot_path)
 
@@ -573,7 +612,7 @@ def main(argv=None):
         }
         args.output_dir.mkdir(parents=True, exist_ok=True)
         path = args.output_dir / 'bm_1_real_data_daily_results.json'
-        path.write_text(json.dumps(data._json_safe(payload), indent=2, allow_nan=False) + '\n', encoding='utf-8')
+        path.write_text(json.dumps(_json_safe(payload), indent=2, allow_nan=False) + '\n', encoding='utf-8')
         print(f'Saved summary to {path}')
     return experiments
 if __name__ == '__main__':

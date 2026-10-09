@@ -234,49 +234,6 @@ def _hourly_hold(values):
     return input_builder.price_intervals((HOURLY_EDGES, values))
 
 
-def _objective_dict(evaluation):
-    objective = evaluation.objective
-    return {
-        'total': float(objective.total),
-        'bias': float(objective.bias),
-        'variance': float(objective.variance),
-    }
-
-
-def _mc_summary(item):
-    """Serialize one MonteCarloCandidateResult using its complete control cost."""
-    return {'total': float(item.total), 'standard_error': float(item.standard_error)}
-
-
-def _price_correlation(observed, optimized):
-    observed = np.asarray(observed, dtype=float)
-    optimized = np.asarray(optimized, dtype=float)
-    if np.std(observed) <= 1e-15 or np.std(optimized) <= 1e-15:
-        return float('nan')
-    return float(np.corrcoef(observed, optimized)[0, 1])
-
-
-def _json_safe(value):
-    """Recursively convert diagnostics to strict JSON (undefined values become null)."""
-    if isinstance(value, dict):
-        return {key: _json_safe(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, np.ndarray):
-        return _json_safe(value.tolist())
-    if isinstance(value, np.generic):
-        return _json_safe(value.item())
-    if isinstance(value, pd.Timestamp):
-        return value.isoformat()
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, float):
-        return value if np.isfinite(value) else None
-    if value is None or isinstance(value, (str, int, bool)):
-        return value
-    raise TypeError(f'Cannot serialize {type(value).__name__}.')
-
-
 def build_day_signals(
     consumption_raw,
     price_raw,

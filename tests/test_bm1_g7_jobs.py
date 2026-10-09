@@ -10,7 +10,6 @@ import numpy as np
 from src.control.bm_1 import BM1ControlNumerics
 from src.method.bm_1_g7 import OwnedBankPriceEvaluator
 from src.method.bm_1_g7 import CheckpointedBankControl, NodeJobStore, NodeJobStop, source_manifest, REQUIRED_SOURCE_PATHS
-from src.method.bm_1_g7 import full_job_plan, price_job_plan
 from src.method.bm_1_g8 import G8BankOrigin,context,RHO_VALUES
 from src.method.bm_1_g8 import BERNSTEIN_BASIS_KIND as BASIS_KIND,prior_coefficients
 from src.method.bm_1_distribution_panel import baseline,target
@@ -94,17 +93,7 @@ class G7NodeJobTests(unittest.TestCase):
             store=NodeJobStore(limited,prior_debit=0.,ceiling=100.,max_new_seconds=.01)
             with store.lock(),self.assertRaises(NodeJobStop):
                 store.node(dict(index=0,contract='stub'),1.,lambda deadline: {})
-        plan=full_job_plan();rates={}
-        admission=price_job_plan(plan,rates,campaign_debit=1118.580078)
-        self.assertEqual(len(admission['unknown']),14);self.assertFalse(admission['budget_admitted'])
-        for job in plan['jobs']:
-            rates[job['work']]=dict(seconds=.01,complete=True,raw_reviewed=True,horizon_hours=24.,
-                                   nodes=job['nodes'],receipt_sha256='stub',source_fingerprint='stub')
-        self.assertTrue(price_job_plan(plan,rates,campaign_debit=1118.580078)['budget_admitted'])
-        rates['em_coupled']['horizon_hours']=2.
-        self.assertFalse(price_job_plan(plan,rates,campaign_debit=1118.580078)['budget_admitted'])
-        plan['jobs']=[j for j in plan['jobs'] if j['work']!='cross_fv_fine']
-        with self.assertRaises(ValueError):price_job_plan(plan,rates,campaign_debit=1118.580078)
+
 
 
 if __name__=='__main__':unittest.main()

@@ -17,7 +17,7 @@ TERMINAL_REFERENCE_DEPENDENCIES = (
     'src/method/euler_maruyama.py', 'src/method/fokker_planc.py', 'src/method/objective.py',
     'src/model/__init__.py', 'src/model/base/__init__.py',
     'src/model/base/bm.py', 'src/model/bm_1.py',
-    'src/params/bm_1.py', 'src/params/bm_1.py', 'src/params/bm_1_response.py',
+    'src/params/bm_1.py', 'src/params/bm_1_interval.py', 'src/params/bm_1_response.py',
     'src/solver/__init__.py', 'src/solver/finite_volume.py',
     'src/tools/__init__.py', 'src/tools/input_generator/input_builder.py',
     'src/validation/__init__.py', 'src/validation/control.py', 'src/validation/estimation.py',

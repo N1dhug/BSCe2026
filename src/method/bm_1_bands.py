@@ -3,12 +3,10 @@
 This new protocol does not modify or relabel the fixed 2022 study. A record
 declares all calibration/evaluation weeks before evaluation targets are read.
 """
-from argparse import ArgumentParser
 from copy import deepcopy
 import hashlib
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
 import pandas as pd
@@ -16,8 +14,6 @@ import pandas as pd
 from src.method import g_prequential_bands as original
 from src.tools import weekday_backtest as calendar
 from src.tools.weekday_backtest import WeekWindow
-from src.tools.bm_1_reports import _atomic_report
-from src.exe.run_model.bm_1.s3_forecast import write_forecast
 
 PROTOCOL = 'BM-G-declared-date-prequential-bands-v1'
 MODELS = original.MODELS
@@ -52,10 +48,7 @@ def load_forecast(directory):
     hashes = receipt['artifact_sha256']
     if not {'forecast.json', 'forecast.csv', 'forecast_normalized.csv'} <= set(hashes):
         raise ValueError('Receipt must bind both forecast tables and manifest.')
-    for name, expected in hashes.items():
-        path = Path(name)
-        if path.is_absolute() or '..' in path.parts or digest(directory/path) != expected:
-            raise ValueError('Invalid or modified frozen forecast artifact: '+name)
+    calendar._verify_artifacts(directory, hashes)
     forecast = json.loads((directory/'forecast.json').read_text(encoding='utf-8'))
     for key, name in (('predictions', 'forecast.csv'), ('normalized_predictions', 'forecast_normalized.csv')):
         forecast[key] = pd.read_csv(directory/name, index_col=0, parse_dates=[0], float_precision='round_trip')
@@ -74,9 +67,9 @@ def load_calibration(path):
     if receipt.get('evaluation_observations_used') is not False:
         raise ValueError('Calibration receipt must declare no evaluation observations used.')
     hashes = receipt['artifact_sha256']
-    for name in ('calibration_snapshot.json', 'calibration_scores.csv'):
-        if name not in hashes or digest(path.parent/name) != hashes[name]:
-            raise ValueError('Missing or modified frozen calibration artifact: '+name)
+    if not {'calibration_snapshot.json', 'calibration_scores.csv'} <= set(hashes):
+        raise ValueError('Calibration receipt must bind the snapshot and scores.')
+    calendar._verify_artifacts(path.parent, hashes)
     return validate(json.loads(path.read_text(encoding='utf-8')))
 
 
@@ -194,64 +187,3 @@ def apply(forecast, record):
         'confidence':.95, 'coverage_status':r['coverage_status'], 'evaluation_observations_used':False,
         'clipping':False, 'band_refitted':False}
     return result
-
-
-def main(argv=None):
-    parser = ArgumentParser(description=__doc__); commands = parser.add_subparsers(dest='command', required=True)
-    for command in ('calibrate', 'evaluate'):
-        part = commands.add_parser(command)
-        part.add_argument('--forecasts', nargs='+', required=True)
-        part.add_argument('--observations', nargs='+', required=True)
-        part.add_argument('--output', required=True)
-        if command == 'calibrate': part.add_argument('--evaluation-origins', nargs='+', required=True)
-        else: part.add_argument('--calibration', required=True)
-    args = parser.parse_args(argv); directory = None
-    try:
-        if len(args.forecasts) != len(args.observations):
-            raise ValueError('Provide one observations file for each forecast week.')
-        forecasts = [load_forecast(path) for path in args.forecasts]
-        if args.command == 'calibrate':
-            calibration_plan(forecasts, args.evaluation_origins)
-        def observations(path):
-            return pd.read_csv(path, index_col='Datetime', parse_dates=['Datetime'], float_precision='round_trip')['Demand']
-        target = Path(args.output); target.mkdir(parents=True, exist_ok=False); directory = target
-        _atomic_report(directory/'invocation.json', {'command':args.command, 'protocol':PROTOCOL,
-            'forecasts':args.forecasts, 'observations':args.observations, 'source_sha256':source_hashes()})
-        if args.command == 'calibrate':
-            result = calibrate([{'forecast':f, 'observations':observations(path)} for f, path in zip(forecasts, args.observations)], args.evaluation_origins)
-            _atomic_report(directory/'calibration_snapshot.json', result['snapshot'])
-            from src.exe.run_model.bm_1.deterministic import _atomic_csv
-            _atomic_csv(directory/'calibration_scores.csv', result['scores'])
-            _atomic_report(directory/'calibration_freeze.json', {'evaluation_observations_used':False,
-                'artifact_sha256':{name:digest(directory/name) for name in ('calibration_snapshot.json', 'calibration_scores.csv')}})
-        else:
-            record = load_calibration(args.calibration)
-            if [str(pd.Timestamp(f['manifest']['cutoff']).date()) for f in forecasts] != record['evaluation_origins']:
-                raise ValueError('Supply every declared evaluation week in chronological order.')
-            calibrated = [apply(f, record) for f in forecasts]; receipts = {}
-            for result in calibrated:
-                name = pd.Timestamp(result['manifest']['cutoff']).strftime('%Y%m%d')
-                week = directory/name; week.mkdir(); write_forecast(week, result)
-                receipts[name] = {file:digest(week/file) for file in ('forecast.json', 'forecast.csv', 'forecast_normalized.csv')}
-            _atomic_report(directory/'evaluation_forecasts_freeze.json', {'target_observation_files_opened':False,
-                'calibration_sha256':original.residual.snapshot_fingerprint(record), 'forecasts':receipts})
-            scored = []
-            for result, path in zip(calibrated, args.observations):
-                result = original.score_calibrated(result, observations_for_forecast(observations(path), result)); scored.append(result)
-                write_forecast(directory/pd.Timestamp(result['manifest']['cutoff']).strftime('%Y%m%d'), result, prefix='scored')
-            table = pd.concat([result['predictions'] for result in scored]); y = table.observed.to_numpy(float)
-            _atomic_report(directory/'evaluation_report.json', {'protocol':PROTOCOL, 'hours':len(table),
-                'scored_samples':int(np.isfinite(y).sum()), 'coverage_status':record['coverage_status'],
-                'metrics':{name:original.comparison.metrics(y, table[name].to_numpy(float))
-                           for name in ('baseline', *(model+'_output_mean' for model in MODELS))},
-                'calibrated_bands':{model:original.band_metrics(table, model+'_calibrated_lower', model+'_calibrated_upper') for model in MODELS},
-                'weekly':[{'origin':result['manifest']['cutoff'], 'scoring':result['scoring']} for result in scored]})
-        print('Complete: '+args.command+'; chronological development bands only.', flush=True); return 0
-    except (ValueError, OSError, KeyError, RuntimeError, TypeError) as exc:
-        if directory is not None:
-            _atomic_report(directory/'failure.json', {'status':'failed', 'error':str(exc)})
-        print(str(exc), file=sys.stderr, flush=True); return 2
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())

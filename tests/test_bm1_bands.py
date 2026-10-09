@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from src.method import bm_1_bands as bands
-from src.exe.run_model.bm_1.s3_forecast import write_forecast
+from src.exe.run_model.bm_1_g import bands_main, write_forecast
 from tests.test_g_weekday_bands import packet as old_packet
 
 
@@ -99,7 +99,7 @@ class DeclaredDateBandsTests(unittest.TestCase):
                     self.assertEqual(len(receipt['forecasts']), 2)
                 return reader(path, *args, **kwargs)
             with patch.object(bands.pd, 'read_csv', side_effect=read):
-                self.assertEqual(bands.main(['evaluate', '--calibration', str(calibration), '--forecasts', *forecasts,
+                self.assertEqual(bands_main(['evaluate', '--calibration', str(calibration), '--forecasts', *forecasts,
                     '--observations', *observations, '--output', str(output)]), 0)
             report = json.loads((output/'evaluation_report.json').read_text())
             self.assertEqual(report['scored_samples'], 336)
@@ -117,7 +117,7 @@ class DeclaredDateBandsTests(unittest.TestCase):
                     self.fail('Targets were opened before chronology preflight rejected the run.')
                 return reader(path, *args, **kwargs)
             with patch.object(bands.pd, 'read_csv', side_effect=read):
-                result = bands.main(['calibrate', '--forecasts', *forecasts, '--observations', *observations,
+                result = bands_main(['calibrate', '--forecasts', *forecasts, '--observations', *observations,
                     '--evaluation-origins', '2022-05-09', '--output', str(output)])
             self.assertEqual(result, 2); self.assertEqual(target_reads, [])
             self.assertFalse(output.exists())

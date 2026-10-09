@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import unittest
+from src.exe.run_model.bm_1.real_data import _mc_summary
 from src.control.bm_1 import MonteCarloCandidateResult
 from src.control.objective import control_penalties, monte_carlo_tracking_objective
 from src.exe.run_model.bm_1.real_data import build_numerics, build_problem, run_day
@@ -11,7 +12,6 @@ from src.tools.bm_1_data import (
     HOURLY_EDGES,
     _complete_day_values,
     _hourly_hold,
-    _mc_summary,
     build_day_signals,
     select_representative_days,
 )
@@ -287,7 +287,7 @@ class AuditSerializationTests(unittest.TestCase):
 
     def test_strict_json_replaces_nested_nonfinite_diagnostics_with_null(self):
         import json
-        from src.tools.bm_1_data import _json_safe
+        from src.exe.run_model.bm_1.real_data import _json_safe
         payload = {'correlation': float('nan'), 'values': np.array([1., np.inf]),
                    'nested': [np.float64('-inf'), {'ok': np.int64(3)}]}
         safe = _json_safe(payload)
