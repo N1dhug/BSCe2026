@@ -15,5 +15,7 @@ Kontrol: 39 relevante G/kalender/checkpoint-tests bestået på 10,865 sekunder.
 Ingen brudte lokale dokumentlinks. 165 fælles/G/WM-kildefiler er uændrede.
 472 F-filer og blandede originalarkivfiler er fjernet fra dette træ.
 Den F1-F3-specifikke BM_REFERENCE er også arkiveret; G/WM-kode er uændret.
-GitHub-publicering af arkivbranches og opdateret main afventer udtrykkelig
-tilladelse efter automatisk afvisning af arkiv-push. Lokale rådata sendes ikke.
+Publicering er udtrykkeligt godkendt af Johan efter den første automatiske
+afvisning. Arkivbranches publiceres sammen med main uden nye lokale rådata.
+Dobbelttjek: gamle F-poster i arkivregisteret er også fjernet. Historiske
+F-betegnelser i fælles G/WM-kode er bevaret med de uændrede kildehashes.

@@ -3410,13 +3410,6 @@
       "action": "retain active entry; original preserved in verified source archive"
     },
     {
-      "path": "root/F4.md",
-      "sha256": "f96d3fe24bc18b445ed672e71a9697eeed14ef10292c75b42bde361f812bdf85",
-      "original_archive_member": "root/F4.md",
-      "source_commit": "89e8337b6857b148c48e6880473984c3ae4574a0",
-      "action": "retain active entry; original preserved in verified source archive"
-    },
-    {
       "path": "root/BM_GUIDE.md",
       "sha256": "4ce5ecd7b45b5a269fb2229252c6c03522940b79c90295c94627033f44c2c97c",
       "original_archive_member": "root/BM_GUIDE.md",
@@ -3469,153 +3462,9 @@
   },
   "round2": {
     "source_commit": "7249bf9c318b20f45aa0c3a64b3c6c3b75afaa82",
-    "original_archive": "archive/bm/originals/source-7249bf9.zip",
+    "original_archive": "https://github.com/N1dhug/BSCe2026/blob/archive/f-main-20261009/archive/bm/originals/source-7249bf9.zip",
     "method": "Curated thematic mathematics and distinct negative evidence; originals restored separately, never counted as deduplication",
     "source_excerpts": [
-      {
-        "source": "root/H2_DATA_CONTRACT.md",
-        "start": 63,
-        "end": 93,
-        "sha256_utf8": "3f69c5300b1324d9b3939333d83d5154dc9aa0a89149a3fe87bba5accf4f86d2"
-      },
-      {
-        "source": "root/H2_DATA_CONTRACT.md",
-        "start": 128,
-        "end": 158,
-        "sha256_utf8": "0d033b95a3821dd71f26d33d7ada46a3b391b2525dc2860040e492a86a504317"
-      },
-      {
-        "source": "root/H2_COMPACT_DATA_FOUNDATION.md",
-        "start": 61,
-        "end": 118,
-        "sha256_utf8": "2042e5193380d1ac28f520061b65b664253bddc8104a8d4f7f880795ce5fdb99"
-      },
-      {
-        "source": "root/H2_HOURLY_INTERVALS.md",
-        "start": 24,
-        "end": 46,
-        "sha256_utf8": "0ee340fc9dd73ac587c61c9b5336f0ad4a40e591a7ed07a16d2505880b41a40a"
-      },
-      {
-        "source": "root/H2_INTERVAL_CHARACTERISTIC_CONTROL.md",
-        "start": 59,
-        "end": 75,
-        "sha256_utf8": "ddb844a2e52ec7c3205607d83fb39e6f18cf018ee2d6851fa7f99850f07bfea4"
-      },
-      {
-        "source": "root/H2_TERMINAL_TILT_REVIEW.md",
-        "start": 32,
-        "end": 104,
-        "sha256_utf8": "2a138423203927d90a0c4e472bfeb2840109c09e81e4a606864effe738e1a1ca"
-      },
-      {
-        "source": "root/H2_TERMINAL_TILT_REVIEW.md",
-        "start": 129,
-        "end": 154,
-        "sha256_utf8": "80bdf518b9650434af5ed093151637cdb294410e45c120fadff37b8a0479c279"
-      },
-      {
-        "source": "root/H2_METHOD_REDESIGN.md",
-        "start": 123,
-        "end": 204,
-        "sha256_utf8": "67cf14c33e812c894fcd49e480ec4dbf944d750f523ecf9e958933abdabc7c99"
-      },
-      {
-        "source": "root/H2_TERMINAL_BANK_EXTENSION_REVIEW.md",
-        "start": 9,
-        "end": 87,
-        "sha256_utf8": "bc2f154aa7c8d88b6fcd70cf84e944039c3f1d9d664365216d1550bdb2316325"
-      },
-      {
-        "source": "root/H2_COMPACT_ESTIMATION_REVIEW.md",
-        "start": 118,
-        "end": 271,
-        "sha256_utf8": "8bf65cc94384def31b18d213e21d7f49514deced96ee0d6cd07f6dc0f105f0d5"
-      },
-      {
-        "source": "root/H2_INTERVAL_FORECAST_IMPLEMENTATION.md",
-        "start": 10,
-        "end": 78,
-        "sha256_utf8": "9a0d07b09a5fd140855b687955a094c1e128ae7a69c89ce0460f2df6d90d1718"
-      },
-      {
-        "source": "root/H2_METHOD_REDESIGN.md",
-        "start": 86,
-        "end": 113,
-        "sha256_utf8": "faee411aa55bc4e446eef149f6ce8542358356e0cab0568011951a13e7a90fce"
-      },
-      {
-        "source": "root/H2_COMPACT_ESTIMATION_REVIEW.md",
-        "start": 63,
-        "end": 117,
-        "sha256_utf8": "ddead8f470fe6f5b382ec7027cc70e489cf4aae99b2d4d877ed8c00e052bb65e"
-      },
-      {
-        "source": "root/F4_PHYSICAL_OPTIMIZER_PILOT.md",
-        "start": 46,
-        "end": 147,
-        "sha256_utf8": "49415a4e0fc88db840d47fddaee2ed5ff1b7d924af2032da29bf219b5785fcbc"
-      },
-      {
-        "source": "root/H2_HOURLY_INTERVALS.md",
-        "start": 47,
-        "end": 79,
-        "sha256_utf8": "98b3c4d2a9a0a25ad3b71199cbe94570c22717748b58e65c2d6e8d185b760380"
-      },
-      {
-        "source": "root/H2_INTERVAL_CHARACTERISTIC_CONTROL.md",
-        "start": 35,
-        "end": 56,
-        "sha256_utf8": "7ecc8d3f0f1c5a2f4fba64127d9152e4b93b754f4b7332b04c5c3cbfda9377a2"
-      },
-      {
-        "source": "root/H2_INTERVAL_CHARACTERISTIC_CONTROL.md",
-        "start": 136,
-        "end": 166,
-        "sha256_utf8": "be3f55990da40434ee37e7efb10ae79c661f78a76de686872b02d2140aef04fc"
-      },
-      {
-        "source": "root/H2_TERMINAL_TILT_REVIEW.md",
-        "start": 155,
-        "end": 197,
-        "sha256_utf8": "ce7a64c111e248b3ce7d70e9420623d5693fc3060137a1b2842293a7b38e20a2"
-      },
-      {
-        "source": "root/H2_TERMINAL_TILT_CROSS_CONTROL.md",
-        "start": 55,
-        "end": 91,
-        "sha256_utf8": "1616583ba5c938912710f4b21026cd415e3bc750e61a53873c859b8dc6980e28"
-      },
-      {
-        "source": "root/H2_TERMINAL_TILT_FINE_REFERENCE.md",
-        "start": 65,
-        "end": 98,
-        "sha256_utf8": "97406aabb0de4e0a6e51cc44e78327e89ee8ea4c69fe38d81aa96308a092b481"
-      },
-      {
-        "source": "root/H2_SEARCH_FEASIBILITY.md",
-        "start": 196,
-        "end": 216,
-        "sha256_utf8": "4f3ab33d6a8c6588c7847992bf1ddeb26bb3c43c52ecf7968f2d861a879ff8f4"
-      },
-      {
-        "source": "root/H2_NATIVE_V2_NEXT_REVIEW.md",
-        "start": 15,
-        "end": 37,
-        "sha256_utf8": "784588c25915df781709ea55f0e150b5c7d70939ee571d3e8dddb2ac757285b9"
-      },
-      {
-        "source": "root/H2_COMPACT_RATE_REVIEW.md",
-        "start": 15,
-        "end": 82,
-        "sha256_utf8": "3c060dcd316ddd57c91c6a18a9ed0d2429db8c6cdfaaea4667545683954008fc"
-      },
-      {
-        "source": "root/H2_TERMINAL_BANK_FINE_RESULT_20261007.md",
-        "start": 9,
-        "end": 45,
-        "sha256_utf8": "408b3f8a019e8805631333a62f44794d53aaf99fc61d1dbc2c688488a6c35503"
-      },
       {
         "source": "root/G_MATHEMATICS_RECOVERY_20261008.md",
         "start": 25,
@@ -3659,18 +3508,6 @@
         "sha256_utf8": "04562b185d7f391f687f1a8e6f26e26dffe1a8b893317594a9a0f1d434150c76"
       },
       {
-        "source": "root/H2_METHOD_REDESIGN.md",
-        "start": 248,
-        "end": 261,
-        "sha256_utf8": "80f5c157d54a6947cf8dbed14605a26d340a700a1238fd77fc89f99d4539f343"
-      },
-      {
-        "source": "root/H2_COMPACT_ESTIMATION_REVIEW.md",
-        "start": 272,
-        "end": 324,
-        "sha256_utf8": "88d9a8f326e4d20cdc07de8678717f3f50aafc2031c528edad065afbe8598d55"
-      },
-      {
         "source": "root/G8_BERNSTEIN_REVIEW.md",
         "start": 161,
         "end": 174,
@@ -3695,6 +3532,6 @@
         "sha256_utf8": "6d2101acb6e70f591e029f94108192ab757700a94dba61ea48f5da095e58505d"
       }
     ],
-    "all_root_disposition": "root-file-plan.json"
+    "all_root_disposition": "https://github.com/N1dhug/BSCe2026/blob/archive/f-main-20261009/archive/bm/root-file-plan.json"
   }
 }
