@@ -1,0 +1,79 @@
+\babel@toc {danish}{}\relax 
+\contentsline {section}{\numberline {1}Formål og læsevej}{1}{section.1}%
+\contentsline {section}{\numberline {2}BM1: model, notation og enheder}{1}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Demand og fleksibilitetsstate}{1}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Normaliseringens betydning}{1}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Energibalance under processtøj}{2}{subsection.2.3}%
+\contentsline {section}{\numberline {3}Observationer og den information vi må bruge}{2}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Punktmodellen som første kontrollerede tilfælde}{2}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Prior, prediction og posterior}{2}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Prisspring og observationstidspunkter}{3}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Intervaldata er et andet observationsproblem}{3}{subsection.3.4}%
+\contentsline {section}{\numberline {4}Fokker--Planck-prediction på det eksisterende FV-grid}{3}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Den kontinuerte ligning}{3}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Cellemasser og Markov-generator}{3}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Hvad numerisk refinement skal holde fast}{4}{subsection.4.3}%
+\contentsline {section}{\numberline {5}Bayes-opdatering og stabil likelihood}{4}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Udledning fra produktreglen}{4}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Diskret version: ingen ekstra cellebredde}{4}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Log-domænet og nulstøtte}{5}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Normalisering er ikke altid samme operation}{5}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.5}Et lille gennemregnet eksempel}{5}{subsection.5.5}%
+\contentsline {section}{\numberline {6}Mixture-posterior: udledning og repræsentationsgrænse}{5}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Hvorfor nye vægte ikke er nok}{5}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}Variansgulvet i den eksisterende familie}{6}{subsection.6.2}%
+\contentsline {subsection}{\numberline {6.3}Celleintegrerede komponenter som opt-in}{6}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}Projektionen og dens begrænsede garanti}{7}{subsection.6.4}%
+\contentsline {section}{\numberline {7}Parameteridentifikation før store fits}{7}{section.7}%
+\contentsline {subsection}{\numberline {7.1}En lokal algebraisk screening}{7}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}Hvad der ikke overføres ukritisk fra referencearbejdet}{7}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}F4-E: fixed-parameter likelihood før parameterbank}{8}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}Likelihood-snit, profil og batch-replay}{9}{subsection.7.4}%
+\contentsline {section}{\numberline {8}Rekursiv parameterbank og bevaret afhængighed}{9}{section.8}%
+\contentsline {subsection}{\numberline {8.1}En overskuelig første metode}{9}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}En stærk algebraisk test og et eksempel}{10}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Prior under reparameterisering}{10}{subsection.8.3}%
+\contentsline {subsection}{\numberline {8.4}Støtte, nulvægte og numerisk fejl}{11}{subsection.8.4}%
+\contentsline {section}{\numberline {9}Demand-forecast efter en fast origin}{11}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Hvad forecastet er betinget på}{11}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Demand som transformation af state}{11}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}Usikkerheden behøver ikke vokse monotont}{12}{subsection.9.3}%
+\contentsline {subsection}{\numberline {9.4}Fremtidige input og manglende usikkerhedskilder}{12}{subsection.9.4}%
+\contentsline {subsection}{\numberline {9.5}Ugeenergi og samtidige intervaludsagn}{13}{subsection.9.5}%
+\contentsline {subsection}{\numberline {9.6}Den planlagte forecast-validering}{13}{subsection.9.6}%
+\contentsline {section}{\numberline {10}Overførsel af posterior og F3-handoff}{13}{section.10}%
+\contentsline {subsection}{\numberline {10.1}Konservativ overførsel mellem grids}{13}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}Plug-in og fuld bankversion er forskellige}{14}{subsection.10.2}%
+\contentsline {section}{\numberline {11}F4-A: forsøgsdesign og valideringsdefinitioner}{14}{section.11}%
+\contentsline {subsection}{\numberline {11.1}Referencecase og information}{14}{subsection.11.1}%
+\contentsline {subsection}{\numberline {11.2}Hvorfor den skjulte state kan påvirke målingen}{14}{subsection.11.2}%
+\contentsline {subsection}{\numberline {11.3}Parameterbankens første støtte}{15}{subsection.11.3}%
+\contentsline {subsection}{\numberline {11.4}Hvad RMSE og kalibrering sammenligner}{15}{subsection.11.4}%
+\contentsline {subsection}{\numberline {11.5}Forecast og historiske adgangsbetingelser}{15}{subsection.11.5}%
+\contentsline {section}{\numberline {12}F4-B: syntetisk truth og observationer}{16}{section.12}%
+\contentsline {subsection}{\numberline {12.1}Fra SDE-path til observationer}{16}{subsection.12.1}%
+\contentsline {subsection}{\numberline {12.2}Reproducerbare, adskilte RNG-strømme}{16}{subsection.12.2}%
+\contentsline {subsection}{\numberline {12.3}Koblet EM-refinement}{16}{subsection.12.3}%
+\contentsline {subsection}{\numberline {12.4}Pris ved måletid og dataadskillelse}{17}{subsection.12.4}%
+\contentsline {section}{\numberline {13}F4-C: rekursivt FV-state-filter med kendte parametre}{17}{section.13}%
+\contentsline {subsection}{\numberline {13.1}Ét rekursivt filtertrin}{17}{subsection.13.1}%
+\contentsline {subsection}{\numberline {13.2}Pris ved observationskanten}{17}{subsection.13.2}%
+\contentsline {subsection}{\numberline {13.3}Measurement-quadrature er separat fra FV-gridet}{17}{subsection.13.3}%
+\contentsline {subsection}{\numberline {13.4}Streaming, replay og nulobservationskontrol}{18}{subsection.13.4}%
+\contentsline {subsection}{\numberline {13.5}Låst refinement før populationsstudiet}{18}{subsection.13.5}%
+\contentsline {subsection}{\numberline {13.6}C3-resultat og C4-preregistrering}{18}{subsection.13.6}%
+\contentsline {subsection}{\numberline {13.7}C4-populationsresultat og kalibreringsdiagnostik}{19}{subsection.13.7}%
+\contentsline {subsection}{\numberline {13.8}C4 numerisk kalibreringssensitivitet}{20}{subsection.13.8}%
+\contentsline {subsection}{\numberline {13.9}Uafhængig C4-replikation}{20}{subsection.13.9}%
+\contentsline {subsection}{\numberline {13.10}F4-C-konklusion}{21}{subsection.13.10}%
+\contentsline {section}{\numberline {14}F4-D: statisk basisvalg før dynamisk mixture-filter}{21}{section.14}%
+\contentsline {subsection}{\numberline {14.1}Låst statisk target-suite}{21}{subsection.14.1}%
+\contentsline {subsection}{\numberline {14.2}Nestede kandidatordbøger}{21}{subsection.14.2}%
+\contentsline {subsection}{\numberline {14.3}Metrikker og valg før resultater}{22}{subsection.14.3}%
+\contentsline {subsection}{\numberline {14.4}D1b og D1c: design og fravalg}{22}{subsection.14.4}%
+\contentsline {subsection}{\numberline {14.5}D2: holdout af FV-predictions og posteriors}{23}{subsection.14.5}%
+\contentsline {subsection}{\numberline {14.6}Selvstændig rekursion og solver-korrekthed}{23}{subsection.14.6}%
+\contentsline {subsection}{\numberline {14.7}D3a--c: sanity og numerisk refinement}{24}{subsection.14.7}%
+\contentsline {subsection}{\numberline {14.8}D3d: uafhængig population og afgrænset konklusion}{24}{subsection.14.8}%
+\contentsline {section}{\numberline {15}Bevaret statisk F4-0-evidens}{25}{section.15}%
+\contentsline {subsection}{\numberline {15.1}Et konkret statisk resultat}{25}{subsection.15.1}%
