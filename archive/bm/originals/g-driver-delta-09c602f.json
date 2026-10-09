@@ -1,0 +1,81 @@
+{
+  "retired": [
+    {
+      "path": "src/exe/run_model/bm_1/g7.py",
+      "bytes": 18853,
+      "lines": 242,
+      "sha256": "b117a00b0cf7f26140564b009eeaa10a16d0c76395eb2fab2d291e6640cc19a7",
+      "original_7249_sha256": "b117a00b0cf7f26140564b009eeaa10a16d0c76395eb2fab2d291e6640cc19a7",
+      "recovery": "source-7249bf9.zip"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g7_deterministic.py",
+      "bytes": 11183,
+      "lines": 207,
+      "sha256": "517010838981b77eef0461fef30eb246f44ce75e88341e9761836f80f7ed88b0",
+      "original_7249_sha256": "517010838981b77eef0461fef30eb246f44ce75e88341e9761836f80f7ed88b0",
+      "recovery": "source-7249bf9.zip"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g7_matched_response.py",
+      "bytes": 6612,
+      "lines": 120,
+      "sha256": "48c96a4f3ded5b44801be0ce2a196fdb8f8bb2b01b8590b5d793c23bb0699d49",
+      "original_7249_sha256": "48c96a4f3ded5b44801be0ce2a196fdb8f8bb2b01b8590b5d793c23bb0699d49",
+      "recovery": "source-7249bf9.zip"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g8.py",
+      "bytes": 20921,
+      "lines": 285,
+      "sha256": "095cfd5e3b7f5cbdd9d90a5ca0830f304c0b849ab312cd68fcbe53af1d32971d",
+      "original_7249_sha256": "095cfd5e3b7f5cbdd9d90a5ca0830f304c0b849ab312cd68fcbe53af1d32971d",
+      "recovery": "source-7249bf9.zip"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g8_basis.py",
+      "bytes": 10381,
+      "lines": 156,
+      "sha256": "988330b5146da05772bad3c35b3eab3adec035e201cbb95dae5caf12534316b2",
+      "original_7249_sha256": "988330b5146da05772bad3c35b3eab3adec035e201cbb95dae5caf12534316b2",
+      "recovery": "source-7249bf9.zip"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g8_basis_refine.py",
+      "bytes": 6333,
+      "lines": 95,
+      "sha256": "34831629b82ef507ffc8cca9403c28e77ddecbd255600b7461022b66640804e2",
+      "original_7249_sha256": "34831629b82ef507ffc8cca9403c28e77ddecbd255600b7461022b66640804e2",
+      "recovery": "source-7249bf9.zip"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g8_bernstein.py",
+      "bytes": 17251,
+      "lines": 247,
+      "sha256": "a66d623fad5f7fc17bb17065efbcb07d52167f66651d43410d727209fe36885a",
+      "original_7249_sha256": "1028740bc2f985afe32b3cc54120d588087bd4924662a3cb981592c5f6c4d510",
+      "recovery": "g-driver-delta-09c602f.zip"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g8_bernstein_refine.py",
+      "bytes": 11478,
+      "lines": 160,
+      "sha256": "ab1bbcf7c5109e98d6e5cae82a16b4c08b9c69c3baee14686dc76f1ba7c81799",
+      "original_7249_sha256": "bd45912147fc2da3f08caa17fc34da88ff053461434d18164c791653ce805fa8",
+      "recovery": "g-driver-delta-09c602f.zip"
+    }
+  ],
+  "external_python_imports": [],
+  "protected_count": 149,
+  "changed": [
+    "src/exe/run_model/bm_1_g.py",
+    "src/method/bm_1_g_forecast.py",
+    "tests/test_bm1_g_forecast.py"
+  ],
+  "method_kernels_and_tests_retained": true,
+  "delta_archive_sha256": "10f4804e6201ac133958e8230e75231d4b9e5c131186ac4e4c78a79f0e50b227",
+  "delta_members": [
+    "src/exe/run_model/bm_1/g8_bernstein.py",
+    "src/exe/run_model/bm_1/g8_bernstein_refine.py"
+  ]
+}

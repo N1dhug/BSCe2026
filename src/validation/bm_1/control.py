@@ -1,0 +1,828 @@
+"""Price-control reference problems and matched evaluator fixtures.
+
+Closed sensitivity/uncertainty/timing campaigns use their original tree.
+The current CLI preserves two-price, multi-price and hourly-target control.
+"""
+
+from dataclasses import dataclass, replace
+import numpy as np
+from src.validation.control import positive_integer
+from scipy.interpolate import PchipInterpolator
+from src.control import bm_1 as control
+from src.control.objective import monte_carlo_tracking_objective
+from src.model.bm_1 import bm_1
+from src.tools.input_generator.input_builder import input_builder
+from src.validation.bm_1.cases import (
+    INITIAL_ALPHA,
+    INITIAL_BETA,
+    SIGMA_X,
+    linear_price_response,
+    linear_state_response,
+)
+
+from src.validation.bm_1.mixture import DEFAULT_CFL
+
+T = (0.0, 1.0)
+
+INTERVAL_EDGES = np.array([0.0, 0.5, 1.0], dtype=float)
+
+KNOWN_DETERMINISTIC_PRICES = np.array([0.72, 0.28], dtype=float)
+
+INITIAL_PRICES = np.array([0.55, 0.45], dtype=float)
+
+BASELINE = 0.3
+
+X0_DETERMINISTIC = 0.5
+
+F3_C_TERMINAL_REFERENCE = 0.5
+
+F3_E_SCENARIO_ORDER = ('deterministic', 'initial_only', 'process_only', 'full')
+
+C = 1.0
+
+K = 2.0
+
+XI = 1.0
+
+FV_X_STEPS = 201
+
+MIXTURE_OPT_X_STEPS = 81
+
+FINAL_MIXTURE_X_STEPS = 201
+
+MIXTURE_OPT_DEGREE = 30
+
+FINAL_MIXTURE_DEGREES = (30, 38)
+
+OBJECTIVE_MAX_STEP = 1.0 / 96.0
+
+SOLVER_MAX_STEP = 1.0 / 96.0
+
+TARGET_T_STEPS = 1537
+
+COARSE_VALUES = np.linspace(0.0, 1.0, 5)
+
+N_COARSE_STARTS = 4
+
+MC_PATHS = 50000
+
+MC_INITIAL_SEED = 2033
+
+MC_BROWNIAN_SEED = 2034
+
+INTERVAL_COUNTS = (2, 4, 6, 12, 24)
+
+REFERENCE_PRICES_24 = np.array(
+    [
+        0.78,
+        0.74,
+        0.68,
+        0.58,
+        0.46,
+        0.34,
+        0.24,
+        0.3,
+        0.44,
+        0.62,
+        0.78,
+        0.84,
+        0.74,
+        0.6,
+        0.46,
+        0.32,
+        0.24,
+        0.3,
+        0.46,
+        0.66,
+        0.82,
+        0.72,
+        0.56,
+        0.42,
+    ],
+    dtype=float,
+)
+
+COMPLEX_OBJECTIVE_MAX_STEP = 1.0 / 96.0
+
+COMPLEX_SOLVER_MAX_STEP = 1.0 / 96.0
+
+COMPLEX_MC_PATHS = 20000
+
+COMPLEX_MC_INITIAL_SEED = 2051
+
+COMPLEX_MC_BROWNIAN_SEED = 2052
+
+MULTI_INTERVAL_COUNTS = (2, 4, 6, 24)
+
+MULTI_OBJECTIVE_MAX_STEP = 1.0 / 96.0
+
+MULTI_SOLVER_MAX_STEP = 1.0 / 96.0
+
+MULTI_MC_PATHS = 20000
+
+MULTI_MC_INITIAL_SEED = 2041
+
+MULTI_MC_BROWNIAN_SEED = 2042
+
+DETERMINISTIC_REFERENCE_PRICES = np.array([0.72, 0.28], dtype=float)
+
+HOURLY_EDGES = np.linspace(T[0], T[1], 25, dtype=float)
+
+def _baseline():
+    """Constant normalized baseline shared by the controlled price experiments."""
+    return input_builder.energy((np.array(T), np.array([BASELINE, BASELINE])))
+
+def _parameter_template():
+    """Parameter order [U,f,g,C,k,Xi] for the two-interval benchmark."""
+    placeholder = input_builder.price_intervals((INTERVAL_EDGES, INITIAL_PRICES))
+    return [placeholder, linear_state_response, linear_price_response, C, K, XI]
+
+def _parameters_for_prices(prices):
+    parameters = _parameter_template()
+    parameters[0] = input_builder.price_intervals((INTERVAL_EDGES, np.asarray(prices, dtype=float)))
+    return parameters
+
+def build_deterministic_target():
+    """Return the F1-D target demand as a breakpoint-aware callable."""
+    baseline = _baseline()
+    generator = bm_1(baseline, baseline, T, TARGET_T_STEPS)
+    target_t = np.linspace(T[0], T[1], TARGET_T_STEPS)
+    result = generator.deterministic_solver(
+        [X0_DETERMINISTIC],
+        _parameters_for_prices(KNOWN_DETERMINISTIC_PRICES),
+        t_eval=target_t,
+        breakpoints=INTERVAL_EDGES[1:-1],
+        rtol=1e-10,
+        atol=1e-12,
+        max_step=1.0 / (TARGET_T_STEPS - 1),
+    )
+    target_demand = np.asarray(result[7], dtype=float)
+    breakpoint = INTERVAL_EDGES[1]
+    left_mask = target_t < breakpoint
+    right_mask = target_t >= breakpoint
+    left = PchipInterpolator(target_t[left_mask], target_demand[left_mask], extrapolate=True)
+    right = PchipInterpolator(target_t[right_mask], target_demand[right_mask], extrapolate=True)
+
+    def target(query):
+        array = np.asarray(query, dtype=float)
+        values = np.where(array < breakpoint, left(array), right(array))
+        return float(values) if array.ndim == 0 else values
+    return (target, target_t, target_demand)
+
+def build_stochastic_model(target, t_steps=2):
+    baseline = _baseline()
+    return bm_1(baseline, target, T, t_steps)
+
+def _initial_mass(model, x_steps):
+    """Exact Beta(20,20) probabilities on the evaluator state grid."""
+    edges, _, _ = model.fokker_planc_reference.grid(x_steps)
+    return control.beta_initial_cell_mass(edges, alpha=INITIAL_ALPHA, beta=INITIAL_BETA)
+
+def _build_fv_evaluator(model, *, x_steps, objective_max_step, solver_max_step):
+    initial_mass = _initial_mass(model, x_steps)
+    return control.FVStochasticPriceEvaluator(
+        model,
+        _parameter_template(),
+        INTERVAL_EDGES,
+        SIGMA_X,
+        initial_mass,
+        objective_max_step=objective_max_step,
+        solver_max_step=solver_max_step,
+    )
+
+@dataclass(frozen=True)
+class PriceCase:
+    """One interval count, its optimized candidate and the common-reference evaluation."""
+    n_intervals: int
+    edges: np.ndarray
+    evaluator: control.FVStochasticPriceEvaluator
+    optimization: object
+    evaluation: object
+
+def _edges(n_intervals):
+    n_intervals = positive_integer(n_intervals, 'n_intervals', 1)
+    if n_intervals < 1 or 24 % n_intervals != 0:
+        raise ValueError('n_intervals must be a positive divisor of 24.')
+    return np.linspace(T[0], T[1], n_intervals + 1, dtype=float)
+
+def complex_parameter_template(edges):
+    placeholder = input_builder.price_intervals((edges, np.full(edges.size - 1, 0.5, dtype=float)))
+    return [placeholder, linear_state_response, linear_price_response, C, K, XI]
+
+def complex_parameters_for_prices(edges, prices):
+    parameters = complex_parameter_template(edges)
+    parameters[0] = input_builder.price_intervals((edges, np.asarray(prices, dtype=float)))
+    return parameters
+
+def _coarsen_reference_prices(n_intervals):
+    """Average the 24 hourly reference prices inside each candidate interval."""
+    n_intervals = positive_integer(n_intervals, 'n_intervals', 1)
+    if n_intervals < 1 or 24 % n_intervals != 0:
+        raise ValueError('n_intervals must divide 24.')
+    block = 24 // n_intervals
+    return REFERENCE_PRICES_24.reshape(n_intervals, block).mean(axis=1)
+
+def _sample_piecewise_prices(old_edges, old_prices, new_edges):
+    """Sample an existing held-price signal at the new interval midpoints."""
+    old_edges = np.asarray(old_edges, dtype=float)
+    old_prices = np.asarray(old_prices, dtype=float)
+    new_edges = np.asarray(new_edges, dtype=float)
+    midpoints = 0.5 * (new_edges[:-1] + new_edges[1:])
+    if old_prices.size + 1 != old_edges.size:
+        raise ValueError('old_edges and old_prices have incompatible lengths.')
+    indices = np.searchsorted(old_edges[1:], midpoints, side='right')
+    indices = np.minimum(indices, old_prices.size - 1)
+    return old_prices[indices].copy()
+
+def build_complex_deterministic_target():
+    """Generate a jump-aware target from the 24-hour reference price signal."""
+    baseline = _baseline()
+    generator = bm_1(baseline, baseline, T, TARGET_T_STEPS)
+    target_t = np.linspace(T[0], T[1], TARGET_T_STEPS, dtype=float)
+    result = generator.deterministic_solver(
+        [X0_DETERMINISTIC],
+        complex_parameters_for_prices(HOURLY_EDGES, REFERENCE_PRICES_24),
+        t_eval=target_t,
+        breakpoints=HOURLY_EDGES[1:-1],
+        rtol=1e-10,
+        atol=1e-12,
+        max_step=1.0 / (TARGET_T_STEPS - 1),
+    )
+    target_demand = np.asarray(result[7], dtype=float)
+    interpolators = []
+    for hour in range(24):
+        left = HOURLY_EDGES[hour]
+        right = HOURLY_EDGES[hour + 1]
+        if hour < 23:
+            mask = (target_t >= left) & (target_t < right)
+        else:
+            mask = (target_t >= left) & (target_t <= right)
+        local_t = target_t[mask]
+        local_demand = target_demand[mask]
+        if local_t.size < 3:
+            raise RuntimeError('Target grid is too coarse inside an hourly interval.')
+        interpolators.append(PchipInterpolator(local_t, local_demand, extrapolate=True))
+
+    def target(query):
+        array = np.asarray(query, dtype=float)
+        flat = array.reshape(-1)
+        indices = np.searchsorted(HOURLY_EDGES[1:], flat, side='right')
+        indices = np.minimum(indices, 23)
+        values = np.empty_like(flat, dtype=float)
+        for hour in range(24):
+            mask = indices == hour
+            if np.any(mask):
+                values[mask] = interpolators[hour](flat[mask])
+        values = values.reshape(array.shape)
+        return float(values) if array.ndim == 0 else values
+    return (target, target_t, target_demand)
+
+def _build_evaluator(model, n_intervals, *, fast_fv=False):
+    edges = _edges(n_intervals)
+    spatial_edges, _, _ = model.fokker_planc_reference.grid(FV_X_STEPS)
+    initial_mass = control.beta_initial_cell_mass(spatial_edges, alpha=INITIAL_ALPHA, beta=INITIAL_BETA)
+    evaluator_class = control.FastFVStochasticPriceEvaluator if fast_fv else control.FVStochasticPriceEvaluator
+    return evaluator_class(
+        model,
+        complex_parameter_template(edges),
+        edges,
+        SIGMA_X,
+        initial_mass,
+        objective_max_step=COMPLEX_OBJECTIVE_MAX_STEP,
+        solver_max_step=COMPLEX_SOLVER_MAX_STEP,
+        breakpoints=HOURLY_EDGES[1:-1],
+    )
+
+def _unique_rows(*groups):
+    rows = []
+    for group in groups:
+        array = np.asarray(group, dtype=float)
+        if array.ndim == 1:
+            array = array[None, :]
+        for row in array:
+            if not any((np.array_equal(row, previous) for previous in rows)):
+                rows.append(row.copy())
+    return np.asarray(rows, dtype=float)
+
+def _starts_for_case(n_intervals, previous_case=None):
+    reference = _coarsen_reference_prices(n_intervals)
+    neutral = np.full(n_intervals, 0.5, dtype=float)
+    if previous_case is None:
+        warm = reference
+    else:
+        warm = _sample_piecewise_prices(
+            previous_case.edges,
+            previous_case.optimization.best.x,
+            _edges(n_intervals),
+        )
+    if n_intervals >= 12:
+        return _unique_rows(warm, reference)
+    phase = np.linspace(0.0, 2.0 * np.pi, n_intervals, endpoint=False)
+    perturb_up = np.clip(warm + 0.05 * np.sin(phase), 0.0, 1.0)
+    perturb_down = np.clip(warm - 0.05 * np.sin(phase), 0.0, 1.0)
+    return _unique_rows(warm, reference, neutral, perturb_up, perturb_down)
+
+def _verify_common_numerical_partition(evaluators):
+    """The same physical held signal must give the same cost for every N."""
+    test_prices = np.array([0.72, 0.28], dtype=float)
+    values = {}
+    for count, evaluator in evaluators.items():
+        prices = _lift_half_day_prices(test_prices, count)
+        values[count] = evaluator.evaluate(prices).objective.total
+    reference = values[min(values)]
+    for count, value in values.items():
+        if not np.isclose(value, reference, atol=5e-13, rtol=0.0):
+            raise RuntimeError(
+                f'Common-policy check failed: N={count}, J={value:.16e}, reference={reference:.16e}.',
+            )
+    return values
+
+def _paired_improvement(reference, candidate):
+    return control.paired_mc_improvement(reference, candidate)
+
+def _optimize_price_cases(evaluators, interval_counts, starts_for_case, progress):
+    """Optimize price grids in order, warm-starting each from the previous case."""
+    cases = {}
+    previous = None
+    total = len(interval_counts)
+    for index, count in enumerate(interval_counts, start=1):
+        evaluator = evaluators[count]
+        if progress is not None:
+            progress('')
+            progress(f'[{index}/{total}] Optimizing {count} price intervals ({count - 1} price changes)')
+        optimization = control.multistart_powell(
+            evaluator,
+            starts_for_case(count, previous),
+            progress=progress,
+            options={'xtol': 5e-05, 'ftol': 1e-09, 'maxiter': 100},
+        )
+        case = PriceCase(
+            n_intervals=count,
+            edges=evaluator.interval_edges.copy(),
+            evaluator=evaluator,
+            optimization=optimization,
+            evaluation=evaluator.evaluate(optimization.best.x),
+        )
+        cases[count] = case
+        previous = case
+    return cases
+
+def run_complex_target_experiment(progress=print, validate_mc=True, *, fast_fv=False):
+    target, target_t, target_demand = build_complex_deterministic_target()
+    model = build_stochastic_model(target)
+    evaluators = {count: _build_evaluator(model, count, fast_fv=fast_fv) for count in INTERVAL_COUNTS}
+    common_policy_values = _verify_common_numerical_partition(evaluators)
+    if progress is not None:
+        progress('Common numerical-partition check:')
+        for count in INTERVAL_COUNTS:
+            progress(f'  N={count}: J={common_policy_values[count]:.10e}')
+    cases = _optimize_price_cases(evaluators, INTERVAL_COUNTS, _starts_for_case, progress)
+    mc = _evaluate_cases_mc(
+        model,
+        cases,
+        HOURLY_EDGES[1:-1],
+        n_paths=COMPLEX_MC_PATHS,
+        initial_seed=COMPLEX_MC_INITIAL_SEED,
+        brownian_seed=COMPLEX_MC_BROWNIAN_SEED,
+        max_step=COMPLEX_SOLVER_MAX_STEP,
+    ) if validate_mc else None
+    return {
+        'model': model,
+        'target_t': target_t,
+        'target_demand': target_demand,
+        'common_policy_values': common_policy_values,
+        'cases': cases,
+        'mc': mc,
+    }
+
+def multi_edges(n_intervals):
+    n_intervals = positive_integer(n_intervals, 'n_intervals', 1)
+    if n_intervals < 1:
+        raise ValueError('n_intervals must be positive.')
+    return np.linspace(T[0], T[1], n_intervals + 1, dtype=float)
+
+def _lift_half_day_prices(two_prices, n_intervals):
+    """Represent one first-half and one second-half price on an even grid."""
+    two_prices = np.asarray(two_prices, dtype=float).reshape(-1)
+    n_intervals = positive_integer(n_intervals, 'n_intervals', 1)
+    if two_prices.size != 2:
+        raise ValueError('two_prices must contain exactly two values.')
+    if n_intervals < 2 or n_intervals % 2:
+        raise ValueError('n_intervals must be an even integer >= 2.')
+    return np.concatenate(
+        (
+            np.full(n_intervals // 2, two_prices[0], dtype=float),
+            np.full(n_intervals // 2, two_prices[1], dtype=float),
+        ),
+    )
+
+def multi_build_evaluator(model, n_intervals, common_breakpoints, *, fast_fv=False):
+    edges = multi_edges(n_intervals)
+    spatial_edges, _, _ = model.fokker_planc_reference.grid(FV_X_STEPS)
+    initial_mass = control.beta_initial_cell_mass(spatial_edges, alpha=INITIAL_ALPHA, beta=INITIAL_BETA)
+    evaluator_class = control.FastFVStochasticPriceEvaluator if fast_fv else control.FVStochasticPriceEvaluator
+    return evaluator_class(
+        model,
+        complex_parameter_template(edges),
+        edges,
+        SIGMA_X,
+        initial_mass,
+        objective_max_step=MULTI_OBJECTIVE_MAX_STEP,
+        solver_max_step=MULTI_SOLVER_MAX_STEP,
+        breakpoints=common_breakpoints,
+    )
+
+def multi_starts_for_case(n_intervals, previous_case=None):
+    deterministic = _lift_half_day_prices(DETERMINISTIC_REFERENCE_PRICES, n_intervals)
+    neutral = np.full(n_intervals, 0.5, dtype=float)
+    if previous_case is None:
+        warm = deterministic
+    else:
+        warm = _sample_piecewise_prices(
+            previous_case.edges,
+            previous_case.optimization.best.x,
+            multi_edges(n_intervals),
+        )
+    phase = np.linspace(0.0, np.pi, n_intervals)
+    up_down = np.clip(warm + 0.04 * np.cos(phase), 0.0, 1.0)
+    down_up = np.clip(warm - 0.04 * np.cos(phase), 0.0, 1.0)
+    if n_intervals >= 24:
+        return _unique_rows(warm, deterministic)
+    return _unique_rows(warm, deterministic, neutral, up_down, down_up)
+
+def run_multi_price_experiment(progress=print, validate_mc=True, *, fast_fv=False):
+    target, _, _ = build_deterministic_target()
+    model = build_stochastic_model(target)
+    common_breakpoints = _union_breakpoints()
+    evaluators = {
+        count: multi_build_evaluator(model, count, common_breakpoints, fast_fv=fast_fv)
+         for count in MULTI_INTERVAL_COUNTS
+    }
+    nested_values = _verify_common_numerical_partition(evaluators)
+    if progress is not None:
+        progress('Nested two-price policy check:')
+        for count in MULTI_INTERVAL_COUNTS:
+            progress(f'  N={count}: J={nested_values[count]:.10e}')
+    cases = _optimize_price_cases(evaluators, MULTI_INTERVAL_COUNTS, multi_starts_for_case, progress)
+    mc = _evaluate_cases_mc(
+        model,
+        cases,
+        common_breakpoints,
+        n_paths=MULTI_MC_PATHS,
+        initial_seed=MULTI_MC_INITIAL_SEED,
+        brownian_seed=MULTI_MC_BROWNIAN_SEED,
+        max_step=MULTI_SOLVER_MAX_STEP,
+    ) if validate_mc else None
+    return {
+        'model': model,
+        'common_breakpoints': common_breakpoints,
+        'nested_values': nested_values,
+        'cases': cases,
+        'mc': mc,
+    }
+
+def _initial_mass_builder(edges):
+    return control.beta_initial_cell_mass(edges, alpha=INITIAL_ALPHA, beta=INITIAL_BETA)
+
+def _point_initial_mass_builder(edges):
+    return control.point_initial_cell_mass(edges, X0_DETERMINISTIC)
+
+def build_f3_a_problem():
+    """Return the F3-A problem using the established two-price reference."""
+    target, _, _ = build_deterministic_target()
+    baseline = build_stochastic_model(target).B
+    parameters = control.BM1Parameters(
+        state_response=linear_state_response,
+        price_response=linear_price_response,
+        C=C,
+        k=K,
+        Xi=XI,
+        sigma_x=SIGMA_X,
+    )
+    problem = control.BM1ControlProblem(
+        baseline=baseline,
+        target=target,
+        horizon=T,
+        price_edges=INTERVAL_EDGES,
+        parameters=parameters,
+        initial_mass_builder=_initial_mass_builder,
+        deterministic_initial_state=X0_DETERMINISTIC,
+        observed_prices=KNOWN_DETERMINISTIC_PRICES,
+    )
+    numerics = control.BM1ControlNumerics(
+        x_steps=201,
+        objective_max_step=1.0 / 96.0,
+        solver_max_step=1.0 / 96.0,
+    )
+    return (problem, numerics)
+
+def _reference_starts(problem):
+    """Common starts for the two-price F3 reference and sensitivity problems."""
+    return np.vstack(
+        (problem.observed_prices, INITIAL_PRICES, np.full(problem.n_intervals, 0.5, dtype=float)),
+    )
+
+def run_reference(*, optimize=False, progress=print):
+    problem, numerics = build_f3_a_problem()
+    fixed = problem.evaluate_observed(numerics, fast=True)
+    result = {'problem': problem, 'numerics': numerics, 'fixed': fixed, 'optimization': None}
+    if optimize:
+        evaluator = problem.build_evaluator(numerics, fast=True)
+        result['optimization'] = control.multistart_powell(
+            evaluator,
+            _reference_starts(problem),
+            progress=progress,
+            options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+        )
+    return result
+
+def build_f3_c_problem(
+    *,
+    terminal_reference=F3_C_TERMINAL_REFERENCE,
+    terminal_weight=0.0,
+    smoothing_weight=0.0,
+):
+    """Extend the F3-A problem with terminal-state and price-jump penalties."""
+    problem, numerics = build_f3_a_problem()
+    problem = replace(
+        problem,
+        terminal_reference=terminal_reference,
+        terminal_weight=terminal_weight,
+        price_smoothing_weight=smoothing_weight,
+    )
+    return problem, numerics
+
+def _optimize_f3_c_problem(problem, numerics, progress):
+    evaluator = problem.build_evaluator(numerics, fast=True)
+    optimization = control.multistart_powell(
+        evaluator,
+        _reference_starts(problem),
+        progress=progress,
+        options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+    )
+    return evaluator, optimization, evaluator.evaluate(optimization.best.x)
+
+def run_f3_c(
+    *,
+    terminal_reference=F3_C_TERMINAL_REFERENCE,
+    terminal_weight=0.0,
+    smoothing_weight=0.0,
+    progress=print,
+):
+    """Optimize the F3-C augmented objective and reevaluate the returned price vector."""
+    problem, numerics = build_f3_c_problem(
+        terminal_reference=terminal_reference,
+        terminal_weight=terminal_weight,
+        smoothing_weight=smoothing_weight,
+    )
+    evaluator, optimization, optimized = _optimize_f3_c_problem(problem, numerics, progress)
+    fixed = evaluator.evaluate(problem.observed_prices)
+    return {
+        'problem': problem,
+        'numerics': numerics,
+        'evaluator': evaluator,
+        'fixed': fixed,
+        'optimization': optimization,
+        'optimized': optimized,
+    }
+
+def build_f3_e_scenarios():
+    """Build the four F3-E models that isolate the two uncertainty sources."""
+    base_problem, numerics = build_f3_a_problem()
+    zero_noise = replace(base_problem.parameters, sigma_x=0.0)
+
+    problems = {
+        'deterministic': replace(
+            base_problem,
+            parameters=zero_noise,
+            initial_mass_builder=_point_initial_mass_builder,
+        ),
+        'initial_only': replace(
+            base_problem,
+            parameters=zero_noise,
+            initial_mass_builder=_initial_mass_builder,
+        ),
+        'process_only': replace(
+            base_problem,
+            initial_mass_builder=_point_initial_mass_builder,
+        ),
+        'full': base_problem,
+    }
+    evaluators = {
+        'deterministic': problems['deterministic'].build_deterministic_evaluator(numerics),
+        'initial_only': problems['initial_only'].build_evaluator(numerics, fast=True),
+        'process_only': problems['process_only'].build_evaluator(numerics, fast=True),
+        'full': problems['full'].build_evaluator(numerics, fast=True),
+    }
+    return {
+        'numerics': numerics,
+        'problems': problems,
+        'evaluators': evaluators,
+    }
+
+def build_f3_f_setup():
+    """Build matched FV/mixture design evaluators plus common 201-cell references."""
+    problem, reference_numerics = build_f3_a_problem()
+    design_numerics = replace(reference_numerics, x_steps=MIXTURE_OPT_X_STEPS)
+
+    fv_reference = problem.build_evaluator(reference_numerics, fast=True)
+    fv_design = problem.build_evaluator(design_numerics, fast=True)
+    mixture_design = problem.build_mixture_evaluator(
+        design_numerics,
+        MIXTURE_OPT_DEGREE,
+        cfl=DEFAULT_CFL,
+    )
+    mixture_reference = {
+        degree: problem.build_mixture_evaluator(
+            reference_numerics,
+            degree,
+            cfl=DEFAULT_CFL,
+        )
+        for degree in FINAL_MIXTURE_DEGREES
+    }
+    return {
+        'problem': problem,
+        'reference_numerics': reference_numerics,
+        'design_numerics': design_numerics,
+        'fv_reference': fv_reference,
+        'fv_design': fv_design,
+        'mixture_design': mixture_design,
+        'mixture_reference': mixture_reference,
+    }
+
+def run_optimization_reference(
+    *,
+    fv_x_steps=FV_X_STEPS,
+    mixture_opt_x_steps=MIXTURE_OPT_X_STEPS,
+    final_mixture_x_steps=FINAL_MIXTURE_X_STEPS,
+    objective_max_step=OBJECTIVE_MAX_STEP,
+    solver_max_step=SOLVER_MAX_STEP,
+    coarse_values=COARSE_VALUES,
+    n_coarse_starts=N_COARSE_STARTS,
+    optimize_mixture=True,
+    validate_mc=True,
+    mc_paths=MC_PATHS,
+    progress=None,
+):
+    """Run the complete F2-I reference workflow."""
+
+    def report(message):
+        if progress is not None:
+            progress(message)
+    report('[1/6] Building deterministic target and FV objective surface')
+    target, target_t, target_demand = build_deterministic_target()
+    model = build_stochastic_model(target)
+    fv = _build_fv_evaluator(
+        model,
+        x_steps=fv_x_steps,
+        objective_max_step=objective_max_step,
+        solver_max_step=solver_max_step,
+    )
+    coarse_values = np.asarray(coarse_values, dtype=float)
+    surface = control.coarse_price_surface(fv, coarse_values)
+    surface_starts = control.best_surface_starts(coarse_values, surface, n_coarse_starts)
+    fv_starts = _unique_rows(surface_starts, KNOWN_DETERMINISTIC_PRICES, INITIAL_PRICES)
+    report('[2/6] Pure-FV multistart Powell optimization')
+    fv_optimization = control.multistart_powell(
+        fv,
+        fv_starts,
+        progress=progress,
+        options={'xtol': 2e-05, 'ftol': 1e-09, 'maxiter': 100},
+    )
+    fv_prices = np.asarray(fv_optimization.best.x, dtype=float)
+    report('[3/6] Dynamic-mixture optimizer-model comparison')
+    if optimize_mixture:
+        mixture_support = _build_fv_evaluator(
+            model,
+            x_steps=mixture_opt_x_steps,
+            objective_max_step=objective_max_step,
+            solver_max_step=solver_max_step,
+        )
+        mixture_optimizer = control.DynamicMixturePriceEvaluator(
+            mixture_support,
+            MIXTURE_OPT_DEGREE,
+            cfl=DEFAULT_CFL,
+        )
+        mixture_starts = _unique_rows(fv_prices, KNOWN_DETERMINISTIC_PRICES)
+        mixture_optimization = control.multistart_powell(
+            mixture_optimizer,
+            mixture_starts,
+            progress=progress,
+            options={'xtol': 0.001, 'ftol': 1e-05, 'maxiter': 30},
+        )
+        mixture_prices = np.asarray(mixture_optimization.best.x, dtype=float)
+    else:
+        mixture_optimizer = None
+        mixture_optimization = None
+        mixture_prices = fv_prices.copy()
+    candidates = {
+        'deterministic_reference': KNOWN_DETERMINISTIC_PRICES.copy(),
+        'fv_optimum': fv_prices.copy(),
+        'mixture_optimum': mixture_prices.copy(),
+    }
+    report('[4/6] Reevaluating candidates with pure FV')
+    fv_evaluations = {name: fv.evaluate(prices) for name, prices in candidates.items()}
+    report('[5/6] High-resolution mixture reevaluations')
+    final_mixture = {}
+    support = _build_fv_evaluator(
+        model,
+        x_steps=final_mixture_x_steps,
+        objective_max_step=objective_max_step,
+        solver_max_step=solver_max_step,
+    )
+    for degree in FINAL_MIXTURE_DEGREES:
+        evaluator = control.DynamicMixturePriceEvaluator(support, degree, cfl=DEFAULT_CFL)
+        final_mixture[degree] = {name: evaluator.evaluate(prices) for name, prices in candidates.items()}
+    report('[6/6] Paired Monte Carlo validation')
+    mc = None
+    paired = None
+    if validate_mc:
+        mc = control.evaluate_mc_candidates_common_random_numbers(
+            fv,
+            candidates,
+            n_paths=mc_paths,
+            initial_seed=MC_INITIAL_SEED,
+            brownian_seed=MC_BROWNIAN_SEED,
+        )
+        reference = mc['deterministic_reference']
+        paired = {
+            name: control.paired_mc_improvement(reference, item)
+             for name, item in mc.items() if name != 'deterministic_reference'
+        }
+    return {
+        'target_t': target_t,
+        'target_demand_dense': target_demand,
+        'model': model,
+        'fv_evaluator': fv,
+        'coarse_values': coarse_values,
+        'coarse_surface': surface,
+        'fv_starts': fv_starts,
+        'fv_optimization': fv_optimization,
+        'mixture_optimizer': mixture_optimizer,
+        'mixture_optimization': mixture_optimization,
+        'candidates': candidates,
+        'fv_evaluations': fv_evaluations,
+        'final_mixture': final_mixture,
+        'mc': mc,
+        'paired_mc_improvement': paired,
+    }
+
+def _union_breakpoints(interval_counts=MULTI_INTERVAL_COUNTS):
+    points = []
+    for count in interval_counts:
+        points.extend(multi_edges(count)[1:-1])
+    return np.unique(np.asarray(points, dtype=float))
+
+def _evaluate_cases_mc(model, cases, breakpoints, *, n_paths, initial_seed, brownian_seed, max_step):
+    """Compare different price grids using identical initial states and Wiener increments."""
+    reference = cases[min(cases)].evaluator
+    for case in cases.values():
+        evaluator = case.evaluator
+        if not all(
+            (np.array_equal(getattr(evaluator, name), getattr(reference, name)) for name in (
+                'solver_t_eval',
+                'widths',
+                'target',
+            )),
+        ):
+            raise ValueError('Paired MC comparisons require the same output grid and objective.')
+    initial_states = control.sample_beta_initial_states(
+        n_paths,
+        initial_seed,
+        alpha=INITIAL_ALPHA,
+        beta=INITIAL_BETA,
+    )
+    integration_t, _ = model.euler_maruyama.build_time_grid(
+        reference.solver_t_eval,
+        breakpoints=breakpoints,
+        max_step=max_step,
+    )
+    increments = model.euler_maruyama.brownian_increments(
+        integration_t,
+        n_paths=n_paths,
+        seed=brownian_seed,
+    )
+    results = {}
+    for count, case in cases.items():
+        parameters = case.evaluator.parameters_for_prices(case.optimization.best.x)
+        output = model.euler_maruyama_solver(
+            initial_states,
+            parameters,
+            SIGMA_X,
+            n_paths=n_paths,
+            boundary='none',
+            t_eval=reference.solver_t_eval,
+            breakpoints=breakpoints,
+            max_step=max_step,
+            brownian_increments=increments,
+            return_diagnostics=True,
+        )
+        demand, diagnostics = (output[7], output[8])
+        if diagnostics['total_violations']:
+            raise RuntimeError(f'N={count} MC comparison produced raw boundary violations.')
+        results[count] = monte_carlo_tracking_objective(
+            reference.widths,
+            np.asarray(demand, dtype=float)[:, 1:-1],
+            reference.target,
+        )
+    return results

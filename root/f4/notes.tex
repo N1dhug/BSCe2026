@@ -1,0 +1,3223 @@
+\section{Formål og læsevej}
+Projektet skal levere rekursiv state- og parameterestimation baseret på en
+approksimeret Fokker--Planck-løsning, herunder mixture-metoden \cite{project}.
+Disse noter samler F4-0--G0's matematik, forsøgsdesign og validerede synthetic evidens. Aktuel status og
+resterende opgaver står kun i \texttt{root/F4.md}; kommandoer i \texttt{root/BM\_GUIDE.md}.
+Modellen videreføres fra F1--F3 \cite{repo,junker}. Et beskrevet filter/forecast er
+ikke dermed et implementeret eller valideret resultat.
+Beslutningen fra 3. oktober 2026 gør fælles estimation af fleksible \(f,g\)-kurver
+obligatorisk i H. Den planlagte kurvematematik er særskilt nedenfor; de eksisterende
+A--G-forsøg med faste lineære responser ændres ikke og validerer ikke de nye kurver.
+
+\section{BM1: model, notation og enheder}
+\subsection{Demand og fleksibilitetsstate}
+Vi bevarer den implementerede BM1-kontrakt og dens sammenhæng med Junkers model \cite{repo,junker}. \(X_t\in[0,1]\) er den normaliserede fleksibilitetsstate, \(U(t)\in[0,1]\) er prissignalet og \(B(t)\in[0,1]\) er baseline. Responsfunktionerne \(f,g\) er ikke-voksende, med
+\begin{equation}
+ f(0)=g(0)=1,\qquad f(1)=g(1)=-1.
+ \label{eq:endpoints}
+\end{equation}
+Den signed fleksibilitetsrespons er
+\begin{equation}
+ \delta_\theta(x,u)=\tanh\!\left(\frac{k}{2}[f(x)+g(u)]\right).
+ \label{eq:delta}
+\end{equation}
+Med \(\gamma(\delta,B)=1-B\) for \(\delta\geq0\) og \(\gamma(\delta,B)=B\) ellers fås
+\begin{equation}
+ D_\theta(x,u,B)=B+\Xi\,\gamma(\delta_\theta(x,u),B)\,\delta_\theta(x,u).
+ \label{eq:demand}
+\end{equation}
+\(D\) er efterspørgslen/purchased demand i BM-modellen. Den er hverken en fejlvariabel eller diffusionskoefficienten. Ved \(\Xi=0\) er \(D=B\). Ved større \(\Xi\) kan demand flyttes mere fra baseline, men stadig kun inden for den erklærede normalisering.
+
+Skriv \(\rho=1/C\). Drift og diffusionsamplitude betegnes nu \(a_\theta,b_\theta\), så de ikke forveksles med \(f,g\):
+\begin{align}
+ \dd X_t &= a_\theta(t,X_t)\dd t+b_\theta(X_t)\dd W_t,
+ \label{eq:sde}\\
+ a_\theta(t,x)&=\rho[D_\theta(x,U(t),B(t))-B(t)],
+ &b_\theta(x)&=\sigma_Xx(1-x).
+ \label{eq:coefficients}
+\end{align}
+Her er \(C,k>0\), \(0\leq\Xi\leq1\), \(\sigma_X\geq0\), og \(W\) er standard Brownsk bevægelse: \(\Var(W_{t+h}-W_t)=h\). Der sættes hverken \(1/C\) eller \(\Xi\) foran \(b_\theta\). Det ville ændre modellen.
+
+Endpointbetingelserne giver indadrettet randdrift og nul diffusion ved 0 og 1. Med passende regularitet er dette den kontinuerte invarianskontrakt. Det garanterer ikke, at et endeligt EM-trin bliver i intervallet. Derfor vælges \texttt{boundary='none'} eksplicit i fremtidige kontrollerede F4-simulationer, og rå randoverskridelser rapporteres; den eksisterende wrappers standard er ellers refleksion \cite{repo}.
+
+\subsection{Normaliseringens betydning}
+Hvis \(D_{\rm phys}=P_{\min}+P_{\rm scale}D\) og \(B_{\rm phys}=P_{\min}+P_{\rm scale}B\), bortfalder det fælles offset i differencen. Med fysisk kapacitet \(C_{\rm phys}\) bliver
+\begin{equation}
+ C=\frac{C_{\rm phys}}{P_{\rm scale}}.
+ \label{eq:capacity_units}
+\end{equation}
+\(C\) har tidsenhed, \(\rho\) har invers tidsenhed, og \(\sigma_X\) har enhed tid\(^{-1/2}\). Skalaen er en del af modellen og skal fastholdes mellem træning og forecast.
+
+Ved skift fra timer til dage, \(t_d=t_h/24\), bliver
+\begin{equation}
+ C_d=C_h/24,\qquad \rho_d=24\rho_h,\qquad
+ \sigma_{X,d}=\sqrt{24}\,\sigma_{X,h}.
+ \label{eq:time_units}
+\end{equation}
+Alle inputtidspunkter, breakpoints og måletider skal ændres tilsvarende. Observationens standardafvigelse \(\sigma_Y\) beskriver fejl i en punktmålt normaliseret effekt og får ikke automatisk en \(\sqrt{\Delta t}\)-faktor.
+
+\subsection{Energibalance under processtøj}
+Integration af \eqref{eq:sde} giver
+\begin{equation}
+ C(X_t-X_0)=\int_0^t(D_s-B_s)\dd s
+        +C\int_0^t b_\theta(X_s)\dd W_s.
+ \label{eq:energy}
+\end{equation}
+Det stokastiske integral har under de sædvanlige integrabilitetsbetingelser middelværdi nul, men er ikke nul for hver realisering. Derfor kan målt intervalenergi ikke uden videre rekonstrueres fra \(C(X_t-X_0)\) som i den deterministiske model. Numerisk diskretisering skal også skelnes fra denne kontinuerte identitet \cite{higham,repo}.
+
+\section{Observationer og den information vi må bruge}
+\subsection{Punktmodellen som første kontrollerede tilfælde}
+Lad \(t_1<\cdots<t_N\) være måletider. Første observationsmodel er
+\begin{equation}
+ Y_k=h_\theta(X_{t_k},t_k)+\varepsilon_k,\qquad
+ h_\theta(x,t_k)=D_\theta(x,U(t_k),B(t_k)),\qquad
+ \varepsilon_k\overset{\rm iid}{\sim}\Normal(0,\sigma_Y^2),\quad\sigma_Y>0.
+ \label{eq:observation}
+\end{equation}
+Uafhængig Gaussian-målestøj er en valgt syntetisk antagelse. Den er ikke konstateret for de historiske data. Vi antager desuden, at målestøjen er uafhængig af initialstate og Wiener-increments.
+
+Selv om \(D\in[0,1]\), kan \(Y_k\) under \eqref{eq:observation} ligge uden for intervallet. Kodekontrakten accepterer derfor eksempelvis \(Y_k=-0.2\) eller \(1.3\). At clippe dem ændrer observationsmodellen. Manglende observationer kræver en eksplicit maske. Interpolerede værdier skal ikke behandles som faktiske målinger.
+
+\subsection{Prior, prediction og posterior}
+Sæt \(\Yhist_k=(Y_1,\ldots,Y_k)\), og lad de kendte inputhistorier være underforståede i betingningen. For kendte parametre defineres
+\begin{equation}
+ p_k^-(x;\theta)=p(x\mid\Yhist_{k-1},\theta),\qquad
+ p_k^+(x;\theta)=p(x\mid\Yhist_k,\theta).
+ \label{eq:priorposterior}
+\end{equation}
+Minus betyder \emph{før} måling \(Y_k\); plus betyder \emph{efter}. Før første måling bruges en erklæret prior. Hvis denne allerede er opdateret med \(Y_1\), må \(Y_1\) ikke multipliceres ind igen.
+
+En forecasting-score for \(Y_k\) skal beregnes fra \(p_k^-\), før assimilation. Posterioren \(p_k^+\) må gerne bruges til at estimere den aktuelle skjulte state, men ikke til at udgive samme måling for en uafhængig forecast-test. Distinktionen mellem filtering og prediction er også den relevante begrebsramme i undervisningsmaterialet \cite{lecture}.
+
+\subsection{Prisspring og observationstidspunkter}
+Prisen er en intervalfunktion. Ved et prisspring er \(X_t\) kontinuert, men demand kan hoppe direkte med \(U\). Kodekontrakten registrerer derfor \texttt{price\_side='left'} eller \texttt{'right'}. Den nuværende beholder anvender endnu ingen inputfunktion; det kommende filter skal håndhæve valget.
+
+Hvis en måling kommer ved tidspunktet, hvor en ny pris vælges, må dens likelihood ikke bruge en pris, som først besluttes bagefter. Predictionintervallet skal afsluttes ved alle kendte spring. At indsætte et plotpunkt ved springet er ikke nok, hvis integratoren stadig springer hen over det.
+
+\subsection{Intervaldata er et andet observationsproblem}
+Gennemsnitseffekt over et interval har formen
+\begin{equation}
+ Y_k=\frac1{\Delta_k}\int_{t_{k-1}}^{t_k}
+ D_\theta(X_s,U_s,B_s)\dd s+\varepsilon_k.
+ \label{eq:average}
+\end{equation}
+For intervalenergi udelades divisionen med \(\Delta_k\). Ingen af disse er automatisk en slutpunktsmåling. En mulig præcis modeludvidelse indfører
+\begin{equation}
+ \dd Z_t=D_\theta(X_t,U_t,B_t)\dd t
+ \label{eq:accumulator}
+\end{equation}
+og propagerer den fælles lov for \((X,Z)\) inden observation af integralet. Dette er en reel ekstra dimension. En midtpunktsapproksimation er enklere, men skal benævnes og undersøges som en approksimation. F4-0 afviser intervaldata i punktkontrakten frem for at vælge en model i stilhed.
+
+\subsection{H2: særskilt transformkontrol for timegennemsnit}
+Den senere H2-udviklingskode indfører en separat intervalkontrakt; den ændrer
+ikke F4's punktobservationer eller historiske accept. For én time med længde
+\(\Delta\) defineres \(Z_t=\Delta^{-1}\int_{t_0}^t(D_s-c)\dd s\).
+På et fast finite-state FV-grid har den transformerede terminalmasse formen
+\[
+ F_j(q,t)=\mathbb E[e^{qZ_t}\mathbf 1_{\{X_t\in V_j\}}],\qquad
+ \dot F=\left(Q(t)+\frac q\Delta\operatorname{diag}(D(t)-c)\right)F.
+\]
+Gaussian evidence inverteres med en periodisk Fourier-serie og den eksakte
+tilt-identitet, hvor \(s=(y-c)/\sigma_y^2\):
+\[
+ \varphi_{\sigma_y}(y-A)=
+ e^{-(y-c)^2/(2\sigma_y^2)}e^{s(A-c)}\varphi_{\sigma_y}(c-A).
+\]
+Positive amplituder lagres i log-form. Tilstandstrinnet
+\((I-hQ/2)^{-1}(I+hQ/2)\) anvendes kun, når den eksplicitte halvdel er
+ikke-negativ. Symmetriske reward-halvtrin er andenordens ved de registrerede
+konstante B/U inden for hver time; vilkårligt venstrefrosne tidsfelter får
+ingen sådan claim.
+
+Det lineære case og et shared fire-stykkers case med \(\sigma_y=0.16\) består
+de gemte udviklingschecks. Et shared to-stykkers case med \(\sigma_y=0.04\)
+fejler alle fem replays ved første betingede Fourier-inversion, også efter
+finere tid/rum, flere frekvenser og ændret periode. Log-amplituder afhjælper
+underflow, men ikke cancellation i små betingede tætheder. En eksakt tre-state-
+reference uden dynamik og en direkte fase-reference isolerer problemet uden
+FV- eller tidsfejl; de eksisterende guards afviser begge uafklarede tilfælde.
+Ingen clipping, probability floor eller posterior-repair indføres. Råresultater,
+scope og næste matematikreview findes i
+\texttt{root/H2\_INTERVAL\_CHARACTERISTIC\_CONTROL.md} og
+\texttt{root/H2\_INTERVAL\_ASTRA\_HANDOFF.md}. Historisk fitter/reference er
+uændret, og H2/H3-readiness forbliver falsk.
+
+\section{Fokker--Planck-prediction på det eksisterende FV-grid}
+\subsection{Den kontinuerte ligning}
+Mellem målinger følger tæthedens prediction
+\begin{equation}
+ \partial_t p=-\partial_x(a_\theta p)+\frac12\partial_{xx}(b_\theta^2p)
+             =-\partial_x\mathcal J,\qquad
+ \mathcal J=a_\theta p-\frac12\partial_x(b_\theta^2p).
+ \label{eq:fp}
+\end{equation}
+Diffusionsderivationen virker på hele produktet \(b^2p\). Standard-Wiener-normaliseringen i \eqref{eq:sde} fastlægger faktoren \(1/2\). Formler fra andre materialer med en anden støjkonvention må ikke kopieres uden at afklare denne faktor.
+
+Løsningen startes fra seneste posterior \(p_{k-1}^+\), ikke fra den oprindelige prior på ny. Vi har endnu ingen fremtidig observation, som kan reducere denne prediction-usikkerhed.
+
+\subsection{Cellemasser og Markov-generator}
+For uniformt grid med celler \(V_i=[e_i,e_{i+1}]\), center \(x_i\) og bredde \(\Delta x\) er den primære variabel
+\begin{equation}
+ m_i\approx\int_{V_i}p(x)\dd x,\qquad p_i=m_i/\Delta x.
+ \label{eq:mass}
+\end{equation}
+Den eksisterende konservative FV-operator bruger \(\dot{\bm m}=Q_\theta\bm m\), hvor off-diagonalrater er ikke-negative, og \(\bm1^TQ_\theta=0\) for søjlevektorer af masser. Implicit Euler giver
+\begin{equation}
+ (I-hQ_\theta)\bm m^{n+1}=\bm m^n.
+ \label{eq:be}
+\end{equation}
+Venstremultiplikation med \(\bm1^T\) viser massebevarelse i eksakt aritmetik. Den eksisterende reference løser et tridiagonalt system og kontrollerer de numeriske masser \cite{repo}.
+
+F4 behøver derfor ikke en ny FV-solver. Den enkleste kommende filterversion kalder \texttt{finite\_volume\_1d.solve} for hvert observationsinterval med seneste posterior som initialmasse. Kun inputfunktionernes breakpoints inden for intervallet gives til kaldet.
+
+\subsection{Hvad numerisk refinement skal holde fast}
+Prisgrid, måletider, outputgrid og interne trin har forskellige roller. Flere outputtider kan ændre den faktiske integrationsgrid i de nuværende interfaces. En sammenligning kræver derfor registrering af faktisk maksimal trinlængde og antal trin, ikke kun \texttt{max\_step}. Et nulobservationsfilter skal sammenlignes med direkte FP-propagation på samme faktiske grid.
+
+\section{Bayes-opdatering og stabil likelihood}
+\subsection{Udledning fra produktreglen}
+For en given observation er likelihoodfunktionen i state
+\begin{equation}
+ L_k(x;\theta)=\frac{1}{\sqrt{2\pi}\sigma_Y}
+ \exp\!\left(-\frac{[Y_k-h_\theta(x,t_k)]^2}{2\sigma_Y^2}\right).
+ \label{eq:likelihood}
+\end{equation}
+Den fælles betingede tæthed faktoriserer som
+\(p(x,Y_k\mid\Yhist_{k-1},\theta)=L_k(x;\theta)p_k^-(x;\theta)\).
+Integration over state giver
+\begin{equation}
+ z_k(\theta)=\int_0^1 L_k(x;\theta)p_k^-(x;\theta)\dd x.
+ \label{eq:evidence}
+\end{equation}
+Divideres den fælles tæthed med observationens marginaltæthed, fås
+\begin{equation}
+ \boxed{p_k^+(x;\theta)=\frac{L_k(x;\theta)p_k^-(x;\theta)}{z_k(\theta)}.}
+ \label{eq:bayes}
+\end{equation}
+\(z_k\) er en tæthedsværdi, ikke en sandsynlighed på et interval. Den kan derfor overstige 1. Et positivt log-likelihoodbidrag er ikke i sig selv en fejl.
+
+\subsection{Diskret version: ingen ekstra cellebredde}
+Med center-evalueret observationsfunktion bliver
+\begin{equation}
+ z_k\approx\sum_i L_k(x_i) m_{k,i}^-,\qquad
+ m_{k,i}^+=\frac{L_k(x_i)m_{k,i}^-}{\sum_jL_k(x_j)m_{k,j}^-}.
+ \label{eq:discretebayes}
+\end{equation}
+Da \(m_i\) allerede er integralet over en celle, indgår der ikke endnu en \(\Delta x\). Bruger man i stedet density-værdier, skal quadraturevægtene med. De to repræsentationer må ikke blandes.
+
+Center-evalueringen er stadig en approksimation af likelihooden inden i cellen. En meget smal likelihood kan kræve finere state-grid eller en særskilt observation-quadrature. At få posteriorens sum til 1 viser ikke, at observationen er opløst korrekt.
+
+\subsection{Log-domænet og nulstøtte}
+Lad \(q_i=\log m_i^-\), \(\ell_i=\log L_k(x_i)\) og \(r_i=q_i+\ell_i\). Med
+\begin{equation}
+ c=\max_i r_i,\quad s=\log\sum_i\exp(r_i-c),\quad
+ \log z_k=c+s,\quad \log m_i^+=r_i-c-s
+ \label{eq:logbayes}
+\end{equation}
+kan vi undgå direkte multiplikation af små sandsynligheder. Implementationen bruger \texttt{logsumexp} til den centrerede sum \cite{scipylog}. Priors skal allerede være normaliserede; det er ikke en generel funktion til at reparere ugyldige masser.
+
+Ægte nulmasse repræsenteres med \(-\infty\). En meget lille, men positiv masse kan underflowe ved konvertering til almindelig floating-point-masse. Derfor skal parameterbankens vægte bevares i log-form mellem opdateringer. I testen kan log-vægten \(-1000\) senere vinde tilbage; dette er umuligt, hvis den først erstattes af et permanent nul.
+
+Hvis der ikke er noget repræsenterbart overlap mellem prior og likelihood, returnerer primitivet en fejl. Det tilføjer ikke epsilon-masse eller et kunstigt stort loss. En sådan situation skal undersøges som et support-, opløsnings- eller numerikproblem.
+
+\subsection{Normalisering er ikke altid samme operation}
+Bayes-normaliseringen i \eqref{eq:bayes} er nødvendig og matematisk defineret. Numerisk renormalisering af en FP-prediction, der har tabt masse, er en anden handling: den kan skjule en fejl. Basisnormalisering er et tredje spørgsmål om, hvilken diskret approximation der vælges. Diagnostikken og teksten skal navngive disse operationer hver for sig.
+
+\subsection{Et lille gennemregnet eksempel}
+Antag to mulige state-noder med prior \((0.6,0.4)\), predicted demand \((0.3,0.7)\), observation \(0.65\) og \(\sigma_Y=0.1\). Likelihoodforholdet er
+\[
+ \frac{L_1}{L_2}=\exp\!\left[-\frac{(0.65-0.3)^2-(0.65-0.7)^2}{2(0.1)^2}\right]=e^{-6}.
+\]
+Posterioren bliver derfor
+\begin{equation}
+ \bm m^+\approx(0.003704355,\;0.996295645),\qquad \log z\approx0.346067061.
+ \label{eq:toybayes}
+\end{equation}
+Den positive \(\log z\) er konsistent med en tæthed. Dette er et algebraisk eksempel, ikke et kørt BM1-state-filter.
+
+\section{Mixture-posterior: udledning og repræsentationsgrænse}
+\subsection{Hvorfor nye vægte ikke er nok}
+Lad predictionen være \(p^-=\sum_jc_j\phi_j\). Bayes giver
+\begin{equation}
+ p^+=\sum_j\frac{c_jz_j}{z}\,\phi_j^+,
+ \qquad z_j=\int L\phi_j\dd x,\qquad
+ \phi_j^+=\frac{L\phi_j}{z_j},\qquad z=\sum_jc_jz_j.
+ \label{eq:mixturebayes}
+\end{equation}
+Målingen ændrer både komponenternes vægte og deres form. Kun at multiplicere de gamle vægte med \(z_j\), mens \(\phi_j\) beholdes uændrede, er generelt ikke den rigtige state-update. Det gælder selv om vægtene bagefter summerer til 1.
+
+For en fast approximationfamilie er den planlagte rækkefølge derfor
+\[
+ \text{egen mixture-posterior}\ \to\ \text{FP-prediction}\ \to\ z_k
+ \ \to\ \text{Bayes-update}\ \to\ \text{projektion}.
+\]
+Likelihooden beregnes før projektionen af den nye posterior. Næste prediction skal begynde i filterets \emph{egen} approksimerede posterior. Hvis FV-posterioren leveres som hjælp ved hvert trin, er forsøget kun en statisk best-fit-reference.
+
+\subsection{Variansgulvet i den eksisterende familie}
+Den nuværende kontinuerte Bernstein/beta-familie er
+\begin{equation}
+ \phi_j(x)=\Beta(x;j+1,M-j+1),\quad j=0,\ldots,M.
+ \label{eq:bernstein}
+\end{equation}
+Komponenternes middelværdier og varianser er
+\[
+ \mu_j=\frac{j+1}{M+2},\qquad v_j=\frac{\mu_j(1-\mu_j)}{M+3}.
+\]
+Træk først komponentindeks \(J\) med vægte \(c\) og derefter \(X\) fra komponenten. Sæt \(\mu=\E_c[\mu_J]\) og \(v_\mu=\Var_c(\mu_J)\). Totalvariansformlen giver
+\[
+ \Var(X)=\E_c[v_J]+v_\mu
+ =\frac{\E_c[\mu_J]-\E_c[\mu_J^2]}{M+3}+v_\mu.
+\]
+Indsæt \(\E_c[\mu_J^2]=\mu^2+v_\mu\):
+\begin{equation}
+ \boxed{\Var(X)=\frac{\mu(1-\mu)}{M+3}
+       +\frac{M+2}{M+3}v_\mu
+       \geq\frac{\mu(1-\mu)}{M+3}.}
+ \label{eq:variancefloor}
+\end{equation}
+Selve gulvfunktionen findes allerede i \texttt{src/diagnostics/bm\_1.py}. F4-0 genbruger den og udfolder begrundelsen; den er ikke genimplementeret som en ny model. Ligelighed kræver \(v_\mu=0\), hvilket kræver, at den ønskede middelværdi er en komponentmiddelværdi. Desuden kan familien kun repræsentere middelværdier mellem \(1/(M+2)\) og \((M+1)/(M+2)\).
+
+Ved \(\mu=0.5\) er gulvene \(0.00757576\) for grad 30 og \(0.00609756\) for grad 38. En velbestemt observation kan skabe en meget smallere posterior. Et lille QP-optimalitetsgap kan ikke ophæve denne begrænsning.
+
+\subsection{Celleintegrerede komponenter som opt-in}
+En alternativ fast ordbog vælger positive former \(a_j,b_j\), eventuelt via
+\begin{equation}
+ a_j=\kappa_j\mu_j,\qquad b_j=\kappa_j(1-\mu_j),\qquad
+ \mu_j\in(0,1),\quad\kappa_j>0.
+ \label{eq:betadictionary}
+\end{equation}
+Middelplacering og koncentration er nu separate designvalg. Komponenternes cellemasser er
+\begin{equation}
+ P_{ji}=I_{e_{i+1}}(a_j,b_j)-I_{e_i}(a_j,b_j),\qquad
+ \Phi_{ji}=P_{ji}/\Delta x.
+ \label{eq:integratedbasis}
+\end{equation}
+\(I\) er beta-CDF'en. I højre hale beregnes samme differens via den komplementære CDF for at mindske subtraktionsfejl \cite{scipybeta}. Ingen efterfølgende renormalisering anvendes i det nye basisinterface: negative masser, ikke-endelige værdier eller væsentligt massetab giver fejl.
+
+Kodefunktionen returnerer cellemiddeldensities i formatet \((\text{komponenter},\text{celler})\), som det eksisterende mixture-kernel forventer. Det er en anden diskret representation end center-samplede og diskret normaliserede PDF'er. F3's basis og defaults ændres ikke.
+
+CDF-integration gør ikke et groft state-grid fint. En komponent, der næsten udelukkende ligger i én celle, kan have korrekte cellemasser, men utilstrækkeligt opløste observationer og momenter. De kontinuerte beta-varianser er heller ikke identiske med varianser beregnet ved at placere al cellemasse i centrene.
+
+\subsection{Projektionen og dens begrænsede garanti}
+For target-density \(r_i\), basis \(\Phi\) og koefficienter \(c\) løses
+\begin{equation}
+ \min_{c\geq0,\,\bm1^Tc=1}\frac12\Vert Ac-b\Vert_2^2,
+ \qquad A=\sqrt{\Delta x}\Phi^T,\qquad b=\sqrt{\Delta x}\,\bm r.
+ \label{eq:projection}
+\end{equation}
+Hessianen \(A^TA\) er positiv semidefinit. Dette indre projektionsproblem er konvekst; den senere parameter-likelihood og BM-prisoptimeringen er ikke dermed konvekse. Den eksisterende projektor løser reducerede least-squares-problemer med SVD frem for at bruge normal-ligninger til løsningen \cite{repo,nielsen}.
+
+For en feasible kandidat og gradient \(g=A^T(Ac-b)\) gælder
+\begin{equation}
+ 0\leq F(c)-F(c^*)\leq g^Tc-\min_jg_j.
+ \label{eq:gap}
+\end{equation}
+Den øvre grænse følger af konveksitet og \(g^Tc^*\geq\min_jg_j\). Den kontrollerer den numeriske løsning inden for den valgte basis, ikke afstanden til den sande posterior. F4-0's offentlige interface rapporterer derfor både optimalitetsgap og repræsentationsfejl. Faktisk masse i endecellerne rapporteres separat; første og sidste \emph{koefficient} er ikke generelle randindikatorer i en arbitrær ordbog.
+
+
+\section{Parameteridentifikation før store fits}
+\subsection{En lokal algebraisk screening}
+Med faste \(f,g\) kan \(\theta=(\rho,\Xi,k,\sigma_X,\sigma_Y)\) være en mulig parameterliste. Det er ikke en anvisning om at estimere alle fem samtidigt. Ved fast \(x,u,B\) gælder
+\[
+ \partial_\rho D=0,\quad \partial_\rho a=D-B,\quad
+ \partial_k\delta=\tfrac12[f(x)+g(u)](1-\delta^2).
+\]
+På en fast demand-gren er \(\partial_\Xi D=\gamma\delta\) og \(\partial_kD=\Xi\gamma\partial_k\delta\). Ved \(\delta=0\) er demand kontinuerlig, men den afledte med hensyn til sigmoid-argumentet har forskellige ensidige værdier, medmindre \(B=0.5\) eller \(\Xi=0\). En kommende gradientimplementation må ikke antage global glathed uden begrundelse.
+
+Ved \(\Xi=0\) er observationens mean \(B\), uafhængig af state. Med kendt baseline kan demand-data i dette tilfælde ikke identificere \(C,k\) eller \(\sigma_X\), selv om den skjulte state har støj. Det er et eksakt negativt kontroltilfælde.
+
+Driften indeholder produktet \(\rho\Xi\), men \(D\) indeholder også \(\Xi\) direkte. Derfor er en eksakt generel \(\Xi/C\)-degenerering af det samlede observationsproblem ikke bevist af driftens udseende. For små sigmoid-argumenter kan \(\tanh z\approx z\) dog skabe praktisk sammenblanding af \(k\) og \(\Xi\). Mætning, korte forløb og dårlig excitation kan give andre svage retninger.
+
+\subsection{Hvad der ikke overføres ukritisk fra referencearbejdet}
+Alba-thesen analyserer blandt andet frie lineære responsfunktioner og deres sammenblanding med \(k\) \cite{alba}. I vores endpoint-normaliserede lineære familie tvinger \eqref{eq:endpoints} allerede \(f(x)=1-2x\) og \(g(u)=1-2u\). Frie hældninger/intercepts er dermed et andet modelvalg, ikke blot en større vektor i en uændret model.
+
+Diffusion optræder ikke som et additivt led i \(\frac{\dd}{\dd t}\E[X_t]=\E[a_\theta(t,X_t)]\). Men i en ikke-lineær model afhænger højresiden af hele fordelingen, som selv afhænger af \(\sigma_X\). Man må derfor ikke konkludere, at diffusionsparameteren kun kan påvirke varianser og aldrig predictive means i det præcise density-baserede filter.
+
+
+\subsection{F4-E: fixed-parameter likelihood før parameterbank}
+F4-E ændrer ikke endnu parametrene rekursivt. For en kandidat
+\[
+ \theta=(\rho,\Xi,k,\sigma_X,\sigma_Y),\qquad \rho=1/C,
+\]
+holdes \(f(x)=1-2x\) og \(g(u)=1-2u\) faste, og hele state-filteret replayes fra den
+samme initialprior. Kandidat \(j\) har altså sin egen sekvens
+\[
+ p_{0}^{+,j}\longrightarrow p_{1}^{-,j}\longrightarrow p_{1}^{+,j}
+ \longrightarrow\cdots\longrightarrow p_N^{+,j},
+\]
+og sin egen predictive evidence \(z_k^{(j)}\). Et kandidatskift må ikke fortsætte fra
+forrige kandidats state-posterior. F4-E scorer
+\begin{equation}
+ \ell_N(\theta)=\sum_{k=1}^{N}\log z_k(\theta),\qquad
+ \Delta\ell_N(\theta)=\ell_N(\theta)-\max_{\vartheta\in\mathcal G}\ell_N(\vartheta),
+ \label{eq:f4e-centered-likelihood}
+\end{equation}
+på et på forhånd fastlagt grid \(\mathcal G\). Centeringen fjerner kun et fælles additivt
+offset og ændrer ikke likelihood-ratioer eller gridets maximizer.
+
+Før slices accepteres som videnskabelige resultater, testes evaluatorens algebra.
+Truth-kandidaten skal matche samme kendt-parameter replay gennem den eksisterende
+FV-filterkerne; kandidatpermutation og gentagelse må ikke ændre værdierne. En særlig
+\(\Xi=0\)-kontrol er stærkere: her er
+\[
+ D(x,u,B)=B,\qquad L_k(x)=L_k
+\]
+konstant i state. Derfor
+\[
+ z_k=L_k\int_0^1p_k^-(x)\dd x=L_k,
+\]
+så \(\ell_N\) er matematisk uafhængig af \(\rho\), \(k\) og \(\sigma_X\), når
+\(\sigma_Y\) holdes fast. En ikke-flad numerisk slice i denne kontrol afslører dermed
+filter-/likelihoodkobling eller massefejl, ikke manglende identifikation i data.
+
+Den første numeriske stabilitetskontrol bruger sequence-id 1211 og
+\[
+ \rho_j=0.5+0.025j,\qquad j=0,\ldots,40.
+\]
+Tidsrefinement køres ved \(N_x=201,q=3\) med
+\(h_{\max}\in\{1/192,1/384,1/768\}\) dag; spatial refinement ved
+\(h_{\max}=1/768,q=3\) med \(N_x\in\{201,401,801\}\); observation-quadrature ved
+\(N_x=401,h_{\max}=1/768\) med \(q\in\{1,3,5\}\). De to fineste niveauer
+betragtes som stabile til screening, hvis rho-gridets maximizer er samme node, og
+\begin{equation}
+ \max_{\rho\in\mathcal R}
+ |\Delta\ell_{\rm fine}(\rho)-\Delta\ell_{\rm mid}(\rho)|\le0.10,
+ \label{eq:f4e-numerical-gate}
+\end{equation}
+hvor \(\mathcal R\) er unionen af gridpunkter, der ligger højst fem log-enheder under
+et af de to maxima. Fejler dette kriterium, raffineres numerikken igen i stedet for at
+vælge den resolution, der giver den ønskede parameterkonklusion.
+
+Den registrerede E1-kørsel på sequence-id 1211 (kildecommit
+\texttt{881247f}, verificeret på Windows den 1. oktober 2026) gav maximale
+fine/middle-ændringer på henholdsvis \(0.001864524\) for tid,
+\(0.003230894\) for rum og \(1.634248\cdot10^{-13}\) for quadrature.
+Alle tre sammenligninger havde samme entydige maximizer på de to fineste niveauer
+og bestod \eqref{eq:f4e-numerical-gate}. Ved 201 celler var rho-gridets MLE
+\(1.30\), mens både 401 og 801 celler gav \(1.275\).
+Til screening låses derfor \(N_x=401\), \(h_{\max}=1/768\) dag og \(q=3\):
+det accepterede middle-rumgrid, det fineste testede tidsskridt og det accepterede
+middle-quadrature. Dette valg er baseret på stabilitet, ikke afstanden til truth
+\(\rho^\star=1\). E1 på én rho-slice er ikke en konvergensgaranti for alle
+parametre eller alle sekvenser; en anden parameter skal have sin egen
+likelihood-refinement, før den vælges til F4-F.
+
+Den efterfølgende en-parameter-screening bruger 50 hidtil ubrugte sekvenser,
+ID 1212--1261, med følgende grids:
+\[
+ \rho\in\{0.5,0.525,\ldots,1.5\},\qquad
+ \Xi\in\{0,0.025,\ldots,1\},
+\]
+\[
+ k_j=0.5+0.075j,\qquad j=0,\ldots,40,
+\]
+og for skala-parametrene
+\[
+ \sigma_{X,j}=0.5\,2^{(j-20)/10},\qquad
+ \sigma_{Y,j}=0.03\,2^{(j-20)/10},\qquad j=0,\ldots,40.
+\]
+For hver sekvens rapporteres grid-MLE, rand-MLE, forskellen mellem maximalt og
+truth-node log-likelihood og det diskrete likelihood-ratio-område
+\begin{equation}
+ \mathcal I_{\rm LR}
+ =\{\theta_j:2[\ell_{\max}-\ell(\theta_j)]\le3.841\}.
+ \label{eq:f4e-lr-set}
+\end{equation}
+Mængden bruges kun som en sammenlignelig shape-diagnostik. Med kort record, diskret
+grid og især \(\Xi^\star=1\) på den fysiske rand er Wilks-approksimationens antagelser
+ikke verificeret, så \(\mathcal I_{\rm LR}\) betegnes ikke som et kalibreret
+95-procents konfidensinterval.
+
+Hvis flere gridnoder deler maksimum inden for den deklarerede numeriske
+tolerance \(10^{-12}\) i log-likelihood, bevares alle maximizers; der vælges
+ikke vilkårligt den første. Fordelingen af entydige grid-MLE'er opsummeres med
+median og empiriske 5/95-procents quantiler, ledsaget af antallet af bundne
+maksima. Disse quantiler beskriver variation mellem sekvenser, ikke et
+konfidensinterval for en parameter. Randfrekvensen tæller sekvenser med mindst
+én maximizer på støtteranden.
+
+For \(\mathcal I_{\rm LR}\) rapporteres de konkrete noder, antallet af
+sammenhængende gridkomponenter og kontakt med støtteranden. Bredden
+\(\max\mathcal I_{\rm LR}-\min\mathcal I_{\rm LR}\) er mængdens spændvidde i
+parameterens egen enhed, også hvis mængden er usammenhængende. En randkontakt
+kan betyde, at gridstøtten trunkerer en bred likelihood; lav randfrekvens er
+ikke alene bevis på tilstrækkelig støtte.
+
+For uafhængige sekvenser \(s=1,\ldots,50\), med samme erklærede parameter,
+vises desuden den samlede centered slice
+\[
+ A(\theta_j)=\sum_{s=1}^{50}\Delta\ell_s(\theta_j),\qquad
+ \Delta\ell_{\rm samlet}(\theta_j)=A(\theta_j)-\max_i A(\theta_i).
+\]
+Per-sekvens-centeringsleddene er kandidat-uafhængige konstanter, så denne kurve
+har samme maximizer og likelihood-ratioer som summen af de rå log-likelihoods.
+Det er en fælles-parameter-slice over flere uafhængige records; alle fire andre
+parametre holdes stadig på truth. Den skelnes derfor fra både en profil og et
+joint fit. E2 indfører ikke et nyt recovery-passmål.
+
+Den registrerede E2-kørsel (kildecommit \texttt{2022d95}, brugerens Windows-kørsel
+den 1. oktober 2026) fuldførte alle 50 sekvenser på ca. 1014 s med syv
+worker-processer og én BLAS-tråd. Terminalresuméet gav nedenstående resultater;
+de individuelle rå kurver blev efterfølgende gennemgået i E4 nedenfor.
+Maksimal massefejl var \(3.775\cdot10^{-14}\), mindste masse nul og alle
+grid-MLE'er entydige.
+\begin{center}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Parameter & Median MLE & Rand-MLE & Median LR-span & Samlet MLE \\
+\midrule
+\(\rho\)     & 0.875    & 68\% & 1.000000 & 0.825 \\
+\(\Xi\)      & 1.000    & 62\% & 0.125000 & 1.000 \\
+\(k\)        & 2.000    & 0\%  & 0.675000 & 2.000 \\
+\(\sigma_X\) & 0.435275 & 8\%  & 0.652913 & 0.466516 \\
+\(\sigma_Y\) & 0.030000 & 0\%  & 0.022685 & 0.030000 \\
+\bottomrule
+\end{tabular}
+\end{center}
+De empiriske 5/95-procents MLE-quantiler var \((0.5,1.5)\) for \(\rho\),
+\((0.86125,1)\) for \(\Xi\), \((1.7,2.3)\) for \(k\),
+\((0.125,0.757858)\) for \(\sigma_X\) og \((0.017152,0.038392)\) for
+\(\sigma_Y\). Median log-likelihood-tab ved truth var henholdsvis
+0.197894, 0, 0.260400, 0.328338 og 0.183843.
+Rho har svag information i én-døgns-records: 34/50 MLE'er rammer støtteranden,
+og LR-spannets median er hele støttebredden. Det beviser ikke strukturel
+ikke-identifikation eller uinformativ fælles-parameter-likelihood på flere records.
+K og målingsstøjen ligger mere samlet omkring truth, når de fire øvrige parametre
+er kendte; det siger endnu ikke, om dette holder ved parameterkobling.
+Xi's randfrekvens er ikke alene en fejl, da truth ligger på den fysiske rand.
+Spans i forskellige parameterenheder kan ikke direkte rangordne identifikation.
+
+Tre analytisk relevante 2D-diagnoser reserveres efter singles:
+\[
+ (\rho,\Xi),\qquad(k,\Xi),\qquad(\sigma_X,\sigma_Y).
+\]
+De bruger hver anden node fra de tilsvarende 1D-grids, altså \(21\times21\), og
+præcis de første ti screeningsekvenser, ID1212--1221. De gemte E2-observationer
+genbruges uden nye tilfældighedstræk. For et par \((a,b)\) defineres
+\[
+ L_s(a_i,b_j)=\ell_s(\theta[a=a_i,b=b_j]),\qquad
+ \Delta L_s=L_s-\max_{i,j}L_s(a_i,b_j),
+\]
+hvor de tre øvrige parametre er låst på truth og hver kandidat replayes selvstændigt.
+Som implementeringskontrol skal snittene gennem truth reproducere E2:
+\[
+ L_s(a_i,b^\star)=\ell_s(\theta[a=a_i]),\qquad
+ L_s(a^\star,b_j)=\ell_s(\theta[b=b_j]),
+\]
+med maksimal absolut forskel højst \(10^{-10}\) i rå log-likelihood. Denne identitet
+er en kodekontrol; den erstatter ikke parameter-specifik numerisk refinement.
+
+De gemte grid-profiler er
+\[
+ P_{a,s}(a_i)=\max_j\Delta L_s(a_i,b_j),\qquad
+ P_{b,s}(b_j)=\max_i\Delta L_s(a_i,b_j).
+\]
+Betingede ridges repræsenteres ved samtlige \(\arg\max_jL_s(a_i,b_j)\) for hver
+fast \(a_i\), og omvendt for hver fast \(b_j\). Ties inden for \(10^{-12}\) beholdes.
+Profilerne er diskrete og begrænset til den erklærede parstøtte; de profilerer
+ikke over alle fem parametre. Den samlede flade er \(\sum_{s=1}^{10}L_s\), centreret
+efter summation. Den bruger de samme ti records og er derfor ikke direkte den samme
+population som E2's 50-records resumé. Farvevinduer ændrer kun figurvisningen;
+contours er likelihood-niveauer, ikke konfidensområder. Der tilføjes intet nyt
+recovery-passmål. Dette er flader til ridge-diagnostik; den egentlige rekursive
+en-parameterbank begynder først i F4-F.
+
+Den registrerede E3-kørsel (kildecommit \texttt{313df5b}, brugerens Windows-kørsel
+den 1. oktober 2026) fuldførte alle 30 flader på ca. 1288 s med syv workers
+og én BLAS-tråd. Maksimal massefejl var \(4.174\cdot10^{-14}\), mindste masse
+nul og maksimal truth-snit-forskel til E2 præcis nul. Alle sekvens- og samlede
+grid-maxima var entydige. Terminalresuméet gav:
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+Par & Samlet grid-MLE (10 records) & Randfrekvenser pr. sekvens \\
+\midrule
+\((\rho,\Xi)\) & \((1.15,1.00)\) & \((50\%,60\%)\) \\
+\((k,\Xi)\) & \((2.15,0.95)\) & \((20\%,40\%)\) \\
+\((\sigma_X,\sigma_Y)\) & \((0.50,0.03)\) & \((10\%,0\%)\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+Kun \(\Xi\) lå på støtteranden i de samlede maxima. De rå flader og profiler
+blev efterfølgende gennemgået i E4 nedenfor. På de samme records ses en væsentlig
+afhængighed af, om \(\Xi\) holdes fast: ID1213 og ID1219 havde E2-k-MLE
+\(2.15\) ved \(\Xi=1\), mens E3-par-MLE var \((3.5,0.65)\); ID1217 gik
+fra \(1.85\) til \((3.2,0.65)\). E3's grovere k-grid, med spacing 0.15 mod
+E2's 0.075, kan ikke alene forklare forskydningerne. Disse maxima viser
+parameterkobling i fittet, men bestemmer ikke ridge-bredden eller graden af
+identifikation. To k-maxima rammer øvre støtte, hvilket kræver undersøgelse
+af mulig support-trunkering før eventuel støtteudvidelse.
+Støjparrets samlede maksimum på truth er et positivt foreløbigt signal;
+maximizerens placering alene fastlægger ikke likelihoodens skarphed.
+E2's samlede 50-records resumé og E3's 10-records resumé må ikke sammenlignes
+som effekten af en ekstra fri parameter uden samme records og grids.
+
+\paragraph{E4: rå-artifactreview og første bankvalg.}
+De uploadede E2/E3-artifacts blev gennemgået den 1. oktober 2026. E3's E2-digest
+matcher den modtagne E2-fil. Alle E2-rækker og E3-fladers predictive evidence,
+centerering, maximizers, truth-snit, profiler, ridges og rå summer er kontrolleret;
+source-commits og artifact-digests står i \texttt{root/F4.md}.
+
+46 af 50 rho-slices har alle 41 noder i \(\mathcal I_{\rm LR}\), og alle 50 har
+randkontakt. Summen over de 50 uafhængige records har derimod MLE 0.825,
+LR-span \([0.60,1.05]\) og log-likelihood-tab 0.926186 ved truth. Den samlede
+kurve viser information under de kendte nuisance-parametre, men dens niveau
+må ikke forveksles med et kalibreret konfidensinterval eller med likelihooden
+af ét sammenhængende 50-døgns-forløb, hvor state-posterioren bæres videre.
+
+For den på forhånd foreslåede uniforme diskrete prior kan de enkelte døgns
+offline-likelihoods omsættes algebraisk til
+\[
+ w_{s,j}=\frac{\exp(\ell_s(\rho_j))}{\sum_i\exp(\ell_s(\rho_i))},\qquad
+ H_{{\rm eff},s}=\exp\!\left(-\sum_jw_{s,j}\log w_{s,j}\right).
+\]
+Medianen er \(H_{\rm eff}=40.2459\) mod priorens 41; median maksimal nodevægt
+er 3.094 procent mod priorens 2.439 procent. Vægtene er beregnet fra offline-scores;
+dette er ikke en allerede implementeret online-bank. Resultatet gør den svage
+én-døgns-information konkret og kræver, at en senere bank bevarer en bred posterior.
+
+Ved sammenligning af præcis de samme ti records på de samme 21-node-grids fås:
+\begin{center}
+\small
+\begin{tabular}{lrr}
+\toprule
+Parameter / par & Betinget LR-span & Par-profils LR-span \\
+\midrule
+\(\rho/\Xi\) & \([0.60,1.50]\) & \([0.60,1.50]\) \\
+\(k/\Xi\) & \([2.00,2.15]\) & \([2.00,2.90]\) \\
+\(\sigma_Y/\sigma_X\) & \([0.03000,0.03446]\) & \([0.03000,0.03446]\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+Profilerne maksimerer kun over den anden parameter på E3-griddet. Tallene er
+diskrete spændvidder ved niveau \(2\,\mathrm{loss}\le3.841\), ikke kalibrerede
+konfidensintervaller. K/Xi-ridgen viser, at et skarpt k-snit ved kendt Xi ikke
+giver tilsvarende skarp bestemmelse af det frie par. Sigma-y-profilen ændres
+mindre ved at frigive sigma-x på disse ti records; sigma-x-profilens span er
+ca. \([0.37893,0.57435]\). Rho-profilen berører stadig øvre støtte.
+Dette er afgrænset evidens om de viste par, ikke en generel joint-recovery-garanti.
+
+Første F-bank fastlåses til \(\rho\), med den oprindeligt deklarerede støtte
+\[
+ \rho_j=0.5+0.025j,\quad j=0,\ldots,40,\qquad w_{0,j}=1/41.
+\]
+Xi=1, k=2, sigma-x=0.5, sigma-y=0.03 og f/g holdes kendte. Rho er en fysisk
+relevant én-parametercase med E1-numerik og målbar fælles-record-information;
+valget er ikke en konkurrence om den MLE, der ligger nærmest truth. Den svage
+døgnsinformation er et resultat, som banken skal bevare. Support og prior
+indsnævres ikke efter de observerede MLE'er; prioren er diskret i rho og er ikke
+uniform i C. Randmasse samt support-/priorfølsomhed undersøges særskilt i F.
+Den aktuelle støtte er ikke dokumenteret globalt tilstrækkelig. En senere bank
+i k, Xi eller sigma-y kræver egen likelihood-refinement.
+
+Den første FV-metodekontrol bruger et hidtil ubrugt ID1262, 401 celler,
+\(h_{\max}=1/768\) dag og q=3. Online-logvægtene skal ved hvert
+observationsprefix matche \(\log(1/41)+\ell_{1:k}(\rho_j)\), normaliseret med
+log-sum-exp; den marginale log-evidence skal matche samme log-sum-exp på tværs
+af hypoteserne. Hver hypotese starter fra Beta(20,20) og bærer derefter sin egen
+conditional state-posterior. Population, mixture og ugeforecast er senere særskilte
+studier. Den matematiske bankkontrakt følger i næste afsnit.
+
+
+\subsection{Likelihood-snit, profil og batch-replay}
+For en fast kandidat er den sekventielle log-likelihood
+\begin{equation}
+ \ell_N(\theta)=\sum_{k=1}^N\log z_k(\theta).
+ \label{eq:batch}
+\end{equation}
+Den er approksimeret i praksis, fordi FP/filteret er numerisk. Hver ny kandidat skal genkøre historikken fra den samme erklærede prior. Den må ikke arve state-posterioren fra optimizerens seneste kandidat.
+
+Et snit fastholder andre parametre. En profil reoptimerer dem. En skarp kurve i et snit er ikke bevis for skarp fælles identifikation. Batch-fit er et nyttigt kontrolværktøj, men opfylder ikke alene kravet om rekursiv parameterestimation.
+
+Junkers Appendix B diskuterer en længerehorisont-predictionsobjective \cite{junker}. Den skal ikke forveksles med produktet af betingede one-step densities i \eqref{eq:batch}. Et produkt af flere ubetingede forecast-marginaler fra samme origin er generelt ikke den fælles likelihood, fordi forecastfejlene kan være tidsafhængige.
+
+\section{Fælles estimation af fleksible responskurver: planlagt H-f/g}
+\label{sec:sharedresponse}
+Dette er matematik for den obligatoriske H-f/g-leverance, ikke en rapport om et
+allerede implementeret eller valideret kurvefit. Én \(f\)-kurve og én \(g\)-kurve
+skal gælde på tværs af dage i en erklæret population med samme normalisering.
+State og baseline kan variere dagligt; kurvekoefficienterne har intet dagsindeks.
+Generelle kurver betyder derfor generalitet inden for denne population, ikke en
+udokumenteret universel respons for alle forbrugertyper.
+
+\subsection{Argumentintervaller og kontinuerte delstykker}
+Lad \(0=q_0<q_1<\cdots<q_M=1\) være faste knuder. For hver respons
+\(h\in\{f,g\}\) vælges faldvægte \(w_{h,j}\geq0\), \(\sum_{j=1}^M w_{h,j}=1\).
+På intervallet \(z\in[q_{i-1},q_i]\) defineres
+\begin{equation}
+ h(z)=1-2\left[\sum_{j=1}^{i-1}w_{h,j}
+       +w_{h,i}\frac{z-q_{i-1}}{q_i-q_{i-1}}\right].
+ \label{eq:shared_piecewise_response}
+\end{equation}
+For \(f\) er \(z=x\); for \(g\) er \(z=u\). Delstykker vælges altså efter
+ladetilstand henholdsvis pris, ikke dato eller klokkeslæt. Ved fælles knuder er
+venstre og højre værdi ens. Endpoints er \(h(0)=1\), \(h(1)=-1\), og på hvert
+åbent delinterval er
+\[
+ h'(z)=-\frac{2w_{h,i}}{q_i-q_{i-1}}\leq0.
+\]
+Dermed er kurven kontinuert, ikke-voksende, begrænset til \([-1,1]\) og Lipschitz
+for faste adskilte knuder. Der tillades ikke selvstændigt fittede delkurver med
+spring eller daglige koefficienter. Constrainten efterlader \(M-1\) frie vægte
+per kurve. Den lineære reference svarer præcis til \(w_{h,i}=q_i-q_{i-1}\).
+
+En billig første pilot bruger \((0,0.5,1)\), altså én formparameter per kurve.
+Den konkrete fire-stykkers kandidat bruger \((0,0.25,0.5,0.75,1)\), altså tre
+per kurve og seks i alt. Begge familier skal sammenlignes med den lineære
+reference. Flere knuder eller en formbevarende monoton spline er en yderligere
+kompleksitetsbeslutning, som skal begrundes på udviklings-/valideringsdata.
+
+\subsection{Et fælles objective for hele træningsperioden}
+Skriv \(\vartheta=(\bm\alpha,\bm\beta,\psi)\), hvor \(\bm\alpha,\bm\beta\)
+beskriver fælles \(f,g\), og \(\psi\) indeholder de øvrige erklærede parametre.
+For uafhængige træningsrecords \(r\), med observerede indeks \(\mathcal O_r\), er
+\begin{equation}
+ \ell_{\mathrm{train}}(\vartheta)
+ =\sum_{r\in\mathrm{TRAIN}}\sum_{k\in\mathcal O_r}
+  \log p_\vartheta\!\left(Y_{r,k}\mid
+       \mathcal Y_{r,k-1},B_r,U_r\right).
+ \label{eq:shared_response_likelihood}
+\end{equation}
+Hver faktor kommer fra kandidatens egen FP-prediction før assimilation af
+\(Y_{r,k}\). Hver uafhængig record har sin erklærede initialprior. For ét
+sammenhængende forløb summeres i stedet over hele dette forløb med bevaret
+conditional state gennem midnat; en kalenderdag gør ikke records uafhængige.
+Ændres kurverne, skal det berørte forløb replayes korrekt med de nye kurver.
+En gammel state-posterior fra en anden kandidat er ikke en gyldig start.
+
+En afgrænset constrained optimizer kan maksimere
+\begin{equation}
+ \widehat\vartheta=\arg\max_{\vartheta\in\mathcal A}
+ \left\{\ell_{\mathrm{train}}(\vartheta)
+          -\lambda\mathcal R(\bm\alpha,\bm\beta)\right\},\qquad
+ \mathcal R=\sum_{h\in\{f,g\}}\sum_{j=1}^{M-1}
+       [h(q_j)-(1-2q_j)]^2.
+ \label{eq:shared_response_fit}
+\end{equation}
+\(\mathcal A\) indeholder kurve- og fysiske constraints. Regulariseringen trækker
+svagt bestemte knudeværdier mod den lineære reference. Knuder, kandidatfamilier,
+regulariseringsvalg, startpunkter og beregningsbudget deklareres før studiet;
+kompleksitet og \(\lambda\) vælges på kronologiske modelvalideringsblokke, aldrig
+på slut-holdout. Et fuldt Cartesian-grid over seks formparametre plus fysiske
+parametre er ikke arbejdsmetoden. Det endelige objective bruger alle observationer
+i den deklarerede træningsperiode; en kort pilot er kun udvikling.
+
+\subsection{Pooled H-kurvefit som udviklingsprototype}
+En afgrænset implementation afprøver ét fælles kurvepar på allerede anvendte
+F3-records ID1326/1327, med kendte fysiske parametre. Ingen holdout-data eller
+truth-state indgår i estimationsobjective. Hver ny kandidat replayes fra hver
+records erklærede initiallov, og predictive log-likelihoods summeres over alle
+observationer og records. Sammenhængende dage skal fortsætte inden for ét record;
+uafhængige initialiseringer må ikke bruges som en skjult daglig state-/kurvetuning.
+
+For $p=2$ eller $p=4$ stykker parameteriseres faldet over hver knudeafstand som
+\[
+ d_i=2\frac{\exp(z_i)}{\sum_{j=1}^p\exp(z_j)},\qquad z_p=0,
+ \quad v_0=1,\quad v_i=1-\sum_{j=1}^i d_j,\quad v_p=-1.
+\]
+Samme construction bruges til $f$ og $g$. Logits begrænses til $[-4,4]$; derfor
+er fald positive, og eksakt flade delstykker er uden for denne afgrænsede fitfamilie.
+L-BFGS-B minimerer negativ pooled likelihood plus $\lambda=0.1$ gange summen
+af kvadrerede indre knudeafvigelser fra $1-2z$. Dette er en deklareret
+koefficientregularisering, ikke en knot-invariant integralnorm.
+To starter og højst 250 forskellige kandidater samlet per familie fastlægges
+før piloten. En eksakt duplicate må genbruge samme scalar score; state fra en
+anden kandidat genbruges aldrig. Den nestede to-stykkers kurve løftes til en
+start for fire stykker. Budgetstop bevarer den bedste evaluerede kandidat og
+tracen, men markeres ikke som optimizerconvergence. Probability-/modelfejl
+skjules ikke ved at droppe records eller erstatte deres objective.
+
+Udviklingspiloten bruger FV401, $h\leq1/768$ dag og Gauss3. Valgte kurver
+genberegnes ved finere tid, rum og likelihood-quadrature som diagnostik; et
+fixed-candidate check certificerer ikke hele optimizerens numerik eller recovery.
+Denne pooled prototype afslutter ikke H1's nye lineære/nonlineære truth-cases,
+den historiske datakontrakt, fuld træning, modelvalg eller blind H3-validering.
+Træningsforbedring på to gamle records afgør ingen endelig modelvinder.
+
+Den rene Linux-pilot på kilde \texttt{e6d3441}, BLAS=1, tog 44.79 sekunder
+for 694 conditional døgn-replays. Begge to-stykkers starter konvergerede efter
+87 forskellige kandidater samlet. Fire-stykkers fit brugte 250 kandidater
+og stoppede på budgettet under første start; dette er ikke convergence.
+Pooled TRAIN-log-likelihood steg med henholdsvis 0.842687 og 1.774395 fra
+lineær reference 90.955651. Ingen model vælges ud fra disse træningsgevinster.
+Maksimal registreret massefejl var $6.995\cdot10^{-15}$ uden repair.
+Uafhængig longdouble-genberegning af gemte objectives afveg højst
+$7.099\cdot10^{-15}$; dette kontrollerer rå aritmetik, ikke kurve-recovery.
+Rårapport, kandidatbudget og fixed-candidate refinements findes i F4-statusfilen.
+
+De gamle inputs har kun priser $u=0.35,0.65$. For indre g-knudeværdier
+$v=(v_1,v_2,v_3)$ er den del af prisresponsen, som afhænger af $v$,
+\[
+ Wv,\qquad W=\begin{pmatrix}0.6&0.4&0\\0&0.4&0.6\end{pmatrix},
+ \qquad W\begin{pmatrix}-2/3\\1\\-2/3\end{pmatrix}=0.
+\]
+Begge priser ligger mellem indre knuder, så ingen endpointbidrag mangler her.
+Matricen har rang 2; små ændringer i nulretningen kan bevare monotonitet,
+endpoints og g ved alle anvendte priser. Hele observationsloven er da uændret
+ved samme f og øvrige inputs. Regularisering kan vælge et punkt i denne
+retning, men gør ikke retningen identificeret fra data.
+Et rent replay sammenlignede lineær g med knudeværdier
+$(1,0.4333333333,0.1,-0.5666666667,-1)$; pooled score og begge slutposteriorer
+var identiske ved den anvendte præcision. Prisniveauer
+$(0.125,0.375,0.625,0.875)$ giver derimod rang 3 i den indre basis og er
+et forslag til en separat H1-pilot. Dette er en nødvendig supportkontrol,
+ikke bevis for fælles f/g-recovery eller praktisk identifikation af latent state.
+
+\subsection{Nyt H1-udviklingsdesign, 3.--4. oktober}
+H1-v1 registrerer lineære ID1762/1763, ikke-lineære ID1764/1765 og
+$\Xi=0$-kontrol ID1766/1767. Hvert par er to uafhængige todøgnsforløb
+med priorer $\Beta(2,8)$ og $\Beta(8,2)$, 48 timeobservationer,
+$C=0.5,k=2,\Xi=0.75,\sigma_X=0.5,\sigma_Y=0.03$ (kontrol: $\Xi=0$).
+Priserne i otte kvartdøgn er $(.125,.875,.375,.625,.875,.125,.625,.375)$.
+Ikke-lineær truth bruger kvartknuder med indre værdier
+$f:(.8,.2,-.7)$ og $g:(.7,-.15,-.8)$. Eksisterende EM-generator og RNG-rødder
+bevares; koblede trin er $1/2304$ og $1/4608$ dag, uden boundary-repair.
+Ingen truth-state bruges i estimationens initiallov.
+
+Et fast panel indeholder lineær/nonlineær form, $\pm1$ langs hver af seks
+logitakser og $\pm(4,-4,4,-4,4,-4)$. Base FV801/$h=1/1536$/Gauss3
+sammenlignes separat med FV1601, $h=1/3072$ og Gauss5.
+Prefix-evidens og dens forskel fra lineær reference må ændres højst $0.1$;
+posteriorers stykvist konstante tætheder sammenlignes i $L^1$ med grænse $0.02$.
+Koblet truth må afvige højst $0.002$ i state og $0.003$ i demand.
+En negativ kontrol skal desuden reproducere den eksakte Gaussian-score ved
+$D=B$, uanset kurve. Dette er et deklareret, endeligt panel og ingen garanti
+for alle mulige optimizerkandidater. Alle records er udviklingsdata; H2/H3
+og populations-/forecastaccept følger ikke af H1a-screeningen.
+
+\paragraph{Negativ v1 og særskilt v2-opfølgning.}
+Alle 96 v1-units blev gennemført; 42 afvises ved de registrerede grænser.
+Maksimal rumfejl er $3.5570$ i prefix-evidens og $0.41955$ i posterior-$L^1$;
+kvadratur og $\Xi=0$-kontrollen består. Dette er bevaret negativ evidens.
+En posthoc diagnose af samme data motiverer v2 med eksisterende fitted-flux,
+FV3201/$h=1/12288$/Gauss3 og separate kontroller FV6401,
+$h=1/24576$, Gauss5. Tre kurver på ID1765 består i en smal prøve (26.14 s),
+men hele panelet skal kontrolleres særskilt. Ingen cases, frø eller tolerancer
+ændres, og v2 er udviklingsopfølgning, ikke blind validering eller ændring af
+A--G's upwind-design. Standardkurvefit beholder upwind indtil et specifikt
+numerisk accepteret fitdesign er valgt.
+
+\paragraph{Gennemført v2 og afbrudt videre arbejde.}
+På ren kilde \texttt{cfde153} gennemførtes 96 units og 384 replays på
+cirka 903 s. Alle registrerede panelkontroller bestod.
+Maksimal tidsfejl var $0.09523740$ i prefix-evidens,
+$0.08447684$ i lineært centreret evidens og $0.00934660$ i posterior-$L^1$;
+rumkontrollen gav $0.04633238$, $0.04584516$ og $0.01130512$.
+Et separat long-double-review af de gemte arrays kontrollerede 18\,432
+Bayes-opdateringer uden nye FV-replays, med maksimale score- og
+posteriorafvigelser $2.4373\cdot10^{-15}$ og $2.5477\cdot10^{-16}$.
+Dette accepterer kun det deklarerede numeriske panel.
+
+En efterfølgende miljøafbrydelse gjorde den tidligere checkout utilgængelig.
+Råfilerne er endnu ikke bekræftet varigt bevaret; gendan og verificér dem,
+eller reproducer studiet på registreret source, før de bruges som dependency.
+Sessionsresuméet erstatter ikke råevidens. Lokalt forberedt H1b-fit og
+historiske datakontrakter er endnu ikke publiceret, og det fulde fit er
+ikke kørt. Valgte fitkurver kræver egen numerik. H2/H3, identifikation og
+forecast er fortsat uafsluttede. Se den aktuelle arbejdsplan for
+genoptagelsesrækkefølge. Integrationen 5. oktober retter repository-layoutet
+og bevarer Windows-sikker checkpointpublicering i den fælles I/O-hjælper;
+den ændrer ikke studiets matematik, numerik eller evidensstatus.
+
+
+\paragraph{Recovery-implementation, 5. oktober.}
+Det genoptagelige H1b-fit er gendannet efter afbrydelsen. Genoptagelse bruger
+cachede scalar-objectives i den samme deterministiske optimizer under låst
+source/data/numerik og uændret samlet kandidatbudget. Nye kandidater replayes
+fra egne korrekte initiallove. Valgte kurver får selvstændig base/tid/rum/q-kontrol;
+et bestået fast H1a-panel er ikke et certifikat for dem. Uafhængige H1a-units
+kan beregnes parallelt med uændret numerik og efterfølgende ordnet publicering.
+Ingen nye videnskabelige resultater eller historisk holdout-accept følger alene
+af disse implementationsændringer.
+
+\paragraph{Gennemført betinget H1b og selected-curve-numerik, 5. oktober.}
+På fastholdt kilde \texttt{e7d9089} er alle seks deklarerede fits gennemført
+med samlet 675 forskellige kandidater. Begge responsive fire-stykkers fits
+når loftet 250; budgetstop er ikke konvergens. Den ikke-lineære cases
+TRAIN-log-likelihood forbedres med 8.754 (to stykker) og 30.599 (fire)
+i forhold til den lineære reference; $\Xi=0$ giver præcis nul gevinst.
+Disse tal vælger ikke en model. De 12 valgte-kurve-units med 48 FV-replays
+består egen numerik på \texttt{e398a5a}; maksimal prefix-scorefejl er
+0.005095, lineært centreret fejl 0.012305 og posterior-$L^1$ 0.005009.
+Et uafhængigt råreview reproducerer 2\,304 Bayes-opdateringer uden FV,
+med maksimal posterior-$L^1$-afvigelse $2.232\cdot10^{-15}$.
+H2/H3 afventer dokumenterede metadata og eksponeringsaudit. Råarkiver,
+genoptagelsesbevis og præcise kilde-/testgrænser findes i den aktuelle F4-status.
+
+\subsection{Identifikation, numerik og fastlåsning}
+Uden endpoints kan \(f+c,g-c\) give samme sum, og fælles amplitudeskalering kan
+blandes sammen med \(k\). \eqref{eq:endpoints} fjerner disse eksakte friheder,
+men ikke svag praktisk identifikation ved smalt prisområde, latent state,
+satureret respons eller kobling til \(\rho,\Xi,k,\sigma_X,\sigma_Y\).
+Den første pilot holder \(k\) erklæret fast; efterfølgende profiler undersøger
+udvalgte koblinger. En betinget skarp likelihood er ikke i sig selv joint recovery.
+Ved \(\Xi=0\) er observationsmean baseline, så f/g-likelihood skal være flad:
+det er en negativ kontrol, ikke data til kurvelæring.
+
+Nye stykvise kurver får særskilt syntetisk/numerisk kontrol, herunder variation i
+pris/state og refinement af relevante likelihood-forskelle. A--G's lineære
+evidens kan ikke overføres som en generel accept af nye kurveformer.
+For \(g\) rapporteres prisdækning; for \(f\) rapporteres posterior-state-dækning
+uden adgang til sand state i fittet. Regularisering i udækkede intervaller er en
+modelantagelse, ikke en empirisk identificeret respons.
+
+Efter modelvalg fryses kurver og skalaer til validering og forecast. Daglig
+state-assimilation må fortsætte med de samme kurver. Usikkerhed/stabilitet vurderes
+på passende tidsblokke, og lineær, to-stykkers og fire-stykkers fit sammenlignes
+på samme informationsgrundlag. Kurvebeskrivelsen gemmer knuder, koefficienter,
+population, træningsperioder, normalisering og øvrige parameterbetingelser.
+Dokumenteret manglende identifikation kan være et resultat; den obligatoriske
+estimation og validering må ikke erstattes af alene at køre den lineære reference.
+
+\section{Rekursiv parameterbank og bevaret afhængighed}
+\subsection{En overskuelig første metode}
+Det anbefalede første design er faste hypoteser \(\theta^{(j)}\), \(j=1,\ldots,H\), med diskrete priorvægte \(w_0^{(j)}\). Hver hypotese har sin egen betingede state-fordeling og sin egen predictive evidence:
+\[
+ p_k^{+,j}(x)=p(x\mid\Yhist_k,\theta^{(j)}),\qquad
+ z_k^{(j)}=p(Y_k\mid\Yhist_{k-1},\theta^{(j)}).
+\]
+Bayes på parameterindekset giver
+\begin{equation}
+ \boxed{w_k^{(j)}=\frac{w_{k-1}^{(j)}z_k^{(j)}}
+ {\sum_\ell w_{k-1}^{(\ell)}z_k^{(\ell)}}.}
+ \label{eq:bank}
+\end{equation}
+Den fælles approximation er
+\begin{equation}
+ p(x,\theta\mid\Yhist_k)\approx
+ \sum_jw_k^{(j)}p_k^{+,j}(x)\,\delta_{\theta^{(j)}}(\theta).
+ \label{eq:jointbank}
+\end{equation}
+Dette er en sekventiel update for en statisk diskret parameterprior. Den er ikke en udviklingsmodel for tidsvarierende parametre. Første bank bør have én ukendt parameter, ikke et femdimensionalt Cartesian-grid.
+
+Den marginale state-density \(\sum_jw_jp_j\) er nyttig til rapportering, men må ikke erstatte alle de betingede fordelinger i næste prediction. State og parameter er efter observationer generelt afhængige. En enkelt middelparameter sammen med en enkelt marginalposterior bevarer ikke denne afhængighed.
+
+\subsection{En stærk algebraisk test og et eksempel}
+Efter \(N\) observationer skal den rekursive update give samme vægte som
+\begin{equation}
+ w_N^{(j)}\propto w_0^{(j)}\exp\!\left(\sum_{k=1}^N\log z_k^{(j)}\right).
+ \label{eq:bankreplay}
+\end{equation}
+F4-0 tester reglen med givne evidence-tal. Det tester ikke endnu, om disse tal bliver beregnet korrekt af en hel FP-parameterbank.
+
+Som regneeksempel giver prior \((0.6,0.4)\) og evidence \((0.2,0.8)\) de unormaliserede vægte \((0.12,0.32)\), normaliseringskonstant \(0.44\) og posterior
+\[
+ (w_1^{(1)},w_1^{(2)})=(3/11,8/11).
+\]
+Begge hypotesers state-filter skal være kørt med deres egne parametre. Det er ikke tilstrækkeligt at evaluere to parameterværdier ved én fælles filtreret state.
+
+\subsection*{F0: registreret FV-kontrol af rho-banken}
+E4 vælger de oprindelige 41 hypoteser \(\rho_j=0.5+0.025j\),
+\(j=0,\ldots,40\), med diskrete priorvægte \(1/41\).
+I F0 er \(\Xi=1\), \(k=2\), \(\sigma_x=0.5\),
+\(\sigma_y=0.03\) samt \(f,g\) kendte. ID1262 er en ny, på forhånd valgt
+sekvens med de samme RNG-rødder og observationskontrakt som F4-B.
+Alle hypoteser starter med Beta(20,20); FV bruger 401 celler,
+\(h\leq1/768\) dag og observationernes cellekvadratur af orden 3.
+
+Sæt \(a_{k,j}=\log w_{k,j}\). Ved en tilstedeværende måling beregnes
+\begin{align}
+ b_k&=\operatorname{LSE}_j(a_{k-1,j}+\log z_{k,j}),\\
+ a_{k,j}&=a_{k-1,j}+\log z_{k,j}-b_k.
+ \label{eq:f0logweights}
+\end{align}
+\(b_k\) er bankens predictive log-evidence. Predictionens marginale state-masse
+bruger \(w_{k-1,j}\), mens posteriorens marginal bruger \(w_{k,j}\).
+En manglende måling propagerer hver betinget state, lader parameterens log-vægte
+stå uændrede og registrerer NaN som manglende score; dens bidrag til summer er nul.
+Der er ingen permanent pruning: en endelig log-vægt kan stadig repræsentere en
+hypotese, selv når dens almindelige floating-point-vægt underflower til nul.
+En erklæret priorvægt på nul forbliver derimod nul.
+
+For hver af de 24 prefixes sammenlignes den løbende bank med selvstændige
+fixed-parameter FV-replays fra den fælles initialprior. Med
+\(L_{k,j}=\sum_{i\leq k,\,i\text{ observeret}}\log z_{i,j}\) kræves
+\begin{align}
+ a_{k,j}=\log w_{0,j}+L_{k,j}
+ -\operatorname{LSE}_\ell(\log w_{0,\ell}+L_{k,\ell}),\nonumber\\
+ \sum_{i\leq k}b_i=\operatorname{LSE}_j(\log w_{0,j}+L_{k,j}).
+ \label{eq:f0identity}
+\end{align}
+F0's acceptmål er maksimal absolut fejl højst \(10^{-10}\) i log-vægte,
+betinget log-evidence, kumuleret bank-log-evidence og betingede state-masser ved alle prefixes,
+samt massefejl højst \(10^{-10}\) og ingen negative masser eller fejlede hypoteser.
+Disse mål er en metodeidentitet, ikke en ny konvergens- eller recovery-garanti.
+Randvægt, rho-middel, alle MAP-noder og effektivt hypotesetal rapporteres som
+diagnostik uden et recovery-passmål. Population, mixture, støtte/grid-refinement
+og forecast er senere leverancer.
+
+De uafhængige FV-predictions/updates for hypoteserne kan køres i parallel ved et
+fast observationstidspunkt. Før næste tidspunkt bæres hver hypoteses egen
+posterior videre. Én vedvarende process-pool bruges i den registrerede CLI-kørsel;
+worker-count ændrer kun afviklingen. En lille serial/spawn-sammenligning kontrollerer
+samme state-masser, evidence og log-vægte. Andre små metodekontroller dækker
+prefix-kausalitet, permutation, ens hypoteser, missing data, priorens nulvægte
+og genvinding af en vægt, der kun er underflowet i almindelig masseform.
+
+\paragraph{Registreret resultat.}
+Windows-kørslen på ID1262 fra \texttt{652b871}, ren working tree, bestod
+med 7 workers og én BLAS-tråd. Alle 133 fokuserede tests og alle 377
+regressionstests bestod også lokalt. Online-bankens 24 trin tog ca. 5.9 s;
+inklusive 41 offline-replays tog beregningen ca. 10.9 s, og rapportens
+samlede elapsed var 11.2207 s.
+Maksimal log-vægtfejl var \(1.68754\cdot10^{-14}\), maksimal fejl i
+kumuleret marginal log-evidence \(7.10543\cdot10^{-15}\), mens conditional
+evidence og conditional state-masser matchede præcis. Massefejlen var
+\(5.99520\cdot10^{-15}\) og minimum cellemasse \(4.76745\cdot10^{-209}\).
+Rå-artifactets source, design og inputkontrakt er kontrolleret, og alle
+prefix-identiteter og parameterdiagnostikker er genberegnet. Den særskilte
+udviklingskørsels observationer, scores, log-vægte og slutmasser matcher
+Windows-artifactet inden for \(10^{-10}\); artifact-digest står i F4-statusfilen.
+
+Rho-middel efter ét døgn var 1.040542, MAP-node 1.375 og effektivt hypotesetal
+40.5642 af 41. Maksimal nodevægt var 2.7954\% mod priorens 2.4390\%; samlet
+vægt på de to endpoint-noder var 4.4655\%. Posterioren er fortsat bred:
+MAP-noden alene dokumenterer ikke parameter-recovery. F0's metodeidentiteter
+bestod; bankens numeriske-, støtte- og priorfølsomhed samt population/mixture
+er fortsat senere leverancer. Den målte runtime er for denne dagskontrol,
+ikke et målt 168-timers forecast eller månedsfit.
+
+\subsection*{F4-F: separate numerik- og læringsforsøg}
+Vi holder først én parameter ukendt. Rho er den primære bank; det særskilte
+støjforsøg har ukendt \(\sigma_X\) og kendt \(\sigma_Y=0.03\). Et komplet
+conditional replay for hver hypotese er fortsat rekursivt: state-posterioren
+ved \(t_{k-1}\) er kun beregnet under denne hypoteses egne parametre.
+De uafhængige replays kan køres samtidigt og reduceres ved hvert prefix.
+Dette er matematisk samme parameteropdatering som den online bank, uden
+at observationstidspunkter eller hypotese-states blandes.
+
+Lad \(\ell_k^{(j)}=\sum_{r=1}^k\log z_r^{(j)}\). For to resolutions
+\(a,b\) er \(e_k^{(j)}=\ell_{k,b}^{(j)}-\ell_{k,a}^{(j)}\). Det største
+log-odds-skift i en nodemængde \(V_k\) er
+\begin{equation}
+ \max_{j,m\in V_k}|e_k^{(j)}-e_k^{(m)}|
+ =\max_{j\in V_k}e_k^{(j)}-\min_{j\in V_k}e_k^{(j)}.
+\end{equation}
+Vi genbruger E1's vindue på fem log-enheder, nu ved alle observationer:
+\begin{equation}
+ V_k=\{j:\ell_{k,a}^{(j)}\geq\max_m\ell_{k,a}^{(m)}-5\}
+ \cup\{j:\ell_{k,b}^{(j)}\geq\max_m\ell_{k,b}^{(m)}-5\}.
+\end{equation}
+Gate er højst 0.10 i dette vindue, højst 0.01 i total variation mellem
+\emph{hele} parameterposteriors og højst 0.10 i kumuleret marginal
+log-evidence-forskel. Fejl over alle noder gemmes også. Vinduesgrænsen
+pruner ingen hypotese: alle log-vægte og conditional states bevares.
+Et bestået resultat giver ikke en global fejlgrænse for hale-likelihoods.
+
+Udviklingskontrollen viste, at rho og støj ikke kan dele numerik ukritisk.
+401 mod 801 celler gav op til 0.02589 i støjbankens TV; den første
+kontrol fejlede. En kontrol med 1601 mod 3201 celler viste fortsat
+likelihood-følsomhed. Kandidaten er derfor 3201 celler, \(h\leq1/1536\),
+\(q=3\) for støj; rho beholder 401, \(h\leq1/768\), \(q=3\).
+Den registrerede F1-kontrol af disse kandidater er nu gennemgået nedenfor.
+De oprindelige kontroller beholdes som diagnostik; udviklingsfund er ikke
+registreret recovery-evidens. Den opdaterede vinduesdefinition ovenfor
+erstatter en indledende streng all-node-odds-gate og dokumenteres eksplicit.
+
+\paragraph{Registreret F1-resultat.}
+Windows-kørslen på \texttt{2f518b3} med ren working tree, 8 workers og BLAS=1
+fuldførte 57 banks og 2337 conditional replays på 1294.94 s.
+Alle 18 valgte kontroller bestod ved alle 24 observationsprefixer.
+For rho var maksimal relevant log-odds-fejl 0.044674, whole-bank TV 0.005048
+og kumuleret marginal log-evidence-fejl 0.029078. For støj var de tilsvarende
+tal 0.067406, 0.003355 og 0.005306. Vi accepterer derfor FV401,
+\(h\leq1/768,q=3\) for rho og FV3201, \(h\leq1/1536,q=3\) for støj
+på dette registrerede design.
+
+Max mass error over alle banks var \(2.9130\cdot10^{-12}\), minimum
+cellemasse 0 og ingen fallbacks. Rå scores, Bayes-opdateringer og alle
+27 sammenligninger blev genberegnet; de gennemgåede statistikker stemte
+inden for \(3.84\cdot10^{-13}\). Windows- og identiske udviklingskurver
+stemte inden for \(4.20\cdot10^{-13}\). Artifact-digest står i F4-statusfilen.
+De tre oprindelige 401-mod-801-støjkontroller fejler fortsat og beholdes.
+All-node-odds-fejlen i de valgte støjkontroller er op til 0.224096;
+det beståede vindue giver derfor ikke global hale-konvergens.
+F1 fastlægger numerik, ikke recovery. Rho's endelige effektive hypotesetal
+var 35.53--40.98 af 41. Det efterfølgende F2-resultat er gennemgået nedenfor.
+
+F1 bruger nye ID1263--1265 og de oprindelige 41 noder for hver parameter.
+Rum, tid og observationsquadrature ændres hver for sig. F2 bruger ti
+uafhængige records for hver af tre truths: rho \(1,1.0125,1.7\) og
+støj \(0.5,0.5\,2^{0.05},2.5\). De ligger på, mellem og uden for
+den oprindelige støtte. Det finere parametergrid har 81 noder på samme
+støtte. Udvidelsen er rho \([0.25,2]\) med afstand 0.025 og støj
+\([0.125,4]\) med samme log-gridafstand som før. Nye støtter kræver
+komplette replays og ny erklæret prior; F1 garanterer ikke numerikken
+for de udvidede tilfælde.
+
+Ved sammenligning af samme kontinuerte prior på to parametergrids bruges
+binmasser. For stigende noder \(\theta_j\) sættes endpoint-bin-kanterne
+til støtteenderne og indre kanter til nabonodernes midtpunkter. Så er
+\begin{equation}
+ w_0^{(j)}=\int_{b_{j-1}}^{b_j}\pi(\theta)\dd\theta.
+\end{equation}
+Uniform parameterprior giver binbredder; uniform C-prior giver forskelle
+i \(1/\rho\); uniform log-støjprior giver forskelle i \(\log\sigma_X\).
+Det er særskilte forsøg ved siden af den oprindelige uniformt diskrete
+prior. En positiv men forkert koncentreret diskret prior undersøges også.
+Kun ændret \emph{parameterprior} tillader genbrug af samme conditional
+scores/states: deres rekursion afhænger ikke af bankvægtene.
+
+\paragraph{Registreret F2-resultat og fortolkning.}
+Windows-kørslen på \texttt{4437436}, ren working tree, brugte 8 workers og
+BLAS=1. Alle 180 banks fuldførtes; rapportens elapsed var 3202.29 s før
+komprimeret skrivning. Eksakt genbrug reducerede 10980 replays til 6270.
+Alle 720 prior-varianter og 72 resuméer blev genberegnet fra rå scores;
+største statistikafvigelse var \(1.21\cdot10^{-12}\). De 60 seed-records
+og F1-digest blev kontrolleret. Max mass error var
+\(1.8194\cdot10^{-12}\), minimum cellemasse 0 og ingen fallbacks.
+Sandsynlighedsgaten bestod; den er ikke en recovery- eller konvergensgate.
+
+For rho-truth 1 gav primærprioren daglig middel-RMSE 0.0730, men median
+posterior-SD var 0.2886 og effektivt hypotesetal 40.59 af 41.
+Den forkerte koncentrerede prior gav bias \(-0.3326\); ti uafhængige
+daglige likelihoods gav pooled middel 0.7293 mod 1.0889 med primærprioren.
+Lille RMSE nær priorens centrum kan derfor ikke fortolkes som stærk læring.
+For støj-truth 0.5 var daglig RMSE 0.1572, median SD 0.1852 og effektivt
+hypotesetal 20.28. Pooled middel var 0.5042, men 0.4197 med forkert prior.
+
+Med samme kontinuerte uniform-parameterprior gav 41 mod 81 noder på
+in-support-records højst 0.000193 i rho-middel og 0.000466 i støjmiddel
+ved alle prefixer. Primærpriorens tilsvarende ændringer var 0.004406 og
+0.010337; dens diskrete mål ændres også, når antallet af noder ændres.
+
+Finere grid på samme støtte kan ikke rumme en outside-truth.
+Ved \(\sigma_X=2.5\) lå alle ti oprindelige MAPs på den øvre grænse;
+pooled middel var 1.9973, mod 2.3788 på udvidet støtte. Daglig RMSE
+faldt fra 0.6668 til 0.3888. For rho-truth 1.7 var de tilsvarende pooled
+midler 1.3972 og 1.8115, og daglig RMSE 0.6081 og 0.3861.
+Rho's randvægt kan forblive lille under forkert støtte; endpoint-MAPs ses
+også med truth inde i støtten. Ingen af målene er en selvstændig støttetest.
+De udvidede posteriorområder ramte begge outside-truths på 10 af 10 dage;
+Wilson-intervallet er \([0.7225,1]\), ikke et kalibreret 95\%-løfte.
+Udvidelsen ændrer også prioren; den gør ikke alle in-support-resultater bedre.
+Ti pooled dage har separate Beta(20,20)-initialiseringer, ikke én lang state.
+
+Vi beholder den oprindelige rho-prior og støtte i F3 og sammenligner
+mixture med FV. F2's outside-støjresultater kræver egen numerisk refinement
+før stærke konvergenspåstande. Ingen posthoc indsnævring eller MAP-substitution
+erstatter den brede parameterposterior. Artifact-digest står i F4-statusfilen.
+
+Den oprindelige F3-pilot bruger rho ID1326--1327, frossen \texttt{shape\_D}, 151 celler,
+CFL 0.4, \(q=3\), og \(h=1/768,1/1536,1/3072\). Den fineste mixture-bank
+sammenlignes både med FV på samme grid og med den finere rho-reference.
+Marginal prediction/posterior-L1 må højst være 0.02 ved alle observationer,
+med konservativ massetransport mellem grids. Mixture-koefficienter bæres
+videre uden FV-genstart. En fejl kræver undersøgelse af tid, rum eller basis
+før populationen, ikke blot en god samlet state-RMSE.
+
+\paragraph{F3: fejlet pilot og spatialt refinement.}
+Den rene Windows-kørsel på \texttt{c321705} fuldførte 410 replays på
+138.20 s med 8 workers og BLAS=1. Rå scores, vægte, marginale masser og
+alle seks sammenligninger er kontrolleret. Mixture-tid og FV/mixture på
+151 celler bestod. Mod FV401 bestod odds, TV og evidence, men prediction/
+posterior-L1 var 0.031281/0.039047 på ID1326 og 0.038918/0.049311 på ID1327,
+over grænsen 0.02. FV151 mod FV401 gav næsten samme fejl:
+0.030609/0.038892 og 0.038245/0.047945. Mixture151 mod FV151 gav højst
+0.002651. Grid-repræsentationen er derfor hovedmistanken; vi ændrer ikke gaten.
+Rapporten blev gemt før det tilsigtede stop. Den er ikke en gyldig F4-dependency.
+
+Version 2 beholder de oprindelige kontroller som diagnostik og tilføjer
+mixture401 ved \(h_{\max}=1/16384,1/32768\), FV401 ved \(1/32768\) og
+mixture801 ved \(1/32768\). Kandidaten er mixture401 ved \(1/32768\).
+De 184 basisparametre, CFL 0.4, quadrature 3, parameterprior og observationer
+er uændrede. Rumkontrollen kræver samme faktiske fine tidsskridt.
+Tidskontrol, matched FV, den oprindelige FV401-reference og 401-mod-801
+skal alle bestå de eksisterende grænser. Alle 18 bankrækker gemmes.
+
+Udviklingskontroller viste identiske faktiske steps ved ønsket
+\(h_{\max}=1/1536,1/3072\) på 401 celler og CFL-begrænsning ved
+\(1/16384\) på 801 celler. Det isolerer ikke henholdsvis tid og rum.
+En efterfølgende probe med ni spredte rho-noder på begge records bestod
+alle otte valgte sammenligninger med state-L1 højst 0.012465.
+Fine mixture401/801 brugte begge faktisk \(h=1/32768\), middle401
+\(h=1/16384\). Den efterfølgende registrerede 41-node-kørsel er gennemgået nedenfor.
+Faktisk step-refinement og ens spatialt step kontrolleres separat.
+Dette er en tilpasning på samme pilotdata; den nye
+held-out population følger efter rent registreret resultat og rå review.
+Den fejlede artifact bevares med digest i F4-statusfilen.
+
+\paragraph{F3 version 2: registreret accept og afgrænsning.}
+Windows-kørslen på ren kilde \texttt{386c9b2} fuldførte 18 banks og
+738 replays på 1191.00 s, med 8 workers og BLAS=1. Alle otte valgte
+sammenligninger på begge records bestod. Maksima over begge records er:
+\begin{center}
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Kontrol & Log-odds & TV & Log-evidence & State-L1\\
+\midrule
+Mixture401 tid & 0.00008026 & 0.00001025 & 0.00024314 & 0.00012333\\
+Matched FV401 & 0.00016001 & 0.00002045 & 0.00048800 & 0.00024766\\
+FV401-reference & 0.00342474 & 0.00043725 & 0.01040772 & 0.00523957\\
+Mixture401 mod 801 & 0.02146063 & 0.00268552 & 0.02193103 & 0.01256638\\
+\bottomrule
+\end{tabular}
+\end{center}
+State-L1 er maksimum over prediction/posterior og alle prefixer.
+Tidskontrollen brugte faktisk \(1/16384\) mod \(1/32768\); begge fine
+mixture-grids brugte faktisk \(1/32768\). Mass error var højst
+\(5.5512\cdot10^{-14}\), minimum cellemasse 0 og ingen fallbacks.
+
+Alle 18 bankrækker, rå scores, Bayes-vægte, evidences, parameterstatistik,
+state-/demand-midler og 14 sammenligninger er kontrolleret.
+Genberegningsafvigelser var højst \(4.13\cdot10^{-13}\).
+De oprindelige ti bankrækker reproducerede scores, vægte, evidences og
+marginalmasser bit-identisk; de to gamle reference-fejl er bevaret som
+ikke-valgt diagnostik. Begge artifact-digests står i F4-statusfilen.
+Vi accepterer mixture401 ved \(h_{\max}=1/32768,q=3\) til den nye
+rho-population. FV- og \(\sigma_x\)-numerik fra F1, støtte og prior er uændrede.
+Dette dokumenterer pilotens numeriske kontroller; population, parameter-recovery
+og operationel ugeprognose er stadig separate spørgsmål.
+
+F4-populationen bruger nye ID1328--1347: parret FV/mixture for rho og et
+separat FV-støjforsøg. Parameter-middel, SD, MAP-ties, randvægt, effektivt
+hypotesetal og posteriorområder rapporteres. Empiriske hit-rates med
+Wilson-intervaller er diagnostik, ikke et kalibreret 95\%-løfte. Når
+likelihoods summeres over uafhængige dage, har hver dag ny Beta(20,20)
+state-initialisering; det er ikke en fortsat 20-dages-trajectory.
+Predictive scores og demand-middel bruger de tidligere parametervægte,
+posterior-middel de opdaterede. Demand-middel bruger cellemidtpunkter som
+diagnostisk approksimation; likelihooden bruger den erklærede quadrature.
+Rå review og fortolkning af registrerede artifacts afslutter F4-F,
+ikke tilstedeværelsen af en CLI eller et bestået recovery-passmål.
+
+\paragraph{Populationens første resultat og referencekontrol, 2. oktober.}
+Det registrerede forsøg gennemførte alle 60 banks på 4428.73 sekunder med
+otte workers og én BLAS-tråd. Alle parameterkontroller bestod, men posterior-
+\(L^1\) overskred grænsen 0.02 for ID1337 ved time 6 (0.022650) og ID1347
+ved time 17 (0.021046). Maksimal predictive-\(L^1\) var 0.014534.
+Massefejlen var højst \(5.718\cdot10^{-13}\), uden fallback.
+De 60 rå bankrækker, 20 sammenligninger og tre populationssummer er
+genberegnet; den største afvigelse var \(4.27\cdot10^{-13}\).
+Den oprindelige rapport forbliver fejlet.
+
+\begin{center}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Bank & Parameter-RMSE & Median posterior-SD & State-RMSE\\
+\midrule
+\(\rho\), FV & 0.070315 & 0.285927 & 0.022430\\
+\(\rho\), mixture & 0.070485 & 0.285894 & 0.022426\\
+\(\sigma_x\), FV & 0.138054 & 0.181641 & 0.023692\\
+\bottomrule
+\end{tabular}
+\end{center}
+Rho-priorens SD er 0.295804, og median effektivt hypotesetal er cirka
+40.16 af 41. Ét døgn giver altså fortsat svag information om rho;
+den lille parameter-RMSE skyldes også, at sand rho ligger ved priorens middel.
+Støjforsøget viser tydeligere læring fra en prior-SD på 0.529692.
+Posteriorområderne ramte sandheden 20/20 gange for rho og 19/20 for
+\(\sigma_x\); dette lille forsøg ved én sand parameterværdi dokumenterer
+ikke generel kalibrering.
+
+En udviklingskontrol med ni rho-noder på de to fejlede dage isolerede
+FV-referencens tidsfejl: FV401 ved \(h_{\max}=1/32768\) mod den tilsvarende
+mixture, genkørt på de samme ni noder, gav posterior-\(L^1\) omkring 0.001,
+mens FV401 ved \(1/768\)
+mod den fine FV gav op til 0.02162. F1's vægt- og likelihood-kontrol
+certificerede dermed ikke automatisk populationens nye state-\(L^1\)-krav.
+
+Den målrettede opfølgning genbruger de samme 20 dages observationer,
+mixture-banks og \(\sigma_x\)-banks. Kun rho-FV genberegnes på 401 celler
+ved \(h_{\max}=1/1536\) og \(1/3072\), stadig \(q=3\) og alle 41 noder:
+40 nye banks, 1640 replays. Den halve tidsstep-reference skal både stemme
+med den kvarte tidsstep-reference og med den gemte mixture efter de
+uændrede gates. De oprindelige fejl bevares som diagnostik. Kildedigest,
+rene kildecommits, numerik, observationer og rå Bayes-reduktion kontrolleres
+før genbrug; dette er en tilpasset referencekontrol på samme population,
+ikke et nyt uafhængigt holdout.
+
+Udviklingskørslen på alle 20 dage bestod på 320.91 sekunder.
+Posterior-\(L^1\) var højst 0.005552 mellem de to nye FV-tidssteps og
+0.011673 mellem den valgte FV og mixture. Resultatet er udviklingsevidens;
+den registrerede kørsel og dens særskilte rå review følger nedenfor.
+
+\paragraph{Registreret tidsopfølgning og afslutning af F4-F.}
+Fra ren kildecommit \texttt{e2d8ace} gennemførte Windows-kørslen alle
+40 nye FV-banks og 1640 replays på 406.30 sekunder med otte workers og
+én BLAS-tråd. Alle 396 regressionstests bestod lokalt. De 40 nye og
+60 originale bankrækker, 80 sammenligninger, tre populationssummer,
+design og dependency-digests er kontrolleret. Bayes-statistik, scores,
+midler, state-masser og gates blev genberegnet; største afvigelse var
+\(4.264\cdot10^{-13}\). De nye rå scores, vægte og marginalmasser
+matcher udviklingskørslen inden for \(1.333\cdot10^{-14}\).
+
+\begin{center}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Valgt kontrol & Log-odds & Vægt-TV & Log-evidence & Max state-\(L^1\)\\
+\midrule
+FV, \(1/1536\) mod \(1/3072\) & 0.004143 & 0.000512 & 0.006926 & 0.005552\\
+FV mod gemt mixture & 0.008788 & 0.001086 & 0.014666 & 0.011673\\
+\bottomrule
+\end{tabular}
+\end{center}
+Alle 40 valgte sammenligninger består de uændrede gates.
+Faktiske FV-max-steps er \(1/1536\) og \(1/3072\). Max massefejl er
+\(9.993\cdot10^{-15}\) i de nye banks og \(5.718\cdot10^{-13}\)
+for alle 60 valgte banks inklusive genbrug. Ingen negative masser eller
+fallbacks; originalens ID1337/1347-fejl er bevaret som ikke-valgt diagnostik.
+Den valgte rho-FV bruger nu 401 celler, \(h_{\max}=1/1536,q=3\).
+Mixture401 ved \(1/32768\) og \(\sigma_x\)-FV3201 ved \(1/1536\)
+er uændrede, begge \(q=3\).
+
+Rho-FV's parameter-RMSE er 0.070397, median posterior-SD 0.285911
+og state-posterior-RMSE 0.022428; de genbrugte mixture- og
+\(\sigma_x\)-resultater er uændrede. Den numeriske referenceændring
+ændrer altså ikke konklusionen om svag rho-læring over ét døgn.
+F4-F er afsluttet med en kontrolleret rekursiv enparameterbank, eksplicit
+prior-/støttefølsomhed og bestået rho-mixture-sammenligning.
+Dette etablerer ikke fælles parameteridentifikation, generel kalibrering,
+historisk prisrespons eller en operationel ugeprognose. F4-G undersøger
+udvalgte par og robusthed; støtte og prior indsnævres ikke efter dette resultat.
+Begge populationsrapporter og deres digests bevares i F4-statusfilen.
+
+\subsection{F4-G0: to fælles parametre og metodeidentitet}
+E3/E4's parflader og F's enparameterresultater begrunder to næste par:
+\((\rho,\Xi)\) og \((\sigma_X,\sigma_Y)\). Et skarpt betinget snit og bestået
+enparameter-numerik er ikke en accept af et frit par. G starter derfor med
+metodeidentitet; par-numerik og robusthed følger som særskilte leverancer.
+
+Lad \(\theta_{ij}=(a_i,b_j)\) være en komplet hypotese på et erklæret diskret
+produktgrid. De øvrige parametre holdes faste. Vi beholder den \emph{fælles}
+prior \(w_{0,ij}\) og hver hypoteses egen state-law:
+\begin{align}
+ p_k^{-,ij}&=\mathcal P^{ij}_{t_{k-1}\to t_k}p_{k-1}^{+,ij},\\
+ z_{k,ij}&=\int L_k(x;\theta_{ij})p_k^{-,ij}(x)\dd x,\\
+ p_k^{+,ij}&=L_k(x;\theta_{ij})p_k^{-,ij}(x)/z_{k,ij},\\
+ w_{k,ij}&=\frac{w_{k-1,ij}z_{k,ij}}
+ {\sum_{r,s}w_{k-1,rs}z_{k,rs}}.
+ \label{eq:g0-joint-update}
+\end{align}
+Det er samme rekursion som \eqref{eq:bank}, med et fælles hypoteseindeks.
+Ved støjparret indgår \(\sigma_{Y,j}\) i hele Gaussian-likelihooden, inklusive
+normaliseringsfaktoren; \(\sigma_{X,i}\) indgår i FP-predictionen.
+Ingen faktorisation \(w_{k,ij}=w_{k,i}^{a}w_{k,j}^{b}\) antages efter måling.
+Marginaler fås ved summation: \(w_{k,i}^{a}=\sum_jw_{k,ij}\) og omvendt.
+Fælles kovarians beregnes fra \(\sum_{ij}w_{k,ij}(\theta_{ij}-\bar\theta_k)
+(\theta_{ij}-\bar\theta_k)^T\), så parameterafhængighed kan diagnosticeres.
+Lige-halede marginalområder er ikke et fælles 95\%-område for begge parametre.
+
+G0 bruger fem noder per akse, hver tiende node af E2's uændrede støtter:
+\[
+ \rho\in\{0.5,0.75,1,1.25,1.5\},\quad
+ \Xi\in\{0,0.25,0.5,0.75,1\},
+\]
+\[
+ \sigma_X\in\{0.125,0.25,0.5,1,2\},\quad
+ \sigma_Y\in\{0.0075,0.015,0.03,0.06,0.12\}.
+\]
+Den registrerede prior er \(w_{0,ij}=1/25\); det generelle API accepterer også
+en ikke-produktprior og eksakte nulvægte. Ny ID1348 har interior-truth
+\((\rho,\Xi)=(1,0.75)\), mens ID1349 bruger støj-truth \((0.5,0.03)\)
+med kendt Xi=1. Alle øvrige inputs, k, state-prior, måletider og RNG-rødder
+fra A bevares. Metodekontrollens startnumerik er FV401 for rho/Xi og FV3201
+for støjparret, begge \(h_{\max}=1/1536,q=3\). Dette er ikke par-konvergens,
+især ikke ved den smalle målingslikelihood \(\sigma_Y=0.0075\).
+
+Hver hypotese replayes også selvstændigt fra \(\Beta(20,20)\) via E's
+fixed-parameteradapter. Med \(\ell_{k,ij}=\sum_{n=1}^k\log z_{n,ij}\) er
+den uafhængige kontrol ved hvert prefix
+\begin{align}
+ A_k&=\LSE_{ij}\{\log w_{0,ij}+\ell_{k,ij}\},\\
+ \log w_{k,ij}^{\rm offline}&=\log w_{0,ij}+\ell_{k,ij}-A_k,
+ &\sum_{n=1}^k\log\bar z_n&=A_k.
+ \label{eq:g0-offline}
+\end{align}
+G0 kræver maksimal absolut fejl højst \(10^{-10}\) i joint-logvægte,
+conditional scores, kumuleret marginal log-evidence og alle conditional/
+marginale prediction/posterior-cellemasser ved samtlige 24 prefixer.
+Massefejl højst \(10^{-10}\) og ikke-negative masser er separate gates.
+Prediction bruger \(w_{k-1,ij}\), posterior bruger \(w_{k,ij}\).
+Ingen gate siger, at den sande parameter skal ligge nær MAP.
+
+Der udføres 50 conditional online-forløb og 50 friske offline-replays.
+Én vedvarende spawn-pool med otte workers og én BLAS-tråd fordeler uafhængige
+hypotesegrupper/replays. Conditional states afhænger ikke af parameterprioren;
+derfor kan grupper beregnes hver for sig og scores reduceres med den fulde
+joint prior efter hvert prefix. Lokal gruppenormalisering må ikke bruges som
+global prior eller marginal. Hvert replay følger sin egen serielle kronologi.
+Slutconditional-states og log-vægte tillader fortsættelse; en marginal state-law
+bruges aldrig til at genstarte alle hypoteser. Metoden deler kerne med F's bank.
+
+\paragraph{Registreret resultat og rå review, 2. oktober 2026.}
+Fra ren kildecommit \texttt{6670969} gennemførte brugerens Windows-kørsel
+alle 100 conditional forløb på 86.6074 s med otte workers og BLAS=1.
+Alle 416 lokale regressionstests bestod på 189.840 s. Begge par består
+metodeidentiteten ved alle 24 prefixer; maksimal identitetsfejl er
+\(5.6844\cdot10^{-14}\) for rho/Xi og \(2.8422\cdot10^{-14}\) for støjparret.
+Maksimale massefejl er henholdsvis \(7.3275\cdot10^{-15}\) og
+\(3.7947\cdot10^{-13}\), med ikke-negative celler.
+
+Kilde, forsøgsdesign, seed-observationer og Beta-startmasser er kontrolleret.
+Vægte/evidence er genberegnet fra rå offline-scores; joint-momenter, marginaler,
+områder, randmasser, MAP-ties og effektivt hypotesetal er genberegnet særskilt.
+Desuden kontrollerer 50 friske fixed-parameter replays på rapportens observationer
+scores og marginale prediction/posterior-masser ved alle prefixer samt alle
+slutconditional-masser. Max scoreafvigelse er \(3.1087\cdot10^{-14}\),
+max state-masseafvigelse \(6.5920\cdot10^{-17}\).
+Hele conditional-state-historien er ikke gemt i artifactet; dens prefix-identitet
+er den registrerede kørselskontrol. Digest står i F4-statusfilen.
+
+Slutmiddel og SD er \((0.95468,0.77676)\) og \((0.34526,0.07730)\)
+for rho/Xi; for støjparret \((0.24058,0.029884)\) og \((0.14108,0.002501)\).
+Effektivt hypotesetal er 6.963 og 2.908. Rho er fortsat bredt bestemt, og
+støjparrets sigma-X-middel er under truth 0.5. Disse grove diskrete posteriorer
+certificerer hverken par-numerik eller fælles recovery; støtter og gates ændres ikke.
+
+Efter G0 og rå review følger par-specifik tids-, rum-, likelihood-quadrature-
+og parametergrid-kontrol. Robusthed undersøger derefter 1/3/7 sammenhængende
+døgn, 1/2/4-timers sampling og moderat baseline-/initialprior-mismatch.
+Parret sampling skal bruge delmængder af samme timevise observationspath.
+Syv daglige state-resets er ikke én fortsat syvdages-record. Den fulde
+preregistrering og nye data fastlægges inden disse senere kørsler.
+
+G0 er afsluttet som metodekontrol; G1a's FV-numerik er rå-reviewet nedenfor.
+G1b0's pilot er rå-reviewet: FV består, 5x5-parametergridet er afvist.
+G1b1's finere parametergrid er preregistreret nedenfor; større population og G2 afventer.
+Ugeforecast uden nye observationer er fortsat en særskilt I-leverance med
+erklærede fremtidige inputs. Fit, 168-timers forward-prediction og evaluering
+af alle ugers origins i en erklæret måned skal benchmarkes separat på samme
+Windows-maskine. G0's dags-runtime kan ikke certificere dette praktiske mål.
+
+\subsection{F4-G1a: FV-numerik på et fast fælles parametergrid}
+Forsøgsdesign låst 2. oktober 2026, før numeriske kørsler. Nye ID1350--1352
+bruges til rho/Xi med truth \((1,0.75)\); ID1353--1355 til støjparret med
+truth \((0.5,0.03)\) og kendt Xi=1. Øvrige parametre/inputs, \(\Beta(20,20)\),
+EM-step, RNG-rødder og 24 timevise punktmålinger er som G0. Alle konfigurationer
+per record bruger de samme observationer. G0's fem noder per parameterakse og
+diskrete joint-prior \(1/25\) fastholdes; ingen parametergrid-konvergens påstås.
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Par & FV-celler grov/mellem/fin & \(h_{\max}\) grov/mellem/fin & \(q\)\\
+\midrule
+\(\rho/\Xi\) & 201/401/801 & 1/768, 1/1536, 1/3072 & 1/3/5\\
+\(\sigma_X/\sigma_Y\) & 1601/3201/6401 & 1/768, 1/1536, 1/3072 & 1/3/5\\
+\bottomrule
+\end{tabular}
+\end{center}
+Én akse ændres ad gangen omkring mellemkonfigurationen: syv unikke
+konfigurationer per record, 42 banker og 1050 komplette fixed-parameter replays.
+G0's metodeidentitet tillader reduktion af friske conditional scores/states med
+fælles prior og korrekt prefix-vægt. Hver hypotese følger egen state og egen
+\(\sigma_Y\); prediction bruger gamle joint-vægte, posterior nye.
+Én vedvarende spawn-pool med otte workers og BLAS=1 dækker hele studiet.
+
+Ved prefix \(k\) og resolution \(r\) er \(L_{k,h}^{r}=\sum_{n\le k}\log z_{n,h}^{r}\).
+Sæt \(\delta_{k,h}=L_{k,h}^{\rm fin}-L_{k,h}^{\rm mellem}\) og
+\[
+ R_k=\{h:L_{k,h}^{\rm mellem}\ge\max_j L_{k,j}^{\rm mellem}-5\}
+ \cup\{h:L_{k,h}^{\rm fin}\ge\max_j L_{k,j}^{\rm fin}-5\}.
+\]
+Log-oddsfejlen er \(\max_{h\in R_k}\delta_{k,h}-\min_{h\in R_k}\delta_{k,h}\).
+Alle-node-versionen gemmes også. Vinduet fjerner ingen hypoteser fra Bayes;
+vægt-TV og evidence omfatter hele joint-banken. Ved alle prefixer kræves
+\[
+ \varepsilon_{\rm odds}\le0.10,\qquad
+ \tfrac12\sum_h|w_{k,h}^{\rm fin}-w_{k,h}^{\rm mellem}|\le0.01,\qquad
+ |A_k^{\rm fin}-A_k^{\rm mellem}|\le0.10.
+\]
+For både prediction og posterior kræves marginal state-\(L^1\) højst 0.02.
+Fin cell-masse remappes konservativt til mellemgridet alene til sammenligning;
+remappet bruges aldrig som ny conditional starttilstand. Massefejl højst
+\(10^{-10}\) og ikke-negative celler kræves for alle 42 banker. Tidsrefinement
+skal mindske hver hypoteses faktiske maximale interne step; en relativ
+\(10^{-12}\)-margin udelukker rent afrundingsbetingede forskelle.
+
+Samtlige 18 mellem-mod-fin-kontroller skal bestå; grov-mod-mellem gemmes som
+diagnostik. Ingen record eller hypotese frasorteres. Fejlet gate gemmes før
+nonzero exit, mens et fejlet replay afbryder uden et resumé af overlevende forløb.
+CLI kræver et rent, kildeforbundet G0-artifact, kontrollerer rå design/algebra/masser
+og gemmer dets digest som dependency. Andre API-IDs/grids/numerik er uregistreret.
+Registreret resultat og rå review følger nedenfor.
+
+Udviklingskontrollen fra \texttt{e2529b0} plus G1a-ændringer gennemførte alle
+1050 replays på 632.1196 s før lagring, med otte workers og BLAS=1.
+Alle 18 aktive kontroller består. Max aktive log-oddsfejl er 0.073060 og
+0.092862 for de to par; max state-\(L^1\) er 0.007604 og 0.006529.
+Max massefejl er \(3.2228\cdot10^{-12}\); alle celler er ikke-negative.
+Uafhængig rå genberegning, inklusive CDF-kontrol af remap, afviger højst
+\(1.7054\cdot10^{-13}\). Alle 425 regressionstests består. Grove fejl beholdes
+som diagnostik; dette er udviklingsevidens, ikke registreret Windows-evidens.
+
+\paragraph{Registreret resultat og rå review, 2. oktober 2026.}
+Fra ren kildecommit \texttt{de6fcd5} gennemførte brugerens Windows-kørsel alle
+42 banker og 1050 replays med otte workers og BLAS=1. Alle 425 regressionstests
+bestod på 212.081 s. Rapportens tid er 990.9608 s før JSON/gzip-lagring;
+PowerShell-stopwatch målte 1007.74 s inklusive opstart, dependency-review og output.
+Samtlige 18 aktive kontroller består ved alle 24 prefixer. Maxima er:
+\begin{center}
+\begin{tabular}{lrrrrr}
+\toprule
+Par & Odds & Vægt-TV & Evidence & Pred.-\(L^1\) & Post.-\(L^1\)\\
+\midrule
+\(\rho/\Xi\) & 0.073060 & 0.006701 & 0.026529 & 0.007604 & 0.007563\\
+\(\sigma_X/\sigma_Y\) & 0.092862 & 0.005564 & 0.008185 & 0.006529 & 0.006423\\
+\bottomrule
+\end{tabular}
+\end{center}
+Max massefejl over alle banker er \(3.2206\cdot10^{-12}\), med ikke-negative
+celler. Fire grove kontroller fejler og bevares: rho/Xi ID1352 spatial,
+støjpar ID1354 time/spatial og ID1355 spatial. Ingen aktive gates er ændret.
+
+Ren kilde, G0-dependency, seed-observationer, inputs, joint-prior, numerik og
+faktiske conditional max-steps er kontrolleret. Rå scores giver uafhængig
+genberegning af weights/evidence, joint-momenter, marginaler, områder, randvægte,
+MAP-ties og effektivt hypotesetal. Alle 36 sammenligninger og prefix-fejl er
+genberegnet; separat lineær CDF-integration kontrollerer state-remap.
+Max auditafvigelse er \(1.7054\cdot10^{-13}\). Sammenligning med udviklingskørslen
+afviger højst \(2.9310\cdot10^{-14}\) i scores, \(1.6343\cdot10^{-13}\) i log-vægte
+og \(2.3593\cdot10^{-16}\) i marginale state-masser. Conditional historier er ikke
+gemt; reduktionen støttes af G0 og direkte rekursions-/spawn-tests.
+Artifact-digest står i F4-statusfilen. Review krævede ingen ny fuld studiekørsel.
+
+Et bestået G1a accepterer mellem-FV-numerikken alene på det erklærede diskrete
+parametermål og disse records. G1b undersøger efterfølgende parametergrid under
+fast støtte og erklæret prior-mål. Uniform vægt på forskellige diskrete nodegrids
+er ikke automatisk samme mål; kontinuerte priorer kræver erklærede kvadraturvægte.
+Nytilkomne hypoteser skal også numerisk kontrolleres. G0/G1a er ikke held-out
+recovery-data, og ugeforecast/måneds-runtime certificeres fortsat særskilt.
+
+\subsection{F4-G1b0: pilot for parametergrid og et fast prior-mål}
+Design låst 2. oktober 2026: ID1356 til rho/Xi med truth \((1,0.75)\),
+ID1357 til støjparret med truth \((0.5,0.03)\) og kendt Xi=1. Øvrige inputs,
+parametre, \(\Beta(20,20)\), EM-step, RNG og 24 målinger følger G1a.
+Dette er en numerisk pilot før en større population, ikke recovery-data.
+
+Støtter: rho \([0.5,1.5]\), Xi \([0,1]\), sigma-X \([0.125,2]\)
+og sigma-Y \([0.0075,0.12]\). Prioren er produkt-uniform i rho/Xi og
+produkt-uniform i log(sigma-X)/log(sigma-Y). I normaliseret prior-koordinat
+\(u\in[0,1]\) er
+\[
+ \theta(u)=a+(b-a)u\quad(\rho,\Xi),\qquad
+ \theta(u)=a(b/a)^u\quad(\sigma_X,\sigma_Y).
+\]
+Støjpriorens fysiske marginaltæthed er \(1/(\theta\log(b/a))\).
+Begge akser har 3/5/9 nested noder. På \(n\) noder er trapezprioren
+\[
+ \pi_{ij}^{(n)}=q_iq_j,\qquad
+ q_i=\begin{cases}1/[2(n-1)],&i=0\text{ eller }n-1,\\
+                  1/(n-1),&\text{ellers.}\end{cases}
+\]
+Summen er 1; støtten ændres ikke. G0's fem fysiske noder bevares præcis.
+En 5x5 prior bridge sammenligner \(\pi_{ij}=1/25\) med trapezprioren på
+samme conditional replays. Dette er prior-følsomhed, ikke grid-konvergens.
+
+Alle 81 finest-grid-hypoteser gennemfører friske FV-replays ved G1a's mellem,
+time-fine, spatial-fine og quadrature-fine: 648 replays i én spawn-pool med
+otte workers og BLAS=1. Scores/states genbruges til nested kvadraturer og
+prior bridge; hypotesernes states blandes aldrig sammen. Der er 26
+bankreduktioner; prediction bruger gamle parameterweights, posterior nye.
+De tre FV-kontroller på både kandidatens 5x5- og det fulde 9x9-grid kræver
+G1a's gates ved alle prefixer,
+og time-control skal faktisk mindske hver hypoteses max-step.
+
+Atomare posteriors på forskellige grids kan ikke sammenlignes med node-TV
+som et konvergensmål. Alene til sammenligning tilordnes hver node sin
+dualcelle, med kanter \(0,(u_0+u_1)/2,\ldots,(u_{n-2}+u_{n-1})/2,1\).
+Fordel nodeposteriorens masse konstant over den tilhørende rektangelcelle.
+Begge love overføres konservativt til unionen af deres kanter; hvis masserne
+dér er \(P_{\alpha\beta}\) og \(Q_{\alpha\beta}\), kræves
+\[
+ \tfrac12\sum_{\alpha,\beta}|P_{\alpha\beta}-Q_{\alpha\beta}|\le0.02.
+\]
+Dette ændrer ingen prior, Bayes-vægt eller conditional startstate.
+5x5 mod 9x9 kræver desuden ved hvert prefix: max unit-middelforskel 0.01,
+max unit-SD-forskel 0.02, absolut kumuleret evidencefejl 0.10 og begge
+marginale state-\(L^1\)-fejl 0.02. Unit-momenter beregnes af nodeposterioren,
+mens TV bruger dualcelleloven.
+
+Alle 14 aktive kontroller skal bestå: tre FV-akser på begge grids og én
+parameterkontrol per par. 3x3 mod 5x5 og prior bridge gemmes som fire diagnostikker.
+Massefejl højst \(10^{-10}\) og ikke-negative masser kræves for alle banker
+og conditional replays. Ingen record eller hypotese frasorteres.
+CLI genvaliderer hele den rene G1a-artifact og gemmer dependency-digest/source,
+priorvægte, noder, dualkanter, rå scores/vægte, marginale states og prefix-fejl.
+Fejlet gate gemmes før nonzero exit; fejlet replay afbryder uden et delresumé.
+Andre API-IDs/grids/numerik er uregistreret.
+
+Et bestået G1b0 accepterer alene 5x5-trapezbanken på to pilotrecords.
+En større population og G2 følger efter rå review og ny preregistrering.
+Ved fejl bevares originalartifactet, og en ny version låser ændret grid/numerik;
+støtten indsnævres ikke efter truth. Den registrerede kørsel er gennemgået nedenfor.
+
+\paragraph{Registreret resultat og rå review.}
+Ren \texttt{990b050} gennemførte alle 648 replays og 26 reduktioner på Windows
+med otte workers og BLAS=1; alle 434 tests bestod på 442.790 s.
+Rapportens tid er 757.9881 s inklusive dependency-review før lagring;
+stopwatch målte 773.05 s inklusive opstart/output. Dette er pilotens runtime,
+ikke evidens for en praktisk ugeprognose eller månedsbenchmark.
+
+Alle 12 aktive FV-kontroller på begge grids består, inklusive faktisk mindre
+max-step for hver hypotese. Begge aktive 5x5 mod 9x9-parameterkontroller fejler:
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Max over alle prefixer & Grænse & rho/Xi & sigma-X/sigma-Y\\
+\midrule
+Joint parameter-TV & 0.02 & 0.325197 & 0.362580\\
+Unit-middelforskel & 0.01 & 0.037199 & 0.044264\\
+Unit-SD-forskel & 0.02 & 0.046908 & 0.020045\\
+Kumuleret evidencefejl & 0.10 & 0.281503 & 0.171359\\
+Prediction-state-\(L^1\) & 0.02 & 0.194624 & 0.075024\\
+Posterior-state-\(L^1\) & 0.02 & 0.279908 & 0.113370\\
+\bottomrule
+\end{tabular}
+\end{center}
+TV fejler ved 24/24 henholdsvis 23/24 prefixer. Posterior-state fejler først
+ved prefix 2/7, og begge par fejler også ved sidste prefix. Afvisningen skyldes
+derfor ikke alene dualcelle-TV eller et enkelt mellem-prefix.
+Alle fire grove/prior-bridge-diagnostikker fejler og bevares.
+Max massefejl er \(2.4061\cdot10^{-12}\), med ikke-negative celler.
+
+Rå review kontrollerede clean source og G1a/G0-dependencies, seeds/data,
+truth/inputs, prior/noder/dualceller, FV-settings, alle bank- og kontrolnøgler
+og faktisk tidsrefinement. Nested scores/max-steps er præcis delmængder af
+9x9-replays. Alle scores til weights/evidence/momenter, marginaler, intervaller,
+randvægte, MAP-ties og effektivt hypotesetal er genberegnet, ligesom samtlige
+18 prefix-sammenligninger. Uafhængig tæthedsintegration på fælles
+parameterrektangler og lineær CDF-integration af state kontrollerer begge remaps.
+Max auditafvigelse er \(1.5632\cdot10^{-13}\). Marginale states gemmes;
+fulde conditional historier støttes af G0 og direkte rekursions-/spawn-tests.
+Ingen ny fuld studiekørsel blev brugt til reviewet. Artifact-digest og størrelse
+står i F4-statusfilen.
+
+Rapportens \texttt{passes=False} gemmes korrekt før nonzero exit.
+5x5-trapezbanken er afvist under det erklærede kontinuerte prior-mål.
+9x9 består FV-kontrollen på disse records, men er ikke certificeret som
+parametergrid. Næste implementation skal preregistrere 9x9 mod 17x17 på de samme
+to records med uændrede støtter, prior-mål og tolerancer, friske FV-kontroller
+af nye noder, ny designversion og eget outputnavn. Accept ved 17 noder loves ikke.
+G1b0 bevares som negativt resultat; ingen G0/G1a/G1b0-genkørsel er nødvendig nu.
+Nye populationsrecords følger først efter numerisk accept.
+
+\subsection{F4-G1b1 v2: parret parametergrid-refinement}
+Design låst 2. oktober 2026 efter rå review af G1b0, før ny registreret kørsel.
+De samme ID1356/1357, truth, inputs, state-prior, RNG og 24 målinger bruges.
+Det er numerisk opfølgning på fejlede records, ikke nye recovery-data.
+Støtter, kontinuerte produkt-uniform/log-uniform prior-mål, tensor-trapezvægte,
+unit-momenter, dualcelle-TV og samtlige tolerancer fra G1b0 fastholdes.
+Stage er \texttt{G1b1}, designversion 2.
+
+Begge akser har 5/9/17 nested noder, altså 25/81/289 hypoteser.
+Kandidat er 9x9 mod kontrol 17x17. Alle 289 hypoteser per par replayes frisk
+ved fire uændrede FV-konfigurationer fra G1a: mellem, time-fine, spatial-fine
+og quadrature-fine. Det giver 2312 replays i én spawn-pool med otte workers
+og BLAS=1. Nested reduktioner giver 24 banker; hver hypotese bevarer sin egen
+state og sigma-Y. Prediction bruger gamle weights, posterior nye.
+De to tidligere 5x5 mod 9x9-fejl bevares som diagnostik; G1b0's prior bridges
+bevares i originalartifactet og gentages ikke.
+
+Ved alle 24 prefixer kræves alle 14 aktive kontroller bestået:
+tre FV-akser på både 9x9- og 17x17-gridet per par, samt én 9x9 mod 17x17-
+parameterkontrol per par. FV-gates er G1a's likelihood-vindue 5,
+log-oddsfejl 0.10, whole-bank-vægt-TV 0.01, absolut kumuleret evidencefejl
+0.10 og begge marginale state-\(L^1\)-fejl 0.02. Faktisk time-step skal
+mindskes for alle hypoteser med relativ margin \(10^{-12}\).
+Parameter-gates er joint dualcelle-TV 0.02, max unit-middelforskel 0.01,
+max unit-SD-forskel 0.02, evidence 0.10 og begge state-\(L^1\)-fejl 0.02.
+Massefejl højst \(10^{-10}\) og ikke-negative masser kræves for alle 24
+banker og deres conditional replays. Ingen record eller hypotese frasorteres.
+
+CLI \texttt{joint-bank-grid-refine} kræver den komplette clean-source
+G1b0-artifact med \texttt{passes=False}, begge parameterkontroller fejlet og
+alle 12 FV-kontroller bestået. Dens 26 banker, 18 prefix-kontroller,
+seed-data, prior/noder/dualceller, nested scores/steps og G1a/G0-digest/source
+genvalideres uden dependency-replays. Digest/source-kæden bevares i G1b1.
+
+En separat reproduktionsgate sammenligner alle 16 fælles 5-/9-grid-
+quadraturebanker med originalen. Ved alle prefixer kræves maksimal absolut
+fejl \(10^{-10}\) i scores, log-vægte, bank-evidence-increments, kumuleret
+evidence, begge marginale state-historier og actual max-steps.
+Experiment/prior/noder skal stemme; fysiske noder tillader højst
+\(10^{-12}\) afrunding. Denne gate er yderligere til grid-konvergens og
+ændrer ingen Bayes-opdatering. Friske shared replays er nødvendige,
+da originalen ikke gemmer fulde conditional state-historier.
+
+Rapporten gemmer rå scores/priorer/vægte, noder/dualceller, marginale states,
+actual steps, 16 sammenligningers prefix-fejl og reproduktionsgate/provenance.
+Fejlet gate gemmes før nonzero exit; replayfejl afbryder uden delpopulation.
+Nyt outputnavn og PowerShell-kommandoer står i BM-guiden.
+Ingen G0/G1a/G1b0-genkørsel kræves. API-overrides er uregistrerede.
+
+Registreret G1b1-accept afventer. Et bestået design accepterer alene
+9x9-trapezbanken på de to pilotrecords; 17x17 accepteres ikke automatisk.
+Ved fejl bevares begge artifacts før et særskilt nyt design, uden ændring
+af støtte, prior eller tolerancer efter truth. Større population på nye
+records og praktisk uge-/månedsbenchmark følger senere.
+
+\subsection{F4-G1b2 v3: samlet finere grid og praktisk afvikling}
+Design låst før sin fulde kørsel. Samme ID1356/1357, inputs/truth, prior,
+støtte og tolerancer som G1b0/G1b1. Nested akser har 5/9/17/33 noder;
+kandidat 17x17 mod kontrol 33x33. Alle 1089 hypoteser per par får fire
+friske FV-konfigurationer: 8712 replays, 32 banker og 24 sammenligninger.
+Alle 20 aktive kontroller kræves bestået på alle prefixer: tre FV-akser
+på hvert af 9x9/17x17/33x33 per par og to 17x17 mod 33x33-parameterkontroller.
+5x5 mod 9x9 og 9x9 mod 17x17 bevares som fire diagnostikker.
+Ingen pruning, automatisk refinement eller støtteændring.
+
+Den rå-reviewede Windows-G1b0 genvalideres som dependency, inklusive
+G1a/G0-kæden. Alle 16 fælles 5-/9-grid-banker skal reproducere originalen
+til \(10^{-10}\) i G1b1's score-, vægt-, evidence-, state- og step-felter.
+Der kræves ingen separat Windows-G1b1: dette samlede studie beregner selv
+5/9/17-bankerne igen og bevarer deres grid-fejl. Den selvstændige
+G1b1-kørsels slutkontrolfejl bevares i status; ingen rå G1b1-rapport blev
+gemt. Gates vurderes fra G1b2's friske banker, ikke fra en manglende rapport.
+Numeriske eksperiment-/prior-metadata sammenlignes til \(10^{-12}\), som
+i dependency-valideringen; score-/state-reproduktion kræver fortsat
+\(10^{-10}\). En strukturel slutkontrolfejl gemmer alle færdige rækker med
+fejltekst og \texttt{passes=False} før nonzero exit.
+CLI er \texttt{joint-bank-grid-fine}; PowerShell står i BM-guiden.
+
+\paragraph{Samme FV-ligninger.}
+En opt-in LAPACK-solver ændrer alene løsningen af det tridiagonale system
+\((I-hQ)m_{n+1}=m_n\). Generator, grænsebetingelser, grid, interne tider,
+observationsquadrature og massediagnostikker arves uændret fra referencen.
+Den selvstændige Python/Thomas-reference og de tidligere designs bevares.
+Ingen state eller faktorisering genbruges mellem hypoteser, og solverfejl
+repareres ikke. Tre fulde enkeltreplays ved rho401 og støj3201/6401 gav
+identiske scores/state-arrays. Deres wall-ratio 3.24/11.98/15.74 blev målt
+under samtidig belastning og er ikke et isoleret Windows-benchmark.
+
+\paragraph{Løbende reduktion uden sammenblanding af conditional states.}
+Sæt \(a_{k,h}^{-}=\log\pi_h+L_{k-1,h}\) og
+\(a_{k,h}^{+}=\log\pi_h+L_{k,h}\). For hver fase og prefix akkumuleres
+\[
+ m=\max_h a_{k,h},\qquad
+ N=\sum_h e^{a_{k,h}-m}p_{k,h},\qquad
+ Z=\sum_h e^{a_{k,h}-m},\qquad \bar p_k=N/Z.
+\]
+Når et nyt led øger \(m\), skaleres de hidtidige \(N,Z\) med
+\(e^{m_{\rm gammel}-m_{\rm ny}}\). Det er den samme Bayes-mixture som
+batchreduktionen. Conditional states normaliseres/repareres ikke; deres
+massefejl bevares i gaten. \(m+\log Z\) kontrolleres mod rå score-evidence,
+med henholdsvis \(L_{k-1}\) og \(L_k\). Rå scores og steps gemmes.
+
+En vedvarende spawn-pool har højst \(2\cdot\mathrm{workers}\) opgaver
+i kø; for Windows bruges otte workers og BLAS=1. Resultater konsumeres
+i fast hypoteseorden, uafhængigt af completion-rækkefølgen. En conditional
+historie frigives efter reduktion, uden at nogen efterfølgende hypotese
+starter fra den marginale state. For 1089 hypoteser, 6401 celler og 24
+prefixer kræver de to fulde conditional historier alene ca. 2.49 GiB.
+Fire nested bankers marginale tællere bruger ca. 9.38 MiB, plus bounded
+in-flight resultater og rapportdata. Det er beregnede array-størrelser,
+ikke målt total-RAM. Test dækker ekstreme scores, forskellige conditional
+states, seriel/spawn-identitet, køgrænse og fejlpropagering.
+
+Nyt outputnavn bevarer originalerne; gatefejl gemmes før nonzero exit.
+Et bestået G1b2 accepterer kun 17x17 på disse to pilotrecords. Ingen
+automatisk accept af 33x33, recovery, G2 eller uge-/månedsruntime.
+
+\paragraph{Fuld udviklingskørsel og rå review.}
+Clean \texttt{b76df35} gennemførte 8712 replays og 32 banker på
+640.2642 s før lagring med otte workers og BLAS=1. Alle 18 FV-kontroller
+og 16 shared reproduktionskontroller består; max reproduktionsafvigelse er
+\(4.1212\cdot10^{-13}\). Det er Linux-udvikling, ikke Windows-certificering.
+Begge 17x17 mod 33x33-kontroller fejler alene på joint dualcelle-TV:
+0.085124/0.104448 mod 0.02. Unit-middelfejl er 0.000307/0.000535,
+unit-SD 0.000844/0.000727, evidence 0.001421/0.001140 og
+prediction/posterior-state-\(L^1\) højst 0.001429/0.000890.
+TV fejler ved 23/24 og 22/24 prefixer; alle øvrige parameter-gates består.
+9x9 mod 17x17 fejler også alene på TV, 0.165706/0.203067.
+Afvisningen og de grovere fejl bevares; der udledes ingen komplet parameteraccept.
+
+Alle 32 banker og 24 sammenligninger er råauditeret, inklusive score-algebra,
+prior/noder, nested data, source/dependencies og separate tætheds-/CDF-remaps.
+Max auditafvigelse er \(5.7981\cdot10^{-12}\), max massefejl
+\(2.4061\cdot10^{-12}\); ingen negative masser. Digest står i F4-status.
+Samme kilde har grøn CI med 452 tests og PDF-build. Den oprindelige G1b1's
+slutkontrolfejl er rettet; G1b2 gemmer det komplette negative resultat korrekt.
+G1b3 raffinerer den resterende TV-fejl uden at ændre definition eller tolerance.
+
+\subsection{F4-G1b3 v4: samlet 33x33 mod 65x65}
+Design låst før kørsel efter G1b2-review. Samme ID1356/1357, model/data,
+støtte/prior og alle tolerancer. Nested akser har 5/9/17/33/65 noder;
+kandidat 33x33 mod kontrol 65x65. Alle 4225 hypoteser per par får fire
+friske LAPACK-FV-konfigurationer: 33800 replays, 40 banker, 32 sammenligninger.
+Alle 26 aktive kontroller skal bestå ved alle prefixer: tre FV-akser på hvert
+af 9/17/33/65-gridene per par samt to 33x33 mod 65x65-kontroller.
+De seks grovere parameterkontroller bevares som diagnostik.
+
+CLI \texttt{joint-bank-grid-dense} bruger den validerede Windows-G1b0 direkte,
+med samme G1a/G0-kæde og reproduktionsgate på 16 fælles 5-/9-grid-banker.
+Ingen separat Windows-G1b1/G1b2 kræves; alle deres nested reduktioner genskabes.
+Samme LAPACK-solver, ordnede løbende reduktion, otte workers og BLAS=1.
+Tensoroverførslen til fælles parameterceller faktoriseres i to matrixprodukter;
+kanter, masser og TV-definition ændres ikke. Separat tæthedsintegration
+auditerer stadig resultatet. Ingen automatisk grid-/toleranceændring.
+Et bestået G1b3 accepterer alene 33x33 på de to pilotrecords. G2, population
+og uge-/månedsruntime er fortsat særskilte, betingede leverancer.
+
+\paragraph{G1b3's afsluttede udviklingsreview.}
+Clean \texttt{0f4bc3b}: alle 33800 replays/40 banker på 2434.1873 s
+før lagring, otte workers og BLAS=1. Alle 24 FV-kontroller består;
+shared-reproduktion afviger højst \( 4.121\cdot10^{-13} \).
+33x33 mod 65x65 fejler alene oprindelig joint dualcelle-TV:
+0.0428366 / 0.0525257 mod 0.02.
+Alle øvrige parameter-gates består. Separat råaudit af alle banker og 32
+sammenligninger afviger højst \( 2.797\cdot10^{-11} \).
+Afvisninger og digests bevares i F4-status; dette er Linux, ikke Windows-evidens.
+
+\subsection{G1c0 v1: særskilt kontinuert tensor-hat-pilot}
+Fastlagt efter G1b2-diagnostik, før G1b3-rapporten foreligger. Dette er
+samme-record, data-informeret udvikling; ikke held-out bekræftelse.
+G1b's dualcelle-TV og samtlige afvisninger bliver stående. Med lineære
+hatfunktioner i normaliserede priorkoordinater og \(q_i=\int H_i(u)\dd u\):
+\begin{equation}
+ \widetilde p_k(u,v,x)=\frac{\sum_{ij}H_i(u)H_j(v)
+       \exp(L_{k,ij})p_{k,ij}(x)}{Z_k},\qquad
+ Z_k=\sum_{ij}q_iq_j\exp(L_{k,ij}).
+\end{equation}
+Den positive parameterdensitet har nodalværdi
+\(\exp(\log w_{k,ij}-\log(q_iq_j))\). Integration over \((u,v)\)
+giver præcis den eksisterende Bayes-state-mixture. Hver node beholder sin
+conditional state. Prior, støtte, scores, FV-løsninger og evidence ændres
+ikke. Konstant likelihood giver uniform unit-prior. Rekonstruktionen
+hævdes ikke at være eksakt Bayes-lukket mellem noderne.
+
+Kandidat 33x33 mod 65x65, alle 24 prefixer på ID1356/1357. Samme gates:
+TV 0.02, unit-middel 0.01, unit-SD 0.02, evidence 0.10 og begge state-\(L^1\)
+0.02. Momenter integreres analytisk over hattene: indre varians
+\(\Delta^2/6\); endehatte har middel \(\Delta/3\) eller \(1-\Delta/3\)
+og varians \(\Delta^2/18\). Originale nodalmomenter omfortolkes ikke.
+
+På fælles primalceller er tæthedsdifferensen bilineær. Absolutværdien
+integreres eksakt i én koordinat, og den anden splittes ved randlinjernes
+nulpunkter før Gauss 8/16/32. Begge successive TV-afvigelser skal være
+højst \(10^{-8}\), og \(\mathrm{TV}_{32}+10^{-8}\le0.02\).
+Dette er kvadraturrefinement, ikke en rigorøs fejlgrænse. Alle grovere
+kontroller bevares. Alle 24 G1b3-FV-gates skal bestå. Hat-rekonstruktion
+på samme grid er en positiv massebevarende afbildning af bankvægtene;
+dens TV kan derfor ikke overstige den diskrete weight-TV.
+
+CLI \texttt{joint-bank-reconstruct} validerer hele G1b3 og genberegner
+shared-reproduktion mod den originale G1b0-fil. Ingen nye replays.
+Manglende banker, FV-fejl eller reproduktionsfejl stopper piloten.
+Originale dualcelle-fejl gemmes også i den særskilte G1c0-rapport.
+Et bestået resultat gælder alene 33x33-hat-loven på de to records;
+ikke original G1b-accept, 65x65, recovery, G2 eller uge-/månedsruntime.
+
+\paragraph{G1c0's afsluttede udviklingsreview.}
+Clean \texttt{2a0c7cc}, defineret før G1b3-resultatet: nul nye replays,
+10.6529 s før lagring. Begge særskilte 33x33-hat-love består mod
+65x65 ved alle 24 prefixer. Max joint-TV er
+0.0053803 / 0.0063510;
+max successive kvadraturafvigelser er
+\( 8.674\cdot10^{-19} \) /
+\( 4.186\cdot10^{-11} \).
+Alle moment-, evidence- og state-gates består. 17x17 mod 33x33 fejler
+fortsat TV (0.02068813/0.02433758); grovere fejl skjules ikke.
+
+Separat primal-Gauss3 kontrollerer masser/momenter, og adaptiv QUADPACK
+kontrollerer alle 192 par/prefix-TV-værdier. Max TV-afvigelse er
+\( 6.829\cdot10^{-11} \).
+461 tests og PDF-build består på identisk CI-tree. Original G1b3-afvisning
+står uændret. Windows-verifikationen er registreret nedenfor; held-out recovery,
+G2 og konkret 168-timers forecast/månedsbenchmark afventer stadig.
+
+\paragraph{Registreret Windows-verifikation og rå review.}
+Clean \texttt{1336e35}: alle 461 tests består på 510.876 s.
+G1b3 udfører 33800 replays/40 banker med otte workers og BLAS=1:
+3609.6909 s før lagring, 3643.67 s inklusive opstart/output.
+Alle 24 FV-kontroller består ved alle prefixer. Begge aktive 33\(\to\)65-
+kontroller afvises alene på oprindelig dualcelle-TV:
+0.0428366096432 / 0.0525256931447. Den komplette negative rapport er gemt;
+CLI-exit 1 er forventet. Alle seks grove parameterafvisninger bevares.
+
+G1c0 udfører nul nye replays: 12.4247 s før lagring, 15.73 s inklusive
+validering/output, exit 0. Begge særskilte 33\(\to\)65-hat-kontroller
+består ved alle 24 prefixer. Max TV er 0.00538029549612 / 0.00635098249882;
+max unit-middelfejl er 0.000113187719 / 0.000123119885, og max unit-SD-fejl
+0.000739596931 / 0.000464353890. Evidence og begge state-gates består uændret.
+De seks grove hat-kontroller og alle 32 originale sammenligninger bevares.
+
+Separat råreview kontrollerer alle 40 banker og 32 originale sammenligninger
+med Bayes-algebra fra råscores i udvidet præcision, uafhængig CDF-remap og
+direkte dualcelle-tæthedsintegration. Primal-Gauss3 kontrollerer alle ti
+hat-loves masser/momenter; adaptiv QUADPACK med modsat ydre integrationsakse
+kontrollerer alle 192 par/prefix-TV-værdier. Max TV-afvigelse er
+\(6.830\cdot10^{-11}\), og \(3.295\cdot10^{-15}\) for aktive 33\(\to\)65;
+max hat-momentafvigelse er \(2.555\cdot10^{-14}\).
+Alle 16 fælles banker reproducerer selve den originale Windows-G1b0-fil:
+scores/vægte/evidence nøjagtigt, state-masser højst \(4.857\cdot10^{-17}\).
+Max registreret conditional massefejl er \(2.406\cdot10^{-12}\), minimum 0.
+Input-/output-digests er registreret i F4-status. Ingen ny fuld filterkørsel
+er udført under review; alle conditional state-historier er ikke gemt,
+og mixture-konstruktionen understøttes af G0 og recursion-/spawn-tests.
+
+På den endelige 33-hat-lov er rho-SD fortsat 98.91\% af prior-SD og
+95\%-intervallet \([0.531049,1.478171]\); støjparrets unit-korrelation er
+\(-0.643535\). Numerisk accept er ikke præcis parameteridentifikation.
+Linux- og Windows-piloterne er nu rå-reviewet. PR \#54 er merged på
+\texttt{014446c}; G2/population og ugeforecast
+er fortsat særskilte leverancer.
+
+\subsection{G2a v1: nye fortsatte records før robusthedspopulation}
+Preregistreret 3. oktober 2026 før recordgenerering: ID1358 for rho/Xi med
+truth \(\Xi=0.75\), ID1359 for støjparret med \(\Xi=1\); øvrig truth,
+parameterstøtte og prior er uændrede. Horisonten er \([0,7]\) dage,
+med timevise right-continuous punktmålinger og dagligt gentaget
+pris 0.65/0.35/0.65 ved 0/8/16 timer. Baseline er fortsat 0.5.
+En registreret 1- eller 3-døgnsdelkontrol bruger samme per-ID RNG-strømme
+og samme prefix af observationsrecorden. Den certificerer kun sin egen længde.
+
+Hver kandidat initialiseres fra Beta(20,20) én gang. Dens conditional
+state og statiske parameterlikelihood fortsættes over midnat uden reset.
+Ved checkpoint \(d\in\{1,3,7\}\) bruges det allerede beregnede prefix
+\(Y_{1:24d}\); dage er ikke uafhængige populationsrecords.
+Koblet EM med \(h=1/1152\) og \(1/2304\) deler initialdraw, fine Wiener-path
+og målingsstøj. Det fine medlem leverer observationerne. Begge paths skal
+være uden rå randoverskridelser; RMS demand-difference divideret med
+\(\sigma_Y\) skal være højst 0.10 og maksimum højst 0.50.
+Dette er empirisk truth-refinement, ikke en rigorøs discretiseringsfejlgrænse.
+
+33x33-hat-kandidaten sammenlignes med 65x65. Begge grids har særskilte
+tids-, rum- og quadraturekontroller med G1a's uændrede gates ved alle prefixer.
+Kandidat-FV er 401/3201 celler, \(h\le1/1536\), q=3;
+kontroller er \(h\le1/3072\), 801/6401 celler og q=5 én faktor ad gangen.
+Det kræver 33800 conditional replays og 16 nested bankreduktioner:
+12 FV-kontroller og to aktive 33\(\to\)65-hat-kontroller.
+G1c0's TV-, moment-, evidence-, state- og quadraturegates bevares.
+Oprindelig dualcelle-TV gemmes særskilt uden at omfortolkes til hat-TV.
+Rå coarse/fine truth, scores, vægte, evidence og marginale states bevares.
+Fejlede gates lagres; ingen gridtilpasning, toleranceændring eller frasortering.
+
+Dette er en numerisk pilot på to nye records. G2-population samt
+1/2/4-timers sampling og moderat baseline-/initialprior-mismatch følger
+egen preregistrering efter rå review. Parameter-recovery og ugeforecast
+uden nye målinger er ikke accepteret af G2a.
+
+
+Éndags Linux-piloten fra clean \texttt{67968a9} er afsluttet og rå-reviewet:
+33800 replays, 16 banker, alle 12 FV- og to hat-kontroller består ved alle
+24 observationsprefixer. Elapsed før lagring er 2196.7571 s. Aktiv hat-TV er
+0.00672879/0.00681781 mod 0.02; maksimal relevant-window FV-log-oddsfejl
+0.07553785/0.06040836 mod 0.10. Original dualcelle-TV er særskilt afvist,
+0.04959885/0.05448667. Truth- og probability-gates består; maksimal registreret
+conditional massefejl er \(2.176\cdot10^{-12}\), minimum 0. Uafhængigt råreview
+kontrollerer 530 numeriske arrays/størrelser, rå Bayes-algebra, alle FV-kontroller,
+hat-momenter med primal Gauss3 og alle 48 aktive TV-værdier med adaptiv integration;
+max TV-afvigelse er \(2.698\cdot10^{-16}\). Begge checkpoints reproduceres.
+Conditional state-historier er ikke alle gemt; konstruktionskontrol suppleres af
+G0 og recursion-/spawn-tests. Ingen nye conditional replays under review. Rå gzip,
+source og digests er registreret i F4-status. Dette er kun éndags Linux-evidens;
+syvdages Windows-resultatet er rå-reviewet nedenfor og afvist.
+
+\paragraph{Registreret syvdages Windows-resultat og råreview.}
+Ren \texttt{86dc765}, 8 workers og BLAS=1, gennemførte alle 33800 replays
+og 16 banker med 168 observationsprefixer. Truth-, probability- og
+raw-gates består; G2a afvises. Rapportens tid før lagring er 28563.2970 s;
+terminalens samlede tid er 28646.89 s (7 timer, 57 minutter), exit 1.
+Den afsluttende RuntimeError følger efter lagring af en komplet negativ
+rapport. Terminalhistorikken mangler setup og testresumé; Windows-testantal
+eller testtid udledes derfor ikke af dette uddrag.
+
+Alle fire tids- og fire likelihood-quadrature-kontroller består.
+Alle fire rumkontroller afvises. rho/Xi's relevante log-oddsfejl er
+0.189961/0.191937 på 33/65-gridet, mod 0.10; weight-TV er
+0.0147300/0.0147321, mod 0.01. Første log-oddsafvisning er ved
+observation 28; TV afvises først ved 43. Støjparrets relevante
+log-oddsfejl er 0.114700/0.114716 og afvises ved observation 61/58.
+Dets weight-TV er 0.00377513/0.00377377 og består.
+Alle FV-evidence- og state-L1-kontroller består.
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Hat-TV & Gennem dag 1 & Gennem dag 3 & Gennem dag 7\\
+\midrule
+$\rho/\Xi$ & 0.00672879 & 0.01789879 & 0.04048640\\
+$\sigma_x/\sigma_y$ & 0.00681781 & 0.02057818 & 0.04414739\\
+\bottomrule
+\end{tabular}
+\end{center}
+Grænsen er 0.02; første TV-afvisning er ved observation 80/69.
+Alle øvrige hat-gates består. Alle aktive kontroller består gennem dag 1;
+dag 3 og 7 afvises. Original dualcelle-TV bevares særskilt som afvist:
+0.116529/0.151180. Truth RMS/max over $\sigma_y$ er
+0.00256934/0.00571985 og 0.00419420/0.01283224, uden randkorrektioner.
+
+Råreview genvaliderer original source og faktiske dependency-digests,
+558 arrays/størrelser, long-double Bayes, alle FV-/originalkontroller og
+seks checkpoint-resuméer. Primal Gauss3-momenter og adaptiv QUADPACK
+reproducerer alle 336 aktive TV-værdier; max afvigelse $3.0573\cdot10^{-11}$.
+Max marginal-massefejl er $7.3053\cdot10^{-14}$, max registreret conditional
+massefejl $3.3679\cdot10^{-12}$ og minimum 0. Review tager 49.99 s efter
+indlæsning, uden nye conditional replays. Alle conditional state-historier
+findes ikke i artifactet; eksisterende konstruktions-/recursion-tests
+supplerer rå algebra og marginalkontrol. Gzip-størrelse og SHA-256 står i
+F4-status; den komplette råfil gør genkørsel på grund af terminalhistorik unødvendig.
+
+G2a v1 er afsluttet med et negativt numerisk resultat. G2b/G2c er
+blokeret på denne kandidat. Næste diagnose adskiller rum- og parametergrid:
+først et lille fast-parameter-panel på gamle ID1358/1359 med cached-backend
+og finere rumgrid, inklusive relevante hypoteser og støttehjørner.
+Panelet måler fejl/runtime og giver ikke bankaccept. En ny samlet
+kandidat/reference-pilot skal preregistreres med uændrede tolerancer;
+65x65 eller finere rumgrid er endnu ikke accepteret som kandidat.
+G2b/G2c's nye records bruges ikke til denne diagnose.
+
+\subsection{G2a: posthoc akse- og rumdiagnose på gamle records}
+Den afviste syvdagespilot bevares. På ID1358/1359 undersøges først
+parameterakserne hver for sig uden nye conditional replays. Dette er
+diagnose og designunderlag, ikke en ny G2a-accept.
+For akse $a=1,2$ med $n_a$ jævnt fordelte noder i den oprindelige
+normaliserede prior-koordinat sættes $h_a=1/(n_a-1)$ og
+\[
+ q_i^{(a)}=\int_0^1 H_i^{(a)}(u)\,\dd u
+ =h_a\begin{cases}1/2,&i\in\{0,n_a-1\},\\1,&\text{ellers}.\end{cases}
+\]
+Med den gemte node-likelihood $L_{ij,k}$ ved prefix $k$ er
+\[
+ Z_k=\sum_{i,j}q_i^{(1)}q_j^{(2)}L_{ij,k},\qquad
+ p_k(u,v)=\sum_{i,j}\frac{L_{ij,k}}{Z_k}
+ H_i^{(1)}(u)H_j^{(2)}(v).
+\]
+Dermed er $p_k\ge0$ og $\int p_k=1$. Den oprindelige produktprior
+bevares, også når $n_1\ne n_2$: uniform i rho/Xi og uniform i
+log-koordinaterne for støjparret. Der interpoleres ikke nye likelihoods;
+de grovere rektangler bruger kun noder fra det eksisterende 65x65-grid.
+TV integreres på de to primal-grids' fælles inddeling med samme
+TV-quadrature/refinementkontrol som før. Parametermomenter bruger de
+eksakte integraler af de lineære hats. Der rekonstrueres ingen nye
+conditional state-masser, og parameterdiagnosen giver derfor ingen
+state-mixture-accept.
+
+\begin{center}
+\begin{tabular}{lrrl}
+\toprule
+Akse & Noder & Max TV & Parameterlov, uden state \\
+\midrule
+rho & $9\to17$ & 0.00298330 & består \\
+$\sigma_x$ & $17\to33$ & 0.04267840 & afvist \\
+$\sigma_x$ & $33\to65$ & 0.01112831 & består \\
+Xi & $33\to65$ & 0.04059834 & afvist \\
+$\sigma_y$ & $33\to65$ & 0.03938086 & afvist \\
+\bottomrule
+\end{tabular}
+\end{center}
+TV-maxima gælder alle 168 prefixer og alle fire gemte FV-settings, med
+den anden akse holdt på 65 noder. At rho kan coarsenes, giver ikke samme
+frihed for støjparrets første akse.
+
+
+Det separate rumpanel vælger deterministisk fire støttehjørner, centrum,
+truth-nærmeste node, maksimum-likelihood-noder ved dag 1/3/7 samt de to
+relevante noder, der gav størst gammel rum-log-oddsfejl. Dubletter fjernes.
+Rho bruger fire og støjparret tre rumopløsninger; disse sammenlignes med cached FV, uændret tidsstep og
+likelihood-quadrature. De to oprindelige opløsningers rå conditional scores
+reproduceres mod den oprindelige rapport. Hele syvdageshistorien fortsætter
+uden daglige resets. State-L1 beregnes ved konservativ remapping alene til
+sammenligning; panelets subset-log-odds er ikke en fuld bankkontrol.
+Raw scores gemmes, mens conditional state-historier kasseres efter
+L1-beregning for at begrænse memory/output. Dette begrænser efterfølgende
+uafhængig genberegning af state-L1.
+
+Ren source \texttt{69848458}, BLAS=1: 67 syvdages-replays på 10/9 valgte
+hypoteser, 64 parameterakse-sammenligninger og 183.2609 s før lagring.
+Summeret seriel replaytid er 80.3384 s. Gamle conditional scores reproduceres
+med max afvigelse $8.1713\cdot10^{-14}$; max massefejl er $4.4970\cdot10^{-12}$.
+Rho's panel-log-odds-span er 0.19193739 ved 401/801 celler, 0.10183329 ved
+801/1601 og 0.05277118 ved 1601/3201. Støjparrets span er 0.11634200 ved
+3201/6401 og 0.05891595 ved 6401/12801. Panelets likelihood-vindue bruger
+sit eget maksimum, ikke en fuld banks maksimum. De relevante conditional
+predicted/posterior-L1-maxima ved sidste refinement er 0.007324/0.009424
+for rho/Xi og 0.012035/0.014301 for støjparret. Dette er ikke marginal bank-L1.
+Den første tre-niveau-kørsel på \texttt{e2cb6c75} gav utilstrækkelig rho-margin;
+fjerde niveau er derfor en eksplicit posthoc opfølgning.
+
+Selvstændigt review genberegner designs, gamle scores, panel-log-odds,
+timings og maxima. Ved 16 udvalgte værste parameter-TV-prefixer bruges
+uafhængig long-double Bayes og adaptiv QUADPACK: største afvigelse
+$1.3819\cdot10^{-13}$. De øvrige TV-prefixer og state-L1 er ikke uafhængigt
+genberegnet. Råfilstørrelse/digest og den reproducerbare CLI står i
+F4-status og kodevejledningen.
+
+Et konkret forslag til næste særskilt implementerede pilot er rho/Xi
+$9\times65\to17\times129$ med 1601/3201 rumceller, og støjparret
+$33\times65\to65\times129$ med 6401/12801 celler. Tid og q kontrolleres
+stadig separat på begge grids, med uændrede gates/prior/støtte. 129-noderne
+er ikke evalueret her. Forslaget giver 42312 replays i fire FV-settings mod
+133128 for fuldt $65\times65\to129\times129$ på begge par: 68.22\% færre.
+Dette er workload for et forslag, ikke accepteret konvergens eller speedup.
+En simpel runtime-model med time-fine som to gange middle og q-fine som
+middle giver 25.7588 serielle timer og idealiseret 3.2198 timer på otte workers,
+uden overhead/parallel slowdown eller Windows-forskel. Der gives intet
+walltime-løfte. Næste pilot skal have rektangulær streaming-/råvalidering,
+genoptagelige units og først målt unit-runtime. G2b/G2c forbliver blokeret;
+deres eksisterende 33/65-design er ikke accepteret af dette forslag.
+
+
+
+\subsection{G2a v2: fastlagt rektangulær pilot og atomiske blokke}
+Forslaget ovenfor er nu implementeret særskilt i \texttt{joint\_pilot.py}.
+Den nye CLI hedder
+\texttt{joint-bank-\allowbreak{}rectangular-\allowbreak{}pilot};
+kilde \texttt{502d0506}.
+Designet er frosset før v2-replays: 42312 conditional kørsler, otte FV-units,
+16 reducerede banker og 14 aktive kontroller. Samme syvdages-records
+ID1358/1359 giver alle 168 prefixer uden reset. Dette er data-informeret
+udvikling på gamle records, ikke held-out evidens. V1-afvisningen bevares.
+
+Akserne er indlejret i én fysisk 129-node-ankerakse per koordinat, med
+første koordinat langsomst. For rektangel $n_1\times n_2$ er prioren
+\[
+ \pi_{ij}=q^{(1)}_i q^{(2)}_j,\qquad
+ q^{(a)}_i=\begin{cases}1/[2(n_a-1)],&i=0,n_a-1,\\
+ 1/(n_a-1),&\text{ellers}.\end{cases}
+\]
+Hver kandidatnode er en reference-node. Hypotesens conditional state
+fortsætter selvstændigt; ingen marginal state føres tilbage. Gamle versus
+opdaterede parametervægte bruges til prediction versus posterior som hidtil.
+Begge grids får separate tid-, rum- og q-kontroller; hat-kandidaten
+sammenlignes med referencen ved middle. Støtte/prior og gates er uændrede.
+
+Efter en ordnet blok af hypoteser gemmes for hver af de to grids råscores,
+faktiske step og de log-skalerede summer
+\[
+ s_{p,k}=\max_{j\in J}\{\log\pi_j+L_{p,k,j}\},\quad
+ D_{p,k}=\sum_{j\in J}e^{\log\pi_j+L_{p,k,j}-s_{p,k}},\quad
+ N_{p,k,\ell}=\sum_{j\in J}e^{\log\pi_j+L_{p,k,j}-s_{p,k}}m_{p,k,j,\ell},
+\]
+hvor $J$ er de allerede reducerede noder, $p$ er prediction/posterior,
+og $L_{\mathrm{pred},k}=L_{k-1}$, $L_{\mathrm{post},k}=L_k$.
+Restore genberegner $s,D$ fra rawscores og kontrollerer
+$N/D$ som ikke-negative normaliserede state-masser. Først når alle
+registrerede noder er med, er dette den færdige bank, som råvalideres.
+Conditional state-historier gemmes ikke; derfor beviser raw-validatoren
+ikke en uafhængig rekonstruktion af hver numerator.
+
+Default er 128 hypoteser per blok. Ét rullende float64/JSON ZIP-checkpoint
+skrives til en ny midlertidig fil og publiceres atomisk. Kun det seneste
+beholdes; en afbrydelse mister højst igangværende blok. Otte færdige FV-units
+publiceres hver for sig og overskrives ikke. OS-lås hindrer samtidige skrivere;
+source skal være ren og uændret, og v1-fildigest/dependency-kæde skal matche.
+Et fuldt checkpoint kan færdiggøre unit-publicering efter et nedbrud uden
+nye replays. Fejlede kontroller og komplette negative resultater bevares.
+
+På ren \texttt{502d0506}, BLAS=1 og otte spawn-workers, er to blokke kørt:
+først noder 0--127, dernæst reel genstart med 128--255. Bloktider før lagring
+var \textbf{12.8889 / 12.6950 s}; samlede kommandoer
+\textbf{48.9816 / 48.5082 s} inklusive genvalidering af den store v1-fil.
+Det dækker kun rho/Xi middle ved lave rho-noder. Det er hverken full-bank
+accept eller et tidsløfte for støjparrets finere settings og Windows.
+Long-double partial normalisatorer/massesummer og udvalgte friske scores
+blev kontrolleret uafhængigt. På dette tidlige tidspunkt manglede evaluering
+af alle gates på den komplette pilot. 11 nye tests kontrollerer matematik, reel spawn,
+restore, beskadigede data, forkert source/dependency og nedbrud før
+final-publicering; den fulde regression køres i PR-CI.
+
+\textbf{G2b/G2c er stadig blokeret.} Selv bestået v2 vil kræve særskilt
+registrering af deres rektangulære grids/settings og dependency-kontrakt;
+den eksisterende kvadratiske 33/65-kørsel frigives ikke af denne pilot.
+
+\paragraph{Afsluttet syvdages Windows-resultat og uafhængigt råreview.}
+Run \texttt{f4\_\allowbreak{}g\_\allowbreak{}g2a\_\allowbreak{}rectangular\_\allowbreak{}v2\_\allowbreak{}20261003\_135421} er komplet på
+ren source \texttt{01c7c153}: \textbf{8/8 units, 16 bankreduktioner,
+42312 conditional replays, alle 14 kontroller bestået og exit=0}.
+Alle otte råfilers SHA256 matcher slutresuméet. Source, design og dependency
+matcher det oprindelige manifest; v1-filens digest og negative accept bevares.
+Alle maxima nedenfor er over 168 observationsprefixer og, for FV-kolonnerne,
+begge parametergrids samt tid-, rum- og q-kontrollerne.
+
+\begin{center}\small
+\begin{tabular}{lrrrr}
+\toprule
+Par & FV aktive odds & FV weight TV & FV evidensfejl & FV state L1 \\
+\midrule
+$(\rho,\Xi)$ & 0.0540768 & 0.00397978 & 0.0193239 & 0.00557173 \\
+$(\sigma_x,\sigma_y)$ & 0.0565491 & 0.00188787 & 0.00831028 & 0.00292391 \\
+Uændret gate & 0.1 & 0.01 & 0.1 & 0.02 \\
+\bottomrule
+\end{tabular}\end{center}
+
+Alle 12 FV-kontroller består, inklusive faktisk step-refinement.
+Kontinuerte parameter-hat-TV-maxima er \textbf{0.0102194 / 0.0178465}
+mod 0.02 med $10^{-8}$ margin. Successiv TV-kvadraturforskel er højst
+$1.8325741\cdot10^{-9}$ mod $10^{-8}$; mean/sd-, evidens- og state-gates
+består også. Dette er numerisk konvergens, ikke recovery. Kandidat-hatens
+normalized rho-SD er stadig \textbf{0.250075} efter syv døgn.
+
+Det separate script
+\texttt{root/f4/review\_g2a\_rectangular.py} reproducerer koblet truth og
+observationer én gang per par og genbygger alle 16 banker og hele resuméet
+fra råfilerne, med \textbf{nul nye FV-replays}. Long-double Bayes-aritmetik,
+fysiske momenter, marginaler og intervaller kontrolleres uafhængigt.
+State-remap og aktiv-window-odds reproducerer 12 FV-kontroller.
+Hat-momenter integreres direkte med Gauss-reglen, mens TV kontrolleres
+med separat SciPy-interpolation og adaptiv integration af absolut bilineær
+forskel på alle prefixer. Adaptive TV-maxima er
+\textbf{0.0102193713337175 / 0.0178464850011745}; alle \textbf{510 arraykontroller}
+består. Største gemte state-massefejl er $2.62457\cdot10^{-13}$,
+største conditional fejl $7.32414\cdot10^{-12}$, mindste cellemasse nul.
+Ingen lov repareres eller normaliseres. Individuelle conditional state-historier
+er ikke gemt; reviewet rekonstruerer derfor ikke hver state-numerator
+uafhængigt. Et gammelt partial checkpoint er overhalet af de otte komplette units.
+
+Evidensen er registreret i estimation-output:
+\begin{quote}\small
+\texttt{g2a\_rectangular\_windows\_v2\_summary.json.gz}\\
+\texttt{g2a\_rectangular\_windows\_v2\_raw\_review.json}
+\end{quote}
+Reviewfilen indeholder råfil-hashes. Originalt manifest, NPZ-units og log
+bevares i run-arkivet.
+Sidste fortsatte invocation tog \textbf{8599.6915 s} internt og
+\textbf{144.75 min} på ydre timer. Dette er sidste fortsættelse med opsamling,
+ikke samlet walltime over alle invocations.
+
+\textbf{G2a-v2 afsluttes med numerisk udviklingsaccept på samme gamle records.}
+Det certificerer ikke oprindelig dual-cell-lov, eksisterende kvadratiske
+G2b/G2c-settings, held-out recovery, historisk H-fit eller forecast.
+De oprindelige kvadratiske G2b/G2c-settings er fortsat blokeret;
+H1 og H's datakontrakt er næste aktive arbejde.
+
+\subsection{G2b-v2 som afgrænset nat-sidearbejde}
+Beslutningen den 3. oktober kl. 22:26 bevarer H/I/J som hovedspor.
+Et nyt, særskilt registreret G2b-v2 bruger ID1360/1361 og de fem parrede
+scenarier nedenfor. For $\rho/\Xi$ bruges kandidat/reference $9\times65$ og
+$17\times129$ med FV1601/3201; for støjparret $33\times65$ og $65\times129$
+med FV6401/12801. Hvert scenarie kontrollerer begge grids separat med
+$h=1/1536$ mod $1/3072$ og $q=3$ mod 5, samt kontinuert hat-parameterkontrol
+med de uændrede gates. Der er 40 units, 80 banker, 70 kontroller og
+211560 conditional replays. G2a-v2's råaccept er prerequisite, ikke et
+konvergensbevis på disse nye records. Gamle kvadratiske designs ændres ikke.
+
+Et budget på cirka otte timer er alene en afviklingspause ved en atomisk gemt
+blokgrænse. Et rullende checkpoint bevarer alle hidtil reducerede hypoteser;
+en afbrydelse gentager højst den ikke-publicerede blok. Source, design og
+rådependencies låses ved første invocation. Prediction bruger fortsat gamle
+parametervægte og posterior nye, også for hver nodes egen demand-middelværdi.
+Dag 1/3/7 bruger den kontinuerte rektangulære hat-lovs fysiske momenter og
+intervaller; sampling-scores sammenlignes kun på fælles målingstidspunkter.
+En delkørsel er aldrig accept, og en numerisk afvisning bevares og stopper
+nye scenarier. Ét record per par dokumenterer ingen populationskalibrering.
+G2c kræver det særskilte kompatible design nedenfor og bestået G2b;
+H-f/g udskydes ikke.
+
+\subsection{Fordelt afvikling og rektangulær G2c-v2, registreret 5. oktober}
+G2b-v2 fordeles som ti hele record/scenarie-jobs med fire FV-units i hvert.
+Hver jobejer reducerer hypoteser i den oprindelige orden; ingen delsummer
+fra forskellige maskiner blandes. En fælles uforanderlig plan låser source,
+design, rådependencies og disjunkt opgavefordeling. Samling kontrollerer alle
+råbanker og kræver fortsat samtlige 70 numeriske kontroller. Identiske
+transportdubletter tæller én gang; modstridende råfiler afvises. Gamle gemte
+G2b-hypoteser importeres kun efter råkontrol og identisk numerisk Python-kilde;
+originalfiler, source og hashes bevares som særskilt proveniens.
+
+Det nye G2c-v2-design er fastlagt før nye populationsresultater og kræver
+komplet råaccept af G2b-v2. Kandidaterne er $9\times65$ for $\rho/\Xi$ og
+$33\times65$ for $\sigma_x/\sigma_y$, med henholdsvis FV1601 og FV6401,
+$h=1/1536$ og $q=3$. Der bruges 200 matched records per par, ID1362--1561
+og ID1562--1761. De første 20 per par får alle fem parrede scenarier.
+Dermed er der $2[200+20(5-1)]=560$ jobs og
+$280(9\cdot65+33\cdot65)=764400$ conditional replays. Truth/RNG,
+fælles støj og observationssubsets, prediction/posterior-vægte, fysisk
+hat-rekonstruktion samt dag 1/3/7-statistik bevares. Numerikken er støttet
+af piloten, ikke bevist konvergent på hvert populationsrecord. Der tilføjes
+intet recovery-pass-target, ingen seedudskiftning og ingen forecast-accept.
+Delvise nat-/chatkørsler er alene bevaret fremdrift; H/I/J er stadig hovedsporet.
+
+\subsection{G2b/G2c: parret robusthed og genoptagelig population}
+Studiernes matematiske definition nedenfor bevares, mens deres prioritet i
+forhold til forecast og kontrol bestemmes af \texttt{root/F4.md}.
+Dette er de oprindelige kvadratiske designs; G2b-v2 ovenfor har særskilt
+registreret rektangulært grid og blokgemning.
+Placering af komplette record/scenarier på hver sin worker ændrer ikke
+bankens ordnede log-skalerede sum: hver betinget state-law beregnes fortsat
+separat, prediction bruger de gamle parametervægte, og posterior de nye.
+Kun færdige banker overføres til hovedprocessen. Det er en ændring af afvikling,
+ikke af støtte, kvadratur, numerik, frø eller acceptkriterier.
+
+Disse studier er implementeret, men deres produktionskørsler er betingede af
+råvalideret syvdages-G2a og derefter bestået G2b. G2b bruger ID1360/1361
+og fem scenarier per par: timevis matched, sampling hver anden/fjerde time,
+antaget baseline 0.55 i stedet for truth 0.50, samt antaget
+$\Beta(16,24)$ i stedet for initial truth $\Beta(20,20)$.
+Sampling vælger eksisterende målinger; nye støjtræk bruges ikke.
+Hvert scenarie har 33/65-grids og begge grids' separate FV-kontroller:
+169000 conditional replays, 80 banker og 70 aktive sammenligninger.
+
+G2c bruger 200 fortsatte records per par (ID1362--1561 og 1562--1761).
+De første 20 per par får også de fire parrede afvigelser; i alt 560 banker
+med 1089 hypoteser, altså 609840 replays. Kun det accepterede kandidatgrid
+bruges her. Dette er pilotunderstøttet numerik, ikke et konvergensbevis for
+hver populationsrecord. Svag recovery er et gyldigt resultat og ændrer
+ikke numeriske tolerancer. Checkpoints ved dag 1/3/7 deler samme path.
+
+For en fysisk parameter $\theta=T(u)$ beregnes momenter fra den kontinuerte
+hat-marginal $p(u)$ som $\int T(u)p(u)\,\dd u$ og
+$\int T(u)^2p(u)\,\dd u$. På støjakser er $T$ eksponentiel; det er forkert
+blot at transformere middelværdien i log-koordinaten. Marginale
+95\%-intervaller kommer fra inversion af den præcise stykvist kvadratiske
+CDF. Empiriske hit-rater ved fast truth rapporteres med Wilson-intervaller;
+de er ikke universelle Bayes-kalibreringsgarantier.
+
+Predictive demand bruger vægtene før målingen, posterior-demand vægtene
+efter. Demand integreres i hver state-celle og under hver hypotese;
+parameterafhængig demand må ikke evalueres ved en gennemsnitsparameter.
+Sampling-scenariernes Y-scores sammenlignes kun på fælles observationstider,
+altid før den aktuelle assimilation. De har forskellige informationshistorikker.
+
+Hver record/scenarie gemmes tabsfrit og atomisk med kilderevision,
+design og dependency-digests. Genoptagelse genvaliderer de gemte rå enheder.
+Manglende eller fejlede enheder forhindrer samlet accept; et afsluttet
+chunk er ikke en afsluttet population.
+
+\subsection{Eksakt genbrug i FV og forberedelse af historiske input}
+På et fast state-grid løses fortsat
+$(I-hQ(B(t),U(t),\theta))m_{n+1}=m_n$ ved implicit Euler.
+Ved identiske koefficienter og identisk floating-point-step $h$ genbruges
+LAPACK-faktoriseringen. Ingen step afrundes, ingen masse repareres, og alle
+interne step kontrolleres. Cachen er lokal til ét solve og begrænset i størrelse;
+ændrede parametre eller callbacks kan derfor ikke arve en gammel operator.
+Generiske modeloverrides bruger den almindelige callback-vej.
+Kun ønskede outputmasser gemmes, men den interne integration er uændret.
+Benchmark på gamle G2a-records kontrollerer begge par, støttehjørner/centrum
+og alle fire FV-konfigurationer. Målt seriel hastighed er ikke Windows-walltime.
+
+\paragraph{Registreret Windows-backendkontrol.}
+Ren \texttt{b5e5e4d}, BLAS=1: 490 tests består på 478.222 s.
+På de gamle syvdages-ID1358/1359 består alle 40 kombinationer:
+fem hypoteser per par, fire FV-settings og to gentagelser med skiftende
+backendrækkefølge, i alt 160 replays. Alle registrerede maximum-afvigelser
+for scores, predicted/posterior-masser og faktisk max-step er 0.
+Max registreret massefejl er $3.3679\cdot10^{-12}$ og minimum 0.
+Summen af median-replaytider er 160.422864 s for LAPACK og 41.025685 s
+for cached: målt serielt speedup 3.910303. Samlet Windows-tid er 409.82 s,
+exit 0. Review kontrollerer alle hypoteser/settings og genberegner gates og timings;
+conditional rå arrays er ikke gemt, så nul-afvigelserne rekonstrueres ikke
+uafhængigt fra arrays. Transcriptet mangler native Python-output;
+testresuméet er i brugerens indsatte terminaltekst. Digests står i F4-status.
+Dette accepterer backendpanelet, ikke fuld parallel walltime eller G2a's
+fejlede rum-/parametergrids. G2b/G2c forbliver blokeret.
+
+H-forberedelsen indeholder en punktmålingsadapter med eksplicit population,
+effektenhed, timezone, missing-mask og frossen fysisk/train-only skala.
+State-tid er faktisk UTC-forløbet tid, også over DST. Baseline-referencen er
+aritmetisk gennemsnit af de fem seneste samme lokale ugedage/timepunkter,
+alle før origin. Tvetydige eller manglende historiktimer afvises frem for at
+imputeres tavst. Intervaleffekt/energi kræver egen observationsmodel;
+spotpris må ikke uden metadata kaldes faktisk forbrugerpris.
+Et historisk fit eller en kausal prisrespons er endnu ikke demonstreret.
+
+\subsection{Prior under reparameterisering}
+
+Driften er lineær i \(\rho=1/C\) for faste øvrige argumenter. Det kan være praktisk numerisk, men gør ikke hele likelihooden lineær. En kontinuert prior transformeres ved
+\begin{equation}
+ \pi_\rho(\rho)=\pi_C(1/\rho)\left|\frac{\dd (1/\rho)}{\dd\rho}\right|
+ =\frac{\pi_C(1/\rho)}{\rho^2}.
+ \label{eq:priortransform}
+\end{equation}
+Ens vægte på et uniformt \(\rho\)-grid er ikke automatisk ensartet prior på \(C\). Ved tilnærmelse af en kontinuert prior på et ikke-uniformt grid skal integrationsvægtene desuden med. En egentlig diskret prior kan vælges direkte, men skal kaldes netop det.
+
+Tilsvarende er
+\begin{equation}
+ \E[C\mid\Yhist_k]\approx\sum_j\frac{w_k^{(j)}}{\rho_j}
+ \quad\text{ikke generelt}\quad
+ \frac1{\sum_jw_k^{(j)}\rho_j}.
+ \label{eq:mean_capacity}
+\end{equation}
+Sammenlign estimater i samme koordinater, og navngiv om tallet er middel, MAP-hypotese eller en plug-in-transformation.
+
+\subsection{Støtte, nulvægte og numerisk fejl}
+Banken kan ikke lære uden for dens støtte. En skarp randposterior kan signalere forkert støtte. Sandhed på et nodepunkt, mellem noder og uden for støtten skal testes særskilt. Ny støtte kræver replay af historikken under den nye erklærede prior eller en særskilt begrundet transportmetode.
+
+Likelihoodfejl akkumuleres i log-form. Hvis to hypotesers numeriske log-evidence-fejl er \(\epsilon_k^{(j)}\), ændres log-odds med
+\begin{equation}
+ \Delta\log\frac{w_N^{(j)}}{w_N^{(\ell)}}
+ =\sum_k\left(\epsilon_k^{(j)}-\epsilon_k^{(\ell)}\right).
+ \label{eq:logoddserror}
+\end{equation}
+Små per-step densityfejl er derfor ikke automatisk harmløse for parameterestimation over lang historik. Fixed-parameter likelihoodrefinement skal undersøges før re-estimering.
+
+\section{Demand-forecast efter en fast origin}
+\subsection{Hvad forecastet er betinget på}
+Lad \(\tau\) være sidste assimilationstid. Vi har en posterior baseret på data til og med \(\tau\). Et forecast uden nye målinger propagerer denne posterior fremad under erklærede fremtidige input \(B(t),U(t)\). For en parameterbank gælder
+\begin{equation}
+ p_t(x\mid\Yhist_\tau,U,B)\approx\sum_jw_\tau^{(j)}p_t^{(j)}(x),\qquad t>\tau.
+ \label{eq:forecaststate}
+\end{equation}
+Vægtene for statiske parametre opdateres ikke med opdigtede fremtidige målinger. Hver betinget state-density propagerer dog forskelligt.
+
+\textbf{Et betinget forecast} bruger en kendt eller hypotetisk inputplan. \textbf{Et operationelt forecast} skal også bygge fremtidig baseline og eventuelt pris fra information, der faktisk er tilgængelig ved \(\tau\). BM1 beregner ikke disse inputforecasts af sig selv. Et syvdages interval kan beregnes, men præcisionen i syv dage er en separat empirisk undersøgelse.
+
+\subsection{Demand som transformation af state}
+Fordelingen af latent demand kan beskrives uden at antage, at den har en glat tæthed:
+\begin{equation}
+ F_{D_t}(d)=\sum_jw_\tau^{(j)}\int_0^1
+ \bm1\{D_{\theta^{(j)}}(x,U_t,B_t)\leq d\}\,p_t^{(j)}(x)\dd x.
+ \label{eq:demandcdf}
+\end{equation}
+Dette er også meningsfuldt ved flade responsområder eller \(\Xi=0\), hvor der kan være punktmasser. Vi behøver ikke en numerisk inversion af \(D\) for at beregne CDF'en.
+
+Definér pr. hypotese
+\[
+ \mu_j(t)=\int D_j(x,t)p_t^{(j)}(x)\dd x,\qquad
+ s_j^2(t)=\int [D_j(x,t)-\mu_j(t)]^2p_t^{(j)}(x)\dd x.
+\]
+Da fås
+\begin{align}
+ \E[D_t\mid\Yhist_\tau]&=\sum_jw_j\mu_j(t)=\mu(t),\label{eq:forecastmean}\\
+ \Var(D_t\mid\Yhist_\tau)&=\sum_jw_j\left[s_j^2(t)+(\mu_j(t)-\mu(t))^2\right].
+ \label{eq:forecastvariance}
+\end{align}
+Udtrykket indeholder variation inden for en parameterhypotese og variation mellem hypoteser. Det er generelt forkert blot at beregne \(D(\E[X],\E[\theta])\).
+
+For fremtidige \emph{observationer} under den samme punkt-Gaussian-model er
+\begin{equation}
+ F_{Y_t}(y)=\sum_jw_j\int_0^1
+ \Phi\!\left(\frac{y-D_j(x,t)}{\sigma_{Y,j}}\right)p_t^{(j)}(x)\dd x,
+ \label{eq:observationcdf}
+\end{equation}
+og
+\begin{equation}
+ \Var(Y_t\mid\Yhist_\tau)=\Var(D_t\mid\Yhist_\tau)+\sum_jw_j\sigma_{Y,j}^2.
+ \label{eq:observedvariance}
+\end{equation}
+Et interval for latent demand er altså ikke automatisk et korrekt interval for en støjfyldt måling. Intervalenergi kræver igen sin egen observationsdefinition.
+
+\subsection{Usikkerheden behøver ikke vokse monotont}
+Itô på \(X_t^2\) og \eqref{eq:sde} giver
+\[
+ \frac{\dd}{\dd t}\E[X_t^2]=2\E[X_ta_\theta(t,X_t)]+\E[b_\theta(X_t)^2],
+ \qquad \frac{\dd}{\dd t}\E[X_t]=\E[a_\theta(t,X_t)].
+\]
+Træk den afledte af \(\E[X_t]^2\) fra:
+\begin{equation}
+ \boxed{\frac{\dd}{\dd t}\Var(X_t)
+ =2\Cov(X_t,a_\theta(t,X_t))+\E[b_\theta(X_t)^2].}
+ \label{eq:variance_derivative}
+\end{equation}
+Støjleddet er ikke-negativt, men driftens kovariansled kan være negativt og større i absolut størrelse. Usikkerhed kan derfor både stige og falde uden nye målinger. Tidligere intuition om stadigt bredere forecastintervaller skal ikke bruges som en matematisk garanti.
+
+Et admissibelt eksempel med \(X_0\sim\Beta(2,2)\), \(B=U=0.5\), \(\rho=1\), \(k=2\), \(\Xi=1\), \(\sigma_X=0.1\) giver ved selvstændig quadrature
+\[
+ 2\Cov(X_0,a(X_0))\approx-0.08824844,\qquad
+ \E[b(X_0)^2]\approx0.00042857,
+\]
+og dermed \(\left.\frac{\dd}{\dd t}\Var(X_t)\right|_{t=0}\approx-0.08781987\).
+Dette er en kontrol af fortegnet i \eqref{eq:variance_derivative}, ikke et valideret ugeforecast. Tilsvarende kan demand-usikkerhed ændres yderligere af en ikke-lineær eller mættet observationsmap.
+
+\subsection{Fremtidige input og manglende usikkerhedskilder}
+Hvis fremtidige input repræsenteres ved scenarier \(S\), skal en samlet forecastmodel vægte de betingede predictions med en erklæret lov for \(S\). Totalvariansformlen er
+\begin{equation}
+ \Var(D_t\mid\Yhist_\tau)
+ =\E_S[\Var(D_t\mid S,\Yhist_\tau)]
+  +\Var_S(\E[D_t\mid S,\Yhist_\tau]).
+ \label{eq:inputuncertainty}
+\end{equation}
+Ved faste input inkluderes det sidste led ikke. Hvis inputscenarier og parameter/state-estimater er afhængige, skal den afhængighed også respekteres; uafhængige vægte kan ikke bare antages.
+
+Et modelbaseret interval inkluderer heller ikke automatisk forkert baseline, en forkert responstype, forbrugerskift eller ukendt måleaggregation. Kalibrering skal derfor testes; et smalt interval er ikke i sig selv et godt resultat.
+
+\subsection{Ugeenergi og samtidige intervaludsagn}
+Marginalerne kan bruges til \(\E[\int D_t\dd t]=\int\E[D_t]\dd t\), under passende integrabilitet. Variansen af integralet kræver derimod tidskovarians:
+\begin{equation}
+ \Var\!\left(\int_\tau^{\tau+T}D_t\dd t\right)
+ =\int_\tau^{\tau+T}\int_\tau^{\tau+T}\Cov(D_s,D_t)\dd s\dd t.
+ \label{eq:energyvariance}
+\end{equation}
+Man må ikke summere timevarianser og kalde resultatet en korrekt varians for ugeenergi. Det kræver eksempelvis en accumulator-model eller passende path-simulation.
+
+Et 90-procents interval for hver time giver heller ikke en 90-procents garanti for, at \emph{hele} ugen ligger i alle intervallerne. Den sidste påstand er simultan og kræver fælles tidsinformation eller en særskilt konservativ konstruktion.
+
+\subsection{Den planlagte forecast-validering}
+Forecastvalideringen indarbejdes i A, E, H, I og J; der opfindes ikke en ekstra hovedfase uden for A--J. De ønskede horisonter er
+\begin{equation}
+ h\in\{1,6,12,24,48,72,168\}\ \text{timer}.
+ \label{eq:horizons}
+\end{equation}
+Vi adskiller kendte syntetiske input, historiske input anvendt som \emph{oracle}-diagnostik og operationelle inputforecasts bygget ved origin. En frozen-origin 168-timers prediction må ikke assimilere mellemliggende testmålinger. Ved en ny rolling origin må tidligere tilgængelige observationer bruges til et nyt forecast; det er et andet forsøg.
+
+Som minimum scores middelværdi, predictive observation-density og intervaldækning pr. horisont. PIT kan beregnes fra \eqref{eq:observationcdf} før assimilation. Baseline-only og en erklæret sæson-/ugegentagelsesreference inkluderes. Træningsskalering, modelvalg og tuning fryses før det endelige testforløb. Overlappende forecastorigins og observationer fra samme path er ikke uafhængige; usikkerhed om scores skal håndteres med uafhængige simulationer eller en passende tidsblok-protokol.
+
+\subsection{Implementeret lille I-baseline}
+Den første integration bruger det allerede anvendte F3-udviklingsrecord ID1326,
+FV401, tidsstep højst $1/768$ dag og Gauss3-likelihood. Den eksisterende rho-bank
+med 41 noder og diskret uniform prior assimilerer de samme 24 observationer som
+det kendte parameterfilter. MAP defineres ved største diskrete posteriorvægt;
+en eksakt lighed afgøres ved første node. Valget ledsages af den valgte nodes
+egen conditional state-posterior og $C=1/\rho_{\rm MAP}$.
+
+Origin er $\tau=1$ dag. Før filtrering fastlægges fremtidig $B=0.5$ og gentagelse
+af det syntetiske daglige prisprogram. Alle horisonter fra 1 til 168 timer
+udtages fra ét forward-forløb uden senere målinger; sidste tid er dag 8.
+Demand-momenter beregnes på FV-cellecentre, og observationsvariansen får
+det separate bidrag $\sigma_Y^2$. Tids-/rumdiagnoser ved $1/1536$ dag og
+801 celler bruger samme frosne origin med konservativ remap; det er ikke
+en ny kontrol af parameterbankens estimation eller empirical calibration.
+
+Eksisterende F3 optimerer to holdte priser over næste døgn fra to erklærede
+starter, under samme tracking-/terminal-/prisstraf. Neutral policy og begge
+frosne optimerede policies vurderes under hver belief; kendt reference bruger
+sin filtrerede state-lov, ikke sand state. Parameterusikkerhed er udeladt,
+og lokal optimizerkonvergens er ikke global optimalitet. Koden genbruger
+\texttt{BM1Parameters}, konservativ massetransfer og F3-evaluator. Denne
+udviklingsdemo dokumenterer integration, ikke parameter-recovery, population,
+operationel forecasting eller gennemført H-f/g. H1's kontinuerte monotone
+to-/fire-stykkers kurve-API er forberedt, men fælles kurvefit og selvstændig
+numerisk/statistisk validering mangler fortsat.
+
+\section{Overførsel af posterior og F3-handoff}
+\subsection{Konservativ overførsel mellem grids}
+Antag source-celler \(V_i\) med masser \(m_i\), og repræsentér density som konstant i hver source-celle. For target-celler \(W_j\) bliver
+\begin{equation}
+ \widetilde m_j=\sum_i m_i\frac{|V_i\cap W_j|}{|V_i|}.
+ \label{eq:remap}
+\end{equation}
+Er support den samme, summerer overlapbrøkerne til 1 for hver source-celle. Derfor er \(\sum_j\widetilde m_j=\sum_i m_i\) i eksakt aritmetik, og alle target-masser er ikke-negative. Den nye helper implementerer netop denne regel med et lineært sweep gennem to sorterede grids. Både uniforme og ikke-uniforme grids er understøttet.
+
+Løsningen er konservativ for den erklærede stykkevist konstante density, ikke nødvendigvis for den ukendte kontinuerte posterior. Et finere target-grid genskaber ikke subcelleinformation, som source-gridet har mistet. Supportændring afvises; der vælges ikke automatisk truncering, ekstrapolation eller halenormalisering.
+
+\subsection{Plug-in og fuld bankversion er forskellige}
+Et enkelt plug-in-estimat kan eksporteres til \texttt{BM1Parameters}. \(\sigma_Y\) hører til observationen og skal ikke indsættes som \(\sigma_X\) i denne kontrakt. Et internt konsistent første valg er en MAP-hypotese sammen med \emph{dens egen} conditional state-posterior. Vælges en parameter-middelværdi, som ikke er en hypotese, skal en conditional initialisering ved denne værdi beregnes ved replay eller beskrives som en yderligere approksimation.
+
+En mere trofast parameterusikker version bruger én fælles prisvektor \(\bm u\) og
+\begin{equation}
+ J(\bm u\mid\Yhist_\tau)\approx\sum_jw_\tau^{(j)}
+ J_j(\bm u\mid p_\tau^{+,j},\theta^{(j)}).
+ \label{eq:handoff}
+\end{equation}
+Hver \(J_j\) kan genbruge F3's evaluator. Gennemsnittet af separat optimerede prisvektorer løser ikke generelt dette problem. Under kandidatprisernes fremadrettede evaluering assimileres ingen ukendte fremtidige målinger.
+
+F4-0 tester kun, at den konservative remap kan levere en gyldig \texttt{initial\_mass\_builder} til det eksisterende F3-interface. Der er endnu ikke kørt et kontrolforsøg med estimerede parametre.
+
+\section{F4-A: forsøgsdesign og valideringsdefinitioner}
+\label{sec:f4a}
+Dette er det dokumenterede designcheckpoint fra F4-A; generator og filter udvikles
+efterfølgende. Modelparametrene er kendte i første state-forsøg. Kontroltarget og sand
+state er ikke estimatorinputs. Syntetisk truth bruges kun til scoring.
+
+\subsection{Referencecase og information}
+Tidsenheden er dage. Den låste kernecase er
+\[
+ T=[0,1],\quad B(t)=0.5,\quad f(x)=1-2x,\quad g(u)=1-2u,
+\]
+\[
+ C=1,\quad k=2,\quad\Xi=1,\quad\sigma_X=0.5,\quad X_0\sim\Beta(20,20).
+\]
+Prisen har edges \((0,1/3,2/3,1)\) og værdier \((0.65,0.35,0.65)\).
+Observationerne er punktmålinger ved \(t_k=k/24\), \(k=1,\ldots,24\), med
+\(\sigma_Y=0.03\). Der er ingen observation ved 0. Ved 8 og 16 timer bruges den
+nye højre-kontinuerte pris; state er kontinuert, demand kan hoppe.
+
+Seed-rødder 4101, 4102 og 4103 er reserveret til henholdsvis initialstate, Wiener-støj
+og målestøj. Uafhængige sekvenser får separate reproducerbare understrømme. Samme
+seed alene kobler ikke to EM-grids: coarse increments skal summeres fra fine increments.
+Truth-refinement starter ved \(h_{\max}=1/1152\) og \(1/2304\) dag uden randkorrektion.
+FV starter ved 201 celler og \(h_{\max}=1/192\); rumstudiet bruger 101/201/401/801 celler,
+tidsstudiet \(1/96,1/192,1/384\), én dimension ad gangen.
+
+\subsection{Hvorfor den skjulte state kan påvirke målingen}
+Ved den symmetriske baseline forsvinder knækket i demand-skalaen:
+\begin{equation}
+ D(x,u)=\frac12+\frac\Xi2\tanh(k(1-x-u)),\qquad
+ H(x,u)=\partial_x D=-\frac{\Xi k}{2}\operatorname{sech}^2(k(1-x-u)).
+ \label{eq:f4a_demand}
+\end{equation}
+For \(\Xi,k>0\) er map'et strengt faldende; i mætning kan hældningen dog være meget
+lille. Støjfri inversion giver
+\begin{equation}
+ x=1-u-\frac1k\operatorname{artanh}\!\left(\frac{2(y-1/2)}\Xi\right).
+ \label{eq:f4a_inverse}
+\end{equation}
+Argumentet skal ligge i \((-1,1)\), og for en fysisk state skal \(y\) også ligge i
+\([D(1,u),D(0,u)]\). Noisy observationer udenfor håndteres med likelihood, ikke clipping
+eller direkte inversion. Inversionen er en analytisk kontrol, ikke filteralgoritmen.
+
+Ved \(x=0.5\) giver \(u=0.65/0.35\) demand \(0.354344/0.645656\) og
+\(H\approx-0.915137\). Priorens standardafvigelse er \(\sqrt{1/164}\approx0.07809\);
+lokal måleækvivalent state-støj er \(\sigma_Y/|H|\approx0.03278\).
+Det begrunder en informativ første case uden meget skarp målestøj. Den skarpere
+\(\sigma_Y=0.01\)-case beholdes som repræsentationsstress. Senere skal \(B\ne0.5\),
+interior-Xi, varieret pris og konstant-pris-kontrol undersøges. Konstant pris er ikke
+ensbetydende med manglende state-information.
+
+\subsection{Parameterbankens første støtte}
+Første forslag til E/F er \(\rho_j=0.5+0.025j\), j=0,...,40, i dag\(^{-1}\),
+med vægte \(1/41\). Sand \(\rho=1\) ligger på griddet. Valget af \(\rho=1/C\)
+er numerisk begrundet, men gør ikke likelihood konveks \cite{alba}.
+F4-E skal vurdere identifikationen før banken bruges til en recovery-claim.
+
+\textbf{Præcisering ved konsolideringen:} Den tidligere alarmgrænse på 5\% samlet
+vægt på de to randnoder udløser et supportstudie; den er ikke bevis på utilstrækkelig
+støtte. Omvendt certificerer lav randvægt heller ikke en god støtte. En bredere bank
+kræver eksplicit ny prior og fuldt replay. Støtteudvidelse og ændring af diskret
+opløsning skal fortolkes særskilt.
+
+\subsection{Hvad RMSE og kalibrering sammenligner}
+For sekvens r og måletid k betegnes åbent propagationsmiddel uden observationer med
+\(\mu^0_{r,k}\), predictive middel med tidligere data med \(\mu^-_{r,k}\), og
+posterior efter målingen med \(\mu^+_{r,k}\). Definér
+\[
+ \operatorname{RMSE}_{s}=\sqrt{\frac1{24R}\sum_{r=1}^{R}\sum_{k=1}^{24}
+ (\mu^s_{r,k}-X^{true}_{r,k})^2},\qquad s\in\{0,-,+\}.
+\]
+F4-A's 5\%-mål specificeres som \(\operatorname{RMSE}_+\leq0.95\operatorname{RMSE}_0\),
+med mindst 200 uafhængige sekvenser. Det er et empirisk benchmarkmål, ikke en
+matematisk garanti eller en unit-test som skal bestås for enhver seed. Paired
+usikkerhed beregnes på hele sekvenser; timer på samme path er ikke uafhængige.
+\(\operatorname{RMSE}_-\) rapporteres separat, så værdien af den nye måling kan ses.
+
+Ved 6/12/24 timer måles marginal 90\%-intervaldækning på tværs af sekvenser og
+rapporteres med Wilson 95\%-usikkerhed. Predictive log score af Y måles før
+assimilation og sammenlignes med samme prior propageret uden målinger. En forbedret
+posteriorfejl alene er ikke dokumentation af god forecasting.
+
+Massefejl højst \(10^{-10}\), ingen skjult repair og direkte diskret Bayes-reference
+med \(L^1\leq10^{-12}\) er separate correctness-kontroller. Numerisk refinement skal
+være mindre end 10\% af assimilationseffekten på samme metrik; nær nul effekt kræver
+absolut fejlrapportering. Empiriske mål ændres ikke stiltiende efter resultater.
+
+\subsection{Forecast og historiske adgangsbetingelser}
+Origin er \(\tau=1\) dag efter 24 målinger; horisonterne er
+1/6/12/24/48/72/168 timer. Ingen senere målinger bruges i et fixed-origin forecast.
+Konkrete fremtidige B/U-forløb skal erklæres før forsøget; de er endnu ikke valgt.
+Kendte syntetiske inputs isolerer betinget prediction fra et operationelt
+baseline-/prisforecast. De øvrige forecastforbehold følger foregående afsnit.
+
+Historiske målinger kræver afklaring af punkt/average/energi, population/kolonner,
+forbrugertarif kontra spotpris, train-only skalering, missing-data-politik og DST.
+Disse mangler begrænser real-data-claims, ikke den syntetiske algoritmeleverance.
+
+\section{F4-B: syntetisk truth og observationer}
+\label{sec:f4b}
+F4-B implementerer kun datagenereringen til den låste F4-A-case. Den rekursive
+estimator starter først i F4-C. Formålet er at have en reproducerbar sand state-path,
+en separat observerbar datastrøm og numeriske diagnostics uden at ændre BM1-SDE'en.
+
+\subsection{Fra SDE-path til observationer}
+Truth-pathen genereres med den eksisterende Euler--Maruyama-metode,
+\begin{equation}
+ X_{n+1}=X_n+a(t_n,X_n)h_n+b(X_n)\Delta W_n,\qquad
+ \Delta W_n\sim\Normal(0,h_n),
+ \label{eq:f4b_em}
+\end{equation}
+med \texttt{boundary='none'}. Der foretages altså ingen refleksion eller clipping af
+synthetic truth. EM-gridet indeholder både de 24 observationstidspunkter og
+prisbreakpoints ved \(1/3\) og \(2/3\) dag. Efter propagation evalueres latent demand
+på outputgridet med den samme BM1-model,
+\begin{equation}
+ D_k^{\rm true}=D(X_{t_k}^{\rm true},U(t_k),B(t_k)).
+ \label{eq:f4b_demand}
+\end{equation}
+Observationen dannes først derefter:
+\begin{equation}
+ Y_k=D_k^{\rm true}+\varepsilon_k,\qquad
+ \varepsilon_k\overset{\rm iid}{\sim}\Normal(0,\sigma_Y^2).
+ \label{eq:f4b_observation}
+\end{equation}
+Dermed er processtøj og målefejl forskellige stokastiske kilder. Synthetic truth
+gemmes i et særskilt resultatobjekt til scoring. Estimatorens offentlige måleinput er
+fortsat kun \texttt{BM1ObservationSeries}; truth er ikke et felt i den klasse.
+
+\subsection{Reproducerbare, adskilte RNG-strømme}
+De tre F4-A-seed-rødder \(4101,4102,4103\) bruges til henholdsvis \(X_0\),
+Wiener-increments og målefejl. For sekvens-id \(r\) afledes hver strøm deterministisk
+fra parret \((s_{\rm root},r)\). Derfor ændres sekvens \(r\) ikke, hvis andre sekvens-id'er
+genereres før eller efter den. Samtidig kan én støjkilde ændres uden at flytte de andre:
+ændret måleseed ændrer ikke truth-pathen, og ændret Brownian-seed ændrer ikke
+measurement-noise.
+
+Dette er et reproduktionsvalg, ikke en antagelse om fysisk uafhængighed ud over den
+syntetiske observationsmodel. Ved \(\sigma_X=0\) skal truth-pathen være uafhængig af
+Brownian-strømmen; det bruges som en direkte regressionstest.
+
+\subsection{Koblet EM-refinement}
+Base-truth bruger \(h_{\max}=1/1152\) dag og den finere kontrol \(1/2304\) dag.
+Refinementen genererer først fine increments og definerer de grove ved
+\begin{equation}
+ \Delta W_j^{\rm coarse}
+ =\Delta W_{2j}^{\rm fine}+\Delta W_{2j+1}^{\rm fine}.
+ \label{eq:f4b_coupling}
+\end{equation}
+Begge runs bruger samme initialdraw og samme \(\varepsilon_k\). Forskellen mellem
+coarse og fine demand skyldes dermed EM-diskretiseringen af den samme Brownian-path,
+ikke nye random draws. Koden kræver eksplicit, at de erklærede grids er nestede.
+
+EM-diagnostics rapporterer blandt andet faktisk antal trin, rå forslag uden for
+\([0,1]\) og antal boundary-corrections. I F4-B skal \texttt{boundary\_corrections}=0.
+Hvis den deklarerede truth-kørsel forlader modeldomænet, må den ikke gøres ``gyldig''
+ved at ændre pathen; numerikken skal undersøges og et finere, deklareret forsøg køres.
+
+\subsection{Pris ved måletid og dataadskillelse}
+\texttt{input\_builder.price\_intervals} er højre-kontinuert. Derfor bruger
+observationerne ved 8 og 16 timer den nye pris, præcis som låst i F4-A. Der er fortsat
+ingen observation ved \(t=0\), så \(\Beta(20,20)\)-drawet er en prior/truth-initialisering
+og ikke en skjult brug af den første måling.
+
+F4-B's CLI skriver intet som standard. \texttt{estimate synthetic} viser kun et kort
+sanity-report; \texttt{--refine} kører det koblede par, og \texttt{--save} gemmer
+eksplicit JSON under den ignorerede run-mappe. Dette er reproduktionsmetadata, ikke
+et filterresultat eller en parameterfit.
+
+\section{F4-C: rekursivt FV-state-filter med kendte parametre}
+\label{sec:f4c}
+F4-C kombinerer nu de to dele, der allerede var adskilt i F4-0: konservativ
+Fokker--Planck prediction og Bayes-opdatering. Parametrene er fortsat kendte;
+der indgår ingen parameterbank og ingen mixture-projektion i dette trin.
+
+\subsection{Ét rekursivt filtertrin}
+Lad \(m_{k-1}^+\) være posterior cellemasse efter den foregående måling.
+Det næste trin består af
+\begin{align}
+ m_k^- &= \mathcal P_{t_{k-1}\to t_k}(m_{k-1}^+),\\
+ \ell_{k,i} &= \log L_k(x_i),\\
+ m_k^+ &\propto m_{k,i}^-\exp(\ell_{k,i}),
+\end{align}
+hvor \(\mathcal P\) er den eksisterende konservative FV-propagator. Den nye
+filterkerne starter altså hvert interval i den seneste posterior og nulstiller
+ikke til den oprindelige prior.
+
+Ved manglende observation udføres kun prediction,
+\begin{equation}
+ m_k^+=m_k^-.
+\end{equation}
+Der opfindes ikke en måleværdi eller et likelihoodbidrag. I resultatobjektet
+markeres log-evidence derfor som manglende for dette tidspunkt.
+
+\subsection{Pris ved observationskanten}
+State-propagationen frem til et prisspring bruger dynamikken umiddelbart før
+springet. Selve punkt-likelihooden ved \(t_k\) bruger derimod observationskontraktens
+\texttt{price\_side}. For F4-A/B-casen er den højre-kontinuert, så målingen ved
+8 og 16 timer ser den nye pris. En eventuel venstre-konvention evaluerer kun
+prissignalet i venstre grænse; baseline evalueres fortsat ved det faktiske
+observationstidspunkt.
+
+\subsection{Measurement-quadrature er separat fra FV-gridet}
+Standardopdateringen bruger center-likelihooden fra \eqref{eq:discretebayes}.
+For at kunne undersøge denne approksimation uden at ændre FP-propagationen kan
+hver celles gennemsnitlige likelihood også approksimeres med Gauss--Legendre:
+\begin{equation}
+ \overline L_i=\frac1{\Delta x}\int_{V_i}L_k(x)\dd x
+ \approx \frac12\sum_{r=1}^{q}w_rL_k\!\left(x_i+\frac{\Delta x}{2}\xi_r\right).
+\end{equation}
+Bayes-update bruger da \(m_i^-\overline L_i\). \(q=1\) er den oprindelige
+center-evaluering. Dette ændrer observationens rumlige quadrature, ikke state-grid,
+FP-tidstrin eller den underliggende observationsmodel.
+
+\subsection{Streaming, replay og nulobservationskontrol}
+Den samme rene one-step-kerne bruges både ved sekventiel streaming og ved replay
+af en hel \texttt{BM1ObservationSeries}. Replay gemmer prediction \(m_k^-\),
+posterior \(m_k^+\), log-evidence og den faktiske interne FV-tidsgrid.
+
+En særlig nulobservationskontrol bruger de samme måletider som outputtider, men
+markerer alle observationer som manglende. Resultatet skal være identisk med direkte
+Fokker--Planck-propagation på den samme faktiske integrationsgrid. Denne kontrol
+skelner filterlogik fra ændringer, som alene skyldes et andet output-/time-grid.
+
+\subsection{Låst refinement før populationsstudiet}
+Efter den lokale sequence-0 sanity ændres én numerisk dimension ad gangen på præcis
+samme syntetiske datasæt. Rumrækken er
+\[
+ N_x\in\{101,201,401,801\},\qquad h_{\max}=1/192,\qquad q=1.
+\]
+Tidsrækken er
+\[
+ h_{\max}\in\{1/96,1/192,1/384\}\ \text{dag},\qquad N_x=201,\qquad q=1,
+\]
+og observationsquadraturen er
+\[
+ q\in\{1,3,5\},\qquad N_x=201,\qquad h_{\max}=1/192.
+\]
+Det sidste niveau i hver række bruges kun som numerisk reference for den akse; det er
+ikke en påstand om eksakt løsning. Vi rapporterer \(\operatorname{RMSE}_0\),
+\(\operatorname{RMSE}_-\), \(\operatorname{RMSE}_+\), samlet predictive
+log-likelihood, faktisk antal FV-trin, faktisk største trin, massefejl og minimum
+cellemasse. Den største ændring i posterior-RMSE mod aksens fineste niveau sammenholdes
+med reference-run'ets assimilationseffekt \(\operatorname{RMSE}_0-\operatorname{RMSE}_+\).
+Hvis assimilationseffekten er nær nul, bruges den absolutte refinementfejl i stedet
+for en ustabil ratio.
+
+Core-filterets correctness-tests og én-sekvens-refinement er stadig ikke den statistiske
+afslutning. Først derefter køres mindst 200 uafhængige sekvenser med de præregistrerede
+\(\operatorname{RMSE}_0,\operatorname{RMSE}_-,\operatorname{RMSE}_+\), marginal
+90\%-dækning ved 6/12/24 timer og predictive log score før assimilation.
+
+\subsection{C3-resultat og C4-preregistrering}
+På sequence 0 med den låste refinementplan gav rumrækken en maksimal ændring i
+posterior-RMSE på \(1.152522\times10^{-4}\), tidsrækken
+\(1.768636\times10^{-5}\), og measurement-quadraturen
+\(3.073403\times10^{-6}\), målt mod det fineste niveau i hver række. Relative
+til samme referencekørsels assimilationseffekt er forholdene henholdsvis cirka
+\(0.0038\), \(0.0006\) og \(0.0001\), altså alle langt under 10\%-arbejdsgaten.
+Gauss--Legendre \(q=3\) og \(q=5\) gav samme viste RMSE og log-likelihood.
+Den største ændring i samlet predictive log-likelihood var derimod cirka
+\(0.0483\) under FV-tidsrefinement. Det ændrer ikke C's state-RMSE-konklusion,
+men senere parameter-likelihoodstudier skal derfor genundersøge evidence-numerikken
+på deres egen skala og recordlængde.
+
+Populationsstudiet låses før resultaterne til 200 nye, uafhængige sekvenser med
+sequence-id 1--200. Sequence 0 udelades, fordi den allerede er brugt til sanity og
+refinement. Numerikken holdes på det tidligere baselinevalg
+\[
+ N_x=201,\qquad h_{\max}=1/192\ \text{dag},\qquad q=1.
+\]
+Det primære benchmark er fortsat
+\[
+ \operatorname{RMSE}_+\leq0.95\operatorname{RMSE}_0
+\]
+beregnet over alle 24 observationstider og alle sekvenser. Der rapporteres også
+\(\operatorname{RMSE}_-\). Usikkerheden på RMSE-ratioerne beregnes med paired
+nonparametrisk bootstrap, hvor hele sekvenser resamples som enheder; 5000
+replikater og fast bootstrap-seed 4201 bruges. Dermed behandles de 24 tider i
+samme sekvens ikke som 24 uafhængige observationer.
+
+Predictive log score for \(Y_k\) beregnes før assimilation fra \(p_k^-\). Som
+baseline scores den samme faktiske \(Y_k\) mod open-propagation state-law uden at
+Bayes-posterioren føres videre. Første observation skal derfor have identisk
+filter- og open-score, fordi ingen tidligere måling findes.
+
+Kalibrering rapporteres som centrale 90\%-posteriorintervaller for state ved
+6, 12 og 24 timer. Kvantiler beregnes inde i FV-cellerne under den
+piecewise-konstante density, ikke ved at snap'e til cellecentre. På hvert tidspunkt
+er de 200 sekvenser observationsenheden; coverage ledsages af Wilson 95\%-interval
+og gennemsnitlig intervalbredde. Hvis en synthetic truth-sekvens har rå
+Euler--Maruyama-randoverskridelser, stoppes populationsstudiet eksplicit; sådanne
+sekvenser må ikke droppes, clippes eller reflekteres i stilhed.
+
+\subsection{C4-populationsresultat og kalibreringsdiagnostik}
+Det preregistrerede studie blev kørt på sequence-id 1--200 med
+\(N_x=201\), \(h_{\max}=1/192\) dag og \(q=1\). Resultatet var
+\begin{align}
+ \operatorname{RMSE}_0 &= 8.713209\times10^{-2},\\
+ \operatorname{RMSE}_- &= 3.663522\times10^{-2},\\
+ \operatorname{RMSE}_+ &= 2.419590\times10^{-2}.
+\end{align}
+Ratioerne blev
+\[
+ \operatorname{RMSE}_-/\operatorname{RMSE}_0=0.420456,\qquad
+ \operatorname{RMSE}_+/\operatorname{RMSE}_0=0.277692,
+\]
+med paired bootstrap-95\%-intervaller henholdsvis
+\([0.395617,0.447835]\) og \([0.258974,0.298796]\). Det låste
+5\%-benchmark \(\operatorname{RMSE}_+\leq0.95\operatorname{RMSE}_0\)
+er dermed klart opfyldt.
+
+Den predictive Y-log score før assimilation var i gennemsnit 1.701590 pr.
+observation for filteret og 1.042833 for open propagation. Den paired forbedring
+var 0.658757 med bootstrap-95\% \([0.603060,0.722258]\). Ved første observation
+var forskellen numerisk nul, som krævet, fordi ingen tidligere observation findes.
+
+De centrale 90\%-posteriorintervaller gav coverage
+\[
+ 0.88\ (6\text{h}),\qquad 0.84\ (12\text{h}),\qquad 0.90\ (24\text{h}).
+\]
+Wilson-95\%-intervallerne var henholdsvis \([0.828,0.918]\),
+\([0.783,0.884]\) og \([0.851,0.934]\). Det nominelle 0.90-niveau ligger derfor
+ikke i 12h-intervallet. Resultatet viser god point-estimation og predictive score,
+men midt-dagskalibreringen må ikke beskrives som fuldt valideret.
+
+Ingen af de 200 truth-sekvenser havde rå EM-randoverskridelser. Open-propagationen
+havde maksimal massefejl \(3.109\times10^{-15}\) og positiv minimum cellemasse.
+
+Efter dette resultat fastlægges en særskilt post-hoc årsagsdiagnostik, som ikke
+ændrer det primære C4-resultat: de samme sequence-id 1--200 køres med én numerisk
+ændring ad gangen, nemlig 401 celler, \(h_{\max}=1/384\) dag og
+measurement-quadrature \(q=3\). For hver variant rapporteres coverage og
+intervalbredde ved 6/12/24h samt posterior-mean RMSE divideret med root-mean
+posterior-variance. Hvis undercoverage er næsten uændret, er det evidens imod, at
+den primært skyldes den valgte C-baseline-numerik; det er ikke i sig selv bevis
+for, hvilken anden mekanisme der forklarer afvigelsen.
+
+\subsection{C4 numerisk kalibreringssensitivitet}
+Den post-hoc one-at-a-time-diagnostik på de samme 200 sekvenser gav ved 12 timer
+coverage 0.840 for både baseline, 401 celler og \(h_{\max}=1/384\), mens
+\(q=3\) gav 0.845. De gennemsnitlige 90\%-intervalbredder ved 12 timer var
+henholdsvis 0.079831, 0.079367, 0.079838 og 0.079878. Resultatet flytter derfor
+ikke undercoverage væsentligt.
+
+Som ekstra skala-check sammenlignes posterior-mean RMSE med
+\(\sqrt{\E[\Var(X\mid Y)]}\). Ved 12 timer lå forholdet mellem cirka 1.068
+og 1.075 på tværs af varianterne, mens 6 og 24 timer lå tættere på 1.02.
+Det er konsistent med en lokal tendens til for lille posterior-usikkerhed eller
+en lille model/approksimationsmismatch omkring 12 timer, men diagnosticerer ikke
+årsagen alene. Da rum-, tids- og measurement-quadrature-refinement næsten ikke
+ændrer resultatet, peger evidensen imod disse tre C-baselinevalg som hovedforklaring.
+
+Den koblede truth-refinement gav ved 12 timer coverage 0.840 på
+\(1/1152\)-dags truth-grid og 0.845 på \(1/2304\)-dags truth-grid. Ved 6 og
+24 timer var coverage uændret henholdsvis 0.880 og 0.900. Ved 12 timer var
+RMSE/posterior-sd fortsat 1.068, og den gennemsnitlige intervalbredde var 0.079831
+for begge truth-opløsninger til seks decimaler. Over alle 24 observationstider og
+200 sekvenser var RMS coarse--fine state-forskel \(8.250\times10^{-5}\), mens den
+maksimale state-forskel var \(4.698\times10^{-4}\). Ingen af truth-parrene havde
+rå randoverskridelser. Halvering af truth-EM-trinnet flytter altså ikke
+kalibreringsresultatet materielt og er ikke en plausibel hovedforklaring på
+12h-undercoverage.
+
+\subsection{Uafhængig C4-replikation}
+Efter diagnostics blev en separat replikation fastlagt på de hidtil usete
+sequence-id 201--1000, altså \(n=800\), med uændret baseline
+\[
+ N_x=201,\qquad h_{\max}=1/192\ \text{dag},\qquad q=1.
+\]
+De 800 sekvenser blev ikke pool'et med de oprindelige 200 for at omskrive det
+preregistrerede primærresultat.
+
+Replikationen gav
+\begin{align}
+ \operatorname{RMSE}_0 &= 8.620058\times10^{-2},\\
+ \operatorname{RMSE}_- &= 3.654449\times10^{-2},\\
+ \operatorname{RMSE}_+ &= 2.380883\times10^{-2}.
+\end{align}
+Ratioerne var
+\[
+ \operatorname{RMSE}_-/\operatorname{RMSE}_0=0.423947,\qquad
+ \operatorname{RMSE}_+/\operatorname{RMSE}_0=0.276203,
+\]
+med paired bootstrap-95\%-intervaller henholdsvis
+\([0.412194,0.436405]\) og \([0.266837,0.285985]\). Det oprindelige
+point-estimationsresultat replikeres dermed meget tæt.
+
+Den predictive Y-log score før assimilation var 1.717197 pr. observation for
+filteret og 1.071019 for open propagation. Den paired forbedring var 0.646178
+med bootstrap-95\% \([0.618174,0.675050]\). Første observation havde igen
+præcis samme score i filter og baseline, som den kausale kontrakt kræver.
+
+De centrale 90\%-posteriorintervaller gav i replikationen coverage
+\[
+ 0.916\ (6\text{h}),\qquad 0.921\ (12\text{h}),\qquad 0.919\ (24\text{h}),
+\]
+med Wilson-95\%-intervaller \([0.895,0.934]\), \([0.901,0.938]\) og
+\([0.898,0.936]\). Det oprindelige 12h-undercoverage på 0.840 blev altså ikke
+replikeret; replikationen ligger tværtimod let over det nominelle niveau.
+Det første 200-sekvens-resultat bevares som observeret og må ikke skjules, men
+den større uafhængige replikation giver ikke evidens for en vedvarende lokal
+12h-undercoverage.
+
+Ingen af replikationens 800 truth-sekvenser havde rå EM-randoverskridelser.
+Open propagation havde maksimal massefejl \(3.109\times10^{-15}\).
+
+\subsection{F4-C-konklusion}
+Det kendt-parameter rekursive FV-filter opfylder det låste state-RMSE-benchmark
+med stor margin i både primærstudie og uafhængig replikation, og predictive
+Y-log score forbedres tydeligt mod open propagation. Rum-, FV-tids-,
+measurement-quadrature- og truth-EM-refinement er små i forhold til
+assimilationseffekten. Den større replikation giver marginal 90\%-coverage tæt
+på det nominelle niveau ved 6/12/24 timer, men det første 200-sekvens-studie
+havde en ikke-replikeret 12h-afvigelse. Derfor beskrives uncertainty calibration
+som rimelig i den kontrollerede synthetic case, ikke som perfekt eller generelt
+valideret. F4-C estimerer kun state ved kendte parametre; mixture-filtering og
+parameterestimation hører fortsat til de senere F4-trin.
+
+\section{F4-D: statisk basisvalg før dynamisk mixture-filter}
+\label{sec:f4d_static}
+
+Mixture-referencen bruger faste basisfunktioner med ikke-negative koefficienter på
+simplexen. Det bevarer en probabilistisk fortolkning i den valgte approximation,
+men garanterer ikke, at approximationfamilien kan repræsentere en given posterior.
+Referencearbejdet fremhæver fixed bases, simplex-constrained projektion og finite
+volume som benchmark \cite{nielsen}. F4-D adskiller derfor først
+\emph{repræsentationsfejl} fra dynamisk filterfejl.
+
+\subsection{Låst statisk target-suite}
+D1 køres på et uniformt grid med 801 celler. Følgende seks targets er fastlagt
+før resultaterne:
+\begin{align}
+ r_{\rm broad} &= \Beta(4,4),\\
+ r_{\rm narrow} &= \Beta(900,900),\\
+ r_{\rm shift} &= \Beta(296,504),\\
+ r_{\rm bi} &= \tfrac12\Beta(33.6,86.4)+\tfrac12\Beta(86.4,33.6),\\
+ r_{\rm left} &= \Beta(1.5,73.5),\\
+ r_{\rm right} &= \Beta(73.5,1.5).
+\end{align}
+De tester henholdsvis bred centerfordeling, meget smal centerfordeling,
+forskudt smal fordeling, bimodalitet og begge randnære retninger. Target-suiten
+er ikke et fit til sequence 0 og vælges derfor før de dynamiske F4-C snapshots
+undersøges.
+
+\subsection{Nestede kandidatordbøger}
+En komponent parameteriseres med mean \(\mu\) og concentration \(\kappa\):
+\[
+ a=\kappa\mu,\qquad b=\kappa(1-\mu).
+\]
+Den indre mean-grid er
+\[
+ \mathcal M=\{0.05,0.10,\ldots,0.95\}.
+\]
+Fire på forhånd definerede kandidater er
+\begin{align}
+ \mathcal D_2 &: \mathcal M\times\{20,100\},\\
+ \mathcal D_3 &: \mathcal M\times\{20,100,500\},\\
+ \mathcal D_4 &: \mathcal M\times\{20,100,500,2500\},\\
+ \mathcal D_{4b} &: (\mathcal M\cup\{0.01,0.025,0.975,0.99\})
+                    \times\{20,100,500,2500\}.
+\end{align}
+De har henholdsvis 38, 57, 76 og 92 komponenter. Grad 30 og 38 i den
+eksisterende Bernstein-familie er referencepunkter, ikke kandidater til det
+nye basisvalg. Celleintegrationen bruger \eqref{eq:integratedbasis}; ingen
+post-hoc normalisering tilføjes.
+
+\subsection{Metrikker og valg før resultater}
+For target cell masses \(m\) og projected masses \(\hat m\) rapporteres mindst
+\[
+ \|m-\hat m\|_1,\qquad
+ \sup_i|F_i-\hat F_i|,\qquad
+ W_1(m,\hat m),
+\]
+samt density-\(L^2\), mean-/variancefejl og QP-optimalitetsgap. Matrix- og
+Hessian-conditioning, antal aktive koefficienter og fallback-status rapporteres
+separat, fordi et lille gap kun viser at det valgte QP er løst.
+
+En multiscale-kandidat er numerisk acceptabel hvis alle seks fits har
+\[
+ {\rm gap}\le10^{-9},\qquad
+ |\text{mass error}|\le10^{-9},
+\]
+og ingen fallback. Repræsentationsgaten er
+\[
+ \max_{\rm targets}\|m-\hat m\|_1\le0.05,\qquad
+ \max_{\rm targets}W_1\le0.01.
+\]
+Blandt kandidater der opfylder begge vælges den med færrest komponenter.
+Condition number over \(10^{12}\) udløser en alarm og skal undersøges; det er
+ikke en grund til at skjule et fit. Hvis ingen kandidat opfylder de fastlagte
+krav, konkluderes "ingen basis valgt" og en ny ordbogsfamilie skal erklæres
+før næste studie.
+
+
+
+\subsection{D1b og D1c: design og fravalg}
+D1 valgte ingen dictionary: legacy grad 30 gav worst-case cellemasse-\(L^1=1.491\)
+og \(W_1=0.0606\); multiscale-2 gav 1.201/0.0304 og multiscale-3/4 cirka
+0.715/0.0300. Randtargets dominerede de sidste. Boundary-enrichment havde desuden
+optimality-failures. Det var ikke evidens for en bestået basis.
+
+D1b og D1c er efterfølgende \emph{dictionary engineering}, ikke nye uafhængige tests:
+de genbruger de seks targets. Det brede lag er i begge tilfælde
+\(\kappa=20,\;\mu=0.1,0.2,\ldots,0.9\), og mediumlaget er
+\(\kappa=100,\;\mu=0.025,0.05,\ldots,0.975\) samt 0.02 og 0.98.
+De resterende komponenter er:
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Kandidat & Høje koncentrationer & Mean-grid på $[0.1,0.9]$ & Antal \\
+\midrule
+Adaptive A & $500,2000$ & spacing $0.025$ & 116 \\
+Adaptive B & $500,2000$ & spacing $0.0125$ & 180 \\
+Shape C & $800,2000$ & spacing $0.025$ & 120 \\
+Shape D & $800,2000$ & spacing $0.0125$ & 184 \\
+\bottomrule
+\end{tabular}
+\end{center}
+Shape C/D tilføjer desuden \(\kappa=50\) ved means 0.02, 0.05, 0.95 og 0.98.
+Det bracketter randtargetens koncentration 75 uden at indsætte den præcise target.
+I hvert design vælges den mindste bestående kandidat. Gates for L1, W1, gap og masse
+fra D1 bevares. Fra D1b er en fallback ikke automatisk diskvalificerende: den løser
+samme konvekse problem, skal rapporteres og skal bestå feasibility/optimality-kontrollen.
+D1's oprindelige regel og resultat omskrives ikke.
+
+Adaptive A/B gav begge max L1=0.1408 og W1 cirka 0.00968; L1-gaten fejlede.
+Matrix-conditioning var henholdsvis \(8.18\times10^{13}\) og
+\(1.64\times10^{14}\); finere interior-means løste ikke boundary-formfejlen.
+Shape C gav max L1=0.08170, W1=\(7.418\times10^{-4}\), gap
+\(5.24\times10^{-12}\), ingen fallback og cond(A)=\(8.98\times10^{13}\).
+Shape D gav max L1=0.03804, W1=\(2.602\times10^{-4}\), gap
+\(9.89\times10^{-12}\), ingen fallback og cond(A)=\(1.665\times10^{14}\).
+Derfor blev \texttt{shape\_D} frosset før D2. Conditioning-alarmen er ikke ophævet.
+
+\subsection{D2: holdout af FV-predictions og posteriors}
+D2 bruger de tidligere ubrugte ID 1001--1010, \(N_x=801\),
+\(h_{\max}=1/192\) dag, observation-q=1, og den frosne shape-D.
+Ved alle 24 måletider projekteres FV-prediction og FV-posterior separat, i alt 240 af
+hver. Truth-state bruges ikke til basisvurderingen. For begge typer kræves max L1
+\(\le0.05\), W1 \(\le0.01\), gap og massefejl \(\le10^{-9}\), ingen failed projection;
+valideret fallback rapporteres. Fejlet holdout må ikke bruges til retuning.
+
+Holdout bestod: prediction/posterior max L1 var
+\(3.13\times10^{-6}/1.10\times10^{-5}\), W1
+\(1.24\times10^{-8}/5.08\times10^{-8}\), gap omkring \(10^{-11}\) og massefejl
+højst \(1.22\times10^{-15}\); ingen fallback eller invalid truth. Evidence fra
+statisk projiceret prediction blev beregnet med samme observationsoperator som FV:
+mean absolut log-fejl var \(7.69\times10^{-10}\)/obs, max
+\(1.63\times10^{-8}\), og max absolut dagssumsforskel \(3.30\times10^{-8}\).
+Disse evidence-tal var diagnostik, ikke en ekstra post-hoc selection gate.
+
+\subsection{Selvstændig rekursion og solver-korrekthed}
+Det dynamiske filter må ikke starte hvert interval fra FV. Med fast basis sættes
+\[
+ p_{k-1}^{+,M}(x)=\sum_j c_{k-1,j}^{+}\phi_j(x).
+\]
+Den eksisterende explicit mixture/FP-kerne propagerer denne law og projekterer ved de
+interne trin. Fra dens egen prediction beregnes \emph{før} posteriorprojektionen
+\[
+ z_k^M=\int L_k(x)p_k^{-,M}(x)\dd x,\qquad
+ \widetilde p_k^{+,M}=\frac{L_kp_k^{-,M}}{z_k^M},\qquad
+ p_k^{+,M}=\Pi_{\mathcal D}(\widetilde p_k^{+,M}).
+\]
+Kun sidste mixture-posterior må levere næste prior; FV er ekstern reference.
+Missing observation er prediction-only. Initial Beta(20,20) projekteres én gang.
+Static best-fit FV\(\to\)mixture, dynamic mixture\(\to\)best-fit og total
+mixture\(\to\)FV rapporteres særskilt; normerne er ikke en eksakt additiv dekomposition.
+
+De første D3a-kørsler fandt konkrete active-set-fejl, ikke et nyt matematisk objective.
+En absolut tolerance på blocking-ratios kunne nulstille positiv ikke-blocking masse;
+en direction-threshold kunne kassere nødvendige små skridt; små positive koefficienter
+blev behandlet som inaktive. Rettelsen bruger
+\[
+ \alpha=\min\!\left(1,\min_{d_j<0}\frac{-c_j}{d_j}\right)
+\]
+og aktiverer kun faktiske blockers. Alle strengt positive koefficienter kan bevæge sig.
+Ingen ridge, clipping, renormalisering, target-repair eller tolerancelempelse anvendes.
+Backend-retry af samme QP erstatter ikke den uafhængige feasibility/gap-kontrol.
+
+\subsection{D3a--c: sanity og numerisk refinement}
+D3a's fastlagte case er ID0, 101 celler, CFL=0.4, \(h_{\max}=1/384\) dag, q=1.
+Efter solverrettelsen gennemførte den 456 interne steps uden fallback. Initial L1 var
+\(9.61\times10^{-11}\), static posterior-L1 højst \(3.48\times10^{-7}\), mens
+dynamic prediction/posterior-L1 var 0.01659/0.02026 med W1 omkring
+\(4.7\times10^{-4}\). Total FV-gap var næsten det samme som dynamic gap.
+Mean absolut log-evidence-fejl var 0.00509/obs, max 0.0148 og absolut dagssum 0.0351.
+FV/mixture posterior-RMSE var 0.021689/0.021671; den lille forskel er ikke evidens
+for forbedring. Massefejl var omkring \(2\times10^{-15}\), og Bayes-til-projected
+posterior-L1 højst \(1.15\times10^{-6}\).
+
+D3b låste tidsaksen til 101 celler og \(h=1/384,1/768,1/1536\), samt spatialaksen
+til 51/101/151 celler ved fælles \(h=1/1536\); CFL=0.4 og q=1 var uændrede.
+Gaten krævede max coarse-to-fine-ændring relativt til fineste discrepancy \(\le10\%\)
+for total posterior-L1 og mean absolut evidence-fejl. Den fejlede: tidsfejlene var
+\(0.02026,0.01091,0.005459\) og \(0.005089,0.002749,0.001379\), med ratios
+2.71/2.69. Spatial posterior-L1 var 0.004747/0.005459/0.005567 og ratio14.7\%.
+D3b-resultatet bevares. Når \(E(h)\simeq Ch\), er denne relative gate ikke en egnet
+test af konvergens mod nul: halvering af fejl gør ikke den relative coarse/fine-forskel lille.
+
+D3c blev derfor fastlagt \emph{efter} D3b og før det nye fine niveau. Ved 101 celler
+bruges \(h=1/768,1/1536,1/3072\). Den testede model er
+\[
+ E(h)=E_0+Ch+O(h^2),\qquad
+ \widehat E_0=2E(h/2)-E(h),\qquad
+ \widehat E(h/4)=\widehat E_0+\tfrac12(E(h/2)-\widehat E_0).
+\]
+For begge metrikker kræves monoton nedgang, \(|\widehat E_0|/E(h/2)\le0.1\) og
+relativ fejl i prediktionen af det nye fine niveau \(\le0.2\).
+Spatialaksen er 101/151/201 celler ved fælles \(h=1/3072\); begge successive relative
+ændringer skal være \(\le10\%\), og faktisk max-step skal matche det fælles tidsloft.
+
+D3c bestod: fineste posterior-L1 var 0.002732 og evidence-fejl 0.0006905.
+Limit/middle-ratios var 0.0008/0.0058, og fine-prediktionsfejl var under
+\(10^{-4}\)/0.0041. Spatialændringer var 1.89/0.46\% for L1 og 0.91/0.67\% for
+evidence. Ingen fallback. Som fastlagt \emph{før} resultaterne blev populationens
+numerik derfor 151 celler, \(h_{\max}=1/3072\) dag, CFL=0.4 og q=1.
+
+Dette er empirisk konvergens af \emph{discrepancy mellem to diskrete filtre} i den
+kontrollerede case, ikke i sig selv et bevis på deres absolutte fejl mod den kontinuerte
+SDE. En matched-grid reference kan dele spatialfejl med mixture-kernen. Kriterierne er
+også følsomme over for nonsmooth maksimum-/absolutværdi-metrikker; Richardson er her
+en diagnosticeret lokal approksimationsmodel, ikke en generel sætning om filteret.
+
+\subsection{D3d: uafhængig population og afgrænset konklusion}
+Den sidste registrerede D3d-test bruger ID1011--1210, altså 200 nye sekvenser, den
+frosne shape-D/numerik og paired mixture/FV-kørsler uden restart. Whole sequences er
+bootstrap-enheden, 5000 replikater med seed4301. Worker-count er afvikling, ikke modelvalg.
+For begge RMSE-ratioer kræves hele bootstrap95 inden for \([0.95,1.05]\). For evidence
+kræves upper bootstrap95 af mean absolut fejl \(\le0.002\)/obs og q95 absolut
+ dagssumsforskel \(\le0.1\). For begge distributionstyper kræves q95 af sequence-max
+L1 \(\le0.02\), global max L1 \(\le0.05\), global max W1 \(\le0.01\), massefejl
+\(\le10^{-10}\) og ingen droppede/fejlede sekvenser; valideret fallback rapporteres.
+
+Alle 200 gennemførte. FV/mixture predictive RMSE var
+0.03645553/0.03645558, ratio1.000001 med bootstrap95
+\([0.999970,1.000034]\). Posterior-RMSE var 0.02383041/0.02383120,
+ratio1.000033 med \([0.999974,1.000097]\). Mean absolut evidence-fejl var
+\(6.609\times10^{-4}\)/obs med bootstrap95 \([6.316,6.921]\times10^{-4}\);
+signed mean var cirka \(2.0\times10^{-6}\), og dagssums-q95 var 0.008965.
+Prediction/posterior-L1-q95 var 0.00506/0.00856, globale maxima 0.0122/0.0174,
+og globale W1-maxima 0.000498/0.000508. Over 614400 interne steps var massefejlen
+højst \(4.89\times10^{-15}\), uden fallback eller invalid truth. Alle gates bestod.
+
+Konklusionen er praktisk ækvivalens til FV i den kendt-parameter syntetiske case,
+ikke bedre state-estimation, ukendt-parameter-recovery, historisk validering eller en
+operationel ugeprognose. Den høje conditioning er stadig en begrænsning. Især når
+antal komponenter overstiger antal celler, er koefficientafbildningen rangdeficient:
+et endeligt konditionstal for den rektangulære matrix beskriver kun dens returnerede
+singularværdier, ikke entydige koefficienter. Derfor sammenlignes densities, objective
+og likelihood frem for at kræve samme koefficientvektor. D2/D3d's beståede resultater
+ophæver ikke behovet for nye likelihood-kontroller ved parameterestimation.
+
+\section{Bevaret statisk F4-0-evidens}
+\subsection{Et konkret statisk resultat}
+Kontrollen bruger \(X_0\sim\Beta(20,20)\), \(B=U=Y=0.5\), \(k=2\), \(\Xi=1\) og \(\sigma_Y=0.01\), uden prediction. Uafhængig numerisk quadrature af den kontinuerte Bayes-update giver
+\begin{equation}
+ \E[X\mid Y]=0.5,\qquad
+ \Var(X\mid Y)\approx9.86542954\cdot10^{-5},\qquad z\approx4.97905563.
+ \label{eq:preparationresult}
+\end{equation}
+Grad 30 og 38 kan ikke repræsentere denne posterior. Alene den nødvendige variansbetingelse ville kræve \(M\gtrsim2532\), og dette er ikke en anbefaling om at løse problemet ved en så høj Bernstein-grad.
+
+På 801 celler giver statiske projektioner:
+\begin{center}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Basis & Center-varians & Cellemasse-\(L^1\)-fejl\\\midrule
+Eksisterende grad 30 & \(7.57576\cdot10^{-3}\) & 1.55786\\
+Eksisterende grad 38 & \(6.09756\cdot10^{-3}\) & 1.51495\\
+Fire symmetriske komponenter & \(1.04992\cdot10^{-4}\) & 0.02264\\\bottomrule
+\end{tabular}
+\end{center}
+Den illustrative firekomponentordbog er \(\Beta(a,a)\) for \(a\in\{20,200,1000,2000\}\). Den er kun egnet som demonstration af breddeproblemet; den er ikke valgt som F4-D's endelige basis og er ikke valideret for forskudte, bimodale eller randnære posteriors. \(L^1\)-fejlen ligger mellem 0 og 2, ikke mellem 0 og 1; totalvariation er halvdelen i dette diskrete tilfælde.
+
+De små optimalitetsgap viser, at projektionerne er løst numerisk, samtidig med at de gamle baser giver stor repræsentationsfejl. Det er netop forskellen mellem \emph{solverkorrekthed} og \emph{repræsentationsevne}. Den kontinuerte referencevarians og de viste cellecentervarianser er bevidst navngivet forskelligt.
+
+\section{H2: timeforbrug som intervalobservation, udvikling 5. oktober}
+Johan deklarerer foreløbigt kWh over hver time, med kl.~03 som
+\([03{:}00,04{:}00)\); dansk lokal tid er en arbejdsantagelse.
+Dette er ikke verificeret målerdokumentation. Med fast effektskala \(P\)
+og intervalvarighed \(\Delta h_i\) i timer bliver rå energi
+\(y_i=E_i/(P\Delta h_i)\). I modellens deklarerede tidsenhed er
+\begin{equation}
+ Y_i=\frac{1}{t_i-s_i}\int_{s_i}^{t_i}D(v,X_v)\dd v+\epsilon_i,
+ \qquad \epsilon_i\sim\Normal(0,\sigma_Y^2).
+\end{equation}
+\(\sigma_Y\) måles i normaliseret gennemsnitseffekt, ikke rå energi.
+En time er \(1/24\) dag. Numerisk ens kWh og gennemsnitlig kW over en time
+gør ikke observationen til punktmålt effekt.
+
+Sæt \(A_{s_i}=0\), \(\dd A_t=D(t,X_t)\dd t/(t_i-s_i)\).
+Den fælles state/akkumulator-lov og opdateringen ved intervallets slutning er
+\begin{equation}
+ \partial_t p=\mathcal L_X^*p-
+ \partial_a\!\left(\frac{D(t,x)}{t_i-s_i}p\right),\qquad
+ \pi_i(x)\propto\int p(x,a,t_i)\phi_{\sigma_Y}(y_i-a)\dd a.
+\end{equation}
+Det bevarer afhængigheden mellem timeforbrug og terminal state.
+Additive Markov-funktionaler og Feynman--Kac giver en uafhængig
+finite-state-kontrol med den tiltede generator \cite{feynmaninterval}.
+Kun akkumulatoren nulstilles mellem timer; state fortsætter over midnat.
+Observationen er først tilgængelig ved slutningen, og ufuldstændige intervaller
+indgår ikke i et prefix. Manglende timer scores ikke.
+
+Prototypen genbruger den eksisterende konservative FV-generator og implicitte
+state-solve, kombineret med positiv lineær nodal transport af akkumulatoren.
+Den er førsteordens samlet; transporten bevarer masse/første moment, men
+tilfører dispersion. Støtten vokser uden truncering/refleksion; et nodemaksimum
+stopper kørslen frem for at kassere masse. State-, tids- og akkumulatorgrid
+kræver alle egne refinements. Den lille syntetiske dags første grove grids
+fejler udviklingstolerancerne trods massefejl under \(3.34\cdot10^{-15}\).
+Dette er implementation og negativ udviklingsevidens, ikke historisk fit,
+recovery, blind modelvalidering eller H2/H3-accept. Design, rårapporter og
+begrænsninger står i \texttt{root/H2\_HOURLY\_INTERVALS.md}.
+
+\begingroup
+\raggedright
+\begin{thebibliography}{99}
+\bibitem{feynmaninterval} P. J. Fitzsimmons og J. Pitman.
+\emph{Kac's moment formula and the Feynman--Kac formula for additive
+functionals of a Markov process}. Stochastic Processes and their Applications
+79 (1999), 117--134. \url{https://www.stat.berkeley.edu/~pitman/kac.pdf}.
+\bibitem{project} STADS, projekt 111866: \emph{Stochastic optimal control and estimation for demand-side flexibility exploitation}. Brugerens upload \texttt{Screenshot 2026-09-19 230718.png}, især mål 4. Projektkilde, ikke en forskningspublikation.
+\bibitem{repo} \texttt{N1dhug/BSCe2026}, kildecommit \basecommit. Den samlede reference er nu \texttt{root/BM\_REFERENCE.md}; oprindelige noter findes ved denne historiske commit. BM1-modellen, \texttt{finite\_volume.py}, \texttt{beta\_mixture.py}, diagnostik og tests. Kilden er F3-baseline; tilføjelser i F4-0 er særskilt mærket.
+\bibitem{plan} \emph{F4 --- Arbejdsplan for rekursiv tilstands- og parameterestimation}, version 1.0, 29. september 2026, leveret i projektchatten. Den aktive, konsoliderede plan er \texttt{root/F4.md}; A--J-strukturen er bevaret.
+\bibitem{junker} R. G. Junker m.fl. \emph{Stochastic nonlinear modelling and application of price-based energy flexibility}. Applied Energy 275 (2020), 115096. DOI: 10.1016/j.apenergy.2020.115096. Model og Appendix B; dennes flertrinsobjective er ikke lig vores foreslåede sekventielle likelihood.
+\bibitem{higham} D. J. Higham. \emph{An Algorithmic Introduction to Numerical Simulation of Stochastic Differential Equations}. SIAM Review 43(3) (2001), 525--546. Brugerens upload; Itô, EM og konvergens.
+\bibitem{lecture} T. K. S. Ritschel. \emph{Stochastic Adaptive Control (02421), Lecture 8}, 24. marts 2026, brugerens upload. Filtering versus prediction og state-space-begreber; ikke en færdig BM1-estimator.
+\bibitem{alba} A. Gonzalo Primo. \emph{Adaptive demand-side flexibility exploitation through dynamic price signals}. Den uploadede version af \texttt{MSC\_AGP\_FINAL (1).pdf}, kapitel 6--7. Identifikations- og likelihoodreference med en delvist anden parameterisering.
+\bibitem{nielsen} A. Elbæk Nielsen. \emph{Approximation of the Fokker--Planck Equation by Mixture Distributions}. DTU, juni 2026, brugerens upload. Mixture-rum, constrained projection og dokumenterede numeriske begrænsninger.
+\bibitem{scipylog} SciPy-dokumentation, \texttt{scipy.special.logsumexp}. \url{https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.logsumexp.html}. Numerisk API-reference; ikke en kilde til projektets empiriske resultater.
+\bibitem{scipybeta} SciPy-dokumentation, \texttt{scipy.special.betainc} og \texttt{betaincc}, version 1.17.0. \url{https://docs.scipy.org/doc/scipy-1.17.0/reference/generated/scipy.special.betaincc.html}. CDF og komplementær CDF; \texttt{betaincc} kræver SciPy 1.11 eller nyere.
+\end{thebibliography}
+\endgroup
