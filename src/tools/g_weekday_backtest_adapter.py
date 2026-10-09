@@ -6,8 +6,9 @@ from pathlib import Path
 
 from src.method import g_weekday_rolling as model
 from src.method import g_weekday_export as numerical
+from src.method import bm_1_g_forecast as deployment
 from src.tools.bm_1_reports import _atomic_report
-from src.exe.run_model.bm_1.s3_forecast import write_forecast
+from src.exe.run_model.bm_1_g import write_forecast
 from src.tools.weekday_backtest import _fingerprint
 
 
@@ -23,25 +24,7 @@ class GWeekdayAdapter:
     prediction_columns = {'G':'g_prediction_output_mean', 'WM':'wm_prediction_output_mean', 'baseline':'baseline'}
 
     def __init__(self, config=None):
-        if not isinstance(config, dict) or config.get('schema')!='bm1-g-weekday-input-v1':
-            raise ValueError('New G fits require an explicit population/input manifest.')
-        config = deepcopy(config)
-        if config.get('group')!='MED':
-            raise ValueError('This preserved G fitting kernel supports declared MED only; UDEN needs its own reviewed fitting contract.')
-        columns = config.get('measurement_columns')
-        if (not isinstance(columns, list) or not columns or any(not isinstance(c,str) or not c.endswith('_MED') or not c[:-4] for c in columns)
-                or len(set(columns))!=len(columns)):
-            raise ValueError('Declare a nonempty unique MED meter list for the aggregate.')
-        if (not isinstance(config.get('population_id'),str) or not config['population_id'].startswith('MED_')
-                or config.get('aggregation')!='mean over available measured meters'
-                or config.get('demand_timestamp_label')!='hour_start'):
-            raise ValueError('Declare the MED population, available-meter aggregation and hour-start observation contract.')
-        digest = config.get('history_csv_sha256')
-        if not isinstance(digest,str) or len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest):
-            raise ValueError('Declare the lowercase SHA256 of the exact historical aggregate CSV.')
-        if any(not isinstance(config.get(k),str) or not config[k].strip() for k in ('target_unit','input_scenario_policy')):
-            raise ValueError('Declare raw-unit assumptions and scenario availability.')
-        self.config = config
+        self.config = deployment.validate_input_manifest(config)
         self.group = 'MED'
         self.history_path = None
 
@@ -54,6 +37,8 @@ class GWeekdayAdapter:
         sources = numerical.source_hashes()
         sources['src/tools/g_weekday_backtest_adapter.py'] = _sha(__file__)
         sources['src/exe/run_model/weekday_backtest.py'] = _sha(model.interval.ROOT/'src/exe/run_model/weekday_backtest.py')
+        sources['src/method/bm_1_g_forecast.py'] = _sha(deployment.__file__)
+        sources['src/exe/run_model/bm_1_g.py'] = _sha(model.interval.ROOT/'src/exe/run_model/bm_1_g.py')
         return {'fit_budget':{'per_weekday':{'G_seconds':30, 'G_calls':750, 'WM_seconds':10, 'WM_calls':400},
                               'numerical_export_seconds':15},
                 'initialization_policy':'existing G input-only warmup / WM variable projection; separate weekday median states',
@@ -93,17 +78,24 @@ class GWeekdayAdapter:
                 or snapshot['training_start']!=binding['training_start']
                 or snapshot['training_end_exclusive']!=binding['training_end_exclusive']):
             raise ValueError('Completed G fit disagrees with its declared population or training window.')
+        train = model.training_data(data.history,data.window.origin)[0]
+        if snapshot['training_fingerprint']!=model.interval.point._fingerprint(train):
+            raise ValueError('Completed G fit disagrees with the actual isolated training data.')
+        snapshot['population_binding_sha256'] = deployment.fingerprint(binding)
         _atomic_report(directory/'weekday_snapshot.json', fitted['snapshot'])
         fitted['historical_replay'].to_csv(directory/'historical_replay_normalized.csv', index_label='Datetime')
         exported = numerical.refine_for_export(fitted['snapshot'], data.history)
         _atomic_report(directory/'weekday_export_snapshot.json', exported['snapshot'])
         exported['historical_replay'].to_csv(directory/'export_replay_normalized.csv', index_label='Datetime')
-        _atomic_report(directory/'fit_population_binding.json', {**binding,
+        fit_binding = {**binding,
             'snapshot_sha256':model.residual.snapshot_fingerprint(snapshot),
             'export_snapshot_sha256':model.residual.snapshot_fingerprint(exported['snapshot']),
             'fitted_training_fingerprint':snapshot['training_fingerprint'], 'scales':deepcopy(snapshot['scales']),
-            'baseline_sha256':{str(day['weekday']):model.residual.snapshot_fingerprint(day['baseline']) for day in snapshot['days']}})
+            'baseline_sha256':{str(day['weekday']):model.residual.snapshot_fingerprint(day['baseline']) for day in snapshot['days']}}
+        population = deployment.population_contract(exported['snapshot'],fit_binding)
+        _atomic_report(directory/'fit_population_binding.json',fit_binding)
         result = numerical.predict_comparison(exported['snapshot'], data.inputs)
+        result['manifest']['population'] = population
         self.verify_history_file()
         if metadata!=self.metadata:
             raise ValueError('G adapter sources or population manifest changed during fitting/forecast.')

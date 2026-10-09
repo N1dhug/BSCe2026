@@ -55,7 +55,112 @@ def runtime():
             'numpy':np.__version__, 'pandas':pd.__version__, 'scipy':scipy.__version__}
 
 
-def export_model(snapshot):
+def load_fit_binding(path, snapshot, explicit_path=None, *, legacy=False):
+    """Require original fit receipts for pre-marker declarations; no silent downgrade."""
+    path = Path(path)
+    binding_path = Path(explicit_path) if explicit_path else path.parent/'fit_population_binding.json'
+    marked = any('population_binding_sha256' in snapshot.get(key,{}) for key in ('parent','refined_view'))
+    freeze_path = binding_path.parent/'forecast_freeze.json'
+    freeze = json.loads(freeze_path.read_text(encoding='utf-8')) if freeze_path.exists() else None
+    receipts = (binding_path.parent/'population_binding.json').exists()
+    if freeze is not None:
+        receipts |= 'fit_population_binding.json' in freeze.get('artifact_sha256',{})
+    if not binding_path.exists():
+        if explicit_path or marked or receipts or not legacy:
+            raise ValueError('Missing fit population binding; --legacy-unverified cannot override a declared fit.')
+        return None, None, None
+    raw = binding_path.read_bytes()
+    binding = json.loads(raw)
+    if freeze is None and not marked:
+        raise ValueError('Unmarked declared fits require their original forecast_freeze.json receipt.')
+    if freeze is not None:
+        required = {'fit_population_binding.json','population_binding.json','weekday_snapshot.json','weekday_export_snapshot.json'}
+        hashes = freeze['artifact_sha256']
+        if freeze.get('status')!='frozen-input-only' or not required<=set(hashes):
+            raise ValueError('Fit freeze must bind the declaration and both original snapshots.')
+        calendar._verify_artifacts(binding_path.parent,hashes)
+        if (hashlib.sha256(raw).hexdigest()!=hashes['fit_population_binding.json']
+                or hashlib.sha256(path.read_bytes()).hexdigest()!=hashes['weekday_export_snapshot.json']):
+            raise ValueError('Supplied snapshot or declaration differs from the frozen fit artifacts.')
+        initial = json.loads((binding_path.parent/'population_binding.json').read_text(encoding='utf-8'))
+        if any(binding.get(key)!=value for key,value in initial.items()):
+            raise ValueError('Fit binding disagrees with its frozen pre-fit declaration.')
+    return binding, raw, freeze
+
+def validate_input_manifest(config):
+    """A declaration binds an aggregate; it cannot prove its meter membership."""
+    if not isinstance(config, dict) or config.get('schema')!='bm1-g-weekday-input-v1':
+        raise ValueError('New G fits require an explicit population/input manifest.')
+    if config.get('group')!='MED':
+        raise ValueError('This preserved G fitting kernel supports declared MED only; UDEN needs its own reviewed fitting contract.')
+    columns = config.get('measurement_columns')
+    if (not isinstance(columns, list) or not columns
+            or any(not isinstance(c,str) or not c.endswith('_MED') or not c[:-4] for c in columns)
+            or len(set(columns))!=len(columns)):
+        raise ValueError('Declare a nonempty unique MED meter list for the aggregate.')
+    if (not isinstance(config.get('population_id'),str) or not config['population_id'].startswith('MED_')
+            or config.get('aggregation')!='mean over available measured meters'
+            or config.get('demand_timestamp_label')!='hour_start'):
+        raise ValueError('Declare the MED population, available-meter aggregation and hour-start observation contract.')
+    digest = config.get('history_csv_sha256')
+    if not isinstance(digest,str) or len(digest)!=64 or any(c not in '0123456789abcdef' for c in digest):
+        raise ValueError('Declare the lowercase SHA256 of the exact historical aggregate CSV.')
+    if any(not isinstance(config.get(k),str) or not config[k].strip() for k in ('target_unit','input_scenario_policy')):
+        raise ValueError('Declare raw-unit assumptions and scenario availability.')
+    return deepcopy(config)
+
+
+def population_contract(original, binding=None, *, legacy=False):
+    """Check the fit receipt against both immutable snapshots, then project it."""
+    view = original['refined_view']
+    parent = original.get('parent', view)
+    marked = 'population_binding_sha256' in parent or 'population_binding_sha256' in view
+    if binding is None:
+        if marked or not legacy:
+            raise ValueError('G fit population binding is required; only unmarked legacy fits allow --legacy-unverified.')
+        return {'label':view['population'],
+            'group':'MED' if view['population']=='MED mean over available measured meters' else None,
+            'verification':'legacy-unverified', 'meters':None,
+            'reason':'Original fit records only an aggregate label, not meter membership or missing masks per meter.'}
+    try:
+        metadata = binding['metadata']
+        config = validate_input_manifest(metadata['input_manifest'])
+        final_fields = ('snapshot_sha256','export_snapshot_sha256','fitted_training_fingerprint','scales','baseline_sha256')
+        initial = {key:value for key,value in binding.items() if key not in final_fields}
+        if marked and any(s.get('population_binding_sha256')!=fingerprint(initial) for s in (parent,view)):
+            raise ValueError('G declaration/history binding changed after fitting.')
+        if (binding['snapshot_sha256']!=fingerprint(parent)
+                or original['parent_snapshot_sha256']!=fingerprint(parent)
+                or binding['export_snapshot_sha256']!=fingerprint(original)):
+            raise ValueError('G population binding belongs to different snapshots.')
+        for snapshot in (parent,view):
+            if (snapshot['population']!='MED mean over available measured meters'
+                    or snapshot['training_start']!=binding['training_start']
+                    or snapshot['training_end_exclusive']!=binding['training_end_exclusive']
+                    or snapshot['origin']!=binding['training_end_exclusive']
+                    or snapshot['training_fingerprint']!=binding['fitted_training_fingerprint']
+                    or snapshot['scales']!=binding['scales']
+                    or snapshot['demand_timestamp_label']!=config['demand_timestamp_label']
+                    or {str(day['weekday']):fingerprint(day['baseline']) for day in snapshot['days']}!=binding['baseline_sha256']):
+                raise ValueError('G population binding disagrees with fitted history, window, scales or baselines.')
+        if (binding['membership_status']!='declared-unverified'
+                or metadata['membership_status']!='declared-unverified'
+                or metadata['input_manifest_sha256']!=fingerprint(config)
+                or type(metadata['history_file_sha256_verified']) is not bool
+                or len(binding['history_sha256'])!=64):
+            raise ValueError('Invalid declared G population or historical data identity.')
+        for key, declared in (('group','group'),('population','population_id'),('measurement_columns','measurement_columns'),
+                              ('aggregation','aggregation'),('target_unit','target_unit'),('input_scenario_policy','input_scenario_policy')):
+            if metadata[key]!=config[declared]:
+                raise ValueError('G population metadata differs from its input declaration.')
+        return {'label':view['population'], 'group':config['group'], 'meters':config['measurement_columns'],
+            'verification':'declared-unverified', 'declaration':config, 'binding_sha256':fingerprint(binding),
+            'reason':'Byte-bound caller declaration; aggregate meter membership is not independently verified.'}
+    except (KeyError,TypeError) as exc:
+        raise ValueError('Incomplete G fit population binding.') from exc
+
+
+def export_model(snapshot, binding=None, *, legacy=False, fit_directory=None):
     """One-time validated projection; no history read, replay or optimizer call.
 
     The complete original record stays in the model as immutable provenance.
@@ -64,6 +169,14 @@ def export_model(snapshot):
     from src.method.g_weekday_export import validate_export
     original = validate_export(snapshot)
     fitted = original['refined_view']
+    freeze = None
+    marked = any('population_binding_sha256' in original.get(key,{}) for key in ('parent','refined_view'))
+    if binding is not None and not marked:
+        if fit_directory is None:
+            raise ValueError('Unmarked declared G export requires its original frozen fit directory.')
+        checked, binding_bytes, freeze = load_fit_binding(Path(fit_directory)/'weekday_export_snapshot.json',original)
+        if binding!=checked:
+            raise ValueError('G binding differs from the original frozen fit directory.')
     days = []
     for day in fitted['days']:
         g = day['G']
@@ -75,15 +188,17 @@ def export_model(snapshot):
         'source_sha256':source_hashes(), 'runtime':runtime(),
         'fit_cutoff':fitted['origin'], 'training_start':fitted['training_start'],
         'training_fingerprint':fitted['training_fingerprint'], 'scales':deepcopy(fitted['scales']),
-        'population':{'label':fitted['population'],
-            'group':'MED' if fitted['population']=='MED mean over available measured meters' else None,
-            'verification':'legacy-unverified', 'meters':None,
-            'reason':'Original fit records only an aggregate label, not meter membership or missing masks per meter.'},
+        'population':population_contract(original,binding,legacy=legacy),
         'demand_unit':fitted['demand_unit'], 'days':days,
         'original_snapshot_sha256':fingerprint(original), 'original_snapshot':original,
         'initialization':'seven separate weekday paths; unchanged frozen daily median states',
         'uncertainty':'frozen in-sample weekday empirical output errors; no future coverage guarantee',
         'conversion':'validated projection only; zero fitting and historical replay'}
+    if binding is not None:
+        record['fit_population_binding'] = deepcopy(binding)
+    if freeze is not None:
+        record['fit_population_freeze'] = freeze
+        record['fit_population_binding_json'] = binding_bytes.decode('utf-8')
     record['model_sha256'] = fingerprint(record)
     return validate_model(record)
 
@@ -108,10 +223,19 @@ def validate_model(record, group=None):
             if record[key]!=fitted[old_key]:
                 raise ValueError('Deployment changed fitted history, scales or units.')
         population = record['population']
-        expected_group = 'MED' if fitted['population']=='MED mean over available measured meters' else None
-        if (population['label']!=fitted['population'] or population['group']!=expected_group
-                or population['verification']!='legacy-unverified' or population['meters'] is not None):
-            raise ValueError('Legacy conversion cannot invent a verified population or change group.')
+        if population!=population_contract(original,record.get('fit_population_binding'),legacy=True):
+            raise ValueError('Deployment population differs from the bound fit declaration.')
+        if (record.get('fit_population_binding') is not None
+                and not any('population_binding_sha256' in original.get(key,{}) for key in ('parent','refined_view'))):
+            freeze = record['fit_population_freeze']
+            if (freeze['status']!='frozen-input-only'
+                    or not {'fit_population_binding.json','population_binding.json','weekday_snapshot.json','weekday_export_snapshot.json'}<=set(freeze['artifact_sha256'])):
+                raise ValueError('Unmarked declared model must preserve its original fit freeze.')
+            raw = record['fit_population_binding_json']
+            if (not isinstance(raw,str)
+                    or hashlib.sha256(raw.encode('utf-8')).hexdigest()!=freeze['artifact_sha256']['fit_population_binding.json']
+                    or json.loads(raw.encode('utf-8'))!=record['fit_population_binding']):
+                raise ValueError('G model original binding proof changed after the frozen fit.')
         if group is not None and (group!=population['group'] or population['group'] is None):
             raise ValueError('Requested group differs from the saved G population; a separate group fit is required.')
         cutoff = calendar.WeekWindow(record['fit_cutoff']).origin
@@ -160,6 +284,15 @@ def prepare(record, inputs, origin, *, group=None, hours=None):
     window = calendar.WeekWindow(origin)
     if window.origin<pd.Timestamp(record['fit_cutoff']):
         raise ValueError('Forecast origin precedes the saved fit cutoff.')
+    scenario = prepare_inputs(inputs, window, record['scales'])
+    count = len(scenario) if hours is None else hours
+    if type(count) is not int or not 1<=count<=len(scenario):
+        raise ValueError('--hours must select one or more physical hours inside this forecast week.')
+    return scenario, scenario.index[:count]
+
+
+def prepare_inputs(inputs, window, scale):
+    """One physical-hour input contract for saved-week replay and new forecasts."""
     calendar._frame(inputs, ('Price', 'Temp'))
     if inputs.index.tz is not None:
         raise ValueError('G requires unique local-naive Copenhagen hour-start labels.')
@@ -167,13 +300,9 @@ def prepare(record, inputs, origin, *, group=None, hours=None):
     scenario = scenario.apply(pd.to_numeric, errors='raise')
     if np.iscomplexobj(scenario.to_numpy()) or not np.isfinite(scenario.to_numpy(float)).all():
         raise ValueError('Complete finite Price/Temp are required for the forecast week; no filling.')
-    scale = record['scales']
     if not scenario.Price.between(scale['price_min'], scale['price_min']+scale['price_scale']).all():
         raise ValueError('Price outside the frozen domain; no clipping or rescaling.')
-    count = len(scenario) if hours is None else hours
-    if type(count) is not int or not 1<=count<=len(scenario):
-        raise ValueError('--hours must select one or more physical hours inside this forecast week.')
-    return scenario, scenario.index[:count]
+    return scenario
 
 
 def _day_inputs(scenario, day, baseline, scale):
@@ -250,7 +379,7 @@ def forecast(record, inputs, origin, *, group=None, hours=None):
             'historical_replay_executed':False, 'state_path':record['initialization'],
             'scenario':'caller supplied Price/Temp; availability at forecast origin not independently verified',
             'scenario_fingerprint':hashlib.sha256(pd.util.hash_pandas_object(scenario,index=True).values.tobytes()).hexdigest(),
-            'uncertainty':record['uncertainty'], 'wm_comparison':'not executed; legacy membership is unverified',
+            'uncertainty':record['uncertainty'], 'wm_comparison':'not executed; population membership is not independently verified',
             'normalization':'unchanged train-only affine demand coordinates; no raw sign clipping',
             'propagation':'seven complete separate daily paths; requested prefix exported'},
         'numerics':{'passed':True, 'tolerance':1e-5, 'daily_max_demand_errors':errors},

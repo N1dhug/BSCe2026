@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model import bm_1_g as runner
+from src.method import g_weekday_export as legacy
 from tests.test_g_weekday_bands import packet
 
 
@@ -22,7 +23,7 @@ class SavedGRunnerTests(unittest.TestCase):
 
     def test_spring_physical_selection_and_no_target_inputs(self):
         snapshot, inputs = self.fixture()
-        with patch.object(runner.model, 'validate_export', side_effect=lambda s:s):
+        with patch.object(legacy, 'validate_export', side_effect=lambda s:s):
             _, scenario, selected = runner.prepare(snapshot, inputs, '2022-03-27', 23)
         self.assertEqual(len(scenario), 167); self.assertEqual(len(selected), 23)
         self.assertNotIn('Demand', scenario)
@@ -30,7 +31,7 @@ class SavedGRunnerTests(unittest.TestCase):
 
     def test_invalid_dates_prices_gaps_and_nonexistent_hours_rejected(self):
         snapshot, inputs = self.fixture()
-        with patch.object(runner.model, 'validate_export', side_effect=lambda s:s):
+        with patch.object(legacy, 'validate_export', side_effect=lambda s:s):
             for start, hours in [('2022-03-28', None), ('2022-03-27 02:00', None), (None, 168), (None, 0)]:
                 with self.subTest(start=start, hours=hours), self.assertRaises(ValueError):
                     runner.prepare(snapshot, inputs, start, hours)
@@ -56,7 +57,7 @@ class SavedGRunnerTests(unittest.TestCase):
             csv = root/'inputs.csv'; inputs.to_csv(csv, index_label='Datetime')
             out = root/'finished'; out.mkdir(); sentinel = out/'keep'; sentinel.write_text('original')
             args = ['--snapshot', str(path), '--inputs-csv', str(csv), '--output', str(out)]
-            with patch.object(runner.model, 'validate_export', side_effect=lambda s:s), patch.object(runner.model, 'predict_comparison') as predict:
+            with patch.object(legacy, 'validate_export', side_effect=lambda s:s), patch.object(legacy, 'predict_comparison') as predict:
                 self.assertEqual(runner.main(args+['--check', '--score', str(root/'missing.csv')]), 0)
                 self.assertEqual(runner.main(args), 2); predict.assert_not_called()
             self.assertEqual(sentinel.read_text(), 'original'); self.assertFalse((out/'failure.json').exists())
@@ -75,8 +76,8 @@ class SavedGRunnerTests(unittest.TestCase):
                     for name, expected in freeze['artifact_sha256'].items():
                         self.assertEqual(runner.digest(out/name), expected)
                 return read_csv(path, *args, **kwargs)
-            with patch.object(runner.model, 'validate_export', side_effect=lambda s:s), \
-                 patch.object(runner.model, 'predict_comparison', return_value=forecast) as predict, \
+            with patch.object(legacy, 'validate_export', side_effect=lambda s:s), \
+                 patch.object(legacy, 'predict_comparison', return_value=forecast) as predict, \
                  patch.object(runner, 'plot'), patch.object(runner.pd, 'read_csv', side_effect=read):
                 forecast['seconds'] = .001
                 self.assertEqual(runner.main(['--snapshot', str(path), '--inputs-csv', str(csv), '--score', str(target), '--output', str(out)]), 0)

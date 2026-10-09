@@ -34,4 +34,12 @@ MED=med elvarme, UDEN=uden; solceller/unit/netto-brutto/time-label ukendt.
 OriginalF24hfilter afvises stadig på negative medlemmer. G-legacy har ingen
 verificeret målerliste. Nye erklæringer er ikke dokumenteret aggregation.
 F-weekday historiskfit, fælles kampagne og brugerprøve afventer særskilt accept.
-Næste: godkendt konkret filplan og ejerskab, derefter G-binding og aktive merges.
+GENNEMFØRT SIDEN START
+F: fælles likelihood/checkpointkontrakt, lazy uafhængig reference; 41 tests
+grønne plus én skærpet gentagelse (34,550s). G: fit→model→forecast-binding,
+markerede og før-markør-fit samt eksplicit legacy; 30 tests og fokuseret
+proofgentagelse + bevaret originalvalidator (18,106s). G7/G8: tre små ejere
+samlet; 10 tests grønne (8,697s). Tre historiske drivere og én dubletconfig
+fjernet. Numeriske kerner/grids/tolerancer uændrede; WM149 uændret.
+Næste: fælles kalender/arkivtest, faktisk kort F- og senere G-regression,
+samlet integritet/linkkontrol og små commits. Ingen automatisk genstart.

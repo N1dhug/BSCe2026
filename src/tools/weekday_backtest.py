@@ -9,7 +9,6 @@ import hashlib
 import json
 from pathlib import Path
 from time import perf_counter
-from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -164,54 +163,6 @@ def split_weekday(data, weekday):
     return WeekdayData(weekday, days, records, context, x, data.target_column)
 
 
-class WeekdayCallbacks:
-    """Usable F/G extension interface: own baseline fit, parameter fit, forecast.
-
-    fit_baseline(day), fit_parameters(day, baseline), predict(day, baseline,
-    parameters) are called independently seven times. save_fit writes the
-    adapter's frozen fit artifacts. Fit functions must enforce
-    their own budgets and convergence/numerical gates, raising on incomplete
-    fits. predict must return a raw-unit DataFrame on day.inputs.index.
-    """
-    def __init__(self, *, name, metadata, prediction_columns, fit_baseline: Callable,
-                 fit_parameters: Callable, predict: Callable, save_fit: Callable, warmup_hours=0,
-                 input_columns=('Price', 'Temp'), target_column='Demand'):
-        if not name or not all(callable(f) for f in (fit_baseline, fit_parameters, predict, save_fit)):
-            raise ValueError('Declare a model name and fit, prediction and persistence callbacks.')
-        required = ('fit_budget', 'initialization_policy', 'population', 'target_unit', 'source_sha256')
-        if any(k not in metadata for k in required):
-            raise ValueError('Declare budgets, initialization, population, units and model source hashes.')
-        self.name, self.metadata = name, dict(metadata)
-        self.prediction_columns = dict(prediction_columns)
-        self.fit_baseline, self.fit_parameters, self.predict = fit_baseline, fit_parameters, predict
-        self.save_fit = save_fit
-        self.warmup_hours, self.input_columns, self.target_column = warmup_hours, tuple(input_columns), target_column
-
-    def forecast_week(self, data, directory):
-        forecasts = []
-        for weekday in range(7):
-            day = split_weekday(data, weekday)
-            baseline = self.fit_baseline(day)
-            parameters = self.fit_parameters(day, baseline)
-            self.save_fit(day, baseline, parameters, directory)
-            # Target-free prediction object: even historical Y is unnecessary
-            # for prediction once parameters / forecast state are frozen.
-            # The intervening forecast inputs allow F's own posterior to
-            # propagate continuously from Monday to the selected test day.
-            forecast_prefix = data.inputs.loc[data.inputs.index <= day.inputs.index[-1]]
-            prediction_context = pd.concat([day.context.drop(columns=[day.target_column]), forecast_prefix])
-            prediction_day = WeekdayData(day.weekday, day.training_days, (),
-                                        prediction_context, day.inputs.copy(), day.target_column)
-            prediction = self.predict(prediction_day, baseline, parameters)
-            if not isinstance(prediction, pd.DataFrame) or not prediction.index.equals(day.inputs.index):
-                raise ValueError('Each weekday forecast must match its own physical test-day calendar.')
-            forecasts.append(prediction)
-            _atomic_report(directory/f'weekday_{weekday}.json', {'weekday':weekday,
-                'training_days':[str(d.date()) for d in day.training_days], 'status':'forecast-returned',
-                'measured_samples':[int(r[day.target_column].notna().sum()) for r in day.records]})
-        return pd.concat(forecasts).sort_index()
-
-
 def _fingerprint(frame):
     payload = '|'.join(map(str, frame.columns)).encode() + pd.util.hash_pandas_object(frame, index=True).values.tobytes()
     return hashlib.sha256(payload).hexdigest()
@@ -241,6 +192,8 @@ def score_predictions(predictions, observations, prediction_columns):
 def _verify_artifacts(directory, hashes):
     """Validate exact saved bytes, refusing paths outside this run directory."""
     for name, expected in hashes.items():
+        if Path(name).is_absolute() or '..' in Path(name).parts:
+            raise ValueError('Frozen artifact paths must be relative and cannot traverse parents.')
         path = (directory/name).resolve()
         if not path.is_relative_to(directory.resolve()) or not path.is_file():
             raise ValueError('Invalid or missing frozen artifact path.')

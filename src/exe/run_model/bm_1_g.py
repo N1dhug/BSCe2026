@@ -18,20 +18,13 @@ import numpy as np
 import pandas as pd
 
 from src.tools import weekday_backtest as calendar
+from src.tools.weekday_backtest import _verify_artifacts as _verify_files
 from src.tools.bm_1_reports import _atomic_report
 
 
 def _legacy():
     from src.method import g_weekday_export
     return g_weekday_export
-
-
-def __getattr__(name):
-    # Preserve the small runner API used by existing callers/tests, without
-    # loading the historical comparison/fit graph for ordinary G forecasts.
-    if name == 'model':
-        return _legacy()
-    raise AttributeError(name)
 
 
 def write_forecast(directory, result, *, prefix='forecast'):
@@ -56,16 +49,8 @@ def prepare(snapshot, inputs, start=None, hours=None):
     """Validate the saved fit, physical input week and requested output window."""
     snapshot = _legacy().validate_export(snapshot)
     window = calendar.WeekWindow(snapshot['parent']['origin'])
-    calendar._frame(inputs, ('Price', 'Temp'))
-    if inputs.index.tz is not None:
-        raise ValueError('G requires unique local-naive Copenhagen hour-start labels.')
-    scenario = calendar._grid(inputs[['Price', 'Temp']], window.hours(window.origin, window.end))
-    scenario = scenario.apply(pd.to_numeric, errors='raise')
-    if np.iscomplexobj(scenario.to_numpy()) or not np.isfinite(scenario.to_numpy(float)).all():
-        raise ValueError('Supply complete finite Price/Temp for the saved forecast week; no filling.')
-    scale = snapshot['parent']['scales']
-    if not scenario.Price.between(scale['price_min'], scale['price_min']+scale['price_scale']).all():
-        raise ValueError('Prices are outside the saved declared price domain; no clipping.')
+    from src.method.bm_1_g_forecast import prepare_inputs
+    scenario = prepare_inputs(inputs,window,snapshot['parent']['scales'])
     begin = window.origin if start is None else pd.Timestamp(start)
     if pd.isna(begin) or begin.tzinfo is not None or begin != begin.floor('h') or begin not in scenario.index:
         raise ValueError('--start must be an existing hour within the saved snapshot week; a new origin requires a new fit.')
@@ -183,13 +168,6 @@ def main(argv=None):
         return 2
 
 
-def _verify_files(directory, hashes):
-    for name, expected in hashes.items():
-        path = Path(name)
-        if path.is_absolute() or '..' in path.parts or digest(directory/path)!=expected:
-            raise ValueError('Frozen artifact missing or changed: '+name)
-
-
 def load_model(path, group=None):
     from src.method import bm_1_g_forecast as deployment
     path = Path(path)
@@ -205,6 +183,15 @@ def load_model(path, group=None):
     original = json.loads((path.parent/'original_snapshot.json').read_text(encoding='utf-8'))
     if deployment.fingerprint(original)!=model['original_snapshot_sha256']:
         raise ValueError('Model and saved original snapshot disagree.')
+    binding = model.get('fit_population_binding')
+    if binding is not None or 'fit_population_binding.json' in freeze['artifact_sha256']:
+        if ('fit_population_binding.json' not in freeze['artifact_sha256']
+                or json.loads((path.parent/'fit_population_binding.json').read_text(encoding='utf-8'))!=binding):
+            raise ValueError('Model package is missing its unchanged fit population binding.')
+    if 'fit_population_freeze' in model:
+        hashes = model['fit_population_freeze']['artifact_sha256']
+        _verify_files(path.parent,{'original_snapshot.json':hashes['weekday_export_snapshot.json'],
+                                 'fit_population_binding.json':hashes['fit_population_binding.json']})
     return model
 
 
@@ -213,6 +200,8 @@ def deployment_main(argv):
     commands = parser.add_subparsers(dest='command', required=True)
     export = commands.add_parser('export-model', help='Validate and convert a saved G export; no fit or replay.')
     export.add_argument('--snapshot', required=True)
+    export.add_argument('--population-binding', help='Default: fit_population_binding.json beside the snapshot; checked against its fit.')
+    export.add_argument('--legacy-unverified', action='store_true', help='Explicitly export an unmarked historical fit without population information; cannot bypass missing/invalid declared bindings.')
     export.add_argument('--output', required=True, help='New directory containing model.json and its conversion receipt.')
     forecast = commands.add_parser('forecast', help='Compute a new G-only week from frozen model parameters.')
     forecast.add_argument('--model', required=True, help='model.json from export-model; sources/runtime must match.')
@@ -244,14 +233,21 @@ def deployment_main(argv):
         from src.method import bm_1_g_forecast as deployment
         if args.command=='export-model':
             original = Path(args.snapshot).read_bytes()
-            record = deployment.export_model(json.loads(original))
+            snapshot = json.loads(original)
+            binding, binding_bytes, _ = deployment.load_fit_binding(args.snapshot,snapshot,args.population_binding,legacy=args.legacy_unverified)
+            fit_directory = Path(args.population_binding).parent if args.population_binding else Path(args.snapshot).parent
+            record = deployment.export_model(snapshot,binding,legacy=args.legacy_unverified,fit_directory=fit_directory)
             target = Path(args.output); target.mkdir(parents=True, exist_ok=False); directory = target
             (directory/'original_snapshot.json').write_bytes(original)
+            files = ['model.json','original_snapshot.json']
+            if binding_bytes is not None:
+                (directory/'fit_population_binding.json').write_bytes(binding_bytes)
+                files.append('fit_population_binding.json')
             _atomic_report(directory/'model.json', record)
             _atomic_report(directory/'conversion_freeze.json', {'status':'complete-validated-conversion',
                 'fit_executed':False, 'historical_replay_executed':False,
                 'original_snapshot_sha256':record['original_snapshot_sha256'],
-                'artifact_sha256':{name:digest(directory/name) for name in ('model.json', 'original_snapshot.json')}})
+                'artifact_sha256':{name:digest(directory/name) for name in files}})
             print(f'Model exported: {directory / "model.json"}; group={record["population"]}; no fit/replay.', flush=True)
             return 0
         # Group and temporal metadata fail before the exogenous CSV is opened.
@@ -267,7 +263,7 @@ def deployment_main(argv):
             raise ValueError('Model or input file changed while loading.')
         scenario, selected = deployment.prepare(record, inputs, origin, group=args.group, hours=args.hours)
         print(f'G fit cutoff={record["fit_cutoff"]}; new forecast origin={origin}; {len(selected)} output hours.', flush=True)
-        print(f'Group={record["population"]["group"]}, membership=legacy-unverified; seven separate daily paths.', flush=True)
+        print(f'Group={record["population"]["group"]}, membership={record["population"]["verification"]}; seven separate daily paths.', flush=True)
         if args.check:
             print('Validated; no model executed.', flush=True)
             return 0

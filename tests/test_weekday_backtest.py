@@ -6,13 +6,14 @@ from contextlib import redirect_stderr
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
 from src.tools.bm_1_reports import _atomic_report
-from src.tools.weekday_backtest import (WeekWindow, WeekdayCallbacks, rolling_windows,
+from src.tools.weekday_backtest import (WeekWindow, WeekdayData, rolling_windows,
     split_week, split_weekday, run_backtest, score_predictions)
 from src.tools.g_weekday_backtest_adapter import GWeekdayAdapter, make_adapter
 from src.exe.run_model.weekday_backtest import main
@@ -32,34 +33,38 @@ def g_manifest(**changes):
 
 
 def callbacks(name, calls, *, fail=False):
-    """Synthetic F/G interface fixture, not either physical model's estimator."""
-    def baseline(day):
-        calls.append((name, 'baseline', day))
-        assert len(day.records) == 5
-        assert all(r.index.weekday[0] == day.weekday for r in day.records)
-        assert day.context.loc[day.context.index.weekday != day.weekday, 'Demand'].isna().all()
-        return float(pd.concat(day.records).Demand.mean())
-    def fit(day, baseline):
-        calls.append((name, 'fit', day))
-        if fail:
-            raise RuntimeError('Synthetic own-model budget exhausted')
-        residuals = pd.concat(day.records).Demand.dropna().to_numpy() - baseline
-        return {'variance':float(np.mean(residuals**2))} if name == 'F' else {'offset':0.}
-    def predict(day, baseline, parameters):
-        assert not day.records and 'Demand' not in day.context and 'Demand' not in day.inputs
-        assert day.context.index[-1] == day.inputs.index[-1]
-        assert day.context.loc[day.inputs.index[0]].Temp == day.inputs.iloc[0].Temp
-        calls.append((name, 'predict', day))
-        result = pd.DataFrame({'prediction':baseline}, index=day.inputs.index)
-        if name == 'F':
-            result['variance'] = parameters['variance']
-        return result
-    def save(day, baseline, parameters, directory):
-        _atomic_report(directory/f'model_{day.weekday}.json', {'baseline':baseline, 'parameters':parameters})
-    return WeekdayCallbacks(name=name, metadata={'fit_budget':'synthetic fixture only',
+    """Synthetic adapter; production adapters own their fit and prediction stages."""
+    def forecast_week(data, directory):
+        forecasts = []
+        for weekday in range(7):
+            day = split_weekday(data, weekday)
+            calls.append((name, 'baseline', day))
+            assert len(day.records) == 5
+            assert all(r.index.weekday[0] == weekday for r in day.records)
+            assert day.context.loc[day.context.index.weekday != weekday, 'Demand'].isna().all()
+            values = pd.concat(day.records).Demand.dropna().to_numpy()
+            baseline = float(pd.concat(day.records).Demand.mean())
+            calls.append((name, 'fit', day))
+            if fail:
+                raise RuntimeError('Synthetic own-model budget exhausted')
+            parameters = {'variance':float(np.mean((values-baseline)**2))} if name == 'F' else {'offset':0.}
+            _atomic_report(directory/f'model_{weekday}.json', {'baseline':baseline, 'parameters':parameters})
+            prefix = data.inputs.loc[data.inputs.index <= day.inputs.index[-1]]
+            context = pd.concat([day.context.drop(columns=['Demand']), prefix])
+            prediction_day = WeekdayData(weekday, day.training_days, (), context, day.inputs.copy(), 'Demand')
+            assert 'Demand' not in prediction_day.context and 'Demand' not in prediction_day.inputs
+            assert context.index[-1] == day.inputs.index[-1]
+            assert context.loc[day.inputs.index[0]].Temp == day.inputs.iloc[0].Temp
+            calls.append((name, 'predict', prediction_day))
+            result = pd.DataFrame({'prediction':baseline}, index=day.inputs.index)
+            if name == 'F':
+                result['variance'] = parameters['variance']
+            forecasts.append(result)
+        return pd.concat(forecasts).sort_index()
+    return SimpleNamespace(name=name, metadata={'fit_budget':'synthetic fixture only',
         'initialization_policy':'synthetic no-state fixture', 'population':'synthetic', 'target_unit':'synthetic',
         'source_sha256':{'fixture':'synthetic'}}, prediction_columns={name:'prediction'},
-        fit_baseline=baseline, fit_parameters=fit, predict=predict, save_fit=save, warmup_hours=24)
+        warmup_hours=24, input_columns=('Price','Temp'), target_column='Demand', forecast_week=forecast_week)
 
 
 class CalendarTests(unittest.TestCase):
@@ -229,18 +234,26 @@ class RunnerTests(unittest.TestCase):
             self.assertFalse((Path(temp)/'fit_population_binding.json').exists())
 
     def test_G_success_writes_own_snapshots_and_exports_before_return(self):
+        from copy import deepcopy
+        from src.tools.g_weekday_backtest_adapter import _fingerprint, model
         raw=raw_frame(); data=split_week(raw,raw,WeekWindow('2022-04-11'),warmup_hours=24)
         table=pd.DataFrame({'baseline':1.,'g_prediction_output_mean':2.,'wm_prediction_output_mean':3.},index=data.inputs.index)
         snapshot={'own':'parent', 'population':'MED mean over available measured meters',
                   'training_start':str(data.window.start), 'training_end_exclusive':str(data.window.origin),
-                  'training_fingerprint':'synthetic training hash', 'scales':{'demand_min':1.,'demand_scale':2.},
+                  'origin':str(data.window.origin), 'demand_timestamp_label':'hour_start',
+                  'training_fingerprint':model.interval.point._fingerprint(model.training_data(data.history,data.window.origin)[0]),
+                  'scales':{'demand_min':1.,'demand_scale':2.},
                   'days':[{'weekday':d,'baseline':{'synthetic':d}} for d in range(7)]}
         fitted={'status':'complete','snapshot':snapshot,'historical_replay':data.history,'seconds':0.}
-        refined={'snapshot':{'own':'derived'},'historical_replay':data.history}
+        refined={}
+        def export(snapshot,history):
+            refined.update(snapshot={'parent':deepcopy(snapshot),'refined_view':deepcopy(snapshot),
+                'parent_snapshot_sha256':model.residual.snapshot_fingerprint(snapshot)},historical_replay=history)
+            return refined
         with tempfile.TemporaryDirectory() as temp, \
              patch('src.tools.g_weekday_backtest_adapter.model.fit_rolling',return_value=fitted) as fit, \
-             patch('src.tools.g_weekday_backtest_adapter.numerical.refine_for_export',return_value=refined) as refine, \
-             patch('src.tools.g_weekday_backtest_adapter.numerical.predict_comparison',return_value={'predictions':table}) as predict, \
+             patch('src.tools.g_weekday_backtest_adapter.numerical.refine_for_export',side_effect=export) as refine, \
+             patch('src.tools.g_weekday_backtest_adapter.numerical.predict_comparison',return_value={'predictions':table,'manifest':{}}) as predict, \
              patch('src.tools.g_weekday_backtest_adapter.write_forecast') as write:
             g=GWeekdayAdapter(g_manifest())
             result=g.forecast_week(data,Path(temp))
@@ -259,10 +272,12 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(binding['scales'],snapshot['scales'])
             self.assertEqual(binding['fitted_training_fingerprint'],snapshot['training_fingerprint'])
             self.assertEqual(len(binding['baseline_sha256']),7)
-            from src.tools.g_weekday_backtest_adapter import _fingerprint, model
             self.assertEqual(binding['history_sha256'],_fingerprint(data.history))
             self.assertEqual(binding['snapshot_sha256'],model.residual.snapshot_fingerprint(snapshot))
             self.assertEqual(binding['export_snapshot_sha256'],model.residual.snapshot_fingerprint(refined['snapshot']))
+            initial=json.loads((Path(temp)/'population_binding.json').read_text())
+            self.assertEqual(snapshot['population_binding_sha256'],model.residual.snapshot_fingerprint(initial))
+            self.assertEqual(write.call_args.args[1]['manifest']['population']['meters'],['synthetic_MED'])
 
     def test_G_manifest_rejects_unknown_or_mismatched_population_before_fit(self):
         invalid=[None, {}, g_manifest(group='UDEN'), g_manifest(measurement_columns=[]),
@@ -304,6 +319,17 @@ class RunnerTests(unittest.TestCase):
             manifest.write_text(json.dumps(g_manifest(group='UDEN')))
             with patch('src.tools.g_weekday_backtest_adapter._sha',side_effect=AssertionError('history must remain unopened')):
                 with self.assertRaisesRegex(ValueError,'MED only'): make_adapter(manifest,history)
+
+    def test_G_fitted_training_identity_must_match_actual_historical_frame(self):
+        raw=raw_frame();data=split_week(raw,raw,WeekWindow('2022-04-11'),warmup_hours=24)
+        snapshot={'population':'MED mean over available measured meters','training_start':str(data.window.start),
+                  'training_end_exclusive':str(data.window.origin),'training_fingerprint':'0'*64}
+        with tempfile.TemporaryDirectory() as temp, \
+             patch('src.tools.g_weekday_backtest_adapter.model.fit_rolling',return_value={'status':'complete','snapshot':snapshot}), \
+             patch('src.tools.g_weekday_backtest_adapter.numerical.refine_for_export') as refine:
+            with self.assertRaisesRegex(ValueError,'actual isolated training data'):
+                GWeekdayAdapter(g_manifest()).forecast_week(data,Path(temp))
+            refine.assert_not_called()
 
     def test_G_cli_requires_manifest_and_rejects_UDEN_before_input(self):
         args=['--first-origin','2022-04-11','--last-origin','2022-04-11','--output','unused',
