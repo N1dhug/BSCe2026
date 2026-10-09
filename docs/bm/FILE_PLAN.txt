@@ -1,27 +1,39 @@
-BM-F/G — femte gennemgang, strukturel disposition fra c504806
+BM-F/G — gennemført strukturel disposition fra c504806
 
-Kun egne F/G-filer; Git-ejerskab og WM149 kontrolleres før hver mutation.
-Matematik/grids/tolerancer/seeds og eksisterende outputkontrakter bevares.
+PARAMS: punkt/interval-observationer samlet i bm_1.py. Bayes/evidence og
+konservativ masseremapping flyttet til method/bm_1_observation med eksakte ASTs.
+Beskyttede response/deterministic-parametre uændrede.
+METHOD: intervalfilter→interval_likelihood; G7-jobs→G7-evaluator; tre H1-
+moduler→validation/response. Bånd-CLI→exe/bm_1_g; fælles artifactkontrol
+genbrugt. Død fast G7-kampagneplan fjernet; bank/checkpoint/crashguards bevaret.
+Native interval/forecast og punkt/FV/mixture/EM/reference bevares fordi deres
+observationer/operatorer og uafhængige beregninger er forskellige.
+VALIDATION: joint-familie/compact/native-forecastkampagnedrivere pensioneret;
+estimation3414→1081, mixture_estimation1574→664, control1436→828. Genbrugelige
+generatorer/refinement, kernelreferencer og matched evaluatorfixtures bevaret.
+numerics921 linjer bevares: uafhængig rum/tid/kvadratur og koblet Brownian-MC-
+reference, med reelle refine/testbrugere; ingen normalforecast-afhængighed.
+TOOLS: distribueret kampagne/h2_data_packet pensioneret; fire rapporthjælpere
+flyttet til real_data-CLI. history_io's windowed workbookkontrakt, bm_1_data's
+signalskala/point-training, outputs' distributionsformat og F/G-fitadaptere
+bevares som forskellige ansvar. Deterministic-response håndterer modelpakke/
+sourcebundet TRAIN-import; numerisk fitkerne er hos den beskyttede metodeejer.
+EXE/TESTS: estimate pensioneret. optimize bevarer seks normale kontrolkommandoer,
+gamle sweeps/timingprotokoller fjernet. Historiske protokoltests pensioneret;
+matematiske solvertests, uafhængige referencer og aktive bindings/resumetests består.
+MODEL/CONTROL: fælles balance/BM1/evaluatorer er WM-afhængigheder og beskyttede.
+Egen handoff binder filtreret origin til control; ingen dubletmodel indføres.
+OUTPUT: hele benchmarks/examples/f3_b/real_data/runs gennemgået. Fem cleanup-
+pakker35 filer flyttet intakte til runs/checks; ingen unikke resultater slettet.
+Data/shard/checkpointpakker bliver ved deres kildebindingsstier; brugerens
+my_f_example/worktree_archive har uklart ejerskab og bevares. Egne pyc fjernet;
+én verificeret tom egen cachemappe fjernet. Ingen cachetælling som kildeforenkling.
+CONFIGS: fem forskellige kontrakter: portable fixedfit, quick, open168h,
+F-fitadapter og G-fitadapter. Ingen dublet og ingen config fjernet i denne runde.
+DOCS/ROOT: eksisterende guide/stikort/arkiv/status opdateret; COMPARISON forkortet.
+Syv egne root-henvisninger plus historiske TeX-buildkilder er allerede korte;
+beskyttede WM/referencefiler og uklar proveniens bevares. Ingen nye repo-rapporter.
 
-PARAMS (let): Saml punkt/interval-observationsbeholdere i bm_1.py; vurder
-Bayes/masselogik hos eksisterende numeriske ejere. Beskyttet response/deterministic bevares.
-METHOD (meget stærk): Interval-filter hos interval-likelihood; G7-jobkontrakt
-hos G7-evaluator; fjern døde egne varianter. Gemte artefakter bruger originalkilder.
-VALIDATION (stærk): Saml response_cases/response_numerics/response_fit_checks
-i response.py. Fjern afsluttet estimate/joint-styring fra aktiv kode; behold
-uafhængige kerne-/referenceberegninger og relevante matematiske tests.
-Estimation/mixture_estimation gennemgås for kampagneløkker og genbrugelige
-dele; control/numerics gennemgås funktion for funktion med konkrete brugere.
-TOOLS (mellem): Fjern distribueret gammel kampagnestyring sammen med joint;
-behold workbookloader, data/skala-kontrakter og modelpakker med selvstændige roller.
-OUTPUT: Undersøg alle hovedgrupper og referencer; flyt komplette egne cleanup-
-pakker til runs/checks hvis læsning/resume-identitet er placeringsuafhængig.
-Slet kun bytekopier med keeper/backup eller verificerede egne caches; ingen unik evidens.
-EXE/TESTS: Pensionér gammel estimate-CLI; bevar aktive modeller/referencekommandoer.
-Historiske kampagnetests har deres eksakte originalversion; aktive numeriske
-tests og fixtures konsolideres uden fjernelse af nødvendig matematisk dækning.
-DOCS/ROOT/CONFIGS: Opdatér eksisterende guide, korte begrænsninger og stioversigt;
-ingen nye permanente daterede rapporter eller ny flad arkivmappe.
-
-Kontrol: højst300s samlet nye tests/modelprocesser, inklusive gentagelser.
-Ingen historiske fits eller ny faglig undersøgelse. Midlertidige audits i recovery/round5.
+Præcise destinations/hashkort: archive/bm/old-paths.json, round5_structural_cleanup.
+Originaler: komplette c504806 råstart og eksisterende766+2 ZIP-medlemmer.
+Kørsler: højst300s samlet; ingen historiske fits, lange benchmarks eller merge.

@@ -49,7 +49,7 @@ at gentage en gammel kampagne. Deres egne kilde-/budgetkontrakter gælder.
 | `src.exe.run_model.bm_1_interval_curve_control`, `src.exe.run_model.bm_1_interval_terminal_tilt` | Syntetisk interval-/kurvekontrol og terminal-contour-reference med egne checkpoints. |
 | `src.exe.run_model.bm_1.verify`, `src.exe.run_model.bm_1.refine` | Numeriske referencecases og forfining af faste planer. |
 | `src.exe.run_model.bm_1.optimize`, `src.exe.run_model.bm_1.real_data` | Pris-/F3-referenceberegninger, adskilt fra normal prognose. |
-| `src.exe.run_model.bm_1.estimate`, `src.exe.run_model.bm_1.curves` | Bevarede F-estimations-/H1-referencespor. |
+| `src.exe.run_model.bm_1.curves` | Aktiv H1-numerik/kurvefit med source- og checkpointbinding. |
 | `src.exe.run_model.bm_1.outputs` | Eksport og gentegning af gemte I-/figurresultater. |
 | `src.exe.run_model.bm_1.deterministic`, `src.exe.run_model.bm_1.deterministic_response` | G0–G4-referencefit og frosne udviklingsprognoser. |
 | `src.exe.run_model.bm_1.deterministic_strategies`, `src.exe.run_model.bm_1.deterministic_validation`, `src.exe.run_model.bm_1.deterministic_weekday` | Registrerede strategi-/uge-/rolling-referenceforsøg. |
@@ -71,9 +71,18 @@ Fjerde gennemgang pensionerer også `bm_1_h2_precise`,
 er samlet hos deres eksisterende ejere; ligninger og uafhængige referencer
 bevares. Se [præcise versioner og destinationer](ORIGINALS.md#round4-consolidation).
 
+Femte gennemgang pensionerer den gamle estimate/joint-kampagnefamilie og
+afsluttede F3-sensitivitets-, beslutnings-, usikkerheds- og timingdrivere.
+Normale prisstyringskommandoer, de numeriske referencer og deres faglige
+tests består. Interval/G7/H1 har færre aktive ejere; normal F/G-prognose
+indlæser ikke de pensionerede kampagner. [Præcise originalversioner](ORIGINALS.md#round5-structure).
+
 ## Lokale resultater og nødvendige kopier
 
-Resultaterne bliver ved deres registrerede stier under `files/output/bm_1`:
+Unikke resultater bevares under `files/output/bm_1`. Fem egne cleanup-pakker
+er flyttet intakte til `runs/checks`; 35 filer og alle749 startresultaters
+bytes er verificeret. [Stikortet](old-paths.json) viser de gamle og nye stier.
+Normal adgang er [startguidens korte outputoversigt](../../docs/bm/README.md#resultater).
 
 | Familie | Bevaringsgrund |
 |---|---|
@@ -85,8 +94,8 @@ Resultaterne bliver ved deres registrerede stier under `files/output/bm_1`:
 
 Tredje gennemgang fjernede kun tre fritstående byteidentiske resultataliasser;
 deres kanoniske kopier og oprindelige backupmedlemmer er verificeret.
-De øvrige identiske filer bevares på grund af job-, bundle-, checkpoint- eller
-proveniensroller; enkelte alias-/readerbindinger er endnu ikke fuldt afklaret.
+De øvrige identiske filer har job-, bundle-, checkpoint- eller proveniensroller.
+Evidens med uklart ejerskab/readerbinding bevares; samme array er ikke samme run.
 Unik eller uklar evidens bliver ikke slettet alene på grund af alder eller størrelse.
 Det fulde lokale fil-/hashkort og restorekvitteringer findes under recovery-roden
 i [status](../../docs/bm/STATUS.txt), `round3/structure`. Der er ikke offentliggjort

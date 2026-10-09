@@ -6521,5 +6521,287 @@
         "6c216d0"
       ]
     }
+  },
+  "round5_structural_cleanup": {
+    "baseline_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+    "retired_or_merged_paths": {
+      "src/exe/run_model/bm_1/estimate.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "d4b1060f9e52881e0d12ef124bc767169c80107da055f1c936e24002edb7ee97",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/exe/run_model/bm_1/estimate.py"
+      },
+      "src/method/bm_1_g7_jobs.py": {
+        "action": "merge into existing owner",
+        "active_owner": "src/method/bm_1_g7.py",
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "83ad8c43d314f2493b2592c3bf47f3735c128ec0e202bfbcb265dbb6de98456d",
+        "raw_recovery": "round5/start-working-bytes.zip; complete original tree required"
+      },
+      "src/method/bm_1_interval.py": {
+        "action": "merge into existing owner",
+        "active_owner": "src/method/bm_1_interval_likelihood.py",
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "b201117143442ba4371ffd1237d718247498f0ca714d7e71a17d809de84063f9",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/method/bm_1_interval.py"
+      },
+      "src/params/bm_1_interval.py": {
+        "action": "merge into existing owner",
+        "active_owner": "src/params/bm_1.py",
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "c5724c18564cf78be63dfa108c0fa6097ab5ecf7acc29e1c6a5517c672dc0850",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/params/bm_1_interval.py"
+      },
+      "src/tools/bm_1_distributed.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "328e217d52f1923a1068a6d8d45cc62cd14d67e684d717bc007a9105626ff8fe",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/tools/bm_1_distributed.py"
+      },
+      "src/tools/bm_1_h2_data_packet.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "3e2ef547cca413903384601c337f33c14939b5b9473a05e960b777ebe3b2fb31",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/tools/bm_1_h2_data_packet.py"
+      },
+      "src/validation/bm_1/compact_data.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "6f6603fc02506162491aa76dbb29585bef8f40e6788e1256f9fb221945d7420d",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/compact_data.py"
+      },
+      "src/validation/bm_1/interval_forecast.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "9d1638064b15b741c337ffc18da50fd5816f970493eb5b22e20b4201c8e0ed7c",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/interval_forecast.py"
+      },
+      "src/validation/bm_1/interval_native.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "e2d61125a54314f4fbc401feaf4c80aa7957591fc5ec4d2b88480bcddf5c41ff",
+        "raw_recovery": "round5/start-working-bytes.zip; complete original tree required"
+      },
+      "src/validation/bm_1/joint_diagnostics.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "85f7b96f33b87eef9ab3cf85f36979a9610da7d7bef257c00fd03566624a979b",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/joint_diagnostics.py"
+      },
+      "src/validation/bm_1/joint_estimation.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "1fa396a93996526edd806abd05d10b98f45eae989b09c235170caf685a9335ad",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/joint_estimation.py"
+      },
+      "src/validation/bm_1/joint_grid.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "dfa29cb2b256dd11c318ef5cc30f7e4959da03f89b75e7325c4a47998166c472",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/joint_grid.py"
+      },
+      "src/validation/bm_1/joint_night.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "de3f320255ec63eedb4572ee83f3a7cf58cd7eccd6db9d3e3db713eff4598664",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/joint_night.py"
+      },
+      "src/validation/bm_1/joint_partition.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "69031ed51d92cfcad72f1ab794ff88c1dd485411d1cbae29b532ce2d0714f172",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/joint_partition.py"
+      },
+      "src/validation/bm_1/joint_pilot.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "9e516a745d5c58d876ee7f4362af3211ac3bee0be9c51225153e940158a3a069",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/joint_pilot.py"
+      },
+      "src/validation/bm_1/joint_population.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "9eee70fc2f2dce438990afbe330bb96e308ebbc6f2d41660394fb30e0fc0e489",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/joint_population.py"
+      },
+      "src/validation/bm_1/joint_robustness.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "f504a5b82c7f753b82dae3198bc6cbb5c96b229622dc9b2a6540e5baf7acd919",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/joint_robustness.py"
+      },
+      "src/validation/bm_1/response_cases.py": {
+        "action": "merge into existing owner",
+        "active_owner": "src/validation/bm_1/response.py",
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "c00d134ae35af789a967d43c36cf7a43290b88cb78ee47f09b90427fa2239995",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/response_cases.py"
+      },
+      "src/validation/bm_1/response_fit_checks.py": {
+        "action": "merge into existing owner",
+        "active_owner": "src/validation/bm_1/response.py",
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "a3b275949d3fcb32ddec533efaeb4b3d3eb92ffe0266c9c2fec69c434a8f7026",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "src/validation/bm_1/response_fit_checks.py"
+      },
+      "src/validation/bm_1/response_numerics.py": {
+        "action": "merge into existing owner",
+        "active_owner": "src/validation/bm_1/response.py",
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "d62ca3d24c4158538362b080ff767f3de661893807eea45732770dd63c2bae63",
+        "raw_recovery": "round5/start-working-bytes.zip; complete original tree required"
+      },
+      "tests/benchmark_bm_efficiency.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "02bf5323f4b3d730eb5559ebd8e9aa62def99a6534030929b6b3436b84379963",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/benchmark_bm_efficiency.py"
+      },
+      "tests/test_bm1_distributed.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "323ce0120cd2bf9294c29a43ac47346e9acce332ff2e626abe420a72729fa4a4",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_distributed.py"
+      },
+      "tests/test_bm1_joint_continued.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "e958005ba2d6869c5cbe9da1b18ff4ac5e8838bf62a38ddd9cfa17ca808cf2a8",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_continued.py"
+      },
+      "tests/test_bm1_joint_diagnostics.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "ac3494674be78e4b59f37d7cf234d8034a557c0877ed178eff1a9fc0612e81fa",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_diagnostics.py"
+      },
+      "tests/test_bm1_joint_grid.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "99962b06ed979d3e897389b664e4e6a832f6e5ac772df4cda871d6ae0b80a1c1",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_grid.py"
+      },
+      "tests/test_bm1_joint_grid_fine.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "5bbe3b59e0869c59be8dfc9801de3f8444df506ad9d842faa45a64295d40bfb8",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_grid_fine.py"
+      },
+      "tests/test_bm1_joint_grid_refinement.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "fe30bdb8ec455ad1db15c2f4e08c6a088628450f7f3b30e6e0bcdd030a6c45d6",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_grid_refinement.py"
+      },
+      "tests/test_bm1_joint_grid_streaming.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "230db2cff97c947c129e94dff99efe640ab4e532ca2ea1d67416c613542a8020",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_grid_streaming.py"
+      },
+      "tests/test_bm1_joint_hat.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "a99a9d17c90da22064d6084d1ea7475a159a0159acca828a89acbeef4c12fd94",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_hat.py"
+      },
+      "tests/test_bm1_joint_night.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "97c892eba7bf0c0f0025ea6062bdf13bf9f7ac439902e9f4394b19ae74d50cd2",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_night.py"
+      },
+      "tests/test_bm1_joint_pilot.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "9cefe5dc89d8d3d877d9fbd220d84c634e78d807f1f9aff9f85003638aa97e8d",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_pilot.py"
+      },
+      "tests/test_bm1_joint_refinement.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "1ec93838f6af69dbcd548562acbcda7eb4b58dde4538887ffd402168f021d742",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_refinement.py"
+      },
+      "tests/test_bm1_joint_robustness.py": {
+        "action": "retire closed campaign/protocol test",
+        "active_owner": null,
+        "exact_before_commit": "c504806e3275840de0390e89bf69ab9e6982f5d0",
+        "raw_sha256": "c1f5c3ae415361dcda1c98292725932e95ebe7367d8071ee5d821e453c8a4a2b",
+        "original_archive": "archive/bm/originals/source-7249bf9.zip",
+        "archive_member": "tests/test_bm1_joint_robustness.py"
+      }
+    },
+    "compacted_sources": [
+      "src/validation/bm_1/estimation.py",
+      "src/validation/bm_1/mixture_estimation.py",
+      "src/validation/bm_1/control.py",
+      "src/validation/bm_1/response.py",
+      "src/exe/run_model/bm_1/optimize.py",
+      "src/exe/run_model/bm_1/verify.py"
+    ],
+    "partial_campaign_tests_recovery": "exact same complete c504806 tree; no scientific assertions rewritten",
+    "output_package_moves": {
+      "files/output/bm_1/runs/cleanup_open_week_20261009": "files/output/bm_1/runs/checks/cleanup_open_week_20261009",
+      "files/output/bm_1/runs/cleanup_round3_open_week_20261009": "files/output/bm_1/runs/checks/cleanup_round3_open_week_20261009",
+      "files/output/bm_1/runs/cleanup_round3_short_20261009": "files/output/bm_1/runs/checks/cleanup_round3_short_20261009",
+      "files/output/bm_1/runs/cleanup_round4_short_20261009": "files/output/bm_1/runs/checks/cleanup_round4_short_20261009",
+      "files/output/bm_1/runs/cleanup_short_20261009": "files/output/bm_1/runs/checks/cleanup_short_20261009"
+    }
   }
 }

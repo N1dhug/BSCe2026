@@ -91,3 +91,34 @@ Ingen ny kilde-ZIP er føjet til repoet. Gamle checkpoints kræver fortsat
 deres komplette originale træ, private inputs og runtime; aktiv source
 omskrives ikke til gammel identitet. Den historiske crash-budgettest læser
 den eksakte pensionerede driver fra arkivet uden at starte dens kampagne.
+
+<a id="round5-structure"></a>
+## Strukturel konsolidering fra c504806
+
+Observationstyper er samlet i `src/params/bm_1.py`; numerisk Bayes/remapping
+ejes af `src/method/bm_1_observation.py`. Intervalfilter er hos interval-
+likelihood, G7-evaluator/checkpoint hos G7, H1-cases/kontroller hos response.
+G-båndets CLI er hos `src/exe/run_model/bm_1_g.py`; beregninger forbliver i method.
+
+Den afsluttede estimate/joint-familie, distribueret F4-kampagnestyring og de
+historiske F3-sweeps er fjernet fra aktiv kode. Estimation, mixture_estimation
+og control beholder de nødvendige generatorer, evaluatorfixtures og uafhængige
+referencer. De tilsvarende historiske tests bevares i originaltræet. Fjernelse
+af protokoltests er ikke fjernelse af solvernes matematiske regressioner.
+
+[Stikortet](old-paths.json) angiver hver slettet fils præcise råhash,
+destination og originalmedlem, når det er byteidentisk. Øvrige og delvist
+forkortede filer findes i det komplette `c504806e3275840de0390e89bf69ab9e6982f5d0`-
+træ og den verificerede lokale `round5/start-working-bytes.zip`. Git-historien
+er også bevaret i de lokale delivery-bundles. Git-normaliserede bytes er
+ikke automatisk samme rå sourcehash; brug den præcise ZIP ved gamle hashguards.
+
+Ingen ny kilde-ZIP er tilføjet repoet. Genskab altid et separat komplet træ;
+tilknyt de oprindelige private inputs/resultater og kontrollér deres hashes.
+Kør aldrig gammel resume på aktive nye kilder. Den gamle terminalreferences
+PR81-adgangskrav er uændrede; G7's aktuelle guard binder den nye Bayes-ejer.
+
+Fem private cleanup-resultatpakker er flyttet som hele mapper til `runs/checks`.
+Indre bytes/identiteter er uændrede. Gammel resume kræver stadig originalsource;
+mappeflytning ophæver ingen kildebinding. Den lokale flyttebackup og SHA-kontrol
+står i `round5/output_apply.json` under recovery-roden i [status](../../docs/bm/STATUS.txt).

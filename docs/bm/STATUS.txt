@@ -1,31 +1,55 @@
-BM-F/G — femte strukturelle gennemgang, i gang
-Start: c504806e3275840de0390e89bf69ab9e6982f5d0; branch cleanup/bm-fg-active-models-20261009.
-main/origin-main uændret: 09c602f327a3497a763c47e734fac4a38b12227d. Ingen merge/push.
+BM-F/G — femte strukturelle oprydning afsluttet, klar til lokalt review
+Branch: cleanup/bm-fg-active-models-20261009. Ingen push/merge.
+Baseline: c504806e3275840de0390e89bf69ab9e6982f5d0; matematisk source-delmål4bf76d9.
+main/origin-main uændret: 09c602f327a3497a763c47e734fac4a38b12227d.
 
-Gennemført: punkt/interval-observationer samlet; numerisk Bayes/remapping
-ejes af method/bm_1_observation. Interval-filter og G7-jobs samlet hos deres
-beregningsejere; tre H1-moduler samlet i response. Gammel estimate/joint-
-kampagnestyring og tilhørende protokoltests pensioneret. Estimation 3414→1081
-linjer; mixture_estimation1574→664. Nødvendige generatorer/referencer bevaret.
-WM149 er hashkontrolleret uændret; originale kilder/testversioner sikret.
+GENNEMFØRT
+Aktiv ubeskyttet src-Python86→67 filer,31264→20359 linjer. Reel reduktion:
+19 færre ejere/kampagnefiler og10905 linjer; ingen ny facade/researchmappe.
+Params-observationer samlet; Bayes/remapping i method/bm_1_observation.
+Intervalfilter/G7/H1 samlet hos deres ejere. Bånd-CLI og rapportering hos exe.
+Estimation3414→1081, mixture_estimation1574→664, control1436→828.
+Estimate/joint/distributed-kampagner og afsluttede F3-sweeps pensioneret.
+Historiske protokoltests:13 filer og afgrænsede gamle kampagnemetoder fjernet
+fra aktiv testtræ; originalversioner bevaret. Matematiske solvertests består.
+Alle ønskede områder gennemgået; konkrete bevaringsgrunde i FILE_PLAN.txt.
+Syv egne root-henvisninger og nødvendigt TeX-buildmateriale allerede afgrænset;
+fem configs har forskellige kontrakter. Beskyttede model/controlfiler urørte.
 
-Kontrol: første145 tests,144 bestået; én test brugte synthetic.replace i
-stedet for dataclasses.replace. Testimport rettet; målrettet omkontrol næste.
-Forbrug50,117s af300s, gentagelser tæller. Ingen historisk fit eller benchmark.
-Resterende: control/numerics/tools/method sidste gennemgang, outputstruktur,
-aktive docs/arkivstier, korte F/G-regressioner, endelig audit og små commits.
-Næste: målrettet testomkontrol og commit af sammenhængende kildeændringer.
+OUTPUT
+Fem cleanup-pakker/35 filer flyttet intakte til runs/checks. Alle749 BM-
+startoutputs og alle øvrige input/outputbytes er uændrede. Ny kort F-prøve
+tilføjer7 filer i runs/checks/structural_f_short. Ingen unik evidens slettet.
+Egne regenererbare pyc fjernet; én verificeret tom egen cachemappe fjernet.
+Cacheantallet kan ikke opgøres præcist efter helperafbrydelse og tælles ikke
+som kildereduktion. Protected/Numba/uklare caches bevares.
 
-Recovery: C:\Users\jvils\.codex\.chatgpt-projects\g-p-6aaef4dd0ec48191922398dc4cb17b90\cleanup_work\round5
-start.json/start-working-bytes.zip, merge/campaign/followup receipts, tests.json.
-Kontrollér HEAD/diff/processer/receipts ved afbrydelse; genstart ikke automatisk.
-Kendte F-negative/UDEN/faglig accept-grænser bevares kort i MATHEMATICS.md.
+FAKTISK KONTROL
+364 forskellige målrettede tests observeret bestået, inklusive kerner,
+uafhængige referencer, aktive fits, population/sourcebindings, F pause/resume,
+H1 serial/spawn, G7 crashbudget, data/outputs, normale CLI-import/help og links.
+To batches blev stoppet ved deres loft; ufærdige kontroller blev afsluttet
+målrettet senere. Tre konkrete import/legacyguard-testfejl rettet og gentaget.
+Ingen kendt fejlet eller ufærdig valgt test resterer. Fuld suite er ikke kørt.
+Samlet ny test-/modelprocestid inklusive fejl/gentagelser/stops:
+271.002s af300s. Ingen historiske fits eller lange benchmarks.
+Ny F1+3t-regression43,177s: alle4×22 CSV-felter, begge1921-cellers logstates
+og PNG eksakte mod runde4. G168t4,478s:15 numeriske kolonner eksakte, intet fit.
+Flyttet F-pakke og nye F/G-resultater læst/hashverificeret med normal CLI.
+Source stadig byteidentisk med de faktisk kørte regressioner. Ingen cold-runtimeclaim.
+WM149 uændret;792 oprindelige input/outputfiler SHA-verificeret. OriginalZIP'er
+CRC/hash-verificeret uændret; aktive imports/syntax og306 links kontrolleret.
 
-Delmål: control1436→828, optimize688→331; bånd-CLI hos bm_1_g, fælles
-artifactkontrol genbrugt, død G7-jobplan pensioneret. Dataindlæsning adskilt
-fra real_data-rapportering. Fem cleanup-pakker/35 filer flyttet til runs/checks;
-alle749 BM-outputfiler bevaret bytepræcist. Verificeret tom egen cachemappe fjernet.
-Tests budget 125.731s/300s. Control/numerics-kontrol
-nåede alle disse tests, men blev stoppet under importtest. Båndfejl og historisk
-terminalguard korrigeret og præcis de to tests gentaget grønt. Næste: korte
-F/G-regressioner og resterende målrettede imports/adaptertests; opdater docs/arkiv.
+RECOVERY OG NÆSTE HANDLING
+C:\Users\jvils\.codex\.chatgpt-projects\g-p-6aaef4dd0ec48191922398dc4cb17b90\cleanup_work\round5
+start.json/start-working-bytes.zip er den komplette præcise c504806-råstart.
+integration/source.zip og source_sha256.json binder ny faktisk regression.
+tests.json/coverage.json, qa.json/counts.json/ownership.json og merge/control/
+output receipts dokumenterer delmål og forbrug. Delivery-bundle og råbyte-ZIP
+gemmes efter det afsluttende dokumentcommit; delivery.json registrerer HEAD.
+Gamle artefakter bruger deres originale source/input/runtime; hashes omskrives ikke.
+Efter afbrydelse: kontrollér HEAD/diff/processer/receipts; gentag intet automatisk.
+Næste brugerhandling: review branchen og begynd i docs/bm/README.md; derefter
+den praktiske brugerprøve. Ingen strukturel opgave eller valgt kontrol afventer.
+Negative F-observationer/UDEN/faglig fælles accept står kort i MATHEMATICS.md;
+de blev ikke genundersøgt og er ikke nye kørselsordrer.

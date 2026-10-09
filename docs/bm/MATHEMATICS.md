@@ -216,3 +216,11 @@ Nødvendigt restarbejde er datakanalernes betydning, verificeret G-medlemskab og
 et særskilt historisk F-fitbudget med konvergens/runtime. H/I/J-accept,
 firestykkefit, nye baselinefamilier og parameterbanke er bevaret forskning,
 ikke skjulte acceptkriterier for oprydningen. Johans praktiske brugerprøve afventer.
+
+Observationstyperne for punktprøver og intervalmidler har én ejer i
+[params/bm_1](../../src/params/bm_1.py), mens den uændrede Gaussian Bayes-
+opdatering og konservative masseremapping findes i
+[method/bm_1_observation](../../src/method/bm_1_observation.py).
+Punktfilter/parameterbank, native intervalkerne, karakteristisk reference og
+mixture/EM er reelt forskellige beregninger og forbliver separate. F's native
+normalvej importerer ikke punktfilter eller historiske campaignloops.

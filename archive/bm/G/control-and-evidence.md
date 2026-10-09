@@ -331,4 +331,4 @@ de er ikke en ny aktiv launcher eller en nulstilling af tidligere tid.
 
 ## Konkrete kode- og kontrolindgange
 
-[deterministiske kontroller, energilighed og box-QP](../../../src/method/bm_1_g7_deterministic.py), [job/receipt](../../../src/method/bm_1_g7_jobs.py), [energi-tests](../../../tests/test_bm1_g7_energy.py), [job-tests](../../../tests/test_bm1_g7_jobs.py). Historiske CLI- og controllerkommandoer findes kun i det restaurerede originaltræ; disse links peger på de bevarede matematiske komponenter. Tests er links til tidligere eller løbende kontroller, ikke påstået genkørt ved denne dokumentændring.
+[deterministiske kontroller, energilighed og box-QP](../../../src/method/bm_1_g7_deterministic.py), [job/receipt](../../../src/method/bm_1_g7.py), [energi-tests](../../../tests/test_bm1_g7_energy.py), [job-tests](../../../tests/test_bm1_g7_jobs.py). Historiske CLI- og controllerkommandoer findes kun i det restaurerede originaltræ; disse links peger på de bevarede matematiske komponenter. Tests er links til tidligere eller løbende kontroller, ikke påstået genkørt ved denne dokumentændring.

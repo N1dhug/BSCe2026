@@ -335,4 +335,4 @@ konturbank skal fortsat fejle eksplicit. Kode: `interval_native`,
 
 ## Konkrete kode- og kontrolindgange
 
-[native operator](../../../src/validation/bm_1/interval_native.py), [terminale tilts](../../../src/validation/bm_1/interval_terminal_tilt.py), [tilt-tests](../../../tests/test_bm1_interval_terminal_tilt.py). Historiske CLI- og controllerkommandoer findes kun i det restaurerede originaltræ; disse links peger på de bevarede matematiske komponenter. Tests er links til tidligere eller løbende kontroller, ikke påstået genkørt ved denne dokumentændring.
+[native operator](../ORIGINALS.md#round5-structure), [terminale tilts](../../../src/validation/bm_1/interval_terminal_tilt.py), [tilt-tests](../../../tests/test_bm1_interval_terminal_tilt.py). Historiske CLI- og controllerkommandoer findes kun i det restaurerede originaltræ; disse links peger på de bevarede matematiske komponenter. Tests er links til tidligere eller løbende kontroller, ikke påstået genkørt ved denne dokumentændring.

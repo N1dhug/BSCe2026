@@ -120,16 +120,35 @@ gamle G/WM-timeadapters faste uge. Det er forskelligt fra en ny forecast.
 `bands calibrate/evaluate` er en særskilt kronologisk båndprocedure;
 se [båndmetoden](G_WEEKDAY_STUDY.md). Ingen fælles modelrangering startes her.
 
-## Kort brugerprøve og dokumentation
+<a id="resultater"></a>
+## Resultater og kode at begynde med
 
-1. Kør F `--check`, det korte eksempel og `--read-result`. Læs CSV/figur/status.
-2. Ændr periode/horizont/modelvalg. Prøv et cutoff før 21. februar, UDEN og
-   det negative filterdøgn; de skal afvises uden fit eller propagation.
-3. Eksportér G-modellen, kør `--check` og seks timers forecast, og brug `show`.
-   En senere uge kræver matchende scenarieinput; et nyt fit er en anden handling.
-4. Ved reel F-pause: brug samme identitet og `--resume`.
+| Åbn | Formål |
+|---|---|
+| `runs/my_f_example` eller dit valgte run | F's `summary.json`, `predictions.csv`, `comparison.png`; input/model/source/checkpoint ved siden af. |
+| `examples/g_saved_week_20220228`, `examples/g_deployment_20261009` | Beholdt G-snapshot og to særskilte scenarieinput; eksportér til egen modelmappe. |
+| Din G-model og forecastmappe | `model.json`/conversion-freeze og `forecast.csv`/forecast-freeze; brug `show`. |
+| `runs/checks` | Alle cleanup-kontroller, inklusive ny `structural_f_short`; ikke nye fits eller aktuelle brugerdata. |
 
-Din brugerprøve afventer. [Status](STATUS.txt) viser afsluttede kontroller og
-resterende arbejde; [sammenligningen](COMPARISON.md) ejer runtime og før/efter-tal.
-[Matematik](MATHEMATICS.md) ejer data-/modelkontrakten, [weekday-guiden](WEEKDAY_BACKTEST.md)
-nye fits og [arkivet](../../archive/bm/INDEX.md) de historiske forsøg.
+`benchmarks`, `f3_b`, `real_data`, `runs/estimation` og `runs/deterministic`
+bevarer selvstændig historisk evidens. Deres roller står i [arkivet](../../archive/bm/INDEX.md).
+Ingen unikke startresultater er slettet; samme array kan indgå i forskellige kildebundne runs.
+
+Læs først [F-indgangen](../../src/exe/run_model/bm_1_f4.py),
+[G-indgangen](../../src/exe/run_model/bm_1_g.py) og
+[modelbalancen](../../src/model/bm_1.py). F's native intervalkerne er
+[bm_1_interval_native](../../src/method/bm_1_interval_native.py), og G's
+frosne dagsvise beregning er [bm_1_g_forecast](../../src/method/bm_1_g_forecast.py).
+[Observationstyper](../../src/params/bm_1.py) og
+[Bayes/remapping](../../src/method/bm_1_observation.py) har adskilte ansvar.
+
+Sammenlignet med WM4-eksemplet er parametre/observationer og beregningsansvar
+mere synlige: normal F følger prepare→advance_hour→checkpoint→export, og
+normal G følger validate-model→prepare-inputs→frozen-weekday-forecast. Historiske
+estimation/kontrolkampagner og rapportering står ikke mellem disse beregninger.
+F's intervalobservation og forskellige solvere kræver fortsat mere kode end WM4.
+
+[Status](STATUS.txt) ejer faktiske kontroller og næste handling;
+[sammenligningen](COMPARISON.md) ejer før/efter-tal, [matematik](MATHEMATICS.md)
+modelkontrakter og [weekday-guiden](WEEKDAY_BACKTEST.md) nye fits.
+Din praktiske brugerprøve afventer; oprydningen starter ingen faglig evalueringskampagne.
