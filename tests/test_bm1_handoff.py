@@ -139,29 +139,6 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(longer_plan['demand_mean'][0], short['demand_mean'][0])
         self.assertNotEqual(longer_plan['demand_mean'][1], short['demand_mean'][1])
 
-    def test_cli_preserves_existing_output_before_starting_a_study(self):
-        from pathlib import Path
-        import tempfile
-        from src.exe.run_model.bm_1 import estimate
-        with tempfile.TemporaryDirectory() as folder:
-            report = Path(folder) / 'existing.json'
-            report.write_text('keep me')
-            with patch('src.validation.bm_1.forecast.run_i_baseline',
-                       side_effect=AssertionError('unnecessary replay')):
-                with self.assertRaises(FileExistsError):
-                    estimate.main(['i-baseline', '--output', str(report)])
-            self.assertEqual(report.read_text(), 'keep me')
-
-    def test_cli_source_change_prevents_report_publication(self):
-        from src.exe.run_model.bm_1 import estimate
-        with patch('src.validation.bm_1.forecast.run_i_baseline', return_value={}), \
-             patch.object(estimate, '_source_snapshot', side_effect=[
-                 dict(source_commit='before', working_tree_dirty=False),
-                 dict(source_commit='after', working_tree_dirty=False)]), \
-             patch.object(estimate, '_write_likelihood_report', side_effect=AssertionError('publish')):
-            with self.assertRaisesRegex(ValueError, 'Source changed'):
-                estimate.main(['i-baseline', '--quiet'])
-
 
 if __name__ == '__main__':
     unittest.main()

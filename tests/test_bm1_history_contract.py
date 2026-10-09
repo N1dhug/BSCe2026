@@ -65,7 +65,7 @@ class HistoryContractTests(unittest.TestCase):
         with self.assertRaises(ValueError): replace(split, selection_start=split.train_start)
 
     def test_hour_start_energy_preserves_dst_intervals_and_end_posterior(self):
-        from src.params.bm_1_interval import BM1IntervalObservationSeries
+        from src.params.bm_1 import BM1IntervalObservationSeries
         contract, data, baseline, prices, parameters = self.data()
         contract = replace(contract, observation_kind='interval_energy', measurement_unit='kWh',
                            timestamp_label='hour_start', metadata_status='working_assumptions')

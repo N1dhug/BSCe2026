@@ -9,7 +9,7 @@ import numpy as np
 from src.method.bm_1_batch_filter import run_fv_sigma_y_batch
 from src.method.bm_1_estimation import run_fv_filter
 from src.solver.finite_volume import finite_volume_1d_cached
-from src.validation.bm_1 import estimation as core, joint_estimation as joint, joint_grid as grid
+from src.validation.bm_1 import estimation as core
 
 
 class BatchedEvolutionTests(unittest.TestCase):
@@ -107,76 +107,6 @@ class BatchedFilterTests(unittest.TestCase):
             hypotheses=grid._parameter_grid(('sigma_x', 'sigma_y'), 5, 5)[0], counts=(3, 5),
             backend='cached', keep_demand=True, label='middle', prior_bridge=False,
             settings=dict(x_steps=31, max_step=1/96, likelihood_quadrature_order=3))
-
-    def test_task_boundaries_reject_mixing_process_parameters(self):
-        group = self.group()
-        tasks = list(joint._batch_tasks([dict(group, batch_sigma_y=4)]))
-        self.assertEqual([(a, b) for _, a, b, _ in tasks],
-                         [(a, b) for start in range(0, 25, 5) for a, b in ((start, start+4), (start+4, start+5))])
-        with self.assertRaisesRegex(ValueError, 'fixed sigma_x'):
-            joint._candidate_batch_replay((0, 3, 7, group))
-        for changes in (dict(batch_sigma_y=5), dict(batch_sigma_y=4, backend='reference'),
-                        dict(batch_sigma_y=4, pair=('rho', 'Xi'))):
-            with self.assertRaises(ValueError): list(joint._batch_tasks([dict(group, **changes)]))
-
-    def test_complete_joint_bank_matches_scalar_and_spawn_with_demand(self):
-        group = self.group()
-        scalar = joint._run_groups_streaming([group], 1, None, grid._StreamingGridReduction)[0]
-        for workers in (1, 2):
-            progress = []
-            batched = joint._run_groups_streaming([dict(group, batch_sigma_y=4)], workers, progress.append,
-                                                  grid._StreamingGridReduction)[0]
-            self.assertEqual([p['completed'] for p in progress], list(range(1, 26)))
-            for a, b in zip(scalar, batched):
-                for key in ('conditional_log_evidence', 'log_weights', 'bank_log_evidence',
-                            'marginal_predicted_mass', 'marginal_posterior_mass',
-                            'marginal_predicted_demand_mean', 'marginal_posterior_demand_mean'):
-                    np.testing.assert_array_equal(a[key], b[key])
-
-    def test_batched_queue_is_bounded_and_failure_never_drops_hypotheses(self):
-        events = []
-        class Future:
-            def result(self):
-                events.append('consume'); raise RuntimeError('batch failed')
-        class Pool:
-            def __init__(self, **kwargs): pass
-            def __enter__(self): return self
-            def __exit__(self, *args): pass
-            def submit(self, *args): events.append('submit'); return Future()
-        with patch.object(joint, 'ProcessPoolExecutor', Pool), self.assertRaisesRegex(RuntimeError, 'batch failed'):
-            joint._run_groups_streaming([dict(self.group(), batch_sigma_y=4)], 3, None, grid._StreamingGridReduction)
-        self.assertEqual(events, ['submit']*3+['consume'])
-
-    def test_benchmark_checks_every_configuration_and_retains_raw_scores(self):
-        from src.validation.bm_1 import joint_pilot
-        configurations = [(name, dict(x_steps=11, max_step=1/48, likelihood_quadrature_order=3))
-                          for name in joint_pilot.LABELS]
-        with patch.object(joint_pilot, 'configurations', return_value=configurations):
-            report = joint.benchmark_sigma_y_batch(record_days=1, repeats=2, batch_size=4)
-        self.assertTrue(report['passes'])
-        self.assertEqual(report['tested_scalar_hypotheses'], 96)
-        self.assertEqual(report['tested_batch_calls'], 24)
-        self.assertEqual(len(report['rows']), 12)
-        for row in report['rows']:
-            self.assertEqual(max(row['maximum_errors'].values()), 0.)
-            for key in row['final_repeat_raw']['scalar']:
-                np.testing.assert_array_equal(row['final_repeat_raw']['scalar'][key],
-                                              row['final_repeat_raw']['batch'][key])
-
-    def test_benchmark_cli_requires_clean_source_and_preserves_existing_output(self):
-        from tempfile import TemporaryDirectory
-        from pathlib import Path
-        from src.exe.run_model.bm_1 import estimate
-        with TemporaryDirectory() as directory:
-            output = Path(directory)/'benchmark.json.gz'
-            args = estimate.build_parser().parse_args(['benchmark-fv-batch', '--output', str(output)])
-            with patch.object(estimate, '_source_snapshot', return_value=dict(working_tree_dirty=True)):
-                with self.assertRaisesRegex(ValueError, 'Commit source'):
-                    args.handler(args)
-            output.write_bytes(b'keep')
-            with self.assertRaises(FileExistsError):
-                args.handler(args)
-            self.assertEqual(output.read_bytes(), b'keep')
 
 
 class ForecastCollapseTests(unittest.TestCase):

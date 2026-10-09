@@ -64,9 +64,9 @@ def run_joint_cn(development, cn_reference, candidate, *, intervals=6, accumulat
                  saved_prefix=()):
     """Fresh whole prefix from the declared prior; no cross-candidate states."""
     from time import perf_counter
-    from src.method.bm_1_interval import run_interval_filter
+    from src.method.bm_1_interval_likelihood import run_interval_filter
     from src.model.bm_1 import bm_1
-    from src.params.bm_1_interval import BM1IntervalObservationSeries
+    from src.params.bm_1 import BM1IntervalObservationSeries
     record = _record(development, cn_reference, candidate)
     settings = dict(SEARCH_SETTINGS['joint321'], accumulator_spacing=accumulator_spacing)
     model = bm_1(record.baseline, record.baseline, record.horizon, 2)

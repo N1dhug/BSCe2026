@@ -10,7 +10,7 @@ import numpy as np
 
 from src.control.bm_1 import BM1ControlProblem, BM1Parameters
 from src.method.bm_1_estimation import BM1FVFilterStep, BM1FVRhoBankStep
-from src.params.bm_1 import conservative_mass_transfer
+from src.method.bm_1_observation import conservative_mass_transfer
 from src.solver.finite_volume import finite_volume_1d_cached
 from src.validation import estimation as checks
 

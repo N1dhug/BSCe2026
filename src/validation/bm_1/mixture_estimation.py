@@ -1,91 +1,88 @@
-"""F4-D mixture representation studies for BM1 state estimation.
-
-This validation module chooses and tests approximation dictionaries.  It does
-not implement the recursive mixture filter and it does not alter the F2/F3
-mixture defaults.
-"""
-
+"""Reusable synthetic/numerical reference calculations; retired campaigns use original sources."""
 from __future__ import annotations
-
-from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import get_context
-
 import numpy as np
-
 from src.diagnostics.bm_1 import (
     cell_mass_cdf_sup,
     cell_mass_l1,
     cell_mass_wasserstein_1,
     density_l2,
 )
+
 from src.method.beta_mixture import PreparedBetaProjector, beta_cell_average_basis
-from src.method.bm_1_estimation import (
-    bm1_observation_update,
-    run_fv_filter,
-    run_mixture_filter,
-)
-from src.solver.finite_volume import finite_volume_1d
+from src.method.bm_1_estimation import run_fv_filter, run_mixture_filter
 from src.validation import estimation as checks
-from src.validation.bm_1.estimation import (
-    beta_initial_mass,
-    build_f4_b_case,
-    generate_synthetic_sequence,
-    generate_synthetic_sequences,
-    _paired_bootstrap_interval,
-)
+from src.validation.bm_1.estimation import beta_initial_mass, build_f4_b_case, generate_synthetic_sequence, _paired_bootstrap_interval
 
-
-D1_X_STEPS = 801
 D1_GAP_TOL = 1.0e-9
+
 D1_MASS_TOL = 1.0e-9
+
 D1_L1_GATE = 0.05
+
 D1_W1_GATE = 0.01
-D1_CONDITION_ALARM = 1.0e12
+
 D1_ACTIVE_TOL = 1.0e-10
+
 D2_SEQUENCE_START = 1001
+
 D2_SEQUENCE_COUNT = 10
+
 D2_X_STEPS = 801
+
 D2_MAX_STEP = 1.0 / 192.0
+
 D2_QUADRATURE_ORDER = 1
+
 D2_DICTIONARY = "shape_D"
+
 D3A_SEQUENCE_ID = 0
+
 D3A_X_STEPS = 101
+
 D3A_MAX_STEP = 1.0 / 384.0
+
 D3A_CFL = 0.4
+
 D3A_QUADRATURE_ORDER = 1
-D3B_TIME_STEPS = (1.0 / 384.0, 1.0 / 768.0, 1.0 / 1536.0)
-D3B_SPATIAL_CELLS = (51, 101, 151)
-D3B_SPATIAL_MAX_STEP = 1.0 / 1536.0
-D3B_STABILITY_RATIO = 0.10
-D3C_TIME_STEPS = (1.0 / 768.0, 1.0 / 1536.0, 1.0 / 3072.0)
-D3C_SPATIAL_CELLS = (101, 151, 201)
-D3C_SPATIAL_MAX_STEP = 1.0 / 3072.0
+
 D3C_LIMIT_RATIO = 0.10
+
 D3C_PREDICTION_REL_TOL = 0.20
+
 D3C_SPATIAL_REL_TOL = 0.10
+
 D3C_POPULATION_X_STEPS = 151
+
 D3C_POPULATION_MAX_STEP = 1.0 / 3072.0
+
 D3D_SEQUENCE_START = 1011
+
 D3D_SEQUENCE_COUNT = 200
+
 D3D_BOOTSTRAP_REPLICATES = 5000
+
 D3D_BOOTSTRAP_SEED = 4301
+
 D3D_RMSE_EQUIVALENCE_LOW = 0.95
+
 D3D_RMSE_EQUIVALENCE_HIGH = 1.05
-D3D_EVIDENCE_MEAN_ABS_UPPER = 0.002
-D3D_DAILY_LOG_LIKELIHOOD_Q95 = 0.1
+
 D3D_SEQUENCE_MAX_L1_Q95 = 0.02
+
 D3D_GLOBAL_MAX_L1 = 0.05
+
 D3D_GLOBAL_MAX_W1 = 0.01
 
 _INNER_MEANS = np.arange(1, 20, dtype=float) / 20.0
+
 _BOUNDARY_MEANS = np.array([0.01, 0.025, 0.975, 0.99], dtype=float)
+
 _CANDIDATE_LEVELS = (
     ("multiscale_2", (20.0, 100.0), False),
     ("multiscale_3", (20.0, 100.0, 500.0), False),
     ("multiscale_4", (20.0, 100.0, 500.0, 2500.0), False),
     ("multiscale_4_boundary", (20.0, 100.0, 500.0, 2500.0), True),
 )
-
 
 def _moments(cell_mass, centers):
     """Discrete center moments under D1's declared 1e-9 mass tolerance."""
@@ -101,7 +98,6 @@ def _moments(cell_mass, centers):
     mean = float(mass @ centers)
     variance = float(mass @ np.square(centers - mean))
     return mean, variance
-
 
 def _target_suite(edges):
     """Return the preregistered six D1 density targets on one cell grid."""
@@ -135,7 +131,6 @@ def _target_suite(edges):
         }
     return result
 
-
 def _multiscale_dictionary(edges, concentrations, *, boundary_enriched):
     means = _INNER_MEANS.copy()
     if boundary_enriched:
@@ -157,7 +152,6 @@ def _multiscale_dictionary(edges, concentrations, *, boundary_enriched):
         "selectable": True,
     }
 
-
 def _legacy_dictionary(model, centers, dx, degree):
     raw = model.fokker_planc.beta_basis(centers, degree)
     basis = model.fokker_planc._normalise_basis_discretely(raw, dx)
@@ -170,7 +164,6 @@ def _legacy_dictionary(model, centers, dx, degree):
         "components": degree + 1,
         "selectable": False,
     }
-
 
 def build_d1_dictionaries(edges):
     """Build comparison and nested multiscale dictionaries fixed before D1 results."""
@@ -193,7 +186,6 @@ def build_d1_dictionaries(edges):
             boundary_enriched=boundary_enriched,
         )
     return dictionaries
-
 
 def _multiresolution_dictionary(edges, high_step, *, shape_aware):
     """Shared geometry builder; historical D1b/D1c specifications stay explicit."""
@@ -218,11 +210,9 @@ def _multiresolution_dictionary(edges, high_step, *, shape_aware):
                 concentrations=concentrations, alpha=alpha, beta=beta,
                 components=int(alpha.size), selectable=True)
 
-
 def _adaptive_dictionary(edges, high_step):
     """Declared D1b layers (20, 100, 500, 2000)."""
     return _multiresolution_dictionary(edges, high_step, shape_aware=False)
-
 
 def build_d1b_dictionaries(edges):
     """Build the two nested adaptive D1b dictionaries preregistered after D1."""
@@ -236,11 +226,9 @@ def build_d1b_dictionaries(edges):
         "adaptive_B": _adaptive_dictionary(edges, 0.0125),
     }
 
-
 def _shape_aware_dictionary(edges, high_step):
     """Declared D1c layers, including the frozen shape_D at high_step=0.0125."""
     return _multiresolution_dictionary(edges, high_step, shape_aware=True)
-
 
 def build_d1c_dictionaries(edges):
     """Build the two nested D1c shape-aware dictionaries preregistered after D1b."""
@@ -253,7 +241,6 @@ def build_d1c_dictionaries(edges):
         "shape_C": _shape_aware_dictionary(edges, 0.025),
         "shape_D": _shape_aware_dictionary(edges, 0.0125),
     }
-
 
 def _projection_metrics(projector, projected, reference_mass, target_density, centers):
     target_mean, target_variance = _moments(reference_mass, centers)
@@ -280,99 +267,6 @@ def _projection_metrics(projector, projected, reference_mass, target_density, ce
     }
     return fit, projected_mass, coefficients
 
-def _fit_target(projector, target, centers):
-    projected = projector.project(target["density"])
-    return _projection_metrics(projector, projected, target["cell_mass"], target["density"], centers)[0]
-
-
-def _evaluate_static_dictionaries(
-    *,
-    edges,
-    centers,
-    dx,
-    targets,
-    dictionaries,
-    fallback_disqualifies,
-):
-    """Evaluate fixed dictionaries without changing the declared projection problem."""
-    results = {}
-    selected = None
-    for name, dictionary in dictionaries.items():
-        projector = PreparedBetaProjector(dictionary["basis"], dx)
-        fits = {}
-        for target_name, target in targets.items():
-            try:
-                fits[target_name] = _fit_target(projector, target, centers)
-            except (FloatingPointError, RuntimeError, np.linalg.LinAlgError) as exc:
-                fits[target_name] = {
-                    "status": "failed",
-                    "failure_type": type(exc).__name__,
-                    "failure_message": str(exc),
-                }
-        failed_targets = tuple(
-            target_name for target_name, item in fits.items()
-            if item["status"] != "ok"
-        )
-        successful = [item for item in fits.values() if item["status"] == "ok"]
-        if successful:
-            max_l1 = max(item["cell_mass_l1"] for item in successful)
-            max_w1 = max(item["wasserstein_1"] for item in successful)
-            max_gap = max(item["optimality_gap"] for item in successful)
-            max_mass_error = max(item["mass_error"] for item in successful)
-            any_fallback = any(item["used_fallback"] for item in successful)
-        else:
-            max_l1 = max_w1 = max_gap = max_mass_error = float("inf")
-            any_fallback = False
-        if failed_targets:
-            max_l1 = max_w1 = max_gap = max_mass_error = float("inf")
-        matrix_condition = float(projector.projection_solver.matrix_condition_number)
-        hessian_condition = float(projector.projection_data[2])
-        numerical_ok = (
-            not failed_targets
-            and max_gap <= D1_GAP_TOL
-            and max_mass_error <= D1_MASS_TOL
-            and (not fallback_disqualifies or not any_fallback)
-        )
-        representation_ok = (
-            not failed_targets
-            and max_l1 <= D1_L1_GATE
-            and max_w1 <= D1_W1_GATE
-        )
-        eligible = bool(dictionary["selectable"] and numerical_ok and representation_ok)
-        summary = {
-            "components": dictionary["components"],
-            "selectable": dictionary["selectable"],
-            "numerical_ok": numerical_ok,
-            "representation_ok": representation_ok,
-            "eligible": eligible,
-            "maximum_cell_mass_l1": max_l1,
-            "maximum_wasserstein_1": max_w1,
-            "maximum_optimality_gap": max_gap,
-            "maximum_mass_error": max_mass_error,
-            "any_fallback": any_fallback,
-            "failed_targets": failed_targets,
-            "projection_matrix_condition_number": matrix_condition,
-            "hessian_condition_number": hessian_condition,
-            "conditioning_alarm": (
-                not np.isfinite(matrix_condition)
-                or matrix_condition > D1_CONDITION_ALARM
-            ),
-            "worst_l1_target": (
-                None if failed_targets else max(fits, key=lambda key: fits[key]["cell_mass_l1"])
-            ),
-            "worst_w1_target": (
-                None if failed_targets else max(fits, key=lambda key: fits[key]["wasserstein_1"])
-            ),
-        }
-        results[name] = {
-            "summary": summary,
-            "fits": fits,
-        }
-        if selected is None and eligible:
-            selected = name
-    return results, selected
-
-
 def _snapshot_projection(projector, reference_mass, centers, *, initial_coefficients=None):
     """Solve the same snapshot QP, optionally from explicit feasible coefficients.
 
@@ -386,7 +280,6 @@ def _snapshot_projection(projector, reference_mass, centers, *, initial_coeffici
     target_density = reference_mass / projector.dx
     projected = projector.project(target_density, initial_coefficients=initial_coefficients)
     return _projection_metrics(projector, projected, reference_mass, target_density, centers)
-
 
 def _mass_distribution_errors(left_mass, right_mass, centers, dx):
     left_mass = checks.probability_mass(left_mass, "left_mass")
@@ -406,7 +299,6 @@ def _mass_distribution_errors(left_mass, right_mass, centers, dx):
         "variance_error": left_variance - right_variance,
     }
 
-
 def _error_history(left, right, centers, dx):
     if np.shape(left) != np.shape(right) or len(np.shape(left)) != 2:
         raise ValueError("Distribution histories must have identical (times, cells) shapes.")
@@ -414,7 +306,6 @@ def _error_history(left, right, centers, dx):
         _mass_distribution_errors(lrow, rrow, centers, dx)
         for lrow, rrow in zip(left, right)
     ]
-
 
 def _max_error_history(history):
     return {
@@ -425,7 +316,6 @@ def _max_error_history(history):
         "maximum_abs_mean_error": max(abs(item["mean_error"]) for item in history),
         "maximum_abs_variance_error": max(abs(item["variance_error"]) for item in history),
     }
-
 
 def _aggregate_snapshot_fits(fits):
     """Summarize a fixed set of successful/failed snapshot fits."""
@@ -469,224 +359,6 @@ def _aggregate_snapshot_fits(fits):
             and max_mass_error <= D1_MASS_TOL
         ),
     }
-
-
-def run_f4_d_snapshot_holdout(
-    *,
-    sequence_start=D2_SEQUENCE_START,
-    n_sequences=D2_SEQUENCE_COUNT,
-    x_steps=D2_X_STEPS,
-    max_step=D2_MAX_STEP,
-    likelihood_quadrature_order=D2_QUADRATURE_ORDER,
-):
-    """Run preregistered D2 static holdout on FV predictions/posteriors.
-
-    The selected shape-D dictionary is frozen.  FV truth states are not used.
-    Projected predictions are scored through the same observation operator only
-    to diagnose evidence distortion; those projected posteriors are never
-    carried forward.
-    """
-    sequence_start = checks.positive_integer(sequence_start, "sequence_start", minimum=0)
-    n_sequences = checks.positive_integer(n_sequences, "n_sequences", minimum=1)
-    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
-    max_step = checks.finite_scalar(max_step, "max_step", positive=True)
-    likelihood_quadrature_order = checks.positive_integer(
-        likelihood_quadrature_order, "likelihood_quadrature_order", minimum=1,
-    )
-
-    case = build_f4_b_case()
-    model, parameters = case.build_model()
-    edges, centers, dx = model.fokker_planc_reference.grid(x_steps, bounds=(0.0, 1.0))
-    dictionary = _shape_aware_dictionary(edges, 0.0125)
-    projector = PreparedBetaProjector(dictionary["basis"], dx)
-
-    sequence_ids = tuple(range(sequence_start, sequence_start + n_sequences))
-    prediction_fits = []
-    posterior_fits = []
-    evidence_errors = []
-    daily_evidence_errors = []
-    invalid_truth = []
-
-    initial_mass = beta_initial_mass(case, model, x_steps)
-    for sequence in generate_synthetic_sequences(case, sequence_ids=sequence_ids):
-        sequence_id = sequence.sequence_id
-        if not sequence.truth.valid:
-            invalid_truth.append(sequence_id)
-            continue
-        filtered = run_fv_filter(
-            model,
-            parameters,
-            case.sigma_x,
-            case.sigma_y,
-            initial_mass,
-            case.horizon[0],
-            sequence.observations,
-            breakpoints=case.breakpoints,
-            max_step=max_step,
-            likelihood_quadrature_order=likelihood_quadrature_order,
-        )
-        previous_time = case.horizon[0]
-        static_coefficients = None
-        sequence_evidence_error = 0.0
-        for index, (time, value, observed) in enumerate(zip(
-            sequence.observations.times,
-            sequence.observations.values,
-            sequence.observations.observed,
-        )):
-            try:
-                pred_fit, projected_pred_mass, static_coefficients = _snapshot_projection(
-                    projector, filtered.predicted_mass[index], centers,
-                    initial_coefficients=static_coefficients,
-                )
-            except (FloatingPointError, RuntimeError, np.linalg.LinAlgError) as exc:
-                pred_fit = {
-                    "status": "failed",
-                    "failure_type": type(exc).__name__,
-                    "failure_message": str(exc),
-                }
-                projected_pred_mass = None
-            prediction_fits.append(pred_fit)
-
-            try:
-                post_fit, _, static_coefficients = _snapshot_projection(
-                    projector, filtered.posterior_mass[index], centers,
-                    initial_coefficients=static_coefficients,
-                )
-            except (FloatingPointError, RuntimeError, np.linalg.LinAlgError) as exc:
-                post_fit = {
-                    "status": "failed",
-                    "failure_type": type(exc).__name__,
-                    "failure_message": str(exc),
-                }
-            posterior_fits.append(post_fit)
-
-            if observed and projected_pred_mass is not None:
-                update = bm1_observation_update(
-                    model,
-                    parameters,
-                    case.sigma_y,
-                    projected_pred_mass,
-                    previous_time,
-                    float(time),
-                    float(value),
-                    price_side=sequence.observations.price_side,
-                    likelihood_quadrature_order=likelihood_quadrature_order,
-                )
-                error = float(update.log_evidence - filtered.log_evidence[index])
-                evidence_errors.append(error)
-                sequence_evidence_error += error
-            previous_time = float(time)
-        daily_evidence_errors.append(sequence_evidence_error)
-
-    prediction_summary = _aggregate_snapshot_fits(prediction_fits)
-    posterior_summary = _aggregate_snapshot_fits(posterior_fits)
-    evidence_errors = np.asarray(evidence_errors, dtype=float)
-    daily_evidence_errors = np.asarray(daily_evidence_errors, dtype=float)
-    expected_evidence_count = (
-        (n_sequences - len(invalid_truth)) * case.observation_times.size
-    )
-    evidence_complete = evidence_errors.size == expected_evidence_count
-    if evidence_errors.size:
-        evidence_summary = {
-            "complete": bool(evidence_complete),
-            "count": int(evidence_errors.size),
-            "expected_count": int(expected_evidence_count),
-            "mean_absolute_per_observation": float(np.mean(np.abs(evidence_errors))),
-            "maximum_absolute_per_observation": float(np.max(np.abs(evidence_errors))),
-            "mean_signed_per_observation": float(np.mean(evidence_errors)),
-            "maximum_absolute_daily_sum_difference": (
-                float(np.max(np.abs(daily_evidence_errors)))
-                if evidence_complete else float("inf")
-            ),
-        }
-    else:
-        evidence_summary = {
-            "complete": False,
-            "count": 0,
-            "expected_count": int(expected_evidence_count),
-            "mean_absolute_per_observation": float("inf"),
-            "maximum_absolute_per_observation": float("inf"),
-            "mean_signed_per_observation": float("nan"),
-            "maximum_absolute_daily_sum_difference": float("inf"),
-        }
-
-    return {
-        "stage": "D2",
-        "dictionary": D2_DICTIONARY,
-        "components": dictionary["components"],
-        "sequence_ids": sequence_ids,
-        "x_steps": x_steps,
-        "max_step": max_step,
-        "likelihood_quadrature_order": likelihood_quadrature_order,
-        "prediction": prediction_summary,
-        "posterior": posterior_summary,
-        "predictive_log_evidence_error": evidence_summary,
-        "invalid_truth_sequences": tuple(invalid_truth),
-        "projection_matrix_condition_number": float(
-            projector.projection_solver.matrix_condition_number
-        ),
-        "hessian_condition_number": float(projector.projection_data[2]),
-        "passes_holdout": bool(
-            not invalid_truth
-            and prediction_summary["passes_representation_gate"]
-            and posterior_summary["passes_representation_gate"]
-        ),
-    }
-
-
-def _representation_payload(*, x_steps, edges, centers, dx, targets, dictionaries,
-                            results, selected, fallback_disqualifies, stage):
-    return {
-        "stage": stage,
-        "x_steps": x_steps,
-        "edges": edges,
-        "centers": centers,
-        "dx": dx,
-        "targets": targets,
-        "dictionary_order": tuple(dictionaries),
-        "results": results,
-        "selected_dictionary": selected,
-        "fallback_disqualifies": bool(fallback_disqualifies),
-        "gates": {
-            "optimality_gap": D1_GAP_TOL,
-            "mass_error": D1_MASS_TOL,
-            "cell_mass_l1": D1_L1_GATE,
-            "wasserstein_1": D1_W1_GATE,
-            "condition_alarm": D1_CONDITION_ALARM,
-        },
-    }
-
-
-def _run_representation_study(x_steps, builder, stage, fallback_disqualifies):
-    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
-    edges, centers, dx = finite_volume_1d.grid(x_steps)
-    targets = _target_suite(edges)
-    dictionaries = builder(edges)
-    results, selected = _evaluate_static_dictionaries(
-        edges=edges, centers=centers, dx=dx, targets=targets, dictionaries=dictionaries,
-        fallback_disqualifies=fallback_disqualifies,
-    )
-    return _representation_payload(
-        x_steps=x_steps, edges=edges, centers=centers, dx=dx, targets=targets,
-        dictionaries=dictionaries, results=results, selected=selected,
-        fallback_disqualifies=fallback_disqualifies, stage=stage,
-    )
-
-
-def run_f4_d_representation_study(*, x_steps=D1_X_STEPS):
-    """Reproduce the declared D1 study without changing its candidates or gates."""
-    return _run_representation_study(x_steps, build_d1_dictionaries, "D1", True)
-
-
-def run_f4_d_adaptive_representation_study(*, x_steps=D1_X_STEPS):
-    """Reproduce the declared D1b study without changing its candidates or gates."""
-    return _run_representation_study(x_steps, build_d1b_dictionaries, "D1b", False)
-
-
-def run_f4_d_shape_aware_representation_study(*, x_steps=D1_X_STEPS):
-    """Reproduce the declared D1c study without changing its candidates or gates."""
-    return _run_representation_study(x_steps, build_d1c_dictionaries, "D1c", False)
-
 
 def run_f4_d_recursive_sanity(
     *,
@@ -856,156 +528,6 @@ def run_f4_d_recursive_sanity(
         "fv": fv,
     }
 
-
-def _d3_refinement_row(result, *, axis, level):
-    """Extract compact metrics from one D3a configuration for refinement."""
-    total_pred = result["total_fv_gap"]["prediction"]
-    total_post = result["total_fv_gap"]["posterior"]
-    dynamic_pred = result["dynamic_gap"]["prediction"]
-    dynamic_post = result["dynamic_gap"]["posterior"]
-    static_pred = result["static_best_fit"]["prediction"]
-    static_post = result["static_best_fit"]["posterior"]
-    evidence = result["log_evidence_error"]
-    rmse = result["state_rmse"]
-    numerical = result["numerical"]
-    return {
-        "axis": axis,
-        "level": level,
-        "x_steps": result["x_steps"],
-        "requested_max_step": result["max_step"],
-        "actual_max_step": numerical["maximum_internal_step"],
-        "actual_min_step": numerical["minimum_internal_step"],
-        "internal_steps": numerical["total_internal_steps"],
-        "static_prediction_l1": static_pred["maximum_cell_mass_l1"],
-        "static_posterior_l1": static_post["maximum_cell_mass_l1"],
-        "dynamic_prediction_l1": dynamic_pred["maximum_cell_mass_l1"],
-        "dynamic_posterior_l1": dynamic_post["maximum_cell_mass_l1"],
-        "total_prediction_l1": total_pred["maximum_cell_mass_l1"],
-        "total_posterior_l1": total_post["maximum_cell_mass_l1"],
-        "total_prediction_w1": total_pred["maximum_wasserstein_1"],
-        "total_posterior_w1": total_post["maximum_wasserstein_1"],
-        "evidence_mean_abs": evidence["mean_absolute_per_observation"],
-        "evidence_max_abs": evidence["maximum_absolute_per_observation"],
-        "evidence_total_abs": evidence["absolute_total_log_likelihood_difference"],
-        "fv_predictive_rmse": rmse["fv_predictive"],
-        "fv_posterior_rmse": rmse["fv_posterior"],
-        "mixture_predictive_rmse": rmse["mixture_predictive"],
-        "mixture_posterior_rmse": rmse["mixture_posterior"],
-        "prediction_fallbacks": numerical["prediction_projection_fallback_count"],
-        "posterior_fallbacks": numerical["posterior_projection_fallback_count"],
-        "max_raw_mass_error": numerical["maximum_abs_raw_prediction_mass_error"],
-        "max_projected_mass_error": numerical["maximum_abs_projected_prediction_mass_error"],
-        "max_posterior_projection_mass_error": numerical["maximum_posterior_projection_mass_error"],
-        "max_bayes_projection_l1": numerical["maximum_bayes_to_projected_posterior_l1"],
-        "projection_matrix_condition_number": numerical["projection_matrix_condition_number"],
-        "hessian_condition_number": numerical["hessian_condition_number"],
-    }
-
-
-def _d3_refinement_metric_summary(rows, metric):
-    reference = rows[-1]
-    reference_value = float(reference[metric])
-    effects = [abs(float(row[metric]) - reference_value) for row in rows[:-1]]
-    maximum_effect = max(effects, default=0.0)
-    ratio = np.nan if abs(reference_value) < 1e-14 else maximum_effect / abs(reference_value)
-    return {
-        "reference_level": reference["level"],
-        "reference_value": reference_value,
-        "maximum_effect": maximum_effect,
-        "effect_to_reference_ratio": ratio,
-        "passes_10pct": bool(np.isfinite(ratio) and ratio <= D3B_STABILITY_RATIO),
-    }
-
-
-def _d3_refinement_axis_summary(rows):
-    posterior = _d3_refinement_metric_summary(rows, "total_posterior_l1")
-    evidence = _d3_refinement_metric_summary(rows, "evidence_mean_abs")
-    return {
-        "posterior_l1": posterior,
-        "evidence_mean_abs": evidence,
-        "passes_stability_gate": bool(
-            posterior["passes_10pct"] and evidence["passes_10pct"]
-        ),
-    }
-
-
-def _recursive_study_rows(sequence_id, time_steps, spatial_cells, spatial_max_step, cfl, order):
-    cache = {}
-    def run_config(x_steps, max_step):
-        key = (int(x_steps), float(max_step))
-        if key not in cache:
-            cache[key] = run_f4_d_recursive_sanity(
-                sequence_id=sequence_id,
-                x_steps=x_steps,
-                max_step=max_step,
-                cfl=cfl,
-                likelihood_quadrature_order=order,
-            )
-        return cache[key]
-
-    time_rows = [
-        _d3_refinement_row(
-            run_config(D3A_X_STEPS, h), axis="time", level=h,
-        )
-        for h in time_steps
-    ]
-    spatial_rows = [
-        _d3_refinement_row(
-            run_config(n, spatial_max_step), axis="space", level=n,
-        )
-        for n in spatial_cells
-    ]
-    return time_rows, spatial_rows, tuple(cache)
-
-
-def run_f4_d_recursive_refinement(
-    sequence_id=D3A_SEQUENCE_ID,
-    *,
-    time_steps=D3B_TIME_STEPS,
-    spatial_cells=D3B_SPATIAL_CELLS,
-    spatial_max_step=D3B_SPATIAL_MAX_STEP,
-    cfl=D3A_CFL,
-    likelihood_quadrature_order=D3A_QUADRATURE_ORDER,
-):
-    """Run preregistered D3b time/projection-frequency and spatial refinement.
-
-    The exact (x_steps, max_step) configuration is memoized within this study,
-    so the shared (101, 1/1536) fine-time/spatial-middle run is computed once.
-    """
-    sequence_id = checks.positive_integer(sequence_id, "sequence_id", minimum=0)
-    time_steps = tuple(checks.finite_scalar(v, "time step", positive=True) for v in time_steps)
-    spatial_cells = tuple(checks.positive_integer(v, "spatial cell count", minimum=21) for v in spatial_cells)
-    spatial_max_step = checks.finite_scalar(spatial_max_step, "spatial_max_step", positive=True)
-    cfl = checks.finite_scalar(cfl, "cfl", positive=True)
-    order = checks.positive_integer(
-        likelihood_quadrature_order, "likelihood_quadrature_order", minimum=1,
-    )
-    if not time_steps or not spatial_cells:
-        raise ValueError("D3b refinement levels must be non-empty.")
-    if tuple(sorted(set(time_steps), reverse=True)) != time_steps:
-        raise ValueError("time_steps must be unique and strictly refined (decreasing).")
-    if tuple(sorted(set(spatial_cells))) != spatial_cells:
-        raise ValueError("spatial_cells must be unique and increasing.")
-
-    time_rows, spatial_rows, configurations = _recursive_study_rows(
-        sequence_id, time_steps, spatial_cells, spatial_max_step, cfl, order,
-    )
-    return {
-        "stage": "D3b",
-        "sequence_id": sequence_id,
-        "cfl": cfl,
-        "likelihood_quadrature_order": order,
-        "time": time_rows,
-        "spatial": spatial_rows,
-        "summary": {
-            "time": _d3_refinement_axis_summary(time_rows),
-            "spatial": _d3_refinement_axis_summary(spatial_rows),
-        },
-        "unique_configurations": configurations,
-        "stability_ratio": D3B_STABILITY_RATIO,
-    }
-
-
 def _d3c_first_order_summary(rows, metric):
     """Check the preregistered first-order Richardson prediction on three halvings."""
     if len(rows) != 3:
@@ -1051,7 +573,6 @@ def _d3c_first_order_summary(rows, metric):
         "passes": passes,
     }
 
-
 def _d3c_spatial_summary(rows, metric):
     """Check two successive relative spatial changes at common requested max-step."""
     if len(rows) != 3:
@@ -1084,245 +605,6 @@ def _d3c_spatial_summary(rows, metric):
             step_limit_binding and maximum_change <= D3C_SPATIAL_REL_TOL
         ),
     }
-
-
-def run_f4_d_recursive_convergence(
-    sequence_id=D3A_SEQUENCE_ID,
-    *,
-    time_steps=D3C_TIME_STEPS,
-    spatial_cells=D3C_SPATIAL_CELLS,
-    spatial_max_step=D3C_SPATIAL_MAX_STEP,
-    cfl=D3A_CFL,
-    likelihood_quadrature_order=D3A_QUADRATURE_ORDER,
-):
-    """Run preregistered D3c Richardson/time and successive-spatial convergence checks."""
-    sequence_id = checks.positive_integer(sequence_id, "sequence_id", minimum=0)
-    time_steps = tuple(checks.finite_scalar(v, "time step", positive=True) for v in time_steps)
-    spatial_cells = tuple(
-        checks.positive_integer(v, "spatial cell count", minimum=21)
-        for v in spatial_cells
-    )
-    spatial_max_step = checks.finite_scalar(
-        spatial_max_step, "spatial_max_step", positive=True,
-    )
-    cfl = checks.finite_scalar(cfl, "cfl", positive=True)
-    order = checks.positive_integer(
-        likelihood_quadrature_order, "likelihood_quadrature_order", minimum=1,
-    )
-    if len(time_steps) != 3 or len(spatial_cells) != 3:
-        raise ValueError("D3c requires exactly three temporal and three spatial levels.")
-    if tuple(sorted(set(time_steps), reverse=True)) != time_steps:
-        raise ValueError("D3c time_steps must be unique and decreasing.")
-    if tuple(sorted(set(spatial_cells))) != spatial_cells:
-        raise ValueError("D3c spatial_cells must be unique and increasing.")
-    if not np.allclose(np.asarray(time_steps[:-1]), 2 * np.asarray(time_steps[1:]),
-                       atol=1e-15, rtol=1e-12):
-        raise ValueError("D3c temporal levels must halve exactly.")
-    if cfl >= 1.0:
-        raise ValueError("cfl must be less than one.")
-
-    registered_settings = (
-        time_steps == D3C_TIME_STEPS and spatial_cells == D3C_SPATIAL_CELLS
-        and spatial_max_step == D3C_SPATIAL_MAX_STEP
-        and cfl == D3A_CFL and order == D3A_QUADRATURE_ORDER
-        and sequence_id == D3A_SEQUENCE_ID
-    )
-    time_rows, spatial_rows, configurations = _recursive_study_rows(
-        sequence_id, time_steps, spatial_cells, spatial_max_step, cfl, order,
-    )
-
-    time_posterior = _d3c_first_order_summary(time_rows, "total_posterior_l1")
-    time_evidence = _d3c_first_order_summary(time_rows, "evidence_mean_abs")
-    spatial_posterior = _d3c_spatial_summary(spatial_rows, "total_posterior_l1")
-    spatial_evidence = _d3c_spatial_summary(spatial_rows, "evidence_mean_abs")
-    time_passes = bool(time_posterior["passes"] and time_evidence["passes"])
-    spatial_passes = bool(spatial_posterior["passes"] and spatial_evidence["passes"])
-    passes = bool(time_passes and spatial_passes)
-
-    return {
-        "stage": "D3c",
-        "sequence_id": sequence_id,
-        "cfl": cfl,
-        "likelihood_quadrature_order": order,
-        "time": time_rows,
-        "spatial": spatial_rows,
-        "summary": {
-            "time": {
-                "posterior_l1": time_posterior,
-                "evidence_mean_abs": time_evidence,
-                "passes": time_passes,
-            },
-            "spatial": {
-                "posterior_l1": spatial_posterior,
-                "evidence_mean_abs": spatial_evidence,
-                "passes": spatial_passes,
-            },
-            "passes_convergence": passes,
-            "matches_registered_settings": registered_settings,
-            "population_setting": (
-                {
-                    "x_steps": D3C_POPULATION_X_STEPS,
-                    "max_step": D3C_POPULATION_MAX_STEP,
-                    "cfl": D3A_CFL,
-                    "likelihood_quadrature_order": D3A_QUADRATURE_ORDER,
-                }
-                if passes and registered_settings else None
-            ),
-        },
-        "unique_configurations": configurations,
-        "criteria": {
-            "limit_to_middle_ratio": D3C_LIMIT_RATIO,
-            "fine_prediction_relative_error": D3C_PREDICTION_REL_TOL,
-            "spatial_successive_relative_change": D3C_SPATIAL_REL_TOL,
-        },
-    }
-
-
-_D3D_WORKER_STATE = None
-
-
-def _prepare_d3d_state(x_steps, max_step, cfl, likelihood_quadrature_order):
-    """Prepare one isolated population runner; no target-dependent cross-run state."""
-    case = build_f4_b_case()
-    model, parameters = case.build_model()
-    edges, centers, dx = model.fokker_planc_reference.grid(
-        x_steps, bounds=(0.0, 1.0),
-    )
-    dictionary = _shape_aware_dictionary(edges, 0.0125)
-    projector = PreparedBetaProjector(dictionary["basis"], dx)
-    initial_mass = beta_initial_mass(case, model, x_steps)
-    initial_coefficients = projector.project(initial_mass / dx)["coefficients"]
-    return {
-        "case": case,
-        "model": model,
-        "parameters": parameters,
-        "edges": edges,
-        "centers": centers,
-        "dx": dx,
-        "projector": projector,
-        "initial_mass": initial_mass,
-        "initial_coefficients": initial_coefficients,
-        "x_steps": int(x_steps),
-        "max_step": float(max_step),
-        "cfl": float(cfl),
-        "likelihood_quadrature_order": int(likelihood_quadrature_order),
-    }
-
-
-def _init_d3d_worker(x_steps, max_step, cfl, likelihood_quadrature_order):
-    global _D3D_WORKER_STATE
-    _D3D_WORKER_STATE = _prepare_d3d_state(x_steps, max_step, cfl, likelihood_quadrature_order)
-
-
-def _run_d3d_sequence(sequence, *, state=None):
-    """Run one paired mixture/FV population sequence using prepared worker state."""
-    state = _D3D_WORKER_STATE if state is None else state
-    if state is None:
-        raise RuntimeError("D3d worker state was not initialized.")
-    sequence_id = sequence.sequence_id
-    case = state["case"]
-    if not sequence.truth.valid:
-        return {
-            "sequence_id": sequence_id,
-            "valid_truth": False,
-            "status": "invalid_truth",
-        }
-
-    try:
-        mixture = run_mixture_filter(
-            state["model"],
-            state["parameters"],
-            case.sigma_x,
-            case.sigma_y,
-            state["initial_mass"],
-            case.horizon[0],
-            sequence.observations,
-            projector=state["projector"],
-            initial_coefficients=state["initial_coefficients"],
-            breakpoints=case.breakpoints,
-            max_step=state["max_step"],
-            cfl=state["cfl"],
-            likelihood_quadrature_order=state["likelihood_quadrature_order"],
-        )
-        fv = run_fv_filter(
-            state["model"],
-            state["parameters"],
-            case.sigma_x,
-            case.sigma_y,
-            state["initial_mass"],
-            case.horizon[0],
-            sequence.observations,
-            breakpoints=case.breakpoints,
-            max_step=state["max_step"],
-            likelihood_quadrature_order=state["likelihood_quadrature_order"],
-        )
-    except (FloatingPointError, RuntimeError, ValueError, np.linalg.LinAlgError) as exc:
-        return {
-            "sequence_id": sequence_id,
-            "valid_truth": True,
-            "status": "failed",
-            "failure_type": type(exc).__name__,
-            "failure_message": str(exc),
-        }
-
-    truth = sequence.truth.state[1:]
-    prediction_errors = _error_history(
-        mixture.predicted_mass, fv.predicted_mass, state["centers"], state["dx"],
-    )
-    posterior_errors = _error_history(
-        mixture.posterior_mass, fv.posterior_mass, state["centers"], state["dx"],
-    )
-    evidence = mixture.log_evidence - fv.log_evidence
-    pred_diag = mixture.prediction_diagnostics
-    post_diag = mixture.posterior_projection_diagnostics
-    return {
-        "sequence_id": sequence_id,
-        "valid_truth": True,
-        "status": "ok",
-        "mse_fv_predictive": float(np.mean(np.square(fv.predicted_mean - truth))),
-        "mse_fv_posterior": float(np.mean(np.square(fv.posterior_mean - truth))),
-        "mse_mixture_predictive": float(np.mean(np.square(mixture.predicted_mean - truth))),
-        "mse_mixture_posterior": float(np.mean(np.square(mixture.posterior_mean - truth))),
-        "evidence_mean_abs": float(np.mean(np.abs(evidence))),
-        "evidence_mean_signed": float(np.mean(evidence)),
-        "evidence_max_abs": float(np.max(np.abs(evidence))),
-        "evidence_abs_daily_total": abs(
-            mixture.total_log_likelihood - fv.total_log_likelihood
-        ),
-        "prediction_max_l1": max(item["cell_mass_l1"] for item in prediction_errors),
-        "posterior_max_l1": max(item["cell_mass_l1"] for item in posterior_errors),
-        "prediction_max_w1": max(item["wasserstein_1"] for item in prediction_errors),
-        "posterior_max_w1": max(item["wasserstein_1"] for item in posterior_errors),
-        "prediction_fallbacks": int(
-            sum(item["projection_fallback_count"] for item in pred_diag)
-        ),
-        "posterior_fallbacks": int(
-            sum(int(item["used_fallback"]) for item in post_diag)
-        ),
-        "internal_steps": int(sum(item["n_steps"] for item in pred_diag)),
-        "max_raw_mass_error": float(
-            max(item["maximum_abs_raw_prediction_mass_error"] for item in pred_diag)
-        ),
-        "max_projected_mass_error": float(
-            max(item["maximum_abs_projected_mass_error"] for item in pred_diag)
-        ),
-        "max_posterior_projection_mass_error": float(
-            max(item["mass_error"] for item in post_diag)
-        ),
-    }
-
-
-def _bootstrap_mean_interval(values, *, replicates, seed):
-    values = checks.finite_vector(values, "bootstrap values")
-    zeros = np.zeros_like(values)
-    return _paired_bootstrap_interval(
-        values,
-        zeros,
-        lambda left, right: np.mean(left - right, axis=1),
-        replicates=replicates,
-        seed=seed,
-    )
-
 
 def _d3d_rmse_summary(mixture_mse, fv_mse, *, replicates, seed):
     mixture_mse = checks.finite_vector(mixture_mse, "mixture_mse")
@@ -1365,7 +647,6 @@ def _d3d_rmse_summary(mixture_mse, fv_mse, *, replicates, seed):
         ),
     }
 
-
 def _d3d_gap_summary(values, *, l1):
     values = checks.finite_vector(values, "gap values")
     result = {
@@ -1381,194 +662,3 @@ def _d3d_gap_summary(values, *, l1):
     else:
         result["passes"] = bool(result["maximum"] <= D3D_GLOBAL_MAX_W1)
     return result
-
-
-def run_f4_d_recursive_population(
-    n_sequences=D3D_SEQUENCE_COUNT,
-    *,
-    sequence_start=D3D_SEQUENCE_START,
-    x_steps=D3C_POPULATION_X_STEPS,
-    max_step=D3C_POPULATION_MAX_STEP,
-    cfl=D3A_CFL,
-    likelihood_quadrature_order=D3A_QUADRATURE_ORDER,
-    bootstrap_replicates=D3D_BOOTSTRAP_REPLICATES,
-    bootstrap_seed=D3D_BOOTSTRAP_SEED,
-    workers=1,
-    progress=None,
-):
-    """Run paired D3d evaluation; progress(completed, total, row) runs in the parent.
-
-    Batch generation preserves per-ID randomness. Geometry is reused per worker;
-    serial calls own their state and do not leave a module-global cache behind.
-    """
-    n_sequences = checks.positive_integer(n_sequences, "n_sequences", minimum=2)
-    sequence_start = checks.positive_integer(
-        sequence_start, "sequence_start", minimum=0,
-    )
-    x_steps = checks.positive_integer(x_steps, "x_steps", minimum=21)
-    max_step = checks.finite_scalar(max_step, "max_step", positive=True)
-    cfl = checks.finite_scalar(cfl, "cfl", positive=True)
-    order = checks.positive_integer(
-        likelihood_quadrature_order, "likelihood_quadrature_order", minimum=1,
-    )
-    bootstrap_replicates = checks.positive_integer(
-        bootstrap_replicates, "bootstrap_replicates", minimum=100,
-    )
-    bootstrap_seed = checks.positive_integer(
-        bootstrap_seed, "bootstrap_seed", minimum=0,
-    )
-    workers = checks.positive_integer(workers, "workers", minimum=1)
-
-    sequence_ids = tuple(range(sequence_start, sequence_start + n_sequences))
-    if cfl >= 1.0:
-        raise ValueError("cfl must be less than one.")
-    if progress is not None and not callable(progress):
-        raise TypeError("progress must be callable or None.")
-    sequences = generate_synthetic_sequences(sequence_ids=sequence_ids)
-    initargs = (x_steps, max_step, cfl, order)
-
-    def collect(iterator):
-        rows = []
-        for row in iterator:
-            rows.append(row)
-            if progress is not None:
-                progress(len(rows), n_sequences, dict(row))
-        return rows
-
-    if workers == 1:
-        state = _prepare_d3d_state(*initargs)
-        rows = collect(_run_d3d_sequence(sequence, state=state) for sequence in sequences)
-    else:
-        with ProcessPoolExecutor(
-            max_workers=min(workers, n_sequences),
-            mp_context=get_context('spawn'),
-            initializer=_init_d3d_worker, initargs=initargs,
-        ) as executor:
-            rows = collect(executor.map(_run_d3d_sequence, sequences, chunksize=1))
-
-    invalid = tuple(
-        row["sequence_id"] for row in rows if row["status"] == "invalid_truth"
-    )
-    failed = tuple(
-        {
-            "sequence_id": row["sequence_id"],
-            "failure_type": row.get("failure_type"),
-            "failure_message": row.get("failure_message"),
-        }
-        for row in rows if row["status"] == "failed"
-    )
-    ok = [row for row in rows if row["status"] == "ok"]
-    metadata = {
-        "stage": "D3d", "sequence_ids": sequence_ids, "workers": workers,
-        "x_steps": x_steps, "max_step": max_step, "cfl": cfl,
-        "likelihood_quadrature_order": order,
-        "bootstrap_replicates": bootstrap_replicates, "bootstrap_seed": bootstrap_seed,
-        "successful_sequences": len(ok), "invalid_truth_sequences": invalid,
-        "failed_sequences": failed, "per_sequence": rows,
-        "complete": len(ok) == n_sequences,
-        "summaries_conditioned_on_success": len(ok) != n_sequences,
-        "matches_registered_design": (
-            sequence_start == D3D_SEQUENCE_START and n_sequences == D3D_SEQUENCE_COUNT
-            and x_steps == D3C_POPULATION_X_STEPS and max_step == D3C_POPULATION_MAX_STEP
-            and cfl == D3A_CFL and order == D3A_QUADRATURE_ORDER
-            and bootstrap_replicates == D3D_BOOTSTRAP_REPLICATES
-            and bootstrap_seed == D3D_BOOTSTRAP_SEED
-        ),
-    }
-    if not ok:
-        return {**metadata, "passes_population": False}
-
-    vector = lambda key: np.asarray([row[key] for row in ok], dtype=float)
-    predictive_rmse = _d3d_rmse_summary(
-        vector("mse_mixture_predictive"),
-        vector("mse_fv_predictive"),
-        replicates=bootstrap_replicates,
-        seed=bootstrap_seed,
-    )
-    posterior_rmse = _d3d_rmse_summary(
-        vector("mse_mixture_posterior"),
-        vector("mse_fv_posterior"),
-        replicates=bootstrap_replicates,
-        seed=bootstrap_seed + 10,
-    )
-
-    evidence_abs = vector("evidence_mean_abs")
-    evidence_abs_ci = _bootstrap_mean_interval(
-        evidence_abs,
-        replicates=bootstrap_replicates,
-        seed=bootstrap_seed + 20,
-    )
-    evidence_signed = vector("evidence_mean_signed")
-    evidence_signed_ci = _bootstrap_mean_interval(
-        evidence_signed,
-        replicates=bootstrap_replicates,
-        seed=bootstrap_seed + 21,
-    )
-    daily_abs = vector("evidence_abs_daily_total")
-    evidence_summary = {
-        "mean_absolute_per_observation": float(np.mean(evidence_abs)),
-        "mean_absolute_bootstrap95": evidence_abs_ci,
-        "maximum_absolute_per_observation": float(
-            np.max(vector("evidence_max_abs"))
-        ),
-        "mean_signed_per_observation": float(np.mean(evidence_signed)),
-        "mean_signed_bootstrap95": evidence_signed_ci,
-        "daily_absolute_mean": float(np.mean(daily_abs)),
-        "daily_absolute_q95": float(np.quantile(daily_abs, 0.95)),
-        "daily_absolute_maximum": float(np.max(daily_abs)),
-        "passes": bool(
-            evidence_abs_ci[1] <= D3D_EVIDENCE_MEAN_ABS_UPPER
-            and np.quantile(daily_abs, 0.95) <= D3D_DAILY_LOG_LIKELIHOOD_Q95
-        ),
-    }
-
-    gaps = {
-        "prediction_l1": _d3d_gap_summary(vector("prediction_max_l1"), l1=True),
-        "posterior_l1": _d3d_gap_summary(vector("posterior_max_l1"), l1=True),
-        "prediction_w1": _d3d_gap_summary(vector("prediction_max_w1"), l1=False),
-        "posterior_w1": _d3d_gap_summary(vector("posterior_max_w1"), l1=False),
-    }
-    mass_error = max(
-        float(np.max(vector("max_raw_mass_error"))),
-        float(np.max(vector("max_projected_mass_error"))),
-        float(np.max(vector("max_posterior_projection_mass_error"))),
-    )
-    numerical = {
-        "total_internal_steps": int(sum(row["internal_steps"] for row in ok)),
-        "prediction_fallbacks": int(sum(row["prediction_fallbacks"] for row in ok)),
-        "posterior_fallbacks": int(sum(row["posterior_fallbacks"] for row in ok)),
-        "maximum_mass_error": mass_error,
-        "passes": bool(mass_error <= 1.0e-10),
-    }
-    passes = bool(
-        not invalid
-        and not failed
-        and len(ok) == n_sequences
-        and predictive_rmse["passes_equivalence"]
-        and posterior_rmse["passes_equivalence"]
-        and evidence_summary["passes"]
-        and all(item["passes"] for item in gaps.values())
-        and numerical["passes"]
-    )
-    return {
-        **metadata,
-        "rmse": {
-            "predictive": predictive_rmse,
-            "posterior": posterior_rmse,
-        },
-        "log_evidence_difference": evidence_summary,
-        "distribution_gap": gaps,
-        "numerical": numerical,
-        "criteria": {
-            "rmse_equivalence": (
-                D3D_RMSE_EQUIVALENCE_LOW, D3D_RMSE_EQUIVALENCE_HIGH,
-            ),
-            "evidence_mean_abs_upper": D3D_EVIDENCE_MEAN_ABS_UPPER,
-            "daily_log_likelihood_q95_upper": D3D_DAILY_LOG_LIKELIHOOD_Q95,
-            "sequence_max_l1_q95_upper": D3D_SEQUENCE_MAX_L1_Q95,
-            "global_max_l1_upper": D3D_GLOBAL_MAX_L1,
-            "global_max_w1_upper": D3D_GLOBAL_MAX_W1,
-            "mass_error_upper": 1.0e-10,
-        },
-        "passes_population": passes,
-    }

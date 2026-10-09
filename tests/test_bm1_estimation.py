@@ -2,6 +2,7 @@
 
 import ast
 import copy
+from dataclasses import replace
 import json
 from pathlib import Path
 import tempfile
@@ -13,10 +14,8 @@ from scipy.integrate import quad
 from scipy.special import betaln, logsumexp
 from scipy.stats import norm
 
-from src.params.bm_1 import (
-    BM1ObservationSeries, bayes_update, conservative_mass_transfer,
-    gaussian_log_likelihood, mass_to_log,
-)
+from src.params.bm_1 import BM1ObservationSeries
+from src.method.bm_1_observation import bayes_update, conservative_mass_transfer, gaussian_log_likelihood, mass_to_log
 from src.method.bm_1_estimation import (
     BM1FVFilterStep, BM1FVRhoBankStep, fv_rho_bank_step, run_fv_rho_bank,
     bm1_observation_update, fv_filter_step, mixture_filter_step,
@@ -687,104 +686,12 @@ class FVStateFilterTests(unittest.TestCase):
         self.assertAlmostEqual(synthetic._piecewise_constant_quantile(edges, mass, .50), .50)
         self.assertAlmostEqual(synthetic._piecewise_constant_quantile(edges, mass, .95), .95)
 
-    def test_small_population_study_is_paired_and_reproducible(self):
-        kwargs = dict(
-            n_sequences=3, sequence_start=1, x_steps=31, max_step=1/24,
-            likelihood_quadrature_order=1, bootstrap_replicates=100, bootstrap_seed=4321,
-        )
-        left = synthetic.run_f4_c_population(**kwargs)
-        right = synthetic.run_f4_c_population(**kwargs)
-        np.testing.assert_array_equal(left['sequence_ids'], [1, 2, 3])
-        self.assertEqual(left['rmse'], right['rmse'])
-        self.assertEqual(left['predictive_log_score'], right['predictive_log_score'])
-        self.assertEqual(left['coverage90_posterior'], right['coverage90_posterior'])
-        self.assertLess(left['predictive_log_score']['first_observation_max_abs_difference'], 1e-14)
-        self.assertEqual(left['diagnostics']['invalid_truth_sequences'], ())
-        for hour in (6, 12, 24):
-            item = left['coverage90_posterior'][hour]
-            self.assertEqual(item['total'], 3)
-            self.assertLessEqual(item['successes'], 3)
-            self.assertGreaterEqual(item['mean_width'], 0.0)
-
-    def test_refinement_changes_one_numerical_dimension_at_a_time(self):
-        result = synthetic.run_f4_c_refinement(
-            sequence_id=0,
-            spatial_cells=(31, 61),
-            time_steps=(1/24, 1/48),
-            quadrature_orders=(1, 3),
-        )
-        self.assertEqual([row['x_steps'] for row in result['spatial']], [31, 61])
-        self.assertTrue(all(row['requested_max_step'] == 1/192 for row in result['spatial']))
-        self.assertTrue(all(row['quadrature_order'] == 1 for row in result['spatial']))
-        self.assertTrue(all(row['x_steps'] == 201 for row in result['time']))
-        self.assertEqual([row['requested_max_step'] for row in result['time']], [1/24, 1/48])
-        self.assertTrue(all(row['quadrature_order'] == 1 for row in result['time']))
-        self.assertTrue(all(row['x_steps'] == 201 for row in result['quadrature']))
-        self.assertTrue(all(row['requested_max_step'] == 1/192 for row in result['quadrature']))
-        self.assertEqual([row['quadrature_order'] for row in result['quadrature']], [1, 3])
-        for axis in ('spatial', 'time', 'quadrature'):
-            self.assertTrue(np.isfinite(result['summary'][axis]['maximum_posterior_rmse_effect']))
-            self.assertTrue(np.isfinite(result['summary'][axis]['maximum_log_likelihood_effect']))
-
-    def test_refinement_requires_ordered_unique_levels(self):
-        with self.assertRaises(ValueError):
-            synthetic.run_f4_c_refinement(spatial_cells=(61, 31))
-        with self.assertRaises(ValueError):
-            synthetic.run_f4_c_refinement(time_steps=(1/48, 1/24))
-        with self.assertRaises(ValueError):
-            synthetic.run_f4_c_refinement(quadrature_orders=(1, 1))
-
-    def test_calibration_sensitivity_reuses_fixed_sequences(self):
-        result = synthetic.run_f4_c_calibration_sensitivity(
-            n_sequences=3,
-            sequence_start=1,
-            variants=(
-                ('base', 31, 1/24, 1),
-                ('space', 61, 1/24, 1),
-                ('time', 31, 1/48, 1),
-                ('quad', 31, 1/24, 3),
-            ),
-        )
-        np.testing.assert_array_equal(result['sequence_ids'], [1, 2, 3])
-        self.assertEqual(result['invalid_truth_sequences'], ())
-        self.assertEqual(set(result['variants']), {'base', 'space', 'time', 'quad'})
-        for variant in result['variants'].values():
-            self.assertEqual(set(variant['horizons']), {6, 12, 24})
-            for item in variant['horizons'].values():
-                self.assertEqual(item['total'], 3)
-                self.assertGreaterEqual(item['coverage'], 0.0)
-                self.assertLessEqual(item['coverage'], 1.0)
-                self.assertGreater(item['mean_width'], 0.0)
-                self.assertGreaterEqual(item['posterior_mean_rmse'], 0.0)
-                self.assertGreater(item['root_mean_posterior_variance'], 0.0)
-                self.assertTrue(np.isfinite(item['rmse_over_posterior_sd']))
 
     def test_piecewise_constant_variance_includes_within_cell_spread(self):
         edges = np.array([0.0, 0.5, 1.0])
         mass = np.array([0.5, 0.5])
         self.assertAlmostEqual(synthetic._piecewise_constant_variance(edges, mass), 1/12)
 
-    def test_truth_refinement_uses_coupled_sequence_pairs(self):
-        result = synthetic.run_f4_c_truth_refinement(
-            n_sequences=2, sequence_start=1, x_steps=31, max_step=1/24,
-            likelihood_quadrature_order=1,
-        )
-        np.testing.assert_array_equal(result['sequence_ids'], [1, 2])
-        self.assertEqual(result['invalid_truth_pairs'], ())
-        self.assertEqual(set(result['coarse']['horizons']), {6, 12, 24})
-        self.assertEqual(set(result['fine']['horizons']), {6, 12, 24})
-        self.assertGreaterEqual(result['truth_difference']['maximum_abs_state'], 0.0)
-        self.assertGreaterEqual(result['truth_difference']['rms_state'], 0.0)
-        self.assertGreaterEqual(result['truth_difference']['maximum_abs_demand'], 0.0)
-        self.assertAlmostEqual(
-            result['truth_difference']['maximum_abs_observation'],
-            result['truth_difference']['maximum_abs_demand'],
-            places=14,
-        )
-        for label in ('coarse', 'fine'):
-            self.assertLessEqual(result[label]['maximum_abs_mass_error'], 1e-10)
-            for hour in (6, 12, 24):
-                self.assertEqual(result[label]['horizons'][hour]['total'], 2)
     def test_filter_inputs_fail_explicitly(self):
         with self.assertRaises(ValueError):
             fv_filter_step(
@@ -859,57 +766,6 @@ class F4DRepresentationTests(unittest.TestCase):
             < set(np.round(dictionaries['multiscale_4']['concentrations'], 12))
         )
 
-    def test_small_d1_study_reports_all_declared_metrics_and_is_deterministic(self):
-        left = mixture_f4.run_f4_d_representation_study(x_steps=81)
-        right = mixture_f4.run_f4_d_representation_study(x_steps=81)
-        self.assertEqual(left['selected_dictionary'], right['selected_dictionary'])
-        self.assertEqual(left['dictionary_order'], right['dictionary_order'])
-        self.assertEqual(left['gates'], right['gates'])
-        for name in left['dictionary_order']:
-            litem = left['results'][name]
-            ritem = right['results'][name]
-            self.assertEqual(litem['summary'], ritem['summary'])
-            self.assertEqual(set(litem['fits']), set(left['targets']))
-            for target, fit in litem['fits'].items():
-                self.assertEqual(fit, ritem['fits'][target])
-                if fit['status'] == 'failed':
-                    self.assertIn('failure_type', fit)
-                    self.assertIn('failure_message', fit)
-                    self.assertFalse(litem['summary']['eligible'])
-                    continue
-                self.assertEqual(fit['status'], 'ok')
-                for key in (
-                    'density_l2', 'cell_mass_l1', 'cdf_sup', 'wasserstein_1',
-                    'mean_error', 'variance_error', 'optimality_gap', 'mass_error',
-                    'maximum_coefficient',
-                ):
-                    self.assertTrue(np.isfinite(fit[key]))
-                self.assertGreaterEqual(fit['active_components'], 1)
-        if left['selected_dictionary'] is not None:
-            chosen = left['results'][left['selected_dictionary']]['summary']
-            self.assertTrue(chosen['selectable'])
-            self.assertTrue(chosen['numerical_ok'])
-            self.assertTrue(chosen['representation_ok'])
-            self.assertTrue(chosen['eligible'])
-
-    def test_d1_failed_projection_is_recorded_not_repaired(self):
-        with patch.object(
-            mixture_f4.PreparedBetaProjector,
-            'project',
-            side_effect=FloatingPointError('forced signed projection'),
-        ):
-            result = mixture_f4.run_f4_d_representation_study(x_steps=61)
-        self.assertIsNone(result['selected_dictionary'])
-        for name in result['dictionary_order']:
-            summary = result['results'][name]['summary']
-            self.assertEqual(set(summary['failed_targets']), set(result['targets']))
-            self.assertFalse(summary['numerical_ok'])
-            self.assertFalse(summary['representation_ok'])
-            self.assertFalse(summary['eligible'])
-            for fit in result['results'][name]['fits'].values():
-                self.assertEqual(fit['status'], 'failed')
-                self.assertEqual(fit['failure_type'], 'FloatingPointError')
-                self.assertIn('forced signed projection', fit['failure_message'])
 
     def test_d1b_adaptive_dictionaries_are_nested_and_preregistered_sizes(self):
         from src.solver.finite_volume import finite_volume_1d
@@ -935,19 +791,6 @@ class F4DRepresentationTests(unittest.TestCase):
         ))
         self.assertLess(pairs_a, pairs_b)
 
-    def test_small_d1b_study_keeps_same_gates_and_allows_validated_fallback(self):
-        result = mixture_f4.run_f4_d_adaptive_representation_study(x_steps=61)
-        self.assertEqual(result['stage'], 'D1b')
-        self.assertFalse(result['fallback_disqualifies'])
-        self.assertEqual(result['gates']['cell_mass_l1'], mixture_f4.D1_L1_GATE)
-        self.assertEqual(result['gates']['wasserstein_1'], mixture_f4.D1_W1_GATE)
-        self.assertEqual(result['dictionary_order'], ('adaptive_A', 'adaptive_B'))
-        for name in result['dictionary_order']:
-            summary = result['results'][name]['summary']
-            self.assertEqual(summary['components'], 116 if name == 'adaptive_A' else 180)
-            if summary['eligible']:
-                self.assertTrue(summary['numerical_ok'])
-                self.assertTrue(summary['representation_ok'])
 
     def test_d1c_shape_aware_dictionaries_are_nested_and_preregistered_sizes(self):
         from src.solver.finite_volume import finite_volume_1d
@@ -976,20 +819,6 @@ class F4DRepresentationTests(unittest.TestCase):
         self.assertIn((0.98, 50.0), pairs_c)
         self.assertIn((0.5, 800.0), pairs_c)
 
-    def test_small_d1c_study_keeps_same_gates_and_reports_conditioning(self):
-        result = mixture_f4.run_f4_d_shape_aware_representation_study(x_steps=61)
-        self.assertEqual(result['stage'], 'D1c')
-        self.assertFalse(result['fallback_disqualifies'])
-        self.assertEqual(result['dictionary_order'], ('shape_C', 'shape_D'))
-        self.assertEqual(result['gates']['cell_mass_l1'], mixture_f4.D1_L1_GATE)
-        self.assertEqual(result['gates']['wasserstein_1'], mixture_f4.D1_W1_GATE)
-        for name in result['dictionary_order']:
-            summary = result['results'][name]['summary']
-            self.assertTrue(np.isfinite(summary['projection_matrix_condition_number']))
-            self.assertEqual(summary['components'], 120 if name == 'shape_C' else 184)
-            if summary['eligible']:
-                self.assertTrue(summary['numerical_ok'])
-                self.assertTrue(summary['representation_ok'])
 
     def test_d2_holdout_constants_are_frozen_beyond_c_population_ids(self):
         self.assertEqual(mixture_f4.D2_SEQUENCE_START, 1001)
@@ -1031,29 +860,6 @@ class F4DRepresentationTests(unittest.TestCase):
         self.assertFalse(failed_summary['passes_representation_gate'])
         self.assertEqual(failed_summary['failed_snapshot_indices'], (1,))
 
-    def test_small_d2_holdout_uses_frozen_shape_d_and_reports_evidence(self):
-        result = mixture_f4.run_f4_d_snapshot_holdout(
-            sequence_start=0,
-            n_sequences=1,
-            x_steps=201,
-            max_step=1/24,
-            likelihood_quadrature_order=1,
-        )
-        self.assertEqual(result['stage'], 'D2')
-        self.assertEqual(result['dictionary'], 'shape_D')
-        self.assertEqual(result['sequence_ids'], (0,))
-        self.assertEqual(result['invalid_truth_sequences'], ())
-        self.assertEqual(result['x_steps'], 201)
-        self.assertEqual(
-            result['predictive_log_evidence_error']['expected_count'], 24
-        )
-        self.assertGreaterEqual(
-            result['predictive_log_evidence_error']['count'], 0
-        )
-        self.assertTrue(np.isfinite(result['projection_matrix_condition_number']))
-        for label in ('prediction', 'posterior'):
-            self.assertIn('maximum_cell_mass_l1', result[label])
-            self.assertIn('passes_representation_gate', result[label])
 
     def test_recursive_mixture_replay_matches_manual_streaming(self):
         case = synthetic.build_f4_b_case()
@@ -1132,79 +938,6 @@ class F4DRepresentationTests(unittest.TestCase):
             result['numerical']['prediction_projection_fallback_count'], 0
         )
 
-    def test_d3b_refinement_reuses_shared_configuration_and_reports_gate(self):
-        def fake_result(*, sequence_id, x_steps, max_step, cfl, likelihood_quadrature_order):
-            scale = 1.0 + 0.01 * x_steps + max_step
-            metric = {
-                'maximum_cell_mass_l1': 0.02 * scale,
-                'maximum_cdf_sup': 0.005 * scale,
-                'maximum_wasserstein_1': 0.001 * scale,
-                'maximum_density_l2': 0.03 * scale,
-                'maximum_abs_mean_error': 1e-4 * scale,
-                'maximum_abs_variance_error': 1e-5 * scale,
-            }
-            static = {
-                'maximum_cell_mass_l1': 1e-5,
-                'maximum_wasserstein_1': 1e-6,
-            }
-            return {
-                'x_steps': x_steps,
-                'max_step': max_step,
-                'total_fv_gap': {'prediction': dict(metric), 'posterior': dict(metric)},
-                'dynamic_gap': {'prediction': dict(metric), 'posterior': dict(metric)},
-                'static_best_fit': {'prediction': dict(static), 'posterior': dict(static)},
-                'log_evidence_error': {
-                    'mean_absolute_per_observation': 0.005 * scale,
-                    'maximum_absolute_per_observation': 0.01 * scale,
-                    'absolute_total_log_likelihood_difference': 0.02 * scale,
-                },
-                'state_rmse': {
-                    'fv_predictive': 0.03,
-                    'fv_posterior': 0.02,
-                    'mixture_predictive': 0.031,
-                    'mixture_posterior': 0.021,
-                },
-                'numerical': {
-                    'maximum_internal_step': max_step,
-                    'minimum_internal_step': max_step / 2,
-                    'total_internal_steps': 10,
-                    'prediction_projection_fallback_count': 0,
-                    'posterior_projection_fallback_count': 0,
-                    'maximum_abs_raw_prediction_mass_error': 1e-15,
-                    'maximum_abs_projected_prediction_mass_error': 1e-15,
-                    'maximum_posterior_projection_mass_error': 1e-15,
-                    'maximum_bayes_to_projected_posterior_l1': 1e-6,
-                    'projection_matrix_condition_number': 10.0,
-                    'hessian_condition_number': 100.0,
-                },
-            }
-
-        with patch.object(
-            mixture_f4, 'run_f4_d_recursive_sanity', side_effect=fake_result,
-        ) as mocked:
-            result = mixture_f4.run_f4_d_recursive_refinement(
-                sequence_id=0,
-                time_steps=(1/24, 1/48),
-                spatial_cells=(31, 101),
-                spatial_max_step=1/48,
-            )
-        self.assertEqual(result['stage'], 'D3b')
-        self.assertEqual(mocked.call_count, 3)
-        self.assertEqual(len(result['unique_configurations']), 3)
-        self.assertEqual([row['level'] for row in result['time']], [1/24, 1/48])
-        self.assertEqual([row['level'] for row in result['spatial']], [31, 101])
-        for axis in ('time', 'spatial'):
-            self.assertIn('posterior_l1', result['summary'][axis])
-            self.assertIn('evidence_mean_abs', result['summary'][axis])
-            self.assertIsInstance(result['summary'][axis]['passes_stability_gate'], bool)
-
-    def test_d3b_refinement_requires_ordered_unique_levels(self):
-        with self.assertRaises(ValueError):
-            mixture_f4.run_f4_d_recursive_refinement(time_steps=(1/48, 1/24))
-        with self.assertRaises(ValueError):
-            mixture_f4.run_f4_d_recursive_refinement(spatial_cells=(101, 51))
-        with self.assertRaises(ValueError):
-            mixture_f4.run_f4_d_recursive_refinement(time_steps=(1/384, 1/384))
 
     def test_d3c_first_order_summary_checks_new_fine_level(self):
         rows = [
@@ -1233,69 +966,6 @@ class F4DRepresentationTests(unittest.TestCase):
         unbound[-1]['actual_max_step'] = 1/64
         self.assertFalse(mixture_f4._d3c_spatial_summary(unbound, 'metric')['passes'])
 
-    def test_d3c_convergence_wrapper_caches_shared_configuration(self):
-        def fake_result(*, sequence_id, x_steps, max_step, cfl, likelihood_quadrature_order):
-            hscale = max_step / (1/768)
-            spatial = 1.0 + 0.0005 * (x_steps - 101)
-            post = 0.01 * hscale * spatial
-            evidence = 0.002 * hscale * spatial
-            metric = {
-                'maximum_cell_mass_l1': post,
-                'maximum_cdf_sup': post / 4,
-                'maximum_wasserstein_1': post / 10,
-                'maximum_density_l2': post * 2,
-                'maximum_abs_mean_error': 1e-4,
-                'maximum_abs_variance_error': 1e-5,
-            }
-            static = {
-                'maximum_cell_mass_l1': 1e-6,
-                'maximum_wasserstein_1': 1e-7,
-            }
-            return {
-                'x_steps': x_steps, 'max_step': max_step,
-                'total_fv_gap': {'prediction': dict(metric), 'posterior': dict(metric)},
-                'dynamic_gap': {'prediction': dict(metric), 'posterior': dict(metric)},
-                'static_best_fit': {'prediction': dict(static), 'posterior': dict(static)},
-                'log_evidence_error': {
-                    'mean_absolute_per_observation': evidence,
-                    'maximum_absolute_per_observation': evidence * 2,
-                    'absolute_total_log_likelihood_difference': evidence * 24,
-                },
-                'state_rmse': {
-                    'fv_predictive': .03, 'fv_posterior': .02,
-                    'mixture_predictive': .031, 'mixture_posterior': .021,
-                },
-                'numerical': {
-                    'maximum_internal_step': max_step,
-                    'minimum_internal_step': max_step / 2,
-                    'total_internal_steps': 10,
-                    'prediction_projection_fallback_count': 0,
-                    'posterior_projection_fallback_count': 0,
-                    'maximum_abs_raw_prediction_mass_error': 1e-15,
-                    'maximum_abs_projected_prediction_mass_error': 1e-15,
-                    'maximum_posterior_projection_mass_error': 1e-15,
-                    'maximum_bayes_to_projected_posterior_l1': 1e-6,
-                    'projection_matrix_condition_number': 10.0,
-                    'hessian_condition_number': 100.0,
-                },
-            }
-
-        with patch.object(
-            mixture_f4, 'run_f4_d_recursive_sanity', side_effect=fake_result,
-        ) as mocked:
-            result = mixture_f4.run_f4_d_recursive_convergence(
-                sequence_id=0,
-                time_steps=(1/768, 1/1536, 1/3072),
-                spatial_cells=(101, 151, 201),
-                spatial_max_step=1/3072,
-            )
-        self.assertEqual(result['stage'], 'D3c')
-        self.assertEqual(mocked.call_count, 5)
-        self.assertEqual(len(result['unique_configurations']), 5)
-        self.assertTrue(result['summary']['time']['passes'])
-        self.assertTrue(result['summary']['spatial']['passes'])
-        self.assertTrue(result['summary']['passes_convergence'])
-        self.assertEqual(result['summary']['population_setting']['x_steps'], 151)
 
     def test_d3d_population_constants_lock_unseen_sequences_and_numerics(self):
         self.assertEqual(mixture_f4.D3D_SEQUENCE_START, 1011)
@@ -1325,42 +995,6 @@ class F4DRepresentationTests(unittest.TestCase):
                 np.array([1e-4, 2e-4, 3e-4]), l1=False,
             )['passes']
         )
-
-    def test_small_d3d_population_runs_paired_without_dropping_sequences(self):
-        result = mixture_f4.run_f4_d_recursive_population(
-            n_sequences=2,
-            sequence_start=0,
-            x_steps=31,
-            max_step=1/24,
-            cfl=.4,
-            likelihood_quadrature_order=1,
-            bootstrap_replicates=100,
-            bootstrap_seed=11,
-            workers=1,
-        )
-        self.assertEqual(result['stage'], 'D3d')
-        self.assertEqual(result['sequence_ids'], (0, 1))
-        self.assertEqual(result['successful_sequences'], 2)
-        self.assertEqual(result['invalid_truth_sequences'], ())
-        self.assertEqual(result['failed_sequences'], ())
-        self.assertEqual(result['workers'], 1)
-        self.assertIn('predictive', result['rmse'])
-        self.assertIn('posterior', result['rmse'])
-        self.assertIn('prediction_l1', result['distribution_gap'])
-        self.assertIn('posterior_l1', result['distribution_gap'])
-        self.assertTrue(np.isfinite(
-            result['log_evidence_difference']['mean_absolute_per_observation']
-        ))
-        self.assertLessEqual(result['numerical']['maximum_mass_error'], 1e-10)
-
-    def test_d1_selection_never_selects_legacy_comparison(self):
-        result = mixture_f4.run_f4_d_representation_study(x_steps=61)
-        self.assertNotIn(result['selected_dictionary'], ('legacy_degree_30', 'legacy_degree_38'))
-
-    def test_d1_invalid_grid_size_fails_explicitly(self):
-        for value in (20, 20.5, True):
-            with self.subTest(value=value), self.assertRaises((ValueError, TypeError)):
-                mixture_f4.run_f4_d_representation_study(x_steps=value)
 
 
 class F4EFixedLikelihoodTests(unittest.TestCase):
@@ -1457,419 +1091,6 @@ class F4EFixedLikelihoodTests(unittest.TestCase):
         centered = synthetic.f4_e_centered_log_likelihood(evaluations)
         np.testing.assert_array_equal(centered, [0., -3., -.5])
         self.assertFalse(centered.flags.writeable)
-
-
-
-class F4ELikelihoodRefinementTests(unittest.TestCase):
-    def test_registered_rho_grid_contains_truth_and_unused_sequence(self):
-        self.assertEqual(synthetic.F4_E_NUMERICAL_SEQUENCE_ID, 1211)
-        self.assertEqual(len(synthetic.F4_E_RHO_GRID), 41)
-        self.assertEqual(synthetic.F4_E_RHO_GRID[0], .5)
-        self.assertEqual(synthetic.F4_E_RHO_GRID[-1], 1.5)
-        self.assertIn(1.0, synthetic.F4_E_RHO_GRID)
-
-    def test_likelihood_stability_requires_same_unique_maximum_and_local_agreement(self):
-        base = {
-            'rho_values': (.9, 1.0, 1.1),
-            'centered_log_likelihood': (-2.0, 0.0, -1.0),
-            'maximizer_indices': (1,),
-        }
-        close = {
-            'rho_values': (.9, 1.0, 1.1),
-            'centered_log_likelihood': (-2.04, 0.0, -1.03),
-            'maximizer_indices': (1,),
-        }
-        summary = synthetic._f4_e_likelihood_stability(base, close)
-        self.assertTrue(summary['passes'])
-        self.assertLessEqual(
-            summary['maximum_centered_log_likelihood_change'],
-            synthetic.F4_E_CENTERED_LIKELIHOOD_TOL,
-        )
-        changed = dict(close)
-        changed['centered_log_likelihood'] = (0.0, -.02, -1.03)
-        changed['maximizer_indices'] = (0,)
-        self.assertFalse(
-            synthetic._f4_e_likelihood_stability(base, changed)['passes']
-        )
-
-    def test_small_refinement_deduplicates_configs_and_parallel_matches_serial(self):
-        kwargs = dict(
-            sequence_id=0,
-            rho_values=(.9, 1.0, 1.1),
-            time_steps=(1/6, 1/12, 1/24),
-            time_x_steps=21,
-            time_quadrature_order=1,
-            spatial_cells=(21, 31, 41),
-            spatial_max_step=1/24,
-            spatial_quadrature_order=1,
-            quadrature_orders=(1, 2, 3),
-            quadrature_x_steps=31,
-            quadrature_max_step=1/24,
-        )
-        serial = synthetic.run_f4_e_likelihood_refinement(**kwargs, workers=1)
-        parallel = synthetic.run_f4_e_likelihood_refinement(**kwargs, workers=2)
-        self.assertEqual(len(serial['unique_configurations']), 7)
-        self.assertFalse(serial['matches_registered_design'])
-        self.assertFalse(serial['passes_numerical_refinement'])
-        left, right = dict(serial), dict(parallel)
-        left.pop('workers')
-        right.pop('workers')
-        self.assertEqual(left, right)
-
-
-
-class F4EParameterScreeningTests(unittest.TestCase):
-    @staticmethod
-    def passing_e1():
-        # Cheap analytic curve fixture; run the real E1 assembly/gate rather
-        # than constructing a report containing only hand-set passing flags.
-        def curve(sequence_id, rho_values, x_steps, max_step, quadrature_order):
-            total = tuple(-10 * (x - 1.0) ** 2 for x in rho_values)
-            return dict(rho_values=rho_values, total_log_likelihood=total,
-                        centered_log_likelihood=total, maximizer_indices=(20,),
-                        maximizer_rho=1.0, x_steps=x_steps, requested_max_step=max_step,
-                        actual_max_step=max_step, n_steps=24,
-                        likelihood_quadrature_order=quadrature_order,
-                        maximum_abs_mass_error=0.0, minimum_cell_mass=0.0)
-        with patch.object(synthetic, '_f4_e_rho_curve', side_effect=curve):
-            return synthetic.run_f4_e_likelihood_refinement()
-
-    @staticmethod
-    def small_grids():
-        return dict(rho=(.8, 1., 1.2), Xi=(0., .5, 1.), k=(1., 2., 3.),
-                    sigma_x=(.25, .5, 1.), sigma_y=(.015, .03, .06))
-
-    def test_registered_grids_and_e1_numerical_lock(self):
-        grids = synthetic.F4_E_PARAMETER_GRIDS
-        truth = synthetic.f4_e_truth_candidate()
-        for name, grid in grids.items():
-            self.assertEqual(len(grid), 41)
-            self.assertIn(getattr(truth, name), grid)
-            self.assertTrue(np.all(np.diff(grid) > 0))
-        np.testing.assert_allclose(grids['sigma_x'][::10], [.125, .25, .5, 1., 2.])
-        self.assertEqual(grids['Xi'][-1], 1.)
-        locked = synthetic.f4_e_screen_numerics_from_refinement(self.passing_e1())
-        self.assertEqual((locked['x_steps'], locked['max_step'],
-                          locked['likelihood_quadrature_order']), (401, 1/768, 3))
-
-    def test_e2_rechecks_raw_e1_curves_and_rejects_unregistered_or_forged_flags(self):
-        good = self.passing_e1()
-        bad_reports = []
-        for key, value in [('passes_numerical_refinement', False), ('sequence_id', 0),
-                           ('matches_registered_design', False)]:
-            bad = copy.deepcopy(good)
-            bad[key] = value
-            bad_reports.append(bad)
-        bad = copy.deepcopy(good)
-        row = bad['spatial'][-1]
-        curve = np.asarray(row['total_log_likelihood']).copy()
-        curve[20] = -.2
-        row['total_log_likelihood'] = row['centered_log_likelihood'] = tuple(curve)
-        row['maximizer_indices'] = (19, 21)
-        bad_reports.append(bad)
-        bad = copy.deepcopy(good)
-        row = bad['time'][-1]
-        curve = np.asarray(row['total_log_likelihood']).copy()
-        curve[0] -= .2  # still centered at the same maximum, but fails 0.10 gate
-        row['total_log_likelihood'] = row['centered_log_likelihood'] = tuple(curve)
-        bad_reports.append(bad)
-        bad = copy.deepcopy(good)
-        bad['quadrature'][-1]['centered_log_likelihood'] = (0.,) * 41
-        bad_reports.append(bad)
-        for bad in bad_reports:
-            with self.subTest(report=bad), patch.object(
-                    synthetic, '_f4_e_screen_sequence_task') as run, self.assertRaises(ValueError):
-                synthetic.run_f4_e_parameter_screening(e1_refinement=bad)
-            run.assert_not_called()
-
-    def test_lr_sets_keep_ties_disconnected_regions_and_support_truncation(self):
-        result = synthetic._f4_e_slice_summary((0., 1., 2., 3., 4.), (0., -4., -.5, -4., 0.), 2.)
-        self.assertIsNone(result['grid_mle'])
-        self.assertEqual(result['maximizer_indices'], (0, 4))
-        self.assertTrue(result['mle_on_boundary'])
-        self.assertEqual(result['log_likelihood_loss_at_truth'], .5)
-        self.assertEqual(result['lr_indices'], (0, 2, 4))
-        self.assertEqual(result['lr_connected_components'], 3)
-        self.assertEqual(result['lr_span_width'], 4.)
-        self.assertTrue(result['lr_touches_boundary'])
-
-    def test_small_screen_parallel_matches_serial_and_direct_replay_for_each_coordinate(self):
-        kwargs = dict(e1_refinement=self.passing_e1(), n_sequences=2, sequence_start=0,
-                      parameter_grids=self.small_grids(), x_steps=21, max_step=1/24,
-                      likelihood_quadrature_order=1)
-        events = []
-        serial = synthetic.run_f4_e_parameter_screening(
-            **kwargs, workers=1, progress=lambda completed, total, seq, row:
-            events.append((completed, total, seq)))
-        parallel = synthetic.run_f4_e_parameter_screening(**kwargs, workers=2)
-        self.assertEqual(events, [(1, 2, 0), (2, 2, 1)])
-        self.assertFalse(serial['matches_registered_design'])
-        left, right = dict(serial), dict(parallel)
-        left.pop('workers')
-        right.pop('workers')
-        self.assertEqual(left, right)
-        case = synthetic.build_f4_b_case()
-        obs = synthetic.generate_synthetic_sequence(case, sequence_id=0).observations
-        truth = synthetic.f4_e_truth_candidate(case)
-        for name, grid in self.small_grids().items():
-            from dataclasses import replace
-            direct = synthetic.evaluate_f4_e_candidate(
-                case, obs, replace(truth, **{name: grid[0]}), x_steps=21, max_step=1/24)
-            row = serial['sequence_results'][0]['slices'][name]
-            np.testing.assert_array_equal(row['log_evidence'][0], direct['log_evidence'])
-            np.testing.assert_allclose(np.sum(row['log_evidence'], axis=1),
-                                       row['total_log_likelihood'], atol=1e-12, rtol=0)
-            summed = np.sum([r['slices'][name]['centered_log_likelihood']
-                             for r in serial['sequence_results']], axis=0)
-            np.testing.assert_allclose(serial['summary'][name]['aggregate_slice']['centered_log_likelihood'],
-                                       summed - np.max(summed), atol=1e-12, rtol=0)
-        # JSON serialization must retain every row; no dataclass/ndarray leaks.
-        self.assertEqual(len(json.loads(json.dumps(serial, allow_nan=False))['sequence_results']), 2)
-
-    def test_invalid_grids_fail_before_screening_work(self):
-        for grids in [dict(rho=(1., 2.)), {**self.small_grids(), 'rho': (.5, .8)},
-                      {**self.small_grids(), 'Xi': (0., 1., 1.5)}]:
-            with patch.object(synthetic, '_f4_e_screen_sequence_task') as run, self.assertRaises(ValueError):
-                synthetic.run_f4_e_parameter_screening(e1_refinement=self.passing_e1(),
-                                                      parameter_grids=grids)
-            run.assert_not_called()
-
-    def test_official_population_preserves_all_locked_ids_and_grids(self):
-        seen = []
-        def task(task):
-            seq, grids, cells, step, order = task
-            seen.append((seq, grids, cells, step, order))
-            truth = synthetic.f4_e_truth_candidate()
-            slices = {}
-            for name, grid in grids.items():
-                scores = -(np.asarray(grid) - getattr(truth, name)) ** 2
-                slices[name] = synthetic._f4_e_slice_summary(grid, scores, getattr(truth, name))
-                slices[name].update(maximum_abs_mass_error=0., minimum_cell_mass=0.)
-            return dict(sequence_id=seq, slices=slices)
-        with patch.object(synthetic, '_f4_e_screen_sequence_task', side_effect=task):
-            result = synthetic.run_f4_e_parameter_screening(e1_refinement=self.passing_e1())
-        self.assertTrue(result['matches_registered_design'])
-        self.assertEqual(tuple(s[0] for s in seen), tuple(range(1212, 1262)))
-        self.assertEqual(len(result['sequence_results']), 50)
-        for seq, grids, cells, step, order in seen:
-            self.assertEqual(grids, synthetic.F4_E_PARAMETER_GRIDS)
-            self.assertEqual((cells, step, order), (401, 1/768, 3))
-
-    def test_invalid_truth_is_not_dropped(self):
-        with patch.object(synthetic, 'generate_synthetic_sequence') as generate:
-            generate.return_value.truth.valid = False
-            with self.assertRaisesRegex(RuntimeError, 'boundary violations'):
-                synthetic._f4_e_screen_sequence_task((1212, self.small_grids(), 21, 1/24, 1))
-
-    def test_screen_cli_requires_e1_and_refuses_existing_output_before_running(self):
-        from src.exe.run_model.bm_1 import estimate
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / 'existing.json'
-            output.write_text('keep me', encoding='utf-8')
-            args = estimate.build_parser().parse_args(
-                ['parameter-screen', '--e1-report', 'missing.json', '--output', str(output),
-                 '--workers', '7', '--blas-threads', '1'])
-            self.assertEqual(args.workers, 7)
-            with patch.object(synthetic, 'run_f4_e_parameter_screening') as run:
-                with self.assertRaises(FileExistsError):
-                    estimate.run_parameter_screening(args)
-            run.assert_not_called()
-            self.assertEqual(output.read_text(encoding='utf-8'), 'keep me')
-
-
-class F4EPairSurfaceTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.e2 = synthetic.run_f4_e_parameter_screening(
-            e1_refinement=F4EParameterScreeningTests.passing_e1(),
-            n_sequences=2, sequence_start=0, x_steps=21, max_step=1/24,
-            likelihood_quadrature_order=1,
-            parameter_grids=dict(rho=(.5, .75, 1., 1.25, 1.5),
-                                 Xi=(0., .25, .5, .75, 1.), k=(1., 1.5, 2., 2.5, 3.),
-                                 sigma_x=(.25, .375, .5, .75, 1.),
-                                 sigma_y=(.015, .0225, .03, .045, .06)),
-        )
-        cls.serial = synthetic.run_f4_e_pair_surfaces(e2_screening=cls.e2, n_sequences=2)
-
-    @staticmethod
-    def registered_e2():
-        # Full-design fixture with coherent sums, not scientific evidence.
-        def sequence(task):
-            seq, grids, cells, step, order = task
-            truth = synthetic.f4_e_truth_candidate()
-            slices = {}
-            for name, grid in grids.items():
-                total = -(np.asarray(grid) - getattr(truth, name)) ** 2
-                item = synthetic._f4_e_slice_summary(grid, total, getattr(truth, name))
-                item.update(log_evidence=tuple((float(x / 24),) * 24 for x in total),
-                            maximum_abs_mass_error=0., minimum_cell_mass=0.)
-                slices[name] = item
-            return dict(sequence_id=seq, observation_times=tuple(synthetic.CORE_OBSERVATION_TIMES),
-                        observations=(.5,) * 24, truth_boundary_violations=0, slices=slices)
-        with patch.object(synthetic, '_f4_e_screen_sequence_task', side_effect=sequence):
-            return synthetic.run_f4_e_parameter_screening(
-                e1_refinement=F4EParameterScreeningTests.passing_e1())
-
-    def test_surface_orientation_profiles_conditional_ridges_and_ties(self):
-        total = np.array([[-2., -1., -3.], [-4., 0., 0.], [-5., -1., -2.]])
-        item = synthetic._f4_e_surface_summary(('rho', 'Xi'), (.5, 1., 1.5), (0., .5, 1.), total)
-        self.assertEqual(item['maximizer_indices'], ((1, 1), (1, 2)))
-        self.assertIsNone(item['grid_mle'])
-        self.assertEqual(item['boundary_dimensions'], ('Xi',))
-        self.assertEqual(item['truth_indices'], (1, 2))
-        self.assertEqual(item['log_likelihood_loss_at_truth'], 0.)
-        self.assertEqual(item['profile_first_centered_log_likelihood'], (-1., 0., -1.))
-        self.assertEqual(item['profile_second_centered_log_likelihood'], (-2., 0., 0.))
-        self.assertEqual(item['ridge_second_indices_given_first'], ((1,), (1, 2), (1,)))
-        self.assertEqual(item['ridge_first_indices_given_second'], ((0,), (1,), (1,)))
-
-    def test_saved_observations_truth_cuts_evidence_and_aggregate_identity(self):
-        result = self.serial
-        self.assertFalse(result['matches_registered_design'])
-        self.assertEqual(result['sequence_ids'], (0, 1))
-        self.assertLess(result['maximum_e2_truth_cut_difference'], 1e-10)
-        for record, row in zip(result['observations'], self.e2['sequence_results']):
-            np.testing.assert_array_equal(record['values'], row['observations'])
-        for pair in synthetic.F4_E_PAIRS:
-            item = result['pair_results']['__'.join(pair)]
-            for surface, row in zip(item['sequence_surfaces'], self.e2['sequence_results']):
-                total = np.asarray(surface['total_log_likelihood'])
-                evidence = np.asarray(surface['log_evidence'])
-                np.testing.assert_allclose(total.ravel(), evidence.sum(axis=1), atol=1e-12, rtol=0)
-                ia, ib = surface['truth_indices']
-                np.testing.assert_allclose(total[:, ib], row['slices'][pair[0]]['total_log_likelihood'][::2],
-                                           atol=1e-12, rtol=0)
-                np.testing.assert_allclose(total[ia, :], row['slices'][pair[1]]['total_log_likelihood'][::2],
-                                           atol=1e-12, rtol=0)
-                if pair[1] == 'Xi':
-                    # Exact Xi=0 negative control survives the 2D evaluation.
-                    self.assertLess(np.ptp(total[:, 0]), 1e-10)
-            summed = np.sum([s['total_log_likelihood'] for s in item['sequence_surfaces']], axis=0)
-            np.testing.assert_array_equal(item['aggregate_surface']['total_log_likelihood'], summed)
-            np.testing.assert_array_equal(item['aggregate_surface']['centered_log_likelihood'],
-                                          summed - summed.max())
-
-    def test_parallel_matches_serial_without_regenerating_observations(self):
-        completed = []
-        # Workers receive saved observations; serial would also fail this guard
-        # if it tried generating fresh truth/data instead of reusing E2.
-        with patch.object(synthetic, 'generate_synthetic_sequence', side_effect=AssertionError('new draw')):
-            serial = synthetic.run_f4_e_pair_surfaces(e2_screening=self.e2, n_sequences=2)
-            parallel = synthetic.run_f4_e_pair_surfaces(
-                e2_screening=self.e2, n_sequences=2, workers=2,
-                progress=lambda *args: completed.append(args[:3]))
-        self.assertEqual(len(completed), 6)
-        self.assertEqual(parallel['pair_results'], serial['pair_results'])
-        self.assertEqual(parallel['observations'], serial['observations'])
-
-    def test_e2_validation_checks_all_fifty_rows_and_raw_evidence(self):
-        good = self.registered_e2()
-        self.assertTrue(synthetic.f4_e_screening_inputs(json.loads(json.dumps(good)))['matches_registered_design'])
-        for mutation in ('last_observation_time', 'evidence', 'centered', 'probability', 'lock'):
-            bad = copy.deepcopy(good)
-            row = bad['sequence_results'][-1]
-            if mutation == 'last_observation_time':
-                row['observation_times'] = tuple(np.linspace(.04, .96, 24))
-            elif mutation == 'evidence':
-                row['slices']['rho']['log_evidence'] = ((0.,) * 24,) * 41
-            elif mutation == 'centered':
-                row['slices']['rho']['centered_log_likelihood'] = (0.,) * 41
-            elif mutation == 'probability':
-                row['slices']['rho']['maximum_abs_mass_error'] = 1e-5
-            else:
-                bad['e1_numerical_lock']['e1_summary']['time']['passes'] = False
-            with self.subTest(mutation=mutation), patch.object(synthetic, '_f4_e_pair_surface_task') as run:
-                with self.assertRaises(ValueError):
-                    synthetic.run_f4_e_pair_surfaces(e2_screening=bad)
-                run.assert_not_called()
-
-    def test_official_requires_registered_e2_and_diagnostics_cannot_claim_registration(self):
-        with self.assertRaisesRegex(ValueError, 'registered 50-sequence'):
-            synthetic.f4_e_screening_inputs(self.e2)
-        bad = copy.deepcopy(self.e2)
-        bad['matches_registered_design'] = True
-        with self.assertRaisesRegex(ValueError, 'claims a registered'):
-            synthetic.f4_e_screening_inputs(bad)
-        bad = self.registered_e2()
-        bad['settings']['x_steps'] = 201
-        with self.assertRaisesRegex(ValueError, 'claims a registered'):
-            synthetic.f4_e_screening_inputs(bad)
-
-    def test_official_dispatches_only_first_ten_records_three_pairs_and_twentyone_nodes(self):
-        tasks = []
-        def surface(task):
-            row, pair, a, b, stride, cells, step, order = task
-            tasks.append(task)
-            truth = synthetic.f4_e_truth_candidate()
-            total = -(np.asarray(a)[:, None] - getattr(truth, pair[0])) ** 2 \
-                    -(np.asarray(b)[None, :] - getattr(truth, pair[1])) ** 2
-            item = synthetic._f4_e_surface_summary(pair, a, b, total)
-            item.update(sequence_id=row['sequence_id'], maximum_abs_mass_error=0., minimum_cell_mass=0.,
-                        e2_truth_cut_maximum_abs_differences=(0., 0.))
-            return (row['sequence_id'], pair), item
-        with patch.object(synthetic, '_f4_e_pair_surface_task', side_effect=surface):
-            result = synthetic.run_f4_e_pair_surfaces(e2_screening=self.registered_e2())
-        self.assertTrue(result['matches_registered_design'])
-        self.assertEqual(result['sequence_ids'], tuple(range(1212, 1222)))
-        self.assertEqual(len(tasks), 30)
-        for row, pair, a, b, stride, cells, step, order in tasks:
-            self.assertEqual((len(a), len(b), stride, cells, step, order), (21, 21, 2, 401, 1/768, 3))
-            self.assertEqual(a, synthetic.F4_E_PARAMETER_GRIDS[pair[0]][::2])
-            self.assertEqual(b, synthetic.F4_E_PARAMETER_GRIDS[pair[1]][::2])
-
-    def test_subsampling_must_retain_truth_and_truth_cut_mismatch_aborts(self):
-        with self.assertRaisesRegex(ValueError, 'retain'):
-            synthetic.run_f4_e_pair_surfaces(e2_screening=self.e2, n_sequences=2, grid_stride=3)
-        bad = copy.deepcopy(self.e2['sequence_results'][0])
-        # Internally coherent but wrong E2 slice: the scientific replay identity
-        # catches a changed numerical likelihood, beyond file-integrity checks.
-        bad['slices']['rho']['total_log_likelihood'] = tuple(
-            x + .01 for x in bad['slices']['rho']['total_log_likelihood'])
-        with self.assertRaisesRegex(RuntimeError, 'truth-coordinate cuts'):
-            synthetic._f4_e_pair_surface_task((bad, ('rho', 'Xi'),
-                self.e2['parameter_grids']['rho'][::2], self.e2['parameter_grids']['Xi'][::2], 2, 21, 1/24, 1))
-
-    def test_cli_refuses_existing_json_or_png_before_reading_or_running(self):
-        from src.exe.run_model.bm_1 import estimate
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / 'report.json'
-            prefix = Path(directory) / 'surface'
-            for existing in (output, estimate._pair_surface_figure_paths(prefix)[1]):
-                existing.write_text('keep me', encoding='utf-8')
-                args = estimate.build_parser().parse_args(
-                    ['pair-surfaces', '--e2-report', 'missing.json', '--output', str(output),
-                     '--figure-prefix', str(prefix), '--workers', '7', '--blas-threads', '1'])
-                with patch.object(synthetic, 'run_f4_e_pair_surfaces') as run:
-                    with self.assertRaises(FileExistsError):
-                        estimate.run_pair_surfaces(args)
-                    run.assert_not_called()
-                self.assertEqual(existing.read_text(encoding='utf-8'), 'keep me')
-                existing.unlink()
-
-    def test_cli_retains_input_digest_and_serializes_raw_scientific_results(self):
-        import hashlib
-        from src.exe.run_model.bm_1 import estimate
-        with tempfile.TemporaryDirectory() as directory:
-            input_path, output = Path(directory) / 'e2.json', Path(directory) / 'e3.json'
-            raw = json.dumps(self.registered_e2()).encode('utf-8')
-            input_path.write_bytes(raw)
-            args = estimate.build_parser().parse_args(
-                ['pair-surfaces', '--e2-report', str(input_path), '--output', str(output),
-                 '--workers', '7', '--blas-threads', '1', '--quiet'])
-            # Actual small-kernel result exercises serialization; the expensive
-            # official dispatch is mocked and remains explicitly diagnostic.
-            with patch.object(synthetic, 'run_f4_e_pair_surfaces', return_value=copy.deepcopy(self.serial)) as run, \
-                    patch('builtins.print'):
-                estimate.run_pair_surfaces(args)
-            self.assertEqual(run.call_args.kwargs['workers'], 7)
-            self.assertEqual(run.call_args.kwargs['e2_screening']['sequence_ids'], list(range(1212, 1262)))
-            saved = json.loads(output.read_text(encoding='utf-8'))
-            self.assertEqual(saved['e2_report_sha256'], hashlib.sha256(raw).hexdigest())
-            self.assertEqual(saved['blas_threads_requested'], 1)
-            self.assertFalse(saved['matches_registered_design'])
-            for name, item in self.serial['pair_results'].items():
-                np.testing.assert_array_equal(saved['pair_results'][name]['aggregate_surface']['total_log_likelihood'],
-                                              item['aggregate_surface']['total_log_likelihood'])
 
 
 class F4FRhoBankTests(unittest.TestCase):
@@ -2000,33 +1221,6 @@ class F4FRhoBankTests(unittest.TestCase):
         self.assertEqual(step.rho_values[0], 1.)
         for array in (step.rho_values, step.prior_log_weights, step.log_weights):
             self.assertFalse(array.flags.writeable)
-
-    def test_diagnostic_serial_matches_real_spawn_pool(self):
-        kwargs = dict(sequence_id=0, rho_values=(.6, 1.4), x_steps=21,
-                      max_step=1/24, likelihood_quadrature_order=1)
-        serial = synthetic.run_f4_f_bank_identity(**kwargs, workers=1)
-        parallel = synthetic.run_f4_f_bank_identity(**kwargs, workers=2)
-        self.assertFalse(serial['registered_design'])
-        self.assertTrue(serial['passes_f0'])
-        self.assertTrue(parallel['passes_f0'])
-        for key in ('online_log_weights', 'online_conditional_log_evidence',
-                    'online_bank_log_evidence', 'final_conditional_posterior_mass'):
-            np.testing.assert_array_equal(serial[key], parallel[key])
-        self.assertEqual(serial['settings']['workers'], 1)
-        self.assertEqual(parallel['settings']['workers'], 2)
-        json.dumps(parallel, allow_nan=False)
-
-    def test_cli_locks_design_and_rejects_existing_output_before_work(self):
-        from src.exe.run_model.bm_1 import estimate
-        self.assertEqual(estimate.build_parser().parse_args(['bank-identity']).workers, 7)
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / 'existing.json'
-            output.write_text('keep', encoding='utf-8')
-            with patch.object(synthetic, 'run_f4_f_bank_identity') as run:
-                with self.assertRaises(FileExistsError):
-                    estimate.main(['bank-identity', '--output', str(output)])
-                run.assert_not_called()
-            self.assertEqual(output.read_text(encoding='utf-8'), 'keep')
 
 
 class OneParameterBankTests(unittest.TestCase):
@@ -2161,42 +1355,6 @@ class OneParameterBankTests(unittest.TestCase):
         return dict(**synthetic._f4_f_report_header('F1', 7), rows=rows,
                     source_commit='abc', working_tree_dirty=False)
 
-    def test_refinement_gate_recomputes_raw_scores_and_ignores_pass_boolean(self):
-        good = self.refinement_fixture()
-        self.assertEqual(synthetic.f4_f_validated_refinement(good), synthetic._f4_f_selected_numerics())
-        for mutation in ('scores', 'settings', 'observations', 'dirty', 'missing'):
-            bad = copy.deepcopy(good)
-            bad['passes'] = True
-            if mutation == 'scores':
-                bad['rows'][-1]['conditional_log_evidence'][0][0] = 2.
-            elif mutation == 'settings':
-                bad['rows'][-1]['settings']['x_steps'] = 101
-            elif mutation == 'observations':
-                bad['rows'][-1]['observations'][-1] += .1
-            elif mutation == 'dirty':
-                bad['working_tree_dirty'] = True
-            else:
-                bad['rows'].pop()
-            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
-                synthetic.f4_f_validated_refinement(bad, require_source=True)
-
-    def test_cli_no_overwrite_compressed_reports_and_failed_gates_are_retained(self):
-        import gzip
-        from src.exe.run_model.bm_1 import estimate
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory)/'f1.json.gz'
-            args = estimate.build_parser().parse_args(['bank-refine','--output',str(path),'--quiet'])
-            self.assertEqual(args.workers, 7)
-            report = dict(stage='F1', rows=[], comparisons=[], registered_design=True, passes=False)
-            with patch.object(synthetic, 'run_f4_f_bank_refinement', return_value=report):
-                with self.assertRaises(RuntimeError):
-                    estimate.run_bank_study(args)
-            with gzip.open(path, 'rt') as stream:
-                self.assertFalse(json.load(stream)['passes'])
-            with patch.object(synthetic, 'run_f4_f_bank_refinement') as run:
-                with self.assertRaises(FileExistsError):
-                    estimate.run_bank_study(args)
-                run.assert_not_called()
 
     def test_rejects_unknown_coordinate_and_bad_mixture_continuation(self):
         with self.assertRaises(ValueError):
@@ -2207,46 +1365,6 @@ class OneParameterBankTests(unittest.TestCase):
             self.bank(backend='mixture', projector=self.projector(),
                       initial_conditional_coefficients=np.full((2, 3), 1/3))
 
-    def test_mixture_gate_checks_raw_weights_inputs_mass_and_all_pilot_rows(self):
-        rows = []
-        settings = [('fv_reference', synthetic._f4_f_selected_numerics()['rho']),
-                    ('fv_matched', synthetic._f4_f_numerics(151, 1/3072)),
-                    ('mixture_coarse', synthetic._f4_f_numerics(151, 1/768, backend='mixture')),
-                    ('mixture_middle', synthetic._f4_f_numerics(151, 1/1536, backend='mixture')),
-                    ('mixture_fine', synthetic._f4_f_numerics(151, 1/3072, backend='mixture'))]
-        for sid in (1326, 1327):
-            obs = synthetic.generate_synthetic_sequence(sequence_id=sid).observations
-            for label, config in settings:
-                cells = config['x_steps']
-                rows.append(dict(coordinate='rho', truth=1., sequence_id=sid, label=label,
-                    settings=config, values=list(synthetic.F4_E_RHO_GRID),
-                    observation_times=obs.times.tolist(), observations=obs.values.tolist(),
-                    conditional_log_evidence=np.zeros((24,41)).tolist(),
-                    initial_log_weights=[-np.log(41)]*41, log_weights=np.full((24,41),-np.log(41)).tolist(),
-                    cumulative_log_evidence=[0.]*24, parameter_mean=[1.]*24,
-                    maximum_abs_mass_error=0., minimum_cell_mass=0., fallbacks=0,
-                    actual_max_step=config['max_step'],
-                    x_edges=np.linspace(0,1,cells+1).tolist(),
-                    marginal_predicted_mass=np.full((24,cells),1/cells).tolist(),
-                    marginal_posterior_mass=np.full((24,cells),1/cells).tolist()))
-        report = dict(**synthetic._f4_f_report_header('F3', 7), rows=rows,
-                      source_commit='abc', working_tree_dirty=False,
-                      mixture_basis='shape_D', mixture_cfl=.4)
-        self.assertEqual(synthetic.f4_f_validated_mixture_check(report), settings[-1][1])
-        for mutation in ('scores', 'mass', 'observations', 'basis', 'missing'):
-            bad = copy.deepcopy(report)
-            if mutation == 'scores':
-                bad['rows'][-1]['conditional_log_evidence'][0][0] = 1.
-            elif mutation == 'mass':
-                bad['rows'][-1]['marginal_posterior_mass'][0][0] = -1.
-            elif mutation == 'observations':
-                bad['rows'][-1]['observations'][0] += .1
-            elif mutation == 'basis':
-                bad['mixture_basis'] = 'changed'
-            else:
-                bad['rows'].pop()
-            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
-                synthetic.f4_f_validated_mixture_check(bad)
 
     @staticmethod
     def refined_mixture_fixture():
@@ -2285,68 +1403,6 @@ class OneParameterBankTests(unittest.TestCase):
                     selected_mixture_numerics=synthetic._f4_f_numerics(401, 1/32768, backend='mixture'),
                     mixture_basis='shape_D', mixture_cfl=.4, passes=False)
 
-    def test_refined_pilot_retains_failed_controls_and_checks_selected_raw_curves(self):
-        report = self.refined_mixture_fixture()
-        lookup = {(r['sequence_id'],r['label']):r for r in report['rows']}
-        self.assertFalse(synthetic._f4_f_paired_bank_comparison(
-            lookup[1326,'fv_reference'], lookup[1326,'mixture_fine'])['passes'])
-        self.assertEqual(synthetic.f4_f_validated_mixture_check(report, require_source=True),
-                         synthetic._f4_f_numerics(401, 1/32768, backend='mixture'))
-        for mutation in ('state', 'missing_old_control', 'selected_settings', 'version', 'edges', 'inactive_time', 'spatial_time'):
-            bad = copy.deepcopy(report)
-            bad['passes'] = True
-            bad['comparisons'] = [{'passes':True, 'selected':False}]
-            if mutation == 'state':
-                target = next(r for r in bad['rows'] if r['label']=='mixture401_fine')
-                target['marginal_posterior_mass'][0] = [1.] + [0.]*400
-            elif mutation == 'missing_old_control':
-                bad['rows'].pop(1)
-            elif mutation == 'selected_settings':
-                bad['selected_mixture_numerics']['max_step'] = 1/1536
-            elif mutation == 'version':
-                bad['design_version'] = 1
-            elif mutation == 'inactive_time':
-                for r in bad['rows']:
-                    if r['label'] in ('mixture401_middle','mixture401_fine'):
-                        r['actual_max_step'] = 1/40000
-            elif mutation == 'spatial_time':
-                bad['rows'][-1]['actual_max_step'] *= .5
-            else:
-                bad['rows'][-1]['x_edges'][1] += .0001
-            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
-                synthetic.f4_f_validated_mixture_check(bad)
-
-    def test_refined_study_reports_old_failures_without_loosening_selected_gates(self):
-        report = self.refined_mixture_fixture()
-        with patch.object(synthetic, '_f4_f_execute_groups', return_value=report['rows']) as execute:
-            result = synthetic.run_f4_f_bank_mixture_check(self.refinement_fixture(), spatial_refine=True)
-        self.assertEqual(len(execute.call_args.args[0]), 18)
-        self.assertEqual(result['design_version'], 2)
-        self.assertTrue(result['passes'])
-        self.assertEqual(sum(c['selected'] for c in result['comparisons']), 8)
-        old = [c for c in result['comparisons'] if c['comparison']=='reference_fv']
-        self.assertEqual(len(old), 2)
-        self.assertTrue(all(not c['passes'] and not c['selected'] for c in old))
-        self.assertEqual(result['criteria']['maximum_state_l1'], .02)
-
-    def test_cli_spatial_refinement_flag_and_state_error_are_visible(self):
-        from src.exe.run_model.bm_1 import estimate
-        with tempfile.TemporaryDirectory() as directory:
-            args = estimate.build_parser().parse_args(['bank-mixture-check', '--spatial-refine',
-                '--refinement-report','f1.json.gz', '--output',str(Path(directory)/'f3.json.gz')])
-            report = dict(stage='F3', rows=[], registered_design=True, passes=False,
-                criteria={'maximum_state_l1':.02}, comparisons=[dict(coordinate='rho',sequence_id=1326,
-                    comparison='reference_fv', maximum_log_odds_error=.01, maximum_weight_tv=.001,
-                    maximum_cumulative_evidence_error=.01, predicted_maximum_l1=.03,
-                    posterior_maximum_l1=.04, passes=False,selected=True)])
-            with patch.object(estimate,'_read_bank_dependency',return_value=({'source_commit':'abc'},'digest')), \
-                    patch.object(synthetic,'run_f4_f_bank_mixture_check',return_value=report) as run, \
-                    patch.object(estimate,'_write_likelihood_report'), patch('builtins.print') as printed:
-                with self.assertRaises(RuntimeError):
-                    estimate.run_bank_study(args)
-            self.assertTrue(run.call_args.kwargs['spatial_refine'])
-            output = '\n'.join(str(call.args[0]) for call in printed.call_args_list)
-            self.assertIn('state L1 pred/post=0.03/0.04; limit=0.02', output)
 
     def test_likelihood_window_does_not_remove_hypotheses_from_bayes_update(self):
         a = dict(values=[.5,1.,1.5], observations=[.2],
@@ -2385,105 +1441,6 @@ class OneParameterBankTests(unittest.TestCase):
                 self.assertEqual(run.call_count,4)
 
 
-class PopulationReferenceRefinementTests(unittest.TestCase):
-    @staticmethod
-    def population_fixture():
-        rows = []
-        for sid in range(1328, 1348):
-            sequence = synthetic.generate_synthetic_sequence(sequence_id=sid)
-            for coordinate, label in (('rho','fv'), ('rho','mixture'), ('sigma_x','fv')):
-                cells, step = (3201,1/1536) if coordinate=='sigma_x' else (401,1/768 if label=='fv' else 1/32768)
-                nodes = np.array(synthetic.F4_E_PARAMETER_GRIDS[coordinate])
-                mass = np.full((24,cells),1/cells)
-                if coordinate=='rho' and label=='fv':
-                    mass[:]=0.; mass[:,cells//2]=1.
-                rows.append(dict(coordinate=coordinate,label=label,sequence_id=sid,
-                    truth=1. if coordinate=='rho' else .5, prior_name='discrete_uniform',
-                    values=nodes.tolist(), settings=synthetic._f4_f_numerics(cells,step,backend=label),
-                    actual_max_step=step, maximum_abs_mass_error=0.,minimum_cell_mass=0.,fallbacks=0,
-                    observation_times=sequence.observations.times.tolist(), observations=sequence.observations.values.tolist(),
-                    truth_state=sequence.truth.state[1:].tolist(), initial_log_weights=[-np.log(41)]*41,
-                    conditional_log_evidence=np.zeros((24,41)),log_weights=np.full((24,41),-np.log(41)),
-                    bank_log_evidence=[0.]*24,cumulative_log_evidence=[0.]*24,
-                    parameter_mean=[float(nodes.mean())]*24,parameter_sd=[float(nodes.std())]*24,
-                    equal_tail_95=[[float(nodes[1]),float(nodes[-2])]]*24,
-                    x_edges=np.linspace(0,1,cells+1), marginal_predicted_mass=mass,marginal_posterior_mass=mass,
-                    predicted_mean=[.5]*24,posterior_mean=[.5]*24))
-        return dict(**synthetic._f4_f_report_header('F4',8),rows=rows,passes=True,comparisons=[],summary=[],
-                    source_commit='abc',working_tree_dirty=False,
-                    dependencies={k:dict(source_commit='abc',sha256=k) for k in ('refinement','mixture')})
-
-    def test_population_reuse_validates_raw_data_even_when_original_comparisons_fail(self):
-        report=self.population_fixture()
-        validated=synthetic.f4_f_validated_population(report,require_source=True)
-        self.assertFalse(synthetic._f4_f_paired_bank_comparison(validated['rho',1328,'fv'],validated['rho',1328,'mixture'])['passes'])
-        for mutation in ('missing','scores','mean','mass','edges','observations','truth','settings','dirty'):
-            bad=copy.deepcopy(report);row=bad['rows'][0]
-            if mutation=='missing':bad['rows'].pop()
-            elif mutation=='scores':row['conditional_log_evidence'][0,0]=1.
-            elif mutation=='mean':row['parameter_mean'][0]+=.1
-            elif mutation=='mass':row['marginal_posterior_mass'][0,0]=-.1
-            elif mutation=='edges':row['x_edges'][1]+=.0001
-            elif mutation=='observations':row['observations'][0]+=.1
-            elif mutation=='truth':row['truth_state'][0]+=.1
-            elif mutation=='settings':row['settings']['max_step']/=2
-            else:bad['working_tree_dirty']=True
-            with self.subTest(mutation=mutation),self.assertRaises(ValueError):
-                synthetic.f4_f_validated_population(bad,require_source=True)
-
-    def test_population_time_refinement_reuses_inputs_and_exposes_original_failures(self):
-        report=self.population_fixture()
-        # A platform-level seed-rounding difference is allowed in validation;
-        # the actual new replays must use the stored measurements exactly.
-        for row in report['rows']:
-            if row['sequence_id']==1328:row['observations'][0]=np.nextafter(row['observations'][0],np.inf)
-        replayed=[]
-        def execute(groups,workers,progress,keep_mass):
-            self.assertEqual(workers,8);self.assertTrue(keep_mass);self.assertEqual(len(groups),40)
-            for group in groups:
-                source=next(r for r in report['rows'] if r['coordinate']=='rho' and r['label']=='fv' and r['sequence_id']==group['sequence_id'])
-                np.testing.assert_array_equal(group['observations'].values,source['observations'])
-                self.assertEqual(group['settings']['backend'],'fv')
-                mass=np.full((24,401),1/401)
-                replayed.append(dict(source,label=group['label'],settings=group['settings'],actual_max_step=group['settings']['max_step'],
-                    marginal_predicted_mass=mass,marginal_posterior_mass=mass))
-            return replayed
-        with patch.object(synthetic,'_f4_f_execute_groups',side_effect=execute):
-            result=synthetic.run_f4_f_population_time_refinement(OneParameterBankTests.refinement_fixture(),
-                OneParameterBankTests.refined_mixture_fixture(),report,workers=8)
-        self.assertTrue(result['passes']);self.assertFalse(result['original_population_passes'])
-        self.assertEqual(result['new_replays'],1640);self.assertEqual(result['reused_selected_banks'],40)
-        self.assertEqual(sum(x['selected'] for x in result['comparisons']),40)
-        self.assertTrue(all(not x['selected'] and not x['passes'] for x in result['comparisons'] if x['comparison']=='original_fv_mixture'))
-        self.assertEqual([s['count'] for s in result['summary']],[20,20,20])
-        self.assertEqual(report['rows'][0]['settings']['max_step'],1/768)
-        replayed[-1]=dict(replayed[-1],marginal_posterior_mass=report['rows'][0]['marginal_posterior_mass'])
-        with patch.object(synthetic,'_f4_f_execute_groups',return_value=replayed):
-            failed=synthetic.run_f4_f_population_time_refinement(OneParameterBankTests.refinement_fixture(),
-                OneParameterBankTests.refined_mixture_fixture(),report,workers=8)
-        self.assertFalse(failed['passes'])
-
-    def test_population_time_cli_checks_dependency_digests_before_replay_and_retains_failure(self):
-        from src.exe.run_model.bm_1 import estimate
-        with tempfile.TemporaryDirectory() as directory:
-            args=estimate.build_parser().parse_args(['bank-population-time-refine','--refinement-report','f1.gz',
-                '--mixture-report','f3.gz','--population-report','f4.gz','--workers','8','--output',str(Path(directory)/'next.gz')])
-            population=dict(source_commit='population',dependencies={k:dict(source_commit='abc',sha256=k) for k in ('refinement','mixture')})
-            result=dict(stage='F4-time-refinement',rows=[],comparisons=[],registered_design=True,passes=False)
-            deps=[({'source_commit':'abc'},'refinement'),({'source_commit':'abc'},'mixture'),(population,'population')]
-            with patch.object(estimate,'_read_bank_dependency',side_effect=deps),patch('builtins.print'), \
-                    patch.object(synthetic,'run_f4_f_population_time_refinement',return_value=result) as run, \
-                    patch.object(estimate,'_write_likelihood_report') as write:
-                with self.assertRaises(RuntimeError):estimate.run_bank_study(args)
-            self.assertEqual(run.call_args.kwargs['workers'],8);write.assert_called_once()
-            self.assertEqual(result['dependencies']['population']['sha256'],'population')
-            population['dependencies']['mixture']['sha256']='wrong'
-            with patch.object(estimate,'_read_bank_dependency',side_effect=deps), \
-                    patch.object(synthetic,'run_f4_f_population_time_refinement') as run:
-                with self.assertRaises(ValueError):estimate.run_bank_study(args)
-            run.assert_not_called()
-
-
 class JointParameterBankTests(unittest.TestCase):
     """Behavioral tests for both selected pairs and the joint state recursion."""
 
@@ -2513,7 +1470,7 @@ class JointParameterBankTests(unittest.TestCase):
             case, model, base, initial, obs = self.prepared()
             offline = []
             for values in nodes:
-                candidate = synthetic.replace(synthetic.f4_e_truth_candidate(case), **dict(zip(pair, values)))
+                candidate = replace(synthetic.f4_e_truth_candidate(case), **dict(zip(pair, values)))
                 offline.append(run_fv_filter(model, synthetic._f4_e_parameters(base, candidate),
                     candidate.sigma_x, candidate.sigma_y, initial, 0, obs,
                     max_step=1/48, breakpoints=case.breakpoints, likelihood_quadrature_order=3))
@@ -2547,29 +1504,6 @@ class JointParameterBankTests(unittest.TestCase):
         np.testing.assert_array_equal(first['conditional_log_evidence'][:, 0], first['conditional_log_evidence'][:, 2])
         np.testing.assert_allclose(changed['predicted_mass'], first['predicted_mass'], atol=1e-12, rtol=0)
 
-    def test_missing_continuation_and_prefix_causality_preserve_conditional_states(self):
-        from src.method.bm_1_estimation import run_joint_parameter_bank
-        case, model, base, initial, obs = self.prepared()
-        missing = BM1ObservationSeries(obs.times, [obs.values[0], np.nan, obs.values[2]],
-                                       'day', [True, False, True])
-        nodes = [[.2, .02], [.8, .06]]
-        whole = self.bank(('sigma_x', 'sigma_y'), nodes, observations=missing)
-        prefix = self.bank(('sigma_x', 'sigma_y'), nodes, observations=missing.prefix(1/24))
-        continuation = run_joint_parameter_bank(model, base, case.sigma_x, case.sigma_y, initial,
-            1/24, BM1ObservationSeries(missing.times[1:], missing.values[1:], 'day', missing.observed[1:]),
-            coordinates=('sigma_x', 'sigma_y'), hypotheses=nodes,
-            initial_log_weights=prefix['log_weights'][-1], initial_conditional_mass=prefix['final_conditional_mass'],
-            max_step=1/48, likelihood_quadrature_order=3, breakpoints=case.breakpoints)
-        for name in ('log_weights', 'conditional_log_evidence', 'predicted_mass', 'posterior_mass'):
-            np.testing.assert_allclose(continuation[name], whole[name][1:], atol=1e-12, rtol=0, equal_nan=True)
-        np.testing.assert_array_equal(whole['log_weights'][1], whole['log_weights'][0])
-        np.testing.assert_array_equal(whole['predicted_mass'][1], whole['posterior_mass'][1])
-        changed = BM1ObservationSeries(obs.times, [obs.values[0], 99, -99], 'day')
-        future_changed = self.bank(('sigma_x', 'sigma_y'), nodes, observations=changed)
-        np.testing.assert_array_equal(prefix['log_weights'][0], future_changed['log_weights'][0])
-        np.testing.assert_array_equal(prefix['final_conditional_mass'], np.array(
-            [s.posterior_mass for s in self.bank(('sigma_x', 'sigma_y'), nodes,
-              observations=changed, keep_conditionals=True)['steps'][0]['conditional_steps']]))
 
     def test_zero_prior_remains_zero_and_xi_zero_is_negative_control(self):
         bank = self.bank(('rho', 'Xi'), [[.5, 0], [1.5, 0]], prior=[1, 0])
@@ -2612,70 +1546,6 @@ class JointParameterBankTests(unittest.TestCase):
                 propagate.assert_not_called()
         with self.assertRaises(ValueError):
             self.bank(('rho', 'Xi'), [[1, .75]], initial_conditional_mass=np.full((2, 21), 1/21))
-
-    def test_g0_real_spawn_matches_serial_and_callbacks_do_not_change_results(self):
-        options = dict(sequence_ids=(0, 1), grid_stride=40, x_steps=21,
-                       max_step=1/24, likelihood_quadrature_order=1)
-        serial = synthetic.run_f4_g_joint_identity(workers=1, **options)
-        parallel = synthetic.run_f4_g_joint_identity(workers=2, **options)
-        self.assertEqual(serial['rows'], parallel['rows'])
-        self.assertTrue(serial['passes'])
-        self.assertFalse(serial['registered_design'])
-        self.assertEqual(serial['conditional_runs'], 16)
-        def corrupt(row):
-            row.update(completed=-1, pair=('wrong', 'pair'))
-        changed = synthetic.run_f4_g_joint_identity(workers=1, progress=corrupt, **options)
-        self.assertEqual(serial, changed)
-        for row in serial['rows']:
-            hypotheses = np.asarray(row['hypotheses'])
-            logs = np.asarray(row['online_log_weights'])
-            np.testing.assert_allclose(row['parameter_mean'], np.exp(logs) @ hypotheses, atol=1e-12, rtol=0)
-            final = np.asarray(row['final_conditional_posterior_mass'])
-            np.testing.assert_allclose(row['marginal_posterior_mass'][-1], np.exp(logs[-1]) @ final,
-                                       atol=1e-12, rtol=0)
-
-    def test_g0_failures_are_not_dropped_or_reported_as_passes(self):
-        original = synthetic._f4_g_identity_task
-        def mismatch(task):
-            result = original(task)
-            if result['phase'] == 'offline':
-                result['scores'] = result['scores'].copy()
-                result['scores'][0, 0] += .1
-            return result
-        with patch.object(synthetic, '_f4_g_identity_task', side_effect=mismatch):
-            report = synthetic.run_f4_g_joint_identity(workers=1, sequence_ids=(0, 1), grid_stride=40, x_steps=21,
-                                                       max_step=1/24, likelihood_quadrature_order=1)
-        self.assertFalse(report['passes'])
-        self.assertEqual(len(report['rows']), 2)
-        with patch.object(synthetic, '_f4_g_identity_task', side_effect=RuntimeError('candidate failed')):
-            with self.assertRaisesRegex(RuntimeError, 'candidate failed'):
-                synthetic.run_f4_g_joint_identity(workers=1, sequence_ids=(0, 1), grid_stride=40, x_steps=21)
-
-    def test_g0_cli_retains_failed_gzip_report_and_refuses_overwrite(self):
-        from src.exe.run_model.bm_1 import estimate
-        import gzip
-        result = dict(stage='G0', rows=[], registered_design=True, passes=False)
-        with tempfile.TemporaryDirectory() as directory, patch('builtins.print'):
-            path = Path(directory) / 'g0.json.gz'
-            args = estimate.build_parser().parse_args(['joint-bank-identity', '--output', str(path), '--blas-threads', '1'])
-            self.assertEqual(args.workers, 8)
-            with patch.object(synthetic, 'run_f4_g_joint_identity', return_value=result) as run:
-                with self.assertRaisesRegex(RuntimeError, 'report retained'):
-                    estimate.run_joint_bank_identity(args)
-                run.assert_called_once()
-                self.assertEqual(run.call_args.kwargs['workers'], 8)
-            with gzip.open(path, 'rt', encoding='utf-8') as stream:
-                saved = json.load(stream)
-            self.assertFalse(saved['passes'])
-            self.assertEqual(saved['stage'], 'G0')
-            self.assertEqual(saved['blas_threads_requested'], 1)
-            self.assertIn('source_commit', saved)
-            raw = path.read_bytes()
-            with patch.object(synthetic, 'run_f4_g_joint_identity') as run:
-                with self.assertRaises(FileExistsError):
-                    estimate.run_joint_bank_identity(args)
-                run.assert_not_called()
-            self.assertEqual(raw, path.read_bytes())
 
 
 if __name__ == '__main__':

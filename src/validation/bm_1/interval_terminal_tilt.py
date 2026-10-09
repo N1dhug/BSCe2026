@@ -100,7 +100,7 @@ def terminal_tilt_update(solver, interval, prior, drift, diffusion, reward, valu
 def terminal_reference_control():
     """Archive the exact Gaussian and positive one-jump references."""
     from scipy.special import roots_legendre
-    from src.params.bm_1 import gaussian_log_likelihood
+    from src.method.bm_1_observation import gaussian_log_likelihood
     from src.solver.finite_volume import finite_volume_1d_fitted
     solver = finite_volume_1d_fitted()
     zero = lambda t, x: np.zeros(x.shape)

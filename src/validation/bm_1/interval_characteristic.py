@@ -15,8 +15,8 @@ from scipy.special import betainc, logsumexp
 
 from src.method.bm_1_response import CurveTrainingRecord
 from src.model.bm_1 import bm_1
-from src.params.bm_1 import conservative_mass_transfer
-from src.params.bm_1_interval import BM1IntervalObservationSeries
+from src.method.bm_1_observation import conservative_mass_transfer
+from src.params.bm_1 import BM1IntervalObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
 from src.solver.finite_volume import finite_volume_1d_fitted
 from src.tools.input_generator.input_builder import input_builder

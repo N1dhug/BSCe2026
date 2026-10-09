@@ -19,7 +19,7 @@ from src.method.bm_1_interval_native import (advance_frequency_block, compare_na
     freeze_native_operator, replay_native_record, native_runtime)
 from src.method.bm_1_interval_forecast import native_interval_moments, compare_interval_moments
 from src.method.bm_1_interval_likelihood import EXTENDED_CENTERS
-from src.params.bm_1_interval import BM1IntervalObservationSeries
+from src.params.bm_1 import BM1IntervalObservationSeries
 from src.tools.input_generator.input_builder import input_builder
 from src.tools.bm_1_reports import _atomic_report
 from src.tools.weekday_backtest import (split_weekday, _fingerprint, _verify_artifacts,

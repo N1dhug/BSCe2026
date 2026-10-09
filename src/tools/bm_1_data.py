@@ -382,7 +382,7 @@ def prepare_historical_curve_training(measurements, baseline, prices, *, contrac
     from src.control.bm_1 import BM1Parameters
     from src.method.bm_1_response import CurveTrainingRecord
     from src.params.bm_1 import BM1ObservationSeries
-    from src.params.bm_1_interval import BM1IntervalObservationSeries
+    from src.params.bm_1 import BM1IntervalObservationSeries
     from src.params.bm_1_history import BM1HistoricalCurveContract
     if not isinstance(contract, BM1HistoricalCurveContract):
         raise TypeError('Declare the historical curve contract before preparing data.')

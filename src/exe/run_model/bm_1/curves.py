@@ -32,13 +32,8 @@ import numpy as np
 
 from src.tools.bm_1_reports import _RunLock, _atomic_report, _read_likelihood_report
 from src.exe.run_model.progress import runtime_text
-from src.validation.bm_1.response_cases import (
-    H1_IDS, H1_NUMERICS, H1_V2_NUMERICS, h1_design, h1_candidate_panel, h1_training_records, response_price_support,
-)
-from src.validation.bm_1.response_numerics import (
-    run_numerical_unit, validate_filter_arrays, compare_numerical_unit,
-    truth_diagnostic, negative_control_error,
-)
+from src.validation.bm_1.response import H1_IDS, H1_NUMERICS, H1_V2_NUMERICS, h1_design, h1_candidate_panel, h1_training_records, response_price_support
+from src.validation.bm_1.response import run_numerical_unit, validate_filter_arrays, compare_numerical_unit, truth_diagnostic, negative_control_error
 
 ROOT = Path(__file__).resolve().parents[4]
 
@@ -80,7 +75,7 @@ class _NumericalJobs:
             self._submit()
 
     def _submit(self):
-        from src.validation.bm_1.response_numerics import run_h1_job
+        from src.validation.bm_1.response import run_h1_job
         if perf_counter() >= self.deadline:
             return
         spec = next(self.specs, None)
@@ -335,7 +330,7 @@ def _fit_cases(args, case_names, source, design, begun, settings):
                         or saved['f'] != f.to_record() or saved['g'] != g.to_record()):
                     raise ValueError('Completed curve geometry differs from its best evaluated candidate.')
                 # Validate completed checkpoints before downstream family reuse.
-                from src.validation.bm_1.response_fit_checks import validate_fit_result
+                from src.validation.bm_1.response import validate_fit_result
                 f, g = validate_fit_result(saved, trace, case=name, pieces=pieces,
                     record_ids=[record.record_id for record in records])
                 previous = dict(f=f, g=g)
@@ -452,9 +447,7 @@ def run_fit(args):
 
 def run_fit_checks(args):
     """Recompute selected-curve numerics; preserve failures and resume raw units."""
-    from src.validation.bm_1.response_fit_checks import (
-        validate_fit_result, selected_curve_unit, curve_recovery_description,
-        validate_selected_replay)
+    from src.validation.bm_1.response import validate_fit_result, selected_curve_unit, curve_recovery_description, validate_selected_replay
     begun=perf_counter()
     if not np.isfinite(args.max_hours) or args.max_hours <= 0.:
         raise ValueError('max-hours must be finite and positive.')

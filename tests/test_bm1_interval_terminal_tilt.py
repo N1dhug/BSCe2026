@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 from scipy.special import logsumexp, roots_legendre
 
-from src.params.bm_1 import gaussian_log_likelihood
+from src.method.bm_1_observation import gaussian_log_likelihood
 from src.solver.finite_volume import finite_volume_1d_fitted
 from src.validation.bm_1.interval_characteristic import CharacteristicNumericalError
 from src.validation.bm_1.interval_terminal_tilt import terminal_tilt_update

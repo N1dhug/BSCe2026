@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from src.exe.run_model.bm_1 import curves, estimate
+from src.exe.run_model.bm_1 import curves
 from src.tools import checkpoint_io
 from src.tools.bm_1_reports import _read_likelihood_report
 
@@ -30,9 +30,9 @@ class ReportPublicationTests(unittest.TestCase):
             self.assertEqual(len(report['arrays']), 10001)
             np.testing.assert_array_equal(np.concatenate(report['arrays']), np.arange(10001))
 
-    def test_both_entrypoints_retry_before_publishing_complete_arrays(self):
+    def test_active_entrypoint_retries_before_publishing_complete_arrays(self):
         replace = os.replace
-        for writer in (estimate._atomic_report, curves._atomic_report):
+        for writer in (curves._atomic_report,):
             with self.subTest(writer=writer), TemporaryDirectory() as folder:
                 path = Path(folder)/'checkpoint.npz'
                 writer(path, {'mass': np.array([0.25, 0.75])})
@@ -54,7 +54,7 @@ class ReportPublicationTests(unittest.TestCase):
                 self.assertEqual(list(Path(folder).glob('*.partial')), [])
 
     def test_failed_publication_keeps_previous_checkpoint_and_propagates(self):
-        for writer in (estimate._atomic_report, curves._atomic_report):
+        for writer in (curves._atomic_report,):
             with self.subTest(writer=writer), TemporaryDirectory() as folder:
                 path = Path(folder)/'summary.json'
                 writer(path, {'completed': False})

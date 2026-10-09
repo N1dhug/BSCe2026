@@ -1,59 +1,38 @@
-"""Synthetic BM1 estimation cases and F4-B/C/E/F/G validation studies.
-
-This module is an experiment/validation layer.  It reuses the existing BM1
-Euler--Maruyama solver and input builders; it does not implement a second SDE
-solver or expose synthetic truth through the estimator input contract.
-"""
-
+"""Reusable synthetic/numerical reference calculations; retired campaigns use original sources."""
 from __future__ import annotations
-
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from contextlib import nullcontext
 from multiprocessing import get_context
 import operator
-
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.special import logsumexp
-
 from src.model.bm_1 import bm_1
 from src.method.beta_mixture import beta_cell_average_basis
-from src.method.bm_1_estimation import (
-    BM1FVFilterResult, BM1FVRhoBankStep, BM1FVRhoBankResult,
-    bm1_observation_update, fv_filter_step, fv_rho_bank_step, run_fv_filter,
-    parameter_bank_candidate, parameter_bank_weights, run_mixture_filter,
-    run_joint_parameter_bank,
-)
-from src.params.bm_1 import BM1ObservationSeries, conservative_mass_transfer, mass_to_log
+from src.method.bm_1_estimation import BM1FVFilterResult, run_fv_filter, parameter_bank_candidate, parameter_bank_weights, run_mixture_filter
+from src.params.bm_1 import BM1ObservationSeries
+from src.method.bm_1_observation import mass_to_log
 from src.tools.input_generator.input_builder import input_builder
 from src.validation import estimation as checks
 from src.validation.bm_1 import cases
 
-
 CORE_PRICE_EDGES = np.array([0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0], dtype=float)
+
 CORE_PRICE_VALUES = np.array([0.65, 0.35, 0.65], dtype=float)
+
 CORE_OBSERVATION_TIMES = np.arange(1, 25, dtype=float) / 24.0
+
 INITIAL_SEED_ROOT = 4101
+
 BROWNIAN_SEED_ROOT = 4102
+
 MEASUREMENT_SEED_ROOT = 4103
-F4_C_BOOTSTRAP_SEED = 4201
-F4_E_NUMERICAL_SEQUENCE_ID = 1211
-F4_E_SCREEN_SEQUENCE_START = 1212
-F4_E_SCREEN_SEQUENCE_COUNT = 50
+
 F4_E_RHO_GRID = tuple(0.5 + 0.025 * j for j in range(41))
-F4_E_TIME_STEPS = (1.0 / 192.0, 1.0 / 384.0, 1.0 / 768.0)
-F4_E_TIME_X_STEPS = 201
-F4_E_TIME_QUADRATURE_ORDER = 3
-F4_E_SPATIAL_CELLS = (201, 401, 801)
-F4_E_SPATIAL_MAX_STEP = 1.0 / 768.0
-F4_E_SPATIAL_QUADRATURE_ORDER = 3
-F4_E_QUADRATURE_ORDERS = (1, 3, 5)
-F4_E_QUADRATURE_X_STEPS = 401
-F4_E_QUADRATURE_MAX_STEP = 1.0 / 768.0
+
 F4_E_LIKELIHOOD_WINDOW = 5.0
-F4_E_CENTERED_LIKELIHOOD_TOL = 0.10
+
 F4_E_PARAMETER_GRIDS = {
     'rho': F4_E_RHO_GRID,
     'Xi': tuple(0.025 * j for j in range(41)),
@@ -61,31 +40,21 @@ F4_E_PARAMETER_GRIDS = {
     'sigma_x': tuple(0.5 * 2.0 ** ((j - 20) / 10.0) for j in range(41)),
     'sigma_y': tuple(0.03 * 2.0 ** ((j - 20) / 10.0) for j in range(41)),
 }
-F4_E_SCREEN_X_STEPS = 401
-F4_E_SCREEN_MAX_STEP = 1.0 / 768.0
-F4_E_SCREEN_QUADRATURE_ORDER = 3
-F4_E_LR_THRESHOLD = 3.841
-F4_E_PAIRS = (('rho', 'Xi'), ('k', 'Xi'), ('sigma_x', 'sigma_y'))
-F4_E_PAIR_SEQUENCE_COUNT = 10
-F4_E_PAIR_GRID_STRIDE = 2
-F4_F_METHOD_SEQUENCE_ID = 1262
-F4_F_IDENTITY_TOL = 1e-10
-F4_F_REFINEMENT_IDS = (1263, 1264, 1265)
-F4_F_POPULATION_IDS = tuple(range(1328, 1348))
-F4_F_LOG_ODDS_TOL = 0.10
-F4_F_WEIGHT_TV_TOL = 0.01
-F4_F_EVIDENCE_TOL = 0.10
-F4_F_STATE_L1_TOL = 0.02
-F4_G_PAIRS = (('rho', 'Xi'), ('sigma_x', 'sigma_y'))
-F4_G_METHOD_IDS = (1348, 1349)
-F4_G_METHOD_GRID_STRIDE = 10
 
+F4_F_REFINEMENT_IDS = (1263, 1264, 1265)
+
+F4_F_LOG_ODDS_TOL = 0.10
+
+F4_F_WEIGHT_TV_TOL = 0.01
+
+F4_F_EVIDENCE_TOL = 0.10
+
+F4_F_STATE_L1_TOL = 0.02
 
 def _readonly_vector(values: ArrayLike, name: str, *, minimum_size: int = 1) -> NDArray[np.float64]:
     array = checks.finite_vector(values, name, minimum_size=minimum_size)
     array.setflags(write=False)
     return array
-
 
 def _nonnegative_integer(value, name):
     if isinstance(value, (bool, np.bool_)):
@@ -98,11 +67,9 @@ def _nonnegative_integer(value, name):
         raise ValueError(f'{name} must be non-negative.')
     return int(value)
 
-
 def _seed(root, sequence_id):
     """Derive one stable integer seed from a stream root and sequence id."""
     return int(np.random.SeedSequence([root, sequence_id]).generate_state(1, dtype=np.uint32)[0])
-
 
 @dataclass(frozen=True)
 class BM1SyntheticCase:
@@ -217,7 +184,6 @@ class BM1SyntheticCase:
         # reads it.  Passing B here avoids inventing an estimation target.
         return bm_1(baseline, baseline, self.horizon, self.output_times.size), parameters
 
-
 @dataclass(frozen=True)
 class BM1SyntheticTruth:
     """Synthetic ground truth retained for scoring, never estimator input."""
@@ -257,7 +223,6 @@ class BM1SyntheticTruth:
     def valid(self):
         return int(self.diagnostics.get('total_violations', 0)) == 0
 
-
 @dataclass(frozen=True)
 class BM1SyntheticSequence:
     """Public observations plus separately held synthetic scoring information."""
@@ -279,7 +244,6 @@ class BM1SyntheticSequence:
         object.__setattr__(self, 'measurement_noise', noise)
         object.__setattr__(self, 'sequence_id', sequence_id)
 
-
 @dataclass(frozen=True)
 class BM1SyntheticRefinement:
     """Coupled base/fine truth pair using identical X0 and measurement noise."""
@@ -295,21 +259,17 @@ class BM1SyntheticRefinement:
     def maximum_abs_demand_difference(self):
         return float(np.max(np.abs(self.coarse.truth.demand - self.fine.truth.demand)))
 
-
 def build_f4_b_case(**overrides):
     """Return the locked F4-A core case, with explicit overrides for diagnostics/tests."""
     return BM1SyntheticCase(**overrides)
-
 
 def _draw_initial_state(case, sequence_id):
     rng = np.random.default_rng(_seed(case.initial_seed_root, sequence_id))
     return float(rng.beta(case.initial_alpha, case.initial_beta))
 
-
 def _draw_measurement_noise(case, sequence_id):
     rng = np.random.default_rng(_seed(case.measurement_seed_root, sequence_id))
     return rng.normal(0.0, case.sigma_y, size=case.observation_times.size)
-
 
 def _truth_grid(case, max_step):
     """Build the declared uniform truth grid and exact output indices.
@@ -337,7 +297,6 @@ def _truth_grid(case, max_step):
     output_indices = indices_for(case.output_times, 'output_times')
     indices_for(case.breakpoints, 'price breakpoints')
     return integration_t, output_indices
-
 
 def _simulate_batch(case, sequence_ids, *, initial_states, measurement_noises,
                     max_step, brownian_increments):
@@ -389,7 +348,6 @@ def _simulate_batch(case, sequence_ids, *, initial_states, measurement_noises,
         results.append(BM1SyntheticSequence(observations, truth, noise, sequence_id))
     return results
 
-
 def _simulate(case, sequence_id, *, initial_state, measurement_noise, max_step,
               brownian_increments):
     return _simulate_batch(
@@ -397,7 +355,6 @@ def _simulate(case, sequence_id, *, initial_state, measurement_noise, max_step,
         measurement_noises=[measurement_noise], max_step=max_step,
         brownian_increments=brownian_increments,
     )[0]
-
 
 def _coupled_truth_noise(case, sequence_id):
     """Draw the canonical fine Wiener path and its exactly coarsened counterpart."""
@@ -423,7 +380,6 @@ def _coupled_truth_noise(case, sequence_id):
     )
     return coarse_brownian, fine_brownian
 
-
 def generate_synthetic_sequence(case=None, *, sequence_id=0):
     """Generate the canonical coarse member of the reproducible truth pair.
 
@@ -446,7 +402,6 @@ def generate_synthetic_sequence(case=None, *, sequence_id=0):
         max_step=case.truth_max_step,
         brownian_increments=coarse_brownian,
     )
-
 
 def generate_coupled_refinement(case=None, *, sequence_id=0):
     """Generate base/fine EM truth using one fine Wiener path and exact coarsening."""
@@ -474,8 +429,6 @@ def generate_coupled_refinement(case=None, *, sequence_id=0):
         brownian_increments=fine_brownian,
     )
     return BM1SyntheticRefinement(coarse=coarse, fine=fine)
-
-
 
 def generate_synthetic_sequences(case=None, *, sequence_ids, refine=False):
     """Batch F4-B generation with the same per-ID RNG streams as single calls.
@@ -508,7 +461,6 @@ def generate_synthetic_sequences(case=None, *, sequence_ids, refine=False):
     )
     return [BM1SyntheticRefinement(c, f) for c, f in zip(coarse, fine)]
 
-
 @dataclass(frozen=True)
 class BM1FVCReference:
     """One F4-C synthetic sequence with assimilating and open-propagation filters."""
@@ -517,7 +469,6 @@ class BM1FVCReference:
     sequence: BM1SyntheticSequence
     filtered: BM1FVFilterResult
     open_propagation: BM1FVFilterResult
-
 
 def beta_initial_mass(case, model, x_steps):
     """Discretize the declared Beta initial prior exactly on the FV cells."""
@@ -529,7 +480,6 @@ def beta_initial_mass(case, model, x_steps):
         edges, case.initial_alpha, case.initial_beta,
     )[0]
     return checks.probability_mass(density * dx, 'initial_mass')
-
 
 def missing_copy(observations):
     """Return the same observation times as explicit missing values."""
@@ -543,7 +493,6 @@ def missing_copy(observations):
         observations.observation_kind,
         observations.price_side,
     )
-
 
 def _run_f4_c_pair(case, sequence, *, x_steps, max_step, likelihood_quadrature_order):
     """Run assimilating and open filters on one already fixed synthetic sequence."""
@@ -569,7 +518,6 @@ def _run_f4_c_pair(case, sequence, *, x_steps, max_step, likelihood_quadrature_o
         open_propagation=open_propagation,
     )
 
-
 def run_f4_c_reference(sequence_id=0, *, x_steps=201, max_step=1.0 / 192.0,
                        likelihood_quadrature_order=1):
     """Run the F4-C known-parameter FV filter and its no-assimilation baseline."""
@@ -582,123 +530,6 @@ def run_f4_c_reference(sequence_id=0, *, x_steps=201, max_step=1.0 / 192.0,
         max_step=max_step,
         likelihood_quadrature_order=likelihood_quadrature_order,
     )
-
-
-def _filter_metrics(reference):
-    truth = reference.sequence.truth.state[1:]
-    open_mean = reference.open_propagation.posterior_mean
-    predictive = reference.filtered.predicted_mean
-    posterior = reference.filtered.posterior_mean
-
-    def rmse(values):
-        return float(np.sqrt(np.mean(np.square(values - truth))))
-
-    integration_t = reference.filtered.integration_t
-    return {
-        'rmse_open': rmse(open_mean),
-        'rmse_predictive': rmse(predictive),
-        'rmse_posterior': rmse(posterior),
-        'total_log_likelihood': reference.filtered.total_log_likelihood,
-        'maximum_abs_mass_error': reference.filtered.maximum_abs_mass_error,
-        'minimum_cell_mass': reference.filtered.minimum_cell_mass,
-        'n_steps': int(integration_t.size - 1),
-        'actual_max_step': float(np.max(np.diff(integration_t))),
-    }
-
-
-def _refinement_summary(rows):
-    reference = rows[-1]
-    assimilation = reference['rmse_open'] - reference['rmse_posterior']
-    effects = [abs(row['rmse_posterior'] - reference['rmse_posterior']) for row in rows[:-1]]
-    likelihood_effects = [
-        abs(row['total_log_likelihood'] - reference['total_log_likelihood'])
-        for row in rows[:-1]
-    ]
-    maximum_effect = max(effects, default=0.0)
-    return {
-        'reference_level': reference['level'],
-        'reference_posterior_rmse': reference['rmse_posterior'],
-        'reference_assimilation_improvement': assimilation,
-        'maximum_posterior_rmse_effect': maximum_effect,
-        'effect_to_assimilation_ratio': (
-            np.nan if abs(assimilation) < 1e-14 else maximum_effect / abs(assimilation)
-        ),
-        'maximum_log_likelihood_effect': max(likelihood_effects, default=0.0),
-    }
-
-
-def run_f4_c_refinement(
-    sequence_id=0,
-    *,
-    spatial_cells=(101, 201, 401, 801),
-    time_steps=(1.0 / 96.0, 1.0 / 192.0, 1.0 / 384.0),
-    quadrature_orders=(1, 3, 5),
-):
-    """Refine space, FP time and measurement quadrature one dimension at a time."""
-    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
-    cells = tuple(checks.positive_integer(value, 'spatial cell count', minimum=3)
-                  for value in spatial_cells)
-    steps = tuple(checks.finite_scalar(value, 'time max_step', positive=True)
-                  for value in time_steps)
-    orders = tuple(checks.positive_integer(value, 'quadrature order', minimum=1)
-                   for value in quadrature_orders)
-    if not cells or not steps or not orders:
-        raise ValueError('Refinement levels must be non-empty.')
-    if tuple(sorted(set(cells))) != cells:
-        raise ValueError('spatial_cells must be unique and increasing.')
-    if tuple(sorted(set(steps), reverse=True)) != steps:
-        raise ValueError('time_steps must be unique and strictly refined (decreasing).')
-    if tuple(sorted(set(orders))) != orders:
-        raise ValueError('quadrature_orders must be unique and increasing.')
-
-    case = build_f4_b_case()
-    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
-
-    cache = {}
-
-    def run(axis, level, x_steps, max_step, quadrature_order):
-        key = (x_steps, max_step, quadrature_order)
-        if key not in cache:
-            cache[key] = _run_f4_c_pair(
-                case, sequence, x_steps=x_steps, max_step=max_step,
-                likelihood_quadrature_order=quadrature_order,
-            )
-        reference = cache[key]
-        return {
-            'axis': axis,
-            'level': level,
-            'x_steps': x_steps,
-            'requested_max_step': max_step,
-            'quadrature_order': quadrature_order,
-            **_filter_metrics(reference),
-        }
-
-    spatial = [
-        run('space', n, n, 1.0 / 192.0, 1)
-        for n in cells
-    ]
-    time = [
-        run('time', h, 201, h, 1)
-        for h in steps
-    ]
-    quadrature = [
-        run('quadrature', q, 201, 1.0 / 192.0, q)
-        for q in orders
-    ]
-    return {
-        'sequence_id': sequence_id,
-        'truth_state': sequence.truth.state[1:].copy(),
-        'spatial': spatial,
-        'time': time,
-        'quadrature': quadrature,
-        'summary': {
-            'spatial': _refinement_summary(spatial),
-            'time': _refinement_summary(time),
-            'quadrature': _refinement_summary(quadrature),
-        },
-    }
-
-
 
 def _piecewise_constant_quantile(edges, mass, probability):
     """Quantile of the FV piecewise-constant density without center snapping."""
@@ -727,20 +558,6 @@ def _piecewise_constant_quantile(edges, mass, probability):
     fraction = (probability - before) / cell_mass
     return float(edges[cell] + fraction * (edges[cell + 1] - edges[cell]))
 
-
-def _wilson_interval(successes, total, z=1.959963984540054):
-    successes = checks.positive_integer(successes, 'successes', minimum=0)
-    total = checks.positive_integer(total, 'total', minimum=1)
-    if successes > total:
-        raise ValueError('successes cannot exceed total.')
-    z = checks.finite_scalar(z, 'z', positive=True)
-    p = successes / total
-    denom = 1.0 + z * z / total
-    center = (p + z * z / (2.0 * total)) / denom
-    half = z * np.sqrt(p * (1.0 - p) / total + z * z / (4.0 * total * total)) / denom
-    return float(max(0.0, center - half)), float(min(1.0, center + half))
-
-
 def _paired_bootstrap_interval(values_a, values_b, statistic, *, replicates, seed):
     """Percentile bootstrap resampling whole paired synthetic sequences."""
     a = checks.finite_vector(values_a, 'values_a')
@@ -756,240 +573,6 @@ def _paired_bootstrap_interval(values_a, values_b, statistic, *, replicates, see
         raise FloatingPointError('Bootstrap statistic returned invalid values.')
     return tuple(float(value) for value in np.quantile(samples, [0.025, 0.975]))
 
-
-def _open_log_scores(model, parameters, case, observations, open_result, quadrature_order):
-    scores = np.empty(observations.times.size, dtype=float)
-    previous = case.horizon[0]
-    for index, (time, value) in enumerate(zip(observations.times, observations.values)):
-        update = bm1_observation_update(
-            model,
-            parameters,
-            case.sigma_y,
-            open_result.posterior_mass[index],
-            previous,
-            float(time),
-            float(value),
-            price_side=observations.price_side,
-            likelihood_quadrature_order=quadrature_order,
-        )
-        scores[index] = update.log_evidence
-        previous = float(time)
-    return scores
-
-
-def run_f4_c_population(
-    n_sequences=200,
-    *,
-    sequence_start=1,
-    x_steps=201,
-    max_step=1.0 / 192.0,
-    likelihood_quadrature_order=1,
-    bootstrap_replicates=5000,
-    bootstrap_seed=F4_C_BOOTSTRAP_SEED,
-):
-    """Run the preregistered F4-C population study on unseen synthetic sequences.
-
-    Sequence zero is intentionally excluded from the default study because it was
-    used for sanity and numerical refinement. Whole sequences are the independent
-    resampling unit for paired uncertainty.
-    """
-    n_sequences = checks.positive_integer(n_sequences, 'n_sequences', minimum=2)
-    sequence_start = _nonnegative_integer(sequence_start, 'sequence_start')
-    x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
-    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
-    quadrature_order = checks.positive_integer(
-        likelihood_quadrature_order, 'likelihood_quadrature_order', minimum=1,
-    )
-    bootstrap_replicates = checks.positive_integer(
-        bootstrap_replicates, 'bootstrap_replicates', minimum=100,
-    )
-    bootstrap_seed = _nonnegative_integer(bootstrap_seed, 'bootstrap_seed')
-
-    case = build_f4_b_case()
-    model, parameters = case.build_model()
-    initial_mass = beta_initial_mass(case, model, x_steps)
-    empty = BM1ObservationSeries(
-        case.observation_times,
-        np.full(case.observation_times.size, np.nan),
-        'day',
-        np.zeros(case.observation_times.size, dtype=bool),
-        'point',
-        'right',
-    )
-    open_result = run_fv_filter(
-        model,
-        parameters,
-        case.sigma_x,
-        case.sigma_y,
-        initial_mass,
-        case.horizon[0],
-        empty,
-        breakpoints=case.breakpoints,
-        max_step=max_step,
-        likelihood_quadrature_order=quadrature_order,
-    )
-    open_mean = open_result.posterior_mean
-
-    sequence_ids = np.arange(sequence_start, sequence_start + n_sequences, dtype=int)
-    sequences = generate_synthetic_sequences(case, sequence_ids=sequence_ids)
-    invalid = [sequence.sequence_id for sequence in sequences if not sequence.truth.valid]
-    if invalid:
-        raise RuntimeError(
-            'F4-C population truth contains raw EM boundary violations for sequence ids '
-            + ', '.join(str(value) for value in invalid)
-            + '; do not drop or repair these sequences silently.'
-        )
-
-    n_times = case.observation_times.size
-    mse_open = np.empty(n_sequences)
-    mse_predictive = np.empty(n_sequences)
-    mse_posterior = np.empty(n_sequences)
-    filter_log_score = np.empty(n_sequences)
-    open_log_score = np.empty(n_sequences)
-
-    coverage_hours = (6, 12, 24)
-    coverage_indices = []
-    for hour in coverage_hours:
-        matches = np.flatnonzero(np.isclose(case.observation_times, hour / 24.0, atol=1e-14, rtol=0.0))
-        if matches.size != 1:
-            raise RuntimeError(f'Expected exactly one {hour}h observation time.')
-        coverage_indices.append(int(matches[0]))
-    covered = {hour: np.zeros(n_sequences, dtype=bool) for hour in coverage_hours}
-    widths = {hour: np.empty(n_sequences) for hour in coverage_hours}
-
-    first_filter_score = np.empty(n_sequences)
-    first_open_score = np.empty(n_sequences)
-
-    for row, sequence in enumerate(sequences):
-        filtered = run_fv_filter(
-            model,
-            parameters,
-            case.sigma_x,
-            case.sigma_y,
-            initial_mass,
-            case.horizon[0],
-            sequence.observations,
-            breakpoints=case.breakpoints,
-            max_step=max_step,
-            likelihood_quadrature_order=quadrature_order,
-        )
-        truth = sequence.truth.state[1:]
-        if truth.size != n_times:
-            raise RuntimeError('Synthetic truth and observation lengths no longer match.')
-        mse_open[row] = np.mean(np.square(open_mean - truth))
-        mse_predictive[row] = np.mean(np.square(filtered.predicted_mean - truth))
-        mse_posterior[row] = np.mean(np.square(filtered.posterior_mean - truth))
-        filter_scores = filtered.log_evidence
-        baseline_scores = _open_log_scores(
-            model, parameters, case, sequence.observations, open_result, quadrature_order,
-        )
-        filter_log_score[row] = float(np.mean(filter_scores))
-        open_log_score[row] = float(np.mean(baseline_scores))
-        first_filter_score[row] = filter_scores[0]
-        first_open_score[row] = baseline_scores[0]
-
-        for hour, index in zip(coverage_hours, coverage_indices):
-            mass = filtered.posterior_mass[index]
-            lower = _piecewise_constant_quantile(filtered.x_edges, mass, 0.05)
-            upper = _piecewise_constant_quantile(filtered.x_edges, mass, 0.95)
-            state = float(truth[index])
-            covered[hour][row] = lower <= state <= upper
-            widths[hour][row] = upper - lower
-
-    def global_rmse(mse):
-        return float(np.sqrt(np.mean(mse)))
-
-    rmse_open = global_rmse(mse_open)
-    rmse_predictive = global_rmse(mse_predictive)
-    rmse_posterior = global_rmse(mse_posterior)
-
-    def rmse_ratio_stat(numerator_mse, denominator_mse):
-        return np.sqrt(np.mean(numerator_mse, axis=1) / np.mean(denominator_mse, axis=1))
-
-    posterior_ratio_ci = _paired_bootstrap_interval(
-        mse_posterior,
-        mse_open,
-        rmse_ratio_stat,
-        replicates=bootstrap_replicates,
-        seed=bootstrap_seed,
-    )
-    predictive_ratio_ci = _paired_bootstrap_interval(
-        mse_predictive,
-        mse_open,
-        rmse_ratio_stat,
-        replicates=bootstrap_replicates,
-        seed=bootstrap_seed + 1,
-    )
-
-    log_score_difference = filter_log_score - open_log_score
-    def mean_difference_stat(filter_values, open_values):
-        return np.mean(filter_values - open_values, axis=1)
-
-    log_score_ci = _paired_bootstrap_interval(
-        filter_log_score,
-        open_log_score,
-        mean_difference_stat,
-        replicates=bootstrap_replicates,
-        seed=bootstrap_seed + 2,
-    )
-
-    coverage = {}
-    for hour in coverage_hours:
-        successes = int(np.sum(covered[hour]))
-        low, high = _wilson_interval(successes, n_sequences)
-        coverage[hour] = {
-            'successes': successes,
-            'total': n_sequences,
-            'coverage': successes / n_sequences,
-            'wilson95': (low, high),
-            'mean_width': float(np.mean(widths[hour])),
-        }
-
-    return {
-        'sequence_ids': sequence_ids,
-        'n_sequences': n_sequences,
-        'settings': {
-            'x_steps': x_steps,
-            'max_step': max_step,
-            'likelihood_quadrature_order': quadrature_order,
-            'bootstrap_replicates': bootstrap_replicates,
-            'bootstrap_seed': bootstrap_seed,
-        },
-        'rmse': {
-            'open': rmse_open,
-            'predictive': rmse_predictive,
-            'posterior': rmse_posterior,
-            'predictive_over_open': rmse_predictive / rmse_open,
-            'posterior_over_open': rmse_posterior / rmse_open,
-            'predictive_over_open_bootstrap95': predictive_ratio_ci,
-            'posterior_over_open_bootstrap95': posterior_ratio_ci,
-        },
-        'predictive_log_score': {
-            'filter_mean_per_observation': float(np.mean(filter_log_score)),
-            'open_mean_per_observation': float(np.mean(open_log_score)),
-            'paired_difference': float(np.mean(log_score_difference)),
-            'paired_difference_bootstrap95': log_score_ci,
-            'first_observation_max_abs_difference': float(
-                np.max(np.abs(first_filter_score - first_open_score))
-            ),
-        },
-        'coverage90_posterior': coverage,
-        'diagnostics': {
-            'invalid_truth_sequences': tuple(invalid),
-            'open_maximum_abs_mass_error': open_result.maximum_abs_mass_error,
-            'open_minimum_cell_mass': open_result.minimum_cell_mass,
-        },
-        'per_sequence': {
-            'mse_open': mse_open,
-            'mse_predictive': mse_predictive,
-            'mse_posterior': mse_posterior,
-            'filter_log_score': filter_log_score,
-            'open_log_score': open_log_score,
-        },
-    }
-
-
-
 def _piecewise_constant_variance(edges, mass):
     """Variance under the FV piecewise-constant density, including within-cell spread."""
     edges = checks.increasing_grid(edges, 'edges')
@@ -1004,227 +587,6 @@ def _piecewise_constant_variance(edges, mass):
     if variance < -1e-14:
         raise FloatingPointError('Piecewise-constant variance became materially negative.')
     return max(variance, 0.0)
-
-
-def _calibration_summary_for_sequences(case, model, parameters, sequences, *,
-                                       x_steps, max_step, quadrature_order):
-    """Coverage and posterior-scale diagnostics for one fixed sequence collection."""
-    n_sequences = len(sequences)
-    if n_sequences < 1:
-        raise ValueError('At least one sequence is required for calibration diagnostics.')
-    hours = (6, 12, 24)
-    indices = []
-    for hour in hours:
-        matches = np.flatnonzero(
-            np.isclose(case.observation_times, hour / 24.0, atol=1e-14, rtol=0.0)
-        )
-        if matches.size != 1:
-            raise RuntimeError(f'Expected exactly one {hour}h observation time.')
-        indices.append(int(matches[0]))
-
-    initial_mass = beta_initial_mass(case, model, x_steps)
-    covered = {hour: np.zeros(n_sequences, dtype=bool) for hour in hours}
-    widths = {hour: np.empty(n_sequences) for hour in hours}
-    squared_error = {hour: np.empty(n_sequences) for hour in hours}
-    posterior_variance = {hour: np.empty(n_sequences) for hour in hours}
-    maximum_mass_error = 0.0
-    minimum_cell_mass = np.inf
-
-    for row, sequence in enumerate(sequences):
-        filtered = run_fv_filter(
-            model, parameters, case.sigma_x, case.sigma_y, initial_mass,
-            case.horizon[0], sequence.observations, breakpoints=case.breakpoints,
-            max_step=max_step, likelihood_quadrature_order=quadrature_order,
-        )
-        maximum_mass_error = max(maximum_mass_error, filtered.maximum_abs_mass_error)
-        minimum_cell_mass = min(minimum_cell_mass, filtered.minimum_cell_mass)
-        truth = sequence.truth.state[1:]
-        for hour, index in zip(hours, indices):
-            mass = filtered.posterior_mass[index]
-            lower = _piecewise_constant_quantile(filtered.x_edges, mass, 0.05)
-            upper = _piecewise_constant_quantile(filtered.x_edges, mass, 0.95)
-            state = float(truth[index])
-            mean = float(mass @ filtered.x_grid)
-            covered[hour][row] = lower <= state <= upper
-            widths[hour][row] = upper - lower
-            squared_error[hour][row] = (mean - state) ** 2
-            posterior_variance[hour][row] = _piecewise_constant_variance(
-                filtered.x_edges, mass
-            )
-
-    horizons = {}
-    for hour in hours:
-        successes = int(np.sum(covered[hour]))
-        low, high = _wilson_interval(successes, n_sequences)
-        rmse = float(np.sqrt(np.mean(squared_error[hour])))
-        posterior_sd = float(np.sqrt(np.mean(posterior_variance[hour])))
-        horizons[hour] = {
-            'successes': successes,
-            'total': n_sequences,
-            'coverage': successes / n_sequences,
-            'wilson95': (low, high),
-            'mean_width': float(np.mean(widths[hour])),
-            'posterior_mean_rmse': rmse,
-            'root_mean_posterior_variance': posterior_sd,
-            'rmse_over_posterior_sd': (
-                np.nan if posterior_sd == 0.0 else rmse / posterior_sd
-            ),
-        }
-    return {
-        'horizons': horizons,
-        'maximum_abs_mass_error': maximum_mass_error,
-        'minimum_cell_mass': float(minimum_cell_mass),
-    }
-
-def run_f4_c_calibration_sensitivity(
-    n_sequences=200,
-    *,
-    sequence_start=1,
-    variants=None,
-):
-    """Post-hoc numerical sensitivity of the preregistered 6/12/24 h coverage result.
-
-    This does not replace or retune the primary C4 result. It reuses the same
-    fixed synthetic sequence ids and changes one numerical dimension at a time
-    to diagnose whether coverage is materially driven by filter discretization.
-    """
-    n_sequences = checks.positive_integer(n_sequences, 'n_sequences', minimum=2)
-    sequence_start = _nonnegative_integer(sequence_start, 'sequence_start')
-    if variants is None:
-        variants = (
-            ('base', 201, 1.0 / 192.0, 1),
-            ('space401', 401, 1.0 / 192.0, 1),
-            ('time384', 201, 1.0 / 384.0, 1),
-            ('quad3', 201, 1.0 / 192.0, 3),
-        )
-    parsed = []
-    names = set()
-    for item in variants:
-        if len(item) != 4:
-            raise ValueError('Each calibration variant must be (name, x_steps, max_step, quadrature_order).')
-        name, x_steps, max_step, order = item
-        if not isinstance(name, str) or not name:
-            raise ValueError('Calibration variant names must be non-empty strings.')
-        if name in names:
-            raise ValueError('Calibration variant names must be unique.')
-        names.add(name)
-        parsed.append((
-            name,
-            checks.positive_integer(x_steps, 'x_steps', minimum=3),
-            checks.finite_scalar(max_step, 'max_step', positive=True),
-            checks.positive_integer(order, 'quadrature_order', minimum=1),
-        ))
-
-    case = build_f4_b_case()
-    model, parameters = case.build_model()
-    sequence_ids = np.arange(sequence_start, sequence_start + n_sequences, dtype=int)
-    sequences = generate_synthetic_sequences(case, sequence_ids=sequence_ids)
-    invalid = [sequence.sequence_id for sequence in sequences if not sequence.truth.valid]
-    if invalid:
-        raise RuntimeError(
-            'Calibration sensitivity truth contains raw EM boundary violations for sequence ids '
-            + ', '.join(str(value) for value in invalid)
-        )
-
-    results = {}
-    for name, x_steps, max_step, order in parsed:
-        summary = _calibration_summary_for_sequences(
-            case, model, parameters, sequences,
-            x_steps=x_steps, max_step=max_step, quadrature_order=order,
-        )
-        results[name] = {
-            'x_steps': x_steps,
-            'max_step': max_step,
-            'quadrature_order': order,
-            **summary,
-        }
-    return {
-        'sequence_ids': sequence_ids,
-        'n_sequences': n_sequences,
-        'invalid_truth_sequences': tuple(invalid),
-        'variants': results,
-    }
-
-def run_f4_c_truth_refinement(
-    n_sequences=200,
-    *,
-    sequence_start=1,
-    x_steps=201,
-    max_step=1.0 / 192.0,
-    likelihood_quadrature_order=1,
-):
-    """Post-hoc paired coarse/fine truth-EM sensitivity for C4 calibration.
-
-    The F4-B coupled generator supplies the same initial draw, Brownian path and
-    measurement noise to both truth resolutions. The filter numerics are held fixed.
-    """
-    n_sequences = checks.positive_integer(n_sequences, 'n_sequences', minimum=2)
-    sequence_start = _nonnegative_integer(sequence_start, 'sequence_start')
-    x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
-    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
-    order = checks.positive_integer(
-        likelihood_quadrature_order, 'likelihood_quadrature_order', minimum=1,
-    )
-    case = build_f4_b_case()
-    model, parameters = case.build_model()
-    sequence_ids = np.arange(sequence_start, sequence_start + n_sequences, dtype=int)
-    pairs = generate_synthetic_sequences(case, sequence_ids=sequence_ids, refine=True)
-    invalid = [
-        (pair.coarse.sequence_id, pair.coarse.truth.valid, pair.fine.truth.valid)
-        for pair in pairs
-        if not pair.coarse.truth.valid or not pair.fine.truth.valid
-    ]
-    if invalid:
-        raise RuntimeError(
-            'Truth-refinement diagnostic contains raw EM boundary violations; '
-            f'details={invalid}'
-        )
-    coarse = [pair.coarse for pair in pairs]
-    fine = [pair.fine for pair in pairs]
-    coarse_summary = _calibration_summary_for_sequences(
-        case, model, parameters, coarse,
-        x_steps=x_steps, max_step=max_step, quadrature_order=order,
-    )
-    fine_summary = _calibration_summary_for_sequences(
-        case, model, parameters, fine,
-        x_steps=x_steps, max_step=max_step, quadrature_order=order,
-    )
-
-    state_differences = np.stack([
-        np.abs(pair.coarse.truth.state[1:] - pair.fine.truth.state[1:])
-        for pair in pairs
-    ])
-    demand_differences = np.stack([
-        np.abs(pair.coarse.truth.demand[1:] - pair.fine.truth.demand[1:])
-        for pair in pairs
-    ])
-    measurement_differences = np.stack([
-        np.abs(pair.coarse.observations.values - pair.fine.observations.values)
-        for pair in pairs
-    ])
-    return {
-        'sequence_ids': sequence_ids,
-        'n_sequences': n_sequences,
-        'settings': {
-            'x_steps': x_steps,
-            'max_step': max_step,
-            'likelihood_quadrature_order': order,
-            'coarse_truth_max_step': case.truth_max_step,
-            'fine_truth_max_step': case.truth_fine_max_step,
-        },
-        'invalid_truth_pairs': tuple(invalid),
-        'coarse': coarse_summary,
-        'fine': fine_summary,
-        'truth_difference': {
-            'maximum_abs_state': float(np.max(state_differences)),
-            'rms_state': float(np.sqrt(np.mean(np.square(state_differences)))),
-            'maximum_abs_demand': float(np.max(demand_differences)),
-            'rms_demand': float(np.sqrt(np.mean(np.square(demand_differences)))),
-            'maximum_abs_observation': float(np.max(measurement_differences)),
-        },
-    }
-
-
 
 @dataclass(frozen=True)
 class F4ELikelihoodCandidate:
@@ -1263,7 +625,6 @@ class F4ELikelihoodCandidate:
     def as_tuple(self):
         return (self.rho, self.Xi, self.k, self.sigma_x, self.sigma_y)
 
-
 def f4_e_truth_candidate(case=None):
     """Return the fixed-parameter candidate that generated the declared case."""
     case = build_f4_b_case() if case is None else case
@@ -1277,7 +638,6 @@ def f4_e_truth_candidate(case=None):
         sigma_y=case.sigma_y,
     )
 
-
 def _f4_e_parameters(base_parameters, candidate):
     """Replace only F4-E's physical candidate coordinates; keep U, f and g fixed."""
     if not isinstance(candidate, F4ELikelihoodCandidate):
@@ -1289,7 +649,6 @@ def _f4_e_parameters(base_parameters, candidate):
     parameters[4] = candidate.k
     parameters[5] = candidate.Xi
     return parameters
-
 
 def _evaluate_f4_e_prepared(
     case,
@@ -1333,7 +692,6 @@ def _evaluate_f4_e_prepared(
         'likelihood_quadrature_order': likelihood_quadrature_order,
     }
 
-
 def evaluate_f4_e_candidate(
     case,
     observations,
@@ -1357,7 +715,6 @@ def evaluate_f4_e_candidate(
         max_step=max_step,
         likelihood_quadrature_order=likelihood_quadrature_order,
     )[0]
-
 
 def evaluate_f4_e_candidates(
     case,
@@ -1408,7 +765,6 @@ def evaluate_f4_e_candidates(
         for candidate in candidates
     )
 
-
 def f4_e_centered_log_likelihood(evaluations):
     """Return candidate values and centered log-likelihood without changing order."""
     evaluations = tuple(evaluations)
@@ -1422,941 +778,6 @@ def f4_e_centered_log_likelihood(evaluations):
     centered = values - float(np.max(values))
     centered.setflags(write=False)
     return centered
-
-
-
-def _f4_e_rho_curve(sequence_id, rho_values, x_steps, max_step, quadrature_order):
-    """Evaluate one numerical configuration on the fixed E1 rho grid."""
-    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
-    rho_values = tuple(checks.finite_scalar(value, 'rho', positive=True) for value in rho_values)
-    if not rho_values or len(set(rho_values)) != len(rho_values):
-        raise ValueError('rho_values must be non-empty and unique.')
-    if tuple(sorted(rho_values)) != rho_values:
-        raise ValueError('rho_values must be strictly increasing.')
-    x_steps = checks.positive_integer(x_steps, 'x_steps', minimum=3)
-    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
-    quadrature_order = checks.positive_integer(
-        quadrature_order, 'quadrature_order', minimum=1,
-    )
-
-    case = build_f4_b_case()
-    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
-    if not sequence.truth.valid:
-        raise RuntimeError(
-            f'F4-E sequence {sequence_id} has raw EM boundary violations; '
-            'do not repair or drop it silently.'
-        )
-    truth = f4_e_truth_candidate(case)
-    candidates = tuple(
-        F4ELikelihoodCandidate(
-            rho=rho,
-            Xi=truth.Xi,
-            k=truth.k,
-            sigma_x=truth.sigma_x,
-            sigma_y=truth.sigma_y,
-        )
-        for rho in rho_values
-    )
-    evaluations = evaluate_f4_e_candidates(
-        case,
-        sequence.observations,
-        candidates,
-        x_steps=x_steps,
-        max_step=max_step,
-        likelihood_quadrature_order=quadrature_order,
-    )
-    total = np.asarray(
-        [item['total_log_likelihood'] for item in evaluations], dtype=float,
-    )
-    centered = f4_e_centered_log_likelihood(evaluations)
-    maximum = float(np.max(total))
-    maximizers = tuple(
-        int(index) for index in np.flatnonzero(
-            np.isclose(total, maximum, atol=1e-12, rtol=0.0)
-        )
-    )
-    return {
-        'rho_values': rho_values,
-        'total_log_likelihood': tuple(float(value) for value in total),
-        'centered_log_likelihood': tuple(float(value) for value in centered),
-        'maximizer_indices': maximizers,
-        'maximizer_rho': (
-            float(rho_values[maximizers[0]]) if len(maximizers) == 1 else None
-        ),
-        'x_steps': x_steps,
-        'requested_max_step': max_step,
-        'actual_max_step': max(item['actual_max_step'] for item in evaluations),
-        'n_steps': max(item['n_steps'] for item in evaluations),
-        'likelihood_quadrature_order': quadrature_order,
-        'maximum_abs_mass_error': max(
-            item['maximum_abs_mass_error'] for item in evaluations
-        ),
-        'minimum_cell_mass': min(item['minimum_cell_mass'] for item in evaluations),
-    }
-
-
-def _f4_e_rho_curve_task(task):
-    sequence_id, rho_values, x_steps, max_step, quadrature_order = task
-    key = (int(x_steps), float(max_step), int(quadrature_order))
-    return key, _f4_e_rho_curve(
-        sequence_id, rho_values, x_steps, max_step, quadrature_order,
-    )
-
-
-def _f4_e_likelihood_stability(
-    middle,
-    fine,
-    *,
-    window=F4_E_LIKELIHOOD_WINDOW,
-    tolerance=F4_E_CENTERED_LIKELIHOOD_TOL,
-):
-    """Compare two centered likelihood curves on the preregistered local window."""
-    window = checks.finite_scalar(window, 'likelihood window', positive=True)
-    tolerance = checks.finite_scalar(
-        tolerance, 'centered likelihood tolerance', positive=True,
-    )
-    if tuple(middle['rho_values']) != tuple(fine['rho_values']):
-        raise ValueError('Likelihood curves must use the same rho grid.')
-    rho = np.asarray(middle['rho_values'], dtype=float)
-    middle_curve = np.asarray(middle['centered_log_likelihood'], dtype=float)
-    fine_curve = np.asarray(fine['centered_log_likelihood'], dtype=float)
-    if (
-        rho.ndim != 1 or middle_curve.shape != rho.shape or fine_curve.shape != rho.shape
-        or not np.all(np.isfinite(middle_curve)) or not np.all(np.isfinite(fine_curve))
-    ):
-        raise ValueError('Likelihood curves must be finite vectors matching rho_values.')
-    mask = (middle_curve >= -window) | (fine_curve >= -window)
-    if not np.any(mask):
-        raise RuntimeError('Likelihood comparison window unexpectedly contains no grid points.')
-    maximum_difference = float(np.max(np.abs(middle_curve[mask] - fine_curve[mask])))
-    middle_max = tuple(middle['maximizer_indices'])
-    fine_max = tuple(fine['maximizer_indices'])
-    unique_same_maximizer = bool(
-        len(middle_max) == 1 and len(fine_max) == 1 and middle_max == fine_max
-    )
-    return {
-        'middle_maximizer_indices': middle_max,
-        'fine_maximizer_indices': fine_max,
-        'unique_same_maximizer': unique_same_maximizer,
-        'comparison_indices': tuple(int(index) for index in np.flatnonzero(mask)),
-        'comparison_rho_range': (
-            float(rho[np.flatnonzero(mask)[0]]),
-            float(rho[np.flatnonzero(mask)[-1]]),
-        ),
-        'maximum_centered_log_likelihood_change': maximum_difference,
-        'window': window,
-        'tolerance': tolerance,
-        'passes': bool(unique_same_maximizer and maximum_difference <= tolerance),
-    }
-
-
-def run_f4_e_likelihood_refinement(
-    *,
-    sequence_id=F4_E_NUMERICAL_SEQUENCE_ID,
-    rho_values=F4_E_RHO_GRID,
-    time_steps=F4_E_TIME_STEPS,
-    time_x_steps=F4_E_TIME_X_STEPS,
-    time_quadrature_order=F4_E_TIME_QUADRATURE_ORDER,
-    spatial_cells=F4_E_SPATIAL_CELLS,
-    spatial_max_step=F4_E_SPATIAL_MAX_STEP,
-    spatial_quadrature_order=F4_E_SPATIAL_QUADRATURE_ORDER,
-    quadrature_orders=F4_E_QUADRATURE_ORDERS,
-    quadrature_x_steps=F4_E_QUADRATURE_X_STEPS,
-    quadrature_max_step=F4_E_QUADRATURE_MAX_STEP,
-    workers=1,
-    progress=None,
-):
-    """Run preregistered E1 rho-likelihood refinement with deduplicated configs."""
-    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
-    rho_values = tuple(checks.finite_scalar(value, 'rho', positive=True) for value in rho_values)
-    if not rho_values or len(set(rho_values)) != len(rho_values) or tuple(sorted(rho_values)) != rho_values:
-        raise ValueError('rho_values must be unique and strictly increasing.')
-    time_steps = tuple(
-        checks.finite_scalar(value, 'time max_step', positive=True) for value in time_steps
-    )
-    spatial_cells = tuple(
-        checks.positive_integer(value, 'spatial cell count', minimum=3)
-        for value in spatial_cells
-    )
-    quadrature_orders = tuple(
-        checks.positive_integer(value, 'quadrature order', minimum=1)
-        for value in quadrature_orders
-    )
-    if len(time_steps) != 3 or tuple(sorted(set(time_steps), reverse=True)) != time_steps:
-        raise ValueError('E1 time_steps must contain exactly three unique decreasing levels.')
-    if len(spatial_cells) != 3 or tuple(sorted(set(spatial_cells))) != spatial_cells:
-        raise ValueError('E1 spatial_cells must contain exactly three unique increasing levels.')
-    if len(quadrature_orders) != 3 or tuple(sorted(set(quadrature_orders))) != quadrature_orders:
-        raise ValueError('E1 quadrature_orders must contain exactly three unique increasing levels.')
-    time_x_steps = checks.positive_integer(time_x_steps, 'time_x_steps', minimum=3)
-    time_quadrature_order = checks.positive_integer(
-        time_quadrature_order, 'time_quadrature_order', minimum=1,
-    )
-    spatial_max_step = checks.finite_scalar(
-        spatial_max_step, 'spatial_max_step', positive=True,
-    )
-    spatial_quadrature_order = checks.positive_integer(
-        spatial_quadrature_order, 'spatial_quadrature_order', minimum=1,
-    )
-    quadrature_x_steps = checks.positive_integer(
-        quadrature_x_steps, 'quadrature_x_steps', minimum=3,
-    )
-    quadrature_max_step = checks.finite_scalar(
-        quadrature_max_step, 'quadrature_max_step', positive=True,
-    )
-    workers = checks.positive_integer(workers, 'workers', minimum=1)
-    if progress is not None and not callable(progress):
-        raise TypeError('progress must be callable or None.')
-
-    axis_configs = {
-        'time': tuple(
-            (time_x_steps, h, time_quadrature_order) for h in time_steps
-        ),
-        'spatial': tuple(
-            (n, spatial_max_step, spatial_quadrature_order) for n in spatial_cells
-        ),
-        'quadrature': tuple(
-            (quadrature_x_steps, quadrature_max_step, q) for q in quadrature_orders
-        ),
-    }
-    unique_configs = tuple(dict.fromkeys(
-        config for configs in axis_configs.values() for config in configs
-    ))
-    tasks = tuple(
-        (sequence_id, rho_values, config[0], config[1], config[2])
-        for config in unique_configs
-    )
-    curves = {}
-    if workers == 1:
-        for completed, task in enumerate(tasks, start=1):
-            key, curve = _f4_e_rho_curve_task(task)
-            curves[key] = curve
-            if progress is not None:
-                progress(completed, len(tasks), key, dict(curve))
-    else:
-        with ProcessPoolExecutor(max_workers=min(workers, len(tasks)),
-                                 mp_context=get_context('spawn')) as executor:
-            futures = {
-                executor.submit(_f4_e_rho_curve_task, task): (
-                    int(task[2]), float(task[3]), int(task[4])
-                )
-                for task in tasks
-            }
-            completed = 0
-            for future in as_completed(futures):
-                key, curve = future.result()
-                curves[key] = curve
-                completed += 1
-                if progress is not None:
-                    progress(completed, len(tasks), key, dict(curve))
-
-    rows = {
-        axis: tuple(curves[config] for config in configs)
-        for axis, configs in axis_configs.items()
-    }
-    summary = {
-        axis: _f4_e_likelihood_stability(values[-2], values[-1])
-        for axis, values in rows.items()
-    }
-    registered = bool(
-        sequence_id == F4_E_NUMERICAL_SEQUENCE_ID
-        and rho_values == F4_E_RHO_GRID
-        and time_steps == F4_E_TIME_STEPS
-        and time_x_steps == F4_E_TIME_X_STEPS
-        and time_quadrature_order == F4_E_TIME_QUADRATURE_ORDER
-        and spatial_cells == F4_E_SPATIAL_CELLS
-        and spatial_max_step == F4_E_SPATIAL_MAX_STEP
-        and spatial_quadrature_order == F4_E_SPATIAL_QUADRATURE_ORDER
-        and quadrature_orders == F4_E_QUADRATURE_ORDERS
-        and quadrature_x_steps == F4_E_QUADRATURE_X_STEPS
-        and quadrature_max_step == F4_E_QUADRATURE_MAX_STEP
-    )
-    return {
-        'stage': 'E1',
-        'sequence_id': sequence_id,
-        'rho_values': rho_values,
-        'workers': workers,
-        'time': rows['time'],
-        'spatial': rows['spatial'],
-        'quadrature': rows['quadrature'],
-        'summary': summary,
-        'unique_configurations': unique_configs,
-        'matches_registered_design': registered,
-        'passes_numerical_refinement': bool(
-            registered and all(item['passes'] for item in summary.values())
-        ),
-        'criteria': {
-            'centered_log_likelihood_window': F4_E_LIKELIHOOD_WINDOW,
-            'maximum_centered_log_likelihood_change': F4_E_CENTERED_LIKELIHOOD_TOL,
-            'requires_unique_same_grid_maximizer': True,
-        },
-    }
-
-def f4_e_screen_numerics_from_refinement(report):
-    """Require the registered E1 evidence and recheck its curves, not just flags.
-
-    Lock N=401, h<=1/768, q=3 after all three E1 comparisons pass. This is
-    rho-specific evidence for screening, not a five-parameter convergence claim.
-    """
-    if not isinstance(report, dict):
-        raise TypeError('e1_refinement must be an E1 report dictionary.')
-    if (report.get('stage') != 'E1'
-            or report.get('sequence_id') != F4_E_NUMERICAL_SEQUENCE_ID
-            or report.get('matches_registered_design') is not True
-            or report.get('passes_numerical_refinement') is not True
-            or tuple(report.get('rho_values', ())) != F4_E_RHO_GRID):
-        raise ValueError('E2 requires a passing, registered E1 report on sequence 1211.')
-    expected = {
-        'time': tuple((201, h, 3) for h in F4_E_TIME_STEPS),
-        'spatial': tuple((n, 1.0 / 768.0, 3) for n in F4_E_SPATIAL_CELLS),
-        'quadrature': tuple((401, 1.0 / 768.0, q) for q in F4_E_QUADRATURE_ORDERS),
-    }
-    summaries = {}
-    for axis, configurations in expected.items():
-        rows = report.get(axis, ())
-        if len(rows) != len(configurations):
-            raise ValueError(f'E1 {axis} evidence is incomplete.')
-        for row, config in zip(rows, configurations):
-            actual = (row['x_steps'], row['requested_max_step'],
-                      row['likelihood_quadrature_order'])
-            if actual != config or tuple(row['rho_values']) != F4_E_RHO_GRID:
-                raise ValueError(f'E1 {axis} settings do not match the registered design.')
-            total = checks.finite_vector(row['total_log_likelihood'], 'E1 log likelihood')
-            centered = checks.finite_vector(row['centered_log_likelihood'], 'E1 centered curve')
-            if (total.shape != (41,) or centered.shape != total.shape
-                    or not np.allclose(centered, total - np.max(total), atol=1e-12, rtol=0)):
-                raise ValueError('E1 centered curve does not match its raw likelihood.')
-            maxima = tuple(int(i) for i in np.flatnonzero(
-                np.isclose(total, np.max(total), atol=1e-12, rtol=0)))
-            if tuple(row['maximizer_indices']) != maxima:
-                raise ValueError('E1 grid maximizers do not match its likelihood.')
-            error = checks.finite_scalar(row['maximum_abs_mass_error'], 'E1 mass error')
-            minimum = checks.finite_scalar(row['minimum_cell_mass'], 'E1 minimum mass')
-            if error < 0 or error > 1e-10 or minimum < -1e-14:
-                raise ValueError('E1 has invalid probability diagnostics.')
-        summaries[axis] = _f4_e_likelihood_stability(rows[-2], rows[-1])
-        if not summaries[axis]['passes']:
-            raise ValueError(f'E1 {axis} likelihood stability gate failed on recheck.')
-    return {
-        'x_steps': F4_E_SCREEN_X_STEPS,
-        'max_step': F4_E_SCREEN_MAX_STEP,
-        'likelihood_quadrature_order': F4_E_SCREEN_QUADRATURE_ORDER,
-        'e1_sequence_id': F4_E_NUMERICAL_SEQUENCE_ID,
-        'e1_source_commit': report.get('source_commit'),
-        'e1_summary': summaries,
-        'refinement_scope': 'rho slice on sequence 1211; other parameters are screening only',
-    }
-
-
-def _f4_e_slice_summary(values, total_log_likelihood, truth_value):
-    """Discrete maxima and LR-set span; ties and disconnected sets stay visible."""
-    grid = checks.finite_vector(values, 'parameter grid', minimum_size=2)
-    total = checks.finite_vector(total_log_likelihood, 'slice log likelihood', minimum_size=2)
-    truth_value = checks.finite_scalar(truth_value, 'truth value')
-    if total.shape != grid.shape or np.any(np.diff(grid) <= 0):
-        raise ValueError('Likelihood must match a strictly increasing parameter grid.')
-    truth_indices = np.flatnonzero(grid == truth_value)
-    if truth_indices.size != 1:
-        raise ValueError('The parameter grid must contain exactly one truth node.')
-    maximum = float(np.max(total))
-    centered = total - maximum
-    indices = tuple(int(i) for i in np.flatnonzero(
-        np.isclose(total, maximum, atol=1e-12, rtol=0)))
-    lr_indices = np.flatnonzero(-2.0 * centered <= F4_E_LR_THRESHOLD)
-    return {
-        'parameter_values': tuple(float(x) for x in grid),
-        'total_log_likelihood': tuple(float(x) for x in total),
-        'centered_log_likelihood': tuple(float(x) for x in centered),
-        'truth_value': truth_value,
-        'truth_index': int(truth_indices[0]),
-        'maximizer_indices': indices,
-        'maximizer_values': tuple(float(grid[i]) for i in indices),
-        'unique_mle': len(indices) == 1,
-        'grid_mle': float(grid[indices[0]]) if len(indices) == 1 else None,
-        'mle_on_boundary': 0 in indices or grid.size - 1 in indices,
-        'mle_on_lower_boundary': 0 in indices,
-        'mle_on_upper_boundary': grid.size - 1 in indices,
-        'log_likelihood_loss_at_truth': float(-centered[truth_indices[0]]),
-        'lr_indices': tuple(int(i) for i in lr_indices),
-        'lr_values': tuple(float(grid[i]) for i in lr_indices),
-        'lr_span': (float(grid[lr_indices[0]]), float(grid[lr_indices[-1]])),
-        'lr_span_width': float(grid[lr_indices[-1]] - grid[lr_indices[0]]),
-        'lr_connected_components': int(1 + np.sum(np.diff(lr_indices) > 1)),
-        'lr_touches_boundary': bool(lr_indices[0] == 0 or lr_indices[-1] == grid.size - 1),
-        'truth_in_lr_set': bool(truth_indices[0] in lr_indices),
-    }
-
-
-def _f4_e_screen_sequence_task(task):
-    sequence_id, parameter_grids, x_steps, max_step, order = task
-    case = build_f4_b_case()
-    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
-    if not sequence.truth.valid:
-        raise RuntimeError(f'F4-E sequence {sequence_id} has raw EM boundary violations; '
-                           'do not repair or drop it silently.')
-    truth = f4_e_truth_candidate(case)
-    slices = {}
-    for name, grid in parameter_grids.items():
-        candidates = tuple(replace(truth, **{name: value}) for value in grid)
-        evaluations = evaluate_f4_e_candidates(
-            case, sequence.observations, candidates, x_steps=x_steps,
-            max_step=max_step, likelihood_quadrature_order=order,
-        )
-        summary = _f4_e_slice_summary(
-            grid, [item['total_log_likelihood'] for item in evaluations], getattr(truth, name),
-        )
-        summary.update({
-            'log_evidence': tuple(tuple(float(x) for x in item['log_evidence'])
-                                  for item in evaluations),
-            'maximum_abs_mass_error': max(item['maximum_abs_mass_error'] for item in evaluations),
-            'minimum_cell_mass': min(item['minimum_cell_mass'] for item in evaluations),
-            'actual_max_step': max(item['actual_max_step'] for item in evaluations),
-            'n_steps': max(item['n_steps'] for item in evaluations),
-        })
-        if summary['maximum_abs_mass_error'] > 1e-10 or summary['minimum_cell_mass'] < -1e-14:
-            raise RuntimeError(f'E2 sequence {sequence_id}, parameter {name} failed probability checks.')
-        slices[name] = summary
-    return {
-        'sequence_id': sequence_id,
-        'observation_times': tuple(float(x) for x in sequence.observations.times),
-        'observations': tuple(float(x) for x in sequence.observations.values),
-        'truth_boundary_violations': int(sequence.truth.diagnostics['total_violations']),
-        'slices': slices,
-    }
-
-
-def run_f4_e_parameter_screening(
-    *, e1_refinement, n_sequences=F4_E_SCREEN_SEQUENCE_COUNT,
-    sequence_start=F4_E_SCREEN_SEQUENCE_START, parameter_grids=None,
-    x_steps=None, max_step=None, likelihood_quadrature_order=None, workers=1, progress=None,
-):
-    """E2 one-parameter slices, each with all four nuisance parameters at truth.
-
-    Every candidate replays its own filter. Parallelism is over sequences only;
-    result order is always sequence-ID order. Nonregistered small diagnostics are
-    allowed in the validation API and labelled; the CLI exposes the locked design.
-    """
-    locked = f4_e_screen_numerics_from_refinement(e1_refinement)
-    n_sequences = checks.positive_integer(n_sequences, 'n_sequences', minimum=1)
-    sequence_start = _nonnegative_integer(sequence_start, 'sequence_start')
-    workers = checks.positive_integer(workers, 'workers', minimum=1)
-    x_steps = checks.positive_integer(locked['x_steps'] if x_steps is None else x_steps,
-                                      'x_steps', minimum=3)
-    max_step = checks.finite_scalar(locked['max_step'] if max_step is None else max_step,
-                                    'max_step', positive=True)
-    order = checks.positive_integer(locked['likelihood_quadrature_order']
-                                    if likelihood_quadrature_order is None else likelihood_quadrature_order,
-                                    'likelihood_quadrature_order', minimum=1)
-    if progress is not None and not callable(progress):
-        raise TypeError('progress must be callable or None.')
-    grids = F4_E_PARAMETER_GRIDS if parameter_grids is None else dict(parameter_grids)
-    if set(grids) != set(F4_E_PARAMETER_GRIDS):
-        raise ValueError('E2 requires grids for rho, Xi, k, sigma_x and sigma_y.')
-    truth = f4_e_truth_candidate()
-    validated = {}
-    for name in F4_E_PARAMETER_GRIDS:
-        grid = checks.finite_vector(grids[name], f'{name} grid', minimum_size=2)
-        if np.any(np.diff(grid) <= 0) or np.count_nonzero(grid == getattr(truth, name)) != 1:
-            raise ValueError(f'{name} grid must strictly increase and contain the truth node.')
-        for value in grid:
-            replace(truth, **{name: float(value)})
-        validated[name] = tuple(float(x) for x in grid)
-    ids = tuple(range(sequence_start, sequence_start + n_sequences))
-    tasks = tuple((i, validated, x_steps, max_step, order) for i in ids)
-    results = {}
-    if workers == 1:
-        for completed, task in enumerate(tasks, start=1):
-            row = _f4_e_screen_sequence_task(task)
-            results[row['sequence_id']] = row
-            if progress is not None:
-                progress(completed, n_sequences, row['sequence_id'], deepcopy(row))
-    else:
-        with ProcessPoolExecutor(max_workers=min(workers, n_sequences),
-                                 mp_context=get_context('spawn')) as executor:
-            futures = [executor.submit(_f4_e_screen_sequence_task, task) for task in tasks]
-            for completed, future in enumerate(as_completed(futures), start=1):
-                row = future.result()  # failures abort; no selected subset is summarized
-                results[row['sequence_id']] = row
-                if progress is not None:
-                    progress(completed, n_sequences, row['sequence_id'], deepcopy(row))
-    rows = tuple(results[i] for i in ids)
-    summary = {}
-    for name, grid in validated.items():
-        slices = tuple(row['slices'][name] for row in rows)
-        mles = np.asarray([s['grid_mle'] for s in slices if s['unique_mle']], dtype=float)
-        # Raw sums retain the absolute evidence as well as the centered shape;
-        # summing centered slices differs only by a candidate-free constant.
-        summed = np.sum([s['total_log_likelihood'] for s in slices], axis=0)
-        summary[name] = {
-            'unique_mle_count': int(mles.size),
-            'nonunique_mle_count': int(n_sequences - mles.size),
-            'unique_mle_median': float(np.median(mles)) if mles.size else None,
-            'unique_mle_q05_q95': tuple(float(x) for x in np.quantile(mles, [.05, .95]))
-                                    if mles.size else None,
-            'unique_mle_range': (float(np.min(mles)), float(np.max(mles))) if mles.size else None,
-            'boundary_mle_frequency': float(np.mean([s['mle_on_boundary'] for s in slices])),
-            'lower_boundary_mle_frequency': float(np.mean([s['mle_on_lower_boundary'] for s in slices])),
-            'upper_boundary_mle_frequency': float(np.mean([s['mle_on_upper_boundary'] for s in slices])),
-            'median_log_likelihood_loss_at_truth': float(np.median(
-                [s['log_likelihood_loss_at_truth'] for s in slices])),
-            'median_lr_span_width': float(np.median([s['lr_span_width'] for s in slices])),
-            'lr_boundary_frequency': float(np.mean([s['lr_touches_boundary'] for s in slices])),
-            'disconnected_lr_set_count': sum(s['lr_connected_components'] > 1 for s in slices),
-            'aggregate_slice': _f4_e_slice_summary(grid, summed, getattr(truth, name)),
-        }
-    registered = bool(
-        n_sequences == F4_E_SCREEN_SEQUENCE_COUNT and sequence_start == F4_E_SCREEN_SEQUENCE_START
-        and validated == F4_E_PARAMETER_GRIDS and x_steps == locked['x_steps']
-        and max_step == locked['max_step'] and order == locked['likelihood_quadrature_order'])
-    return {
-        'stage': 'E2', 'sequence_ids': ids, 'n_sequences': n_sequences, 'workers': workers,
-        'parameter_grids': validated,
-        'settings': {'x_steps': x_steps, 'max_step': max_step, 'likelihood_quadrature_order': order,
-                     'truth_max_step': build_f4_b_case().truth_max_step,
-                     'rng_seed_roots': (INITIAL_SEED_ROOT, BROWNIAN_SEED_ROOT, MEASUREMENT_SEED_ROOT)},
-        'e1_numerical_lock': locked,
-        'matches_registered_design': registered,
-        'sequence_results': rows, 'summary': summary,
-        'maximum_abs_mass_error': max(s['maximum_abs_mass_error'] for row in rows
-                                     for s in row['slices'].values()),
-        'minimum_cell_mass': min(s['minimum_cell_mass'] for row in rows
-                                 for s in row['slices'].values()),
-        'interpretation': {
-            'nuisance_parameters': 'held at truth; these are slices, not profiles or joint fits',
-            'lr_threshold': F4_E_LR_THRESHOLD,
-            'lr_set': 'discrete shape diagnostic; span may be disconnected or support-truncated',
-            'lr_is_calibrated_confidence_interval': False,
-            'Xi_truth_on_physical_boundary': True,
-            'parameter_selection_for_F4_F': 'deferred until E3/E4 and parameter-specific refinement',
-        },
-    }
-
-
-def f4_e_screening_inputs(report, *, require_registered=True):
-    """Validate E2 evidence before reusing its observations in E3.
-
-    All sequence rows and per-observation likelihood sums are checked, including
-    the 40 records not selected for E3. No regeneration or truth-state input.
-    """
-    if not isinstance(report, dict) or report.get('stage') != 'E2':
-        raise ValueError('E3 requires a complete E2 screening report.')
-    ids = tuple(_nonnegative_integer(i, 'sequence_id') for i in report['sequence_ids'])
-    n = checks.positive_integer(report['n_sequences'], 'n_sequences', minimum=1)
-    if len(ids) != n or len(set(ids)) != n or tuple(sorted(ids)) != ids:
-        raise ValueError('E2 sequence IDs must be unique, ordered and complete.')
-    settings = report['settings']
-    cells = checks.positive_integer(settings['x_steps'], 'x_steps', minimum=3)
-    step = checks.finite_scalar(settings['max_step'], 'max_step', positive=True)
-    order = checks.positive_integer(settings['likelihood_quadrature_order'], 'quadrature order', minimum=1)
-    truth = f4_e_truth_candidate()
-    if set(report['parameter_grids']) != set(F4_E_PARAMETER_GRIDS):
-        raise ValueError('E2 requires all five parameter grids.')
-    grids = {}
-    for name in F4_E_PARAMETER_GRIDS:
-        grid = checks.finite_vector(report['parameter_grids'][name], f'{name} grid', minimum_size=2)
-        if np.any(np.diff(grid) <= 0) or np.count_nonzero(grid == getattr(truth, name)) != 1:
-            raise ValueError('E2 grids must strictly increase and contain truth.')
-        for value in grid:
-            replace(truth, **{name: float(value)})
-        grids[name] = tuple(float(x) for x in grid)
-    declared_settings = (cells, step, order)
-    registered = bool(
-        report.get('matches_registered_design') is True
-        and ids == tuple(range(F4_E_SCREEN_SEQUENCE_START,
-                               F4_E_SCREEN_SEQUENCE_START + F4_E_SCREEN_SEQUENCE_COUNT))
-        and grids == F4_E_PARAMETER_GRIDS
-        and declared_settings == (F4_E_SCREEN_X_STEPS, F4_E_SCREEN_MAX_STEP,
-                                   F4_E_SCREEN_QUADRATURE_ORDER)
-        and settings.get('truth_max_step') == build_f4_b_case().truth_max_step
-        and tuple(settings.get('rng_seed_roots', ())) ==
-        (INITIAL_SEED_ROOT, BROWNIAN_SEED_ROOT, MEASUREMENT_SEED_ROOT))
-    if report.get('matches_registered_design') is True and not registered:
-        raise ValueError('E2 claims a registered design but its settings/IDs/grids differ.')
-    if require_registered and not registered:
-        raise ValueError('Official E3 requires the registered 50-sequence E2 report.')
-    if registered:
-        lock = report['e1_numerical_lock']
-        if ((lock['x_steps'], lock['max_step'], lock['likelihood_quadrature_order']) != declared_settings
-                or lock['e1_sequence_id'] != F4_E_NUMERICAL_SEQUENCE_ID):
-            raise ValueError('E2 numerical settings differ from its E1 lock.')
-        for axis in ('time', 'spatial', 'quadrature'):
-            gate = lock['e1_summary'][axis]
-            change = checks.finite_scalar(gate['maximum_centered_log_likelihood_change'], 'E1 change')
-            if (gate['passes'] is not True or gate['unique_same_maximizer'] is not True
-                    or gate['window'] != F4_E_LIKELIHOOD_WINDOW
-                    or gate['tolerance'] != F4_E_CENTERED_LIKELIHOOD_TOL
-                    or not 0 <= change <= F4_E_CENTERED_LIKELIHOOD_TOL):
-                raise ValueError('E2 does not contain passing registered E1 gates.')
-    rows = tuple(report['sequence_results'])
-    if len(rows) != n or tuple(row['sequence_id'] for row in rows) != ids:
-        raise ValueError('E2 rows must match every declared sequence ID in order.')
-    for row in rows:
-        if row['truth_boundary_violations'] != 0:
-            raise ValueError('E2 has invalid synthetic truth; do not omit the sequence.')
-        obs = BM1ObservationSeries(row['observation_times'], row['observations'], 'day')
-        if not np.array_equal(obs.times, CORE_OBSERVATION_TIMES):
-            raise ValueError('E2 observations do not follow the locked 24-hour point contract.')
-        if set(row['slices']) != set(grids):
-            raise ValueError('Every E2 sequence must have all five slices.')
-        for name, grid in grids.items():
-            item = row['slices'][name]
-            if tuple(item['parameter_values']) != grid:
-                raise ValueError('E2 per-sequence grid differs from the report grid.')
-            total = checks.finite_vector(item['total_log_likelihood'], 'E2 likelihood')
-            centered = checks.finite_vector(item['centered_log_likelihood'], 'E2 centered likelihood')
-            evidence = np.asarray(item['log_evidence'], dtype=float)
-            if (total.shape != (len(grid),) or centered.shape != total.shape
-                    or evidence.shape != (len(grid), 24) or not np.all(np.isfinite(evidence))
-                    or not np.allclose(total, np.sum(evidence, axis=1), atol=1e-10, rtol=0)
-                    or not np.allclose(centered, total - np.max(total), atol=1e-10, rtol=0)):
-                raise ValueError('E2 likelihood curves disagree with predictive log-evidence.')
-            error = checks.finite_scalar(item['maximum_abs_mass_error'], 'E2 mass error')
-            minimum = checks.finite_scalar(item['minimum_cell_mass'], 'E2 minimum mass')
-            if not 0 <= error <= 1e-10 or minimum < -1e-14:
-                raise ValueError('E2 probability diagnostics failed.')
-    return {'sequence_ids': ids, 'rows': rows, 'parameter_grids': grids,
-            'x_steps': cells, 'max_step': step, 'likelihood_quadrature_order': order,
-            'matches_registered_design': registered}
-
-
-def _f4_e_surface_summary(pair, first_values, second_values, total_log_likelihood):
-    """2D grid maxima and conditional ridges; no new statistical acceptance gate."""
-    a = checks.finite_vector(first_values, 'first parameter grid', minimum_size=2)
-    b = checks.finite_vector(second_values, 'second parameter grid', minimum_size=2)
-    total = np.asarray(total_log_likelihood, dtype=float)
-    if (total.shape != (a.size, b.size) or not np.all(np.isfinite(total))
-            or np.any(np.diff(a) <= 0) or np.any(np.diff(b) <= 0)):
-        raise ValueError('A finite surface must match its two increasing parameter grids.')
-    truth = f4_e_truth_candidate()
-    ia = np.flatnonzero(a == getattr(truth, pair[0]))
-    ib = np.flatnonzero(b == getattr(truth, pair[1]))
-    if ia.size != 1 or ib.size != 1:
-        raise ValueError('E3 subsampled grids must retain both truth nodes.')
-    centered = total - np.max(total)
-    maxima = tuple(tuple(int(x) for x in ij) for ij in np.argwhere(
-        np.isclose(centered, 0., atol=1e-12, rtol=0)))
-    boundary = tuple(name for axis, name in enumerate(pair) if any(
-        ij[axis] in (0, total.shape[axis] - 1) for ij in maxima))
-
-    def ridge(values, axis):
-        # At each fixed value on the other axis, retain every conditional maximum.
-        reference = np.max(values, axis=axis, keepdims=True)
-        mask = np.isclose(values, reference, atol=1e-12, rtol=0)
-        return tuple(tuple(int(j) for j in np.flatnonzero(row)) for row in mask)
-
-    return {
-        'pair': tuple(pair), 'first_values': tuple(float(x) for x in a),
-        'second_values': tuple(float(x) for x in b),
-        'total_log_likelihood': tuple(tuple(float(x) for x in row) for row in total),
-        'centered_log_likelihood': tuple(tuple(float(x) for x in row) for row in centered),
-        'maximizer_indices': maxima,
-        'maximizer_values': tuple((float(a[i]), float(b[j])) for i, j in maxima),
-        'unique_mle': len(maxima) == 1,
-        'grid_mle': (float(a[maxima[0][0]]), float(b[maxima[0][1]])) if len(maxima) == 1 else None,
-        'boundary_dimensions': boundary,
-        'truth_indices': (int(ia[0]), int(ib[0])),
-        'truth_values': (getattr(truth, pair[0]), getattr(truth, pair[1])),
-        'log_likelihood_loss_at_truth': float(-centered[ia[0], ib[0]]),
-        'profile_first_centered_log_likelihood': tuple(float(x) for x in np.max(centered, axis=1)),
-        'profile_second_centered_log_likelihood': tuple(float(x) for x in np.max(centered, axis=0)),
-        'ridge_second_indices_given_first': ridge(total, 1),
-        'ridge_first_indices_given_second': ridge(total.T, 1),
-    }
-
-
-def _f4_e_pair_surface_task(task):
-    row, pair, first_values, second_values, stride, cells, step, order = task
-    case = build_f4_b_case()
-    truth = f4_e_truth_candidate(case)
-    observations = BM1ObservationSeries(row['observation_times'], row['observations'], 'day')
-    candidates = tuple(replace(truth, **{pair[0]: a, pair[1]: b})
-                       for a in first_values for b in second_values)
-    evaluations = evaluate_f4_e_candidates(case, observations, candidates,
-        x_steps=cells, max_step=step, likelihood_quadrature_order=order)
-    shape = (len(first_values), len(second_values))
-    total = np.asarray([e['total_log_likelihood'] for e in evaluations]).reshape(shape)
-    surface = _f4_e_surface_summary(pair, first_values, second_values, total)
-    ia, ib = surface['truth_indices']
-    discrepancies = (float(np.max(np.abs(total[:, ib] -
-                         np.asarray(row['slices'][pair[0]]['total_log_likelihood'])[::stride]))),
-                     float(np.max(np.abs(total[ia, :] -
-                         np.asarray(row['slices'][pair[1]]['total_log_likelihood'])[::stride]))))
-    if max(discrepancies) > 1e-10:
-        raise RuntimeError('E3 truth-coordinate cuts do not reproduce E2 slices; '
-                           'check observations, history replay and numerical settings.')
-    surface.update({
-        'sequence_id': row['sequence_id'],
-        'e2_truth_cut_maximum_abs_differences': discrepancies,
-        'log_evidence': tuple(tuple(float(x) for x in e['log_evidence']) for e in evaluations),
-        'candidate_order': 'first parameter outer, second parameter inner',
-        'maximum_abs_mass_error': max(e['maximum_abs_mass_error'] for e in evaluations),
-        'minimum_cell_mass': min(e['minimum_cell_mass'] for e in evaluations),
-        'actual_max_step': max(e['actual_max_step'] for e in evaluations),
-        'n_steps': max(e['n_steps'] for e in evaluations),
-    })
-    if surface['maximum_abs_mass_error'] > 1e-10 or surface['minimum_cell_mass'] < -1e-14:
-        raise RuntimeError('E3 surface failed probability diagnostics.')
-    return (row['sequence_id'], tuple(pair)), surface
-
-
-def run_f4_e_pair_surfaces(
-    *, e2_screening, n_sequences=F4_E_PAIR_SEQUENCE_COUNT,
-    grid_stride=F4_E_PAIR_GRID_STRIDE, workers=1, progress=None,
-):
-    """Registered E3 surfaces on the first ten E2 records, without new draws.
-
-    The validation API also supports labelled small E2 diagnostics. The CLI
-    explicitly requires the official E2 artifact before invoking this runner.
-    Independent (sequence,pair) jobs are parallel; candidate histories stay local.
-    """
-    inputs = f4_e_screening_inputs(e2_screening, require_registered=False)
-    n_sequences = checks.positive_integer(n_sequences, 'n_sequences', minimum=1)
-    stride = checks.positive_integer(grid_stride, 'grid_stride', minimum=1)
-    workers = checks.positive_integer(workers, 'workers', minimum=1)
-    if n_sequences > len(inputs['rows']):
-        raise ValueError('E3 cannot select more sequences than the supplied E2 report.')
-    if progress is not None and not callable(progress):
-        raise TypeError('progress must be callable or None.')
-    rows = inputs['rows'][:n_sequences]
-    grids = {name: values[::stride] for name, values in inputs['parameter_grids'].items()}
-    truth = f4_e_truth_candidate()
-    for name, values in grids.items():
-        if len(values) < 2 or getattr(truth, name) not in values:
-            raise ValueError('Subsampled E3 grids must retain at least two nodes and truth.')
-    tasks = tuple((row, pair, grids[pair[0]], grids[pair[1]], stride,
-                   inputs['x_steps'], inputs['max_step'], inputs['likelihood_quadrature_order'])
-                  for row in rows for pair in F4_E_PAIRS)
-    surfaces = {}
-    if workers == 1:
-        for completed, task in enumerate(tasks, start=1):
-            key, surface = _f4_e_pair_surface_task(task)
-            surfaces[key] = surface
-            if progress is not None:
-                progress(completed, len(tasks), key, deepcopy(surface))
-    else:
-        with ProcessPoolExecutor(max_workers=min(workers, len(tasks)),
-                                 mp_context=get_context('spawn')) as executor:
-            futures = [executor.submit(_f4_e_pair_surface_task, task) for task in tasks]
-            for completed, future in enumerate(as_completed(futures), start=1):
-                key, surface = future.result()
-                surfaces[key] = surface
-                if progress is not None:
-                    progress(completed, len(tasks), key, deepcopy(surface))
-    pair_results = {}
-    for pair in F4_E_PAIRS:
-        values = tuple(surfaces[(row['sequence_id'], pair)] for row in rows)
-        summed = np.sum([s['total_log_likelihood'] for s in values], axis=0)
-        pair_results['__'.join(pair)] = {
-            'sequence_surfaces': values,
-            'aggregate_surface': _f4_e_surface_summary(pair, grids[pair[0]], grids[pair[1]], summed),
-            'nonunique_mle_count': sum(not s['unique_mle'] for s in values),
-            'boundary_mle_frequency': {name: float(np.mean(
-                [name in s['boundary_dimensions'] for s in values])) for name in pair},
-        }
-    return {
-        'stage': 'E3', 'sequence_ids': tuple(row['sequence_id'] for row in rows),
-        'n_sequences': n_sequences, 'pairs': F4_E_PAIRS, 'grid_stride': stride, 'workers': workers,
-        'settings': {name: inputs[name] for name in
-                     ('x_steps', 'max_step', 'likelihood_quadrature_order')},
-        'matches_registered_design': bool(inputs['matches_registered_design']
-            and n_sequences == F4_E_PAIR_SEQUENCE_COUNT and stride == F4_E_PAIR_GRID_STRIDE),
-        'e2_source_commit': e2_screening.get('source_commit'),
-        'observations': tuple({'sequence_id': row['sequence_id'],
-            'observation_times': tuple(row['observation_times']), 'values': tuple(row['observations'])}
-            for row in rows),
-        'pair_results': pair_results,
-        'maximum_abs_mass_error': max(s['maximum_abs_mass_error'] for s in surfaces.values()),
-        'minimum_cell_mass': min(s['minimum_cell_mass'] for s in surfaces.values()),
-        'maximum_e2_truth_cut_difference': max(max(s['e2_truth_cut_maximum_abs_differences'])
-                                               for s in surfaces.values()),
-        'interpretation': {
-            'purpose': 'diagnostic pair surfaces; three other parameters held at truth',
-            'ridge_definition': 'all grid maximizers on each conditional row/column',
-            'profiles': 'grid maxima within the displayed two-parameter support',
-            'aggregate': 'same first ten E2 records only; no additional replication sample',
-            'new_recovery_gate': False, 'parameter_selection_for_F4_F': 'deferred to E4',
-        },
-    }
-
-
-_F4_F_WORKER_CONTEXT = None
-
-
-def _f4_f_initialize_worker(case, x_steps, max_step, order):
-    """Each spawned process builds its own input callables and common geometry."""
-    global _F4_F_WORKER_CONTEXT
-    model, parameters = case.build_model()
-    _F4_F_WORKER_CONTEXT = (case, model, parameters, x_steps, max_step, order)
-
-
-def _f4_f_conditional_step(context, task):
-    case, model, base, _, max_step, order = context
-    rho, mass, previous, time, value, observed, price_side = task
-    parameters = list(base)
-    parameters[3] = 1.0 / rho
-    return fv_filter_step(
-        model, parameters, case.sigma_x, case.sigma_y, mass, previous, time,
-        value, observed=observed, price_side=price_side,
-        breakpoints=case.breakpoints, max_step=max_step,
-        likelihood_quadrature_order=order,
-    )
-
-
-def _f4_f_step_worker(task):
-    return _f4_f_conditional_step(_F4_F_WORKER_CONTEXT, task)
-
-
-def _f4_f_offline(context, task):
-    """Fresh fixed-candidate replay, never seeded by a bank posterior."""
-    case, model, base, cells, max_step, order = context
-    rho, observations = task
-    parameters = list(base)
-    parameters[3] = 1.0 / rho
-    return run_fv_filter(
-        model, parameters, case.sigma_x, case.sigma_y,
-        beta_initial_mass(case, model, cells), case.horizon[0], observations,
-        breakpoints=case.breakpoints, max_step=max_step,
-        likelihood_quadrature_order=order,
-    )
-
-
-def _f4_f_offline_worker(task):
-    return _f4_f_offline(_F4_F_WORKER_CONTEXT, task)
-
-
-def run_f4_f_bank_identity(*, sequence_id=F4_F_METHOD_SEQUENCE_ID,
-                           rho_values=F4_E_RHO_GRID, x_steps=F4_E_SCREEN_X_STEPS,
-                           max_step=F4_E_SCREEN_MAX_STEP,
-                           likelihood_quadrature_order=F4_E_SCREEN_QUADRATURE_ORDER,
-                           workers=1, progress=None):
-    """F0 online bank vs independent offline replays at every prefix.
-
-    Small API overrides are labelled diagnostics. CLI fixes the registered
-    design. A persistent spawn pool parallelizes hypotheses, never chronology.
-    """
-    sequence_id = _nonnegative_integer(sequence_id, 'sequence_id')
-    rho = checks.finite_vector(rho_values, 'rho_values')
-    if np.any(rho <= 0.0):
-        raise ValueError('rho_values must be strictly positive.')
-    cells = checks.positive_integer(x_steps, 'x_steps', minimum=3)
-    max_step = checks.finite_scalar(max_step, 'max_step', positive=True)
-    order = checks.positive_integer(likelihood_quadrature_order, 'likelihood_quadrature_order')
-    workers = checks.positive_integer(workers, 'workers')
-    case = build_f4_b_case()
-    sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
-    if not sequence.truth.valid:
-        raise RuntimeError('F0 truth left the physical interval; no sequence is dropped or repaired.')
-    observations = sequence.observations
-    model, parameters = case.build_model()
-    initial = beta_initial_mass(case, model, cells)
-    prior_logs = np.full(rho.size, -np.log(rho.size))
-    logs, mass, time = prior_logs, np.tile(initial, (rho.size, 1)), case.horizon[0]
-    steps = []
-    context = (case, model, parameters, cells, max_step, order)
-    manager = (ProcessPoolExecutor(
-        max_workers=workers, mp_context=get_context('spawn'),
-        initializer=_f4_f_initialize_worker, initargs=(case, cells, max_step, order),
-    ) if workers > 1 else nullcontext(None))
-    with manager as pool:
-        for index, (when, value, observed) in enumerate(zip(
-                observations.times, observations.values, observations.observed)):
-            if pool is None:
-                step = fv_rho_bank_step(
-                    model, parameters, case.sigma_x, case.sigma_y, rho, logs,
-                    mass, time, float(when), float(value), observed=bool(observed),
-                    price_side=observations.price_side, breakpoints=case.breakpoints,
-                    max_step=max_step, likelihood_quadrature_order=order,
-                )
-            else:
-                tasks = [(float(r), m, time, float(when), float(value), bool(observed),
-                          observations.price_side) for r, m in zip(rho, mass)]
-                step = BM1FVRhoBankStep(rho, logs, tuple(pool.map(_f4_f_step_worker, tasks)))
-            steps.append(step)
-            mass, logs, time = step.conditional_posterior_mass, step.log_weights, step.time
-            if progress is not None:
-                progress({'phase': 'online', 'completed': index + 1,
-                          'total': observations.times.size})
-        tasks = [(float(r), observations) for r in rho]
-        offline = (tuple(_f4_f_offline(context, task) for task in tasks) if pool is None
-                   else tuple(pool.map(_f4_f_offline_worker, tasks)))
-        if progress is not None:
-            progress({'phase': 'offline', 'completed': rho.size, 'total': rho.size})
-    bank = BM1FVRhoBankResult(case.horizon[0], initial, rho, prior_logs, tuple(steps))
-    offline_evidence = np.stack([item.log_evidence for item in offline], axis=1)
-    cumulative = np.cumsum(offline_evidence, axis=0)
-    offline_bank_evidence = logsumexp(prior_logs[None, :] + cumulative, axis=1)
-    offline_logs = prior_logs[None, :] + cumulative - offline_bank_evidence[:, None]
-    state_error = np.array([max(
-        float(np.max(np.abs(step.conditional_predicted_mass - np.stack(
-            [item.predicted_mass[k] for item in offline])))),
-        float(np.max(np.abs(step.conditional_posterior_mass - np.stack(
-            [item.posterior_mass[k] for item in offline])))),
-    ) for k, step in enumerate(steps)])
-    weight_error = np.max(np.abs(bank.log_weights - offline_logs), axis=1)
-    conditional_error = np.max(np.abs(bank.conditional_log_evidence - offline_evidence), axis=1)
-    evidence_error = np.abs(np.cumsum(bank.log_evidence) - offline_bank_evidence)
-    all_conditional = [item for step in steps for item in step.conditional_steps]
-    mass_error = max(
-        max(item.diagnostics['maximum_abs_mass_error'] for item in all_conditional),
-        max(item.maximum_abs_mass_error for item in offline),
-        max(abs(float(np.sum(m)) - 1.0)
-            for step in steps for m in (step.predicted_mass, step.posterior_mass)),
-    )
-    minimum_mass = min(min(item.diagnostics['minimum_cell_mass'] for item in all_conditional),
-                       min(item.minimum_cell_mass for item in offline))
-    maxima = dict(log_weights=float(np.max(weight_error)),
-                  conditional_log_evidence=float(np.max(conditional_error)),
-                  cumulative_log_evidence=float(np.max(evidence_error)),
-                  conditional_state_mass=float(np.max(state_error)))
-    passes = all(value <= F4_F_IDENTITY_TOL for value in maxima.values())
-    passes = passes and mass_error <= 1e-10 and minimum_mass >= 0.0
-    weights = np.exp(bank.log_weights)
-    registered = (sequence_id == F4_F_METHOD_SEQUENCE_ID
-                  and np.array_equal(rho, F4_E_RHO_GRID) and cells == F4_E_SCREEN_X_STEPS
-                  and max_step == F4_E_SCREEN_MAX_STEP and order == F4_E_SCREEN_QUADRATURE_ORDER)
-    return {
-        'stage': 'F0', 'registered_design': bool(registered), 'passes_f0': bool(passes),
-        'sequence_id': sequence_id, 'rho_values': rho.tolist(),
-        'initial_log_weights': prior_logs.tolist(), 'initial_mass': initial.tolist(),
-        'settings': dict(x_steps=cells, max_step=max_step, likelihood_quadrature_order=order,
-                         workers=workers, fixed_parameters=dict(k=case.k, Xi=case.Xi,
-                         sigma_x=case.sigma_x, sigma_y=case.sigma_y),
-                         initial_beta=(case.initial_alpha, case.initial_beta),
-                         truth_max_step=case.truth_max_step,
-                         seed_roots=(case.initial_seed_root, case.brownian_seed_root,
-                                     case.measurement_seed_root)),
-        'observation_times': observations.times.tolist(),
-        'observations': observations.values.tolist(),
-        'online_log_weights': bank.log_weights.tolist(),
-        'observation_contract': dict(time_unit=observations.time_unit,
-                                    observation_kind=observations.observation_kind,
-                                    price_side=observations.price_side),
-        'inputs': dict(baseline=case.baseline, price_edges=case.price_edges.tolist(),
-                       price_values=case.price_values.tolist(),
-                       state_response='1-2*x', price_response='1-2*u'),
-        'online_conditional_log_evidence': bank.conditional_log_evidence.tolist(),
-        'online_bank_log_evidence': bank.log_evidence.tolist(),
-        'offline_conditional_log_evidence': offline_evidence.tolist(),
-        'offline_cumulative_bank_log_evidence': offline_bank_evidence.tolist(),
-        'prefix_errors': dict(log_weights=weight_error.tolist(),
-                              conditional_log_evidence=conditional_error.tolist(),
-                              cumulative_log_evidence=evidence_error.tolist(),
-                              conditional_state_mass=state_error.tolist()),
-        'maximum_errors': maxima, 'identity_tolerance': F4_F_IDENTITY_TOL,
-        'maximum_abs_mass_error': float(mass_error), 'minimum_cell_mass': float(minimum_mass),
-        'actual_max_step': max(item.diagnostics['actual_max_step'] for item in all_conditional),
-        'rho_posterior_mean': (weights @ rho).tolist(),
-        'effective_hypotheses': np.exp(-np.sum(weights * bank.log_weights, axis=1)).tolist(),
-        'endpoint_weight': (weights[:, 0] + weights[:, -1]).tolist(),
-        'map_rho': [rho[row == np.max(row)].tolist() for row in bank.log_weights],
-        'conditional_predicted_mean': [[item.predicted_mean for item in step.conditional_steps]
-                                       for step in steps],
-        'conditional_posterior_mean': [[item.posterior_mean for item in step.conditional_steps]
-                                       for step in steps],
-        'final_conditional_posterior_mass': steps[-1].conditional_posterior_mass.tolist(),
-        'x_edges': steps[-1].conditional_steps[0].x_edges.tolist(),
-    }
-
 
 def f4_f_parameter_prior(values, name, coordinate):
     """Declared discrete prior, or exact bin masses of a continuous prior.
@@ -2388,22 +809,18 @@ def f4_f_parameter_prior(values, name, coordinate):
         raise ValueError('Unknown prior family for this coordinate.')
     return mass / np.sum(mass)
 
-
 def _f4_f_numerics(cells=401, step=1/768, order=3, backend='fv'):
     return dict(x_steps=checks.positive_integer(cells, 'cells', minimum=3),
                 max_step=checks.finite_scalar(step, 'max_step', positive=True),
                 likelihood_quadrature_order=checks.positive_integer(order, 'quadrature order'),
                 backend=backend)
 
-
 def _f4_f_case(coordinate, truth):
     if coordinate not in ('rho', 'sigma_x'):
         raise ValueError('Unknown bank coordinate.')
     return build_f4_b_case(**({'C': 1.0 / truth} if coordinate == 'rho' else {'sigma_x': truth}))
 
-
 _F4_F_PROJECTORS = {}
-
 
 def _f4_f_projector(cells, model):
     """Process-local fixed geometry only; no observation or candidate result cache."""
@@ -2414,7 +831,6 @@ def _f4_f_projector(cells, model):
         basis = _shape_aware_dictionary(edges, .0125)['basis']
         _F4_F_PROJECTORS[cells] = PreparedBetaProjector(basis, dx)
     return _F4_F_PROJECTORS[cells]
-
 
 def _f4_f_candidate_replay(task):
     """Fresh complete conditional replay; truth is never an estimator input."""
@@ -2466,7 +882,6 @@ def _f4_f_candidate_replay(task):
         actual_max_step=float(actual_step), fallbacks=int(fallbacks),
         elapsed_seconds=perf_counter() - started)
 
-
 def _f4_f_reduce_conditionals(group, conditionals, prior_name='discrete_uniform'):
     """Reduce independent replays with previous weights for predictive quantities."""
     values = np.asarray(group['values'])
@@ -2514,7 +929,6 @@ def _f4_f_reduce_conditionals(group, conditionals, prior_name='discrete_uniform'
         _predicted_mass=predicted, _posterior_mass=posterior,
         _x_edges=conditionals[0]['x_edges'])
 
-
 def _f4_f_group(coordinate, sequence_id, truth, values, settings, label):
     case = _f4_f_case(coordinate, truth)
     sequence = generate_synthetic_sequence(case, sequence_id=sequence_id)
@@ -2524,7 +938,6 @@ def _f4_f_group(coordinate, sequence_id, truth, values, settings, label):
                 values=tuple(values), settings=settings, label=label,
                 case=case, observations=sequence.observations,
                 truth_state=sequence.truth.state[1:].tolist())
-
 
 def _f4_f_public_row(group, reduced, *, keep_mass=False):
     row = {k: v for k, v in reduced.items() if not k.startswith('_')}
@@ -2538,7 +951,6 @@ def _f4_f_public_row(group, reduced, *, keep_mass=False):
                    marginal_predicted_mass=reduced['_predicted_mass'].tolist(),
                    marginal_posterior_mass=reduced['_posterior_mass'].tolist())
     return row
-
 
 def _f4_f_execute_groups(groups, workers, progress=None, *, priors=False, keep_mass=False):
     """A persistent Windows-compatible spawn pool over complete hypotheses.
@@ -2608,7 +1020,6 @@ def _f4_f_execute_groups(groups, workers, progress=None, *, priors=False, keep_m
                               coordinate=groups[i]['coordinate'], label=groups[i]['label']))
     return rows
 
-
 def _f4_f_weight_comparison(middle, fine):
     """Probability and log-odds errors at *every* observation prefix."""
     if middle['values'] != fine['values'] or middle['observations'] != fine['observations']:
@@ -2635,29 +1046,11 @@ def _f4_f_weight_comparison(middle, fine):
                 maximum_cumulative_evidence_error=evidence, maximum_parameter_mean_change=mean,
                 passes=bool(passes))
 
-
 def _f4_f_probability_gate(rows):
     return bool(rows) and all(
         np.isfinite(r['maximum_abs_mass_error']) and 0 <= r['maximum_abs_mass_error'] <= 1e-10
         and np.isfinite(r['minimum_cell_mass']) and r['minimum_cell_mass'] >= 0
         and r['fallbacks'] == 0 for r in rows)
-
-
-def _f4_f_validate_bank_summary(row, stage):
-    """Check stored prefix summaries without NumPy's scalar broadcasting."""
-    scores = np.asarray(row['conditional_log_evidence'])
-    if scores.shape != (24, 41) or not np.all(np.isfinite(scores)):
-        raise ValueError(f'{stage} raw scores must include all 24x41 entries.')
-    prior = np.full(41, -np.log(41))
-    reduced = parameter_bank_weights(scores, prior, np.ones(24, dtype=bool))
-    expected = dict(initial_log_weights=prior, log_weights=reduced['log_weights'],
-                    cumulative_log_evidence=np.cumsum(reduced['log_evidence']),
-                    parameter_mean=np.exp(reduced['log_weights']) @ np.asarray(row['values']))
-    for name, value in expected.items():
-        stored = np.asarray(row[name])
-        if stored.shape != value.shape or not np.allclose(stored, value, atol=1e-10, rtol=0):
-            raise ValueError(f'{stage} {name} does not match raw conditional scores.')
-
 
 def _f4_f_report_header(stage, workers):
     case = build_f4_b_case()
@@ -2675,7 +1068,6 @@ def _f4_f_report_header(stage, workers):
                               maximum_state_l1=F4_F_STATE_L1_TOL,
                               maximum_abs_mass_error=1e-10, no_fallbacks=True))
 
-
 def _f4_f_refinement_configs(coordinate):
     settings = [_f4_f_numerics(), _f4_f_numerics(step=1/384), _f4_f_numerics(step=1/1536),
                 _f4_f_numerics(cells=201), _f4_f_numerics(cells=801),
@@ -2687,727 +1079,3 @@ def _f4_f_refinement_configs(coordinate):
                      _f4_f_numerics(1601, 1/1536), _f4_f_numerics(6401, 1/1536),
                      _f4_f_numerics(3201, 1/1536, 5)]
     return settings
-
-
-def _f4_f_selected_numerics():
-    return dict(rho=_f4_f_numerics(), sigma_x=_f4_f_numerics(3201, 1/1536))
-
-
-def run_f4_f_bank_refinement(*, workers=7, progress=None):
-    """F1: independently refine both rho and sigma_x banks on new fixed records."""
-    groups = [_f4_f_group(coordinate, sid, 1. if coordinate == 'rho' else .5,
-                          F4_E_PARAMETER_GRIDS[coordinate], config, str(index))
-              for coordinate in ('rho', 'sigma_x') for sid in F4_F_REFINEMENT_IDS
-              for index, config in enumerate(_f4_f_refinement_configs(coordinate))]
-    rows = _f4_f_execute_groups(groups, workers, progress)
-    comparisons = []
-    for coordinate in ('rho', 'sigma_x'):
-        for sid in F4_F_REFINEMENT_IDS:
-            selected = {r['label']: r for r in rows if r['coordinate'] == coordinate and r['sequence_id'] == sid}
-            for axis, middle, fine in (('time', '0', '2'), ('spatial', '0', '4'), ('quadrature', '0', '6')):
-                comparisons.append(dict(coordinate=coordinate, sequence_id=sid, axis=axis,
-                                        selected=coordinate == 'rho',
-                                        **_f4_f_weight_comparison(selected[middle], selected[fine])))
-            if coordinate == 'sigma_x':
-                for axis, fine in (('time_refined', '8'), ('spatial_refined', '10'), ('quadrature_refined', '11')):
-                    comparisons.append(dict(coordinate=coordinate, sequence_id=sid, axis=axis, selected=True,
-                                            **_f4_f_weight_comparison(selected['7'], selected[fine])))
-    passes = _f4_f_probability_gate(rows) and all(c['passes'] for c in comparisons if c['selected'])
-    return dict(**_f4_f_report_header('F1', workers), rows=rows, comparisons=comparisons,
-                selected_fv_numerics=_f4_f_selected_numerics(), passes=bool(passes))
-
-
-def f4_f_validated_refinement(report, *, require_source=False):
-    """Recompute F1 gates from raw curves before any larger dependent experiment."""
-    if report.get('stage') != 'F1' or report.get('registered_design') is not True:
-        raise ValueError('A registered F1 report is required.')
-    if require_source and (not report.get('source_commit') or report.get('working_tree_dirty') is not False):
-        raise ValueError('F1 must come from a recorded commit with a clean working tree.')
-    _f4_f_validate_header(report)
-    rows = report.get('rows', [])
-    if len(rows) != 57 or not _f4_f_probability_gate(rows):
-        raise ValueError('F1 requires all 57 valid configuration rows.')
-    expected = {(c, sid, str(i)) for c in ('rho', 'sigma_x') for sid in F4_F_REFINEMENT_IDS
-                for i in range(len(_f4_f_refinement_configs(c)))}
-    if {(r['coordinate'], r['sequence_id'], r['label']) for r in rows} != expected:
-        raise ValueError('F1 row identifiers do not match the registered design.')
-    observations = {sid: generate_synthetic_sequence(sequence_id=sid).observations
-                    for sid in F4_F_REFINEMENT_IDS}
-    for r in rows:
-        values = F4_E_PARAMETER_GRIDS[r['coordinate']]
-        config = _f4_f_refinement_configs(r['coordinate'])
-        if r['settings'] != config[int(r['label'])] or not np.array_equal(r['values'], values):
-            raise ValueError('F1 numerical settings or parameter nodes were changed.')
-        if not np.array_equal(r['observation_times'], CORE_OBSERVATION_TIMES):
-            raise ValueError('F1 observation times were changed.')
-        if r['truth'] != (1. if r['coordinate'] == 'rho' else .5):
-            raise ValueError('F1 true parameters were changed.')
-        generated = observations[r['sequence_id']]
-        if not np.allclose(r['observations'], generated.values, atol=1e-12, rtol=0):
-            raise ValueError('F1 observations do not match the registered seed and inputs.')
-        _f4_f_validate_bank_summary(r, 'F1')
-    for c in ('rho', 'sigma_x'):
-        for sid in F4_F_REFINEMENT_IDS:
-            selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
-            middle, fine = ('0', ('2', '4', '6')) if c == 'rho' else ('7', ('8', '10', '11'))
-            if not all(_f4_f_weight_comparison(selected[middle], selected[f])['passes'] for f in fine):
-                raise ValueError('F1 numerical gates failed; adapt the design before proceeding.')
-    return _f4_f_selected_numerics()
-
-
-def _f4_f_validate_header(report):
-    expected = _f4_f_report_header(report.get('stage'), report.get('workers', 7))
-    for name in ('inputs', 'truth_settings', 'fixed_parameters', 'observation_contract', 'criteria'):
-        if report.get(name) != expected[name]:
-            raise ValueError(f'F4-F registered {name} were changed.')
-
-
-def run_f4_f_bank_sensitivity(refinement, *, workers=7, progress=None):
-    """F2: support, discretization and prior on 30 independent records per parameter."""
-    settings = f4_f_validated_refinement(refinement)
-    groups = []
-    for coordinate, start in (('rho', 1266), ('sigma_x', 1296)):
-        values = np.asarray(F4_E_PARAMETER_GRIDS[coordinate])
-        refined = (np.linspace(.5, 1.5, 81) if coordinate == 'rho'
-                   else .5 * 2.**((np.arange(81)-40)/20.))
-        wider = (np.arange(71) * .025 + .25 if coordinate == 'rho'
-                 else .5 * 2.**((np.arange(51)-20)/10.))
-        truths = (1., 1.0125, 1.7) if coordinate == 'rho' else (.5, .5*2.**.05, 2.5)
-        for scenario, truth in enumerate(truths):
-            for offset in range(10):
-                sid = start + scenario*10 + offset
-                for label, nodes in (('base', values), ('grid_refined', refined), ('support_widened', wider)):
-                    groups.append(_f4_f_group(coordinate, sid, truth, nodes, settings[coordinate], label))
-    rows = _f4_f_execute_groups(groups, workers, progress, priors=True)
-    summaries = []
-    for coordinate in ('rho', 'sigma_x'):
-        truths = sorted({r['truth'] for r in rows if r['coordinate'] == coordinate})
-        for truth in truths:
-            for label in ('base', 'grid_refined', 'support_widened'):
-                selected = [r for r in rows if r['coordinate'] == coordinate and r['truth'] == truth and r['label'] == label]
-                for prior in ('discrete_uniform', 'uniform_parameter', 'wrong_concentrated',
-                              'uniform_capacity' if coordinate == 'rho' else 'uniform_log'):
-                    variants = [r if prior == 'discrete_uniform' else r['prior_sensitivity'][prior] for r in selected]
-                    final_mean = np.array([r['parameter_mean'][-1] for r in variants])
-                    hits = sum(r['equal_tail_95'][-1][0] <= truth <= r['equal_tail_95'][-1][1] for r in variants)
-                    # A shared-parameter batch of independent daily resets; this
-                    # is not a continuous multi-day trajectory or forecast.
-                    total = np.sum([np.sum(r['conditional_log_evidence'], axis=0) for r in variants], axis=0)
-                    pooled = np.asarray(variants[0]['initial_log_weights']) + total
-                    pooled -= logsumexp(pooled)
-                    summaries.append(dict(coordinate=coordinate, truth=truth, label=label, prior=prior,
-                        count=len(selected), parameter_mean_bias=float(np.mean(final_mean-truth)),
-                        parameter_mean_rmse=float(np.sqrt(np.mean((final_mean-truth)**2))),
-                        median_posterior_sd=float(np.median([r['parameter_sd'][-1] for r in variants])),
-                        median_endpoint_weight=float(np.median([r['endpoint_weight'][-1] for r in variants])),
-                        credible_set_hit_fraction=hits/len(selected),
-                        credible_set_wilson=_wilson_interval(hits, len(selected)),
-                        pooled_log_weights=pooled.tolist(),
-                        pooled_parameter_mean=float(np.exp(pooled) @ np.asarray(variants[0]['values']))))
-    return dict(**_f4_f_report_header('F2', workers), rows=rows, summary=summaries,
-                passes=bool(_f4_f_probability_gate(rows)),
-                interpretation='No recovery gate. Equal-tail sets and their hit rates are diagnostics, not calibrated confidence guarantees.')
-
-
-def _f4_f_paired_bank_comparison(left, right):
-    result = _f4_f_weight_comparison(left, right)
-    if 'marginal_posterior_mass' not in left or 'marginal_posterior_mass' not in right:
-        raise ValueError('Paired comparisons require the marginal state histories.')
-    maxima = {}
-    for phase in ('predicted', 'posterior'):
-        other = np.array([conservative_mass_transfer(right['x_edges'], m, left['x_edges'])
-                          for m in right[f'marginal_{phase}_mass']])
-        reference = np.asarray(left[f'marginal_{phase}_mass'])
-        maxima[phase + '_maximum_l1'] = float(np.max(np.sum(np.abs(other-reference), axis=1)))
-    result.update(maxima)
-    result['passes'] = bool(result['passes'] and max(maxima.values()) <= F4_F_STATE_L1_TOL)
-    return result
-
-
-def _f4_f_mixture_design(version=1):
-    """Locked F3 designs; version 2 retains the failed 151-cell controls."""
-    if type(version) is not int or version not in (1, 2):
-        raise ValueError('Unknown F3 design version.')
-    configurations = [('fv_reference', _f4_f_selected_numerics()['rho']),
-                      ('fv_matched', _f4_f_numerics(151, 1/3072)),
-                      ('mixture_coarse', _f4_f_numerics(151, 1/768, backend='mixture')),
-                      ('mixture_middle', _f4_f_numerics(151, 1/1536, backend='mixture')),
-                      ('mixture_fine', _f4_f_numerics(151, 1/3072, backend='mixture'))]
-    comparisons = [('mixture_time', 'mixture_middle', 'mixture_fine', version == 1),
-                   ('matched_fv', 'fv_matched', 'mixture_fine', version == 1),
-                   ('reference_fv', 'fv_reference', 'mixture_fine', version == 1)]
-    candidate = configurations[-1][1]
-    if version == 2:
-        configurations += [('fv401_fine', _f4_f_numerics(401, 1/32768)),
-                           ('mixture401_middle', _f4_f_numerics(401, 1/16384, backend='mixture')),
-                           ('mixture401_fine', _f4_f_numerics(401, 1/32768, backend='mixture')),
-                           ('mixture801_fine', _f4_f_numerics(801, 1/32768, backend='mixture'))]
-        comparisons += [('mixture_time_refined', 'mixture401_middle', 'mixture401_fine', True),
-                        ('matched_fv_refined', 'fv401_fine', 'mixture401_fine', True),
-                        ('reference_fv_refined', 'fv_reference', 'mixture401_fine', True),
-                        ('mixture_spatial_refined', 'mixture401_fine', 'mixture801_fine', True)]
-        candidate = dict(configurations)['mixture401_fine']
-    return configurations, comparisons, candidate
-
-
-def run_f4_f_bank_mixture_check(refinement, *, workers=7, progress=None, spatial_refine=False):
-    """F3: original pilot or explicit spatial refinement, with unchanged gates."""
-    if not isinstance(spatial_refine, (bool, np.bool_)):
-        raise TypeError('spatial_refine must be boolean.')
-    f4_f_validated_refinement(refinement)
-    version = 2 if spatial_refine else 1
-    configurations, design_comparisons, candidate = _f4_f_mixture_design(version)
-    groups = [_f4_f_group(c, sid, 1. if c == 'rho' else .5, F4_E_PARAMETER_GRIDS[c],
-                          config, label)
-              for c in ('rho',) for sid in (1326, 1327) for label, config in configurations]
-    rows = _f4_f_execute_groups(groups, workers, progress, keep_mass=True)
-    comparisons = []
-    for c in ('rho',):
-        for sid in (1326, 1327):
-            selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
-            for label, left, right, active in design_comparisons:
-                comparison = dict(coordinate=c, sequence_id=sid, comparison=label, selected=active,
-                                  **_f4_f_paired_bank_comparison(selected[left], selected[right]))
-                if version == 2 and label == 'mixture_time_refined':
-                    comparison.update(actual_max_step_left=selected[left]['actual_max_step'],
-                                      actual_max_step_right=selected[right]['actual_max_step'])
-                    comparison['actual_step_refined'] = bool(selected[right]['actual_max_step']
-                                                              < selected[left]['actual_max_step'])
-                    comparison['passes'] = bool(comparison['passes'] and comparison['actual_step_refined'])
-                if version == 2 and label == 'mixture_spatial_refined':
-                    comparison.update(actual_max_step_left=selected[left]['actual_max_step'],
-                                      actual_max_step_right=selected[right]['actual_max_step'])
-                    comparison['actual_steps_matched'] = bool(np.isclose(selected[left]['actual_max_step'],
-                        selected[right]['actual_max_step'], atol=1e-14, rtol=0))
-                    comparison['passes'] = bool(comparison['passes'] and comparison['actual_steps_matched'])
-                comparisons.append(comparison)
-    return dict(**_f4_f_report_header('F3', workers), rows=rows, comparisons=comparisons,
-                design_version=version, selected_mixture_numerics=candidate,
-                passes=bool(_f4_f_probability_gate(rows) and all(r['passes'] for r in comparisons if r['selected'])),
-                mixture_basis='shape_D', mixture_cfl=.4,
-                interpretation=('Version 2 tests 401 cells against 801 and retains original 151-cell failures as diagnostics. '
-                                if spatial_refine else '') +
-                               'Pilot acceptance supports this bank design only. If any selected gate fails, review numerical/basis errors before population.')
-
-
-def f4_f_validated_mixture_check(report, *, require_source=False):
-    if report.get('stage') != 'F3' or report.get('registered_design') is not True:
-        raise ValueError('A registered F3 pilot is required.')
-    if require_source and (not report.get('source_commit') or report.get('working_tree_dirty') is not False):
-        raise ValueError('F3 must have a source commit and clean working tree.')
-    _f4_f_validate_header(report)
-    if report.get('mixture_basis') != 'shape_D' or report.get('mixture_cfl') != .4:
-        raise ValueError('F3 basis or CFL was changed.')
-    version = report.get('design_version', 1)
-    configurations, comparisons, candidate = _f4_f_mixture_design(version)
-    settings = dict(configurations)
-    if ((version == 2 or 'selected_mixture_numerics' in report)
-            and report.get('selected_mixture_numerics') != candidate):
-        raise ValueError('F3 selected mixture settings were changed.')
-    rows = report.get('rows', [])
-    if len(rows) != 2*len(settings) or not _f4_f_probability_gate(rows):
-        raise ValueError('F3 requires all valid rho bank rows for its design version.')
-    expected = {(c, sid, label) for c in ('rho',) for sid in (1326, 1327) for label in settings}
-    if {(r['coordinate'], r['sequence_id'], r['label']) for r in rows} != expected:
-        raise ValueError('F3 identifiers were changed.')
-    observations = {sid: generate_synthetic_sequence(sequence_id=sid).observations
-                    for sid in (1326, 1327)}
-    for r in rows:
-        expected_settings = settings[r['label']]
-        if r['settings'] != expected_settings or not np.array_equal(r['values'], F4_E_PARAMETER_GRIDS[r['coordinate']]):
-            raise ValueError('F3 settings or nodes were changed.')
-        if version == 2:
-            actual = checks.finite_scalar(r.get('actual_max_step'), 'F3 actual step', positive=True)
-            if actual > expected_settings['max_step']*(1+1e-12):
-                raise ValueError('F3 actual step exceeds its configured maximum.')
-        if (not np.array_equal(r['observation_times'], CORE_OBSERVATION_TIMES)
-                or r['truth'] != (1. if r['coordinate'] == 'rho' else .5)):
-            raise ValueError('F3 truth or observation times were changed.')
-        obs = observations[r['sequence_id']]
-        if not np.allclose(r['observations'], obs.values, atol=1e-12, rtol=0):
-            raise ValueError('F3 observations were changed.')
-        _f4_f_validate_bank_summary(r, 'F3')
-        edges = np.asarray(r.get('x_edges'))
-        expected_edges = np.linspace(0., 1., r['settings']['x_steps']+1)
-        if edges.shape != expected_edges.shape or not np.allclose(edges, expected_edges, atol=1e-14, rtol=0):
-            raise ValueError('F3 state cell edges were changed.')
-        for phase in ('predicted', 'posterior'):
-            mass = checks.probability_rows(r[f'marginal_{phase}_mass'], 'F3 marginal mass')
-            if mass.shape != (24, r['settings']['x_steps']):
-                raise ValueError('F3 marginal state history has the wrong shape.')
-    for c in ('rho',):
-        for sid in (1326, 1327):
-            selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
-            if version == 2 and not (selected['mixture401_fine']['actual_max_step']
-                                     < selected['mixture401_middle']['actual_max_step']):
-                raise ValueError('F3 time control did not change the actual step.')
-            if version == 2 and not np.isclose(selected['mixture401_fine']['actual_max_step'],
-                                               selected['mixture801_fine']['actual_max_step'], atol=1e-14, rtol=0):
-                raise ValueError('F3 spatial control changed the actual time step.')
-            for _, left, right, active in comparisons:
-                if active and not _f4_f_paired_bank_comparison(selected[left], selected[right])['passes']:
-                    raise ValueError('F3 pilot gates failed; adapt before population.')
-    return candidate
-
-
-def run_f4_f_bank_population(refinement, mixture_check, *, workers=7, progress=None):
-    """F4 population: paired conditional FV/mixture learning on 20 held-out days."""
-    base = f4_f_validated_refinement(refinement)
-    mixture = f4_f_validated_mixture_check(mixture_check)
-    groups = [_f4_f_group(c, sid, 1. if c == 'rho' else .5, F4_E_PARAMETER_GRIDS[c], config, label)
-              for c in ('rho', 'sigma_x') for sid in F4_F_POPULATION_IDS
-              for label, config in ((('fv', base[c]), ('mixture', mixture)) if c == 'rho'
-                                    else (('fv', base[c]),))]
-    rows = _f4_f_execute_groups(groups, workers, progress, keep_mass=True)
-    comparisons = []
-    for c in ('rho',):
-        for sid in F4_F_POPULATION_IDS:
-            selected = {r['label']: r for r in rows if r['coordinate'] == c and r['sequence_id'] == sid}
-            comparisons.append(dict(coordinate=c, sequence_id=sid,
-                                     **_f4_f_paired_bank_comparison(selected['fv'], selected['mixture'])))
-    return dict(**_f4_f_report_header('F4', workers), rows=rows, comparisons=comparisons,
-                summary=_f4_f_population_summary(rows),
-                passes=bool(_f4_f_probability_gate(rows) and all(r['passes'] for r in comparisons)),
-                interpretation='Paired approximation gates, not a parameter-recovery gate. Independent daily resets, not a 20-day continuous run.')
-
-
-def _f4_f_population_summary(rows):
-    summary = []
-    for c in ('rho', 'sigma_x'):
-        for backend in (('fv', 'mixture') if c == 'rho' else ('fv',)):
-            selected = [r for r in rows if r['coordinate'] == c and r['label'] == backend]
-            truth = 1. if c == 'rho' else .5
-            estimates = np.array([r['parameter_mean'][-1] for r in selected])
-            hits = sum(r['equal_tail_95'][-1][0] <= truth <= r['equal_tail_95'][-1][1] for r in selected)
-            mse = [np.mean((np.array(r['posterior_mean'])-r['truth_state'])**2) for r in selected]
-            summary.append(dict(coordinate=c, backend=backend, count=len(selected),
-                                posterior_parameter_bias=float(np.mean(estimates-truth)),
-                                posterior_parameter_rmse=float(np.sqrt(np.mean((estimates-truth)**2))),
-                                state_posterior_rmse=float(np.sqrt(np.mean(mse))),
-                                mean_daily_log_evidence=float(np.mean([r['cumulative_log_evidence'][-1] for r in selected])),
-                                median_posterior_sd=float(np.median([r['parameter_sd'][-1] for r in selected])),
-                                credible_set_hit_fraction=hits/len(selected),
-                                credible_set_wilson=_wilson_interval(hits, len(selected))))
-    return summary
-
-
-def f4_f_validated_population(report, *, require_source=False):
-    """Validate the original 60-bank F4 data for reuse, including failed gates.
-
-    Saved pass flags, comparisons and population summaries do not authorize reuse.
-    The original rows are checked against the fixed design and raw scores/masses.
-    """
-    if report.get('stage') != 'F4' or report.get('registered_design') is not True:
-        raise ValueError('The original registered F4 population is required.')
-    if require_source and (not report.get('source_commit') or report.get('working_tree_dirty') is not False):
-        raise ValueError('F4 must have a source commit and clean working tree.')
-    _f4_f_validate_header(report)
-    rows = report.get('rows', [])
-    expected = {(c, sid, label) for sid in F4_F_POPULATION_IDS
-                for c, labels in (('rho', ('fv', 'mixture')), ('sigma_x', ('fv',))) for label in labels}
-    if (len(rows) != 60 or {(r['coordinate'], r['sequence_id'], r['label']) for r in rows} != expected
-            or not _f4_f_probability_gate(rows)):
-        raise ValueError('F4 reuse requires all 60 valid original bank rows.')
-    truth_sequences = {sid: generate_synthetic_sequence(sequence_id=sid) for sid in F4_F_POPULATION_IDS}
-    indexed = {}
-    for r in rows:
-        c, sid, label = r['coordinate'], r['sequence_id'], r['label']
-        settings = (_f4_f_selected_numerics()[c] if label == 'fv'
-                    else _f4_f_numerics(401, 1/32768, backend='mixture'))
-        values = np.asarray(F4_E_PARAMETER_GRIDS[c])
-        if (r['settings'] != settings or not np.array_equal(r['values'], values)
-                or r['truth'] != (1. if c == 'rho' else .5)
-                or r['prior_name'] != 'discrete_uniform'):
-            raise ValueError('F4 nodes, prior, truth or settings were changed.')
-        actual = checks.finite_scalar(r['actual_max_step'], 'F4 actual step', positive=True)
-        if actual > settings['max_step']*(1+1e-12) or r['maximum_abs_mass_error'] < 0:
-            raise ValueError('F4 numerical diagnostics are invalid.')
-        sequence = truth_sequences[sid]
-        if (not np.array_equal(r['observation_times'], CORE_OBSERVATION_TIMES)
-                or not np.allclose(r['observations'], sequence.observations.values, atol=1e-12, rtol=0)
-                or not np.allclose(r['truth_state'], sequence.truth.state[1:], atol=1e-12, rtol=0)):
-            raise ValueError('F4 seed observations or truth were changed.')
-        scores = np.asarray(r['conditional_log_evidence'])
-        if scores.shape != (24, 41) or not np.all(np.isfinite(scores)):
-            raise ValueError('F4 raw scores must include all 24x41 entries.')
-        reduced = parameter_bank_weights(scores, np.full(41, -np.log(41)), np.ones(24, dtype=bool))
-        w = np.exp(reduced['log_weights'])
-        mean = w @ values
-        derived = dict(initial_log_weights=np.full(41, -np.log(41)), log_weights=reduced['log_weights'],
-                       bank_log_evidence=reduced['log_evidence'],
-                       cumulative_log_evidence=np.cumsum(reduced['log_evidence']), parameter_mean=mean,
-                       parameter_sd=np.sqrt(np.sum(w*(values[None, :]-mean[:, None])**2, axis=1)))
-        cdf = np.cumsum(w, axis=1)
-        derived['equal_tail_95'] = [[values[min(np.searchsorted(row, p), 40)] for p in (.025, .975)] for row in cdf]
-        for key, expected_value in derived.items():
-            stored = np.asarray(r[key])
-            if stored.shape != np.shape(expected_value) or not np.allclose(stored, expected_value, atol=1e-10, rtol=0):
-                raise ValueError(f'F4 {key} does not match its raw scores.')
-        edges = np.asarray(r['x_edges'])
-        if (edges.shape != (settings['x_steps']+1,)
-                or not np.allclose(edges, np.linspace(0., 1., settings['x_steps']+1), atol=1e-14, rtol=0)):
-            raise ValueError('F4 state cell edges were changed.')
-        centers = .5*(edges[:-1]+edges[1:])
-        for phase in ('predicted', 'posterior'):
-            mass = checks.probability_rows(r[f'marginal_{phase}_mass'], 'F4 marginal state mass')
-            if mass.shape != (24, settings['x_steps']):
-                raise ValueError('F4 state history has the wrong shape.')
-            if (np.shape(r[f'{phase}_mean']) != (24,)
-                    or not np.allclose(r[f'{phase}_mean'], mass @ centers, atol=1e-10, rtol=0)):
-                raise ValueError('F4 state mean does not match its marginal mass.')
-        indexed[c, sid, label] = r
-    return indexed
-
-
-def run_f4_f_population_time_refinement(refinement, mixture_check, population, *, workers=7, progress=None):
-    """Refine only the FV rho reference; preserve the original failed population.
-
-    Forty new banks use the original observations verbatim. Mixture and sigma_x
-    rows are reused from the source-linked report, never rerun or silently repaired.
-    """
-    f4_f_validated_refinement(refinement)
-    candidate = f4_f_validated_mixture_check(mixture_check)
-    if candidate != _f4_f_numerics(401, 1/32768, backend='mixture'):
-        raise ValueError('Population time refinement requires the F3 version 2 candidate.')
-    old = f4_f_validated_population(population)
-    for key, dependency in (('refinement', refinement), ('mixture', mixture_check)):
-        if population.get('dependencies', {}).get(key, {}).get('source_commit') != dependency.get('source_commit'):
-            raise ValueError('F4 dependency source does not match the supplied report.')
-    groups = []
-    for sid in F4_F_POPULATION_IDS:
-        source = old['rho', sid, 'fv']
-        observations = BM1ObservationSeries(source['observation_times'], source['observations'], 'day')
-        for label, step in (('fv_time_middle', 1/1536), ('fv_time_fine', 1/3072)):
-            groups.append(dict(coordinate='rho', sequence_id=sid, truth=1.,
-                               values=tuple(source['values']), settings=_f4_f_numerics(401, step), label=label,
-                               case=_f4_f_case('rho', 1.), observations=observations, truth_state=source['truth_state']))
-    rows = _f4_f_execute_groups(groups, workers, progress, keep_mass=True)
-    comparisons, selected = [], []
-    for sid in F4_F_POPULATION_IDS:
-        original, mixture = old['rho', sid, 'fv'], old['rho', sid, 'mixture']
-        middle = next(r for r in rows if r['sequence_id'] == sid and r['label'] == 'fv_time_middle')
-        fine = next(r for r in rows if r['sequence_id'] == sid and r['label'] == 'fv_time_fine')
-        for name, left, right, active in (
-                ('original_fv_mixture', original, mixture, False),
-                ('reference_time_coarse', original, middle, False),
-                ('reference_time_fine', middle, fine, True),
-                ('refined_fv_mixture', middle, mixture, True)):
-            comparison = dict(coordinate='rho', sequence_id=sid, comparison=name, selected=active,
-                              **_f4_f_paired_bank_comparison(left, right))
-            if name.startswith('reference_time_'):
-                comparison.update(actual_max_step_left=left['actual_max_step'], actual_max_step_right=right['actual_max_step'])
-                comparison['actual_step_refined'] = bool(right['actual_max_step'] < left['actual_max_step'])
-                comparison['passes'] = bool(comparison['passes'] and comparison['actual_step_refined'])
-            comparisons.append(comparison)
-        selected.extend((dict(middle, label='fv'), mixture, old['sigma_x', sid, 'fv']))
-    return dict(**_f4_f_report_header('F4-time-refinement', workers), rows=rows, comparisons=comparisons,
-                selected_fv_rho_numerics=_f4_f_numerics(401, 1/1536),
-                reused_population_rows=60, reused_selected_banks=40, new_replays=40*41,
-                summary=_f4_f_population_summary(selected),
-                original_population_passes=bool(all(c['passes'] for c in comparisons
-                                                   if c['comparison'] == 'original_fv_mixture')),
-                passes=bool(_f4_f_probability_gate(rows) and all(c['passes'] for c in comparisons if c['selected'])),
-                interpretation='Reference-time adaptation on the same 20 records, not a new holdout. Original failures retained; gates unchanged.')
-
-
-def _f4_g_identity_task(task):
-    """Independent online hypothesis group or fresh fixed-parameter replay.
-
-    Only data/case scalars cross spawn boundaries; each worker builds callables.
-    Group-local parameter weights never feed back into conditional states.
-    """
-    phase, pair, indices, hypotheses, case, observations, settings = task
-    model, base = case.build_model()
-    initial = beta_initial_mass(case, model, settings['x_steps'])
-    options = dict(breakpoints=case.breakpoints, max_step=settings['max_step'],
-                   likelihood_quadrature_order=settings['likelihood_quadrature_order'])
-    if phase == 'online':
-        bank = run_joint_parameter_bank(
-            model, base, case.sigma_x, case.sigma_y, initial, case.horizon[0], observations,
-            coordinates=pair, hypotheses=hypotheses,
-            initial_log_weights=np.full(len(indices), -np.log(len(indices))),
-            keep_conditionals=True, **options)
-        steps = [s['conditional_steps'] for s in bank['steps']]
-        scores = bank['conditional_log_evidence']
-        predicted = np.array([[s.predicted_mass for s in row] for row in steps])
-        posterior = np.array([[s.posterior_mass for s in row] for row in steps])
-        diagnostics = [s.diagnostics for row in steps for s in row]
-        mass_error = max(d['maximum_abs_mass_error'] for d in diagnostics)
-        minimum = min(d['minimum_cell_mass'] for d in diagnostics)
-        actual_step = max(d['actual_max_step'] for d in diagnostics)
-    else:
-        # Deliberately independent of the joint-bank candidate adapter/reducer.
-        # Every candidate restarts at the declared state prior, never the bank.
-        candidate = replace(f4_e_truth_candidate(case), **dict(zip(pair, hypotheses[0])))
-        filtered = run_fv_filter(
-            model, _f4_e_parameters(base, candidate), candidate.sigma_x, candidate.sigma_y,
-            initial, case.horizon[0], observations, **options)
-        scores = filtered.log_evidence[:, None]
-        predicted = filtered.predicted_mass[:, None, :]
-        posterior = filtered.posterior_mass[:, None, :]
-        mass_error, minimum = filtered.maximum_abs_mass_error, filtered.minimum_cell_mass
-        actual_step = float(np.max(np.diff(filtered.integration_t)))
-    return dict(phase=phase, pair=pair, indices=indices, scores=scores,
-                predicted_mass=predicted, posterior_mass=posterior,
-                maximum_abs_mass_error=mass_error, minimum_cell_mass=minimum,
-                actual_max_step=actual_step)
-
-
-def _f4_g_joint_summary(hypotheses, log_weights, pair):
-    """Marginals and joint dependence, keeping all MAP ties and boundary weights."""
-    weights = np.exp(log_weights)
-    mean = weights @ hypotheses
-    centered = hypotheses[None, :, :] - mean[:, None, :]
-    covariance = np.einsum('kh,khi,khj->kij', weights, centered, centered)
-    marginals = {}
-    for axis, name in enumerate(pair):
-        nodes = np.unique(hypotheses[:, axis])
-        mass = np.column_stack([weights[:, hypotheses[:, axis] == v].sum(axis=1) for v in nodes])
-        cdf = np.cumsum(mass, axis=1)
-        intervals = [[float(nodes[min(np.searchsorted(row, q), len(nodes)-1)])
-                      for q in (.025, .975)] for row in cdf]
-        marginals[name] = dict(values=nodes.tolist(), weights=mass.tolist(),
-                               equal_tail_95=intervals,
-                               endpoint_weight=(mass[:, 0]+mass[:, -1]).tolist())
-    on_boundary = np.any((hypotheses == hypotheses.min(axis=0))
-                         | (hypotheses == hypotheses.max(axis=0)), axis=1)
-    return dict(parameter_mean=mean.tolist(), parameter_covariance=covariance.tolist(),
-                parameter_sd=np.sqrt(np.diagonal(covariance, axis1=1, axis2=2)).tolist(),
-                marginal_parameters=marginals,
-                boundary_union_weight=weights[:, on_boundary].sum(axis=1).tolist(),
-                effective_hypotheses=np.exp(-np.sum(weights*log_weights, axis=1)).tolist(),
-                map_hypotheses=[hypotheses[np.abs(row-row.max()) <= 1e-12].tolist()
-                                for row in log_weights])
-
-
-def run_f4_g_joint_identity(*, workers=8, progress=None, sequence_ids=F4_G_METHOD_IDS,
-                             grid_stride=F4_G_METHOD_GRID_STRIDE, x_steps=None,
-                             max_step=1/1536, likelihood_quadrature_order=3):
-    """G0: two joint FV banks versus fresh fixed-candidate replays at all prefixes.
-
-    Five nodes per axis cover E's full supports; this is a method check, not a
-    numerically certified 2D posterior or joint-recovery result. API overrides
-    are diagnostic; the CLI exposes only execution/output options. One persistent
-    spawn pool covers both pairs and phases, with no nested parallelism.
-    """
-    workers = checks.positive_integer(workers, 'workers')
-    ids = tuple(_nonnegative_integer(s, 'sequence_id') for s in sequence_ids)
-    if len(ids) != 2 or len(set(ids)) != 2:
-        raise ValueError('G0 requires two distinct sequence IDs, one per pair.')
-    stride = checks.positive_integer(grid_stride, 'grid_stride')
-    if 40 % stride:
-        raise ValueError('grid_stride must divide 40 to retain both support endpoints.')
-    step = checks.finite_scalar(max_step, 'max_step', positive=True)
-    order = checks.positive_integer(likelihood_quadrature_order, 'likelihood_quadrature_order')
-    cells_override = None if x_steps is None else checks.positive_integer(x_steps, 'x_steps', minimum=3)
-    groups, tasks = [], []
-    for pair, sid, cells, Xi in zip(F4_G_PAIRS, ids, (401, 3201), (.75, 1.)):
-        case = build_f4_b_case(Xi=Xi)
-        sequence = generate_synthetic_sequence(case, sequence_id=sid)
-        if not sequence.truth.valid:
-            raise RuntimeError(f'G0 truth failed at ID{sid}; no repair or dropped sequence.')
-        axes = [np.asarray(F4_E_PARAMETER_GRIDS[name])[::stride] for name in pair]
-        hypotheses = np.array([(a, b) for a in axes[0] for b in axes[1]])
-        settings = dict(x_steps=cells if cells_override is None else cells_override,
-                        max_step=step, likelihood_quadrature_order=order)
-        group = dict(pair=pair, sequence_id=sid, hypotheses=hypotheses, case=case,
-                     observations=sequence.observations, settings=settings)
-        groups.append(group)
-        # Balanced groups avoid serial online work. Global weights/marginals are
-        # reduced from raw conditional histories; local priors cannot affect them.
-        for indices in np.array_split(np.arange(len(hypotheses)), min(workers, len(hypotheses))):
-            tasks.append(('online', pair, indices, hypotheses[indices], case,
-                          sequence.observations, settings))
-        for index in range(len(hypotheses)):
-            indices = np.array([index])
-            tasks.append(('offline', pair, indices, hypotheses[indices], case,
-                          sequence.observations, settings))
-    pending = {}
-    for group in groups:
-        shape = (len(group['observations'].times), len(group['hypotheses']))
-        for phase in ('online', 'offline'):
-            pending[phase, group['pair']] = dict(
-                scores=np.empty(shape), predicted_mass=np.empty((*shape, group['settings']['x_steps'])),
-                posterior_mass=np.empty((*shape, group['settings']['x_steps'])),
-                seen=set(), diagnostics=[])
-    total = 2*sum(len(g['hypotheses']) for g in groups)
-    completed = 0
-    manager = (ProcessPoolExecutor(max_workers=min(workers, len(tasks)),
-                                  mp_context=get_context('spawn')) if workers > 1 else nullcontext(None))
-    with manager as pool:
-        if pool is None:
-            results = map(_f4_g_identity_task, tasks)
-        else:
-            futures = [pool.submit(_f4_g_identity_task, task) for task in tasks]
-            results = (future.result() for future in as_completed(futures))
-        for result in results:
-            entry = pending[result['phase'], result['pair']]
-            indices = result['indices']
-            if entry['seen'].intersection(indices):
-                raise RuntimeError('G0 received a duplicate hypothesis result.')
-            entry['seen'].update(indices)
-            for name in ('scores', 'predicted_mass', 'posterior_mass'):
-                entry[name][:, indices] = result[name]
-            entry['diagnostics'].append({name: result[name] for name in (
-                'maximum_abs_mass_error', 'minimum_cell_mass', 'actual_max_step')})
-            completed += len(indices)
-            if progress is not None:
-                sid = next(g['sequence_id'] for g in groups if g['pair'] == result['pair'])
-                progress(dict(completed=completed, total=total, phase=result['phase'],
-                              pair=result['pair'], sequence_id=sid))
-    rows = []
-    for group in groups:
-        pair, hypotheses = group['pair'], group['hypotheses']
-        online, offline = [pending[phase, pair] for phase in ('online', 'offline')]
-        if any(e['seen'] != set(range(len(hypotheses))) for e in (online, offline)):
-            raise RuntimeError('G0 did not complete every hypothesis; no subset is reported.')
-        prior = np.full(len(hypotheses), -np.log(len(hypotheses)))
-        reduced = parameter_bank_weights(online['scores'], prior, group['observations'].observed)
-        joint = prior + np.cumsum(offline['scores'], axis=0)
-        evidence = logsumexp(joint, axis=1)
-        expected_logs = joint-evidence[:, None]
-        predicted = np.einsum('kh,khi->ki', np.exp(reduced['prior_log_weights']), online['predicted_mass'])
-        posterior = np.einsum('kh,khi->ki', np.exp(reduced['log_weights']), online['posterior_mass'])
-        expected_predicted = np.einsum('kh,khi->ki', np.exp(np.vstack((prior, expected_logs[:-1]))),
-                                       offline['predicted_mass'])
-        expected_posterior = np.einsum('kh,khi->ki', np.exp(expected_logs), offline['posterior_mass'])
-        prefix = dict(
-            log_weights=np.max(np.abs(reduced['log_weights']-expected_logs), axis=1),
-            conditional_log_evidence=np.max(np.abs(online['scores']-offline['scores']), axis=1),
-            cumulative_log_evidence=np.abs(np.cumsum(reduced['log_evidence'])-evidence),
-            conditional_state_mass=np.maximum(
-                np.max(np.abs(online['predicted_mass']-offline['predicted_mass']), axis=(1, 2)),
-                np.max(np.abs(online['posterior_mass']-offline['posterior_mass']), axis=(1, 2))),
-            marginal_state_mass=np.maximum(np.max(np.abs(predicted-expected_predicted), axis=1),
-                                            np.max(np.abs(posterior-expected_posterior), axis=1)))
-        maxima = {name: float(value.max()) for name, value in prefix.items()}
-        diagnostics = online['diagnostics']+offline['diagnostics']
-        mass_error = max(max(d['maximum_abs_mass_error'] for d in diagnostics),
-                         float(np.max(np.abs(predicted.sum(axis=1)-1))),
-                         float(np.max(np.abs(posterior.sum(axis=1)-1))))
-        minimum = min(d['minimum_cell_mass'] for d in diagnostics)
-        passes = (all(np.isfinite(v) and 0 <= v <= F4_F_IDENTITY_TOL for v in maxima.values())
-                  and np.isfinite(mass_error) and 0 <= mass_error <= 1e-10
-                  and np.isfinite(minimum) and minimum >= 0)
-        case, obs = group['case'], group['observations']
-        truth = f4_e_truth_candidate(case)
-        rows.append(dict(
-            coordinates=pair, sequence_id=group['sequence_id'], hypotheses=hypotheses.tolist(),
-            initial_log_weights=prior.tolist(), settings=group['settings'],
-            truth=[getattr(truth, name) for name in pair],
-            fixed_parameters={name: getattr(truth, name)
-                              for name in ('rho', 'Xi', 'k', 'sigma_x', 'sigma_y') if name not in pair},
-            initial_beta=(case.initial_alpha, case.initial_beta), initial_mass=beta_initial_mass(
-                case, case.build_model()[0], group['settings']['x_steps']).tolist(),
-            truth_max_step=case.truth_max_step,
-            seed_roots=(case.initial_seed_root, case.brownian_seed_root, case.measurement_seed_root),
-            inputs=dict(baseline=case.baseline, price_edges=case.price_edges.tolist(),
-                        price_values=case.price_values.tolist(), state_response='1-2*x', price_response='1-2*u'),
-            observation_contract=dict(time_unit=obs.time_unit, observation_kind=obs.observation_kind,
-                                      price_side=obs.price_side),
-            observation_times=obs.times.tolist(), observations=obs.values.tolist(), observed=obs.observed.tolist(),
-            online_conditional_log_evidence=online['scores'].tolist(),
-            offline_conditional_log_evidence=offline['scores'].tolist(),
-            online_log_weights=reduced['log_weights'].tolist(),
-            online_bank_log_evidence=reduced['log_evidence'].tolist(),
-            offline_cumulative_bank_log_evidence=evidence.tolist(),
-            prefix_errors={name: value.tolist() for name, value in prefix.items()}, maximum_errors=maxima,
-            maximum_abs_mass_error=float(mass_error), minimum_cell_mass=float(minimum),
-            actual_max_step=max(d['actual_max_step'] for d in diagnostics),
-            marginal_predicted_mass=predicted.tolist(), marginal_posterior_mass=posterior.tolist(),
-            final_conditional_posterior_mass=online['posterior_mass'][-1].tolist(),
-            x_edges=np.linspace(0, 1, group['settings']['x_steps']+1).tolist(),
-            passes=bool(passes), **_f4_g_joint_summary(hypotheses, reduced['log_weights'], pair)))
-    return dict(stage='G0', registered_design=(ids == F4_G_METHOD_IDS
-                and stride == F4_G_METHOD_GRID_STRIDE and cells_override is None
-                and step == 1/1536 and order == 3), workers=workers,
-                grid_stride=stride, identity_tolerance=F4_F_IDENTITY_TOL,
-                conditional_runs=total, rows=rows, passes=all(r['passes'] for r in rows))
-
-
-def run_f4_preparation_checks() -> dict:
-    """Independent F4-0 quadrature checks; not a fitted or recursive model.
-
-    Moved intact from root/f4/verify_preparation.py. Continuous reference formulas
-    deliberately do not call the model's demand function.
-    """
-    from scipy.integrate import quad
-    from scipy.special import betaln
-    from src.params.bm_1 import bayes_update, gaussian_log_likelihood, mass_to_log
-    from src.method.beta_mixture import PreparedBetaProjector, beta_cell_average_basis
-    from src.method.fokker_planc import bm_1_fokker_planc
-    from src.diagnostics.bm_1 import beta_mixture_variance_floor
-    def prior_pdf(x):
-        if not 0. < x < 1.:
-            return 0.
-        return np.exp(19*np.log(x)+19*np.log1p(-x)-betaln(20, 20))
-
-    def demand(x):
-        # Independent formula for linear f/g, B=U=1/2, k=2, Xi=1.
-        return .5+.5*np.tanh(2*(.5-x))
-
-    def posterior_kernel(x):
-        return prior_pdf(x)*np.exp(-.5*((.5-demand(x))/.01)**2)
-
-    z_scaled, z_error = quad(posterior_kernel, 0., 1., epsabs=1e-13, epsrel=1e-12, points=[.5])
-    v_numerator, v_error = quad(lambda x: (x-.5)**2*posterior_kernel(x), 0., 1.,
-                                 epsabs=1e-14, epsrel=1e-11, points=[.5])
-    variance = v_numerator/z_scaled
-    example = bayes_update(mass_to_log([.6, .4]), gaussian_log_likelihood(.65, [.3, .7], .1))
-    bank_example = bayes_update(mass_to_log([.6, .4]), np.log([.2, .8]))
-
-    # Nonmonotone uncertainty: an admissible BM1 example with negative initial
-    # variance derivative, obtained from Ito's formula. This is not a forecast.
-    def wide_pdf(x):
-        return 6*x*(1-x)
-    covariance = quad(lambda x: (x-.5)*(demand(x)-.5)*wide_pdf(x), 0, 1,
-                      epsabs=1e-13)[0]
-    noise_contribution = quad(lambda x: (.1*x*(1-x))**2*wide_pdf(x), 0, 1,
-                             epsabs=1e-13)[0]
-    projections = []
-    for cells in (201, 801):
-        dx = 1./cells
-        edges = np.linspace(0, 1, cells+1)
-        centers = (edges[:-1]+edges[1:])/2
-        # Integrate the continuous posterior in each cell, not just its PDF.
-        target_mass = np.array([quad(posterior_kernel, a, b, epsabs=1e-15)[0]
-                                for a,b in zip(edges[:-1], edges[1:])])/z_scaled
-        target = target_mass/dx
-        for degree in (30, 38):
-            method = bm_1_fokker_planc()
-            basis = method._normalise_basis_discretely(method.beta_basis(centers, degree), dx)
-            result = PreparedBetaProjector(basis, dx).project(target)
-            mass = result['density']*dx
-            projections.append({'cells':cells, 'basis':f'legacy_{degree}',
-                'mean':float(mass@centers), 'center_variance':float(mass@(centers-.5)**2),
-                **result['diagnostics']})
-        # Illustrative, fixed dictionary only; no final F4-D basis selection.
-        shapes = np.array([20., 200., 1000., 2000.])
-        basis = beta_cell_average_basis(edges, shapes, shapes)
-        result = PreparedBetaProjector(basis, dx).project(target)
-        mass = result['density']*dx
-        projections.append({'cells':cells, 'basis':'illustration_symmetric_20_200_1000_2000',
-            'mean':float(mass@centers), 'center_variance':float(mass@(centers-.5)**2),
-            **result['diagnostics']})
-    return {
-        'scope':'F4-0 static/preparatory checks only; no recursive filter, parameter recovery or week forecast',
-        'source_base':'5a4793cd57d70a46beae2a6c758b4cd4e0556536',
-        'single_measurement':{
-            'prior':'Beta(20,20)', 'B':.5, 'U':.5, 'Y':.5, 'k':2., 'Xi':1., 'sigma_y':.01,
-            'continuous_posterior_mean':.5, 'continuous_posterior_variance':variance,
-            'gaussian_predictive_density':float(z_scaled/(np.sqrt(2*np.pi)*.01)),
-            'quad_absolute_error_estimates':[z_error, v_error],
-            'continuous_variance_floor_30':float(beta_mixture_variance_floor(.5,30)),
-            'continuous_variance_floor_38':float(beta_mixture_variance_floor(.5,38)),
-        },
-        'two_node_bayes_example':{'posterior':example.mass.tolist(), 'log_evidence':example.log_evidence},
-        'two_hypothesis_algebra_example':{'posterior':bank_example.mass.tolist(),
-                                         'log_evidence':bank_example.log_evidence},
-        'nonmonotone_variance_example':{'prior':'Beta(2,2)', 'rho':1.,'B':.5,'U':.5,
-            'k':2.,'Xi':1.,'sigma_x':.1,'initial_variance':.05,
-            'two_covariance':2*covariance,'expected_diffusion_squared':noise_contribution,
-            'initial_variance_derivative':2*covariance+noise_contribution},
-        'static_projection':projections,
-        'dictionary_warning':'Symmetric four-component illustration only; shifted, bimodal and boundary posteriors unvalidated.',
-        'variance_warning':'Continuous beta variance floor is not an exact finite-grid theorem; cell-center variances are labeled separately.',
-    }

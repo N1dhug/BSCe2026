@@ -14,7 +14,7 @@ from src.exe.run_model.bm_1 import curves
 from src.method.bm_1_response import CurveTrainingRecord
 from src.params.bm_1 import BM1ObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
-from src.validation.bm_1.response_numerics import run_numerical_unit
+from src.validation.bm_1.response import run_numerical_unit
 
 
 class SelectedResumeTests(unittest.TestCase):
@@ -47,7 +47,7 @@ class SelectedResumeTests(unittest.TestCase):
             args.resume = True
             # Simulate a crash after atomic unit publication but before the summary.
             (args.run_dir/'summary.json').unlink()
-            with patch('src.validation.bm_1.response_fit_checks.run_numerical_unit',
+            with patch('src.validation.bm_1.response.run_numerical_unit',
                        side_effect=AssertionError('A verified raw unit must not repeat FV work.')):
                 resumed = curves.run_fit_checks(args)
                 self.assertEqual(resumed['new_units'], 0)

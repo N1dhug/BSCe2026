@@ -375,7 +375,7 @@ def replay_native_record(record, f, g, *, settings, should_pause=None, checkpoin
 
 def compare_native_states(base, fine):
     """Preserved H2 base/fine mean and conservative mass-transfer gates."""
-    from src.params.bm_1 import conservative_mass_transfer
+    from src.method.bm_1_observation import conservative_mass_transfer
     be, fe = np.linspace(0., 1., len(base)+1), np.linspace(0., 1., len(fine)+1)
     bp, fp = np.exp(base), np.exp(fine)
     mean = abs(float(bp @ ((be[:-1]+be[1:])/2.))-float(fp @ ((fe[:-1]+fe[1:])/2.)))

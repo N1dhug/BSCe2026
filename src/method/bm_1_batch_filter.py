@@ -10,7 +10,8 @@ import numpy as np
 from src.method.bm_1_estimation import (
     BM1FVFilterResult, _cell_log_likelihood, _filter_interval, _positive_filter_step,
 )
-from src.params.bm_1 import BM1ObservationSeries, bayes_update, mass_to_log
+from src.params.bm_1 import BM1ObservationSeries
+from src.method.bm_1_observation import bayes_update, mass_to_log
 from src.solver.finite_volume import finite_volume_1d_cached
 from src.validation import estimation as checks
 from src.validation.model.bm_1 import bm_1_validation

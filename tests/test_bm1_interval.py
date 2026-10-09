@@ -6,12 +6,13 @@ import unittest
 import numpy as np
 
 from src.method.bm_1_estimation import run_fv_filter
-from src.method.bm_1_interval import run_interval_filter
+from src.method.bm_1_interval_likelihood import run_interval_filter
 from src.method.bm_1_response import (CurveTrainingRecord, replay_curve_record,
     pooled_curve_log_likelihood, fit_shared_curve_pair)
 from src.model.bm_1 import bm_1
-from src.params.bm_1 import BM1ObservationSeries, gaussian_log_likelihood, bayes_update, mass_to_log
-from src.params.bm_1_interval import BM1IntervalObservationSeries
+from src.params.bm_1 import BM1ObservationSeries
+from src.method.bm_1_observation import gaussian_log_likelihood, bayes_update, mass_to_log
+from src.params.bm_1 import BM1IntervalObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
 from src.solver.finite_volume import finite_volume_1d_fitted
 from src.solver.finite_volume_additive import propagate_additive

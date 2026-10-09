@@ -16,9 +16,8 @@ from scipy.special import logsumexp
 
 from src.method.beta_mixture import PreparedBetaProjector, evolve_projected_density
 
-from src.params.bm_1 import (
-    BM1ObservationSeries, bayes_update, gaussian_log_likelihood, mass_to_log,
-)
+from src.params.bm_1 import BM1ObservationSeries
+from src.method.bm_1_observation import bayes_update, gaussian_log_likelihood, mass_to_log
 from src.validation import estimation as checks
 from src.validation.model.bm import bm_validation
 

@@ -1,16 +1,22 @@
 BM-F/G — femte strukturelle gennemgang, i gang
-Start: c504806e3275840de0390e89bf69ab9e6982f5d0; branch cleanup/bm-fg-active-models-20261009, ren ved start.
-main/origin-main: 09c602f327a3497a763c47e734fac4a38b12227d, fetchet og uændret.
-Ingen opgaveprocesser kørte ved start. Gældende opgave: STARTPROMPT.txt.
-Konkrete dispositioner: FILE_PLAN.txt. Budget: højst300s nye test-/modelprocesser.
+Start: c504806e3275840de0390e89bf69ab9e6982f5d0; branch cleanup/bm-fg-active-models-20261009.
+main/origin-main uændret: 09c602f327a3497a763c47e734fac4a38b12227d. Ingen merge/push.
 
-Gennemført: WM149 verificeret, fuld tracked råbyte-startZIP CRC-verificeret,
-faktisk output/input-hashinventar og Git/brugerkort gemt. Originale backups
-og runde4-evidens genbruges. Ingen kode-/numerikændring endnu.
-Næste: udfør params/interval og H1-sammenlægninger; derefter historisk joint-
-retirement, kontrol/estimation, outputorganisering og målrettet verifikation.
+Gennemført: punkt/interval-observationer samlet; numerisk Bayes/remapping
+ejes af method/bm_1_observation. Interval-filter og G7-jobs samlet hos deres
+beregningsejere; tre H1-moduler samlet i response. Gammel estimate/joint-
+kampagnestyring og tilhørende protokoltests pensioneret. Estimation 3414→1081
+linjer; mixture_estimation1574→664. Nødvendige generatorer/referencer bevaret.
+WM149 er hashkontrolleret uændret; originale kilder/testversioner sikret.
+
+Kontrol: første145 tests,144 bestået; én test brugte synthetic.replace i
+stedet for dataclasses.replace. Testimport rettet; målrettet omkontrol næste.
+Forbrug50,117s af300s, gentagelser tæller. Ingen historisk fit eller benchmark.
+Resterende: control/numerics/tools/method sidste gennemgang, outputstruktur,
+aktive docs/arkivstier, korte F/G-regressioner, endelig audit og små commits.
+Næste: målrettet testomkontrol og commit af sammenhængende kildeændringer.
 
 Recovery: C:\Users\jvils\.codex\.chatgpt-projects\g-p-6aaef4dd0ec48191922398dc4cb17b90\cleanup_work\round5
-start.json + start-working-bytes.zip + inventory.json. Kontrollér HEAD/diff,
-processer og færdige receipts ved afbrydelse; genstart intet automatisk.
-F-negative/UDEN/fælles faglig accept er korte kendte grænser, ikke denne rundes arbejde.
+start.json/start-working-bytes.zip, merge/campaign/followup receipts, tests.json.
+Kontrollér HEAD/diff/processer/receipts ved afbrydelse; genstart ikke automatisk.
+Kendte F-negative/UDEN/faglig accept-grænser bevares kort i MATHEMATICS.md.

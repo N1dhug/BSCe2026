@@ -11,8 +11,8 @@ import numpy as np
 
 from src.exe.run_model.bm_1 import curves
 from src.params.bm_1_response import BM1PiecewiseResponse
-from src.validation.bm_1.response_numerics import density_l1, compare_numerical_unit
-from src.validation.bm_1.response_cases import h1_training_records
+from src.validation.bm_1.response import density_l1, compare_numerical_unit
+from src.validation.bm_1.response import h1_training_records
 
 
 class CurveNumericsTests(unittest.TestCase):

@@ -7,8 +7,8 @@ from src.method.bm_1_response import CurveTrainingRecord,fit_shared_curve_pair
 from src.params.bm_1 import BM1ObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
 from src.validation.bm_1.response import _score_record
-from src.validation.bm_1 import response_fit_checks as checks
-from src.validation.bm_1.response_numerics import run_numerical_unit
+from src.validation.bm_1 import response as checks
+from src.validation.bm_1.response import run_numerical_unit
 
 class SelectedCurveTests(unittest.TestCase):
     def fixture(self):

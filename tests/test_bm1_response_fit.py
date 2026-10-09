@@ -89,20 +89,6 @@ class SharedCurveFitTests(unittest.TestCase):
         self.assertAlmostEqual(result['log_likelihood'],expected,places=12)
         self.assertTrue(np.isnan(result['records'][0]['log_evidence'][1]))
 
-    def test_curve_pilot_preserves_existing_output_without_replaying(self):
-        from pathlib import Path
-        from unittest.mock import patch
-        import tempfile
-        from src.exe.run_model.bm_1 import estimate
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder)/'existing.json'
-            path.write_text('preserve')
-            with patch('src.validation.bm_1.response.run_curve_fit_pilot',
-                       side_effect=AssertionError('replay')):
-                with self.assertRaises(FileExistsError):
-                    estimate.main(['curve-fit-pilot','--output',str(path)])
-            self.assertEqual(path.read_text(),'preserve')
-
 
 if __name__ == '__main__':
     unittest.main()

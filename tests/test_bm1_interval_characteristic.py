@@ -3,7 +3,7 @@
 import unittest
 import numpy as np
 
-from src.params.bm_1 import gaussian_log_likelihood
+from src.method.bm_1_observation import gaussian_log_likelihood
 from src.solver.finite_volume import finite_volume_1d_fitted
 from src.validation.bm_1.interval import finite_state_gaussian_reference
 from src.validation.bm_1.interval_characteristic import (

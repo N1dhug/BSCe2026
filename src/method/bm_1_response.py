@@ -14,7 +14,7 @@ import numpy as np
 from scipy.special import softmax
 
 from src.params.bm_1 import BM1ObservationSeries
-from src.params.bm_1_interval import BM1IntervalObservationSeries
+from src.params.bm_1 import BM1IntervalObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
 from src.validation import estimation as checks
 from src.validation.model.bm import bm_validation
@@ -142,7 +142,7 @@ def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
         raise ValueError('Initial-law builder must supply one mass per requested cell.')
     parameters = [record.parameters[0], f, g, *record.parameters[3:]]
     if isinstance(record.observations, BM1IntervalObservationSeries):
-        from src.method.bm_1_interval import run_interval_filter
+        from src.method.bm_1_interval_likelihood import run_interval_filter
         if accumulator_spacing is None or max_accumulator_nodes is None:
             raise ValueError('Interval replay requires explicit accumulator spacing and node budget.')
         return run_interval_filter(model, parameters, record.sigma_x, record.sigma_y,

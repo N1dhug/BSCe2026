@@ -3,10 +3,7 @@
 import unittest
 import numpy as np
 
-from src.validation.bm_1.response_cases import (
-    H1_IDS, build_h1_case, h1_candidate_panel, h1_design, h1_training_records,
-    response_price_support,
-)
+from src.validation.bm_1.response import H1_IDS, build_h1_case, h1_candidate_panel, h1_design, h1_training_records, response_price_support
 from src.validation.bm_1.estimation import build_f4_b_case
 
 

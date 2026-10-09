@@ -56,8 +56,8 @@ def run_interval_pilot(*, refine=False, progress=None):
     from scipy.special import betainc
     from src.method.bm_1_response import (CurveTrainingRecord, replay_curve_record,
         fit_shared_curve_pair)
-    from src.params.bm_1 import conservative_mass_transfer, bayes_update, mass_to_log, gaussian_log_likelihood
-    from src.params.bm_1_interval import BM1IntervalObservationSeries
+    from src.method.bm_1_observation import conservative_mass_transfer, bayes_update, mass_to_log, gaussian_log_likelihood
+    from src.params.bm_1 import BM1IntervalObservationSeries
     from src.params.bm_1_response import BM1PiecewiseResponse
     from src.solver.finite_volume import finite_volume_1d_fitted
     from src.solver.finite_volume_additive import propagate_additive

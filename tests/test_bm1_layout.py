@@ -123,7 +123,6 @@ class BMReviewEvaluatorTests(unittest.TestCase):
                     x: np.zeros_like(x), diffusion=lambda t, x: np.zeros_like(x), max_step=0.1, cfl=0.4)
 
 
-
 class ConsolidatedLayoutTests(unittest.TestCase):
     def test_expected_bm_entrypoints(self):
         import hashlib
@@ -191,7 +190,7 @@ class ConsolidatedLayoutTests(unittest.TestCase):
 
     def test_reference_cli_help(self):
         root = Path(__file__).resolve().parents[1]
-        for module in ('verify', 'optimize', 'refine', 'real_data', 'estimate'):
+        for module in ('verify', 'optimize', 'refine', 'real_data'):
             result = subprocess.run([sys.executable, '-B', '-m', 'src.exe.run_model.bm_1.' + module, '--help'],
                                     cwd=root, capture_output=True, text=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -252,10 +251,10 @@ class ReportingTests(unittest.TestCase):
         self.assertLess(len(outputs[0].splitlines()), 12)
 
     def test_default_output_paths_cannot_overwrite_retained_evidence(self):
-        from src.exe.run_model.bm_1 import verify, optimize, refine, real_data, estimate
+        from src.exe.run_model.bm_1 import verify, optimize, refine, real_data
         root = Path(__file__).resolve().parents[1]
         runs = root / 'files/output/bm_1/runs'
-        for module in (verify, optimize, refine, real_data, estimate):
+        for module in (verify, optimize, refine, real_data):
             with self.subTest(module=module.__name__):
                 self.assertTrue(module.OUTPUT_DIR.is_relative_to(runs))
         self.assertIsNone(real_data._plot_location(None))
@@ -295,27 +294,6 @@ class ReportingTests(unittest.TestCase):
                                                                  wraps=checks.validate_prices) as validate:
                 evaluator.evaluate([0.7, 0.3])
                 self.assertEqual(validate.call_count, 1)
-
-
-    def test_estimate_synthetic_writes_only_with_explicit_save(self):
-        import contextlib
-        import io
-        import tempfile
-        from src.exe.run_model.bm_1 import estimate
-        with tempfile.TemporaryDirectory() as folder:
-            output = Path(folder) / 'estimation'
-            with patch.object(estimate, 'OUTPUT_DIR', output):
-                stream = io.StringIO()
-                with contextlib.redirect_stdout(stream):
-                    result = estimate.main(['synthetic', '--sequence-id', '0'])
-                self.assertFalse(output.exists())
-                self.assertIn('raw boundary violations=0', stream.getvalue())
-                self.assertTrue(result.truth.valid)
-                with contextlib.redirect_stdout(io.StringIO()):
-                    estimate.main(['synthetic', '--sequence-id', '0', '--save'])
-            saved = list(output.glob('*.json'))
-            self.assertEqual(len(saved), 1)
-            self.assertGreater(saved[0].stat().st_size, 0)
 
 
 class F4DocumentationBuildTests(unittest.TestCase):
