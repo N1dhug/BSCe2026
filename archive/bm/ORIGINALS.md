@@ -70,3 +70,24 @@ En genskabelse af 09c602f kræver også de matchende afhængigheder fra det
 bevarede Git-commit/startsource og de oprindelige private inputs/resultater.
 Man må ikke lægge deltaen oven på 7249 og antage hashkompatibel resume.
 Den komplette 7249-pakke og dens restorevej ovenfor er uændret.
+
+<a id="round4-consolidation"></a>
+## Aktiv sammenlægning fra 26bdd15
+
+| Tidligere kilde | Aktiv ejer eller gendannelse |
+|---|---|
+| `bm_1_interval_precise.py` | `src/method/bm_1_interval_likelihood.py`; referenceberegning med lokale imports. |
+| `bm_1_g7_energy.py`, `bm_1_g7_matched.py` | `src/method/bm_1_g7_deterministic.py`; energilighed og uafhængig box-QP/KKT. |
+| `bm_1_g8_basis.py` | `src/method/bm_1_g8.py`; basis og bankfilter har én ejer. |
+| CLI `bm_1_h2_precise`, `bm_1_interval_characteristic`, `bm_1_parameter_pilot` | Oprindelige `src/exe/run_model/`-medlemmer i 7249-pakken ovenfor. |
+
+Alle syv slettede kilders ejerskab, hash og fulde destination findes i
+[stikortet](old-paths.json). Seks matcher 7249-pakken bytepræcist; G8-basis
+kræver det senere komplette commit `26bdd150a8514c759ca266416454fb6cd9a19ed9`.
+Det commit og den eksakte start-ZIP er bevaret i den lokale recovery-rod.
+Det samme gælder den fjernede `configs/bm/f4_week.json`; den svarer nu til
+quick-config med eksplicit negativt 24-timers filtercheck i BM-guiden.
+Ingen ny kilde-ZIP er føjet til repoet. Gamle checkpoints kræver fortsat
+deres komplette originale træ, private inputs og runtime; aktiv source
+omskrives ikke til gammel identitet. Den historiske crash-budgettest læser
+den eksakte pensionerede driver fra arkivet uden at starte dens kampagne.

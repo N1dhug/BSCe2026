@@ -1,19 +1,35 @@
-BM-F/G — aktuel filplan, fjerde gennemgang
+BM-F/G — gennemført filplan fra 26bdd15
 
-Kun egne F/G-oprettelser med Git-evidens kan sammenlægges/fjernes. Blandet eller
-ukendt ejerskab og149WM-afhængigheder bevares. Rådata/resultater er uændrede.
+Kun egne F/G-oprettelser ændret; Git-introduktioner og præcise gamle hashes
+findes i archive/bm/old-paths.json og recovery/round4/qa_structure.json.
 
-G: eksisterende g_weekday_backtest_adapter, bm_1_g_forecast og bm_1_g CLI
-samler inputkontrakt og fører deklareret populationsbinding gennem eksport.
-Eksisterende tests udvides; ingen ny manifestfiltype eller helperframework.
-F: konkrete aktive sammenlægninger vælges efter ejerskab og caller/artefaktkort;
-native matematik/grids/tolerancer og negative-inputguard bevares.
-Fælleskalender: fjern evt. ubenyttet produktions-extension efter alle brugere
-er håndteret; fit/scoring/identitetsgrænser og relevante tests bevares.
-Struktur: reducer overlap i eksisterende docs/configs, flyt kun vores materiale,
-fjern kun tomme, gennemsete mapper. Originalpakker/Git sikrer præcise gamle kilder.
-README ejer brug, MATHEMATICS ejer model/data, COMPARISON ejer evidens/tællinger,
-STATUS ejer checkpoints. Ingen nye permanente daterede delrapporter.
+AKTIV KODE
+src/method/bm_1_interval_precise.py → bm_1_interval_likelihood.py:
+fælles time-/checkpointkontrakt; uafhængig replay bevares med lokale imports.
+src/method/bm_1_g7_energy.py + bm_1_g7_matched.py → bm_1_g7_deterministic.py:
+energiligning og uafhængig box-QP/KKT; ubrugte historiske hjælpere fjernet.
+src/method/bm_1_g8_basis.py → bm_1_g8.py: basis hos bankfilterets ejer.
+src/exe/run_model/bm_1_h2_precise.py, bm_1_interval_characteristic.py og
+bm_1_parameter_pilot.py: afsluttede kampagnedrivere pensioneret; præcise
+originaler i eksisterende ZIP. Metoder og relevante tests er bevaret.
+weekday_backtest: ubenyttet callback-klasse fjernet; direkte adaptere.
+G-adapter, deployment og CLI: én inputvalidator, fælles artefaktkontrol og
+eksportejer; fitpopulation bindes til snapshots/TRAIN og videreføres til output.
+Ingen nye kildefiler, frameworks, grids, tolerancer eller modelparametre.
 
-Baseline:26bdd15. Midlertidige ejerskabs-/filanalyser og testbudget i recovery/round4.
-Gennemført filvis disposition føres her ved afslutning; ingen automatisk merge.
+BRUG OG TEKST
+configs/bm/f4_week.json: fjernet dublet; negativt 24h-check angives i CLI.
+Quick/open-week/frozen model og særskilte F/G-fitkontrakter bevares.
+README ejer kommandoer; MATHEMATICS model/data; COMPARISON evidens/tællinger;
+STATUS genoptagelse. Eksisterende arkivlinks og stikort er opdateret.
+Der er ikke oprettet nye daterede rapporter i repoet.
+
+BEVARELSE OG AFGRÆNSNING
+Syv kildefiler og én config fjernet; nul fysiske mapper fjernet.
+Alle berørte forældremapper er fortsat i brug, også med skjult/ignoreret indhold.
+bm_1_history har aktive kurve-/CLI-brugere; curve_control og terminal_tilt
+har selvstændige referencer/checkpoints. De bevares. season_overview har andet
+eller uklart ejerskab og berøres ikke. Root-links med beskyttede brugere bevares.
+WM149, fire råinput og alle 781 eksisterende outputs er byteuændrede.
+Originalarkivets 766 medlemmer og G-driver-delta genbruges. G8-basis' eksakte
+senere version findes i komplet Git26bdd15/startsource; ingen hashguard svækkes.

@@ -6435,5 +6435,91 @@
       "representation": "historical-driver-retirement",
       "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
     }
-  ]
+  ],
+  "round4_source_consolidation": {
+    "src/exe/run_model/bm_1_h2_precise.py": {
+      "action": "historical campaign wrapper retired; numerical validation kernel retained",
+      "destination": "archive/bm/originals/source-7249bf9.zip",
+      "introduced_by": [
+        "d6e805ea18833c12e7bd7ea8ff52de36e244e207|2026-10-06T02:37:59+02:00|JohanKV|Implement F4-H2 bounded precise candidate replay, cumulative budget and local pilot"
+      ],
+      "exact_before_commit": "26bdd150a8514c759ca266416454fb6cd9a19ed9",
+      "before_sha256": "ebebd18bdfaf060ccbd24878784e27919d0d31ba283f7f29fb3d84b7eda64c9b",
+      "archive": "archive/bm/originals/source-7249bf9.zip",
+      "archive_member": "src/exe/run_model/bm_1_h2_precise.py"
+    },
+    "src/exe/run_model/bm_1_interval_characteristic.py": {
+      "action": "historical campaign wrapper retired; numerical validation kernel retained",
+      "destination": "archive/bm/originals/source-7249bf9.zip",
+      "introduced_by": [
+        "c250cd248e0d5267a8746a3130da25ad2baecc0b|2026-10-05T18:13:42+02:00|JohanKV|Record bounded characteristic interval control and unresolved tail failures"
+      ],
+      "exact_before_commit": "26bdd150a8514c759ca266416454fb6cd9a19ed9",
+      "before_sha256": "bf719c20adecc26432bce1c6e36cf85f457c0a6ca69f605de32e688b1138dbe2",
+      "archive": "archive/bm/originals/source-7249bf9.zip",
+      "archive_member": "src/exe/run_model/bm_1_interval_characteristic.py"
+    },
+    "src/exe/run_model/bm_1_parameter_pilot.py": {
+      "action": "historical campaign wrapper retired; numerical validation kernel retained",
+      "destination": "archive/bm/originals/source-7249bf9.zip",
+      "introduced_by": [
+        "c8e5e55963ed2c2af4164dc1e5929b3b1ac15950|2026-10-05T14:09:54+02:00|JohanKV|Separate physical parameter pilot CLI from validation calculations"
+      ],
+      "exact_before_commit": "26bdd150a8514c759ca266416454fb6cd9a19ed9",
+      "before_sha256": "f89770163817969609fc46158be2dec7bff620bba82c018a57c7998de1a9a146",
+      "archive": "archive/bm/originals/source-7249bf9.zip",
+      "archive_member": "src/exe/run_model/bm_1_parameter_pilot.py"
+    },
+    "src/method/bm_1_g7_energy.py": {
+      "action": "merged active numerical owner",
+      "destination": "src/method/bm_1_g7_deterministic.py",
+      "introduced_by": [
+        "3bcba23c16630f09edc67f7cd07e6d2b54d798ce|2026-10-07T02:39:03+02:00|JohanKV|G7: register energy-neutral control protocol and restartable isolated runner"
+      ],
+      "exact_before_commit": "26bdd150a8514c759ca266416454fb6cd9a19ed9",
+      "before_sha256": "dd69143b18c9e936b09c1305b40b024bbe918c37908ab2dc8cfda6e3d5bcbb60",
+      "archive": "archive/bm/originals/source-7249bf9.zip",
+      "archive_member": "src/method/bm_1_g7_energy.py"
+    },
+    "src/method/bm_1_g7_matched.py": {
+      "action": "merged active numerical owner",
+      "destination": "src/method/bm_1_g7_deterministic.py",
+      "introduced_by": [
+        "a9865a43708d769e467210439faa63ce0a3c7dc1|2026-10-07T02:23:59+02:00|JohanKV|G7: freeze matched BM/WM fixed-target contract and audit saved price response"
+      ],
+      "exact_before_commit": "26bdd150a8514c759ca266416454fb6cd9a19ed9",
+      "before_sha256": "0e07d252316786e6999e5377c6d84ccaa72a26a2477175f7452fca9a396d5ec3",
+      "archive": "archive/bm/originals/source-7249bf9.zip",
+      "archive_member": "src/method/bm_1_g7_matched.py"
+    },
+    "src/method/bm_1_g8_basis.py": {
+      "action": "merged active numerical owner",
+      "destination": "src/method/bm_1_g8.py",
+      "introduced_by": [
+        "78f96c9a3ba51f4a1b6885d44aa317a260726072|2026-10-06T17:32:48+02:00|JohanKV|G8: decouple Beta basis width and locations; verify node posteriors on finer grid"
+      ],
+      "exact_before_commit": "26bdd150a8514c759ca266416454fb6cd9a19ed9",
+      "before_sha256": "2e5eeb211ba357a84af9bbb9a18e7ddd69f63931b21a74b4e4d94498f456114b"
+    },
+    "src/method/bm_1_interval_precise.py": {
+      "action": "merged active numerical owner",
+      "destination": "src/method/bm_1_interval_likelihood.py",
+      "introduced_by": [
+        "d6e805ea18833c12e7bd7ea8ff52de36e244e207|2026-10-06T02:37:59+02:00|JohanKV|Implement F4-H2 bounded precise candidate replay, cumulative budget and local pilot"
+      ],
+      "exact_before_commit": "26bdd150a8514c759ca266416454fb6cd9a19ed9",
+      "before_sha256": "d072db7d86144635ae2db002f7d5434b575bf3a6df041ee2f9dc6734d63092f6",
+      "archive": "archive/bm/originals/source-7249bf9.zip",
+      "archive_member": "src/method/bm_1_interval_precise.py"
+    },
+    "configs/bm/f4_week.json": {
+      "exact_before_commit": "26bdd150a8514c759ca266416454fb6cd9a19ed9",
+      "before_sha256": "38d3ab293db3e6eb11d74a406bbe4ea21446f58f7ec87154b7920d17ce07bf37",
+      "destination": "configs/bm/f4_quick.json with forecast-origin override",
+      "action": "remove duplicate invalid example; preserve explicit CLI check",
+      "introduced_by": [
+        "6c216d0"
+      ]
+    }
+  }
 }

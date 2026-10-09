@@ -11,10 +11,8 @@ resultater findes via [arkivindekset](../../archive/bm/INDEX.md).
 Workbookens installationsmetadata identificerer **13 MED-målere som huse med
 elvarme og 140 UDEN-målere som huse uden elvarme**. De 164 kolonne-ID'er blev
 matchet til metadata; de 13 medlemmer i F's gemte model matcher MED præcist.
-Det verificerer ikke solcelleudstyr. Tredje rundes metadataaudit genbrugte den
-tidligere audit og kontrollerede den mod samme workbook-SHA samt rå metadata;
-ingen observationsværdier blev indlæst. Kvittering: `round3/f/metadata_receipt.json`
-under recovery-roden i [status](STATUS.txt).
+Det verificerer ikke solcelleudstyr. Metadataaudit er bundet til den uændrede
+workbook; kvitteringen findes via [status](STATUS.txt).
 
 Fysisk enhed, demandtidszone, intervalstart/slut og netto-/bruttoforbrug er
 fortsat **ukendte fra leverandørmetadata**. Kørsel antager lokale Copenhagen
@@ -37,8 +35,12 @@ tilgængelig-måler-aggregation, enheds-/scenarieantagelser og præcis CSV-SHA.
 Den isolerede historik, træningsperioden, skalaer, syv baselines og begge
 snapshots bindes i kvitteringer før forecastfreeze. Det beviser byteidentitet,
 men ikke aggregatets rå medlemskab: status er `declared-unverified`.
-Den beskyttede MED-fitkerne afviser UDEN i den nye indgang. Den gamle models
-manglende medlemskab ommærkes ikke. Se [fitkontrakten](WEEKDAY_BACKTEST.md).
+De nye snapshots binder deklarationen med en markør. Model-eksport kontrollerer
+begge snapshots, træningsfingerprint, periode, skala og syv baselines og bevarer
+deklarationen helt frem til forecastmetadata. En ændret eller manglende binding
+afvises. Før-markør-fit kræver original freeze-evidens; ældre fit uden erklæring
+kan kun eksporteres med eksplicit `--legacy-unverified`.
+Den beskyttede MED-fitkerne understøtter ikke UDEN. Se [fitkontrakten](WEEKDAY_BACKTEST.md).
 
 ## Fælles normaliseret BM-balance
 
@@ -75,16 +77,19 @@ positive målere skjuler en uafklaret eksportkanal ved aggregering. Den gamle
 192 timer er der 122 negative celler i 44 timer, men kun tre negative
 gruppemidler. Middelkontrol alene ville ændre optagelseskriteriet.
 
-Hvis kanalen er netforbrug, repræsenterer ikke-negativ latent konsumtion ikke
-import minus produktion. En konkret forsvarlig udvidelse er en eksplicit
-produktions-/eksportkomponent i observationsoperatoren, med dokumenteret
-enhed og tilgængeligt scenarieinput; baseline og identifikation skal revurderes.
-En direkte signeret nettomodel er også mulig, men kræver en ny balance-/
-støttekontrakt og selvstændig validering.
-Hvis negative tal derimod er bekræftede målefejl omkring bruttoforbrug, kan
-Gaussian gruppelikelihood i princippet tillade negative $Y$, men admission og
-frossen træningspopulation skal vurderes eksplicit. Ingen af disse valg indføres
-her. Klipning, vilkårligt offset, målerudeladelse og populationsskift er ikke løsninger.
+Den nødvendige beslutning er **dataleverandørens kanaldefinition**: er negative
+celler signeret nettoimport (import minus eksport), eller fejl/støj i bruttoforbrug?
+Eksisterende installationsmetadata og [datakontraktens evidens](../../archive/bm/F/data-contract.md)
+afgør det ikke. Positiv multiplikativ skalering bevarer fortegnet. Den tidligere
+baseline/skala er frosset under forbrugskontrakten; en ny kanalfortolkning kan
+derfor kræve revurdering af både baseline og observation, ikke kun likelihood.
+
+Den mindste forsvarlige løsning nu er tidlig afvisning med måler, tidspunkt og
+råværdi, indtil kanalen er dokumenteret. For nettoimport kræves en eksplicit
+signeret observations-/balancemodel; for dokumenteret brutto-målestøj kræves
+en kvalitetspolitik og genvalidering af træningsgrundlaget. Gaussian-støtte er
+ikke alene begrundelse for ny admission. Ingen clipping, offsets, målerudeladelse,
+populationsskift eller mean-onlykontrol indføres. UDEN kræver eget fit og kontrakt.
 
 ### Normal F-beregningsvej
 
@@ -97,22 +102,19 @@ fremtidige observationer åbnes separat til evaluering efter prognosen.
 Det gemte tostykkefit har ét fælles kurvepar, frossen ugeprofil og nominel
 $C=1,k=2,\Xi=1,\sigma_x=.5,\sigma_y=.04$, med Beta(20,20) ved ny filtrering.
 Disse fysiske/støjparametre er ikke identificeret af startkommandoen.
-Inputvalideringen håndhæver nu korrekt $0\leq\Xi\leq1$; tidligere blev nul
-afvist tidligt, mens $\Xi>1$ kunne nå numerikken; rewardguard afviste først
-et faktisk domænebrud.
+Inputvalideringen håndhæver $0\leq\Xi\leq1$ før modelarbejdet.
 
-Den korte [likelihood-ejer](../../src/method/bm_1_interval_likelihood.py) har
-de fælles Thomas-faktorer, Fourier-/alias-/tailguards og konturbank. Tre
-primitives er flyttet AST-identisk fra historiske referenceharnesses.
+[Likelihood-ejeren](../../src/method/bm_1_interval_likelihood.py) samler Gaussian-
+kontrol, frosne timeinputs og replay/checkpointkontrakten. Den uafhængige precise-
+reference indlæser først sine referencekerner ved brug.
 [Native kernen](../../src/method/bm_1_interval_native.py) ejer operatorfrysning,
-frequency blocks og terminal-state-betingning; alle ti eksisterende definitioner
-er AST-identiske med PR146. [Intervalmomenter](../../src/method/bm_1_interval_forecast.py)
+frequency blocks og terminal-state-betingning; [intervalmomenter](../../src/method/bm_1_interval_forecast.py)
 ejer middel, varians og marginalkvantiler. Observationsvariansen tillægger
 $\sigma_y^2$ én gang. Nulmasse bevares som logmasse $-\infty$ / JSON null.
 
 Normal F4-indlæsning kræver ikke længere karakteristik-/terminalforsøgsdrivere.
-Native TRAIN-resume bruger stadig precise-referenceværktøjets checkpoint/units;
-den afhængighed påstås ikke fjernet. Historiske guards accepterer kun deres
+Native TRAIN-resume og den uafhængige reference deler likelihood-ejerens
+checkpoint/units; normale fits importerer ikke referencekernerne. Historiske guards accepterer kun deres
 eksakte originale kildeversioner, herunder krævet LF-repræsentation.
 
 ### Nye F-ugedagsfits og genoptagelse

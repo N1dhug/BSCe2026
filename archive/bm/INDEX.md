@@ -45,9 +45,8 @@ at gentage en gammel kampagne. Deres egne kilde-/budgetkontrakter gælder.
 
 | Bevaret modul | Selvstændig opgave |
 |---|---|
-| `src.exe.run_model.bm_1_h2_precise`, `src.exe.run_model.bm_1_history` | Afgrænsede H2-/TRAIN-likelihoodreferencer; hverken implicit baselinefit, populationsvalg eller holdoutevaluering. |
-| `src.exe.run_model.bm_1_interval_characteristic`, `src.exe.run_model.bm_1_interval_curve_control`, `src.exe.run_model.bm_1_interval_terminal_tilt` | Syntetisk interval-/kurvekontrol og terminal-contour-reference med egne checkpoints. |
-| `src.exe.run_model.bm_1_parameter_pilot` | Begrænset fysisk parameterpilot; ingen automatisk historisk kampagne. |
+| `src.exe.run_model.bm_1_history` | Afgrænsede H2-/TRAIN-likelihoodreferencer; hverken implicit baselinefit, populationsvalg eller holdoutevaluering. |
+| `src.exe.run_model.bm_1_interval_curve_control`, `src.exe.run_model.bm_1_interval_terminal_tilt` | Syntetisk interval-/kurvekontrol og terminal-contour-reference med egne checkpoints. |
 | `src.exe.run_model.bm_1.verify`, `src.exe.run_model.bm_1.refine` | Numeriske referencecases og forfining af faste planer. |
 | `src.exe.run_model.bm_1.optimize`, `src.exe.run_model.bm_1.real_data` | Pris-/F3-referenceberegninger, adskilt fra normal prognose. |
 | `src.exe.run_model.bm_1.estimate`, `src.exe.run_model.bm_1.curves` | Bevarede F-estimations-/H1-referencespor. |
@@ -66,6 +65,11 @@ er pensioneret fra aktiv CLI. Det samme gælder F's fire faste forsøgsdrivere
 `bm_1_interval_joint_cn`, `bm_1_interval_joint_cn_day`.
 Præcise originale bytes og tilhørende versioner findes i [originaloversigten](ORIGINALS.md#round3-retirements);
 de genbrugelige metodekerner og deres faglige tests bliver aktive.
+
+Fjerde gennemgang pensionerer også `bm_1_h2_precise`,
+`bm_1_interval_characteristic` og `bm_1_parameter_pilot`. Fire små metodefiler
+er samlet hos deres eksisterende ejere; ligninger og uafhængige referencer
+bevares. Se [præcise versioner og destinationer](ORIGINALS.md#round4-consolidation).
 
 ## Lokale resultater og nødvendige kopier
 

@@ -66,7 +66,9 @@ Før fit gemmes populationserklæring og den isolerede historiks fingerprint.
 Efter fit bindes de faktiske træningsgrænser, skalaer, syv baselines og begge
 snapshots til erklæringen. Alle kvitteringer fryses før scoring. Ændret CSV,
 gruppe, målerliste, modelkilde eller config kan ikke genoptages som samme run.
-Dette er en ny fitkontrakt; gamle G-snapshots forbliver `legacy-unverified`.
+Eksport af et nyt fit bevarer den fulde deklaration gennem `export-model` og
+`forecast`; [startguiden](README.md#g-modelpakke-ny-prognose-og-genlæsning) viser
+kommandoerne. Ældre G-snapshots uden binding forbliver `legacy-unverified`.
 Et nyt historisk fit kræver sit eget aftalte budget og er ikke kørt her.
 
 `observations.csv` har `Datetime,Demand` og åbnes først, når alle bestilte
@@ -144,9 +146,8 @@ Der er ingen automatisk genstart. F4's separate `--resume` er en anden
 checkpointkontrakt. Ligninger, numeriske gates og tests står i
 [matematikoversigten](MATHEMATICS.md).
 
-Andre adapters kan bruge `WeekdayCallbacks` eller `forecast_week` fra
-`src.tools.weekday_backtest`; kalenderen ejer ikke modellernes likelihood,
-baseline, prior eller konvergensregler. Nye adapters kræver deres egen kontrakt.
+F/G-adapterne ejer hver deres `forecast_week`; kalenderen ejer tidsvinduer,
+inputisolering, freeze og scoring. Det tidligere generiske callbacklag er fjernet.
 
 ## Tid, manglende data og usikkerhed
 
