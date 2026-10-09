@@ -194,7 +194,9 @@ def _consumption_values(frame, *, phase):
         row, column = np.argwhere(invalid)[0]
         raise ValueError('Consumption must be finite/nonnegative or explicitly missing. '
             f'First invalid {phase} cell: timestamp={frame.index[row].isoformat()}, '
-            f'column={frame.columns[column]!r}, value={raw[row, column]!r}.')
+            f'column={frame.columns[column]!r}, value={raw[row, column]!r}. '
+            'The saved consumption contract has no verified net/gross channel definition; '
+            'Gaussian support alone does not justify admitting negative meter values.')
     return raw
 
 

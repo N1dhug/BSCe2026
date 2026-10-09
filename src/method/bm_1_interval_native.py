@@ -13,7 +13,8 @@ from numba import njit
 from scipy.special import logsumexp
 
 from src.method.bm_1_interval_likelihood import (
-    CharacteristicNumericalError, _positive_implicit_factors, _terminal_candidate)
+    CharacteristicNumericalError, _positive_implicit_factors, _terminal_candidate,
+    digest, freeze_hourly_record, replay_units, validate_checkpoint)
 
 
 @njit(cache=True, fastmath=False, inline='always')
@@ -278,7 +279,6 @@ def replay_native_candidate(spec, candidate, *, saved=None, limit_units=None,
     Gaps and missing observations propagate without evidence or midnight resets.
     A paused/failed prefix is never returned as a completed likelihood.
     """
-    from src.method.bm_1_interval_precise import digest, replay_units, validate_checkpoint
     import hashlib
     from pathlib import Path
     root = Path(__file__).resolve().parents[2]
@@ -352,7 +352,6 @@ def replay_native_record(record, f, g, *, settings, should_pause=None, checkpoin
                          mapper=None, state_callback=None):
     """Response-optimizer interface; numerical failures are never scalar costs."""
     from types import SimpleNamespace
-    from src.method.bm_1_interval_precise import freeze_hourly_record
     from src.method.bm_1_response import curve_pair_logits
     pieces = len(f.knots)-1
     candidate = dict(pieces=pieces, logits=curve_pair_logits(f, g, pieces=pieces).tolist())

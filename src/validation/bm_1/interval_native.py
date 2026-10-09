@@ -20,7 +20,7 @@ def small_operator(lo, di, up, rewards, steps):
 
 def algebra_control():
     from src.method.bm_1_interval_native import native_prediction, native_terminal_update
-    from src.method.bm_1_interval_precise import PRECISE_SETTINGS
+    from src.method.bm_1_interval_likelihood import PRECISE_SETTINGS
     from src.params.bm_1 import gaussian_log_likelihood
     # Asymmetric generator, two disconnected cells, one true zero and one
     # finite sub-float log mass. Dense solve is independent of log-Thomas.

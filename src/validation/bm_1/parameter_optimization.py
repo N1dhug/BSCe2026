@@ -1,7 +1,7 @@
 """Small conditional physical-parameter pilot; no replacement for F4 banks.
 
-Run via src.exe.run_model.bm_1_parameter_pilot with a new output directory. Only old synthetic
-DEVELOPMENT records are used. The registered design is written before fitting.
+The retired pilot driver is preserved in archive/bm/originals/source-7249bf9.zip.
+Only synthetic DEVELOPMENT records are used; the design is written before fitting.
 Every method gets its own cache and a strict count of full TRAIN evaluations,
 including finite differences; two starts share a fixed, reserved budget.
 """

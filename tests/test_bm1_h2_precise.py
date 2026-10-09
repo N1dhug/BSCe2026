@@ -2,13 +2,16 @@
 
 from copy import deepcopy
 import json
+import hashlib
+import importlib.util
+import zipfile
 from pathlib import Path
 import tempfile
 import unittest
 
 import numpy as np
 
-from src.method.bm_1_interval_precise import (
+from src.method.bm_1_interval_likelihood import (
     candidate_panel, digest, replay_precise_candidate, validate_checkpoint)
 
 
@@ -53,9 +56,21 @@ class PreciseH2Tests(unittest.TestCase):
             validate_checkpoint(prefix, changed, candidate)
 
     def test_crashed_reservation_stays_charged_and_validation_reserve_cannot_be_spent(self):
-        from src.exe.run_model.bm_1_h2_precise import campaign_reservation, PRIOR_COMPUTE_SECONDS
         from src.tools.bm_1_reports import _atomic_report
+        # This retired campaign's ledger remains scientific/recovery evidence.
+        archive = Path(__file__).resolve().parents[1]/'archive/bm/originals/source-7249bf9.zip'
+        with zipfile.ZipFile(archive) as stored:
+            source = stored.read('src/exe/run_model/bm_1_h2_precise.py')
+        self.assertEqual(hashlib.sha256(source).hexdigest(),
+                         'ebebd18bdfaf060ccbd24878784e27919d0d31ba283f7f29fb3d84b7eda64c9b')
         with tempfile.TemporaryDirectory() as directory:
+            original = Path(directory)/'src/exe/run_model/bm_1_h2_precise.py'
+            original.parent.mkdir(parents=True)
+            original.write_bytes(source)
+            spec = importlib.util.spec_from_file_location('original_h2_campaign', original)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            campaign_reservation, PRIOR_COMPUTE_SECONDS = module.campaign_reservation, module.PRIOR_COMPUTE_SECONDS
             path = Path(directory)/'campaign.json'
             # Represents an abruptly lost invocation: no orderly refund exists.
             ledger = dict(schema='f4-h2-campaign-budget-v1', ceiling_seconds=36000.,

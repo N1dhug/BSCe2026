@@ -1,4 +1,5 @@
 """Cheap native integration, continuity, chronology and failure-isolation checks."""
+import builtins
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -10,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from src.method.bm_1_interval_native import replay_native_candidate
-from src.method.bm_1_interval_precise import replay_precise_candidate, validate_checkpoint
+from src.method.bm_1_interval_likelihood import replay_precise_candidate, validate_checkpoint
 from src.tools.f_weekday_backtest_adapter import FWeekdayAdapter, make_adapter, _plain
 from src.tools.weekday_backtest import WeekWindow, WeekdayData, split_week, _fingerprint, run_backtest
 from src.tools.bm_1_reports import _atomic_report
@@ -105,7 +106,14 @@ class NativeTrainingTests(unittest.TestCase):
     def test_actual_optimizer_uses_native_train_and_returns_new_fit(self):
         config,model = fixture()
         adapter=FWeekdayAdapter(config,model)
-        with tempfile.TemporaryDirectory() as directory:
+        original_import = builtins.__import__
+        def native_only(name, *args, **kwargs):
+            if name in ('src.method.bm_1_interval_precise',
+                        'src.validation.bm_1.interval_characteristic',
+                        'src.validation.bm_1.interval_terminal_tilt'):
+                raise AssertionError('Normal native fit imported a research reference: '+name)
+            return original_import(name, *args, **kwargs)
+        with tempfile.TemporaryDirectory() as directory, patch('builtins.__import__', side_effect=native_only):
             result=adapter._fit(short_day(),Path(directory))
             self.assertEqual(result['pieces'],2)
             np.testing.assert_array_equal(result['logits'],[0.,0.])
