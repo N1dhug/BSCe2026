@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, INIT_F, aligned_wm4_data, day_start, fit_expected_output, fitted_initial_condition, model_input, model_output
-from src.exe.run_model.wm_4.output_model import output_callable
+from src.tools.baseline import output_callable
 from src.model.wm_4 import wm_4
 from src.params.wm_4 import qp_params
 
