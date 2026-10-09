@@ -240,9 +240,13 @@ class CompletedFitResumeTests(unittest.TestCase):
                 result=run_backtest(data.history,data.inputs,[data.window],adapter,root,resume=True)
             self.assertEqual(calls,list(range(7)))
             self.assertEqual(result['status'],'complete')
+            # A process can stop after publishing summary.json but before its
+            # latest-status mirror. Resume must repair that completed boundary.
+            (root/'run_status.json').write_text(json.dumps({'status':'paused'}), encoding='utf-8')
             with patch.object(adapter,'forecast_week',side_effect=AssertionError('repeated model work')):
                 again=run_backtest(data.history,data.inputs,[data.window],adapter,root,resume=True)
             self.assertEqual(result,again)
+            self.assertEqual(json.loads((root/'run_status.json').read_text(encoding='utf-8')),result)
 
     def test_explicit_resume_preserves_partial_attempt_and_retries_only_unfinished_fit(self):
         adapter=FWeekdayAdapter(*fixture());data=self.data();calls=[]

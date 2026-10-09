@@ -1,6 +1,8 @@
 """Shared calendar, isolated model callbacks, freeze-before-score and G wiring."""
 import hashlib
+import io
 import json
+from contextlib import redirect_stderr
 from pathlib import Path
 import tempfile
 import unittest
@@ -12,7 +14,7 @@ import pandas as pd
 from src.tools.bm_1_reports import _atomic_report
 from src.tools.weekday_backtest import (WeekWindow, WeekdayCallbacks, rolling_windows,
     split_week, split_weekday, run_backtest, score_predictions)
-from src.tools.g_weekday_backtest_adapter import GWeekdayAdapter
+from src.tools.g_weekday_backtest_adapter import GWeekdayAdapter, make_adapter
 from src.exe.run_model.weekday_backtest import main
 
 
@@ -20,6 +22,13 @@ def raw_frame():
     physical = pd.date_range('2022-01-01', '2022-05-01', freq='h', inclusive='left', tz='Europe/Copenhagen')
     index = physical.tz_localize(None); n = np.arange(len(index))
     return pd.DataFrame({'Demand':10+index.weekday+np.sin(n/9), 'Price':100+np.cos(n), 'Temp':n/100}, index=index)
+
+
+def g_manifest(**changes):
+    return {'schema':'bm1-g-weekday-input-v1', 'group':'MED', 'population_id':'MED_synthetic_available',
+            'measurement_columns':['synthetic_MED'], 'aggregation':'mean over available measured meters',
+            'demand_timestamp_label':'hour_start', 'history_csv_sha256':'a'*64,
+            'target_unit':'synthetic raw units', 'input_scenario_policy':'synthetic declared scenario', **changes}
 
 
 def callbacks(name, calls, *, fail=False):
@@ -90,7 +99,7 @@ class CalendarTests(unittest.TestCase):
         self.assertTrue(data.inputs.index.is_unique)
         naive = raw.copy(); naive.index = naive.index.tz_localize(None)
         with self.assertRaises(ValueError): split_week(naive,naive,WeekWindow('2022-10-24'))
-        g = GWeekdayAdapter()
+        g = GWeekdayAdapter(g_manifest())
         with self.assertRaises(ValueError): g.forecast_week(data,Path('unused'))
 
     def test_no_older_future_or_other_weekday_targets_leak(self):
@@ -205,7 +214,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_G_adapter_reuses_existing_math_and_budget_stop(self):
         raw=raw_frame(); data=split_week(raw,raw,WeekWindow('2022-04-11'),warmup_hours=24)
-        g=GWeekdayAdapter()
+        g=GWeekdayAdapter(g_manifest())
         with tempfile.TemporaryDirectory() as temp, patch('src.tools.g_weekday_backtest_adapter.model.fit_rolling') as fit:
             fit.return_value={'status':'unfinished','reports':[],'snapshot':None,'seconds':0.}
             with self.assertRaisesRegex(RuntimeError,'no automatic retry'):
@@ -214,18 +223,27 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(fit.call_args.kwargs['baseline_policy'],'weekday')
             pd.testing.assert_frame_equal(fit.call_args.args[0],data.history)
             self.assertEqual(g.metadata['fit_budget']['per_weekday']['G_calls'],750)
+            binding=json.loads((Path(temp)/'population_binding.json').read_text())
+            self.assertEqual(binding['metadata']['measurement_columns'],['synthetic_MED'])
+            self.assertEqual(binding['membership_status'],'declared-unverified')
+            self.assertFalse((Path(temp)/'fit_population_binding.json').exists())
 
     def test_G_success_writes_own_snapshots_and_exports_before_return(self):
         raw=raw_frame(); data=split_week(raw,raw,WeekWindow('2022-04-11'),warmup_hours=24)
         table=pd.DataFrame({'baseline':1.,'g_prediction_output_mean':2.,'wm_prediction_output_mean':3.},index=data.inputs.index)
-        fitted={'status':'complete','snapshot':{'own':'parent'},'historical_replay':data.history,'seconds':0.}
+        snapshot={'own':'parent', 'population':'MED mean over available measured meters',
+                  'training_start':str(data.window.start), 'training_end_exclusive':str(data.window.origin),
+                  'training_fingerprint':'synthetic training hash', 'scales':{'demand_min':1.,'demand_scale':2.},
+                  'days':[{'weekday':d,'baseline':{'synthetic':d}} for d in range(7)]}
+        fitted={'status':'complete','snapshot':snapshot,'historical_replay':data.history,'seconds':0.}
         refined={'snapshot':{'own':'derived'},'historical_replay':data.history}
         with tempfile.TemporaryDirectory() as temp, \
              patch('src.tools.g_weekday_backtest_adapter.model.fit_rolling',return_value=fitted) as fit, \
              patch('src.tools.g_weekday_backtest_adapter.numerical.refine_for_export',return_value=refined) as refine, \
              patch('src.tools.g_weekday_backtest_adapter.numerical.predict_comparison',return_value={'predictions':table}) as predict, \
              patch('src.tools.g_weekday_backtest_adapter.write_forecast') as write:
-            result=GWeekdayAdapter().forecast_week(data,Path(temp))
+            g=GWeekdayAdapter(g_manifest())
+            result=g.forecast_week(data,Path(temp))
             pd.testing.assert_frame_equal(result,table)
             self.assertTrue((Path(temp)/'weekday_snapshot.json').exists())
             self.assertTrue((Path(temp)/'weekday_export_snapshot.json').exists())
@@ -233,6 +251,79 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(predict.call_args.args[0],refined['snapshot'])
             pd.testing.assert_frame_equal(predict.call_args.args[1],data.inputs)
             write.assert_called_once()
+            binding=json.loads((Path(temp)/'fit_population_binding.json').read_text())
+            self.assertEqual(binding['metadata']['input_manifest'],g_manifest())
+            self.assertFalse(binding['metadata']['history_file_sha256_verified'])
+            self.assertEqual(binding['training_start'],str(data.window.start))
+            self.assertEqual(binding['training_end_exclusive'],str(data.window.origin))
+            self.assertEqual(binding['scales'],snapshot['scales'])
+            self.assertEqual(binding['fitted_training_fingerprint'],snapshot['training_fingerprint'])
+            self.assertEqual(len(binding['baseline_sha256']),7)
+            from src.tools.g_weekday_backtest_adapter import _fingerprint, model
+            self.assertEqual(binding['history_sha256'],_fingerprint(data.history))
+            self.assertEqual(binding['snapshot_sha256'],model.residual.snapshot_fingerprint(snapshot))
+            self.assertEqual(binding['export_snapshot_sha256'],model.residual.snapshot_fingerprint(refined['snapshot']))
+
+    def test_G_manifest_rejects_unknown_or_mismatched_population_before_fit(self):
+        invalid=[None, {}, g_manifest(group='UDEN'), g_manifest(measurement_columns=[]),
+                 g_manifest(measurement_columns=['a_MED','b_UDEN']), g_manifest(measurement_columns=['a_MED','a_MED']),
+                 g_manifest(measurement_columns=['_MED']), g_manifest(population_id='UDEN_wrong'),
+                 g_manifest(aggregation='sum'), g_manifest(history_csv_sha256='unknown')]
+        with patch('src.tools.g_weekday_backtest_adapter.model.fit_rolling') as fit:
+            for config in invalid:
+                with self.subTest(config=config), self.assertRaises(ValueError):
+                    GWeekdayAdapter(config)
+            fit.assert_not_called()
+        config=g_manifest(); g=GWeekdayAdapter(config); config['measurement_columns'].append('changed_MED')
+        self.assertEqual(g.metadata['measurement_columns'],['synthetic_MED'])
+
+    def test_G_fit_population_and_window_mismatch_prevents_export(self):
+        raw=raw_frame(); data=split_week(raw,raw,WeekWindow('2022-04-11'),warmup_hours=24)
+        expected={'population':'MED mean over available measured meters',
+                  'training_start':str(data.window.start), 'training_end_exclusive':str(data.window.origin)}
+        for key,value in [('population','UDEN'),('training_start','2021-01-01'),('training_end_exclusive','2023-01-01')]:
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as temp, \
+                 patch('src.tools.g_weekday_backtest_adapter.model.fit_rolling') as fit, \
+                 patch('src.tools.g_weekday_backtest_adapter.numerical.refine_for_export') as refine:
+                fit.return_value={'status':'complete','snapshot':{**expected,key:value},'historical_replay':data.history}
+                with self.assertRaisesRegex(ValueError,'population or training window'):
+                    GWeekdayAdapter(g_manifest()).forecast_week(data,Path(temp))
+                refine.assert_not_called()
+                self.assertFalse((Path(temp)/'weekday_snapshot.json').exists())
+
+    def test_G_factory_binds_exact_csv_bytes_and_rejects_later_change(self):
+        with tempfile.TemporaryDirectory() as temp:
+            history=Path(temp)/'history.csv'; history.write_bytes(b'Datetime,Demand,Price,Temp\n')
+            config=g_manifest(history_csv_sha256=hashlib.sha256(history.read_bytes()).hexdigest())
+            manifest=Path(temp)/'manifest.json'; manifest.write_text(json.dumps(config))
+            g=make_adapter(manifest,history)
+            self.assertTrue(g.metadata['history_file_sha256_verified'])
+            history.write_bytes(b'changed')
+            with self.assertRaisesRegex(ValueError,'SHA256'): g.verify_history_file()
+            with self.assertRaisesRegex(ValueError,'SHA256'): make_adapter(manifest,history)
+            manifest.write_text(json.dumps(g_manifest(group='UDEN')))
+            with patch('src.tools.g_weekday_backtest_adapter._sha',side_effect=AssertionError('history must remain unopened')):
+                with self.assertRaisesRegex(ValueError,'MED only'): make_adapter(manifest,history)
+
+    def test_G_cli_requires_manifest_and_rejects_UDEN_before_input(self):
+        args=['--first-origin','2022-04-11','--last-origin','2022-04-11','--output','unused',
+              '--history-csv','unopened.csv','--inputs-csv','unopened-inputs.csv']
+        with patch('src.exe.run_model.weekday_backtest._csv',side_effect=AssertionError('no data')), \
+             patch('src.tools.g_weekday_backtest_adapter.make_adapter') as factory, redirect_stderr(io.StringIO()):
+            for extra in ([], ['--group','UDEN','--adapter-config','unopened.json']):
+                with self.subTest(extra=extra), self.assertRaises(SystemExit) as stopped: main(args+extra)
+                self.assertEqual(stopped.exception.code,2)
+            factory.assert_not_called()
+
+    def test_F_cli_group_is_assertion_before_input(self):
+        args=['--first-origin','2022-04-11','--last-origin','2022-04-11','--output','unused',
+              '--history-csv','unopened.csv','--inputs-csv','unopened-inputs.csv',
+              '--adapter','F','--adapter-config','model.json','--group','UDEN']
+        with patch('src.exe.run_model.weekday_backtest._csv',side_effect=AssertionError('no data')), \
+             patch('src.tools.f_weekday_backtest_adapter.make_adapter') as factory, redirect_stderr(io.StringIO()):
+            factory.return_value.group='MED'
+            with self.assertRaises(SystemExit) as stopped: main(args)
+            self.assertEqual(stopped.exception.code,2)
 
     def test_plan_only_requires_no_data_and_does_not_load_G(self):
         with tempfile.TemporaryDirectory() as temp, patch('src.exe.run_model.weekday_backtest._csv',side_effect=AssertionError('no data')):

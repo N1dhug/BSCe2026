@@ -376,6 +376,7 @@ def _run_windows(selected, records, adapter, root, load_observations, resume):
             summary = json.loads((root/'summary.json').read_text(encoding='utf-8'))
             if summary['status'] != 'complete':
                 raise ValueError('Unexpected saved completion status.')
+            _atomic_report(root/'run_status.json', summary, replace_existing=True)
             print('complete: all frozen weeks reused; no model work or rescoring', flush=True)
             return summary
         reports = []

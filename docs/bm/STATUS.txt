@@ -101,3 +101,19 @@ faktisk gendannet i separate nye workspace-mapper; ingen modeller startet.
 fjernet (plus ét lokalt alias). Alle tre keepere og backupmedlemmer verificeret.
 Se round3/structure/final_archive_result_qa.json. WM149 fortsat uændrede.
 Næste: nye G-fitguards, CLI, faste tællinger og den endelige dokumentstatus.
+
+AFSLUTTET POPULATION OG BRUGERKOMMANDOER
+Nye G-fit kræver MED-manifest, præcis metererklæring og history-CSV-SHA.
+UDEN/manglende deklaration afvises før data/fit; råmedlemskab er eksplicit
+declared-unverified. Kvitteringer binder historie, perioder, skala/baseline
+og snapshots. 9 syntetiske tests består3,109s. Ingen historisk fit kørt.
+Complete-weekday-resume reparerer nu også en stale run_status; snæver test
+består2,844s. Ingen fit/forecast genkørt af selve denne resume-test.
+14 sidste CLI-kontroller består39,297s proces i alt, herunder en nødvendig
+G-prognoseregression efter sourceændringen:2,674s,168timer,15numeriskefelter
+eksakte mod den tidligere nye uge. Originalmodellen genkonverteret til en NY
+model_current-mappe; tidligere målinger/modeller er ikke ommærket.
+F --check/read og negativ/gruppeskift/cutoff-afvisning, G check/show og
+gruppe/cutoff-afvisning samt F-plan-only/G-manglende manifest er kontrolleret.
+Kvitteringer: round3/final_cli, g/population_guard og f/complete_status_*.
+Næste: dokumenttælling, links, samlet budget, ren branch og endelig status.
