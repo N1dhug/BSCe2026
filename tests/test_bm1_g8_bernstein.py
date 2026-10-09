@@ -3,7 +3,7 @@ import json
 import unittest
 import numpy as np
 from src.method.bm_1_g8 import context, bank_filter, G8BankOrigin
-from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND, prior_coefficients
+from src.method.bm_1_g8 import BERNSTEIN_BASIS_KIND as BASIS_KIND, prior_coefficients
 from src.params.bm_1 import BM1ObservationSeries
 
 class BernsteinTests(unittest.TestCase):

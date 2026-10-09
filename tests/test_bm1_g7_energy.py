@@ -1,8 +1,8 @@
 """Independent exact QP and Euler balance identities; no historical replay."""
 import unittest
 import numpy as np
-from src.method.bm_1_g7_energy import box_quadratic, energy_gap
-from src.method.bm_1_g7_matched import MatchedDeterministicControl
+from src.method.bm_1_g7_deterministic import box_quadratic, energy_gap
+from src.method.bm_1_g7_deterministic import MatchedDeterministicControl
 
 class EnergyControlTests(unittest.TestCase):
     def test_qp_bounds_equality_and_discrete_energy(self):

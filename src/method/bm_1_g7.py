@@ -8,8 +8,7 @@ from src.control.bm_1 import BM1ControlNumerics
 from src.control import objective as tracking
 from src.method.beta_mixture import PreparedBetaProjector, evolve_projected_density
 from src.method.bm_1_estimation import bm1_observation_update, parameter_bank_weights
-from src.method.bm_1_g8 import G8BankOrigin
-from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND
+from src.method.bm_1_g8 import G8BankOrigin, BERNSTEIN_BASIS_KIND as BASIS_KIND
 
 
 class OwnedBankPriceEvaluator:

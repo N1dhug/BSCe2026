@@ -107,7 +107,7 @@ Efter statiske kontroller blev eget M254257-filter gennemført. Den særskilte 5
 
 Dette er numerisk accept af den rekursive repræsentation på den ene syntetiske case. Det er ikke historisk intervalaccept, fysisk parameteridentifikation eller accept af en senere G7-optimizer.
 
-Kilder: [Bernstein-udledning](posterior-and-basis.md#g8-bernstein-review), [posterior-basis og reference](posterior-and-basis.md#g8-posterior-basis-review), [M254257](posterior-and-basis.md#g8-m254-filter-review), [M254513](posterior-and-basis.md#g8-m254-refinement-review). Implementation: [typed M254](../../../src/method/bm_1_g8_basis.py), [cellebasis](../../../src/method/bm_1_g8_basis.py).
+Kilder: [Bernstein-udledning](posterior-and-basis.md#g8-bernstein-review), [posterior-basis og reference](posterior-and-basis.md#g8-posterior-basis-review), [M254257](posterior-and-basis.md#g8-m254-filter-review), [M254513](posterior-and-basis.md#g8-m254-refinement-review). Implementation: [typed M254 og cellebasis](../../../src/method/bm_1_g8.py).
 
 
 ## Udledning af den særskilte lokale Beta-reference
@@ -260,4 +260,4 @@ Det nye indlæsningsinterface og toleranceforsvar ovenfor er egne softwarevalg.
 
 ## Konkrete kode- og kontrolindgange
 
-[basis og Bernstein](../../../src/method/bm_1_g8_basis.py), [bankfilter](../../../src/method/bm_1_g8.py), [basis-tests](../../../tests/test_bm1_g8_bernstein.py), [reload-tests](../../../tests/test_bm1_g8_owned_reload.py). Historiske CLI- og controllerkommandoer findes kun i det restaurerede originaltræ; disse links peger på de bevarede matematiske komponenter. Tests er links til tidligere eller løbende kontroller, ikke påstået genkørt ved denne dokumentændring.
+[basis, Bernstein og bankfilter](../../../src/method/bm_1_g8.py), [basis-tests](../../../tests/test_bm1_g8_bernstein.py), [reload-tests](../../../tests/test_bm1_g8_owned_reload.py). Historiske CLI- og controllerkommandoer findes kun i det restaurerede originaltræ; disse links peger på de bevarede matematiske komponenter. Tests er links til tidligere eller løbende kontroller, ikke påstået genkørt ved denne dokumentændring.

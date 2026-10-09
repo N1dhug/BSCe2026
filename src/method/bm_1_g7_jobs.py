@@ -51,7 +51,6 @@ REQUIRED_SOURCE_PATHS = (
     'src/method/bm_1_distribution_panel.py',
     'src/method/bm_1_g8.py',
     'src/method/bm_1_g7.py',
-    'src/method/bm_1_g8_basis.py',
     'src/method/bm_1_g7_jobs.py',
 )
 
@@ -205,6 +204,8 @@ class CheckpointedBankControl:
             raise ValueError('This node adapter requires the frozen analytic G8 B/A fixture.')
         self.evaluator,self.store=evaluator,store
         self.root=Path(source_root);self.sources=dict(source_sha256)
+        if 'src/method/bm_1_g8_basis.py' in self.sources:
+            raise ValueError('G7 source layout changed; restore the original source tree for old checkpoints.')
         required=set(REQUIRED_SOURCE_PATHS)
         if not required.issubset(self.sources): raise ValueError('Required G source hashes are missing.')
         self.check_sources()

@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 
 from src.method.bm_1_g8 import context, known_filter, bank_filter, G8BankOrigin
-from src.method.bm_1_g8_basis import BASIS_KIND, dictionary_shapes
+from src.method.bm_1_g8 import BASIS_KIND, dictionary_shapes
 from src.params.bm_1 import BM1ObservationSeries
 
 

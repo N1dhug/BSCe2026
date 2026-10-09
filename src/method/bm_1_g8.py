@@ -13,13 +13,50 @@ import numpy as np
 from src.control.bm_1 import BM1Parameters
 from src.control.bm_1_handoff import BM1ForecastOrigin
 from src.control.objective import stochastic_tracking_objective
-from src.method.beta_mixture import PreparedBetaProjector
+from src.method.beta_mixture import PreparedBetaProjector, beta_cell_average_basis
 from src.method.bm_1_distribution_panel import build_problem, baseline, target
 from src.method.bm_1_estimation import run_parameter_bank, run_fv_filter, run_mixture_filter
 from src.model.bm_1 import bm_1
 from src.params.bm_1 import BM1ObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
 from src.validation import estimation as checks
+
+BASIS_KIND = 'g8-local-beta-41-k256-prior20-v1'
+
+def dictionary_shapes():
+    """Fresh shape vectors; fixed mean spacing 1/41 and concentration 256."""
+    means = (np.arange(41, dtype=float) + .5) / 41.
+    return np.r_[20., 256. * means], np.r_[20., 256. * (1. - means)]
+
+def localized_beta_basis(edges):
+    """Exact cell integrals using the shared stable CDF/complementary-CDF API.
+
+    Basis construction applies no target-dependent normalization or clipping.
+    The first component represents the original prior to roundoff on any grid.
+    """
+    alpha, beta = dictionary_shapes()
+    return beta_cell_average_basis(edges, alpha, beta)
+
+BERNSTEIN_BASIS_KIND = 'g8-bernstein-m254-cell-average-v1'
+
+DEGREE = 254
+
+def bernstein_basis(edges):
+    m = np.arange(DEGREE + 1, dtype=float)
+    return beta_cell_average_basis(edges, m + 1., DEGREE - m + 1.)
+
+def prior_coefficients():
+    """Elevate l_(19,38)=Beta(20,20); no renormalization or clipping."""
+    c = np.zeros(39)
+    c[19] = 1.
+    for n in range(38, DEGREE):
+        m = np.arange(n + 1, dtype=float)
+        higher = np.zeros(n + 2)
+        higher[:-1] += c * (n + 1. - m) / (n + 2.)
+        higher[1:] += c * (m + 1.) / (n + 2.)
+        c = higher
+    return c
+
 
 RHO_VALUES = np.array([.125, .1875, .25, .375, .5])
 SIGMA_Y = .03
@@ -60,13 +97,11 @@ def context(cells, degree=None, *, deadline=None, basis_kind=None):
     initial = beta_initial_cell_mass(edges)
     projector = None
     if basis_kind is not None:
-        from src.method.bm_1_g8_basis import BASIS_KIND, localized_beta_basis
-        from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as M254, bernstein_basis, prior_coefficients
-        if degree is not None or basis_kind not in (BASIS_KIND, M254):
+        if degree is not None or basis_kind not in (BASIS_KIND, BERNSTEIN_BASIS_KIND):
             raise ValueError('Declare one supported G8 basis, without a Bernstein degree.')
-        basis = bernstein_basis(edges) if basis_kind == M254 else localized_beta_basis(edges)
+        basis = bernstein_basis(edges) if basis_kind == BERNSTEIN_BASIS_KIND else localized_beta_basis(edges)
         projector = RecordingProjector(basis, dx)
-        if basis_kind == M254:
+        if basis_kind == BERNSTEIN_BASIS_KIND:
             projector.initial_coefficients = prior_coefficients()
             represented = projector.initial_coefficients @ basis * dx
             if not np.allclose(represented, initial, atol=1e-10, rtol=0.):
@@ -126,7 +161,6 @@ class G8BankOrigin:
     def __post_init__(self):
         time = checks.finite_scalar(self.time, 'cutoff')
         if self.basis_kind is not None:
-            from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND, bernstein_basis
             reference=bernstein_basis(np.asarray(self.x_edges))
             exact=np.array_equal(self.basis,reference)
             certified=False
@@ -140,7 +174,7 @@ class G8BankOrigin:
                     and np.max(np.abs(owned-reference)@widths)<=64*np.finfo(float).eps)
                 if not certified:
                     raise ValueError('Owned basis bytes or roundoff-only family certificate changed.')
-            if (self.backend != 'mixture' or self.basis_kind != BASIS_KIND
+            if (self.backend != 'mixture' or self.basis_kind != BERNSTEIN_BASIS_KIND
                     or not (exact or certified)):
                 raise ValueError('Typed M254 checkpoint must carry its declared exact basis.')
         elif self.basis_identity_sha256 is not None:
@@ -224,8 +258,7 @@ class G8BankOrigin:
         if hashlib.sha256(payload).hexdigest()!=expected_sha256:
             raise ValueError('Registered whole-origin bytes changed.')
         record=json.loads(payload)
-        from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND
-        if record.get('basis_kind')!=BASIS_KIND:
+        if record.get('basis_kind')!=BERNSTEIN_BASIS_KIND:
             raise ValueError('Verified portability loader requires supervisor M254.')
         record['basis_identity_sha256']=cls.basis_identity(record['x_edges'],record['basis'])
         return cls.from_record(record)

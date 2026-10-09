@@ -2,7 +2,7 @@
 import unittest
 import numpy as np
 
-from src.method.bm_1_g7_matched import MatchedDeterministicControl
+from src.method.bm_1_g7_deterministic import MatchedDeterministicControl
 
 
 class MatchedControlTests(unittest.TestCase):

@@ -12,7 +12,7 @@ from src.method.bm_1_g7 import OwnedBankPriceEvaluator
 from src.method.bm_1_g7_jobs import CheckpointedBankControl,NodeJobStore,NodeJobStop,source_manifest,REQUIRED_SOURCE_PATHS
 from src.method.bm_1_g7_jobs import full_job_plan,price_job_plan
 from src.method.bm_1_g8 import G8BankOrigin,context,RHO_VALUES
-from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND,prior_coefficients
+from src.method.bm_1_g8 import BERNSTEIN_BASIS_KIND as BASIS_KIND,prior_coefficients
 from src.method.bm_1_distribution_panel import baseline,target
 
 
@@ -38,6 +38,15 @@ class G7NodeJobTests(unittest.TestCase):
             return dict(coefficients=coeff,density=coeff@kw['basis'],diagnostics={'stub':True})
         with TemporaryDirectory() as tmp,patch('src.method.bm_1_g7.evolve_projected_density',side_effect=transport):
             store=NodeJobStore(tmp,prior_debit=0.,ceiling=100.)
+            old_layout = dict(hashes, **{'src/method/bm_1_g8_basis.py':'0'*64})
+            with self.assertRaisesRegex(ValueError, 'restore the original source tree'):
+                CheckpointedBankControl(evaluator,store,source_root=root,source_sha256=old_layout)
+            changed_owner = dict(hashes, **{'src/method/bm_1_g8.py':'0'*64})
+            with self.assertRaisesRegex(ValueError, 'Registered source changed'):
+                CheckpointedBankControl(evaluator,store,source_root=root,source_sha256=changed_owner)
+            missing_owner = {p:h for p,h in hashes.items() if p!='src/method/bm_1_g8.py'}
+            with self.assertRaisesRegex(ValueError, 'Required G source hashes are missing'):
+                CheckpointedBankControl(evaluator,store,source_root=root,source_sha256=missing_owner)
             run=CheckpointedBankControl(evaluator,store,source_root=root,source_sha256=hashes)
             with self.assertRaises(KeyboardInterrupt):run.evaluate([.3,.7],seconds_per_node=1.)
             self.assertEqual(calls,[0,1]);charged_before=store.charged()

@@ -4,7 +4,7 @@ import json
 import unittest
 import numpy as np
 from src.method.bm_1_g8 import G8BankOrigin,RHO_VALUES
-from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND,bernstein_basis,prior_coefficients
+from src.method.bm_1_g8 import BERNSTEIN_BASIS_KIND as BASIS_KIND,bernstein_basis,prior_coefficients
 from src.method.bm_1_distribution_panel import build_problem
 
 

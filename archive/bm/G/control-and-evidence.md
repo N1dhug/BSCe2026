@@ -76,7 +76,7 @@ Frosset WM er affint i u: residual $r=c+Hu$, $E=e_0+a^Tu$. Det giver en konveks 
 
 BM's fine neutrale energirester var cirka $-4.60\cdot10^{-10}$ og $-3.88\cdot10^{-10}$; WM's $1.47\cdot10^{-6}$, under $10^{-5}$-gaten. De nye constraints var dyrere i J, som forventeligt ved indsnævring af feasible muligheder. Dette er bevaret historisk kontrol, ikke den aktuelle endelige BM/WM-sammenligning.
 
-Kilder: [deterministisk kontrol](control-and-evidence.md#g7-deterministic-control-review), [matched kontrakt](control-and-evidence.md#g7-matched-control-review), [energineutral udledning og KKT](control-and-evidence.md#g7-energy-neutral-review). Implementation: [deterministisk evaluator](../../../src/method/bm_1_g7_deterministic.py), [energy](../../../src/method/bm_1_g7_energy.py).
+Kilder: [deterministisk kontrol](control-and-evidence.md#g7-deterministic-control-review), [matched kontrakt](control-and-evidence.md#g7-matched-control-review), [energineutral udledning og KKT](control-and-evidence.md#g7-energy-neutral-review). Implementation: [deterministiske kontroller, energilighed og box-QP](../../../src/method/bm_1_g7_deterministic.py).
 
 ## 11. G7: stokastisk mål, korte resultater og feedback
 
@@ -331,4 +331,4 @@ de er ikke en ny aktiv launcher eller en nulstilling af tidligere tid.
 
 ## Konkrete kode- og kontrolindgange
 
-[deterministisk evaluator](../../../src/method/bm_1_g7_deterministic.py), [energiligning](../../../src/method/bm_1_g7_energy.py), [job/receipt](../../../src/method/bm_1_g7_jobs.py), [energi-tests](../../../tests/test_bm1_g7_energy.py), [job-tests](../../../tests/test_bm1_g7_jobs.py). Historiske CLI- og controllerkommandoer findes kun i det restaurerede originaltræ; disse links peger på de bevarede matematiske komponenter. Tests er links til tidligere eller løbende kontroller, ikke påstået genkørt ved denne dokumentændring.
+[deterministiske kontroller, energilighed og box-QP](../../../src/method/bm_1_g7_deterministic.py), [job/receipt](../../../src/method/bm_1_g7_jobs.py), [energi-tests](../../../tests/test_bm1_g7_energy.py), [job-tests](../../../tests/test_bm1_g7_jobs.py). Historiske CLI- og controllerkommandoer findes kun i det restaurerede originaltræ; disse links peger på de bevarede matematiske komponenter. Tests er links til tidligere eller løbende kontroller, ikke påstået genkørt ved denne dokumentændring.
