@@ -21,13 +21,9 @@ from src.params.bm_1_response import BM1PiecewiseResponse
 from src.solver.finite_volume import finite_volume_1d_fitted
 from src.tools.input_generator.input_builder import input_builder
 from src.validation import estimation as checks
+from src.method.bm_1_interval_likelihood import (
+    CharacteristicNumericalError, _positive_implicit_factors)
 
-
-class CharacteristicNumericalError(ValueError):
-    """Expected unresolved numerical control, never a substituted fit cost."""
-    def __init__(self, reason, **diagnostics):
-        super().__init__(reason)
-        self.diagnostics = diagnostics
 
 
 def _log_scan(values, weights):
@@ -47,18 +43,6 @@ def _log_scan(values, weights):
         result[lo:hi] = products+np.logaddexp.accumulate(values[lo:hi]-products)
     return result
 
-
-def _positive_implicit_factors(lower, diagonal, upper):
-    """Positive Thomas factors for one exact tridiagonal matrix."""
-    pivots = diagonal.copy()
-    multipliers = np.empty_like(lower)
-    for j in range(1, len(diagonal)):
-        multipliers[j-1] = -lower[j-1]/pivots[j-1]
-        pivots[j] += multipliers[j-1]*upper[j-1]
-    if (np.any(pivots <= 0.) or not np.isfinite(pivots).all()
-            or np.any(lower > 0.) or np.any(upper > 0.)):
-        raise CharacteristicNumericalError('Positive implicit factorization failed.')
-    return pivots, multipliers
 
 
 def _bounded_reuse(cache, key, builder, counts, kind):

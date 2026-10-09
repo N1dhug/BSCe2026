@@ -12,9 +12,8 @@ import numpy as np
 from numba import njit
 from scipy.special import logsumexp
 
-from src.validation.bm_1.interval_characteristic import (
-    CharacteristicNumericalError, _positive_implicit_factors)
-from src.validation.bm_1.interval_terminal_tilt import _terminal_candidate
+from src.method.bm_1_interval_likelihood import (
+    CharacteristicNumericalError, _positive_implicit_factors, _terminal_candidate)
 
 
 @njit(cache=True, fastmath=False, inline='always')

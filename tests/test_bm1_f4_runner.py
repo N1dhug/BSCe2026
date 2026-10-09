@@ -93,7 +93,7 @@ class PortableF4Tests(unittest.TestCase):
         run.assert_not_called()
 
     def test_workbook_preparation_masks_incomplete_group_and_uses_only_past_prices(self):
-        config = json.loads((runner.ROOT/'root/f4_quick.json').read_text())
+        config = json.loads((runner.ROOT/'configs/bm/f4_quick.json').read_text())
         config['forecast_origin'] = '2022-02-21T02:00:00+01:00'
         start = pd.Timestamp(config['filter_start']); cutoff = pd.Timestamp(config['forecast_origin'])
         past = pd.date_range(cutoff-pd.Timedelta(days=7), cutoff, freq='h', inclusive='left')
@@ -110,6 +110,13 @@ class PortableF4Tests(unittest.TestCase):
         self.assertEqual(price_reader.call_args.kwargs['end'], cutoff)
         expected = prices.reindex(data['index'][2:]-pd.Timedelta(days=7)).to_numpy()
         np.testing.assert_array_equal(data['prices'][2:], expected)
+        original_hash = runner.file_hash
+        model_path = runner._path(config, 'model_file')
+        with patch.object(runner, 'read_raw_power_window', return_value=measured), \
+                patch.object(runner, 'read_raw_spot_window', return_value=prices), \
+                patch.object(runner, 'file_hash', side_effect=lambda p:'changed' if p == model_path else original_hash(p)):
+            with self.assertRaisesRegex(ValueError, 'Model file changed during preparation'):
+                runner.prepare(config)
         invalid = measured.copy()
         invalid.columns = [f'house_{i}_MED' for i in range(13)]
         for value in (-.3, np.inf):
@@ -129,6 +136,64 @@ class PortableF4Tests(unittest.TestCase):
         config['filter_start'] = '2022-02-20T00:00:00+01:00'
         with self.assertRaisesRegex(ValueError, 'curve fit/selection cutoff'):
             runner.prepare(config)
+
+    def test_population_binding_and_physics_reject_before_input(self):
+        config = json.loads((runner.ROOT/'configs/bm/f4_quick.json').read_text(encoding='utf-8'))
+        with patch.object(runner, 'read_raw_power_window') as read:
+            changed = dict(config, group='UDEN')
+            with self.assertRaisesRegex(ValueError, 'differs from saved fit group MED'):
+                runner.prepare(changed)
+            read.assert_not_called()
+        model = json.loads(runner._path(config, 'model_file').read_text(encoding='utf-8'))
+        binding = runner.model_population(model, 'MED')
+        self.assertEqual(binding['group'], 'MED')
+        self.assertEqual(binding['measurement_columns'], model['measurement_columns'])
+        for kind in ('mixed', 'duplicate', 'wrong id'):
+            changed = deepcopy(model)
+            if kind == 'mixed': changed['measurement_columns'][0] = 'house_UDEN'
+            elif kind == 'duplicate': changed['measurement_columns'][0] = changed['measurement_columns'][1]
+            else: changed['population_id'] = 'UDEN_13_fixed_mean'
+            with self.subTest(kind=kind), self.assertRaises(ValueError):
+                runner.model_population(changed)
+        with tempfile.TemporaryDirectory(dir=runner.ROOT) as temporary:
+            path = Path(temporary)/'model.json'
+            for xi in (-.1, 1.1):
+                changed = deepcopy(model); changed['physical']['Xi'] = xi
+                path.write_text(json.dumps(changed), encoding='utf-8')
+                with patch.object(runner, 'read_raw_power_window') as read:
+                    with self.assertRaisesRegex(ValueError, 'Xi must lie'):
+                        runner.prepare(dict(config, model_file=str(path)))
+                    read.assert_not_called()
+
+    def test_negative_member_is_not_hidden_by_positive_group_mean(self):
+        values = pd.DataFrame({'a_MED': [-.2, .3], 'b_MED': [1., float('nan')]},
+            index=pd.date_range('2022-02-21', periods=2, freq='h', tz='Europe/Copenhagen'))
+        self.assertGreater(values.iloc[0].mean(), 0)
+        with self.assertRaisesRegex(ValueError, "column='a_MED'"):
+            runner.fixed_population_mean(values, phase='filter')
+        values.iloc[0, 0] = .2
+        means, seen = runner.fixed_population_mean(values, phase='filter')
+        np.testing.assert_array_equal(seen, [True, False])
+        self.assertEqual(means[0], .6)
+        self.assertTrue(np.isnan(means[1]))
+
+    def test_read_result_preserves_identity_and_checks_exports_without_input(self):
+        with tempfile.TemporaryDirectory(dir=runner.ROOT) as temporary:
+            directory = Path(temporary)
+            (directory/'predictions.csv').write_text('saved output', encoding='utf-8')
+            (directory/'manifest.json').write_text(json.dumps(dict(identity='old-source')), encoding='utf-8')
+            summary = dict(identity='old-source', status='complete',
+                output_sha256={'predictions.csv': runner.file_hash(directory/'predictions.csv')})
+            (directory/'summary.json').write_text(json.dumps(summary), encoding='utf-8')
+            with patch.object(runner, 'prepare') as prepare, redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(runner.main(['--read-result', str(directory)]), 0)
+                prepare.assert_not_called()
+            result = json.loads(output.getvalue())
+            self.assertFalse(result['new_forecast'])
+            self.assertTrue(result['output_hashes_verified'])
+            (directory/'predictions.csv').write_text('changed', encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'checksum differs'):
+                runner.read_result(directory)
 
     def run_case(self, data, directory, evaluation, *, resume=False):
         # Reuse the actual native probability/likelihood kernels, with a small

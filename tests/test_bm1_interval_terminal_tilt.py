@@ -3,6 +3,10 @@
 import unittest
 import gzip
 import json
+import hashlib
+import os
+import tempfile
+import zipfile
 from copy import deepcopy
 from pathlib import Path
 
@@ -21,23 +25,50 @@ class TerminalTiltTests(unittest.TestCase):
         raw = Path('files/output/bm_1/runs/estimation/f4_h2_terminal_tilt_day_20261005.json.gz').read_bytes()
         saved = json.loads(gzip.decompress(raw))
         args = (saved['inputs_sha256'], saved['source'], saved['design'])
-        reused, proof = _frozen_terminal_reference(raw, *args)
-        self.assertEqual(reused['comparison'], saved['comparison'])
-        self.assertIn('src/solver/finite_volume.py', proof['unchanged_dependency_paths'])
-        windows_inputs = {p.replace('/', '\\'): sha for p, sha in args[0].items()}
-        _frozen_terminal_reference(raw, windows_inputs, *args[1:])
-        with self.assertRaisesRegex(ValueError, 'archived'):
-            _frozen_terminal_reference(gzip.decompress(raw)+b' ', *args)
-        with self.assertRaisesRegex(ValueError, 'inputs changed'):
-            _frozen_terminal_reference(raw, {}, *args[1:])
-        source = deepcopy(saved['source'])
-        source['sha256']['src/solver/finite_volume.py'] = 'changed'
-        with self.assertRaisesRegex(ValueError, 'dependencies changed'):
-            _frozen_terminal_reference(raw, args[0], source, args[2])
-        source = deepcopy(saved['source'])
-        source['sha256']['src/model/wm_4.py'] = 'unrelated WM change'
-        source['sha256']['src/exe/run_model/bm_1/deterministic.py'] = 'unrelated G change'
-        _frozen_terminal_reference(raw, args[0], source, args[2])
+        # Current relocated code must remain ineligible for historical byte-exact
+        # reuse. Positive coverage runs against an explicitly restored original.
+        with self.assertRaisesRegex(ValueError, 'update kernel changed'):
+            _frozen_terminal_reference(raw, *args)
+        root = Path.cwd()
+        relative = 'src/validation/bm_1/interval_terminal_tilt.py'
+        archive = root/'archive/bm/originals/source-7249bf9.zip'
+        manifest = json.loads((archive.with_suffix('.json')).read_text(encoding='utf-8'))
+        self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), manifest['archive_sha256'])
+        with zipfile.ZipFile(archive) as saved_source:
+            original = saved_source.read(relative)
+        self.assertEqual(hashlib.sha256(original).hexdigest(), manifest['files'][relative]['sha256'])
+        # The preserved Windows bytes have CRLF; PR #81's exact guard binds the
+        # LF Git representation. Verify both identities, without changing it.
+        original = original.replace(b'\r\n', b'\n')
+        self.assertEqual(hashlib.sha256(original.split(b'\ndef terminal_reference_control():')[0]).hexdigest(),
+            '351b08fa915b125b9df8b08bab031d8c1c452aa231a94d67831989bf125e8292')
+        with tempfile.TemporaryDirectory() as temporary:
+            restored = Path(temporary)/relative
+            restored.parent.mkdir(parents=True)
+            restored.write_bytes(original)
+            try:
+                os.chdir(temporary)
+                reused, proof = _frozen_terminal_reference(raw, *args)
+                self.assertEqual(reused['comparison'], saved['comparison'])
+                self.assertIn('src/solver/finite_volume.py', proof['unchanged_dependency_paths'])
+                windows_inputs = {p.replace('/', '\\'): sha for p, sha in args[0].items()}
+                _frozen_terminal_reference(raw, windows_inputs, *args[1:])
+                with self.assertRaisesRegex(ValueError, 'archived'):
+                    _frozen_terminal_reference(gzip.decompress(raw)+b' ', *args)
+                with self.assertRaisesRegex(ValueError, 'inputs changed'):
+                    _frozen_terminal_reference(raw, {}, *args[1:])
+                source = deepcopy(saved['source'])
+                source['sha256']['src/solver/finite_volume.py'] = 'changed'
+                with self.assertRaisesRegex(ValueError, 'dependencies changed'):
+                    _frozen_terminal_reference(raw, args[0], source, args[2])
+                source = deepcopy(saved['source'])
+                source['sha256']['src/model/wm_4.py'] = 'unrelated WM change'
+                source['sha256']['src/exe/run_model/bm_1/deterministic.py'] = 'unrelated G change'
+                _frozen_terminal_reference(raw, args[0], source, args[2])
+            finally:
+                os.chdir(root)
+        with self.assertRaisesRegex(ValueError, 'update kernel changed'):
+            _frozen_terminal_reference(raw, *args)
 
     def test_exact_gaussian_tails_and_recursive_revival_below_float_range(self):
         solver = finite_volume_1d_fitted()

@@ -1,19 +1,14 @@
 {
   "schema": "bm1-f4-runnable-v1",
-  "model_file": "root/f4_fixed_model_20261008.json",
+  "model_file": "configs/bm/f4_fixed_model_20261008.json",
   "input_workbook": "files/input/data/input.xlsx",
   "price_workbook": "files/input/data/prices.xlsx",
   "filter_start": "2022-02-21T00:00:00+01:00",
   "forecast_origin": "2022-02-21T01:00:00+01:00",
-  "forecast_hours": 168,
+  "forecast_hours": 3,
   "quantile_hours": [
     1,
-    6,
-    12,
-    24,
-    48,
-    72,
-    168
+    3
   ],
   "price_policy": "previous_week",
   "models": [
@@ -21,7 +16,7 @@
   ],
   "grid": "base",
   "workers": 4,
-  "max_seconds": 550,
-  "evaluate_forecast": false,
-  "output_dir": "files/output/bm_1/runs/f4_open_week"
+  "max_seconds": 600,
+  "evaluate_forecast": true,
+  "output_dir": "files/output/bm_1/runs/f4_quick"
 }

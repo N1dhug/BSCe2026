@@ -2,7 +2,7 @@
 
 No observations, fitting, data loading or automatic runtime admission. Full
 log state belongs to the caller's open branch. Legacy endpoint forecasts and
-the native likelihood are unchanged. See root/H2_COMPACT_ESTIMATION_REVIEW.md.
+the native likelihood are unchanged. See archive/bm/F/interval-forecast.md.
 """
 
 from dataclasses import dataclass
@@ -13,7 +13,7 @@ from numba import njit
 from scipy.special import logsumexp, ndtr
 
 from src.method.bm_1_interval_native import _mix, native_prediction
-from src.validation.bm_1.interval_characteristic import CharacteristicNumericalError
+from src.method.bm_1_interval_likelihood import CharacteristicNumericalError
 
 
 @njit(cache=True, fastmath=False, inline='always')

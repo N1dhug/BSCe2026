@@ -1,7 +1,12 @@
 """Portable F4 development runner using the existing native interval kernel.
 
-Fixed shared curves, hourly energy observations and one open forecast. This
-does not continue the historical research campaign or change its acceptance.
+Fixed shared curves, one fixed-population hourly mean and one open forecast.
+X is filling degree; in days dX=(D-B)/C dt + sigma_x X(1-X) dW, with
+D=B+Xi*tanh(k*(f(X)+g(U))/2)*(1-B if response>=0 else B).
+Y is the hourly mean of D plus nominal Gaussian observation noise, not an
+individual meter. prepare freezes history-only input; advance_hour predicts
+and optionally conditions one interval; run checkpoints; _export reads rows.
+This does not continue the historical campaign or change its acceptance.
 Run from the repository root: python -m src.exe.run_model.bm_1_f4 --help
 """
 
@@ -16,6 +21,42 @@ from pathlib import Path
 import sys
 import threading
 from time import perf_counter
+
+ROOT = Path(__file__).resolve().parents[3]
+
+
+def read_result(directory):
+    """Inspect saved output without loading model code or current input files."""
+    directory = Path(directory)
+    directory = directory if directory.is_absolute() else ROOT/directory
+    summary = json.loads((directory/'summary.json').read_text(encoding='utf-8'))
+    manifest = json.loads((directory/'manifest.json').read_text(encoding='utf-8'))
+    if not summary.get('identity') or summary['identity'] != manifest.get('identity'):
+        raise ValueError('Saved summary/manifest identities disagree.')
+    for name, expected in summary.get('output_sha256', {}).items():
+        path = (directory/name).resolve()
+        if not path.is_relative_to(directory.resolve()) or not path.is_file():
+            raise ValueError('Invalid saved output path.')
+        with path.open('rb') as handle:
+            if hashlib.file_digest(handle, 'sha256').hexdigest() != expected:
+                raise ValueError(f'Saved output checksum differs: {name}.')
+    return dict(action='read_saved_result', directory=str(directory.resolve()),
+        new_forecast=False, summary=summary, population=manifest.get('population'),
+        fit_binding=manifest.get('fit_binding'),
+        output_hashes_verified=bool(summary.get('output_sha256')),
+        source_identity_policy='Original saved identity retained; no claim that current code produced this result.')
+
+
+if __name__ == '__main__' and '--read-result' in sys.argv[1:]:
+    saved_parser = argparse.ArgumentParser(description='Read saved F4 results without model or input work.')
+    saved_parser.add_argument('--read-result', required=True, type=Path)
+    saved_args = saved_parser.parse_args()
+    try:
+        print(json.dumps(read_result(saved_args.read_result), indent=2))
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        saved_parser.error(str(exc))
+    raise SystemExit(0)
+
 
 # Only the executable parent reports boot: imported modules and spawn workers
 # must stay silent. This measures imports after the initial standard library.
@@ -33,7 +74,7 @@ import pandas as pd
 from scipy.special import betainc, logsumexp
 
 from src.exe.run_model.progress import runtime_text
-from src.method.bm_1_interval_contour_extension import EXTENDED_CENTERS
+from src.method.bm_1_interval_likelihood import EXTENDED_CENTERS
 from src.method.bm_1_interval_forecast import (
     interval_cdf_plan, native_interval_distribution, native_interval_moments,
 )
@@ -50,13 +91,15 @@ if _BOOT_STARTED is not None:
                          seconds=perf_counter()-_BOOT_STARTED, status='complete')
     print(f'F4 imports complete in {_IMPORT_PHASE["seconds"]:.3f}s.', file=sys.stderr, flush=True)
 
-ROOT = Path(__file__).resolve().parents[3]
 SCHEMA = 'bm1-f4-runnable-v1'
 OBSERVATION_CONTRACT = {
     'operator': 'Mean demand over [timestamp, interval_end), one elapsed hour.',
     'unit_status': 'Working assumption; consumption units and hour-start labels are not independently verified.',
     'observed_unit_assumed': 'kWh per hour; numerically equal to interval-average kW for this one-hour interval.',
     'prediction_unit_assumed': 'kW',
+    'population_aggregation': 'Fixed arithmetic mean; one missing meter masks the entire hour.',
+    'raw_negative_policy': 'Reject under the saved consumption contract; Gaussian Y itself is not restricted to nonnegative values. Net/gross metering is unverified.',
+    'group_labels': 'Workbook installation metadata maps MED/UDEN to with/without electric heating; solar equipment is unknown.',
     'quantile_probabilities': [.05, .50, .95],
     'uncertainty': 'Marginal initial-state/process and nominal Gaussian observation uncertainty; no parameter/input uncertainty or coverage calibration.',
 }
@@ -139,6 +182,12 @@ def _path(config, key):
 
 
 def _consumption_values(frame, *, phase):
+    """Keep the historical raw-data contract distinct from Gaussian Y support.
+
+    Nonnegativity is checked per meter before aggregation so cancellation cannot
+    silently admit an unclassified import/export channel. This is a conservative
+    domain restriction, not a mathematical consequence of Gaussian likelihood.
+    """
     raw = frame.to_numpy(dtype=float)
     invalid = np.isinf(raw) | (np.isfinite(raw) & (raw < 0))
     if invalid.any():
@@ -149,15 +198,61 @@ def _consumption_values(frame, *, phase):
     return raw
 
 
+def fixed_population_mean(frame, *, phase):
+    """One shared aggregation and missing-data rule for filter and evaluation."""
+    raw = _consumption_values(frame, phase=phase)
+    observed = np.isfinite(raw).all(axis=1)
+    values = np.full(len(raw), np.nan)
+    values[observed] = raw[observed].mean(axis=1)
+    return values, observed
+
+
+def model_population(model, requested_group=None):
+    """Bind a saved fit to its exact named group; selecting a group is not refit."""
+    columns = model['measurement_columns']
+    if (not isinstance(columns, list) or not columns or len(set(columns)) != len(columns)
+            or any(not isinstance(c, str) or '_' not in c for c in columns)):
+        raise ValueError('Saved model requires a nonempty unique measurement-column list.')
+    groups = {column.rsplit('_', 1)[1] for column in columns}
+    if len(groups) != 1 or not groups <= {'MED', 'UDEN'}:
+        raise ValueError('A saved model must bind one separate MED or UDEN group.')
+    group = groups.pop()
+    if not model.get('population_id', '').startswith(group+'_'):
+        raise ValueError('Saved population_id and measurement-column group disagree.')
+    if requested_group is not None and requested_group != group:
+        raise ValueError(f'Requested group {requested_group} differs from saved fit group {group}; provide a separately fitted model.')
+    return dict(group=group, population_id=model['population_id'], measurement_columns=columns,
+        aggregation=OBSERVATION_CONTRACT['population_aggregation'],
+        group_meaning='electric heating' if group == 'MED' else 'without electric heating',
+        solar_equipment='unknown')
+
+
 def prepare(config, *, progress=None):
     """Freeze inputs before numerical work; forecast targets are read later."""
     phases = []
     if config.get('schema') != SCHEMA:
         raise ValueError('Unknown F4 configuration schema.')
     model_path = _path(config, 'model_file')
-    model = json.loads(model_path.read_text(encoding='utf-8'))
+    model_bytes = model_path.read_bytes()
+    model = json.loads(model_bytes)
+    model_sha256 = hashlib.sha256(model_bytes).hexdigest()
     if model.get('schema') != 'bm1-f4-fixed-model-v1':
         raise ValueError('Unsupported fixed-model snapshot.')
+    population = model_population(model, config.get('group'))
+    # Validate the declared physical condition and prior before any propagation.
+    physical = model['physical']
+    for key in ('C', 'k', 'sigma_y'):
+        if not np.isfinite(physical[key]) or physical[key] <= 0:
+            raise ValueError(f'Invalid physical parameter {key}.')
+    if not np.isfinite(physical['Xi']) or not 0 <= physical['Xi'] <= 1:
+        raise ValueError('Relative flexibility Xi must lie in [0,1].')
+    if physical['time_unit'] != 'day' or not np.isfinite(physical['sigma_x']) or physical['sigma_x'] < 0:
+        raise ValueError('Physical parameters must use days with nonnegative process noise.')
+    prior = model['prior']
+    if not np.isfinite([prior['alpha'], prior['beta']]).all() or min(prior['alpha'], prior['beta']) <= 0:
+        raise ValueError('Invalid declared Beta prior.')
+    for candidate in model['candidates'].values():
+        curve_pair_from_logits(candidate['logits'], candidate['pieces'])
     zone = model['timezone']
     start = _timestamp(config['filter_start'], zone)
     cutoff = _timestamp(config['forecast_origin'], zone)
@@ -192,11 +287,7 @@ def prepare(config, *, progress=None):
         measurements = read_raw_power_window(paths['input_workbook'],
             columns=model['measurement_columns'], start=start, end=cutoff,
             timezone=zone, sheet=model['input_sheet'])
-    raw = _consumption_values(measurements, phase='filter')
-    # Fixed-population mean: any missing house masks the entire hour.
-    observed = np.isfinite(raw).all(axis=1)
-    values = np.full(count, np.nan)
-    values[observed] = np.mean(raw[observed], axis=1)
+    values, observed = fixed_population_mean(measurements, phase='filter')
     prices_start = min(start, cutoff-pd.Timedelta(days=7)) if config['price_policy'] == 'previous_week' else start
     with _phase('price_input', phases, progress):
         prices = read_raw_spot_window(paths['price_workbook'], start=prices_start, end=cutoff,
@@ -234,18 +325,6 @@ def prepare(config, *, progress=None):
     settings = dict(cells=n[grid+'_cells'], max_step=n[grid+'_max_step'],
         frequencies=n['frequencies'], span=n['span'], centers=list(EXTENDED_CENTERS),
         relative_guard=n['relative_guard'], overlap_log_tolerance=n['overlap_log_tolerance'])
-    # Validate the declared physical condition and prior before any propagation.
-    physical = model['physical']
-    for key in ('C', 'k', 'Xi', 'sigma_y'):
-        if not np.isfinite(physical[key]) or physical[key] <= 0:
-            raise ValueError(f'Invalid physical parameter {key}.')
-    if physical['time_unit'] != 'day' or not np.isfinite(physical['sigma_x']) or physical['sigma_x'] < 0:
-        raise ValueError('Physical parameters must use days with nonnegative process noise.')
-    prior = model['prior']
-    if not np.isfinite([prior['alpha'], prior['beta']]).all() or min(prior['alpha'], prior['beta']) <= 0:
-        raise ValueError('Invalid declared Beta prior.')
-    for candidate in model['candidates'].values():
-        curve_pair_from_logits(candidate['logits'], candidate['pieces'])
     with _phase('input_hash_after', phases, progress):
         if hashes != {key: file_hash(paths[key] if key in paths else supplied_path) for key in hashes}:
             raise ValueError('Input files changed during preparation.')
@@ -254,17 +333,25 @@ def prepare(config, *, progress=None):
         baseline=(baseline/power).tolist(), price=normalized_price.tolist(),
         horizon=[0., float(edges[-1])], time_unit='day', midnight_resets=0)
     with _phase('source_model_hash', phases, progress):
+        if file_hash(model_path) != model_sha256:
+            raise ValueError('Model file changed during preparation.')
         source = {path.relative_to(ROOT).as_posix(): file_hash(path)
                   for path in sorted((ROOT/'src').rglob('*.py'))}
         numerical_identity = dict(schema=SCHEMA, source_sha256=source,
             config={k:v for k,v in config.items() if k not in ('output_dir', 'workers', 'max_seconds')},
-            model_sha256=file_hash(model_path), input_sha256=hashes)
+            model_sha256=model_sha256, input_sha256=hashes)
     identity = digest(numerical_identity)
     manifest = dict(numerical_identity, identity=identity, model=model,
         start=start.isoformat(), origin=cutoff.isoformat(), end=horizon.isoformat(),
         filter_hours=count, forecast_hours=hours, quantile_hours=quantiles,
         missing_filter_hours=int((~observed).sum()), price_source=price_source,
-        observation_contract=OBSERVATION_CONTRACT,
+        observation_contract=OBSERVATION_CONTRACT, population=population,
+        fit_binding=dict(**population, model_sha256=numerical_identity['model_sha256'],
+            curve_information_cutoff=model['curve_information_cutoff'],
+            baseline_information_cutoff=model['baseline_information_cutoff'],
+            scales=model['scales'], baseline_sha256=digest(model['baseline_weekday_hour_kW']),
+            training_period=model.get('training_period', 'Not embedded in this portable snapshot; retained packet provenance binds the original TRAIN split.'),
+            provenance=model.get('provenance', {})),
         scientific_acceptance=False, initial_state_policy='Fresh declared Beta prior at filter_start; continuous assimilation, no daily reset.',
         includes_parameter_uncertainty=False, includes_input_uncertainty=False)
     return dict(config=config, manifest=manifest, model=model, paths=paths, preparation_phases=phases,
@@ -327,7 +414,9 @@ def _export(directory, data, saved, *, status, elapsed):
                 for row in stream['rows']]
     frame = pd.DataFrame(all_rows)
     if len(frame):
-        frame.to_csv(directory/'predictions.csv', index=False)
+        temporary = directory/'predictions.csv.tmp'
+        frame.to_csv(temporary, index=False)
+        temporary.replace(directory/'predictions.csv')
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
@@ -347,7 +436,9 @@ def _export(directory, data, saved, *, status, elapsed):
         axes[0].set_title('Unit and hour-start interpretation are working assumptions', fontsize=9)
         axes[1].set_ylabel('Endpoint state X'); axes[1].set_ylim(0, 1)
         fig.autofmt_xdate(); fig.tight_layout()
-        fig.savefig(directory/'comparison.png', dpi=140); plt.close(fig)
+        temporary = directory/'comparison.png.tmp'
+        fig.savefig(temporary, format='png', dpi=140); plt.close(fig)
+        temporary.replace(directory/'comparison.png')
     metrics = {}
     for name in data['config']['models']:
         rows = [r for r in all_rows if r['model'] == name]
@@ -371,7 +462,9 @@ def _export(directory, data, saved, *, status, elapsed):
         bias_definition='prediction minus observation',
         meaning='Fixed nominal physical parameters and shared fitted response. Development replay; no refit or population calibration.',
         forecast_assimilated_observations=0,
-        forecast_targets_read=saved.get('evaluation_complete', False))
+        forecast_targets_read=saved.get('evaluation_complete', False),
+        output_sha256={name:file_hash(directory/name) for name in ('predictions.csv', 'comparison.png')
+                       if (directory/name).is_file()})
     _atomic_report(directory/'summary.json', summary, replace_existing=True)
     return summary
 
@@ -412,6 +505,57 @@ def load_origin(directory, *, model='fitted'):
         price_response=BM1PiecewiseResponse.from_record(item['g']))
     return BM1ForecastOrigin(artifact['origin_time'], 'day', parameters, p['sigma_y'],
         item['x_edges'], np.exp(item['log_state']))
+
+
+def advance_hour(data, name, hour, logs, plan, pool):
+    """Predict an interval, condition only on past Y, then form one output row.
+
+    Predictions are prior to that hour's measurement; reported X is its ending
+    posterior (or open predicted state). No future observation enters this step.
+    """
+    cells = data['spec']['settings']['cells']
+    split = data['filter_hours']
+    candidate = data['model']['candidates'][name]
+    edges = data['spec']['input_edges']
+    operator = freeze_native_operator(data['spec'], candidate,
+        dict(start=edges[hour], end=edges[hour+1]))
+    predicted = native_interval_moments(operator, logs, plan.sigma_y)
+    forecast_hour = hour-split+1
+    q = None
+    if hour >= split and forecast_hour in data['quantiles']:
+        full = native_interval_distribution(operator, logs, plan, mapper=pool.mapper)
+        active = np.isfinite(predicted['log_state'])
+        if (not np.array_equal(active, np.isfinite(full['log_state']))
+                or np.max(np.abs(predicted['log_state'][active]-full['log_state'][active])) > 1e-7):
+            raise ValueError('Moment/characteristic forecast state disagreement.')
+        q = full['quantiles']
+        predicted['log_state'] = full['log_state']
+    seen = hour < split and bool(data['observed'][hour])
+    updated = native_terminal_update(operator, logs, data['values'][hour],
+        plan.sigma_y, data['spec']['settings'], mapper=pool.mapper) if seen else None
+    next_logs = updated['log_posterior_mass'] if seen else predicted['log_state']
+    _state(next_logs, cells)
+    p = np.exp(next_logs); x = operator['x']
+    power = data['model']['scales']['power_kW']
+    row = dict(timestamp=data['index'][hour].isoformat(),
+        timestamp_utc=data['index'][hour].tz_convert('UTC').isoformat(),
+        interval_end=(data['index'][hour]+pd.Timedelta(hours=1)).isoformat(),
+        interval_end_utc=(data['index'][hour]+pd.Timedelta(hours=1)).tz_convert('UTC').isoformat(),
+        interval_hours=1.,
+        phase='filter' if hour < split else 'forecast', horizon_hour=None if hour < split else forecast_hour,
+        baseline_kW=float(data['baseline'][hour]), spot_price_DKK_MWh=float(data['prices'][hour]),
+        prediction_kW=predicted['interval_mean']*power,
+        demand_variance_kW2=predicted['interval_variance']*power**2,
+        observation_variance_kW2=predicted['observation_variance']*power**2,
+        observed_kWh=float(data['values'][hour]*power) if seen else None,
+        assimilated=bool(seen), log_evidence=float(updated['log_evidence']) if seen else None,
+        state_mean=float(p@x), state_variance=float(p@((x-p@x)**2)),
+        maximum_abs_mass_error=max(predicted['maximum_abs_mass_error'],
+            updated['maximum_abs_mass_error'] if seen else 0.),
+        q05_kW=q[0]['value']*power if q else None,
+        q50_kW=q[1]['value']*power if q else None,
+        q95_kW=q[2]['value']*power if q else None)
+    return next_logs, row
 
 
 def run(data, *, directory, resume=False, max_seconds=600., workers=4, invocation_started=None, progress=None):
@@ -474,52 +618,12 @@ def run(data, *, directory, resume=False, max_seconds=600., workers=4, invocatio
         status = 'complete'
         try:
             for name, stream in saved['streams'].items():
-                candidate = data['model']['candidates'][name]
                 for hour in range(len(stream['rows']), len(data['index'])):
                     pool.check()
                     if (directory/'STOP').exists():
                         raise TimeoutError('STOP file found; remove it before --resume.')
                     with _phase('filtering' if hour < split else 'forecast', phases, progress, model=name, hour=hour+1):
-                        logs = stream['log_state']
-                        edges = data['spec']['input_edges']
-                        operator = freeze_native_operator(data['spec'], candidate,
-                            dict(start=edges[hour], end=edges[hour+1]))
-                        predicted = native_interval_moments(operator, logs, plan.sigma_y)
-                        forecast_hour = hour-split+1
-                        q = None
-                        if hour >= split and forecast_hour in data['quantiles']:
-                            full = native_interval_distribution(operator, logs, plan, mapper=pool.mapper)
-                            active = np.isfinite(predicted['log_state'])
-                            if (not np.array_equal(active, np.isfinite(full['log_state']))
-                                    or np.max(np.abs(predicted['log_state'][active]-full['log_state'][active])) > 1e-7):
-                                raise ValueError('Moment/characteristic forecast state disagreement.')
-                            q = full['quantiles']
-                            predicted['log_state'] = full['log_state']
-                        seen = hour < split and bool(data['observed'][hour])
-                        updated = native_terminal_update(operator, logs, data['values'][hour],
-                            plan.sigma_y, data['spec']['settings'], mapper=pool.mapper) if seen else None
-                        next_logs = updated['log_posterior_mass'] if seen else predicted['log_state']
-                        _state(next_logs, cells)
-                        p = np.exp(next_logs); x = operator['x']
-                        power = data['model']['scales']['power_kW']
-                        row = dict(timestamp=data['index'][hour].isoformat(),
-                            timestamp_utc=data['index'][hour].tz_convert('UTC').isoformat(),
-                            interval_end=(data['index'][hour]+pd.Timedelta(hours=1)).isoformat(),
-                            interval_end_utc=(data['index'][hour]+pd.Timedelta(hours=1)).tz_convert('UTC').isoformat(),
-                            interval_hours=1.,
-                            phase='filter' if hour < split else 'forecast', horizon_hour=None if hour < split else forecast_hour,
-                            baseline_kW=float(data['baseline'][hour]), spot_price_DKK_MWh=float(data['prices'][hour]),
-                            prediction_kW=predicted['interval_mean']*power,
-                            demand_variance_kW2=predicted['interval_variance']*power**2,
-                            observation_variance_kW2=predicted['observation_variance']*power**2,
-                            observed_kWh=float(data['values'][hour]*power) if seen else None,
-                            assimilated=bool(seen), log_evidence=float(updated['log_evidence']) if seen else None,
-                            state_mean=float(p@x), state_variance=float(p@((x-p@x)**2)),
-                            maximum_abs_mass_error=max(predicted['maximum_abs_mass_error'],
-                                updated['maximum_abs_mass_error'] if seen else 0.),
-                            q05_kW=q[0]['value']*power if q else None,
-                            q50_kW=q[1]['value']*power if q else None,
-                            q95_kW=q[2]['value']*power if q else None)
+                        next_logs, row = advance_hour(data, name, hour, stream['log_state'], plan, pool)
                         stream['log_state'] = next_logs
                         stream['rows'].append(row)
                         if hour+1 == split:
@@ -535,10 +639,7 @@ def run(data, *, directory, resume=False, max_seconds=600., workers=4, invocatio
                         columns=data['model']['measurement_columns'], start=pd.Timestamp(data['manifest']['origin']),
                         end=pd.Timestamp(data['manifest']['end']), timezone=data['model']['timezone'],
                         sheet=data['model']['input_sheet'])
-                    measured = _consumption_values(measured, phase='forecast evaluation')
-                    seen = np.isfinite(measured).all(axis=1)
-                    means = np.full(len(measured), np.nan)
-                    means[seen] = measured[seen].mean(axis=1)
+                    means, _ = fixed_population_mean(measured, phase='forecast evaluation')
                     for stream in saved['streams'].values():
                         for row, value in zip(stream['rows'][split:], means):
                             row['observed_kWh'] = float(value) if np.isfinite(value) else None
@@ -580,11 +681,13 @@ def run(data, *, directory, resume=False, max_seconds=600., workers=4, invocatio
 def main(argv=None):
     invocation_started = perf_counter()
     parser = argparse.ArgumentParser(description='Reuse the saved F4 curve fit, filter from a fresh Beta prior, and forecast hourly averages. No parameter refit.')
-    parser.add_argument('--config', type=Path, default=ROOT/'root/f4_quick.json')
+    parser.add_argument('--read-result', type=Path, help='Read saved summary and verify available output hashes; no new forecast or input loading.')
+    parser.add_argument('--config', type=Path, default=ROOT/'configs/bm/f4_quick.json')
     parser.add_argument('--filter-start', help='First assimilated hour (local time or explicit UTC offset); overrides config.')
     parser.add_argument('--forecast-origin', help='First forecast hour, after the saved fit cutoff; overrides config.')
     parser.add_argument('--forecast-hours', type=int, help='Number of elapsed forecast hours (1..168); overrides config.')
     parser.add_argument('--model', nargs='+', choices=('fitted', 'linear'), help='Saved response model(s); overrides config models.')
+    parser.add_argument('--group', choices=('MED', 'UDEN'), help='Must match the saved model population; does not refit.')
     parser.add_argument('--grid', choices=('base', 'fine'), help='Original numerical grid; overrides config.')
     parser.add_argument('--output', type=Path, help='New output directory, relative to repository root or absolute.')
     parser.add_argument('--resume', action='store_true', help='Continue the exact same saved run.')
@@ -592,13 +695,16 @@ def main(argv=None):
     parser.add_argument('--max-seconds', type=float, help='Pause between complete hours after this invocation time limit.')
     parser.add_argument('--workers', type=int, help='Frequency workers (1..8).')
     args = parser.parse_args(argv)
+    if args.read_result is not None:
+        print(json.dumps(read_result(args.read_result), indent=2))
+        return 0
     input_started = perf_counter()
     print('F4: validating input/workbook metadata; no model propagation.', file=sys.stderr, flush=True)
     try:
         config = json.loads(args.config.read_text(encoding='utf-8-sig'))
         if not isinstance(config, dict):
             raise ValueError('The configuration must be a JSON object.')
-        for key in ('filter_start', 'forecast_origin', 'forecast_hours', 'grid'):
+        for key in ('filter_start', 'forecast_origin', 'forecast_hours', 'grid', 'group'):
             if getattr(args, key) is not None:
                 config[key] = getattr(args, key)
         if args.model is not None:
@@ -620,6 +726,7 @@ def main(argv=None):
         models=config['models'], grid=config['grid'], missing_filter_hours=data['manifest']['missing_filter_hours'],
         filter_start=data['manifest']['start'], forecast_origin=data['manifest']['origin'],
         forecast_end_exclusive=data['manifest']['end'],
+        population=data['manifest']['population'],
         fit_policy='Reused fixed fit; no parameter estimation.',
         curve_information_cutoff=data['model']['curve_information_cutoff'],
         observation_contract=OBSERVATION_CONTRACT,

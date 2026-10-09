@@ -4,7 +4,7 @@ All contours represent the same Gaussian interval likelihood. The bank is
 declared before a replay and exhausted only until every reachable state has
 a positive, relatively resolved representation. No probability is discarded.
 The Fourier roundoff allowance is a diagnostic, not a verified-arithmetic
-certificate for the FV/Thomas solves; see H2_TERMINAL_TILT_REVIEW.md.
+certificate for the FV/Thomas solves; see archive/bm/F/interval-likelihood.md.
 """
 
 from time import perf_counter
@@ -17,41 +17,9 @@ from src.validation.bm_1.interval_characteristic import (
     CharacteristicNumericalError, balanced_characteristic_prediction)
 
 
-DEFAULT_CENTERS = (.5, .25, .75, 0., 1.)
+from src.method.bm_1_interval_likelihood import (
+    ORIGINAL_CENTERS as DEFAULT_CENTERS, _terminal_candidate)
 
-
-def _terminal_candidate(prediction, value, sigma_y, relative_guard):
-    """Conditional Fourier error is checked before small row amplitudes enter."""
-    span = prediction['span']
-    omega = prediction['frequencies']
-    tilt, center = prediction['tilt'], prediction['center']
-    z = value - sigma_y**2 * tilt
-    coefficients = np.exp(-.5 * (sigma_y * omega)**2 - 1j * omega * (z - center))
-    density = (prediction['cf'][:, 0].real
-               + 2. * np.real(prediction['cf'][:, 1:] @ coefficients[1:])) / span
-    distance = max(abs(z), abs(z - 1.))
-    if span <= distance:
-        raise ValueError('Periodic span must separate the physical reward range.')
-    gap = span - distance
-    alias = (2. * np.exp(-.5 * (gap / sigma_y)**2) / (np.sqrt(2. * np.pi) * sigma_y)
-             / (-np.expm1(-(2. * gap * span + span**2) / (2. * sigma_y**2))))
-    alpha = .5 * (2. * np.pi * sigma_y / span)**2
-    k = len(omega) - 1
-    tail = 2. / span * np.exp(-alpha * (k + 1)**2) / (-np.expm1(-alpha * (2 * k + 3)))
-    roundoff = 64. * np.finfo(float).eps * (1. + 2. * np.sum(np.abs(coefficients[1:]))) / span
-    absolute_error = alias + tail + roundoff
-    active = np.isfinite(prediction['log_amplitude'])
-    positive = active & np.isfinite(density) & (density > absolute_error)
-    relative = np.full(density.shape, np.inf)
-    relative[positive] = absolute_error / (density[positive] - absolute_error)
-    eligible = positive & (relative <= relative_guard)
-    log_joint = np.full(density.shape, -np.inf)
-    log_prefactor = .5 * sigma_y**2 * tilt**2 - tilt * (value - center)
-    log_joint[eligible] = (prediction['log_amplitude'][eligible]
-                           + np.log(density[eligible]) + log_prefactor)
-    return dict(log_joint=log_joint, eligible=eligible, relative=relative, active=active,
-                density=density, alias_bound=float(alias), truncation_bound=float(tail),
-                roundoff_allowance=float(roundoff))
 
 
 def terminal_tilt_update(solver, interval, prior, drift, diffusion, reward, value, sigma_y, *,
