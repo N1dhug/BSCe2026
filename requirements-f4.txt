@@ -1,7 +1,0 @@
-# Dependencies of the portable F4 runner; independent of optional Torch SDE experiments.
-numpy>=1.24
-scipy>=1.14
-pandas>=2.0
-openpyxl>=3.1
-matplotlib>=3.7
-numba>=0.60

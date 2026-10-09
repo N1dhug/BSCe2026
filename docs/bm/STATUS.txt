@@ -19,3 +19,9 @@ Publicering er udtrykkeligt godkendt af Johan efter den første automatiske
 afvisning. Arkivbranches publiceres sammen med main uden nye lokale rådata.
 Dobbelttjek: gamle F-poster i arkivregisteret er også fjernet. Historiske
 F-betegnelser i fælles G/WM-kode er bevaret med de uændrede kildehashes.
+
+Efterkontrol: commits 6f2a327 og 0f28fc5 genindførte F efter udskillelsen.
+116 genindførte F-filer er fjernet igen; fem nye G-filer er bevaret.
+Den genindførte version er sikret på archive/f-reintroduced-20261009
+og i skrivebordsarkivet. Den konkrete lokale F4-indgang er fjernet.
+39 G/kalender/checkpoint-tests består på 10,510 sekunder.
