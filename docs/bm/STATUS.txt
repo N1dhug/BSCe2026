@@ -1,99 +1,37 @@
-BM-F/G — tredje oprydning efter PR146, implementering afsluttet 9. oktober 2026
+BM-F/G — fjerde gennemgang i gang, 9. oktober 2026
 
-GENOPTAGELSE OG VERSION
-Gældende opgave: STARTPROMPT.txt. Denne fil er eneste kanoniske status.
-Branch: cleanup/bm-fg-active-models-20261009.
-Base/main/origin ved start: 09c602f327a3497a763c47e734fac4a38b12227d (PR146).
-Start var ren, uden aktive modelprocesser. Main er ikke flyttet af arbejdet.
-Ingen push eller automatisk merge. Kontroller git status/log før fortsættelse.
-Recovery: C:/Users/jvils/.codex/.chatgpt-projects/g-p-6aaef4dd0ec48191922398dc4cb17b90/cleanup_work
-Kontrollér eksisterende kvitteringer/processer før genstart af beregninger.
+START OG GENOPTAGELSE
+Branch cleanup/bm-fg-active-models-20261009, ren start på 26bdd150a8514c759ca266416454fb6cd9a19ed9.
+Fetch viser origin/main stadig09c602f; ingen nyere commits eller modelprocesser.
+Gældende prioritering står i STARTPROMPT. Ingen automatisk merge/push.
+Recovery: C:/Users/jvils/.codex/.chatgpt-projects/g-p-6aaef4dd0ec48191922398dc4cb17b90/cleanup_work. Læs round4/start.json og Git/status/processer før
+genoptagelse. Genstart aldrig afsluttede tests/prognoser uden konkret grund.
+Eksisterende backup/bundles genbruges; 91 ændrede/tilkomne filer siden
+sidste startinventory er sikret som SHA/CRC-kontrolleret delta og kildeZIP.
+149 beskyttede filer er uændrede. sources/rådata/ukendt ejerskab røres ikke.
 
-SIKRING OG BESKYTTELSE
-Eksisterende fuld backup og tidligere delta genbrugt. 76 nye/ændrede lokale
-filer sikret i round3/start-local-delta.zip med SHA/CRC; kildeZIP og all-refs
-bundle verificeret. WM-manifest monotont117 → 149 filer: 32 ekstra eksisterende
-indirekte afhængigheder; intet nyt WM-arbejde efter PR146 ved fetch.
-Alle 149 rå hashes uændrede, inklusive rådata, WM/WM4/WM-MPC og shared kode.
-Synkroniserede sources er urørte. Private inputs/resultater er ikke publiceret.
+AKTUELT ARBEJDE
+1. G-binding: nyt fit → modelpakke → forecast → output skal bevare deklareret
+   population og kontrollere rette snapshots/historie; legacy er særskilt.
+2. Aktiv F/G-kode: kun vores dokumenterede Git-oprettelser; saml sole-owner-
+   hjælpere, gentaget validering og ubrugte mellemled uden nye frameworks.
+3. F-negative målinger: genbrug dokumentation og kendt audit; afgør én nødvendig
+   databeslutning. Ingen clipping/offset/mean-onlyadmission eller ny forskning.
+4. Kortere autoritative dokumenter/configs, sikre mapper, relevante tests,
+   samme-input regression og ærlige counts/imports med fast afgrænsning.
 
-FAKTISKE ÆNDRINGER
-F: én likelihood-ejer, synligt advance_hour, fælles populationsmiddel,
-Xi∈[0,1], tidlig gruppe/cutoff-kontrol, model-/baseline-/skala-/målerbinding,
-TOCTOU-kontrol af modelbytes, atomisk CSV/PNG og hashverificeret read-result.
-Alle 10 native definitioner og tre flyttede primitives er AST-identiske.
-G: direkte frossen modelvej med export-model/forecast/show; ny senere mandagsuge
-med frosne dagsfits er mulig. Replay bevarer gammel G/WM-saved-uge. Legacy 19
-sourcebindings og båndkilder er uændrede. Ingen historisk optimizer i forecast.
-Nye G-fit kræver MED-meterliste/CSV-hash/observationsdeklaration og binder
-historik, træningsvindue, skala, baselines og snapshots. UDEN afvises i den
-MED-specialiserede kerne. Erklæret aggregatmedlemskab kaldes ikke verificeret.
-Weekday-resume: hele uger og F's færdige fits/dagsforecasts genbruges under
-source/runtime/config/dataidentitet og OS-lock. Ufærdige forsøg bevares;
-eksplicit resume starter et nyt forsøg med samme budget, ingen optimizerresume.
-Færdig resume reparerer også en forældet run_status efter afbrudt publicering.
-Alle forecasts fryses før scoringtargets. Ingen automatisk retry.
-12 afsluttede F/H2/G7/G8-drivere udfaset; references og unik matematik bevaret.
-Fem configs flyttet til configs/bm; én ny G-kontraktskabelon. Én startguide,
-én kalenderguide og kort AGENTS. Arkivets emner og beskyttede links bevares.
-Tre eksakte resultat-aliaser fjernet,400.194 bytes, heraf to tracked;
-88 øvrige kopier beholdt med bindings-/proveniens-/ejerskabsbegrundelse.
+BUDGET OG EVIDENS
+Loft300s samlet nye tests/modelprocesser: G60, F70, root40, integration100,
+reserve30. Ingen historiske fits eller fælles evalkampagne. Testreceipts samles
+i round4; canonicalstatus opdateres efter delmål, ikke nye daterede repo-rapporter.
+Tidligere evidens genbruges: F168h67,888s med1positivfiltertime, G168h2,674s,
+eksakt paritet,101 relevante tests i brugerens uafhængige kontrol og149WM-hashes.
+De tider gælder deres kilder; nye ændringer får kun nødvendige regressionschecks.
+Ingen aktive modelprocesser ved start.
 
-NUMERISK OG PRAKTISK KONTROL
-F 27 unikke runner/characteristic/terminal/native tests består efter rettet
-historiskLF-fixture; produktionshashguard urørt. F/root 26 kalender/resume-
-kontrakttests består 6,266s; ekstra completionstatus-test 2,844s.
-G 22 deployment/legacy/båndtests dækket;9 nye populations/API/CLI-guards består
-3,109s. CN/layout3 tests 1,719s og struktur 2 tests 1,621s består.
-F short 1+3 h: 23,525s mod 35,876s. F open 1+168 h: 67,888s mod 93,472s.
-Alle 169 × 22 CSV-felter og origin/final 1921 logstates eksakte; PNG'er byteidentiske.
-Masserest≤1,381e-12. Input/grids/tolerancer uændrede, ingen fremtidigY/scoring.
-MåltF-sourceZIP SHA 971e9d3f6d6feb7d270c5aa0e7a1ebb2785f758b3a056177bd554df069acef67.
-Senere orchestrationændringer gør ikke den kildepakke til nuværende source.
-G samme saved-uge: højst 2,45e-15 rå forskel, states/variance eksakte.
-G senere 7.–14. marts med 28. feb.-cutoff: 2,506 s; efter sidste statusrettelse 2,674 s,
-168 timer og 15 numeriske felter eksakte. Nye originale modelkonverteringer i
-separate mapper; ingen gamle sourcehashes/checkpoints ommærket.
-14 sidste brugerkommandoer består 39,297 s inklusive sidste G 2,674 s. Help/check/
-read/show/plan og forkertgruppe/cutoff/negativefilter/manglendeGmanifest dækket.
-Caches ikke nulstillet; tider er observerede hele processer, ikke isoleret
-kold-opstartsforbedring. Historisk fit og fuld fælles kampagne er ikke kørt.
-
-BUDGET OG PLACERINGER
-Samlet loft 600 s. Journalførte numeriske/testprocesser 157.371s;
-inklusive særskilte input/import/CLI-målinger 216.426s.
-Fejlede målingsforsøg medregnet; interne fasetider ikke lagt til igen.
-Ingen aktive modelprocesser. Præcis budgetledger: round3/budget_final.json.
-F output: files/output/bm_1/runs/cleanup_round3_short_20261009 og
-files/output/bm_1/runs/cleanup_round3_open_week_20261009.
-F logs/receipts/sourceZIP: round3/f. G sidste resultat: round3/final_cli/g_week.
-G lokal model: files/output/bm_1/examples/g_deployment_20261009/model_current.
-TidligereG-modeller/results: round3/g. Alle private scenarier forbliver lokale.
-Tælling: round3/structure/round3_final_counts.json, fast 149 i begge versioner.
-Restore: 766 originaler + 2 deltafiler faktisk gendannet til nye mapper;12 udfasede
-stier korrekte. 385 starttracked outputs: 383 uændrede + 2 godkendte aliasdeletions.
-Kvittering: round3/structure/final_archive_result_qa.json.
-
-ÅBNE FAGLIGE GRÆNSER
-Metadata: MED 13 = med elvarme; UDEN 140 = uden elvarme. Solceller ikke dokumenteret
-af grupperne. Rå enhed, netto/brutto, tidszone og labelstart/slut er ukendte.
-F's Gaussian Y tillader negative observationer matematisk, men hver-måler-
-guard beskytter en arvet forbrugsdatakontrakt. Originalt 24 h-filter afvises stadig
-på 17 negative celler / 6 timer; positivt 1 h-filter er ikke en løsning. Ingen clipping,
-offset, skift af population eller mean-onlylempelse. Faglig data/modelbeslutning
-kræves før ændret admission eller signeretnetmodel; se MATHEMATICS.
-LegacyG har ingen verificeret målerliste. NyeG-manifester er declared-unverified.
-G's senere inputs er realiseret Price/Temp, altså betinget historisk scenario,
-ikke dokumenteret tilgængelighed ved origin. Rankmangel, baselineklipning og
-ukalibrerede usikkerhedslag består. Ingen generel vinder eller fysiskaccept.
-F-weekday historiskfit/konvergens/runtime kræver særskilt budget. Johans faktiske
-brugerprøve afventer. Fælles F/G/WM-kampagne og rangering er fortsat udskudt.
-Andre støjfamilier, parameterbanker og H/I/J-fortsættelse er valgfri forskning.
-
-NÆSTE PRÆCISE HANDLING
-Slutkontrol består:309 Pythonfiler parsede,34 Markdown-dokumenter uden linkfejl,
-WM 149 uændrede og aktuelle 11 G-sourcebindings gyldige (round3/final_qa.json).
-Dokumentpakken committes med denne status; branch er klar til review/manuel
-merge. Ingen flere modelkørsler eller automatisk merge/push.
-Efter aflevering: Johan kan følge README's korte prøve og tage stilling til
-datakanalernes kontrakt før senere model-/fit/evalueringsarbejde.
+ÅBNE GRÆNSER
+MED=med elvarme, UDEN=uden; solceller/unit/netto-brutto/time-label ukendt.
+OriginalF24hfilter afvises stadig på negative medlemmer. G-legacy har ingen
+verificeret målerliste. Nye erklæringer er ikke dokumenteret aggregation.
+F-weekday historiskfit, fælles kampagne og brugerprøve afventer særskilt accept.
+Næste: godkendt konkret filplan og ejerskab, derefter G-binding og aktive merges.
