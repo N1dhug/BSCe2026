@@ -1,26 +1,49 @@
-BM-F/G — konkret filplan, tredje gennemgang efter PR146
+BM-F/G — udført filplan efter PR146, 9. oktober 2026
 
-STATUS.txt ejer checkpoints; STARTPROMPT.txt er gældende opgave.
-Bevar alle149 beskyttede stier i wm-protection.json samt rådata/sources.
-Startmateriale er sikret i eksisterende backup + round3 delta/source/bundle.
+STARTPROMPT ejer opgaven; STATUS ejer aktuelle checkpoints; README er normal
+startguide. Alle 149 WM-stier, rådata og sources er beskyttede og uændrede.
+Detaljerede before/after-hashes og receipts: recovery/round3 som angivet i STATUS.
 
-F: bm_1_f4.py input/fitkontrakt og normal hour-step læses og samles. Flyt de
-få genbrugte likelihood-primitives fra validation/harness til en eksisterende
-metodegrænse; undgå normal imports af historiske drivere. Kernels/grids bevares.
-Fælles weekday_backtest + F-adapter: kompatibel resume ved afsluttede fits,
-atomiske kvitteringer og streng binding til config/model/kode/data/runtime.
-G: almindelig saved CLI/export gennemgås; grænse mellem ny forecast og
-fast snapshotreplay gøres eksplicit. Beskyttede G/WM-afhængigheder ændres ikke.
+BEHOLDT OG FORENKLET
+src/exe/run_model/bm_1_f4.py: synlig config→prepare→advance_hour→export;
+gruppe/cutoff/modelhash, korrekt Xi-domæne, atomic output og read-result.
+src/method/bm_1_interval_likelihood.py: én 90-linjers ejer af tre uændrede
+numeriske primitives; contour_extension opløst; validation re-eksporterer.
+src/method/bm_1_interval_native.py og forecast.py: imports til rette ejer,
+ingen ændring af native-aritmetik/grids/tolerancer.
+src/tools/weekday_backtest.py og f_weekday_backtest_adapter.py: resume af
+færdige, hashbundne fits/dage/uger, OS-lock og atomiske fuldførelsesgrænser.
+src/method/bm_1_g_forecast.py: direkte ny prognose med frosset G-model.
+src/exe/run_model/bm_1_g.py: export-model/forecast/show, bevaret replay/bands.
+G-weekday-adapter/CLI: eksplicit CSV-/gruppe-/meterlistekontrakt ved nye fits;
+MED-kernen kan ikke bruges til UDEN ved ommærkning.
 
-Configs: fem F-eksempler/model samles under configs/bm; alle aktive stier,
-tests og guides opdateres. BM_GUIDE samler start; specialkalender kan beholdes.
-AGENTS forkortes, gældende beskyttelse/fortolkning bevares.
-H2-henvisninger fjernes kun efter aktive links er håndteret; WM-linkede
-G-henvisninger/F4/modelreference bevares. Arkivet genbruger eksisterende pakker.
-Resultater gennemgås pr.forsøg. Eksakte dubletter er kun kandidater: manifest-
-binding og recovery kontrolleres før ændring. Unikke/dyre resultater bevares.
+UDFaset AKTIVT, ORIGINAL BEVARET
+Fire F/H2-CLI: interval_search_pilot, search_stream, joint_cn, joint_cn_day.
+Tre sidste CN-definitions flyttet AST-identisk til validation/interval_joint_cn.
+Otte G7/G8-CLI: g7, g7_deterministic, g7_matched_response, g8, g8_basis,
+g8_basis_refine, g8_bernstein, g8_bernstein_refine.
+Ti er byteidentiske med kildepakke7249; de to Bernstein-drivere har et
+SHA-verificeret to-filers09c-delta. Ingen unikke numeriske metoder er slettet.
+Archive INDEX/ORIGINALS/old-paths ejer den konkrete gendannelsesvej.
 
-Tælling: fast startnævner med samme149beskyttede før/efter; kode/noter/tests/
-resultater/arkiv/config hver for sig, linjer/indgange/afhængigheder. Historiske
-ZIPmedlemmer tælles særskilt. Aktiv kodeflytning kaldes ikke deduplikering.
-Detaljerede filvise analyser: round3/f, round3/g, round3/structure i recovery.
+STRUKTUR
+Fem F-config/model-eksempler flyttet root→configs/bm; links/defaults rettet.
+root/BM_GUIDE,F4_RUN,WEEKDAY_BACKTEST_GUIDE erstattet af docs/bm/README og
+WEEKDAY_BACKTEST. To H2-linkstubs udfaset; beskyttede indgående links bevares.
+AGENTS forkortet; MATHEMATICS ejer aktuel kontrakt; COMPARISON ejer tal.
+F/G historiske temaer beholdes med korrekte links, uden nye parallelarkiver.
+
+RESULTATER
+755 startfiler gennemgået som forsøg, metadata og bytegrupper. Tre eksakte
+fritstående aliaser slettet efter keeper+backup+referencekontrol (400.194 B).
+88 andre ekstra bytekopier beholdt pga. bindings-/proveniens-/ejerskabsgrunde.
+Ingen unikke outputs eller rådata slettet. Nye lokale tests/forecasts/eksempler
+er ignorerede og følger ikke med Git. Ingen private datasæt publiceret.
+
+KONTROL
+Tæl samme149beskyttede nævner før/efter og vis gammelt117scope som anker.
+Kode, noter/guider/status, tests, configs, resultater og arkiv tælles særskilt.
+WM-hashes, native AST, snapshots, numerikparitet, korte kontrakttests, CLI,
+links og faktisk sikker restore kontrolleres; detaljer findes i COMPARISON.
+Ingen ny historisk fitkampagne. Lokale små commits, ingen automatisk merge.

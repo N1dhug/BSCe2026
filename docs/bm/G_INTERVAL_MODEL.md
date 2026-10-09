@@ -5,7 +5,7 @@ Den har egen fit-/snapshotidentitet; punktprognosens parametre og bånd kan ikke
 genmærkes som intervalresultater. Proceslaget giver intervalmiddel og varians,
 men ingen intervalkvantiler. Demand-enhed og hour-start er arbejdsantagelser.
 
-Den gemte aktuelle G-model bruges gennem [BM-guiden](../../root/BM_GUIDE.md).
+Den gemte aktuelle G-model bruges gennem [BM-guiden](README.md).
 Dette dokument forklarer den særskilte S3-intervalmetode og dens daterede
 udviklingsevidens. Samlet accept står i [sammenligningen](COMPARISON.md).
 De fulde oprindelige protokoller findes i [originalarkivet](../../archive/bm/ORIGINALS.md#original-tree).

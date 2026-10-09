@@ -5,8 +5,8 @@ ugedage og prognosticerer sjette uge. Syv egne ugedagsmodeller fryses ved hver
 mandagsorigin. Det følgende beskriver matematik og det daterede seksugersstudie;
 det indeholder ingen genaktiverede forsøgsordrer eller budgetundtagelser.
 
-Aktuel modelbrug står i [BM-guiden](../../root/BM_GUIDE.md). Den generiske
-kalender beskrives i [WEEKDAY_BACKTEST_GUIDE](../../root/WEEKDAY_BACKTEST_GUIDE.md),
+Aktuel modelbrug står i [BM-guiden](README.md). Den generiske
+kalender beskrives i [WEEKDAY_BACKTEST_GUIDE](WEEKDAY_BACKTEST.md),
 og samlet evidens i [sammenligningen](COMPARISON.md). De fulde oprindelige
 protokoller kan genskabes fra [originalarkivet](../../archive/bm/ORIGINALS.md#original-tree).
 

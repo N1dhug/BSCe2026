@@ -5,7 +5,7 @@ Punktprocessen følger den multiplicative state-SDE; residualen samler
 model-/baseline-/målefejl. Deres varianser lægges ikke automatisk sammen.
 Begge historiske processtøjdiagnoser blev afvist i udviklingseksemplet.
 
-Aktuel brug og samlet accept står i [BM-guiden](../../root/BM_GUIDE.md) og
+Aktuel brug og samlet accept står i [BM-guiden](README.md) og
 [sammenligningen](COMPARISON.md). Den separate [timeversion](G_INTERVAL_MODEL.md)
 giver integrerede procesmomenter. Denne punktversions kvantiler er ikke
 timebånd. Oprindelige forsøgsprotokoller findes i [originalarkivet](../../archive/bm/ORIGINALS.md#original-tree).

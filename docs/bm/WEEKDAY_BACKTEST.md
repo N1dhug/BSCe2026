@@ -14,7 +14,8 @@ senere arbejde og starter ingen historiske studier.
 ## Planlæg perioder uden at starte modellerne
 
 Kør fra repoets rod med Python 3.11 og de eksisterende NumPy, SciPy og Pandas.
-Alle outputmapper skal være nye. Dette eksempel skriver kun kalenderen:
+Brug en ny outputmappe til en ny plan. Eksplicit genoptagelse er beskrevet
+nedenfor. Dette eksempel skriver kun kalenderen:
 
 ```powershell
 python -B -m src.exe.run_model.weekday_backtest `
@@ -26,7 +27,7 @@ Begge datoer er mandage kl. 00 lokal tid og medtages. Seks origins giver seks
 testuger og kræver elleve uger af data, samt modelafhængig opvarmning. Første
 vindue er 24. januar til 7. marts, næste 31. januar til 14. marts osv.
 
-## Kør G og WM på nye perioder
+## Nyt G-fit med WM-timeadapter som reference
 
 `history.csv` indeholder `Datetime,Demand,Price,Temp` i rå enheder. Historien
 skal dække fem uger før hver origin og G's ekstra 24 fysiske inputtimer.
@@ -37,10 +38,36 @@ betinget historisk test, ikke en operationel vejrprognose.
 
 ```powershell
 python -B -m src.exe.run_model.weekday_backtest `
-  --adapter G --first-origin 2022-02-28 --last-origin 2022-04-04 `
-  --history-csv ../history.csv --inputs-csv ../inputs.csv `
-  --observations-csv ../observations.csv --output ../weekday-G-new
+  --adapter G --group MED --adapter-config my_g_inputs.json `
+  --first-origin 2022-04-11 --last-origin 2022-04-11 `
+  --history-csv history.csv --inputs-csv inputs.csv `
+  --observations-csv observations.csv --output files/output/bm_1/runs/my_g_week
 ```
+
+Nye G-fit kræver et inputmanifest. Kopiér
+[g_weekday_adapter.example.json](../../configs/bm/g_weekday_adapter.example.json)
+til `my_g_inputs.json`, og erstat alle placeholders med faktisk deklareret
+MED-målerliste, populations-ID, præcis history-CSV-SHA256 samt råenheds- og
+Price/Temp-scenarieantagelser. SHA-feltet er bevidst ugyldigt i skabelonen.
+På PowerShell kan CSV-hashen findes med:
+
+```powershell
+(Get-FileHash -LiteralPath history.csv -Algorithm SHA256).Hash.ToLowerInvariant()
+```
+
+Erklæringen kræver `group: MED`, unikke `measurement_columns` med `_MED`,
+`aggregation: mean over available measured meters` og
+`demand_timestamp_label: hour_start`. Den eksisterende beskyttede fitkerne
+understøtter kun MED; UDEN afvises før datalæsning. `--group MED` er en ekstra
+matchkontrol. Et CSV-middel og dets hash kan ikke bevise rå måleraggregation:
+status er derfor `declared-unverified`, også når filhashen er verificeret.
+
+Før fit gemmes populationserklæring og den isolerede historiks fingerprint.
+Efter fit bindes de faktiske træningsgrænser, skalaer, syv baselines og begge
+snapshots til erklæringen. Alle kvitteringer fryses før scoring. Ændret CSV,
+gruppe, målerliste, modelkilde eller config kan ikke genoptages som samme run.
+Dette er en ny fitkontrakt; gamle G-snapshots forbliver `legacy-unverified`.
+Et nyt historisk fit kræver sit eget aftalte budget og er ikke kørt her.
 
 `observations.csv` har `Datetime,Demand` og åbnes først, når alle bestilte
 prognoser er gemt og bundet til deres modeller med kontrolsummer. Udelad
@@ -53,13 +80,15 @@ fælles femugersnormalisering, eksisterende numeriske kontroller og adskilte
 residualer. Loftet pr. ugedag er G 30 sekunder og 750 kald, WM 10 sekunder og
 400 kald; numerisk export har 15 sekunder pr. uge. En ufærdig tilpasning
 stopper forsøget og bevarer checkpoints. Der er ingen automatisk genkørsel,
-udvidelse af budgettet eller overgang til fælles parametre. Den gamle
-eksplicitte fortsættelsesvej kan vurderes separat.
+udvidelse af budgettet eller overgang til fælles parametre. Færdige hashverificerede uger kan genbruges med `--resume`; den fælles
+CLI genoptager ikke G-adapterens ufærdige optimizer. En historisk
+fortsættelsesvej er en særskilt operation med egne kilde- og budgetbindinger.
 
 ## F: nyt weekday-fit med native interval-likelihood
 
-Den konkrete indgang er `--adapter F --adapter-config ...`. Kopiér
-[eksempelkonfigurationen](f_weekday_adapter.example.json) og erklær egne
+Den konkrete indgang er `--adapter F --adapter-config ...`. Valgfri
+`--group MED` skal matche modellens erklærede gruppe. Kopiér
+[eksempelkonfigurationen](../../configs/bm/f_weekday_adapter.example.json) og erklær egne
 budgetter og tilgængelighed af prisinput. Dens `model_file` er relativ til
 configfilens mappe; SHA256 skal matche den tidligere frosne F-pakke.
 Pakken leverer baseline, skala, population, prior og nominelle parametre.
@@ -68,7 +97,7 @@ De gamle fitted kurver bruges ikke som nye fitresultater.
 Planlæg uden datalæsning eller fit:
 
 ```powershell
-python -m src.exe.run_model.weekday_backtest --adapter F --adapter-config root/f_weekday_adapter.example.json --first-origin 2022-03-28 --last-origin 2022-03-28 --output files/output/bm_1/runs/my_f_calendar --plan-only
+python -m src.exe.run_model.weekday_backtest --adapter F --adapter-config configs/bm/f_weekday_adapter.example.json --first-origin 2022-03-28 --last-origin 2022-03-28 --output files/output/bm_1/runs/my_f_calendar --plan-only
 ```
 
 Plan-only kontrollerer kalenderen; den validerer ikke data eller estimerer
@@ -100,11 +129,20 @@ ikke-konvergeret fit stopper og bliver aldrig et godkendt fast-fit-fallback.
 Denne oprydning har kun kørt korte syntetiske tests, intet historisk F-fit.
 
 Native kernecheckpoints kan genoptages med matchende kandidat, inputs, kilde
-og runtime. Den samlede weekday-CLI kræver fortsat en ny outputmappe og har
-**ingen automatisk fit-/uge-resume**. Den bevarer konkrete partialkandidater,
-optimizertrace og forecastcheckpoints til recovery. F4's separate `--resume`
-er uændret. Ligninger, numeriske gates og tests står i
-[matematikoversigten](../docs/bm/MATHEMATICS.md).
+og runtime. Den fælles CLI har nu en eksplicit `--resume` for samme plan og
+outputmappe. Kilde-/runtime-/model-/config-/inputidentiteter skal matche;
+`--resume` kan ikke kombineres med `--plan-only`.
+
+Færdige uger genbruges efter kontrol af alle frosne filer. For F genbruges også
+hver færdig ugedagsfit og prognose med gyldige hashkvitteringer. Et ufærdigt fit
+bevares i sin attempt-mappe; næste eksplicitte resume starter ét nyt forsøg
+med det oprindelige per-fase-budget. Optimizerens interne position og delvise
+forecastpræfikser genoptages ikke. Et færdigt fit kan derfor genbruges, mens
+et afbrudt prognosepræfiks beregnes igen. Gentagne manuelt bestilte forsøg
+forbruger yderligere tid; det samlede aftalte budget gælder stadig.
+Der er ingen automatisk genstart. F4's separate `--resume` er en anden
+checkpointkontrakt. Ligninger, numeriske gates og tests står i
+[matematikoversigten](MATHEMATICS.md).
 
 Andre adapters kan bruge `WeekdayCallbacks` eller `forecast_week` fra
 `src.tools.weekday_backtest`; kalenderen ejer ikke modellernes likelihood,
@@ -146,7 +184,8 @@ ikke som et gennemsnit af ugers RMSE. Forsøget vælger ingen vinder eller
 optimale parametre ud fra disse testresultater.
 
 En failure giver `failure.json` og bevarer allerede gemte ugeartefakter.
-Eksisterende outputmapper overskrives ikke. Data, resultater, snapshots og
+Eksisterende outputmapper kræver den eksplicitte, identitetskontrollerede
+`--resume`; gamle forsøg bevares. Data, resultater, snapshots og
 kontrolsummer af private målerdata forbliver lokale efter den gældende
 publiceringsaftale. Generisk kode, vejledning og syntetiske tests kan merges.
 

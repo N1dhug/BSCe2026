@@ -4,7 +4,7 @@ Denne sti bevares, fordi uændrede WM-noter eller metodekode henviser til den.
 Den samlede faglige fremstilling findes i [det relevante emne](../archive/bm/G/forecast-development.md#g-next-step-20261008).
 
 Originalen er bevaret byte-identisk i [originaltræet](../archive/bm/ORIGINALS.md).
-Tidligere arbejdsordrer og status er afløste; aktuel brug står i [BM-guiden](BM_GUIDE.md).
+Tidligere arbejdsordrer og status er afløste; aktuel brug står i [BM-guiden](../docs/bm/README.md).
 <a id="seneste-holdested-bestilt-rullende-ugedagsserie-og-bånd-udført"></a>
 <a id="historisk-holdested-afgrænset-gwm-timebenchmark-udført"></a>
 <a id="historisk-holdested-godkendt-residuallag-implementeret-stop-udvidelser"></a>
