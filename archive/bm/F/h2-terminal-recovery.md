@@ -2,7 +2,7 @@
 
 Terminale runs forbliver terminale. De tabte råtimer og kandidatloftet uden konvergens må ikke forsvinde i oprydningen. Senere tofamilievalg er et særskilt afgrænset studie.
 
-Status: historisk evidens. Aktuel brug og scope står i [BM-guiden](../../../root/BM_GUIDE.md).
+Status: historisk evidens. Aktuel brug og scope står i [BM-guiden](../../../docs/bm/README.md).
 
 Afsnittene nedenfor samler resultater og begrænsninger uden de gentagne arbejdsordrer. Oprindelige matematisk væsentlige afsnit er bevaret særskilt. Fuld originaltekst, kildehash og erstatningssti findes via [stikortet](../old-paths.json) og den verificerede kildepakke.
 

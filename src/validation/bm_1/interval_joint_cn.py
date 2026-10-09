@@ -5,6 +5,31 @@ import numpy as np
 from src.solver.finite_volume import finite_volume_1d_fitted
 
 
+# Fixed historical comparison fixture; its completed campaign drivers live in the archive.
+CANDIDATES = {
+    'linear': ([0.], [0.]),
+    'two_saved': ([.3], [-.25]),
+    'two_near': ([.32], [-.23]),
+}
+
+SEARCH_SETTINGS = {
+    'joint161': dict(cells=161, max_step=1/768, accumulator_spacing=1/256,
+                     max_accumulator_nodes=4096, backend='fitted'),
+    'joint321': dict(cells=321, max_step=1/1536, accumulator_spacing=1/512,
+                     max_accumulator_nodes=4096, backend='fitted'),
+}
+
+def _record(development, cn_reference, name):
+    from dataclasses import replace
+    from src.validation.bm_1.interval_curve_control import declared_control
+    from src.params.bm_1_response import BM1PiecewiseResponse
+    record, _ = declared_control(development, cn_reference, 'two-narrow')
+    f, g = [BM1PiecewiseResponse.from_inner_values(values, pieces=2)
+            for values in CANDIDATES[name]]
+    return replace(record, record_id=name,
+                   parameters=(record.parameters[0], f, g, *record.parameters[3:]))
+
+
 class PositiveCNJointSolver(finite_volume_1d_fitted):
     """Reuse the existing implicit LAPACK solve with an explicit positive half.
 
@@ -39,7 +64,6 @@ def run_joint_cn(development, cn_reference, candidate, *, intervals=6, accumulat
                  saved_prefix=()):
     """Fresh whole prefix from the declared prior; no cross-candidate states."""
     from time import perf_counter
-    from src.exe.run_model.bm_1_interval_search_pilot import _record, SEARCH_SETTINGS
     from src.method.bm_1_interval import run_interval_filter
     from src.model.bm_1 import bm_1
     from src.params.bm_1_interval import BM1IntervalObservationSeries

@@ -92,3 +92,12 @@ kommandoer og beskyttelse og gem den endelige COMPARISON/FILE_PLAN/STATUS.
 Budget: højst 600 s samlet; F numerik/tests cirka 117 s, G cirka 18 s og
 root syntetiske tests cirka 14 s; præcis slutledger samles fra kvitteringer.
 Ingen historiske fits eller generel evalkampagne er kørt. Ingen automatisk merge.
+
+AFSLUTTET ARKIV-/RESULTATKONTROL
+12 faste forsøgsdrivere udfaset; referencekerner bevaret. 766 originale
+kildearkivmedlemmer og to præcise09c-deltamedlemmer er SHA-verificeret og
+faktisk gendannet i separate nye workspace-mapper; ingen modeller startet.
+385 starttracked outputs: 383 byteuændrede, kun to godkendte tracked aliaser
+fjernet (plus ét lokalt alias). Alle tre keepere og backupmedlemmer verificeret.
+Se round3/structure/final_archive_result_qa.json. WM149 fortsat uændrede.
+Næste: nye G-fitguards, CLI, faste tællinger og den endelige dokumentstatus.

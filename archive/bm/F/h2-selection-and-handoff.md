@@ -2,7 +2,7 @@
 
 700 åbne prognosejobs blev frosset, men kun 345 af 1344 planlagte slutjobs er gemt i den seneste beskrevne status. H/I/J og populationskalibrering er fortsat åbne; det kørbare F4-eksempel er en særskilt leverance.
 
-Status: historisk evidens. Aktuel brug og scope står i [BM-guiden](../../../root/BM_GUIDE.md).
+Status: historisk evidens. Aktuel brug og scope står i [BM-guiden](../../../docs/bm/README.md).
 
 Afsnittene nedenfor samler resultater og begrænsninger uden de gentagne arbejdsordrer. Oprindelige matematisk væsentlige afsnit er bevaret særskilt. Fuld originaltekst, kildehash og erstatningssti findes via [stikortet](../old-paths.json) og den verificerede kildepakke.
 

@@ -2,7 +2,7 @@
 
 Disse hændelser er afløst af senere recovery. De gamle reservationer, fejl og checkpointafhængigheder er fortsat evidens; ingen gammel næste-kommando er en ny kørselstilladelse.
 
-Status: historisk evidens. Aktuel brug og scope står i [BM-guiden](../../../root/BM_GUIDE.md).
+Status: historisk evidens. Aktuel brug og scope står i [BM-guiden](../../../docs/bm/README.md).
 
 Afsnittene nedenfor samler resultater og begrænsninger uden de gentagne arbejdsordrer. Oprindelige matematisk væsentlige afsnit er bevaret særskilt. Fuld originaltekst, kildehash og erstatningssti findes via [stikortet](../old-paths.json) og den verificerede kildepakke.
 

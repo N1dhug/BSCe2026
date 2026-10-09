@@ -5872,6 +5872,126 @@
       "original_archive_member": "src/exe/run_model/bm_1/s3_interval.py",
       "source_sha256": "1eb587c69ec46af9d3b21944630a01307c5bd9e2d04e3ac96b9aa5bba617e802",
       "representation": "code-consolidation-or-retirement"
+    },
+    "src/exe/run_model/bm_1/g7.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g7.py",
+      "source_sha256": "b117a00b0cf7f26140564b009eeaa10a16d0c76395eb2fab2d291e6640cc19a7",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1/g7_deterministic.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g7_deterministic.py",
+      "source_sha256": "517010838981b77eef0461fef30eb246f44ce75e88341e9761836f80f7ed88b0",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1/g7_matched_response.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g7_matched_response.py",
+      "source_sha256": "48c96a4f3ded5b44801be0ce2a196fdb8f8bb2b01b8590b5d793c23bb0699d49",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1/g8.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g8.py",
+      "source_sha256": "095cfd5e3b7f5cbdd9d90a5ca0830f304c0b849ab312cd68fcbe53af1d32971d",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1/g8_basis.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g8_basis.py",
+      "source_sha256": "988330b5146da05772bad3c35b3eab3adec035e201cbb95dae5caf12534316b2",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1/g8_basis_refine.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g8_basis_refine.py",
+      "source_sha256": "34831629b82ef507ffc8cca9403c28e77ddecbd255600b7461022b66640804e2",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1/g8_bernstein.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/g-driver-delta-09c602f.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g8_bernstein.py",
+      "source_sha256": "a66d623fad5f7fc17bb17065efbcb07d52167f66651d43410d727209fe36885a",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1/g8_bernstein_refine.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/g-driver-delta-09c602f.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g8_bernstein_refine.py",
+      "source_sha256": "ab1bbcf7c5109e98d6e5cae82a16b4c08b9c69c3baee14686dc76f1ba7c81799",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1_interval_search_pilot.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1_interval_search_pilot.py",
+      "source_sha256": "50cd169e13958693ed8ab35b35c4b0acb69703bfc8a06f99106c5759f2e8d4c3",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1_interval_search_stream.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1_interval_search_stream.py",
+      "source_sha256": "ca8694b2587c8e0048a9c0cd359fc1d184ba1aab41bebbad94625dfc30276502",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1_interval_joint_cn.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1_interval_joint_cn.py",
+      "source_sha256": "d7b1deb703bb277ccdcd9267e75be4aa29762c53569fa8a9d700643e514bebc7",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    "src/exe/run_model/bm_1_interval_joint_cn_day.py": {
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1_interval_joint_cn_day.py",
+      "source_sha256": "05e6e05ef5dfc5f03ed9f4b73d819d94dcbe521998919124d5c235cb095dd56c",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
     }
   },
   "retained_entry_originals": [
@@ -6169,5 +6289,151 @@
       }
     ],
     "all_root_disposition": "root-file-plan.json"
-  }
+  },
+  "round3_path_migrations": {
+    "root/BM_GUIDE.md": "docs/bm/README.md",
+    "root/F4_RUN.md": "docs/bm/README.md",
+    "root/WEEKDAY_BACKTEST_GUIDE.md": "docs/bm/WEEKDAY_BACKTEST.md",
+    "root/H2_COMPACT_ESTIMATION_REVIEW.md": "archive/bm/F/interval-forecast.md",
+    "root/H2_TERMINAL_TILT_REVIEW.md": "archive/bm/F/interval-likelihood.md",
+    "root/f4_quick.json": "configs/bm/f4_quick.json",
+    "root/f4_week.json": "configs/bm/f4_week.json",
+    "root/f4_open_week.json": "configs/bm/f4_open_week.json",
+    "root/f4_fixed_model_20261008.json": "configs/bm/f4_fixed_model_20261008.json",
+    "root/f_weekday_adapter.example.json": "configs/bm/f_weekday_adapter.example.json"
+  },
+  "round3_driver_retirements": [
+    {
+      "path": "src/exe/run_model/bm_1/g7.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g7.py",
+      "source_sha256": "b117a00b0cf7f26140564b009eeaa10a16d0c76395eb2fab2d291e6640cc19a7",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g7_deterministic.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g7_deterministic.py",
+      "source_sha256": "517010838981b77eef0461fef30eb246f44ce75e88341e9761836f80f7ed88b0",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g7_matched_response.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g7_matched_response.py",
+      "source_sha256": "48c96a4f3ded5b44801be0ce2a196fdb8f8bb2b01b8590b5d793c23bb0699d49",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g8.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g8.py",
+      "source_sha256": "095cfd5e3b7f5cbdd9d90a5ca0830f304c0b849ab312cd68fcbe53af1d32971d",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g8_basis.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g8_basis.py",
+      "source_sha256": "988330b5146da05772bad3c35b3eab3adec035e201cbb95dae5caf12534316b2",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g8_basis_refine.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g8_basis_refine.py",
+      "source_sha256": "34831629b82ef507ffc8cca9403c28e77ddecbd255600b7461022b66640804e2",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g8_bernstein.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/g-driver-delta-09c602f.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g8_bernstein.py",
+      "source_sha256": "a66d623fad5f7fc17bb17065efbcb07d52167f66651d43410d727209fe36885a",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/g8_bernstein_refine.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/g-driver-delta-09c602f.zip",
+      "original_archive_member": "src/exe/run_model/bm_1/g8_bernstein_refine.py",
+      "source_sha256": "ab1bbcf7c5109e98d6e5cae82a16b4c08b9c69c3baee14686dc76f1ba7c81799",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1_interval_search_pilot.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1_interval_search_pilot.py",
+      "source_sha256": "50cd169e13958693ed8ab35b35c4b0acb69703bfc8a06f99106c5759f2e8d4c3",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1_interval_search_stream.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1_interval_search_stream.py",
+      "source_sha256": "ca8694b2587c8e0048a9c0cd359fc1d184ba1aab41bebbad94625dfc30276502",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1_interval_joint_cn.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1_interval_joint_cn.py",
+      "source_sha256": "d7b1deb703bb277ccdcd9267e75be4aa29762c53569fa8a9d700643e514bebc7",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    },
+    {
+      "path": "src/exe/run_model/bm_1_interval_joint_cn_day.py",
+      "destination": "archive/bm/ORIGINALS.md",
+      "anchor": "round3-retirements",
+      "source_commit": "09c602f327a3497a763c47e734fac4a38b12227d",
+      "original_archive": "archive/bm/originals/source-7249bf9.zip",
+      "original_archive_member": "src/exe/run_model/bm_1_interval_joint_cn_day.py",
+      "source_sha256": "05e6e05ef5dfc5f03ed9f4b73d819d94dcbe521998919124d5c235cb095dd56c",
+      "representation": "historical-driver-retirement",
+      "reason": "Closed fixed campaign; reusable mathematical kernels/tests remain active"
+    }
+  ]
 }

@@ -49,5 +49,24 @@ oprindelige ZIP-medlemmer for historiske drivers og registreringer.
 De seks lokale TeX-buildfiler er beholdt; de tælles ikke som slettede kilder.
 
 Den læsbare viden findes i [emneindekset](INDEX.md). Aktuel brug sker gennem
-[BM-guiden](../../root/BM_GUIDE.md); gamle reproduktionskommandoer køres kun i
+[BM-guiden](../../docs/bm/README.md); gamle reproduktionskommandoer køres kun i
 et passende genskabt originaltræ, aldrig som skjult genstart af en kampagne.
+
+<a id="round3-retirements"></a>
+## Tolv yderligere historiske drivere (09c602f)
+
+Tredje gennemgang pensionerede otte afsluttede G7/G8-CLI'er og fire faste
+F-search/joint-CN-kampagner; [indekset](INDEX.md) angiver navnene. Genbrugelige
+metodekerner og deres faglige tests er stadig aktive. Dette er færre aktive
+drivere, ikke sletning af den oprindelige kode eller en ny modelaccept.
+
+Ti filer er byteidentiske med deres medlemmer i `source-7249bf9.zip`.
+De to Bernstein-drivere havde ændrede imports ved 09c602f; deres præcise
+seneste bytes findes i [delta-ZIP'en](originals/g-driver-delta-09c602f.zip)
+med [hashmanifest](originals/g-driver-delta-09c602f.json).
+[Stikortet](old-paths.json) angiver archive/member/SHA256 for alle tolv.
+Deltaen indeholder kun de to filer og er **ikke et selvstændigt køreklar træ**.
+En genskabelse af 09c602f kræver også de matchende afhængigheder fra det
+bevarede Git-commit/startsource og de oprindelige private inputs/resultater.
+Man må ikke lægge deltaen oven på 7249 og antage hashkompatibel resume.
+Den komplette 7249-pakke og dens restorevej ovenfor er uændret.

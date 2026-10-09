@@ -126,14 +126,38 @@ class BMReviewEvaluatorTests(unittest.TestCase):
 
 class ConsolidatedLayoutTests(unittest.TestCase):
     def test_expected_bm_entrypoints(self):
+        import hashlib
+        import json
+        import re
+        import zipfile
         root = Path(__file__).resolve().parents[1]
-        actual = {p.name for p in (root / 'src/exe/run_model/bm_1').glob('*.py')}
-        self.assertEqual(actual, {'verify.py', 'optimize.py', 'refine.py', 'real_data.py', 'estimate.py', 'outputs.py', 'curves.py', 'deterministic.py', 'deterministic_response.py'})
-        for retired in (
+        guide = (root / 'docs/bm/README.md').read_text(encoding='utf-8')
+        calendar = (root / 'docs/bm/WEEKDAY_BACKTEST.md').read_text(encoding='utf-8')
+        normal = {'bm_1_f4', 'bm_1_g', 'weekday_backtest'}
+        for module in normal:
+            self.assertTrue((root / ('src/exe/run_model/' + module + '.py')).is_file(), module)
+            self.assertIn('src.exe.run_model.' + module, guide + calendar)
+        index = (root / 'archive/bm/INDEX.md').read_text(encoding='utf-8')
+        documented = set(re.findall(r'`(src\.exe\.run_model\.bm_1(?:\.[a-z0-9_]+|_[a-z0-9_]+))`', index))
+        directory = root / 'src/exe/run_model'
+        active = {'src.exe.run_model.' + p.stem for p in directory.glob('bm_1*.py')}
+        active |= {'src.exe.run_model.bm_1.' + p.stem for p in (directory / 'bm_1').glob('*.py')}
+        expected_references = active - {'src.exe.run_model.' + name for name in normal}
+        self.assertEqual(documented, expected_references, 'Every retained reference CLI needs its own documented role.')
+        mapping = json.loads((root / 'archive/bm/old-paths.json').read_text(encoding='utf-8'))
+        retired = mapping['round3_driver_retirements']
+        self.assertEqual(len(retired), 12)
+        self.assertEqual(len({row['path'] for row in retired}), 12)
+        for row in retired:
+            self.assertFalse((root / row['path']).exists(), row['path'])
+            with zipfile.ZipFile(root / row['original_archive']) as archive:
+                payload = archive.read(row['original_archive_member'])
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), row['source_sha256'], row['path'])
+        for old_path in (
             'src/method/bm_1_control.py', 'src/method/bm_1_objective.py',
             'src/method/bm_1_mixture.py', 'src/validation/method/bm_1.py',
         ):
-            self.assertFalse((root / retired).exists(), retired)
+            self.assertFalse((root / old_path).exists(), old_path)
 
     def test_reference_studies_have_no_executable_or_plot_dependencies(self):
         root = Path(__file__).resolve().parents[1]
@@ -392,9 +416,10 @@ class F4DocumentationBuildTests(unittest.TestCase):
 
     def test_active_document_links_and_tex_inputs_resolve(self):
         import re
-        root = Path(__file__).resolve().parents[1] / 'root'
-        for name in ('BM_GUIDE.md', 'BM_REFERENCE.md', 'F4.md'):
-            path = root / name
+        repo = Path(__file__).resolve().parents[1]
+        root = repo / 'root'
+        for name in ('docs/bm/README.md', 'docs/bm/WEEKDAY_BACKTEST.md', 'root/BM_REFERENCE.md', 'root/F4.md'):
+            path = repo / name
             for link in re.findall(r'\]\(([^)#]+)(?:#[^)]*)?\)', path.read_text(encoding='utf-8')):
                 if not link.startswith(('http:', 'https:')):
                     self.assertTrue((path.parent / link).is_file(), link)

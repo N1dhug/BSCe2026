@@ -2,7 +2,7 @@
 
 <a id="h2-interval-forecast-implementation"></a>
 <a id="h2-compact-estimation-review"></a>
-Dette er en samlet faglig fremstilling af bevaret udviklingsevidens. Tidligere arbejdsordrer og budgetter er historik, ikke nye kørselsordrer. Aktuel brug, accept og opgaver står i [BM-guiden](../../../root/BM_GUIDE.md) og [status](../../../docs/bm/STATUS.txt). Originaler, hashes og genskabelse: [arkivindeks](../INDEX.md).
+Dette er en samlet faglig fremstilling af bevaret udviklingsevidens. Tidligere arbejdsordrer og budgetter er historik, ikke nye kørselsordrer. Aktuel brug, accept og opgaver står i [BM-guiden](../../../docs/bm/README.md) og [status](../../../docs/bm/STATUS.txt). Originaler, hashes og genskabelse: [arkivindeks](../INDEX.md).
 
 Historiske statusord som “åben”, “endnu ikke” og “Remaining scope” gælder den pågældende delundersøgelse 5.–8. oktober 2026. De beskriver ikke automatisk den aktuelle F4-kommando eller senere G-timeleverance.
 
@@ -238,7 +238,7 @@ The final control itself charged 3.07888727100044 s. These are small-control
 times, not measured BM grid/forecast-hour rates.
 
 
-Den aktive kommandos datoer og outputkontrakt står i [F4_RUN](../../../root/F4_RUN.md).
+Den aktive kommandos datoer og outputkontrakt står i [F4_RUN](../../../docs/bm/README.md).
 Det historiske H-forløbs egne valgte posteriorer må ikke forveksles med den
 selvstændige F4-kørsels nye deklarerede Beta-prior. Syv marginale bånd er
 hverken et simultant ugebånd eller en dækningskalibrering.
