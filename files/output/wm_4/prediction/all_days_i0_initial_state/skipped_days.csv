@@ -1,0 +1,150 @@
+day,reason
+2022-02-28,"I0-inferred F0=-9.368167 lies outside [-1,1]."
+2022-03-01,"I0-inferred F0=-1.138471 lies outside [-1,1]."
+2022-03-02,"I0-inferred F0=1439790.798446 lies outside [-1,1]."
+2022-03-03,"I0-inferred F0=-3.313298 lies outside [-1,1]."
+2022-03-04,"I0-inferred F0=-1.807269 lies outside [-1,1]."
+2022-03-06,"I0-inferred F0=1.385029 lies outside [-1,1]."
+2022-03-07,"I0-inferred F0=-9.451212 lies outside [-1,1]."
+2022-03-08,"I0-inferred F0=-2.369542 lies outside [-1,1]."
+2022-03-09,"I0-inferred F0=-4.225183 lies outside [-1,1]."
+2022-03-10,"I0-inferred F0=-9.566903 lies outside [-1,1]."
+2022-03-11,"I0-inferred F0=-2.428879 lies outside [-1,1]."
+2022-03-12,"I0-inferred F0=-2.798559 lies outside [-1,1]."
+2022-03-13,"I0-inferred F0=-2.661654 lies outside [-1,1]."
+2022-03-14,"I0-inferred F0=-5.515303 lies outside [-1,1]."
+2022-03-15,"I0-inferred F0=-1.461195 lies outside [-1,1]."
+2022-03-16,"I0-inferred F0=-5.005311 lies outside [-1,1]."
+2022-03-17,"I0-inferred F0=-3.054565 lies outside [-1,1]."
+2022-03-18,"I0-inferred F0=-1.863849 lies outside [-1,1]."
+2022-03-19,"I0-inferred F0=-1.415205 lies outside [-1,1]."
+2022-03-20,"I0-inferred F0=-1.306059 lies outside [-1,1]."
+2022-03-22,"I0-inferred F0=-1.443690 lies outside [-1,1]."
+2022-03-23,"I0-inferred F0=-8.186051 lies outside [-1,1]."
+2022-03-24,"I0-inferred F0=-8.872029 lies outside [-1,1]."
+2022-03-25,"I0-inferred F0=-4.394813 lies outside [-1,1]."
+2022-03-26,"I0-inferred F0=-1.877245 lies outside [-1,1]."
+2022-03-27,Incomplete prediction I/U/temperature data between 2022-03-27 00:00:00 and 2022-03-28 00:00:00.
+2022-03-28,"I0-inferred F0=-9.643645 lies outside [-1,1]."
+2022-03-29,"I0-inferred F0=-3.620266 lies outside [-1,1]."
+2022-03-30,"I0-inferred F0=-6.994031 lies outside [-1,1]."
+2022-03-31,"I0-inferred F0=-3.640686 lies outside [-1,1]."
+2022-04-01,"I0-inferred F0=-4.719086 lies outside [-1,1]."
+2022-04-02,"I0-inferred F0=1.876006 lies outside [-1,1]."
+2022-04-03,Warm-up/target signals are incomplete between 2022-03-27 00:00:00 and 2022-03-28 00:00:00.
+2022-04-04,"I0-inferred F0=7.741870 lies outside [-1,1]."
+2022-04-05,"I0-inferred F0=5.253578 lies outside [-1,1]."
+2022-04-06,"I0-inferred F0=-1.784852 lies outside [-1,1]."
+2022-04-07,"I0-inferred F0=-7.575261 lies outside [-1,1]."
+2022-04-08,"I0-inferred F0=6.418373 lies outside [-1,1]."
+2022-04-09,"I0-inferred F0=-1.167925 lies outside [-1,1]."
+2022-04-10,Warm-up/target signals are incomplete between 2022-03-27 00:00:00 and 2022-03-28 00:00:00.
+2022-04-11,"I0-inferred F0=-3.797625 lies outside [-1,1]."
+2022-04-12,"I0-inferred F0=-1.347311 lies outside [-1,1]."
+2022-04-13,"I0-inferred F0=-3.202116 lies outside [-1,1]."
+2022-04-14,"I0-inferred F0=-6.624885 lies outside [-1,1]."
+2022-04-15,"I0-inferred F0=-5.316164 lies outside [-1,1]."
+2022-04-16,"I0-inferred F0=-1.186413 lies outside [-1,1]."
+2022-04-17,Warm-up/target signals are incomplete between 2022-03-27 00:00:00 and 2022-03-28 00:00:00.
+2022-04-18,"I0-inferred F0=-10.660231 lies outside [-1,1]."
+2022-04-19,"I0-inferred F0=-2.225200 lies outside [-1,1]."
+2022-04-20,"I0-inferred F0=5.921196 lies outside [-1,1]."
+2022-04-21,"I0-inferred F0=2.143952 lies outside [-1,1]."
+2022-04-22,"I0-inferred F0=-5.408510 lies outside [-1,1]."
+2022-04-23,"I0-inferred F0=-1.451732 lies outside [-1,1]."
+2022-04-24,Warm-up/target signals are incomplete between 2022-03-27 00:00:00 and 2022-03-28 00:00:00.
+2022-04-25,"I0-inferred F0=-7.603738 lies outside [-1,1]."
+2022-04-26,"I0-inferred F0=3.124437 lies outside [-1,1]."
+2022-04-27,"I0-inferred F0=3.285843 lies outside [-1,1]."
+2022-04-29,"I0-inferred F0=2.174677 lies outside [-1,1]."
+2022-04-30,"I0-inferred F0=2.351098 lies outside [-1,1]."
+2022-05-01,Warm-up/target signals are incomplete between 2022-03-27 00:00:00 and 2022-03-28 00:00:00.
+2022-05-02,"I0-inferred F0=2.011553 lies outside [-1,1]."
+2022-05-03,"I0-inferred F0=-1.675536 lies outside [-1,1]."
+2022-05-04,"I0-inferred F0=-3.396788 lies outside [-1,1]."
+2022-05-05,"I0-inferred F0=-1.443775 lies outside [-1,1]."
+2022-05-06,"I0-inferred F0=2.403989 lies outside [-1,1]."
+2022-05-07,"I0-inferred F0=-2.731602 lies outside [-1,1]."
+2022-05-08,"I0-inferred F0=-3.617759 lies outside [-1,1]."
+2022-05-09,"I0-inferred F0=-4.582923 lies outside [-1,1]."
+2022-05-10,"I0-inferred F0=5.121889 lies outside [-1,1]."
+2022-05-11,"I0-inferred F0=-2.308816 lies outside [-1,1]."
+2022-05-12,"I0-inferred F0=3.255141 lies outside [-1,1]."
+2022-05-13,"I0-inferred F0=-2.607141 lies outside [-1,1]."
+2022-05-14,"I0-inferred F0=-1.490943 lies outside [-1,1]."
+2022-05-16,"I0-inferred F0=5.565894 lies outside [-1,1]."
+2022-05-17,"I0-inferred F0=7.259833 lies outside [-1,1]."
+2022-05-18,"I0-inferred F0=1.353323 lies outside [-1,1]."
+2022-05-19,"I0-inferred F0=1.592326 lies outside [-1,1]."
+2022-05-20,"I0-inferred F0=2.542112 lies outside [-1,1]."
+2022-05-21,"I0-inferred F0=13.189901 lies outside [-1,1]."
+2022-05-23,"I0-inferred F0=23.649430 lies outside [-1,1]."
+2022-05-24,"I0-inferred F0=7.479307 lies outside [-1,1]."
+2022-05-25,"I0-inferred F0=9.044812 lies outside [-1,1]."
+2022-05-27,"I0-inferred F0=-3.428517 lies outside [-1,1]."
+2022-05-28,"I0-inferred F0=-1.037493 lies outside [-1,1]."
+2022-05-30,"I0-inferred F0=-8.192952 lies outside [-1,1]."
+2022-05-31,"I0-inferred F0=7.567827 lies outside [-1,1]."
+2022-06-01,"I0-inferred F0=3.826092 lies outside [-1,1]."
+2022-06-03,"I0-inferred F0=1.039060 lies outside [-1,1]."
+2022-06-06,"I0-inferred F0=-1.986968 lies outside [-1,1]."
+2022-06-07,"I0-inferred F0=1.111842 lies outside [-1,1]."
+2022-06-08,"I0-inferred F0=2.904821 lies outside [-1,1]."
+2022-06-09,Incomplete prediction I/U/temperature data between 2022-06-09 00:00:00 and 2022-06-10 00:00:00.
+2022-06-10,Incomplete prediction I/U/temperature data between 2022-06-10 00:00:00 and 2022-06-11 00:00:00.
+2022-06-11,Incomplete prediction I/U/temperature data between 2022-06-11 00:00:00 and 2022-06-12 00:00:00.
+2022-06-12,Incomplete prediction I/U/temperature data between 2022-06-12 00:00:00 and 2022-06-13 00:00:00.
+2022-06-13,Incomplete prediction I/U/temperature data between 2022-06-13 00:00:00 and 2022-06-14 00:00:00.
+2022-06-14,Incomplete prediction I/U/temperature data between 2022-06-14 00:00:00 and 2022-06-15 00:00:00.
+2022-06-15,Incomplete prediction I/U/temperature data between 2022-06-15 00:00:00 and 2022-06-16 00:00:00.
+2022-06-16,Warm-up/target signals are incomplete between 2022-06-09 00:00:00 and 2022-06-10 00:00:00.
+2022-06-17,Warm-up/target signals are incomplete between 2022-06-10 00:00:00 and 2022-06-11 00:00:00.
+2022-06-18,Warm-up/target signals are incomplete between 2022-06-11 00:00:00 and 2022-06-12 00:00:00.
+2022-06-19,Warm-up/target signals are incomplete between 2022-06-12 00:00:00 and 2022-06-13 00:00:00.
+2022-06-20,Warm-up/target signals are incomplete between 2022-06-13 00:00:00 and 2022-06-14 00:00:00.
+2022-06-21,Warm-up/target signals are incomplete between 2022-06-14 00:00:00 and 2022-06-15 00:00:00.
+2022-06-22,Warm-up/target signals are incomplete between 2022-06-15 00:00:00 and 2022-06-16 00:00:00.
+2022-06-23,Warm-up/target signals are incomplete between 2022-06-16 00:00:00 and 2022-06-17 00:00:00.
+2022-06-24,Warm-up/target signals are incomplete between 2022-06-17 00:00:00 and 2022-06-18 00:00:00.
+2022-06-25,Warm-up/target signals are incomplete between 2022-06-18 00:00:00 and 2022-06-19 00:00:00.
+2022-06-26,Warm-up/target signals are incomplete between 2022-06-19 00:00:00 and 2022-06-20 00:00:00.
+2022-06-27,Warm-up/target signals are incomplete between 2022-06-20 00:00:00 and 2022-06-21 00:00:00.
+2022-06-28,Warm-up/target signals are incomplete between 2022-06-21 00:00:00 and 2022-06-22 00:00:00.
+2022-06-29,Warm-up/target signals are incomplete between 2022-06-22 00:00:00 and 2022-06-23 00:00:00.
+2022-06-30,Warm-up/target signals are incomplete between 2022-06-16 00:00:00 and 2022-06-17 00:00:00.
+2022-07-01,Warm-up/target signals are incomplete between 2022-06-17 00:00:00 and 2022-06-18 00:00:00.
+2022-07-02,Warm-up/target signals are incomplete between 2022-06-18 00:00:00 and 2022-06-19 00:00:00.
+2022-07-03,Warm-up/target signals are incomplete between 2022-06-19 00:00:00 and 2022-06-20 00:00:00.
+2022-07-04,Warm-up/target signals are incomplete between 2022-06-20 00:00:00 and 2022-06-21 00:00:00.
+2022-07-05,Warm-up/target signals are incomplete between 2022-06-21 00:00:00 and 2022-06-22 00:00:00.
+2022-07-06,Warm-up/target signals are incomplete between 2022-06-22 00:00:00 and 2022-06-23 00:00:00.
+2022-07-07,Warm-up/target signals are incomplete between 2022-06-16 00:00:00 and 2022-06-17 00:00:00.
+2022-07-08,Warm-up/target signals are incomplete between 2022-06-17 00:00:00 and 2022-06-18 00:00:00.
+2022-07-09,Warm-up/target signals are incomplete between 2022-06-18 00:00:00 and 2022-06-19 00:00:00.
+2022-07-10,Warm-up/target signals are incomplete between 2022-06-19 00:00:00 and 2022-06-20 00:00:00.
+2022-07-11,Warm-up/target signals are incomplete between 2022-06-20 00:00:00 and 2022-06-21 00:00:00.
+2022-07-12,Warm-up/target signals are incomplete between 2022-06-21 00:00:00 and 2022-06-22 00:00:00.
+2022-07-13,Warm-up/target signals are incomplete between 2022-06-22 00:00:00 and 2022-06-23 00:00:00.
+2022-07-14,Warm-up/target signals are incomplete between 2022-06-16 00:00:00 and 2022-06-17 00:00:00.
+2022-07-15,Warm-up/target signals are incomplete between 2022-06-17 00:00:00 and 2022-06-18 00:00:00.
+2022-07-16,Warm-up/target signals are incomplete between 2022-06-18 00:00:00 and 2022-06-19 00:00:00.
+2022-07-17,Warm-up/target signals are incomplete between 2022-06-19 00:00:00 and 2022-06-20 00:00:00.
+2022-07-18,Warm-up/target signals are incomplete between 2022-06-20 00:00:00 and 2022-06-21 00:00:00.
+2022-07-19,Warm-up/target signals are incomplete between 2022-06-21 00:00:00 and 2022-06-22 00:00:00.
+2022-07-20,Warm-up/target signals are incomplete between 2022-06-22 00:00:00 and 2022-06-23 00:00:00.
+2022-07-21,Warm-up/target signals are incomplete between 2022-06-16 00:00:00 and 2022-06-17 00:00:00.
+2022-07-22,Warm-up/target signals are incomplete between 2022-06-17 00:00:00 and 2022-06-18 00:00:00.
+2022-07-23,Warm-up/target signals are incomplete between 2022-06-18 00:00:00 and 2022-06-19 00:00:00.
+2022-07-24,Warm-up/target signals are incomplete between 2022-06-19 00:00:00 and 2022-06-20 00:00:00.
+2022-07-25,Warm-up/target signals are incomplete between 2022-06-20 00:00:00 and 2022-06-21 00:00:00.
+2022-07-26,Warm-up/target signals are incomplete between 2022-06-21 00:00:00 and 2022-06-22 00:00:00.
+2022-07-27,Warm-up/target signals are incomplete between 2022-06-22 00:00:00 and 2022-06-23 00:00:00.
+2022-08-01,"I0-inferred F0=1.749071 lies outside [-1,1]."
+2022-08-02,"I0-inferred F0=34943245.463013 lies outside [-1,1]."
+2022-08-13,"I0-inferred F0=1.239139 lies outside [-1,1]."
+2022-08-14,"I0-inferred F0=4.162517 lies outside [-1,1]."
+2022-08-16,"I0-inferred F0=-2.197244 lies outside [-1,1]."
+2022-08-17,"I0-inferred F0=1.029876 lies outside [-1,1]."
+2022-08-19,"I0-inferred F0=1.860662 lies outside [-1,1]."
+2022-08-21,"I0-inferred F0=-1.073725 lies outside [-1,1]."
+2022-08-22,"I0-inferred F0=-1.666252 lies outside [-1,1]."
