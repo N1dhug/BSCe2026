@@ -1,345 +1,222 @@
-BM-F/G: samlet matematisk gennemgang, forenkling og oprydning — endelig startprompt
-Startklar efter G's afslutning. Verificeret reference: main 1279d602c7b254f02611051e3a4edaa88e8a1187.
+GÆLDENDE OPGAVE EFTER PR146 — 9. oktober 2026
+Tidligere arbejdsordrer er historik i Git og sikrede originalpakker.
+Denne opgave har forrang, herunder at tidligere utilgængelighed er historisk.
 
-FORBEREDELSESPAKKE
-Læs først START_HER.txt, G_slutstatus.txt og sammenligning_og_kontroller.txt i
-C:\Users\jvils\.codex\.chatgpt-projects\g-p-6aaef4dd0ec48191922398dc4cb17b90\cleanup_preparation
-Her findes inventory.json, wm_protection_draft.json, entrypoints.json og
-local_artifacts.json. Brug dem som et forspring, ikke som et aktuelt facit.
-Den statiske oversigt er opdateret ved 1279d60 efter G's afslutning og omfatter
-hverken alle dynamiske afhængigheder eller alle lokale filer.
-Genkontrollér ændrede områder efter G; genlæs ikke alt uden grund.
-Ingen filkategori i oversigten er en selvstændig sletteautorisation.
+Gennemfør næste og mere grundige oprydning og optimering af BM-F og BM-G. Arbejd frem mod en enkel, læsbar og praktisk brugbar implementering. Lever konkrete ændringer og kontrollerede resultater, ikke blot endnu en plan eller samling statusnoter.
 
-G ER FÆRDIG: GENBRUG DEN NYE RAMME
-G's timeintervaloperator, empiriske residuallag, seks rullende ugedagsvinduer
-og frosne båndkalibrering er gennemført. Byg dem ikke forfra. Den fælles
-weekday_backtest-kalender er generisk og G/WM er tilsluttet; F's faktiske
-adapter mangler. Prioritér en fagligt korrekt F-tilslutning som et særskilt
-delmål, men opfind ikke et weekday-fit ved at ommærke F4's faste model.
-Et dyrt nyt F-estimationsstudie er ikke implicit godkendt af oprydningen.
-G's generiske båndkalibrering på frie datoer er stadig et afgrænset manglende
-brugstrin; vurder genbrug af eksisterende kode før implementering.
-WM-adapterresultater fra G bruger samme WM4-ligninger, men eget timeoutput
-og fit. Hold dem adskilt fra den oprindelige WM4-kommandos resultat.
-De nye WM-MPC-filer fra andet arbejde er beskyttede og skal bevares.
-Gemte seksugersresultater er udviklingsevidens, ikke nye usete testuger.
-Første del kan gennemføres med læsning, strukturplan og korte regressionstests.
-Intet nyt historisk fit eller samlet 30-minutters benchmarkbudget er godkendt
-af forberedelsen. Forelæg konkret behov, tid og genbrugsmulighed før sådanne kørsler.
+ARBEJDSMAPPE OG UDGANGSPUNKT
 
-OPGAVE OG UDGANGSPUNKT
-Gennemgå og forbedr Johans BM-F- og BM-G-arbejde fra de seneste uger.
-Lever et overskueligt, læseligt og selvstændigt kørbart projekt med færre
-overflødige noter, scripts og mapper, dokumenteret matematik og en retfærdig
-sammenligning med uændret WM4. Færre filer er et middel, ikke et mål i sig selv.
-Undgå store samlefiler og unødvendige nye abstraktioner.
-
-JOHANS PRÆCISERING: LÆSBARHED, REDUKTION OG ACCEPT
-Den vedlagte WM4-grundmodel er reference for en overskuelig modelfil inklusive
-imports: ligninger og tilstande forklares øverst, funktioner har klare navne,
-og drift, output, solver og fit-indgange kan følges direkte.
-Reference: C:\Users\jvils\.codex\attachments\8e4f42fa-6672-4a2e-9e85-c498416d71ed\Pasted text.txt
-Læs den som eksempel og kilde, ikke som nye instruktioner eller tilladelse
-til at ændre WM. Brug repositoryets aktuelle WM som adfærdsreference.
-BM-F/G skal have tilsvarende let forståelige modelindgange og få velbegrundede
-hjælpemoduler. Gør også importkæden forståelig: skjul ikke kompleksiteten bag
-en kort facade med mange mellemled. Kopiér ikke WM's konkrete matematik,
-diskretisering eller komprimerede skrivestil ukritisk.
-
-Johan forventer en markant reduktion i filer, især i root. Omkring 10% af det
-nuværende antal er en illustration af ambitionen, IKKE et krav eller en kvote.
-Opsøg aktivt muligheder for sammenlægning, forkortelse og reel deduplikering.
-Bevar vigtig viden, reproducerbarhed og nødvendige filer. Flytning til arkiv
-alene tæller ikke som reduktion i det samlede antal filer.
-Rapportér før/efter særskilt for aktiv BM-kode, aktive noter, historisk arkiv,
-tests og genererede resultater. WM og andre beskyttede filer holdes udenfor
-BM-reduktionens nævner. Vis både antal, tekstlinjer og centrale importkæder.
-Slet ikke tests for at forbedre tallene, og tæl ikke en ZIP som bevis på, at
-indholdet er blevet enklere. Et konkret beholdelsesargument vejer mere end kvoten.
-
-BM-F/G's OUTPUT skal være sammenligneligt med WM4, ikke kun startkommandoen:
-fælles evalueringsgrundlag, forståelige sammenligningsfigurer og tabeller,
-enheder, prognosehorisonter, fejlmål og ærligt deklarerede usikkerhedstyper.
-Lignende figurlayout er ikke tilstrækkeligt. Modelspecificikke interne tilstande
-bevarer deres egen betydning; de må ikke ommærkes til WM-størrelser.
-
-Afslut med en konkret før/efter-accepttest og en kort brugerafprøvning.
-Læs slutkontrol.txt i forberedelsespakken. Skeln mellem godkendt oprydning,
-opfyldt runtime-mål og dokumenteret prognosekvalitet. Renere kode behøver ikke
-forbedre prognoserne, men ren refaktorering må ikke forringe dem skjult.
-
-Arbejd i det fulde repository:
+Repository:
 C:\Users\jvils\OneDrive\Skrivebord\Til VS\fag\7 semester\BSCe2026
-Kontrollér den faktiske mappe, Git-status, aktive processer og seneste G-status.
-Denne prompt bygger på en tidligere undersøgelse; genbrug ikke dens commit
-som slutstatus. Indlæs aftenens afsluttende G-ændringer og seneste main.
-Bevar lokale ændringer. Opret én særskilt branch til arbejdet.
-F4_code er en begrænset checkout og er ikke hovedarbejdsområdet.
 
-Faste lokale referenceplaceringer, som skal genkontrolleres:
-- F4_code under ChatGPT-projekt g-p-6aaef4dd0ec48191922398dc4cb17b90.
-- G-work og G-S3-example-20261008 under projekt
-  g-p-6ac4043812808191909ecf61478e3644.
-- De to bevarede preview/bm-* branches og den lokale
-  g/s3-standalone-forecast-20261008 indeholder unikt historisk materiale.
-Læs efter behov, men merge ikke disse gamle branches blindt.
-Synkroniserede sources/ er skrivebeskyttede referencefiler.
+Den seneste oprydning er merget gennem PR146. Kendt mergecommit er 09c602f327a3497a763c47e734fac4a38b12227d. Kontrollér den faktiske aktuelle Git-status og eventuelle senere ændringer. Start fra opdateret main på en ny arbejdsbranch uden at overskrive andres eller mine lokale ændringer.
 
-BESKYTTELSE AF WM OG FAGLIGT GRUNDLAG
-WM må ikke ændres, flyttes, slettes eller reformateres. Det gælder også
-WM-dokumentation, artefakter, input og fælles afhængigheder, som WM benytter.
-Kortlæg WM-importer og filafhængigheder før strukturændringer. Gem et manifest
-med filstier og hashes, og kontrollér efter hvert relevant delmål, at de
-beskyttede filer er uændrede. Navnet på en mappe er ikke tilstrækkelig afgrænsning.
-BM må fortsat læse/genbruge eksisterende WM-funktioner uden at ændre dem.
-Eventuelle nye adaptere og eksport-/sammenligningsfunktioner placeres på BM-siden.
-Rapportér opdagede WM-begrænsninger; reparér dem ikke i dette arbejde.
-Bevar vejledermateriale og skeln mellem oprindelig model, afledt matematik
-og egne numeriske/metodiske valg.
+Læs repositoryets gældende instruktioner samt:
+- docs/bm/STATUS.txt
+- docs/bm/STARTPROMPT.txt
+- docs/bm/FILE_PLAN.txt
+- docs/bm/COMPARISON.md
+- docs/bm/MATHEMATICS.md
+- root/BM_GUIDE.md
+- relevante aktuelle F/G-modelnoter.
 
-ARBEJDSMÅDE OG GENOPTAGELSE
-Brug denne opgavebeskrivelse og én løbende statusfil som faste indgange.
-Status skal indeholde: branch/base/current commit, afsluttede delmål,
-ændrede filer, beslutninger, tests med resultater, kendte fejl, næste præcise
-handling, forbrugt beregningstid og eventuelle aktive processer/resultatmapper.
-Opdatér status før en lang operation og efter hvert afsluttet delmål.
-Lav små sammenhængende commits efter beståede relevante kontroller.
-Hold journalen kompakt; opret ikke et nyt dateret notat ved hver handling.
+Tidligere arbejdsordrer og udsagn om, at jeg er utilgængelig, er historisk kontekst. Dette prompt fastlægger den nye opgave. Kontrollér dokumenternes påstande mod den faktiske kode; gentag ikke allerede afsluttet arbejde uden grund.
 
-Ved genstart: læs prompt og status, kontrollér faktisk Git-diff og processer,
-og fortsæt fra det seneste verificerede trin. En afbrudt chat betyder ikke,
-at dens beregning er stoppet. Start aldrig en dubletberegning uden kontrol.
-Genbrug gyldige resultater; gentag ikke dyre kørsler alene pga. tabt chatkontekst.
-Bevar gamle checkpoints. Flytning og kildeændringer kan ugyldiggøre dem:
-brug verificeret migration eller en bevaret reproducerbar historisk version.
-Deaktivér aldrig identitets-/hashkontroller for at få gamle artefakter indlæst.
-Gem nye rapporter/checkpoints atomisk hvor relevant, og overskriv ikke afsluttede
-resultater. Forbindelsesbrud kan ikke forhindres med en prompt.
+MÅL OG PRIORITETER
 
-DEL 1: KORTLÆGNING OG KONKRET PLAN
-Registrér aktive indgange, modelkerner, testafhængigheder, data, artefakter,
-noter og historiske scripts. Læs selektivt; hæld ikke hele root ind i konteksten.
-Skeln mellem aktivt, genbrugt, historisk, dublet og uklart materiale.
-Manglende import er ikke i sig selv bevis for, at et script er ubrugeligt.
-Kontrollér også CLI, konfigurationer, dokumentlinks, dynamisk indlæsning og
-henvisninger fra gemte resultater.
-Lav én kompakt filoversigt med behold/flyt/sammenlæg/arkivér/slet og begrundelse.
-Tag et genskabeligt udgangspunkt, inklusive unikke ignorerede lokale resultater;
-Git alene sikrer ikke disse filer. Kontrollér arkivets integritet.
-Afslut første del med den konkrete ændringsplan, faglige risici og tidsbudget.
-Afklar materielle ændringer i modelantagelser med Johan; rutineoprydning inden
-for den aftalte plan kræver ikke gentagne tilladelser.
+Jeg ønsker:
+1. Korrekte og forståelige BM-modeller.
+2. Enkel kørsel uden chat, med manuel ændring af periode og parametre.
+3. Væsentligt enklere aktiv kode og færre unødvendige filer.
+4. Et ryddeligt projekt og ét overskueligt historisk arkiv.
+5. Output, der kan sammenlignes med WM4.
+6. Fornuftig køretid og dokumenteret bevarelse af korrekthed.
 
-DEL 2: MATEMATIK OG SAMMENLIGNING
-Forbind BM-F/G's ligninger, antagelser og observationsoperatorer med konkrete
-kodefunktioner og relevante tests. Kontrollér enheder, tidsskala, normalisering,
-bevarelses-/grænseegenskaber, begyndelsestilstand, fit, filtrering, prognose,
-identificerbarhed, støj og forskellen mellem numerisk og statistisk usikkerhed.
-Timeforbrug, intervalmiddel og punktværdi må ikke behandles som identiske uden
-en begrundelse og kontrol. Verificér datasættets enheder; udled dem ikke alene
-af et kolonnenavn eller hukommelsen fra en tidligere chat.
+Tidligere oprydning reducerede især løse noter og forsøgsfiler. Aktiv BM-kode faldt kun fra 143 til 133 filer, og de samlede importkæder ændrede sig næsten ikke. Undersøg derfor især den aktive implementering denne gang.
 
-BM sammenlignes med WM4's eksisterende praksis. Fastlæg:
-samme målte population, tidsstempler, enheder, observationsgrundlag og horisont;
-fælles evalueringsmasker og dokumenterede mangler; trænings-/valideringscutoffs;
-hvilken pris- og vejrinformation der er tilgængelig ved prognosestart.
-Modelspecifikke interne solvere og tilstande må gerne være forskellige.
-BM's X må ikke ommærkes til WM's F eller R.
-Skeln mellem fælles evalueringsvilkår og modellerne kørt efter egen standardpraksis.
-Rapportér forskelle i historiklængde og baseline frem for at skjule dem.
-Hold diagnostik med fremtidige observationer og oracle-input adskilt fra
-almindelige prognoser. Kontrollér specifikt WM's optimize-prediction-state
-og øvrige oracle-varianter før brug som reference.
-Hvis output ikke kan sammenlignes meningsfuldt uden WM-ændringer, beskriv
-begrænsningen og en forsvarlig sammenligning på BM-siden.
+Mit tidligere eksempel om at ende med 10 % af filerne var en ambition om betydelig forenkling, ikke en kvote. Reducér så meget som fagligt forsvarligt uden tab af vigtig viden, funktionalitet eller nødvendige resultater. Undgå både mange trivielle hjælpefiler og enorme samlefiler.
 
-Klassificér fund som fejl, nødvendig funktion, dokumenteret begrænsning
-eller valgfri forskning. Start ikke automatisk nye parameterbanker, store
-kalibreringssøgninger eller afsluttede H/I/J-/G-kampagner.
-Gamle negative resultater skal fortsat være synlige.
+BESKYTTELSE OG AFGRÆNSNING
 
-DEL 3: STRUKTUR, DOKUMENTATION OG ARKIV
-Bevar eksisterende fornuftige src-grænser for model, metode, CLI og tests.
-Fjern dublering efter dokumenteret adfærdslighed; saml kode med samme ansvar.
-Undersøg root særligt. Adskil brugervejledning, gældende matematik, konfiguration,
-genanvendelig kode og historisk forsøgsmateriale.
-AGENTS.md skal være kort, aktuel og fri for gentagne historiske arbejdsordrer.
-Bevar gældende begrænsninger og henvis til et overskueligt historisk arkiv.
+- Ændr ikke WM, WM4, WM-MPC eller deres fælles afhængigheder, data, dokumentation og resultater.
+- BM skal tilpasses sammenligningen med WM; WM skal ikke tilpasses BM.
+- Opdatér beskyttelsesoversigten ved start, hvis der er kommet nyt WM-arbejde. Bevar eksisterende beskyttelse.
+- sources/ er skrivebeskyttet.
+- Slet ikke andre bidragyderes arbejde eller materiale med uklart ejerskab.
+- Ændr ikke rådata, og publicér ikke lokale datasæt eller private resultater.
+- Bevar unik matematik, væsentlige negative resultater og nødvendige forbindelser mellem kode, modelartefakter og resultater.
+- Den store fælles F/G/WM-evalueringskampagne og generelle modelrangering er fortsat udskudt. Forbered grundlaget og kontrollér format og sammenlignelighed nu.
+- Start ikke automatisk nye forskningsforløb, parameterbanker eller gamle H/I/J-/G-kampagner.
 
-Opret ét logisk arkiv med indholdsoversigt, opdelt i F/G, emne og relevante
-forsøg. Bevar unik matematik og nødvendige kæder mellem kilder og resultater.
-Undgå en flad bunke daterede kopier. Markér afløst indhold og henvis til den
-gældende fil. Rå tidsserier og lokale datasæt må ikke automatisk publiceres:
-arkivets oversigt kan henvise til en verificeret lokal pakke.
-Slet først dubletter/overflødige placeringer efter kontrol af indhold og links.
-Genopret ikke samme rod i en ny arkivmappe.
+MIT EKSEMPEL PÅ GOD KODE
 
-DEL 4: BRUGERBETJENING OG OUTPUT
-Efterlign WM4's python -m-startmønster, argumentnavne, hjælp og datovalg, hvor
-betydningen er den samme. Læs predict_weekly, predict_daily og relevant
-predict_all_days; byg ingen ny menu eller GUI som standard.
-WM4 --week angiver fit-ugen, mens prognosen følger efter. BM skal ikke bruge
-samme navn med skjult anden betydning. Gør fit, genbrug af gemt model og
-prognoseperiode tydelige i hjælp og terminaloutput.
-Perioden skal kunne ændres manuelt, men et frosset fits informationscutoff
-må ikke omgås. Hvis en periode kræver nyt fit, skal det fremgå.
+Jeg har tidligere givet WM4’s grundmodel som eksempel. Den har forståelige imports, en kort matematisk beskrivelse og navngivne funktioner, hvor ligninger, input, parametre og beregninger kan følges direkte.
 
-Lever enkel kørsel for BM-F og BM-G med let ændring af datoer, horisont,
-relevante numerikparametre og outputmappe. Bevar nødvendige parametre uden
-at overfylde standardkommandoen. Fjern personlige absolutte stier.
-Kontrollér input før beregning og giv anvendelige fejlbeskeder.
-Rapportér fremdrift, tidsforbrug og færdig/pauset/fejlet status entydigt.
+Eksemplet findes om tilgængeligt her:
+C:\Users\jvils\.codex\attachments\8e4f42fa-6672-4a2e-9e85-c498416d71ed\Pasted text.txt
 
-BM-output skal kunne bruges til sammenligning: tidsstempler og intervaldefinition,
-observeret og forudsagt forbrug, baseline, relevante eksogene input, enheder,
-modelparametre, fit-cutoff, fejlmål, tid og model-/dataversion.
-Gem tabeller og overskuelige figurer. Medtag usikkerhed hvor modellen faktisk
-leverer den; markér ukalibrerede bånd og manglende størrelser ærligt.
-Bevar interne tilstandes modelspecifikke navne.
+Læs også den aktuelle WM4-model som skrivebeskyttet reference.
 
-DEL 5: HASTIGHED OG KONTROL
-Mål på Johans PC. Mål: under 10 minutter for en uges prognose med gemt fit,
-inklusive indlæsning, beregning og eksport. Vis førstegangskompilering særskilt.
-Forventet overskridelse af 10 minutter forelægges Johan før start.
-30–60 minutter må kun køres med konkret tilladelse. Fit har særskilt budget,
-som skal aftales før en ny dyr fitkørsel.
-Foreslå et samlet budget for profilering og benchmark; mange små tests må
-ikke omgå budgettet. Ingen omfattende datasætkampagne uden aftalt omfang.
-Genbrug eksisterende evidens hvor den er gyldig.
+Brug disse kvaliteter som mål for BM-F/G:
+- Modellens ligninger og observationsdefinition er synlige.
+- Parametre og tilstande har forståelige, konsekvente navne.
+- Imports har klare formål.
+- En normal beregning kan følges uden at læse historiske forsøgsdrivere.
+- Kommentarer forklarer matematik og valg frem for at gentage koden.
+- Validering, numerik og filhåndtering har tydelige ansvar.
 
-Profilér først og optimér dokumenterede flaskehalse. Bevar numeriske krav.
-Sammenlign før/efter på samme input og med relevante tolerancer.
-Skeln mellem ren implementationseffektivisering, præcisionsvalg og ændret
-matematisk model. En simplere model er et eksplicit valg, ikke skjult oprydning.
-Rapportér prognosekvalitet og tid pr. horisont/periode, fejl og manglende dækning.
-Brug flere relevante evalueringsperioder inden for det godkendte budget og
-bevar en adskillelse mellem modelvalg og evaluering.
-Kår ikke en generel vinder ud fra én historisk uge.
+Kopiér ikke WM’s matematik, og tving ikke BM til samme filantal. En lille facade over en uoverskuelig afhængighedskæde opfylder ikke kravet.
 
-FÆRDIG NÅR
-- BM-F/G kan startes uden chat efter en kort WM-lignende vejledning.
-- Manuel ændring af periode/parametre virker og valideres.
-- Aktiv kode og dokumentation er overskuelig; arkivet har kontrollerede links.
-- Beskyttede WM-filer og afhængigheder er uændrede.
-- Relevant matematik og kode hænger sammen; åbne begrænsninger står tydeligt.
-- Relevante regressionstests, genindlæsning og afbrudt/genoptaget kørsel består.
-- Tidsmål er målt eller konkret dokumenteret som endnu ikke opnået.
-- Sammenligningen viser kvalitet, tidsforbrug og informationsvilkår.
-- Ingen ukontrolleret sletning, kildeidentitetsomgåelse eller offentliggørelse
-  af lokale rådata er sket.
-- Aflever én kort oversigt over ændringer, brug, evidens og resterende fagligt arbejde.
+LEVERANCE 1: DATAGRUNDLAG OG F’S AKTUELLE HINDRING
 
+Afklar målergrupper og observationsbetydning med eksisterende dokumentation, metadata og korte, målrettede datakontroller.
 
-FORTSÆTTELSE EFTER PR145 — 9. oktober 2026 (har forrang ved forskelle)
+Jeg mener, at MED er husene med solceller og UDEN husene uden. Behandl dette som en oplysning, der skal bekræftes, ikke som allerede dokumenteret leverandørmetadata.
 
-Fortsæt BM-F/G-oprydningen. Første omgang er merged i PR #145, mergecommit 7249bf9. Kontrollér den faktiske aktuelle main og arbejd videre på en særskilt branch. Bevar nyere ændringer fra andre.
+- Hold MED og UDEN adskilt i fit, prognoser og resultater.
+- Afklar enhed, fortegn, intervalstart/slut, tidszone og netto-/bruttoforbrug så langt evidensen tillader.
+- Ukendte forhold skal mærkes som ukendte; udled ikke enheder alene af talstørrelse.
+- Bind gemte fits til målergruppe, målerliste, træningsperiode, skala og baseline. Afvis utilsigtet genbrug på en anden gruppe.
 
-Jeg går i seng og kan ikke besvare spørgsmål. Træf selv almindelige implementeringsvalg ud fra nedenstående mål og eksisterende materiale. Dokumentér væsentlige valg kort. Ved reel usikkerhed om sletning, modelbetydning eller ejerskab skal du bevare materialet, registrere det konkrete problem og fortsætte med de øvrige opgaver. Vent ikke på svar, og stop ikke hele arbejdet på grund af ét blokeret delmål.
+Den oprindelige F-uge med 24 filtertimer afvises på negative MED-målinger. Den gennemførte åbne uge med én positiv filtertime løser ikke dette problem.
 
-Læs den oprindelige STARTPROMPT, docs/bm/STATUS.txt, FILE_PLAN.txt og COMPARISON.md. Sammenhold den faktiske aflevering med kravene. Brug den eksisterende statusfil til checkpoints og beslutninger; opret ikke nye daterede overdragelsesnoter for hvert trin.
+Undersøg:
+- Hvorfor F kontrollerer hver måler før aggregering.
+- Hvilken observeret størrelse likelihood og prognose faktisk beskriver.
+- Om negative nettomålinger er forenelige med modellen.
+- Om problemet ligger i inputkontrollen, skaleringen, observationsmodellen eller selve modellens anvendelsesområde.
+- Om G har tilsvarende skjulte antagelser.
 
-MÅLET
+Klip ikke negative værdier, fjern ikke de berørte målere, skift ikke population og indsæt ikke et vilkårligt offset for at få testen til at bestå. Skift heller ikke blot til kontrol af gruppemidlet uden matematisk begrundelse.
 
-Lever et væsentligt mere overskueligt BM-projekt, hvor både kode og dokumentation er gennemgået, forenklet og nemme at bruge. Sidste omgang reducerede samlet filantal fra 1052 til 1038, mens aktiv BM-kode voksede fra 141 til 143 filer. Det var et delresultat, ikke færdiggørelse af oprydningen.
+Ret dokumenterede implementeringsfejl. Hvis løsningen kræver en væsentlig ny modelantagelse, beskriv den mindste forsvarlige ændring og dens konsekvenser særskilt. Gennemfør uafhængig oprydning, selv om et fagligt spørgsmål afventer afklaring.
 
-Omkring 10% af det oprindelige filantal var et eksempel på min ambition, ikke et hårdt krav. Søg aktivt betydelig reduktion gennem sammenlægning, forkortelse og fjernelse af dublering. Vigtig viden, nødvendige tests, data og reproducerbarhed må ikke gå tabt.
+LEVERANCE 2: REEL KODE-, NOTE- OG FILOPRYDNING
 
-1. NOTER OG ROOT ER ET HOVEDMÅL
-
-Gennemgå alle tilbageværende BM-noter og BM-forsøgsfiler i root, inklusive relevante undermapper. Begræns dig ikke til nogle få store filer.
-
-For hvert emne skal der være én tydelig gældende fremstilling. Saml gentagne udledninger, statusbeskrivelser, planer, budgetforklaringer, recovery-instrukser og overdragelser. Fjern afløste arbejdsordrer fra aktiv dokumentation.
+Kortlæg kort de aktive forløb:
+input → baseline/skalering → fit → filtrering → prognose → eksport.
 
 Skeln mellem:
-- Aktuel brugervejledning.
-- Gældende matematik og modelantagelser.
-- Nødvendig validering og kendte begrænsninger.
-- Historisk udvikling og evidens.
-- Dubletter og materiale uden selvstændig værdi.
+- almindelig modelkørsel,
+- genbrugelige numeriske metoder,
+- nødvendige referenceberegninger og tests,
+- afsluttede forsøgsdrivere,
+- forældede eller ubrugte kodeveje.
 
-Bevar unik matematik, vigtige negative resultater og beslutningsgrundlag. Det kræver ikke nødvendigvis, at hver oprindelig note fortsat ligger som en separat fil.
+Brug imports, kald, CLI’er, tests og artefaktreferencer som evidens. Manglende statiske imports er ikke alene bevis for, at en fil er ubrugt.
 
-Organisér ét logisk arkiv med en kort indholdsoversigt og klare F/G-emner. Undgå blot at flytte rodet til en anden mappe. Bevar historiske originalpakker, når deres stier og kontrolsummer er nødvendige, og lav et kort fra gamle placeringer til bevaret indhold.
+Gennemfør derefter:
+- Sammenlægning af funktioner og filer med samme ansvar.
+- Fjernelse af dokumenteret dublering og unødvendige videresendelseslag.
+- Udfasning af afløste BM-indgange og forsøgsapparat fra almindelige kørsler.
+- Fælles håndtering på BM-siden, hvor datoer, konfiguration, eksport og metadata faktisk har samme betydning.
+- Tydelig adskillelse mellem matematik, numerik og forsøgsstyring.
+- Fjernelse af unødvendige tunge imports fra simple operationer.
+- Konsekvent navngivning og placering efter repositoryets eksisterende struktur.
 
-Git-historik og den verificerede backup kan understøtte bevaringen, men må ikke erstatte en brugbar samlet fremstilling af den viden, vi stadig skal bruge.
+Indfør ikke et nyt generisk framework, plugin-system eller omfattende abstraktionslag for denne opgave.
 
-2. REEL KODEFORENKLING
+Gennemgå også noter og mapper igen:
+- Ét autoritativt sted for hvert aktuelt fagligt emne.
+- Én klar startvejledning.
+- Fjern gentagelser mellem guider, modelnoter, status og sammenligningsdokumenter.
+- Adskil aktuel matematik fra historiske beslutninger og forsøgsresultater.
+- Saml eksempelkonfigurationer på et logisk sted.
+- Flyt resterende fejlplacerede BM-filer ud af root, når det forbedrer strukturen.
+- Fjern overflødige henvisningsfiler, når aktive links og brugere er håndteret.
+- Hold AGENTS.md kort og aktuel.
+- Opdatér links, tests, indgange og dokumenterede kommandoer efter flytninger.
 
-Brug den vedlagte WM4-grundmodel som reference for læsbarhed inklusive imports: forståelige ligninger, tilstande, parametre, funktioner og indgange.
+Gennemgå de mange resultatfiler som sammenhængende forsøg:
+- Hvilke resultater er unik faglig evidens?
+- Hvilke er eksakte dubletter eller genskabelige mellemprodukter?
+- Hvilke skal være let tilgængelige i det aktive projekt?
+- Hvilke hører til i arkivet?
 
-Gennemgå de mange BM-indgange, wrappers, hjælpefunktioner og forsøgsvarianter. Saml ansvar, som naturligt hører sammen, fjern unødvendige mellemled og undgå parallelle implementationer af samme funktion.
+Bevar nødvendige resultater og deres proveniens. Slet ikke unikke resultater alene, fordi de kan være dyre eller vanskelige at genskabe.
 
-En kort modelfil med en uoverskuelig importkæde er ikke tilstrækkeligt. Samtidig skal du undgå enorme samlefiler, som blander matematik, filhåndtering, plotting og forsøgsstyring.
+Arkivet skal have et kort indeks og tematiske indgange. Undgå at flytte rodet til en ny mappe eller skabe flere overlappende arkiver. Genbrug verificerede bevaringspakker; lav kun nødvendige tillæg.
 
-Historiske kildehashes er et kompatibilitetsproblem, der skal håndteres, ikke automatisk en grund til at beholde alle gamle filer i den aktive struktur. Undersøg reproducerbare arkivpakker og eksplicit versionering. Omgå aldrig integritetskontroller.
+Rapportér aktiv kode, noter, tests, resultater og arkiv hver for sig. En ZIP med hundredvis af filer er arkivering, ikke tilsvarende kodeforenkling. Mål også linjer, antal normale indgange og afhængigheder. Forklar konkrete grunde til væsentlige områder, der ikke kan reduceres yderligere.
 
-Gennemgå placeringer, tomme eller overflødige mapper, personlige absolutte stier, dokumentlinks og konfigurationer. Bevar fornuftige eksisterende strukturgrænser.
+LEVERANCE 3: BRUGERBETJENING, MATEMATIK, OUTPUT OG HASTIGHED
 
-3. F SKAL KUNNE STARTES OG KØRES PÅLIDELIGT
+Brugerbetjening:
+- Følg WM4’s eksisterende python -m-mønster, hvor betydningen passer.
+- Gør nyt fit, ny prognose med gemt fit og genlæsning af et eksisterende resultat tydeligt forskellige.
+- Gør gruppe, periode, horisont, modelartefakt og outputmappe lette at ændre.
+- Brug få almindelige argumenter og en overskuelig konfiguration til avancerede valg.
+- Kontrollér perioder og fit-cutoffs før dyr beregning.
+- Brug ingen personlige absolutte stier i almindelige eksempler.
+- Vis fremdrift og entydig færdig/pauset/fejlet status.
+- Tilføj ikke en GUI eller menu.
 
-Lokalisér F’s uafsluttede opstarts-/inputkontrol. Tidligere tomt output beviser ikke, at Excel-læsningen alene er problemet.
+Kontrollér specifikt, om G’s gemte model faktisk kan lave en ny prognose på en understøttet periode, eller blot genafspille et fast eksisterende snapshot. Beskriv og håndtér forskellen ærligt. En genafspillet uge er ikke bevis på generel prognosefunktionalitet.
 
-Undersøg imports, filadgang, metadata, kontrolsummer og inputbehandling med trinvise tidsmærker. Isolér flaskehalsen før rettelse. Gentag ikke samme fulde forsøg uden ny information.
+Matematik:
+Følg de aktive ligninger gennem implementeringen. Kontrollér observationsoperator, tidsenhed, normalisering, baseline, initialisering, bevarelse/grænser, likelihood, fit, identifikation og usikkerhed.
 
-Ret problemet uden at svække inputvalidering. Kontrollér derefter input, en kort prognose og, hvis det kan gennemføres inden for tidsgrænsen, en fuld uge med gemt fit.
+Kontrollér informationsgrænser: fremtidige observationer må ikke indgå i fit, initialisering, skalering eller almindelig prognose. Dokumentér kendte versus antagne fremtidige pris-/vejrinput.
 
-Målet er under 10 minutter for én models komplette ugeprognose, inklusive nødvendig indlæsning og eksport. Vis filtrering, import/kompilering og selve prognosen særskilt. En pause efter 600 sekunder er ikke et bestået resultat.
+Skeln mellem numerisk usikkerhed, procesusikkerhed, observationsstøj og empiriske prognosebånd. Bevar relevante negative resultater og begrænsninger.
 
-4. GENNEMGÅ MATEMATIKKEN I DEN KODE VI BEHOLDER
+Output:
+Gør BM-output klar til sammenligning med WM4 på samme gruppe, periode, enhed og informationsgrundlag. Brug entydige felter for tidsinterval, observation, prognose, baseline, relevante input, fit-cutoff, parametre, versioner og køretid.
 
-Forbind ligninger og antagelser med konkrete funktioner og tests for både F og G. Kontrollér blandt andet:
-- Enheder og tidsmærkning.
-- Timeforbrug, timegennemsnit og punktobservation.
-- Initialisering, baseline, fit, filtrering og prognose.
-- Tilstandsgrænser og numerisk præcision.
-- Parameteridentifikation, baselineklipning og ekstrapolation.
-- Forskellen mellem procesusikkerhed, residualer og kalibrerede bånd.
+Bevar modelspecifikke tilstandsnavne. Markér manglende eller ukalibrerede usikkerhedsoplysninger korrekt. Fejlmål med negative eller næsten nul observationer skal vælges fagligt; brug ikke ukritisk procentfejl.
 
-Søg afklaring af databetydningen i eksisterende dokumentation. Hvis den ikke findes, fasthold en tydeligt mærket arbejdsantagelse; opfind ikke sikkerhed.
+Eksisterende WM-output må læses, men WM ændres ikke. Hvis en fælles sammenligning ikke er forsvarlig, angiv præcist hvorfor.
 
-Ret konkrete fejl. Skeln mellem nødvendige rettelser og valgfri forskning. Start ikke nye modelbanker, støjfamilier eller store kalibreringssøgninger.
+Hastighed:
+Profilér kun konkrete flaskehalse. Prioritér gentagen indlæsning, gentagen klargøring, unødvendige imports og gentagne beregninger af uændrede størrelser.
 
-5. FÆRDIGGØR GENBRUGELIGE INDGANGE
+Cache må ikke gøre ændrede data, parametre eller kode usynlige. Bevar numeriske tolerancer, grids og matematiske antagelser ved ren kodeoptimering.
 
-BM-F/G skal startes med et mønster, der ligner WM4’s eksisterende kommandoer. Undersøg WM’s faktiske argumenter og betydninger. Tilpas BM; ændr ikke WM.
+Målet er under 10 minutter for en uges prognose med gemt fit, inklusive indlæsning og eksport. Fit vurderes særskilt. Der er ikke tilladelse til 30–60-minutters kørsler eller nye dyre historiske fits.
 
-Det skal være enkelt at ændre periode, relevante parametre og outputplacering uden at ændre kildekode. Skeln tydeligt mellem nyt fit og genbrug af en gemt model.
+Brug eksisterende gyldig evidens. Fastlæg et lille samlet budget for nye beregninger; gentagne korte forsøg må ikke omgå grænsen. Mål før/efter på samme input. Skeln mellem første opstart og varm cache, og mellem inputkontrol, genafspilning og faktisk prognose.
 
-Genbrug den fælles weekday_backtest-ramme. Implementér F’s konkrete adapter, hvis den kan bygges forsvarligt af eksisterende komponenter. F skal beholde egen likelihood, baseline, prior og sammenhængende tilstandsudvikling. Et fast F4-fit må ikke ommærkes til et nyt ugedagsfit.
+AFBRYDELSER OG GENOPTAGELSE
 
-Hvis en nødvendig F-komponent reelt mangler, konkretisér den og gennemfør de øvrige dele. Lad ikke et stort nyt fitstudie overtage oprydningen.
+Arbejd i små sammenhængende commits. Ved hvert afsluttet delmål opdateres den eksisterende kanoniske status med:
+- hvad der er ændret,
+- kontroller og konkrete resultater,
+- aktuelle begrænsninger,
+- næste præcise handling,
+- eventuelle aktive beregninger og deres outputplacering.
 
-6. SAMMENLIGNELIGT OUTPUT, MEN INGEN FÆLLES EVALUERINGSKAMPAGNE NU
+Genstart ikke beregninger alene på grund af en afbrudt forbindelse eller manglende chatkontekst. Kontrollér først processer og eksisterende resultater.
 
-BM-output skal være forberedt til sammenligning med WM4: entydige tidsintervaller, observationer, prognoser, baseline, enheder, inputscenarie, parametre, fejlmål, runtime og relevant usikkerhed.
+Undgå delvist skrevne filer, der ligner færdige resultater. Kontrollér kompatibilitet ved genoptagelse. Gamle kildehashes og checkpoints må ikke ommærkes til ny kode.
 
-Interne BM-tilstande skal beholde deres egen betydning. Skeln mellem oprindelig WM4 og G’s særskilte WM-timeadapter.
-
-Den faktiske fælles F/G/WM-sammenligning, flerperiodekampagne og modelrangering er udskudt. Den gennemfører jeg senere. Byg ikke en ny sammenligningsramme, når den eksisterende kan genbruges.
-
-BESKYTTELSE OG BEREGNINGER
-
-WM-kode, dokumentation, data og fælles afhængigheder må ikke ændres. Kontrollér det mod den aktuelle beskyttede baseline, inklusive nyere WM-MPC-arbejde.
-
-Genbrug færdige G-resultater og snapshots. Genkør ikke de seks eksisterende testuger for at dokumentere oprydning.
-
-Jeg har ikke givet særskilt tilladelse til 30–60-minutters kørsler. Planlæg derfor korte, afgrænsede kontroller med eksplicit stop. Et nyt dyrt historisk fit eller en forventet overskridelse af 10 minutter skal udskydes, mens andet arbejde fortsætter. Mange gentagne korte forsøg må ikke bruges til at omgå begrænsningen.
+Vurdér enkel genoptagelse mellem afsluttede weekday-fits, så afbrydelser ikke kræver gentagelse af alle dage. Byg ikke et stort nyt jobstyringssystem.
 
 SLUTKONTROL OG AFLEVERING
 
-Kontrollér:
-- Relevante regressionstests og numerisk overensstemmelse ved ren refaktorering.
-- Snapshotgenbrug og pause/genoptagelse, hvor understøttet.
-- WM-beskyttelse og arkivintegritet.
-- Dokumentlinks og alle anbefalede startkommandoer.
-- Selvstændig brug fra almindelig terminal.
-- F’s faktiske status og målt runtime uden overdrevne konklusioner.
+Arbejd videre gennem alle tre leverancer uden at stoppe for rutinemæssige tilladelser. Hvis noget kræver en reel faglig beslutning eller et større beregningsbudget, isolér spørgsmålet og fortsæt øvrigt arbejde.
 
-Lav før/efter-tal for aktiv kode, noter, arkiv og øvrige filer. Skeln mellem sletning, sammenlægning og flytning. Forklar væsentlige grupper, som stadig beholdes.
+Opgaven er først tilfredsstillende afleveret, når:
+- centrale F/G-modelfiler og den normale beregningsvej er lettere at læse,
+- aktive filer og dubletter er reduceret så langt forsvarligt,
+- matematik og kode stemmer overens på de gennemgåede områder,
+- målergrupper og observationsbetydning er tydeligt håndteret,
+- almindelige kørsler kan startes uden chat,
+- manuelle parameter- og periodeændringer er kontrolleret,
+- understøttede prognoser har korrekt output og dokumenteret køretid,
+- WM og beskyttet materiale er uændret,
+- arkivet kan findes rundt i og nødvendigt materiale genskabes.
 
-Aflever en kort brugerprøve, som jeg kan udføre efterfølgende. Markér min faktiske vurdering som afventer; påstå ikke, at den er gennemført.
+Brug relevante regressionstests og korte integrationskontroller. Bevar den faglige dækning, hvis tests flyttes eller konsolideres. Genkør ikke alle dyre kontroller efter hver lille ændring.
 
-Gem små sammenhængende commits efter kontrollerede delmål og opdatér status, så en afbrudt chat kan fortsætte uden at gentage beregninger. Afslut med præcis opdeling i gennemført, verificeret og resterende. Beskriv ikke hele opgaven som færdig, hvis den brede kode- og noteoprydning stadig mangler.
+Aflever:
+1. Kort beskrivelse af de vigtigste faktiske forbedringer.
+2. Ærlige før/efter-tal opdelt efter filtype og funktion.
+3. Præcise kommandoer og konfigurationer til almindelig F/G-brug.
+4. En kort brugerprøve: start, ændr periode/parameter, læs output, og prøv et ugyldigt valg.
+5. Dokumenteret status for korrekthed, køretid og åbne begrænsninger.
+6. En kort liste over nødvendigt restarbejde adskilt fra valgfri forskning.
+7. En ren, gennemgåelig branch klar til merge; merge ikke automatisk.
 
-Gå i gang og fortsæt med alle opgaver, der kan løses inden for denne afgrænsning.
+Er en væsentlig del uafsluttet, skal det fremgå tydeligt. Et lavere filantal, en bestået syntakskontrol eller en enkelt gennemført uge er ikke alene tilstrækkelig accept.
+
+Begynd med en kort kontrol af udgangspunktet og den konkrete rækkefølge. Gennemfør derefter arbejdet.

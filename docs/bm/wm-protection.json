@@ -1,6 +1,6 @@
 {
   "repo": "C:\\Users\\jvils\\OneDrive\\Skrivebord\\Til VS\\fag\\7 semester\\BSCe2026",
-  "baseline": "7249bf9c318b20f45aa0c3a64b3c6c3b75afaa82",
+  "baseline": "09c602f327a3497a763c47e734fac4a38b12227d",
   "scope": "Conservative static WM closure + WM named files + shared environment + linked BM_REFERENCE + all present inputs and WM results. New undeclared dynamic paths remain manual-review limitation.",
   "files": [
     {
@@ -94,6 +94,24 @@
       "reason": "static WM import closure"
     },
     {
+      "path": "src/control/__init__.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "9f520decf0faaa02ba6f9e1aae78e3d63f08cf9f70c81f467ebcb9267a05347f",
+      "bytes": 34
+    },
+    {
+      "path": "src/control/bm_1.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "277b58ddac2870a7e0ff96d7bb0079d7c19aea821d0dc1a6e8160602022acc6f",
+      "bytes": 51217
+    },
+    {
+      "path": "src/control/objective.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "3a51c417d443fe887031de81f8b275d9f187e5da5a3fcb9b44c0cb16e0a5bdc3",
+      "bytes": 17202
+    },
+    {
       "path": "src/diagnostics/__init__.py",
       "sha256": "2f380afa71e76e2fa9a0557bfae639af494747047acec88458ad62103fc03a09",
       "bytes": 707,
@@ -118,6 +136,24 @@
       "reason": "static WM import closure"
     },
     {
+      "path": "src/exe/run_model/bm_1/deterministic.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "32050438ce20e9fe5e603be8889e528efadf14e9e9a3b56c3fd685651b546099",
+      "bytes": 22960
+    },
+    {
+      "path": "src/exe/run_model/bm_1/deterministic_strategies.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "f7708c4eafcac6a79946332645631bce2b85c70d2bd3c2f3a2237e62eb1142ba",
+      "bytes": 15517
+    },
+    {
+      "path": "src/exe/run_model/bm_1/deterministic_weekday.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "6a684e780e0beee6ba7058b57ab0d8ce3db1772f9e8b6b7b9c259d1465df62c1",
+      "bytes": 9941
+    },
+    {
       "path": "src/exe/run_model/bm_1/g_wm_hourly.py",
       "sha256": "9d9e9361045a735bee9509057ba6fcc2946a4d2eb5b75837104d23596944aa8e",
       "bytes": 4465,
@@ -134,6 +170,18 @@
       "sha256": "4b159b6c2fed745cea08e1400bbb5279fcb78f60df62273e38eefc351f4153cc",
       "bytes": 2877,
       "reason": "WM named code/document/config/test or linked shared model reference"
+    },
+    {
+      "path": "src/exe/run_model/bm_1/s3_forecast.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "13fe5976899540dce0e994769c687a33aeaacb73c8d7d98d7689804f32e978b9",
+      "bytes": 5311
+    },
+    {
+      "path": "src/exe/run_model/progress.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "684f115e4e9772d67dff27dbac1fbeb404e40bf9bfebeadb0c9710eab55520e4",
+      "bytes": 2823
     },
     {
       "path": "src/exe/run_model/wm_1/fp_price_step.py",
@@ -430,6 +478,84 @@
       "reason": "static WM import closure"
     },
     {
+      "path": "src/method/beta_mixture.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "481867c559dfef16efd64c28cb24e9bfb77b98fd9ab032e9d0cfe593a3e93b05",
+      "bytes": 31188
+    },
+    {
+      "path": "src/method/bm_1_deterministic_benchmark.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "348ee44a493c4bec7cc6c3a588ddc1c3ecc852b30a4d06928949a63a5786d268",
+      "bytes": 21912
+    },
+    {
+      "path": "src/method/bm_1_deterministic_fit.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "844750e86ddcc348cc91cc866543aac533bb1ddf3a2ab002a89c5f31e74943eb",
+      "bytes": 13396
+    },
+    {
+      "path": "src/method/bm_1_deterministic_response.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "e477419f3f6f6e9ce45ea1492a81bff6ac067c89ac1d5881c0031157bda32852",
+      "bytes": 12565
+    },
+    {
+      "path": "src/method/bm_1_deterministic_strategy.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "7575271ec386d4ea88b29c26ddf26d4595bff8c474bd7fa943034eb1b9248e1b",
+      "bytes": 5890
+    },
+    {
+      "path": "src/method/bm_1_deterministic_weekday.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "1d3ca88fa7cedc958134a06f62c5f7a0c8bf5a6e53a88e53941e337a30082182",
+      "bytes": 2501
+    },
+    {
+      "path": "src/method/bm_1_linear_noise.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "3ee95761e2c6e38b344e2f55333401d3ca3f02c2e6749ba8dfc060a63032cb5b",
+      "bytes": 5763
+    },
+    {
+      "path": "src/method/bm_1_s3_forecast.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "93f19291cb1217f406ca4fab884a3d322b5d875185cc33ab31c3cf691919dd68",
+      "bytes": 18178
+    },
+    {
+      "path": "src/method/bm_1_s3_interval.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "35a8f9b71fa0576ce008e65b39a547bd3aa7da5b656e4f47b0cefc00254600b9",
+      "bytes": 14462
+    },
+    {
+      "path": "src/method/bm_1_s3_interval_baseline.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "caae9457b8abdef83acbf0a2bdaf3ebbfdfec67a4fe37e9f947019e4a100d9ef",
+      "bytes": 3791
+    },
+    {
+      "path": "src/method/bm_1_s3_interval_process.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "c60512dec3c82623460fa18a92e948c2dfa4b93d27fa06d4437625711d8e16de",
+      "bytes": 16693
+    },
+    {
+      "path": "src/method/bm_1_s3_residual.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "d6eec9f6d19cce9c1c3d3fc0cd5be41e5ede5ab85bc65a3d0a93c99d0c6f5bc6",
+      "bytes": 10399
+    },
+    {
+      "path": "src/method/bm_1_s3_uncertainty.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "27dcf6b11bc84a9b2b20bc84fd6e25fccc4aed53529226416b210c89d9f5a833",
+      "bytes": 16749
+    },
+    {
       "path": "src/method/euler_maruyama.py",
       "sha256": "7be1e75a806b34a5e190dd00a3c259f203754651301f27f101bac5e58c165807",
       "bytes": 6569,
@@ -440,6 +566,12 @@
       "sha256": "97e30241003149b4c8ec4343d5be41ef1037870ec2ebed683548641ec1295a96",
       "bytes": 9069,
       "reason": "static WM import closure"
+    },
+    {
+      "path": "src/method/g_weekday_rolling.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "2c436d316bc5baa0d5378a11f674039ff015f5bd02bf55101ebf54ce39dc4d06",
+      "bytes": 24616
     },
     {
       "path": "src/method/g_wm_hourly.py",
@@ -514,6 +646,18 @@
       "reason": "static WM import closure"
     },
     {
+      "path": "src/params/bm_1_deterministic.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "0698d104864ca040377924b63f08a66068eb2f892904bc76d71884d92e2da763",
+      "bytes": 2510
+    },
+    {
+      "path": "src/params/bm_1_response.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "88967bc83d7767e07362be5650c7d06b9c0adac08123b1c57bf18c3d9a045239",
+      "bytes": 3563
+    },
+    {
       "path": "src/params/wm_2.py",
       "sha256": "e8fdc73052d2c63885a89320de2726e5171729f0c498e0e6cf07259c97e01b39",
       "bytes": 22821,
@@ -554,6 +698,30 @@
       "sha256": "6d04949aef35e7f5e3fef707b73bbb9d10d4816c289a0e8de2683550a3f9dd0b",
       "bytes": 134,
       "reason": "static WM import closure"
+    },
+    {
+      "path": "src/tools/bm_1_deterministic_data.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "3ee33d84e716c7dbfa9aa9c0f706c663bebf0ed98134df1f9371041e3e49b3ef",
+      "bytes": 13260
+    },
+    {
+      "path": "src/tools/bm_1_deterministic_snapshot.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "45f68ce875d7840dad9ec2612bba86e3f98760ee181419cf364681a79cbb2acd",
+      "bytes": 13195
+    },
+    {
+      "path": "src/tools/bm_1_reports.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "d1c354628be95f5fafb3cdd96dfdaa812c5f3a9eec6e87dd7bc6749600df005c",
+      "bytes": 5457
+    },
+    {
+      "path": "src/tools/checkpoint_io.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "90134ae3778225a8ad480df6f14cafbb6b2621261845859fd9869b08b79581d3",
+      "bytes": 1632
     },
     {
       "path": "src/tools/import_data/import_input.py",
@@ -602,6 +770,12 @@
       "sha256": "fc924b8f6dd9f001808b553ec67893fb1ba133423139a2120e33a5c2190d1892",
       "bytes": 5322,
       "reason": "static WM import closure"
+    },
+    {
+      "path": "src/validation/estimation.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "da72596af06001c87a370cd0517f453b2d98dfccb61bdc097326713c5907c115",
+      "bytes": 5174
     },
     {
       "path": "src/validation/method/__init__.py",
@@ -698,6 +872,24 @@
       "sha256": "4299563db731c2c5909f7b037512666df32da69efeea9d10498a1e60133e2454",
       "bytes": 4927,
       "reason": "static WM import closure"
+    },
+    {
+      "path": "tests/__init__.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "bb62c0c705e261d42752e4a7ef61bc182c8758c7b5659e62539f4166b7947846",
+      "bytes": 48
+    },
+    {
+      "path": "tests/test_bm1_s3_forecast.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "e2db53375a59153762b17743774acf24cd10f59934020c20dfdd02a3cb5dd28c",
+      "bytes": 7388
+    },
+    {
+      "path": "tests/test_bm1_s3_interval.py",
+      "reason": "Current conservative WM import closure",
+      "sha256": "001be1580e440f40b2787b38b76f69598579a3947ff976b7bb82ad94b4d5f6b7",
+      "bytes": 9083
     },
     {
       "path": "tests/test_g_wm_hourly.py",
