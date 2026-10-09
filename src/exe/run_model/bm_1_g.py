@@ -1,9 +1,10 @@
-"""Forecast G and the WM hourly adapter from a saved weekday export, without fit.
+"""G: export-model once, forecast a new week, or show an existing result.
 
-The seven daily states stay frozen at the snapshot's Monday cutoff. --start
-and --hours select output inside that week; propagation still checks the full
-week. Empirical residual bands describe development errors, not a 95% guarantee.
-For declared chronological band calibration use: bm_1_g bands --help.
+`forecast` uses frozen weekday parameters and seven separate daily states.
+The legacy --snapshot form (also `replay`) stays inside the saved origin week
+and includes the WM hourly adapter. `bands` retains the existing comparison
+protocol. Empirical residual bands do not guarantee 95% future coverage.
+New fits use the separate weekday_backtest entry point and explicit budgets.
 """
 from argparse import ArgumentParser
 from copy import deepcopy
@@ -16,10 +17,35 @@ from time import perf_counter
 import numpy as np
 import pandas as pd
 
-from src.method import g_weekday_export as model
 from src.tools import weekday_backtest as calendar
 from src.tools.bm_1_reports import _atomic_report
-from src.exe.run_model.bm_1.s3_forecast import write_forecast
+
+
+def _legacy():
+    from src.method import g_weekday_export
+    return g_weekday_export
+
+
+def __getattr__(name):
+    # Preserve the small runner API used by existing callers/tests, without
+    # loading the historical comparison/fit graph for ordinary G forecasts.
+    if name == 'model':
+        return _legacy()
+    raise AttributeError(name)
+
+
+def write_forecast(directory, result, *, prefix='forecast'):
+    """Atomic files owned by this fresh run; no historical study CLI import."""
+    from src.tools.checkpoint_io import replace_file
+    for key, suffix in (('predictions', ''), ('normalized_predictions', '_normalized')):
+        path = directory/f'{prefix}{suffix}.csv'
+        if path.exists():
+            raise FileExistsError(f'Refusing to overwrite {path}.')
+        temporary = path.with_suffix('.csv.partial')
+        result[key].to_csv(temporary, index_label='Datetime')
+        replace_file(temporary, path)
+    _atomic_report(directory/f'{prefix}.json',
+                   {k:v for k,v in result.items() if k not in ('predictions', 'normalized_predictions')})
 
 
 def digest(path):
@@ -28,7 +54,7 @@ def digest(path):
 
 def prepare(snapshot, inputs, start=None, hours=None):
     """Validate the saved fit, physical input week and requested output window."""
-    snapshot = model.validate_export(snapshot)
+    snapshot = _legacy().validate_export(snapshot)
     window = calendar.WeekWindow(snapshot['parent']['origin'])
     calendar._frame(inputs, ('Price', 'Temp'))
     if inputs.index.tz is not None:
@@ -76,6 +102,8 @@ def plot(directory, result):
     table = result['predictions']
     figure, axes = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
     for name, label in (('g_prediction', 'G'), ('wm_prediction', 'WM hourly adapter')):
+        if name not in table:
+            continue
         line, = axes[0].plot(table.index, table[name+'_output_mean'], label=label+' empirical mean')
         axes[0].fill_between(table.index, table[name+'_lower'], table[name+'_upper'],
                              alpha=.12, color=line.get_color())
@@ -91,6 +119,10 @@ def plot(directory, result):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] in ('export-model', 'forecast', 'show'):
+        return deployment_main(argv)
+    if argv and argv[0] == 'replay':
+        argv = argv[1:]
     if argv and argv[0] == 'bands':
         from src.method import bm_1_bands
         return bm_1_bands.main(argv[1:])
@@ -123,7 +155,7 @@ def main(argv=None):
             'runner_source_sha256':digest(__file__), 'fit_cutoff':str(origin),
             'start':str(selected[0]), 'hours':len(selected), 'fit_executed':False, 'historical_replay_executed':False})
         _atomic_report(directory/'saved_snapshot.json', snapshot)
-        result = select_output(model.predict_comparison(snapshot, scenario), scenario, selected)
+        result = select_output(_legacy().predict_comparison(snapshot, scenario), scenario, selected)
         write_forecast(directory, result)
         files = ('invocation.json', 'saved_snapshot.json', 'forecast.json', 'forecast.csv', 'forecast_normalized.csv')
         _atomic_report(directory/'forecast_freeze.json', {'status':'frozen-input-only',
@@ -134,7 +166,7 @@ def main(argv=None):
             observations = pd.read_csv(args.score, index_col='Datetime', parse_dates=['Datetime'],
                                        float_precision='round_trip')['Demand']
             observations = observations_for_forecast(observations, result)
-            result = model.score_comparison(result, observations)
+            result = _legacy().score_comparison(result, observations)
             write_forecast(directory, result, prefix='scored')
         plot(directory, result)
         elapsed = perf_counter()-begun
@@ -148,6 +180,134 @@ def main(argv=None):
         if directory is not None:
             _atomic_report(directory/'failure.json', {'status':'failed', 'error':str(exc), 'seconds':perf_counter()-begun})
         print(f'G forecast failed: {exc}', file=sys.stderr, flush=True)
+        return 2
+
+
+def _verify_files(directory, hashes):
+    for name, expected in hashes.items():
+        path = Path(name)
+        if path.is_absolute() or '..' in path.parts or digest(directory/path)!=expected:
+            raise ValueError('Frozen artifact missing or changed: '+name)
+
+
+def load_model(path, group=None):
+    from src.method import bm_1_g_forecast as deployment
+    path = Path(path)
+    if path.name!='model.json':
+        raise ValueError('Use model.json beside its conversion_freeze.json receipt.')
+    freeze = json.loads((path.parent/'conversion_freeze.json').read_text(encoding='utf-8'))
+    if freeze.get('fit_executed') is not False or freeze.get('historical_replay_executed') is not False:
+        raise ValueError('Require an explicit no-fit/no-replay conversion receipt.')
+    if not {'model.json', 'original_snapshot.json'} <= set(freeze['artifact_sha256']):
+        raise ValueError('Conversion must preserve and bind the original snapshot bytes.')
+    _verify_files(path.parent, freeze['artifact_sha256'])
+    model = deployment.validate_model(json.loads(path.read_text(encoding='utf-8')), group)
+    original = json.loads((path.parent/'original_snapshot.json').read_text(encoding='utf-8'))
+    if deployment.fingerprint(original)!=model['original_snapshot_sha256']:
+        raise ValueError('Model and saved original snapshot disagree.')
+    return model
+
+
+def deployment_main(argv):
+    parser = ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest='command', required=True)
+    export = commands.add_parser('export-model', help='Validate and convert a saved G export; no fit or replay.')
+    export.add_argument('--snapshot', required=True)
+    export.add_argument('--output', required=True, help='New directory containing model.json and its conversion receipt.')
+    forecast = commands.add_parser('forecast', help='Compute a new G-only week from frozen model parameters.')
+    forecast.add_argument('--model', required=True, help='model.json from export-model; sources/runtime must match.')
+    forecast.add_argument('--origin', required=True, help='Monday midnight at or after fit cutoff; may be a later week.')
+    forecast.add_argument('--inputs-csv', required=True, help='Datetime,Price,Temp for that full week; Demand never decoded.')
+    forecast.add_argument('--group', choices=('MED', 'UDEN'), help='Assert saved group; cannot change or verify meter membership.')
+    forecast.add_argument('--hours', type=int, help='Physical prefix hours to export; default full calendar week.')
+    forecast.add_argument('--output', help='New output directory; completed runs are never overwritten.')
+    forecast.add_argument('--check', action='store_true', help='Validate group/cutoff/model/inputs; no solver or output.')
+    forecast.add_argument('--score', help='Datetime,Demand observations opened only after durable forecast freeze.')
+    show = commands.add_parser('show', help='Read and verify an existing forecast result; no model execution.')
+    show.add_argument('--result', required=True)
+    args = parser.parse_args(argv)
+    if args.command=='forecast' and not args.check and args.output is None:
+        parser.error('--output is required unless --check is used.')
+    begun = perf_counter(); directory = None
+    try:
+        if args.command=='show':
+            target = Path(args.result)
+            receipt = json.loads((target/'forecast_freeze.json').read_text(encoding='utf-8'))
+            if receipt.get('status')!='frozen-input-only' or receipt.get('target_observation_file_opened') is not False:
+                raise ValueError('Require an input-only frozen forecast receipt.')
+            if not {'forecast.json', 'forecast.csv', 'forecast_normalized.csv'} <= set(receipt['artifact_sha256']):
+                raise ValueError('Receipt must bind the forecast manifest and both tables.')
+            _verify_files(target, receipt['artifact_sha256'])
+            print((target/'forecast.json').read_text(encoding='utf-8'), flush=True)
+            print('Verified saved result; no forecast, replay or fit executed.', flush=True)
+            return 0
+        from src.method import bm_1_g_forecast as deployment
+        if args.command=='export-model':
+            original = Path(args.snapshot).read_bytes()
+            record = deployment.export_model(json.loads(original))
+            target = Path(args.output); target.mkdir(parents=True, exist_ok=False); directory = target
+            (directory/'original_snapshot.json').write_bytes(original)
+            _atomic_report(directory/'model.json', record)
+            _atomic_report(directory/'conversion_freeze.json', {'status':'complete-validated-conversion',
+                'fit_executed':False, 'historical_replay_executed':False,
+                'original_snapshot_sha256':record['original_snapshot_sha256'],
+                'artifact_sha256':{name:digest(directory/name) for name in ('model.json', 'original_snapshot.json')}})
+            print(f'Model exported: {directory / "model.json"}; group={record["population"]}; no fit/replay.', flush=True)
+            return 0
+        # Group and temporal metadata fail before the exogenous CSV is opened.
+        model_sha256 = digest(args.model)
+        record = load_model(args.model, args.group)
+        origin = calendar.WeekWindow(args.origin).origin
+        if origin<pd.Timestamp(record['fit_cutoff']):
+            raise ValueError('Forecast origin precedes the saved fit cutoff.')
+        inputs_sha256 = digest(args.inputs_csv)
+        inputs = pd.read_csv(args.inputs_csv, usecols=['Datetime', 'Price', 'Temp'],
+            index_col='Datetime', parse_dates=['Datetime'], float_precision='round_trip')
+        if inputs_sha256!=digest(args.inputs_csv) or model_sha256!=digest(args.model):
+            raise ValueError('Model or input file changed while loading.')
+        scenario, selected = deployment.prepare(record, inputs, origin, group=args.group, hours=args.hours)
+        print(f'G fit cutoff={record["fit_cutoff"]}; new forecast origin={origin}; {len(selected)} output hours.', flush=True)
+        print(f'Group={record["population"]["group"]}, membership=legacy-unverified; seven separate daily paths.', flush=True)
+        if args.check:
+            print('Validated; no model executed.', flush=True)
+            return 0
+        target = Path(args.output); target.mkdir(parents=True, exist_ok=False); directory = target
+        _atomic_report(directory/'invocation.json', {'status':'running', 'model_sha256':model_sha256,
+            'inputs_sha256':inputs_sha256, 'runner_source_sha256':digest(__file__),
+            'fit_executed':False, 'historical_replay_executed':False, 'fit_cutoff':record['fit_cutoff'],
+            'forecast_origin':str(origin), 'hours':len(selected), 'population':record['population']})
+        result = deployment.forecast(record, scenario, origin, group=args.group, hours=args.hours)
+        if inputs_sha256!=digest(args.inputs_csv) or model_sha256!=digest(args.model):
+            raise ValueError('Model or input file changed during forecast; refusing to publish.')
+        write_forecast(directory, result)
+        files = ('invocation.json', 'forecast.json', 'forecast.csv', 'forecast_normalized.csv')
+        _atomic_report(directory/'forecast_freeze.json', {'status':'frozen-input-only', 'origin':str(origin.date()),
+            'target_observation_file_opened':False, 'artifact_sha256':{name:digest(directory/name) for name in files}})
+        if args.score:
+            observed = pd.read_csv(args.score, usecols=['Datetime', 'Demand'], index_col='Datetime',
+                parse_dates=['Datetime'], float_precision='round_trip')
+            calendar._frame(observed, ('Demand',))
+            observed['Demand'] = pd.to_numeric(observed.Demand, errors='raise')
+            if np.iscomplexobj(observed.to_numpy()) or np.isinf(observed.to_numpy(float)).any():
+                raise ValueError('Targets must be real finite values or NaN; never infinite.')
+            observed = calendar._grid(observed, selected.tz_localize('Europe/Copenhagen')).Demand
+            result['scoring'] = {'status':'scored-after-freeze', 'metrics':calendar.score_predictions(
+                result['predictions'], observed, {'G':'g_prediction_output_mean', 'pure_G':'g_prediction', 'baseline':'baseline'})}
+            result['predictions']['observed'] = observed
+            result['normalized_predictions']['observed'] = (observed-record['scales']['demand_min'])/record['scales']['demand_scale']
+            write_forecast(directory, result, prefix='scored')
+        plot(directory, result)
+        elapsed = perf_counter()-begun
+        _atomic_report(directory/'summary.json', {'status':'complete', 'seconds_including_load_forecast_export_plot':elapsed,
+            'forecast_seconds':result['seconds'], 'physical_hours':len(selected),
+            'fit_executed':False, 'historical_replay_executed':False, 'cold_import_seconds_included':False,
+            'fit_cutoff':record['fit_cutoff'], 'forecast_origin':str(origin), 'scoring':result['scoring']})
+        print(f'Complete: new G forecast, {len(selected)} hours, {elapsed:.3f} s after imports; {directory}', flush=True)
+        return 0
+    except (ValueError, OSError, KeyError, RuntimeError, TypeError) as exc:
+        if directory is not None:
+            _atomic_report(directory/'failure.json', {'status':'failed', 'error':str(exc), 'seconds':perf_counter()-begun})
+        print(f'G {args.command} failed: {exc}', file=sys.stderr, flush=True)
         return 2
 
 

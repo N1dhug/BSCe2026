@@ -55,8 +55,7 @@ kontroller er særskilt små, begrænsede processer og rapporteres også.
 Tildelt: F-kode/test/short/åben uge225 s + råmetadata15 s; G55 s; root
 kalender/F-resume op til60 s syntetiske tests. Rest reserveres faktisk samme-
 input før/efter prognose hvis ændringer kræver det. Ingen gentagelser uden grund.
-Budgetkvittering: round3/budget.json. Aktiv: F åben168h uge i round3/f; eksterncap130s/model110s.
-Ingen parallel G-prognose; kontrollér processer/kvittering før genstart.
+Budgetkvittering: round3/budget.json. Ingen aktive modelberegninger. F/G-runs nedenfor er afsluttede; genstart ikke.
 
 FUND OG RESTPUNKTER
 Rå workbookmetadata er kontrolleret mod samme SHA som tidligere audit:
@@ -70,3 +69,26 @@ versionsbundne referencer; de er ikke automatisk nye kodemålinger.
 Næste handling: implementér ovenstående separate filscopes, kontroller
 beskyttelsesmanifest efter hvert delmål og opdater konkrete testresultater her.
 Johans brugerprøve afventer. Ingen ny historisk F-fitaccept påstås.
+
+AFSLUTTET G-PROGNOSE OG F-UGE — INTEGRATIONSCHECKPOINT
+F: åben 168-timers uge 67,887926 s mod 93,472 s med samme input/grids.
+Alle 169 CSV-rækker med 22 felter og origin/final 1921 logstates er eksakte.
+Kun én positiv filtertime; oprindelig negativ 24-timers case er stadig afvist.
+F-kvitteringer og målt kildeZIP: round3/f/open_week_*; ingen kolde-cacheclaims.
+G: særskilt 250-linjers modelvej til export-model/forecast/show. Ny uge
+7.–14. marts med fitcutoff 28. februar er faktisk propagateret, 2,505631 s
+inkl. load/eksport. Realiseret Price/Temp genbruges som historisk scenarie;
+information ved origin er ikke bevist. Syv daglige medianstarts, ikke én
+kontinuert 168-timers latentbane. G/WM legacy-replay og 19 sourcebindings urørt.
+Samme saved-uge matcher gammel G til 2,45e-15 i rå felter, states eksakte.
+22 unikke G-tests består. Den sidste show-kontrol kræver alle outputkvitteringer.
+149 beskyttede filer er hashkontrolleret uændrede ved dette checkpoint.
+
+NÆSTE PRÆCISE HANDLING
+Afslut streng deklareret populationsbinding for nye G-weekday-fits; et
+aggregeret CSV beviser ikke målerlisten. Legacy-modeller forbliver uverificeret.
+Integrér driverudfasning/guide/arkiv, beregn linjer/imports, verificer restore,
+kommandoer og beskyttelse og gem den endelige COMPARISON/FILE_PLAN/STATUS.
+Budget: højst 600 s samlet; F numerik/tests cirka 117 s, G cirka 18 s og
+root syntetiske tests cirka 14 s; præcis slutledger samles fra kvitteringer.
+Ingen historiske fits eller generel evalkampagne er kørt. Ingen automatisk merge.
