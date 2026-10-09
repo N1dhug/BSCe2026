@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_3.fit_weekly import aligned_data
-from src.exe.run_model.wm_4.output_model import output_callable, statistical_output
+from src.tools.baseline import output_callable, statistical_output
 from src.model.wm_4 import wm_4
 from src.params.wm_4 import qp_params
 
