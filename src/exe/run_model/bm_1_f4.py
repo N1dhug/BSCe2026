@@ -6,6 +6,8 @@ Run from the repository root: python -m src.exe.run_model.bm_1_f4 --help
 """
 
 import argparse
+from contextlib import contextmanager
+from datetime import datetime, timezone
 import hashlib
 import json
 import multiprocessing as mp
@@ -14,6 +16,13 @@ from pathlib import Path
 import sys
 import threading
 from time import perf_counter
+
+# Only the executable parent reports boot: imported modules and spawn workers
+# must stay silent. This measures imports after the initial standard library.
+_BOOT_STARTED = perf_counter() if __name__ == '__main__' else None
+_BOOT_UTC = datetime.now(timezone.utc).isoformat() if _BOOT_STARTED is not None else None
+if _BOOT_STARTED is not None:
+    print(f'F4 {_BOOT_UTC}: imports started; no input or model work.', file=sys.stderr, flush=True)
 
 # Applied before NumPy import, including Windows spawn workers.
 for _name in ('OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS'):
@@ -35,6 +44,12 @@ from src.method.bm_1_response import curve_pair_from_logits
 from src.tools.bm_1_history_io import read_raw_power_window, read_raw_spot_window
 from src.tools.bm_1_reports import _atomic_report, _read_array_checkpoint, _RunLock
 
+_IMPORT_PHASE = None
+if _BOOT_STARTED is not None:
+    _IMPORT_PHASE = dict(phase='imports', started_at_utc=_BOOT_UTC,
+                         seconds=perf_counter()-_BOOT_STARTED, status='complete')
+    print(f'F4 imports complete in {_IMPORT_PHASE["seconds"]:.3f}s.', file=sys.stderr, flush=True)
+
 ROOT = Path(__file__).resolve().parents[3]
 SCHEMA = 'bm1-f4-runnable-v1'
 OBSERVATION_CONTRACT = {
@@ -45,6 +60,32 @@ OBSERVATION_CONTRACT = {
     'quantile_probabilities': [.05, .50, .95],
     'uncertainty': 'Marginal initial-state/process and nominal Gaussian observation uncertainty; no parameter/input uncertainty or coverage calibration.',
 }
+
+
+def _progress(event):
+    detail = ''.join(f' {key}={event[key]}' for key in ('model', 'hour') if key in event)
+    elapsed = f' in {event["seconds"]:.3f}s' if 'seconds' in event else ''
+    print(f'F4 {event["at_utc"]}: {event["phase"]}{detail} {event["event"]}{elapsed}.',
+          file=sys.stderr, flush=True)
+
+
+@contextmanager
+def _phase(name, records, progress=None, **details):
+    started = perf_counter()
+    record = dict(phase=name, started_at_utc=datetime.now(timezone.utc).isoformat(), **details)
+    if progress is not None:
+        progress(dict(record, at_utc=record['started_at_utc'], event='started'))
+    status = 'complete'
+    try:
+        yield
+    except BaseException as exc:
+        status = 'interrupted' if isinstance(exc, (KeyboardInterrupt, TimeoutError)) else 'failed'
+        raise
+    finally:
+        record.update(seconds=perf_counter()-started, status=status)
+        records.append(record)
+        if progress is not None:
+            progress(dict(record, at_utc=datetime.now(timezone.utc).isoformat(), event=status))
 
 
 def file_hash(path):
@@ -97,8 +138,20 @@ def _path(config, key):
     return path.resolve() if path.is_absolute() else (ROOT / path).resolve()
 
 
-def prepare(config):
+def _consumption_values(frame, *, phase):
+    raw = frame.to_numpy(dtype=float)
+    invalid = np.isinf(raw) | (np.isfinite(raw) & (raw < 0))
+    if invalid.any():
+        row, column = np.argwhere(invalid)[0]
+        raise ValueError('Consumption must be finite/nonnegative or explicitly missing. '
+            f'First invalid {phase} cell: timestamp={frame.index[row].isoformat()}, '
+            f'column={frame.columns[column]!r}, value={raw[row, column]!r}.')
+    return raw
+
+
+def prepare(config, *, progress=None):
     """Freeze inputs before numerical work; forecast targets are read later."""
+    phases = []
     if config.get('schema') != SCHEMA:
         raise ValueError('Unknown F4 configuration schema.')
     model_path = _path(config, 'model_file')
@@ -133,20 +186,21 @@ def prepare(config):
         raise ValueError('quantile_hours must contain unique integers in 1..168.')
     quantiles = sorted(h for h in requested if h <= hours)
     paths = {key: _path(config, key) for key in ('input_workbook', 'price_workbook')}
-    hashes = {key: file_hash(path) for key, path in paths.items()}
-    measurements = read_raw_power_window(paths['input_workbook'],
-        columns=model['measurement_columns'], start=start, end=cutoff,
-        timezone=zone, sheet=model['input_sheet'])
-    raw = measurements.to_numpy(dtype=float)
-    if np.isinf(raw).any() or np.any(raw[np.isfinite(raw)] < 0):
-        raise ValueError('Consumption must be finite/nonnegative or explicitly missing.')
+    with _phase('input_hash_before', phases, progress):
+        hashes = {key: file_hash(path) for key, path in paths.items()}
+    with _phase('demand_input', phases, progress):
+        measurements = read_raw_power_window(paths['input_workbook'],
+            columns=model['measurement_columns'], start=start, end=cutoff,
+            timezone=zone, sheet=model['input_sheet'])
+    raw = _consumption_values(measurements, phase='filter')
     # Fixed-population mean: any missing house masks the entire hour.
     observed = np.isfinite(raw).all(axis=1)
     values = np.full(count, np.nan)
     values[observed] = np.mean(raw[observed], axis=1)
     prices_start = min(start, cutoff-pd.Timedelta(days=7)) if config['price_policy'] == 'previous_week' else start
-    prices = read_raw_spot_window(paths['price_workbook'], start=prices_start, end=cutoff,
-        price_area=model['price_area'], sheet=model['price_sheet'])
+    with _phase('price_input', phases, progress):
+        prices = read_raw_spot_window(paths['price_workbook'], start=prices_start, end=cutoff,
+            price_area=model['price_area'], sheet=model['price_sheet'])
     historical = prices.reindex(index[:count]).to_numpy(dtype=float)
     future_index = index[count:]
     if config['price_policy'] == 'previous_week':
@@ -192,17 +246,19 @@ def prepare(config):
         raise ValueError('Invalid declared Beta prior.')
     for candidate in model['candidates'].values():
         curve_pair_from_logits(candidate['logits'], candidate['pieces'])
-    if hashes != {key: file_hash(paths[key] if key in paths else supplied_path) for key in hashes}:
-        raise ValueError('Input files changed during preparation.')
+    with _phase('input_hash_after', phases, progress):
+        if hashes != {key: file_hash(paths[key] if key in paths else supplied_path) for key in hashes}:
+            raise ValueError('Input files changed during preparation.')
     edges = np.arange(len(index)+1, dtype=float)/24.
     spec = dict(settings=settings, physical=physical, input_edges=edges.tolist(),
         baseline=(baseline/power).tolist(), price=normalized_price.tolist(),
         horizon=[0., float(edges[-1])], time_unit='day', midnight_resets=0)
-    source = {path.relative_to(ROOT).as_posix(): file_hash(path)
-              for path in sorted((ROOT/'src').rglob('*.py'))}
-    numerical_identity = dict(schema=SCHEMA, source_sha256=source,
-        config={k:v for k,v in config.items() if k not in ('output_dir', 'workers', 'max_seconds')},
-        model_sha256=file_hash(model_path), input_sha256=hashes)
+    with _phase('source_model_hash', phases, progress):
+        source = {path.relative_to(ROOT).as_posix(): file_hash(path)
+                  for path in sorted((ROOT/'src').rglob('*.py'))}
+        numerical_identity = dict(schema=SCHEMA, source_sha256=source,
+            config={k:v for k,v in config.items() if k not in ('output_dir', 'workers', 'max_seconds')},
+            model_sha256=file_hash(model_path), input_sha256=hashes)
     identity = digest(numerical_identity)
     manifest = dict(numerical_identity, identity=identity, model=model,
         start=start.isoformat(), origin=cutoff.isoformat(), end=horizon.isoformat(),
@@ -211,7 +267,7 @@ def prepare(config):
         observation_contract=OBSERVATION_CONTRACT,
         scientific_acceptance=False, initial_state_policy='Fresh declared Beta prior at filter_start; continuous assimilation, no daily reset.',
         includes_parameter_uncertainty=False, includes_input_uncertainty=False)
-    return dict(config=config, manifest=manifest, model=model, paths=paths,
+    return dict(config=config, manifest=manifest, model=model, paths=paths, preparation_phases=phases,
         spec=spec, index=index, filter_hours=count, observed=observed,
         values=values/power, baseline=baseline, prices=spot, quantiles=quantiles)
 
@@ -358,10 +414,11 @@ def load_origin(directory, *, model='fitted'):
         item['x_edges'], np.exp(item['log_state']))
 
 
-def run(data, *, directory, resume=False, max_seconds=600., workers=4, invocation_started=None):
+def run(data, *, directory, resume=False, max_seconds=600., workers=4, invocation_started=None, progress=None):
     begun = perf_counter()
     _execution_limits(max_seconds, workers)
     timing_start = begun if invocation_started is None else invocation_started
+    phases = list(data.get('preparation_phases', [])) if invocation_started is not None else []
     directory = Path(directory)
     with _RunLock(directory):
         if (directory/'FAILED.json').exists():
@@ -422,70 +479,71 @@ def run(data, *, directory, resume=False, max_seconds=600., workers=4, invocatio
                     pool.check()
                     if (directory/'STOP').exists():
                         raise TimeoutError('STOP file found; remove it before --resume.')
-                    logs = stream['log_state']
-                    edges = data['spec']['input_edges']
-                    operator = freeze_native_operator(data['spec'], candidate,
-                        dict(start=edges[hour], end=edges[hour+1]))
-                    predicted = native_interval_moments(operator, logs, plan.sigma_y)
-                    forecast_hour = hour-split+1
-                    q = None
-                    if hour >= split and forecast_hour in data['quantiles']:
-                        full = native_interval_distribution(operator, logs, plan, mapper=pool.mapper)
-                        active = np.isfinite(predicted['log_state'])
-                        if (not np.array_equal(active, np.isfinite(full['log_state']))
-                                or np.max(np.abs(predicted['log_state'][active]-full['log_state'][active])) > 1e-7):
-                            raise ValueError('Moment/characteristic forecast state disagreement.')
-                        q = full['quantiles']
-                        predicted['log_state'] = full['log_state']
-                    seen = hour < split and bool(data['observed'][hour])
-                    updated = native_terminal_update(operator, logs, data['values'][hour],
-                        plan.sigma_y, data['spec']['settings'], mapper=pool.mapper) if seen else None
-                    next_logs = updated['log_posterior_mass'] if seen else predicted['log_state']
-                    _state(next_logs, cells)
-                    p = np.exp(next_logs); x = operator['x']
-                    power = data['model']['scales']['power_kW']
-                    row = dict(timestamp=data['index'][hour].isoformat(),
-                        timestamp_utc=data['index'][hour].tz_convert('UTC').isoformat(),
-                        interval_end=(data['index'][hour]+pd.Timedelta(hours=1)).isoformat(),
-                        interval_end_utc=(data['index'][hour]+pd.Timedelta(hours=1)).tz_convert('UTC').isoformat(),
-                        interval_hours=1.,
-                        phase='filter' if hour < split else 'forecast', horizon_hour=None if hour < split else forecast_hour,
-                        baseline_kW=float(data['baseline'][hour]), spot_price_DKK_MWh=float(data['prices'][hour]),
-                        prediction_kW=predicted['interval_mean']*power,
-                        demand_variance_kW2=predicted['interval_variance']*power**2,
-                        observation_variance_kW2=predicted['observation_variance']*power**2,
-                        observed_kWh=float(data['values'][hour]*power) if seen else None,
-                        assimilated=bool(seen), log_evidence=float(updated['log_evidence']) if seen else None,
-                        state_mean=float(p@x), state_variance=float(p@((x-p@x)**2)),
-                        maximum_abs_mass_error=max(predicted['maximum_abs_mass_error'],
-                            updated['maximum_abs_mass_error'] if seen else 0.),
-                        q05_kW=q[0]['value']*power if q else None,
-                        q50_kW=q[1]['value']*power if q else None,
-                        q95_kW=q[2]['value']*power if q else None)
-                    stream['log_state'] = next_logs
-                    stream['rows'].append(row)
-                    if hour+1 == split:
-                        stream['origin_log_state'] = next_logs.copy()
-                    _checkpoint(directory, saved)
+                    with _phase('filtering' if hour < split else 'forecast', phases, progress, model=name, hour=hour+1):
+                        logs = stream['log_state']
+                        edges = data['spec']['input_edges']
+                        operator = freeze_native_operator(data['spec'], candidate,
+                            dict(start=edges[hour], end=edges[hour+1]))
+                        predicted = native_interval_moments(operator, logs, plan.sigma_y)
+                        forecast_hour = hour-split+1
+                        q = None
+                        if hour >= split and forecast_hour in data['quantiles']:
+                            full = native_interval_distribution(operator, logs, plan, mapper=pool.mapper)
+                            active = np.isfinite(predicted['log_state'])
+                            if (not np.array_equal(active, np.isfinite(full['log_state']))
+                                    or np.max(np.abs(predicted['log_state'][active]-full['log_state'][active])) > 1e-7):
+                                raise ValueError('Moment/characteristic forecast state disagreement.')
+                            q = full['quantiles']
+                            predicted['log_state'] = full['log_state']
+                        seen = hour < split and bool(data['observed'][hour])
+                        updated = native_terminal_update(operator, logs, data['values'][hour],
+                            plan.sigma_y, data['spec']['settings'], mapper=pool.mapper) if seen else None
+                        next_logs = updated['log_posterior_mass'] if seen else predicted['log_state']
+                        _state(next_logs, cells)
+                        p = np.exp(next_logs); x = operator['x']
+                        power = data['model']['scales']['power_kW']
+                        row = dict(timestamp=data['index'][hour].isoformat(),
+                            timestamp_utc=data['index'][hour].tz_convert('UTC').isoformat(),
+                            interval_end=(data['index'][hour]+pd.Timedelta(hours=1)).isoformat(),
+                            interval_end_utc=(data['index'][hour]+pd.Timedelta(hours=1)).tz_convert('UTC').isoformat(),
+                            interval_hours=1.,
+                            phase='filter' if hour < split else 'forecast', horizon_hour=None if hour < split else forecast_hour,
+                            baseline_kW=float(data['baseline'][hour]), spot_price_DKK_MWh=float(data['prices'][hour]),
+                            prediction_kW=predicted['interval_mean']*power,
+                            demand_variance_kW2=predicted['interval_variance']*power**2,
+                            observation_variance_kW2=predicted['observation_variance']*power**2,
+                            observed_kWh=float(data['values'][hour]*power) if seen else None,
+                            assimilated=bool(seen), log_evidence=float(updated['log_evidence']) if seen else None,
+                            state_mean=float(p@x), state_variance=float(p@((x-p@x)**2)),
+                            maximum_abs_mass_error=max(predicted['maximum_abs_mass_error'],
+                                updated['maximum_abs_mass_error'] if seen else 0.),
+                            q05_kW=q[0]['value']*power if q else None,
+                            q50_kW=q[1]['value']*power if q else None,
+                            q95_kW=q[2]['value']*power if q else None)
+                        stream['log_state'] = next_logs
+                        stream['rows'].append(row)
+                        if hour+1 == split:
+                            stream['origin_log_state'] = next_logs.copy()
+                        _checkpoint(directory, saved)
                     done = sum(len(s['rows']) for s in saved['streams'].values())
                     print(f'{name}: {hour+1}/{len(data["index"])} hours; '+runtime_text(
                         begun, done, total, initial_completed=initial_completed), flush=True)
             # Evaluation observations cannot affect any forecast or state.
             if data['config'].get('evaluate_forecast', True) and not saved['evaluation_complete']:
-                measured = read_raw_power_window(data['paths']['input_workbook'],
-                    columns=data['model']['measurement_columns'], start=pd.Timestamp(data['manifest']['origin']),
-                    end=pd.Timestamp(data['manifest']['end']), timezone=data['model']['timezone'],
-                    sheet=data['model']['input_sheet']).to_numpy(dtype=float)
-                if np.isinf(measured).any() or np.any(measured[np.isfinite(measured)] < 0):
-                    raise ValueError('Invalid forecast evaluation observations.')
-                seen = np.isfinite(measured).all(axis=1)
-                means = np.full(len(measured), np.nan)
-                means[seen] = measured[seen].mean(axis=1)
-                for stream in saved['streams'].values():
-                    for row, value in zip(stream['rows'][split:], means):
-                        row['observed_kWh'] = float(value) if np.isfinite(value) else None
-                saved['evaluation_complete'] = True
-                _checkpoint(directory, saved)
+                with _phase('evaluation_input', phases, progress):
+                    measured = read_raw_power_window(data['paths']['input_workbook'],
+                        columns=data['model']['measurement_columns'], start=pd.Timestamp(data['manifest']['origin']),
+                        end=pd.Timestamp(data['manifest']['end']), timezone=data['model']['timezone'],
+                        sheet=data['model']['input_sheet'])
+                    measured = _consumption_values(measured, phase='forecast evaluation')
+                    seen = np.isfinite(measured).all(axis=1)
+                    means = np.full(len(measured), np.nan)
+                    means[seen] = measured[seen].mean(axis=1)
+                    for stream in saved['streams'].values():
+                        for row, value in zip(stream['rows'][split:], means):
+                            row['observed_kWh'] = float(value) if np.isfinite(value) else None
+                    saved['evaluation_complete'] = True
+                    _checkpoint(directory, saved)
         except (TimeoutError, KeyboardInterrupt) as exc:
             status = 'paused'
             print(str(exc) or 'Interrupted after the last saved hour.', flush=True)
@@ -494,19 +552,25 @@ def run(data, *, directory, resume=False, max_seconds=600., workers=4, invocatio
             _atomic_report(directory/'FAILED.json', dict(error=type(exc).__name__, message=str(exc)))
             raise
         finally:
-            pool.close()
-            _origin(directory, data, saved)
-            summary = _export(directory, data, saved, status=status, elapsed=perf_counter()-begun)
+            with _phase('worker_shutdown', phases, progress):
+                pool.close()
+            with _phase('export', phases, progress):
+                _origin(directory, data, saved)
+                summary = _export(directory, data, saved, status=status, elapsed=perf_counter()-begun)
             # Measure through finished CSV/figure/origin export, then persist the
             # timing receipt. Abruptly killed invocations cannot report their time.
             elapsed = perf_counter()-timing_start
             timings = saved.setdefault('invocation_timings', [])
-            timings.append(dict(seconds=elapsed, includes_prepare=invocation_started is not None, status=status))
+            timings.append(dict(seconds=elapsed, includes_prepare=invocation_started is not None,
+                                status=status, phases=phases))
             _checkpoint(directory, saved)
             summary['timing'] = dict(last_invocation_seconds=elapsed,
                 recorded_invocations=len(timings),
                 cumulative_recorded_seconds=sum(t['seconds'] for t in timings),
                 includes_prepare_all_invocations=all(t['includes_prepare'] for t in timings),
+                last_invocation_phases=phases,
+                import_phase=data.get('import_phase') if invocation_started is not None else None,
+                phase_scope='Elapsed phase spans; filtering/forecast include first-use JIT compilation and worker startup where incurred. Per-hour spans include checkpoint writes. Gaps are validation/orchestration. Import time is separate from invocation totals.',
                 scope='CLI main (or direct run call) through completed result export; excludes interpreter/module imports and final timing writes. Killed invocations without a timing receipt are not included.',
                 legacy_elapsed_seconds_scope='Current run call through origin export, before CSV/figure export.')
             _atomic_report(directory/'summary.json', summary, replace_existing=True)
@@ -542,7 +606,8 @@ def main(argv=None):
         max_seconds = args.max_seconds if args.max_seconds is not None else config.get('max_seconds', 600)
         workers = args.workers if args.workers is not None else config.get('workers', 4)
         _execution_limits(max_seconds, workers)
-        data = prepare(config)
+        data = prepare(config, progress=_progress)
+        data['import_phase'] = _IMPORT_PHASE
     except KeyboardInterrupt:
         print(f'F4 input control stopped after {perf_counter()-input_started:.3f}s; no run created.',
               file=sys.stderr, flush=True)
@@ -558,14 +623,15 @@ def main(argv=None):
         fit_policy='Reused fixed fit; no parameter estimation.',
         curve_information_cutoff=data['model']['curve_information_cutoff'],
         observation_contract=OBSERVATION_CONTRACT,
-        identity=data['manifest']['identity']), indent=2), flush=True)
+        identity=data['manifest']['identity'],
+        import_phase=_IMPORT_PHASE, preparation_phases=data['preparation_phases']), indent=2), flush=True)
     if args.check:
         return 0
     directory = args.output or _path(config, 'output_dir')
     if not directory.is_absolute():
         directory = ROOT/directory
     status = run(data, directory=directory, resume=args.resume,
-        max_seconds=max_seconds, workers=workers, invocation_started=invocation_started)
+        max_seconds=max_seconds, workers=workers, invocation_started=invocation_started, progress=_progress)
     print(f'F4 {status}: {directory.resolve()}', flush=True)
     return 0 if status == 'complete' else 2
 

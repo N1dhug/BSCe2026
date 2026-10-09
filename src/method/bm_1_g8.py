@@ -61,7 +61,7 @@ def context(cells, degree=None, *, deadline=None, basis_kind=None):
     projector = None
     if basis_kind is not None:
         from src.method.bm_1_g8_basis import BASIS_KIND, localized_beta_basis
-        from src.method.bm_1_g8_bernstein import BASIS_KIND as M254, bernstein_basis, prior_coefficients
+        from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as M254, bernstein_basis, prior_coefficients
         if degree is not None or basis_kind not in (BASIS_KIND, M254):
             raise ValueError('Declare one supported G8 basis, without a Bernstein degree.')
         basis = bernstein_basis(edges) if basis_kind == M254 else localized_beta_basis(edges)
@@ -126,7 +126,7 @@ class G8BankOrigin:
     def __post_init__(self):
         time = checks.finite_scalar(self.time, 'cutoff')
         if self.basis_kind is not None:
-            from src.method.bm_1_g8_bernstein import BASIS_KIND, bernstein_basis
+            from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND, bernstein_basis
             reference=bernstein_basis(np.asarray(self.x_edges))
             exact=np.array_equal(self.basis,reference)
             certified=False
@@ -224,7 +224,7 @@ class G8BankOrigin:
         if hashlib.sha256(payload).hexdigest()!=expected_sha256:
             raise ValueError('Registered whole-origin bytes changed.')
         record=json.loads(payload)
-        from src.method.bm_1_g8_bernstein import BASIS_KIND
+        from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND
         if record.get('basis_kind')!=BASIS_KIND:
             raise ValueError('Verified portability loader requires supervisor M254.')
         record['basis_identity_sha256']=cls.basis_identity(record['x_edges'],record['basis'])

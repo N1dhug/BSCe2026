@@ -5,10 +5,11 @@ til test. Mandagens baseline og parametre får de fem foregående mandage,
 tirsdagens de fem tirsdage osv. Derefter flyttes vinduet én uge frem.
 Datoerne er frie; den tidligere G-kørsel med seks faste datoer er bevaret.
 
-G og WM er tilsluttet gennem deres eksisterende ugedagsfit. F kan bruge samme
-kalender, datadeling og forsøgsstyring gennem egne funktioner. F4's hurtigkørsel
-bruger et fast tidligere fit og udfører ikke denne genkalibrering. Der er
-derfor ingen automatisk `--adapter F`, der fejlagtigt genbruger det gamle fit.
+G og WM-timeadapteren bruger deres eksisterende ugedagsfit. F er tilsluttet
+med egen native interval-likelihood og nye kurvefits under en eksplicit tidligere
+frossen F-baseline/skala/prior. F4's hurtigkørsel er fortsat genbrug af ét gemt fit.
+Den fælles evalueringskampagne er udskudt; vejledningen giver indgangene til
+senere arbejde og starter ingen historiske studier.
 
 ## Planlæg perioder uden at starte modellerne
 
@@ -55,66 +56,59 @@ stopper forsøget og bevarer checkpoints. Der er ingen automatisk genkørsel,
 udvidelse af budgettet eller overgang til fælles parametre. Den gamle
 eksplicitte fortsættelsesvej kan vurderes separat.
 
-## Tilslut F med egne tilpasningsfunktioner
+## F: nyt weekday-fit med native interval-likelihood
 
-`src.tools.weekday_backtest.WeekdayCallbacks` giver fire funktioner til en
-model. De kaldes separat for hver ugedag:
+Den konkrete indgang er `--adapter F --adapter-config ...`. Kopiér
+[eksempelkonfigurationen](f_weekday_adapter.example.json) og erklær egne
+budgetter og tilgængelighed af prisinput. Dens `model_file` er relativ til
+configfilens mappe; SHA256 skal matche den tidligere frosne F-pakke.
+Pakken leverer baseline, skala, population, prior og nominelle parametre.
+De gamle fitted kurver bruges ikke som nye fitresultater.
 
-| Funktion | Data og ansvar |
-| --- | --- |
-| `fit_baseline(day)` | Fem adskilte dagsrammer i `day.records`, ældste først. Tilpas egen baseline. |
-| `fit_parameters(day, baseline)` | Egen parameter- eller likelihoodtilpasning. Overhold egne budgetter og stop ved ufærdige fits. |
-| `save_fit(day, baseline, parameters, directory)` | Gem egne kildereferencer, parametre, tilstande, konvergens og kontrolresultater før prognosen. |
-| `predict(day, baseline, parameters)` | Returnér en DataFrame på præcis `day.inputs.index` i erklærede rå måleenheder. Ingen targetmålinger er tilgængelige. |
+Planlæg uden datalæsning eller fit:
 
-Under fit indeholder `day.context` den fysiske historie med alle erklærede
-inputtimer, men med Demand maskeret uden for den valgte ugedag og under
-opvarmningen. F kan bruge en sammenhængende likelihood med manglende
-observationer gennem mellemperioderne. Fem dage må ikke sættes sammen til
-en kunstig femdages kontinuerlig tidsserie. Under prediction indeholder
-context historiske inputs og testugens inputs fra mandag til slutningen af
-den valgte dag; alle Demand-værdier og træningsrecords er fjernet. F's egen
-frosne posterior kan dermed føres gennem tirsdag før en onsdagsprognose.
-Rammen bestemmer ikke prior, nulstiller ikke en tilstand og deler ingen
-likelihood, diffusion eller prisrespons mellem F og G.
-
-Et adaptermodul, for eksempel `src.tools.my_f_weekday_adapter`, kan have:
-
-```python
-from src.tools.weekday_backtest import WeekdayCallbacks
-from my_f_implementation import (
-    fit_baseline, fit_parameters, save_fit, predict, source_hashes,
-)
-
-def make_adapter():
-    return WeekdayCallbacks(
-        name='F',
-        metadata={
-            'fit_budget': {'seconds': 30, 'evaluations': 100},
-            'initialization_policy': 'own explicitly frozen continuous posterior',
-            'population': 'own explicitly selected meter population',
-            'target_unit': 'own verified raw unit',
-            'source_sha256': source_hashes(),
-        },
-        prediction_columns={'F': 'f_output_mean'},
-        fit_baseline=fit_baseline, fit_parameters=fit_parameters,
-        save_fit=save_fit, predict=predict,
-        warmup_hours=24,
-    )
+```powershell
+python -m src.exe.run_model.weekday_backtest --adapter F --adapter-config root/f_weekday_adapter.example.json --first-origin 2022-03-28 --last-origin 2022-03-28 --output files/output/bm_1/runs/my_f_calendar --plan-only
 ```
 
-Dette er tilslutningsformen, ikke en ny F-estimator. Funktionerne, budgettet,
-populationen og initialiseringen skal komme fra det konkrete F-forsøg.
-De illustrerede budgetter godkender ikke en udvidelse af et gammelt F/H-budget.
-Kør derefter samme indgang med
-`--adapter src.tools.my_f_weekday_adapter:make_adapter`.
+Plan-only kontrollerer kalenderen; den validerer ikke data eller estimerer
+modellen. Den medfølgende baselines cutoff er 16. februar 2022. Den skal
+ligge senest ved hele femugershistorikkens begyndelse, så en tidligere
+mandagsorigin end 28. marts passer ikke denne konkrete baselinepakke.
 
-En model, der skal tilpasse alle syv baselines før sin tilstandberegning, kan
-også implementere `forecast_week(data, directory)` direkte som G-adapteren.
-Den skal selv udvælge de fem matchingdage pr. baseline/parameterfit og
-overholde samme regler om cutoff og egne numeriske kontroller. Kalenderen
-og `split_weekday(data, weekday)` kan genbruges. Der er ingen implicit
-flytning af gamle F3/H-punktfits til et nyt intervalforsøg.
+Et senere autoriseret fit bruger samme kommando uden `--plan-only`, plus
+`--history-csv history.csv --inputs-csv inputs.csv` og eventuelt
+`--observations-csv observations.csv`. Historien har `Datetime,Demand,Price`,
+inputs har `Datetime,Price`. Demand skal være middel af præcis de erklærede
+MED-målere og NaN, hvis blot ét medlem mangler. CSV'ens færdige gennemsnit
+kan ikke i sig selv bevise målerpopulationen. F's rå målerkontrol skal udføres
+før aggregering; negative enkeltmålinger må ikke skjules af et positivt middel.
+Negative historiske gruppemidler,
+manglende priser og værdier uden for den frosne prisskala afvises.
+
+Hver ugedags kandidat får frisk Beta-prior ved femugersstart og ét
+sammenhængende forløb gennem alle timer. Kun de fem matchende dage har
+observationer i likelihooden. Syv egne fitted posteriors fryses ved mandag;
+hver føres gennem prognosepræfikset frem til sin valgte dag uden targets.
+Der foretages ingen daglige state-resets eller overførsel af G's estimator.
+
+Eksemplets tre 15-sekundersbudgetter og 12 kandidat-/4 iterationslofter er
+**korte stopgrænser, ikke et dokumenteret tilstrækkeligt historisk fitbudget**.
+Budgetterne gælder pr. ugedag og fase og summeres over alle valgte uger.
+Kontrollen er kooperativ mellem nativeblokke/timer. Et ufuldstændigt eller
+ikke-konvergeret fit stopper og bliver aldrig et godkendt fast-fit-fallback.
+Denne oprydning har kun kørt korte syntetiske tests, intet historisk F-fit.
+
+Native kernecheckpoints kan genoptages med matchende kandidat, inputs, kilde
+og runtime. Den samlede weekday-CLI kræver fortsat en ny outputmappe og har
+**ingen automatisk fit-/uge-resume**. Den bevarer konkrete partialkandidater,
+optimizertrace og forecastcheckpoints til recovery. F4's separate `--resume`
+er uændret. Ligninger, numeriske gates og tests står i
+[matematikoversigten](../docs/bm/MATHEMATICS.md).
+
+Andre adapters kan bruge `WeekdayCallbacks` eller `forecast_week` fra
+`src.tools.weekday_backtest`; kalenderen ejer ikke modellernes likelihood,
+baseline, prior eller konvergensregler. Nye adapters kræver deres egen kontrakt.
 
 ## Tid, manglende data og usikkerhed
 
@@ -159,7 +153,7 @@ publiceringsaftale. Generisk kode, vejledning og syntetiske tests kan merges.
 Fokuserede kontroller:
 
 ```powershell
-python -B -m unittest tests.test_weekday_backtest tests.test_g_weekday_bands
+python -B -m unittest tests.test_weekday_backtest tests.test_g_weekday_bands tests.test_f_weekday_adapter
 ```
 
 Tests af F-tilslutningen bruger en lille syntetisk model og ændrer hverken

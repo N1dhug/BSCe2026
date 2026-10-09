@@ -1,42 +1,36 @@
-# Historisk BM-evidens
+# BM: faglig historik og bevarede originaler
 
-Dette arkiv samler afløste arbejdsordrer og resultathistorik efter emne. Gamle instruktioner er ikke aktive kørselsordrer. Aktuelle indgange: [BM-guide](../../root/BM_GUIDE.md), [F4-status](../../root/F4.md).
+<a id="g-mathematics-source-index-20261008"></a>
+Aktuel brug: [BM-guide](../../root/BM_GUIDE.md). Gældende F/G-overblik:
+[matematik](../../docs/bm/MATHEMATICS.md). Seneste faktisk verificerede arbejde:
+[status](../../docs/bm/STATUS.txt). Arkivtekster giver ingen ny kørselsordre.
 
-Originale noter ligger uændret i Git ved `89e8337b6857b148c48e6880473984c3ae4574a0` og i den verificerede lokale sourcepakke `cleanup_work/recovery/start-source-89e8337.zip`. Rådata ligger i den separat verificerede lokale backup; ingen rådata publiceres her. [Stikortet](old-paths.json) angiver hver originalsti, hash, erstatning og anker.
+## F: model, numerik og historisk accept
 
-Kildebundne scripts, registreringer og manifests i `root/f4` og `root/g7` bliver på deres originale stier. De er logisk en del af historikken, fordi deres path/hashkontrakter er nødvendige for genskabelse. Historiske JSON-referencer gælder den oprindelige kildepakke og ændres ikke til resuméernes stier.
+- [Population, metadata og frosne inputs](F/data-contract.md)
+- [Interval-likelihood, positive operatorer og terminale tilts](F/interval-likelihood.md)
+- [Intervalmomenter, CDF og åben prognose](F/interval-forecast.md)
+- [Estimation, identifikation og beregningsgraf](F/estimation-and-identification.md)
+- [Numeriske fejl og kontroller](F/numerical-evidence.md)
+- [Tidlige H2-afbrydelser](F/h2-early-recovery.md), [terminale stop](F/h2-terminal-recovery.md), [budgetvalg](F/h2-runtime-decisions.md), [slutvalg og H→I/J](F/h2-selection-and-handoff.md)
 
-F- og G-matematik, herunder negative numeriske resultater, er bevaret i de eksisterende fagnoter. Denne runde samler 28 status-/overdragelsesnoter i 7 historikfiler og 8 G-guider/protokoller i 3 fagnoter; den flytter ikke numeriske kerner eller tests.
+De fire sidstnævnte recoverytemaer bevarer lukkede ledgers, mistede jobs,
+source-/checkpointadmission og H→I/J-kontrakten. De fem fagtemaer ovenfor
+beskriver data, operatorer, estimation og numeriske fejl; gamle kørselsordrer
+genaktiveres ikke, og budget-/genskabelsesoplysninger gentages ikke som ny matematik.
 
-- [F: tidlige H2-afbrydelser og recovery](F/h2-early-recovery.md)
-- [F: terminale H2-stop og kildegendannelse](F/h2-terminal-recovery.md)
-- [F: H2-runtime, budget og scopebeslutninger](F/h2-runtime-decisions.md)
-- [F: tofamilievalg, slutdiagnose og handoff](F/h2-selection-and-handoff.md)
-- [G: kontrolcheckpoints og genfundet evidens](G/control-checkpoints.md)
-- [G: S3-milepæl og afløste udvidelsesplaner](G/s3-transition-history.md)
-- [G: januargrundlag og afløste fælles arbejdsordrer](G/legacy-development.md)
+## G: udvikling, fordelinger og styring
 
-## Samlede G-fagnoter og forsøgsprotokoller
+- [Dynamik, punktprognoser og S3-valget](G/forecast-development.md)
+- [Processtøj, FV/mixture/EM og negative båndresultater](G/stochastic-distributions.md)
+- [Bayes-bank og Bernstein/Beta-basis](G/posterior-and-basis.md)
+- [Prisstyring, energiligevægt og uafsluttet stokastisk evidens](G/control-and-evidence.md)
+- Senere timeprotokol: [interval](../../docs/bm/G_INTERVAL_MODEL.md), [residual/usikkerhed](../../docs/bm/G_UNCERTAINTY.md), [weekday/bånd](../../docs/bm/G_WEEKDAY_STUDY.md)
 
-- [G: timeoperator, baseline og integrerede procesmomenter](../../docs/bm/G_INTERVAL_MODEL.md)
-- [G: procesusikkerhed og empirisk outputresidual](../../docs/bm/G_UNCERTAINTY.md)
-- [G: ugedagsfit og det historiske seksugers båndstudie](../../docs/bm/G_WEEKDAY_STUDY.md)
+## Genskabelse og sporbarhed
 
-## Kontrolleret bevaringsprøve
-
-Recovery-rodens faktiske placering står i [status](../../docs/bm/STATUS.txt).
-Stier med `cleanup_work/` nedenfor er relative til ChatGPT-projektet, ikke dette repository.
-
-- F: `f4_delivery_final` forbinder manifest, gemt model, inputidentiteter og resultat.
-  Den særskilte `cleanup_work/recovery/f4_delivery_source` bevarer præcis alle
-  215 manifestbundne sourcefiler, model, konfiguration og begge inputfiler.
-  `HISTORICAL_EXPORT.txt` forklarer brugen; eksporten er historisk og må ikke
-  udvikles videre. Begge origin-states er genindlæst uden modelberegning.
-  Audit: `cleanup_work/f4_historical_export_audit.json`. F4_code er urørt.
-- G: `G-weekday-bands-20261008` har 316 verificerede manifestposter; uge,
-  matematik/protokol, input-/sourceidentiteter og resultater kan følges via
-  [G-ugedagsstudiet](../../docs/bm/G_WEEKDAY_STUDY.md) og den originale pakke.
-  Audit: `cleanup_work/artifact_integrity.json`, afsnittet `G_package`.
-- De 36 fjernede noters originalbytes/hash/anker findes i [stikortet](old-paths.json)
-  og start-source-pakken. Originale AGENTS/F4/BM_GUIDE findes ved samme Git-base.
-  Ingen test, numerisk kerne, checkpoint eller rå tidsserie er slettet.
+[Originaltræet](ORIGINALS.md) indeholder de præcise tidligere scripts, noter,
+ledgers, src og tests i deres oprindelige indbyrdes stier. [Stikortet](old-paths.json)
+forbinder alle fjernede/forkortede noter med emner og originalhashes. Historiske
+JSON-manifests omskrives ikke. ZIP-pakning er arkivering og tælles med sit
+udfoldede filantal; faglig konsolidering opgøres separat.

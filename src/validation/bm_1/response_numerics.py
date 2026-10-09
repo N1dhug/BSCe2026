@@ -5,7 +5,8 @@ import numpy as np
 from src.method.bm_1_response import replay_curve_record
 from src.params.bm_1 import gaussian_log_likelihood
 from src.validation import estimation as checks
-from src.validation.bm_1.response_cases import H1_NUMERICS, H1_TOLERANCES
+from src.validation.bm_1.response_cases import (
+    H1_NUMERICS, H1_TOLERANCES, h1_training_records, h1_candidate_panel)
 
 
 def density_l1(left_edges, left_mass, right_edges, right_mass):
@@ -106,3 +107,13 @@ def negative_control_error(rows, record):
     expected = np.array([gaussian_log_likelihood(y, [float(record.baseline(t))], record.sigma_y)[0]
                          for t, y in zip(record.observations.times, record.observations.values)])
     return max(float(np.max(np.abs(row['log_evidence']-expected))) for row in rows.values())
+
+
+def run_h1_job(spec):
+    records, _ = h1_training_records(spec['case'])
+    record = records[spec['record_index']]
+    candidates = {name: (f, g) for name, f, g in h1_candidate_panel()}
+    f, g = candidates[spec['candidate']]
+    if spec['unit'] != f"{spec['case']}_{record.record_id}_{spec['candidate']}":
+        raise ValueError('H1 task identity mismatch.')
+    return run_numerical_unit(record, f, g, numerics=spec['numerics'], backend=spec['backend'])

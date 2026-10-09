@@ -258,3 +258,130 @@ def native_terminal_update(operator, logs, value, sigma_y, settings, *, mapper=N
     return dict(log_posterior_mass=posterior, log_evidence=score, contours=contours,
         maximum_relative_conditional_guard=float(selected_guard[active].max()),
         maximum_overlap_log_difference=overlap_max, maximum_abs_mass_error=mass_error)
+
+
+def native_runtime():
+    """Numerical package versions required by native TRAIN checkpoint reuse."""
+    import platform
+    import scipy
+    import numba
+    import llvmlite
+    return dict(python=platform.python_version(), platform=platform.platform(),
+                numpy=np.__version__, scipy=scipy.__version__, numba=numba.__version__,
+                llvmlite=llvmlite.__version__)
+
+
+def replay_native_candidate(spec, candidate, *, saved=None, limit_units=None,
+                            should_pause=None, checkpoint=None, mapper=None, state_callback=None):
+    """Continuous TRAIN replay using the existing precise checkpoint contract.
+
+    Each candidate owns its initial law and every subsequent log posterior.
+    Gaps and missing observations propagate without evidence or midnight resets.
+    A paused/failed prefix is never returned as a completed likelihood.
+    """
+    from src.method.bm_1_interval_precise import digest, replay_units, validate_checkpoint
+    import hashlib
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    source = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+              for p in sorted((root/'src').rglob('*.py'))}
+    backend = 'bm1-native-whole-train-v1'
+    runtime = native_runtime()
+    if saved is not None and (saved.get('native_backend') != backend
+            or saved.get('native_source_sha256') != source or saved.get('native_runtime') != runtime):
+        raise ValueError('Native checkpoint backend/version/source/runtime differs; no implicit precise/native conversion.')
+    units = replay_units(spec)
+    identity = digest(dict(spec=spec, candidate=candidate))
+    if saved is not None and digest(dict(spec=saved.get('spec'), candidate=saved.get('candidate'))) != identity:
+        raise ValueError('Saved native candidate/spec identity changed.')
+    payload = (dict(rows=[], log_mass=spec['initial_log_mass'], log_likelihood=0., status='paused')
+               if saved is None else dict(validate_checkpoint(saved, spec, candidate)))
+    if payload.get('status') == 'numerical_guard_failed':
+        raise ValueError('Preserve the failed candidate; no automatic numerical retry.')
+    validate_checkpoint(dict(identity=identity, payload=payload, checksum=digest(payload)), spec, candidate)
+    rows = list(payload['rows'])
+    logs = np.array([-np.inf if x is None else x for x in payload['log_mass']])
+
+    def publish(status, **extra):
+        result = dict(identity=identity, native_backend=backend, native_source_sha256=source,
+            native_runtime=runtime, spec=spec, candidate=candidate, payload=dict(rows=rows,
+            log_mass=[None if np.isneginf(x) else float(x) for x in logs],
+            log_likelihood=float(sum(r['log_evidence'] for r in rows if r['observed'])),
+            status=status, **extra))
+        result['checksum'] = digest(result['payload'])
+        validate_checkpoint(result, spec, candidate)
+        if checkpoint is not None:
+            checkpoint(result)
+        return result
+
+    stop = len(units) if limit_units is None else min(len(units), limit_units)
+    for index in range(len(rows), stop):
+        if should_pause is not None and should_pause():
+            return publish('paused')
+        unit = units[index]
+        begun = perf_counter()
+        try:
+            operator = freeze_native_operator(spec, candidate, unit)
+            if unit['observed']:
+                result = native_terminal_update(operator, logs, unit['value'],
+                    spec['physical']['sigma_y'], spec['settings'], mapper=mapper)
+                next_logs, evidence = result['log_posterior_mass'], float(result['log_evidence'])
+            else:
+                result = advance_frequency_block((operator, logs, np.array([0]), 2., 0., 0.))
+                next_logs, evidence = result['log_amplitude'], None
+                result.update(contours=[], maximum_relative_conditional_guard=0.,
+                              maximum_overlap_log_difference=0.)
+            if should_pause is not None and should_pause():
+                return publish('paused')
+        except TimeoutError:
+            return publish('paused')
+        except (CharacteristicNumericalError, ValueError) as exc:
+            return publish('numerical_guard_failed', failed_unit=index, reason=str(exc),
+                           diagnostics=getattr(exc, 'diagnostics', {}))
+        logs = next_logs
+        rows.append(dict(unit=index, **unit, log_evidence=evidence,
+            state_mean=float(np.exp(logs) @ operator['x']), elapsed_seconds=perf_counter()-begun,
+            **{key: result[key] for key in ('contours', 'maximum_relative_conditional_guard',
+                'maximum_overlap_log_difference', 'maximum_abs_mass_error')}))
+        if state_callback is not None:
+            state_callback(index, logs.copy())
+        publish('completed' if len(rows) == len(units) else 'paused')
+    return publish('completed' if len(rows) == len(units) else 'prefix_complete')
+
+
+def replay_native_record(record, f, g, *, settings, should_pause=None, checkpoint=None,
+                         mapper=None, state_callback=None):
+    """Response-optimizer interface; numerical failures are never scalar costs."""
+    from types import SimpleNamespace
+    from src.method.bm_1_interval_precise import freeze_hourly_record
+    from src.method.bm_1_response import curve_pair_logits
+    pieces = len(f.knots)-1
+    candidate = dict(pieces=pieces, logits=curve_pair_logits(f, g, pieces=pieces).tolist())
+    spec = freeze_hourly_record(record, settings)
+    result = replay_native_candidate(spec, candidate, should_pause=should_pause,
+                                     checkpoint=checkpoint, mapper=mapper, state_callback=state_callback)
+    payload = result['payload']
+    if payload['status'] in ('paused', 'prefix_complete'):
+        raise TimeoutError('Native TRAIN replay incomplete; checkpoint retained, no optimizer score.')
+    if payload['status'] != 'completed':
+        raise RuntimeError('Native TRAIN numerical guard failed: '+payload.get('reason', 'unknown'))
+    rows = payload['rows']
+    logs = np.array([-np.inf if x is None else x for x in payload['log_mass']])
+    return SimpleNamespace(total_log_likelihood=payload['log_likelihood'],
+        log_evidence=np.array([row['log_evidence'] if row['observed'] else 0. for row in rows]),
+        observed=np.array([row['observed'] for row in rows]),
+        final_step=dict(log_posterior_mass=logs, native_checkpoint=result),
+        maximum_abs_mass_error=max(row['maximum_abs_mass_error'] for row in rows),
+        minimum_cell_mass=float(np.min(np.exp(logs))))
+
+
+def compare_native_states(base, fine):
+    """Preserved H2 base/fine mean and conservative mass-transfer gates."""
+    from src.params.bm_1 import conservative_mass_transfer
+    be, fe = np.linspace(0., 1., len(base)+1), np.linspace(0., 1., len(fine)+1)
+    bp, fp = np.exp(base), np.exp(fine)
+    mean = abs(float(bp @ ((be[:-1]+be[1:])/2.))-float(fp @ ((fe[:-1]+fe[1:])/2.)))
+    l1 = float(np.sum(np.abs(bp-conservative_mass_transfer(fe, fp, be))))
+    if mean > .002 or l1 > .05:
+        raise CharacteristicNumericalError('Historical prefix base/fine state precision failed.')
+    return dict(state_mean_difference=mean, conservative_state_L1_difference=l1)

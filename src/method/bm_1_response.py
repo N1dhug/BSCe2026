@@ -11,15 +11,11 @@ from copy import deepcopy
 from time import perf_counter
 
 import numpy as np
-from scipy.optimize import minimize
 from scipy.special import softmax
 
-from src.method.bm_1_estimation import run_fv_filter
-from src.model.bm_1 import bm_1
 from src.params.bm_1 import BM1ObservationSeries
 from src.params.bm_1_interval import BM1IntervalObservationSeries
 from src.params.bm_1_response import BM1PiecewiseResponse
-from src.solver.finite_volume import finite_volume_1d_cached, finite_volume_1d_fitted
 from src.validation import estimation as checks
 from src.validation.model.bm import bm_validation
 
@@ -111,15 +107,29 @@ def curve_pair_logits(f, g, *, pieces):
 
 def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
                         quadrature_order=3, keep_history=False, backend="upwind",
-                        accumulator_spacing=None, max_accumulator_nodes=None):
+                        accumulator_spacing=None, max_accumulator_nodes=None, native_options=None):
     """One complete fresh replay, shared by fitting and full-history validation.
 
     B/U callbacks already need NumPy broadcasting for the BM1 forward output.
     Vectorized input sampling retains the identical solver grid and exact cache
     keys. It never shares an operator or posterior across curve candidates.
     """
+    from src.method.bm_1_estimation import run_fv_filter
+    from src.model.bm_1 import bm_1
+    from src.solver.finite_volume import finite_volume_1d_cached, finite_volume_1d_fitted
+
     if not isinstance(record, CurveTrainingRecord):
         raise TypeError('A declared curve training/development record is required.')
+    if native_options is not None:
+        if (not isinstance(record.observations, BM1IntervalObservationSeries)
+                or backend != 'fitted' or accumulator_spacing is not None or max_accumulator_nodes is not None):
+            raise ValueError('Native replay requires interval observations, fitted FV and no accumulator options.')
+        from src.method.bm_1_interval_native import replay_native_record
+        options = dict(native_options)
+        settings = dict(options.pop('settings'))
+        if settings['cells'] != cells or settings['max_step'] != max_step:
+            raise ValueError('Native record/optimizer numerical settings must agree.')
+        return replay_native_record(record, f, g, settings=settings, **options)
     cells = checks.positive_integer(cells, 'cells', minimum=3)
     if backend not in ('upwind', 'fitted'):
         raise ValueError('Curve FV backend must be upwind or fitted.')
@@ -149,7 +159,7 @@ def replay_curve_record(record, f, g, *, cells=401, max_step=1/768,
 
 def pooled_curve_log_likelihood(records, f, g, *, cells=401, max_step=1/768,
                                 quadrature_order=3, backend="upwind",
-                                accumulator_spacing=None, max_accumulator_nodes=None):
+                                accumulator_spacing=None, max_accumulator_nodes=None, native_options=None):
     """Whole-record pooled score, with one identical f/g pair in every replay."""
     records = tuple(records)
     if (not records or any(not isinstance(r, CurveTrainingRecord) for r in records)
@@ -160,7 +170,8 @@ def pooled_curve_log_likelihood(records, f, g, *, cells=401, max_step=1/768,
     for record in records:
         result = replay_curve_record(record, f, g, cells=cells, max_step=max_step,
             quadrature_order=quadrature_order, backend=backend,
-            accumulator_spacing=accumulator_spacing, max_accumulator_nodes=max_accumulator_nodes)
+            accumulator_spacing=accumulator_spacing, max_accumulator_nodes=max_accumulator_nodes,
+            native_options=native_options)
         if result.maximum_abs_mass_error > 1e-10 or result.minimum_cell_mass < 0.:
             raise RuntimeError('Curve candidate probability control failed; no candidate/record dropped.')
         outputs.append(dict(record_id=record.record_id, log_likelihood=result.total_log_likelihood,
@@ -176,7 +187,7 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
                           cells=401, max_step=1/768, quadrature_order=3, progress=None,
                           backend="upwind", resume_trace=None, checkpoint=None,
                           max_new_evaluations=None, should_pause=None,
-                          accumulator_spacing=None, max_accumulator_nodes=None):
+                          accumulator_spacing=None, max_accumulator_nodes=None, native_options=None):
     """Bounded development optimizer, with one total distinct-candidate budget.
 
     Regularization is lambda times squared inner-knot departure from 1-2z.
@@ -189,6 +200,8 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
     to source/data/numerics first. A per-invocation pause never expands the total
     candidate budget or claims optimizer success.
     """
+    from scipy.optimize import minimize
+
     # Validate the family and all starts before doing any likelihood work.
     pieces = checks.positive_integer(pieces, 'pieces', minimum=2)
     curve_pair_from_logits(np.zeros(2*(pieces-1)), pieces)
@@ -270,7 +283,8 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
         f, g = curve_pair_from_logits(logits, pieces)
         replay = pooled_curve_log_likelihood(records, f, g, cells=cells,
             max_step=max_step, quadrature_order=quadrature_order, backend=backend,
-            accumulator_spacing=accumulator_spacing, max_accumulator_nodes=max_accumulator_nodes)
+            accumulator_spacing=accumulator_spacing, max_accumulator_nodes=max_accumulator_nodes,
+            native_options=native_options)
         linear = 1. - 2.*f.knots[1:-1]
         penalty = regularization * sum(np.sum((curve.values[1:-1]-linear)**2) for curve in (f,g))
         objective = -replay['log_likelihood'] + penalty
@@ -312,7 +326,8 @@ def fit_shared_curve_pair(records, *, pieces, starts, regularization,
     if restored_replay:
         best['replay'] = pooled_curve_log_likelihood(records, best['f'], best['g'], cells=cells,
             max_step=max_step, quadrature_order=quadrature_order, backend=backend,
-            accumulator_spacing=accumulator_spacing, max_accumulator_nodes=max_accumulator_nodes)
+            accumulator_spacing=accumulator_spacing, max_accumulator_nodes=max_accumulator_nodes,
+            native_options=native_options)
         if abs(best['replay']['log_likelihood']-best['log_likelihood']) > 1e-10:
             raise ValueError('Restored best candidate no longer reproduces its saved score.')
     return dict(**best, trace=trace, optimizer_results=results,

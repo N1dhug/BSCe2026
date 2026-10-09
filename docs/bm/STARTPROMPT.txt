@@ -229,3 +229,117 @@ FÆRDIG NÅR
 - Ingen ukontrolleret sletning, kildeidentitetsomgåelse eller offentliggørelse
   af lokale rådata er sket.
 - Aflever én kort oversigt over ændringer, brug, evidens og resterende fagligt arbejde.
+
+
+FORTSÆTTELSE EFTER PR145 — 9. oktober 2026 (har forrang ved forskelle)
+
+Fortsæt BM-F/G-oprydningen. Første omgang er merged i PR #145, mergecommit 7249bf9. Kontrollér den faktiske aktuelle main og arbejd videre på en særskilt branch. Bevar nyere ændringer fra andre.
+
+Jeg går i seng og kan ikke besvare spørgsmål. Træf selv almindelige implementeringsvalg ud fra nedenstående mål og eksisterende materiale. Dokumentér væsentlige valg kort. Ved reel usikkerhed om sletning, modelbetydning eller ejerskab skal du bevare materialet, registrere det konkrete problem og fortsætte med de øvrige opgaver. Vent ikke på svar, og stop ikke hele arbejdet på grund af ét blokeret delmål.
+
+Læs den oprindelige STARTPROMPT, docs/bm/STATUS.txt, FILE_PLAN.txt og COMPARISON.md. Sammenhold den faktiske aflevering med kravene. Brug den eksisterende statusfil til checkpoints og beslutninger; opret ikke nye daterede overdragelsesnoter for hvert trin.
+
+MÅLET
+
+Lever et væsentligt mere overskueligt BM-projekt, hvor både kode og dokumentation er gennemgået, forenklet og nemme at bruge. Sidste omgang reducerede samlet filantal fra 1052 til 1038, mens aktiv BM-kode voksede fra 141 til 143 filer. Det var et delresultat, ikke færdiggørelse af oprydningen.
+
+Omkring 10% af det oprindelige filantal var et eksempel på min ambition, ikke et hårdt krav. Søg aktivt betydelig reduktion gennem sammenlægning, forkortelse og fjernelse af dublering. Vigtig viden, nødvendige tests, data og reproducerbarhed må ikke gå tabt.
+
+1. NOTER OG ROOT ER ET HOVEDMÅL
+
+Gennemgå alle tilbageværende BM-noter og BM-forsøgsfiler i root, inklusive relevante undermapper. Begræns dig ikke til nogle få store filer.
+
+For hvert emne skal der være én tydelig gældende fremstilling. Saml gentagne udledninger, statusbeskrivelser, planer, budgetforklaringer, recovery-instrukser og overdragelser. Fjern afløste arbejdsordrer fra aktiv dokumentation.
+
+Skeln mellem:
+- Aktuel brugervejledning.
+- Gældende matematik og modelantagelser.
+- Nødvendig validering og kendte begrænsninger.
+- Historisk udvikling og evidens.
+- Dubletter og materiale uden selvstændig værdi.
+
+Bevar unik matematik, vigtige negative resultater og beslutningsgrundlag. Det kræver ikke nødvendigvis, at hver oprindelig note fortsat ligger som en separat fil.
+
+Organisér ét logisk arkiv med en kort indholdsoversigt og klare F/G-emner. Undgå blot at flytte rodet til en anden mappe. Bevar historiske originalpakker, når deres stier og kontrolsummer er nødvendige, og lav et kort fra gamle placeringer til bevaret indhold.
+
+Git-historik og den verificerede backup kan understøtte bevaringen, men må ikke erstatte en brugbar samlet fremstilling af den viden, vi stadig skal bruge.
+
+2. REEL KODEFORENKLING
+
+Brug den vedlagte WM4-grundmodel som reference for læsbarhed inklusive imports: forståelige ligninger, tilstande, parametre, funktioner og indgange.
+
+Gennemgå de mange BM-indgange, wrappers, hjælpefunktioner og forsøgsvarianter. Saml ansvar, som naturligt hører sammen, fjern unødvendige mellemled og undgå parallelle implementationer af samme funktion.
+
+En kort modelfil med en uoverskuelig importkæde er ikke tilstrækkeligt. Samtidig skal du undgå enorme samlefiler, som blander matematik, filhåndtering, plotting og forsøgsstyring.
+
+Historiske kildehashes er et kompatibilitetsproblem, der skal håndteres, ikke automatisk en grund til at beholde alle gamle filer i den aktive struktur. Undersøg reproducerbare arkivpakker og eksplicit versionering. Omgå aldrig integritetskontroller.
+
+Gennemgå placeringer, tomme eller overflødige mapper, personlige absolutte stier, dokumentlinks og konfigurationer. Bevar fornuftige eksisterende strukturgrænser.
+
+3. F SKAL KUNNE STARTES OG KØRES PÅLIDELIGT
+
+Lokalisér F’s uafsluttede opstarts-/inputkontrol. Tidligere tomt output beviser ikke, at Excel-læsningen alene er problemet.
+
+Undersøg imports, filadgang, metadata, kontrolsummer og inputbehandling med trinvise tidsmærker. Isolér flaskehalsen før rettelse. Gentag ikke samme fulde forsøg uden ny information.
+
+Ret problemet uden at svække inputvalidering. Kontrollér derefter input, en kort prognose og, hvis det kan gennemføres inden for tidsgrænsen, en fuld uge med gemt fit.
+
+Målet er under 10 minutter for én models komplette ugeprognose, inklusive nødvendig indlæsning og eksport. Vis filtrering, import/kompilering og selve prognosen særskilt. En pause efter 600 sekunder er ikke et bestået resultat.
+
+4. GENNEMGÅ MATEMATIKKEN I DEN KODE VI BEHOLDER
+
+Forbind ligninger og antagelser med konkrete funktioner og tests for både F og G. Kontrollér blandt andet:
+- Enheder og tidsmærkning.
+- Timeforbrug, timegennemsnit og punktobservation.
+- Initialisering, baseline, fit, filtrering og prognose.
+- Tilstandsgrænser og numerisk præcision.
+- Parameteridentifikation, baselineklipning og ekstrapolation.
+- Forskellen mellem procesusikkerhed, residualer og kalibrerede bånd.
+
+Søg afklaring af databetydningen i eksisterende dokumentation. Hvis den ikke findes, fasthold en tydeligt mærket arbejdsantagelse; opfind ikke sikkerhed.
+
+Ret konkrete fejl. Skeln mellem nødvendige rettelser og valgfri forskning. Start ikke nye modelbanker, støjfamilier eller store kalibreringssøgninger.
+
+5. FÆRDIGGØR GENBRUGELIGE INDGANGE
+
+BM-F/G skal startes med et mønster, der ligner WM4’s eksisterende kommandoer. Undersøg WM’s faktiske argumenter og betydninger. Tilpas BM; ændr ikke WM.
+
+Det skal være enkelt at ændre periode, relevante parametre og outputplacering uden at ændre kildekode. Skeln tydeligt mellem nyt fit og genbrug af en gemt model.
+
+Genbrug den fælles weekday_backtest-ramme. Implementér F’s konkrete adapter, hvis den kan bygges forsvarligt af eksisterende komponenter. F skal beholde egen likelihood, baseline, prior og sammenhængende tilstandsudvikling. Et fast F4-fit må ikke ommærkes til et nyt ugedagsfit.
+
+Hvis en nødvendig F-komponent reelt mangler, konkretisér den og gennemfør de øvrige dele. Lad ikke et stort nyt fitstudie overtage oprydningen.
+
+6. SAMMENLIGNELIGT OUTPUT, MEN INGEN FÆLLES EVALUERINGSKAMPAGNE NU
+
+BM-output skal være forberedt til sammenligning med WM4: entydige tidsintervaller, observationer, prognoser, baseline, enheder, inputscenarie, parametre, fejlmål, runtime og relevant usikkerhed.
+
+Interne BM-tilstande skal beholde deres egen betydning. Skeln mellem oprindelig WM4 og G’s særskilte WM-timeadapter.
+
+Den faktiske fælles F/G/WM-sammenligning, flerperiodekampagne og modelrangering er udskudt. Den gennemfører jeg senere. Byg ikke en ny sammenligningsramme, når den eksisterende kan genbruges.
+
+BESKYTTELSE OG BEREGNINGER
+
+WM-kode, dokumentation, data og fælles afhængigheder må ikke ændres. Kontrollér det mod den aktuelle beskyttede baseline, inklusive nyere WM-MPC-arbejde.
+
+Genbrug færdige G-resultater og snapshots. Genkør ikke de seks eksisterende testuger for at dokumentere oprydning.
+
+Jeg har ikke givet særskilt tilladelse til 30–60-minutters kørsler. Planlæg derfor korte, afgrænsede kontroller med eksplicit stop. Et nyt dyrt historisk fit eller en forventet overskridelse af 10 minutter skal udskydes, mens andet arbejde fortsætter. Mange gentagne korte forsøg må ikke bruges til at omgå begrænsningen.
+
+SLUTKONTROL OG AFLEVERING
+
+Kontrollér:
+- Relevante regressionstests og numerisk overensstemmelse ved ren refaktorering.
+- Snapshotgenbrug og pause/genoptagelse, hvor understøttet.
+- WM-beskyttelse og arkivintegritet.
+- Dokumentlinks og alle anbefalede startkommandoer.
+- Selvstændig brug fra almindelig terminal.
+- F’s faktiske status og målt runtime uden overdrevne konklusioner.
+
+Lav før/efter-tal for aktiv kode, noter, arkiv og øvrige filer. Skeln mellem sletning, sammenlægning og flytning. Forklar væsentlige grupper, som stadig beholdes.
+
+Aflever en kort brugerprøve, som jeg kan udføre efterfølgende. Markér min faktiske vurdering som afventer; påstå ikke, at den er gennemført.
+
+Gem små sammenhængende commits efter kontrollerede delmål og opdatér status, så en afbrudt chat kan fortsætte uden at gentage beregninger. Afslut med præcis opdeling i gennemført, verificeret og resterende. Beskriv ikke hele opgaven som færdig, hvis den brede kode- og noteoprydning stadig mangler.
+
+Gå i gang og fortsæt med alle opgaver, der kan løses inden for denne afgrænsning.

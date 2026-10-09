@@ -10,9 +10,9 @@ import numpy as np
 from src.control.bm_1 import BM1ControlNumerics
 from src.method.bm_1_g7 import OwnedBankPriceEvaluator
 from src.method.bm_1_g7_jobs import CheckpointedBankControl,NodeJobStore,NodeJobStop,source_manifest,REQUIRED_SOURCE_PATHS
-from src.method.bm_1_g7_budget import full_job_plan,price_job_plan
+from src.method.bm_1_g7_jobs import full_job_plan,price_job_plan
 from src.method.bm_1_g8 import G8BankOrigin,context,RHO_VALUES
-from src.method.bm_1_g8_bernstein import BASIS_KIND,prior_coefficients
+from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND,prior_coefficients
 from src.method.bm_1_distribution_panel import baseline,target
 
 

@@ -13,11 +13,12 @@ python -m src.exe.run_model.bm_1_f4 --check
 python -m src.exe.run_model.bm_1_f4 --output files/output/bm_1/runs/my_f_example
 ```
 
-Inputkontrollen er endnu ikke godkendt på den fulde lokale workbook: den
-seneste tilladte opstarts-/inputkontrol blev stoppet ved 120 sekunder uden
-modelberegning. Fremdrift vises efter modulimporterne. `--max-seconds`
-begrænser modelarbejdet mellem timer, ikke opstarten/inputkontrollen.
-Kommandoerne nedenfor beskriver brugen; en ny længere måling kræver budget.
+Inputkontrollen og det korte eksempel er nu gennemført i en almindelig
+terminalkørsel. Den målte fitted/base-kørsel med én filtertime og tre
+prognosetimer tog **35,88 sekunder inklusive opstart, input og eksport**.
+Det gemte resultat matcher den tidligere fitted-reference eksakt. Terminalen
+viser nu imports, input, filtrering, prognose og eksport med tidsmærker.
+`--max-seconds` begrænser modelarbejdet; brug hele procesvarigheden til runtime.
 
 Standardeksemplet har én filtertime og tre forecasttimer. Der fittes ingen
 nye parametre. Skift periode uden at redigere kildekoden:
@@ -37,6 +38,17 @@ intervaller/UTC, observed/predicted/baseline, tilstand X, parametre, cutoffs,
 metrics, status og tidskvitteringer. 5/50/95-kvantiler findes kun ved de
 valgte timer. Enhederne er antagelser, og båndene er ikke kalibreret.
 Læs [den korte F4-detaljevejledning](F4_RUN.md) om priser og konfiguration.
+
+En hel åben uge med samme gemte fitted/base-model, én filtertime og 168
+prognosetimer gennemførte på **93,47 sekunder inklusive indlæsning og eksport**.
+Den bruger syv kvantilhorisonter og ingen fremtidige målinger eller scoring:
+
+```powershell
+python -m src.exe.run_model.bm_1_f4 --config root/f4_open_week.json --output files/output/bm_1/runs/my_f_open_week
+```
+
+Dette dokumenterer runtime for det konkrete forløb. Den gamle 24-timers
+filterkonfiguration og prognosekvaliteten har særskilte begrænsninger nedenfor.
 
 Ved `paused` (exitkode 2) fortsættes med samme argumenter plus `--resume`.
 Ctrl+C eller en `STOP`-fil i outputmappen stopper efter gemt arbejde; fjern
@@ -92,10 +104,40 @@ For ny fitplan bruges den eksisterende kalender:
 python -m src.exe.run_model.weekday_backtest --help
 ```
 
-Kalenderen understøtter G/WM-adapteren. F's callbackkontrakt er ikke en færdig
-native F-estimator. Start ikke historiske fits ud fra en plan-only-kalender.
-WM4's `--week` betegner fitugen; BM bruger eksplicit forecast-origin og skjuler
-ikke denne forskel bag samme argumentnavn.
+Kalenderen bruger G som standard. F vælges med `--adapter F --adapter-config`
+og laver nye native kurvefits med tidligere frossen baseline/skala/prior.
+CSV-kontrakt, plan-only-eksempel og de eksplicitte budgetter står i
+[kalendervejledningen](WEEKDAY_BACKTEST_GUIDE.md). Historisk fit er ikke kørt;
+den samlede weekday-CLI har ingen automatisk resume.
+En plan med `--plan-only` er ingen modelberegning. Et nyt fit på fem historiske
+ugedage er forskelligt fra F4's genbrug af et fast fit. WM4's `--week` betegner
+fitugen, mens BM angiver forecast-origin eksplicit.
+
+De ældre S3-værktøjer er samlet under ét modul med eksplicit modelvariant:
+
+```powershell
+python -m src.exe.run_model.bm_1.s3 interval --help
+python -m src.exe.run_model.bm_1.s3 residual --help
+python -m src.exe.run_model.bm_1.s3 point-process --help
+```
+
+Variantnavnet efterfølges af `fit`, `predict` eller `diagnose`, hvor det er
+tilgængeligt. [Arkivet](../archive/bm/INDEX.md) forklarer deres betydning og
+bevarer de gamle kommandoers præcise kildeversion. Gamle kildebundne
+G7/G8/H2-kørsler hører til i det gendannede originaltræ.
+
+## Kort brugerprøve — Johans vurdering afventer
+
+1. Kør F's `--help` og `--check` ovenfor, derefter det korte fitted-eksempel
+   i en ny outputmappe. Find CSV, figur, parametre og fase-/tidskvitteringer.
+2. Kør G's gemte eksempel. Vælg derefter et udsnit på 24 timer med `--start`
+   og en anden mappe. En dato uden for den gemte uge skal afvises.
+3. Prøv F med et origin før 21. februar 2022; cutoff skal afvises. Den gamle
+   `root/f4_week.json` afvises også på de nuværende data: dens filterdøgn har
+   negative råmålinger. Dette er en datagrænse, ikke en fastlåst indlæsning.
+4. Ved en reel F-pause bruges præcis samme argumenter plus `--resume`.
+   Den automatiske pause/resume-kontrol består; brugeroplevelsen er endnu
+   ikke vurderet af Johan.
 
 ## Fortolkning og videre læsning
 

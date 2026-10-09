@@ -6,12 +6,6 @@ from pathlib import Path
 from time import perf_counter
 import numpy as np
 import pandas as pd
-from src.exe.run_model.progress import runtime_text
-from src.exe.run_model.wm_4.output_model import statistical_output
-from src.method.bm_1_deterministic_response import BM1ResponseInputs, fit_response
-from src.method.bm_1_deterministic_weekday import BM1WeekdayInputs
-from src.params.bm_1_response import BM1PiecewiseResponse
-from src.tools.bm_1_deterministic_data import common_inputs, prepare_frame
 
 
 def save_json(path, value):
@@ -29,6 +23,10 @@ def metrics(observed, prediction):
 
 
 def history_inputs(frame, baseline, day, steps):
+    from src.method.bm_1_deterministic_response import BM1ResponseInputs
+    from src.method.bm_1_deterministic_weekday import BM1WeekdayInputs
+    from src.tools.bm_1_deterministic_data import common_inputs
+
     trajectories = []
     days = [day - pd.Timedelta(weeks=k) for k in range(1, 6)]
     for historical_day in days:
@@ -44,6 +42,12 @@ def history_inputs(frame, baseline, day, steps):
 
 def run(raw, reference, start, days, output, *, steps=60, seconds_per_day=180,
         calibration_end=None):
+    from src.exe.run_model.progress import runtime_text
+    from src.exe.run_model.wm_4.output_model import statistical_output
+    from src.method.bm_1_deterministic_response import BM1ResponseInputs, fit_response
+    from src.params.bm_1_response import BM1PiecewiseResponse
+    from src.tools.bm_1_deterministic_data import common_inputs, prepare_frame
+
     start = pd.Timestamp(start).normalize()
     if not 1 <= days <= 28 or not 2 <= steps <= 120:
         raise ValueError('Development study requires 1..28 days and 2..120 substeps/h.')

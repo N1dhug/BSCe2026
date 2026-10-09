@@ -5,7 +5,7 @@ import numpy as np
 from src.control.bm_1 import BM1ControlNumerics
 from src.method.bm_1_g7 import OwnedBankPriceEvaluator
 from src.method.bm_1_g8 import context,G8BankOrigin
-from src.method.bm_1_g8_bernstein import BASIS_KIND,prior_coefficients
+from src.method.bm_1_g8_basis import BERNSTEIN_BASIS_KIND as BASIS_KIND,prior_coefficients
 from src.method.bm_1_distribution_panel import baseline,target
 
 

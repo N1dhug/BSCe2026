@@ -1,6 +1,0 @@
-{
-  "stage": "parent metadata before worker launch",
-  "error": "KeyError prior_debit_seconds; registration uses prior_debit",
-  "worker_launched": false,
-  "empty_invocation_preserved": true
-}
