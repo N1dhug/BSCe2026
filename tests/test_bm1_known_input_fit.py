@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+from scipy.optimize import least_squares
 
 import numpy as np
 
@@ -26,7 +28,7 @@ def fixture():
 class KnownInputFitTests(unittest.TestCase):
     def test_recovers_parameters_from_analytic_demand_with_fixed_x0(self):
         time, baseline, price, demand, truth, x0, final_x = fixture()
-        result = fit_known_inputs(time, baseline, price, demand, x0)
+        result = fit_known_inputs(time, baseline, price, demand, x0, prior_weight=0, initial=(12., 2., .5))
         self.assertEqual(result['status'], 'converged')
         np.testing.assert_allclose(list(result['parameters'].values()), truth, rtol=2e-5)
         self.assertEqual(result['state'][0], x0)
@@ -38,8 +40,8 @@ class KnownInputFitTests(unittest.TestCase):
 
     def test_recovers_coefficients_and_unknown_x0_together(self):
         time, baseline, price, demand, truth, x0, final_x = fixture()
-        result = fit_known_inputs(time, baseline, price, demand, initial_x0=.8)
-        fixed = fit_known_inputs(time, baseline, price, demand, x0=.5)
+        result = fit_known_inputs(time, baseline, price, demand, initial_x0=.8, prior_weight=0, initial=(12., 2., .5))
+        fixed = fit_known_inputs(time, baseline, price, demand, x0=.5, prior_weight=0, initial=(12., 2., .5))
         self.assertEqual(result['status'], 'converged')
         self.assertTrue(result['x0_estimated'])
         np.testing.assert_allclose(list(result['parameters'].values()), truth, rtol=2e-5)
@@ -49,6 +51,44 @@ class KnownInputFitTests(unittest.TestCase):
         self.assertLess(result['rmse'], 1e-7)
         self.assertLess(result['rmse'], fixed['rmse']/100)
         self.assertEqual(result['fit_settings']['parameter_names'], ['C_hours', 'k', 'Xi', 'x0'])
+
+    def test_log_penalty_symmetry_and_measured_mse_objective(self):
+        time = np.arange(9.)
+        baseline = np.full(9, .5)
+        price = np.tile([.2, .8], 4)
+        demand = np.full(8, .4)
+        demand[3] = np.nan
+        mask = np.isfinite(demand)
+        penalties = []
+        for k in (20., .2):
+            residual_vectors = []
+            def record(fun, x0, **kwargs):
+                residual_vectors.append(fun(x0))
+                return least_squares(fun, x0, **kwargs)
+            with patch('src.exe.run_model.bm_1.bm_1_known_input_fit.least_squares', side_effect=record):
+                result = fit_known_inputs(time, baseline, price, demand,
+                    initial=(1., k, .5), bounds=((1., .05, 0.), (744., 30., 1.)),
+                    steps_per_hour=32, max_nfev=1, observation_mask=mask)
+            prior = result['regularization']
+            penalties.append(prior['penalty'])
+            self.assertEqual(len(residual_vectors[0]), mask.sum()+3)
+            self.assertAlmostEqual(float(residual_vectors[0] @ residual_vectors[0]),
+                                   result['rmse']**2 + prior['penalty'], places=10)
+            self.assertAlmostEqual(prior['data_mse_normalized'], result['rmse']**2)
+        self.assertAlmostEqual(penalties[0], .01*np.log(10)**2, places=10)
+        self.assertAlmostEqual(penalties[0], penalties[1], places=10)
+
+    def test_fixed_capacity_is_not_penalized_and_prior_pulls_free_parameters(self):
+        time, baseline, price, demand, truth, x0, _ = fixture()
+        result = fit_known_inputs(time, baseline, price, demand, x0=x0, c=truth[0])
+        self.assertEqual(result['status'], 'converged')
+        self.assertEqual(result['parameters']['C_hours'], truth[0])
+        self.assertFalse(result['c_estimated'])
+        self.assertEqual(result['regularization']['penalized_parameters'], ['k', 'Xi'])
+        fitted = np.array([result['parameters']['k'], result['parameters']['Xi']])
+        center = np.array([2., .5])
+        self.assertLess(np.sum(np.log(fitted/center)**2), np.sum(np.log(np.array(truth[1:])/center)**2))
+        self.assertAlmostEqual(result['regularization']['penalty'], .01*np.sum(np.log(fitted/center)**2))
 
     def test_csv_scaling_and_unfinished_fit_are_reported(self):
         time, baseline, price, demand, _, x0, _ = fixture()
@@ -69,6 +109,9 @@ class KnownInputFitTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             self.assertEqual(summary['status'], 'not-converged')
             self.assertTrue(summary['x0_estimated'])
+            self.assertEqual(summary['regularization']['center'], {'C_hours': 1., 'k': 2., 'Xi': .5})
+            self.assertEqual(summary['regularization']['weight'], .01)
+            self.assertAlmostEqual(summary['regularization']['data_mse_normalized'], summary['rmse_normalized']**2)
             self.assertAlmostEqual(summary['rmse'], 200*summary['rmse_normalized'])
             with (output/'trajectory.csv').open() as handle:
                 rows = list(csv.DictReader(handle))

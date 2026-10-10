@@ -13,11 +13,26 @@ For delta >= 0: D = B + Xi*(1-B)*delta.
 For delta < 0: D = B + Xi*B*delta.
 dX/dt = (D-B)/C, X(0)=X0.
 
-SciPy least_squares(method="trf", loss="linear") minimerer summen af
-(modelleret demand - observeret demand)^2. C og k optimeres i logkoordinater.
+SciPy least_squares(method="trf", loss="linear") minimerer som standard
+
+J = MSE_normaliseret + lambda * [log(C/1)^2 + log(k/2)^2 + log(Xi/0.5)^2].
+
+Kun frie C/k/Xi straffes. X0 straffes aldrig; fastholdt C straffes heller ikke.
+Standardvægten er lambda=0.01, et justerbart valg, ikke en kalibreret styrke.
+Med `--prior-center C K XI` ændres centrene, og `--prior-weight` ændrer vægten.
+Log-straffen giver samme bidrag for faktor 10 og faktor 1/10 fra et center.
+MSE beregnes kun over målte timer på den normaliserede demand-skala, så
+straffens relative vægt ikke automatisk svækkes ved flere observationer.
+RMSE og residualer indeholder aldrig parameterstraffen.
+`--prior-weight 0` bruger den tidligere rene sum af kvadrerede datafejl.
+C og k optimeres fortsat i logkoordinater.
 Standardgrænserne følger den eksisterende G-kode: C i [1,744] timer,
 k i [0.05,10], Xi i [0,1] og ukendt X0 i [0,1].
-Grænserne for C/k/Xi kan ændres i Python-kaldet.
+Med positiv straf kræves Xi>0; den numeriske nedre grænse sættes til den
+mindste positive normale float, fordi log-straffen divergerer ved Xi=0.
+Startgættet for Xi skal da også være positivt. Uden straf tillades Xi=0.
+C=1 er stadig den nedre grænse, og k=20 er uden for standardgrænserne,
+selvom straffens formel er defineret der. Grænserne kan ændres i Python-kaldet.
 Fitteren er lokal; konvergens garanterer hverken et globalt minimum eller
 entydige parametre. Eksempelvis kan C/k/X0 ikke bestemmes fra demand, hvis Xi=0.
 En estimeret X0 kan mindske koefficienternes kompensation for en forkert
@@ -41,7 +56,8 @@ from src.exe.run_model.bm_1.bm_1_known_input_fit import fit_known_inputs
 
 result = fit_known_inputs(
     baseline_time, baseline, prices, observed_demand,
-    initial=(12.0, 2.0, 0.5),
+    initial=(1.0, 2.0, 0.5),
+    prior_center=(1.0, 2.0, 0.5), prior_weight=0.01,
     initial_x0=0.5,
     observation_contract="hourly-mean",
 )
@@ -67,14 +83,16 @@ max_nfev begrænser SciPys evalueringer; residual_calls tæller også
 evalueringerne til numerisk differentiering. Der er ét startgæt pr. kald.
 Et andet initial/initial_x0 kan bruges i et særskilt kald ved behov.
 fit_settings.parameter_names angiver rækkefølgen for startgæt, grænser og
-optimizer.active_bounds: [C_hours,k,Xi,x0] ved fælles fit, ellers [C_hours,k,Xi].
+optimizer.active_bounds. Kun frie parametre optræder i disse lister.
+`regularization` gemmer centre, vægt, straffede parametre, normaliseret data-MSE,
+strafbidrag og summen MSE+straf. Startgættet er som standard (1,2,0.5).
 
 ## CSV og kommando
 
 En færdig syntetisk funktionsprøve følger med repoet:
 
 ```powershell
-python -m src.exe.run_model.bm_1.bm_1_known_input_fit --input files/input/bm_1/known_input_synthetic.csv --output bm-fit-synthetic
+python -m src.exe.run_model.bm_1.bm_1_known_input_fit --input files/input/bm_1/known_input_synthetic.csv --prior-weight 0 --initial 12 2 0.5 --output bm-fit-synthetic
 ```
 
 Den indeholder 72 timer med kendt baseline 0.43 og demand fra den analytiske
