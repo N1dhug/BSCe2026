@@ -90,6 +90,23 @@ class KnownInputFitTests(unittest.TestCase):
         self.assertLess(np.sum(np.log(fitted/center)**2), np.sum(np.log(np.array(truth[1:])/center)**2))
         self.assertAlmostEqual(result['regularization']['penalty'], .01*np.sum(np.log(fitted/center)**2))
 
+    def test_joint_five_piece_fit_disables_all_penalties_and_handles_fixed_parameters(self):
+        time, baseline, price, demand, _, x0, _ = fixture()
+        for c, fixed_x0 in ((None,None),(5.,x0)):
+            result = fit_known_inputs(time,baseline,price,demand,c=c,x0=fixed_x0,
+                                      fit_response=True,prior_weight=100,max_nfev=1)
+            self.assertTrue(result['response_fitted'])
+            self.assertEqual(result['regularization']['weight'],0)
+            self.assertEqual(result['regularization']['penalty'],0)
+            self.assertEqual(result['regularization']['penalized_parameters'],[])
+            self.assertEqual(len(result['fit_settings']['parameter_names']),12-(c is not None)-(fixed_x0 is not None))
+            for curve in result['response'].values():
+                self.assertEqual(len(curve['knots']),6)
+                self.assertTrue(np.all(np.diff(curve['values']) <= 0))
+            if c is not None:
+                self.assertEqual(result['parameters']['C_hours'],c)
+                self.assertEqual(result['x0'],fixed_x0)
+
     def test_csv_scaling_and_unfinished_fit_are_reported(self):
         time, baseline, price, demand, _, x0, _ = fixture()
         with tempfile.TemporaryDirectory() as folder:

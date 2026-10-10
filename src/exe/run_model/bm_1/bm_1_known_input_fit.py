@@ -1,6 +1,7 @@
 """Fit C/k/Xi and unknown X0 on one continuous BM1 trajectory with known inputs.
 
-f(X)=1-2X and g(u)=1-2u. Time is physical elapsed hours; model inputs
+Default f(X)=1-2X and g(u)=1-2u; --fit-response estimates both curves.
+Time is physical elapsed hours; model inputs
 are normalized to [0,1]. Run this module with --help for the CSV interface.
 """
 import argparse
@@ -13,12 +14,15 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from src.method.bm_1_deterministic_fit import BM1DeterministicInputs
+from src.method.bm_1_deterministic_response import BM1ResponseInputs
+from src.params.bm_1_response import BM1PiecewiseResponse
 
 
 def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
                      initial=(1., 2., .5), bounds=((1., .05, 0.), (744., 10., 1.)),
                      initial_x0=.5, c=None,
                      prior_center=(1., 2., .5), prior_weight=.01,
+                     fit_response=False, response_pieces=5,
                      observation_contract='hourly-mean', steps_per_hour=12,
                      max_nfev=500, numerical_tolerance=1e-5, observation_mask=None):
     """Return parameters, fitted demand/state, residuals, RMSE and stop status.
@@ -33,11 +37,17 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     MSE + prior_weight * sum(log(parameter/prior_center)**2) over free C/k/Xi.
     X0 is unpenalized. With prior_weight=0, use the original data-only sum of
     squares. C and k are optimized in log coordinates; RMSE is always data-only.
+    fit_response=True jointly fits monotone f/g curves and disables all penalties.
     Bounds and initial contain [C_hours,k,Xi]. No baseline or curve fitting.
     observation_mask excludes unmeasured demand from the objective/RMSE while
     retaining every hourly input and the continuous state trajectory.
     """
     begun = perf_counter()
+    if fit_response:
+        prior_weight = 0.
+        if isinstance(response_pieces, bool) or int(response_pieces) != response_pieces or response_pieces < 2:
+            raise ValueError('Use at least two response pieces.')
+        response_pieces = int(response_pieces)
     initial = np.asarray(initial, float).copy()
     lower, upper = np.asarray(bounds, float).copy()
     if (initial.shape != (3,) or lower.shape != (3,) or upper.shape != (3,)
@@ -66,12 +76,27 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     free = np.array([c is None, True, True, estimate_x0])
     parameter_names = np.array(['C_hours', 'k', 'Xi', 'x0'])[free].tolist()
     full_initial = np.r_[initial, start_x0]
+    if fit_response:
+        # Equal drops initialize linear curves. Bounded fractions preserve order.
+        fractions = 1. / np.arange(response_pieces, 1, -1)
+        full_initial = np.r_[full_initial, fractions, fractions]
+        free = np.r_[free, np.ones(2*(response_pieces-1), dtype=bool)]
+        parameter_names += [f'{curve}_drop_fraction_{i}' for curve in ('f', 'g')
+                            for i in range(1, response_pieces)]
     if isinstance(max_nfev, bool) or int(max_nfev) != max_nfev or max_nfev < 1:
         raise ValueError('max_nfev must be a positive integer.')
     if not np.isfinite(numerical_tolerance) or numerical_tolerance <= 0:
         raise ValueError('numerical_tolerance must be positive and finite.')
     observed = np.asarray(demand, float)
-    inputs = BM1DeterministicInputs(baseline_time, baseline, prices, observed,
+    requested_steps = steps_per_hour
+    if fit_response:
+        if isinstance(steps_per_hour, bool) or int(steps_per_hour) != steps_per_hour or steps_per_hour < 1:
+            raise ValueError('steps_per_hour must be a positive integer.')
+        # A curve can drop by 2 over one piece: maximum |f slope|=2*pieces.
+        stable_steps = int(np.ceil(upper[1]*upper[2]*response_pieces/(lower[0] if c is None else c))) + 1
+        steps_per_hour = int(steps_per_hour) * max(1, int(np.ceil(stable_steps/steps_per_hour)))
+    input_class = BM1ResponseInputs if fit_response else BM1DeterministicInputs
+    inputs = input_class(baseline_time, baseline, prices, observed,
         observation_contract=observation_contract, steps_per_hour=steps_per_hour,
         observation_mask=observation_mask)
     measured = inputs.observation_mask
@@ -101,26 +126,40 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
             return np.empty(0)
         return np.sqrt(prior_weight) * np.log(p[:3][free[:3]] / prior_center[free[:3]])
 
+    def curves(p):
+        split = 4 + response_pieces - 1
+        return (BM1PiecewiseResponse.from_drop_fractions(p[4:split]),
+                BM1PiecewiseResponse.from_drop_fractions(p[split:]))
+
+    def solve(p, grid=inputs):
+        if not fit_response:
+            return grid.solve(p)
+        f, g = curves(p)
+        return grid.solve(p[:4], state_response=f, price_response=g)
+
     def residual(v):
         nonlocal calls
         calls += 1
         p = decode(v)
-        data_error = (inputs.solve(p)['demand'] - observed)[measured]
+        data_error = (solve(p)['demand'] - observed)[measured]
         if prior_weight == 0:
             return data_error
         return np.r_[data_error / data_scale, prior_residual(p)]
 
-    initial_prediction = inputs.solve(np.r_[initial, start_x0])['demand']
+    initial_prediction = solve(full_initial)['demand']
     fitted_initial = full_initial
     fitted_lower = np.r_[lower, 0.]
     fitted_upper = np.r_[upper, 1.]
+    if fit_response:
+        fitted_lower = np.r_[fitted_lower, np.zeros(2*(response_pieces-1))]
+        fitted_upper = np.r_[fitted_upper, np.ones(2*(response_pieces-1))]
     fit = least_squares(residual, encode(fitted_initial),
         bounds=(encode(fitted_lower), encode(fitted_upper)),
         method='trf', jac='2-point', diff_step=1e-4, x_scale='jac', loss='linear',
         ftol=1e-7, xtol=1e-7, gtol=1e-7, max_nfev=int(max_nfev))
     p = decode(fit.x)
-    solved = inputs.solve(p)
-    fine = inputs.refined().solve(p)
+    solved = solve(p)
+    fine = solve(p, inputs.refined())
     numerical_error = float(np.max(np.abs(solved['demand'] - fine['demand'])))
     errors = solved['demand'] - observed
     data_mse = float(np.mean(errors[measured]**2))
@@ -132,7 +171,9 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     return {
         'status': status, 'parameters': {'C_hours': float(p[0]), 'k': float(p[1]), 'Xi': float(p[2])},
         'x0': float(p[3]), 'x0_estimated': estimate_x0, 'c_estimated': c is None,
-        'response': {'f': '1-2X', 'g': '1-2u'},
+        'response': dict(zip(('f', 'g'), (curve.to_record() for curve in curves(p)))) if fit_response else
+                    {'f': '1-2X', 'g': '1-2u'},
+        'response_fitted': bool(fit_response),
         'observation_contract': observation_contract, 'time_unit': 'hours',
         'state_time': np.arange(inputs.n_hours + 1, dtype=float), 'state': solved['state'],
         'price': inputs.prices.copy(), 'observed_demand': observed.copy(),
@@ -157,6 +198,7 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
                       'message': str(fit.message), 'nfev': int(fit.nfev), 'residual_calls': calls,
                       'active_bounds': fit.active_mask.tolist()},
         'numerics': {'passed': numerical_passed, 'steps_per_hour': inputs.steps,
+                     'requested_steps_per_hour': int(requested_steps),
                      'refined_steps_per_hour': 2*inputs.steps,
                      'max_demand_difference': numerical_error, 'tolerance': numerical_tolerance},
         'seconds': perf_counter() - begun,
@@ -190,6 +232,10 @@ def main(argv=None):
         help='Centers of the logarithmic parameter penalty (default: 1 2 0.5).')
     parser.add_argument('--prior-weight', type=float, default=.01,
         help='Log-penalty weight relative to normalized demand MSE (default: 0.01; 0 disables).')
+    parser.add_argument('--fit-response', action='store_true',
+        help='Jointly fit monotone f and g; disables all parameter/curve penalties.')
+    parser.add_argument('--response-pieces', type=int, default=5,
+        help='Straight pieces per fitted response (default: 5; requires --fit-response).')
     parser.add_argument('--contract', choices=('hourly-mean', 'hourly-point'), default='hourly-mean')
     parser.add_argument('--steps-per-hour', type=int, default=12)
     parser.add_argument('--max-nfev', type=int, default=500)
@@ -240,6 +286,7 @@ def main(argv=None):
     result = fit_known_inputs(time-time[0], baseline, price, demand, args.x0, observation_mask=measured,
         initial=args.initial, initial_x0=args.initial_x0, c=args.c, observation_contract=args.contract,
         prior_center=args.prior_center, prior_weight=args.prior_weight,
+        fit_response=args.fit_response, response_pieces=args.response_pieces,
         steps_per_hour=args.steps_per_hour, max_nfev=args.max_nfev)
     args.output.mkdir(parents=True, exist_ok=False)
     with (args.output/'trajectory.csv').open('w', newline='', encoding='utf-8') as handle:
