@@ -16,7 +16,7 @@ from src.exe.run_model.bm_1 import s3
 from src.method import bm_1_s3_interval as interval
 from tests import test_bm1_s3_interval as fixture
 from tests.g_fixtures import synthetic_history
-from src.tools.bm_1_deterministic_data import prepare_frame
+from src.exe.run_model.bm_1.s3_data import prepare_frame
 
 
 class GBasicTests(unittest.TestCase):
