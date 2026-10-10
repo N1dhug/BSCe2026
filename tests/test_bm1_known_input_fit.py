@@ -10,7 +10,8 @@ from scipy.optimize import least_squares
 import numpy as np
 
 from src.method.bm_1_deterministic_fit import exact_linear_interval
-from src.exe.run_model.bm_1.bm_1_known_input_fit import fit_known_inputs, main
+from src.exe.run_model.bm_1.bm_1_known_input_fit import fit_known_inputs, main, _save_comparison
+from src.params.bm_1_response import RESPONSE_FAMILIES, response_from_record
 
 
 def fixture():
@@ -92,20 +93,32 @@ class KnownInputFitTests(unittest.TestCase):
 
     def test_joint_five_piece_fit_disables_all_penalties_and_handles_fixed_parameters(self):
         time, baseline, price, demand, _, x0, _ = fixture()
-        for c, fixed_x0 in ((None,None),(5.,x0)):
+        for family, c, fixed_x0 in [(family,c,x) for family in RESPONSE_FAMILIES for c,x in ((None,None),(5.,x0))]:
             result = fit_known_inputs(time,baseline,price,demand,c=c,x0=fixed_x0,
-                                      fit_response=True,prior_weight=100,max_nfev=1)
+                                      fit_response=True,response_family=family,prior_weight=100,max_nfev=1)
             self.assertTrue(result['response_fitted'])
             self.assertEqual(result['regularization']['weight'],0)
             self.assertEqual(result['regularization']['penalty'],0)
             self.assertEqual(result['regularization']['penalized_parameters'],[])
-            self.assertEqual(len(result['fit_settings']['parameter_names']),12-(c is not None)-(fixed_x0 is not None))
+            self.assertEqual(result['response_family'], family)
+            self.assertTrue(result['numerics']['passed'])
+            self.assertEqual(len(result['fit_settings']['parameter_names']),(8 if family == 'beta-cdf' else 12)-(c is not None)-(fixed_x0 is not None))
             for curve in result['response'].values():
-                self.assertEqual(len(curve['knots']),6)
-                self.assertTrue(np.all(np.diff(curve['values']) <= 0))
+                self.assertTrue(np.all(np.diff(response_from_record(curve)(np.linspace(0,1,101))) <= 0))
             if c is not None:
                 self.assertEqual(result['parameters']['C_hours'],c)
                 self.assertEqual(result['x0'],fixed_x0)
+
+    def test_comparison_rejects_unfinished_and_numerically_invalid_winners(self):
+        rows = [dict(family=name, status=status, rmse=rmse, numerics_passed=passed)
+                for name,status,rmse,passed in [('linear','converged',.2,True),
+                    ('pchip','not-converged',.01,True), ('bernstein','converged',.001,False),
+                    ('beta-cdf','converged',.15,True)]]
+        with tempfile.TemporaryDirectory() as directory:
+            result = _save_comparison(Path(directory), rows)
+            self.assertEqual(result['best_run'], 'beta-cdf')
+            result = _save_comparison(Path(directory), rows[1:3])
+            self.assertIsNone(result['best_run'])
 
     def test_csv_scaling_and_unfinished_fit_are_reported(self):
         time, baseline, price, demand, _, x0, _ = fixture()

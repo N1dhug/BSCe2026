@@ -1,32 +1,21 @@
 """Deterministic G response on the existing RK4 input grid.
 
-State and price responses use the shared monotone piecewise-linear geometry.
+State and price responses use the shared monotone response geometry.
 """
-from bisect import bisect_right
 from math import tanh
 from time import perf_counter
 import numpy as np
 
 from src.method.bm_1_deterministic_fit import BM1DeterministicInputs, BudgetStop, _parameters
-from src.params.bm_1_response import BM1PiecewiseResponse
+from src.params.bm_1_response import BM1PiecewiseResponse, BM1BetaResponse
 
 
 def is_linear(curve):
-    return np.array_equal(curve.values, 1-2*curve.knots)
+    return curve.is_linear
 
 
 def _scalar_response(curve):
-    knots, values = tuple(curve.knots), tuple(curve.values)
-    slopes = tuple(np.diff(curve.values)/np.diff(curve.knots))
-    def evaluate(x):
-        if not np.isfinite(x) or not 0 <= x <= 1:
-            raise ValueError('RK4 stage left the response domain; no extrapolation.')
-        if is_flat_linear:
-            return 1-2*x
-        j = min(bisect_right(knots, x)-1, len(slopes)-1)
-        return values[j]+slopes[j]*(x-knots[j])
-    is_flat_linear = is_linear(curve)
-    return evaluate
+    return curve.scalar_evaluator()
 
 
 class BM1ResponseInputs(BM1DeterministicInputs):
@@ -34,7 +23,7 @@ class BM1ResponseInputs(BM1DeterministicInputs):
         super().__init__(*args, **kwargs)
         self.state_response = state_response or BM1PiecewiseResponse.linear(pieces=2)
         self.price_response = price_response or BM1PiecewiseResponse.linear(pieces=2)
-        if not all(isinstance(c, BM1PiecewiseResponse) for c in (self.state_response, self.price_response)):
+        if not all(isinstance(c, (BM1PiecewiseResponse, BM1BetaResponse)) for c in (self.state_response, self.price_response)):
             raise ValueError('Use validated shared response geometry.')
 
     def refined(self):
@@ -46,13 +35,13 @@ class BM1ResponseInputs(BM1DeterministicInputs):
     def solve(self, parameters, *, deadline=None, keep_fine=False, price_response=None, state_response=None):
         state_curve = self.state_response if state_response is None else state_response
         g = self.price_response if price_response is None else price_response
-        if not all(isinstance(curve, BM1PiecewiseResponse) for curve in (state_curve, g)):
+        if not all(isinstance(curve, (BM1PiecewiseResponse, BM1BetaResponse)) for curve in (state_curve, g)):
             raise ValueError('Use validated shared response geometry.')
         if is_linear(state_curve) and is_linear(g):
             return super().solve(parameters, deadline=deadline, keep_fine=keep_fine)
         self.last_rhs_evaluations = 0
         C, k, xi, x = _parameters(parameters)
-        slope = float(np.max(np.abs(np.diff(state_curve.values)/np.diff(state_curve.knots))))
+        slope = state_curve.max_abs_slope
         if .5*k*xi*self.h*slope/C > 1:
             raise ValueError('Refine the declared RK4 grid for this state-response slope.')
         f = _scalar_response(state_curve)
@@ -89,3 +78,4 @@ class BM1ResponseInputs(BM1DeterministicInputs):
                 fine_demand=np.array([demand(x, gv, b) for x, gv, b in
                     zip(fine_states, np.r_[fine_g, hourly_g[-1]], self.b_edge)]))
         return result
+

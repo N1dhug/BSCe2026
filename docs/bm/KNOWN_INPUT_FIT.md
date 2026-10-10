@@ -268,3 +268,64 @@ Dette er et lokalt datafit uden regularisering, ikke garanti for entydige
 funktioner eller et globalt optimum. Kurvedele uden tilstrækkelige besøg i
 X/u kan være svagt bestemte. Vurder prognoser på en efterfølgende periode,
 hvor baseline, normalisering og modelparametre er fastlagt fra træningen.
+
+### Glatte f/g-funktioner og fælles sammenligning
+
+`--fit-response --response-family pchip` vælger glatte monotone kubiske
+kurvestykker gennem de samme støttepunkter. Den eksisterende
+`input_builder.md` genbruges. `--response-family bernstein` vælger ét
+Bernstein-polynomium; `--response-pieces 5` angiver her graden. De seks
+værdier er ordnede Bernstein-koefficienter, ikke punkter kurven passerer.
+Begge familier har fire frie formparametre pr. funktion ved standardvalget.
+`--response-family piecewise-linear` er fortsat standard med --fit-response.
+
+`--response-family beta-cdf` bruger h(z)=1-2*I_z(a,b), hvor I er beta-CDF.
+Hver funktion har to formparametre, a og b, i [1,10]. Disse grænser holder
+endepunktshældningerne endelige; former med a<1 eller b<1 indgår ikke.
+a=b=1 giver 1-2z. --response-pieces bruges ikke af denne familie.
+Alle familier går fra 1 til -1 og er ikke-voksende, og alle kurvefits
+slår parameterstraffen helt fra. C/k/Xi/X0 estimeres sammen med kurverne.
+
+Solveren genbruges med den valgte kurves evaluering og maksimale hældning.
+Ved standardgrænser og 12 ønskede trin/time bruges 60 for stykvis lineær
+og Bernstein, 84 for PCHIP og 108 for beta-CDF. Gridet er fast gennem
+optimeringen af hver familie. Den efterfølgende kontrol med dobbelt opløsning
+skal bestås. De oprindelige lineære f/g genbruger den oprindelige solver.
+
+Prøv alle fem familier med én import og én baselineestimation:
+
+```powershell
+$outputDir = "files/output/bm_1/runs/fit_compare_" + (Get-Date -Format "yyyyMMdd_HHmmss")
+python -m src.exe.run_model.bm_1.bm_1_known_input_fit --start 2022-01-01 --end 2022-02-05 --tag MED --compare-responses --output $outputDir
+```
+
+Kørslen laver fem fits sekventielt med de samme input, normalisering,
+observationsmaske, parametergrænser og startgæt. Alle strafled er slået fra,
+også for den lineære reference. Hver kandidat har ét startgæt og sin egen
+mappe med fit.json, trajectory.csv og grafer. Resultaterne bevares til inspektion.
+En kandidat der ikke konvergerer, eller ikke består numerikkontrollen, kan
+ikke vinde, selv hvis den viser lavere RMSE. En kandidat med beregningsfejl
+rapporteres i sammenligningen, og de resterende kandidater forsøges stadig.
+
+`comparison.csv` og `comparison.json` opdateres efter hver kandidat.
+`comparison.png` sammenligner RMSE og de faktiske f/g-kurver; skravering
+markerer resultater, som ikke kan vælges. `comparison.json.best_run` angiver
+den relative mappe for det bedste gyldige træningsfit. Exitkode 0 betyder,
+at mindst én gyldig kandidat blev fundet; kontrollér også de øvriges status.
+Der er ingen garanti for et globalt optimum, og vinderen er valgt på
+træningsfejl, ikke på prognosefejl. Et nyt fit skifter ikke automatisk
+andre modelindganges standardfunktioner.
+
+Åbn vinderens dagsgraf uden at fitte igen:
+
+```powershell
+$comparison = Get-Content (Join-Path $outputDir "comparison.json") -Raw | ConvertFrom-Json
+if (-not $comparison.best_run) { throw "Ingen gyldig vinder; se comparison.csv." }
+$bestRun = Join-Path $outputDir $comparison.best_run
+python -m src.exe.run_model.bm_1.plot_fit --run $bestRun --day 2022-01-03
+Invoke-Item (Join-Path $bestRun "fit_2022-01-03.png")
+Invoke-Item (Join-Path $outputDir "comparison.png")
+```
+
+Gemte kurver rekonstrueres med `response_from_record`; gamle lineære
+kurvebeskrivelser læses fortsat. Grafer tegner kurverne fra den gemte familie.
