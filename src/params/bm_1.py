@@ -205,3 +205,56 @@ class lsq_params:
             "iterations": len(history), "free_parameters": tuple(free),
             "fit_method": "pooled_demand_alternating_lsq",
         }
+
+
+class historical_diffusion_params:
+    """Estimate BM1 sigma_x from five fitted 24-hour demand trajectories.
+
+    Method: linear-noise moment approximation about each deterministic state:
+    V[k+1] = (dX[k+1]/dX[k])² V[k] + sigma_x² * X[k]²(1-X[k])² dt.
+    Implied demand variance is (dD/dX)² V. Regress squared historical
+    demand residuals minus an observational variance floor on the resulting
+    unit-sigma² kernels, subject to sigma_x² >= 0.
+
+    This is a process-variance proxy, not an observation-noise-identified
+    SDE MLE. Structural model error can inflate the inferred sigma_x.
+    No target-window observations participate in calibration.
+    """
+
+    def fit_many(self, datasets, fit, *, substeps=2, derivative_step=1e-4, minimum_observation_sd=0.005):
+        states = bm_1_params_validation.historical_diffusion_data(datasets, fit["initial_states"], fit)
+        kernels, squares, initial_errors, all_errors = [], [], [], []
+        for data, x0 in zip(datasets, states):
+            X, D = lsq_params._predict(data, float(x0), fit, substeps)
+            I = np.asarray(data["I"], dtype=float)
+            error = I - D[:len(I)]
+            initial_errors.append(float(error[0]))
+            all_errors.extend(error.tolist())
+            variance = 0.0
+            for k in range(len(I) - 1):
+                x, b, u, dt = float(X[k]), float(data["B"][k]), float(data["U"][k]), float(data["Time"][k + 1] - data["Time"][k])
+                plus = lsq_params._advance(x + derivative_step, dt, b, u, fit, substeps)
+                minus = lsq_params._advance(x - derivative_step, dt, b, u, fit, substeps)
+                slope = (plus - minus) / (2.0 * derivative_step)
+                variance = slope * slope * variance + (x * (1.0 - x)) ** 2 * dt
+                next_x = float(X[k + 1])
+                j = k + 1
+                demand_plus = lsq_params._demand(next_x + derivative_step, float(data["B"][j]), float(data["U"][j]), fit)
+                demand_minus = lsq_params._demand(next_x - derivative_step, float(data["B"][j]), float(data["U"][j]), fit)
+                sensitivity = (demand_plus - demand_minus) / (2.0 * derivative_step)
+                kernels.append(float(sensitivity * sensitivity * variance))
+                squares.append(float(error[j] ** 2))
+
+        observation_sd = max(float(minimum_observation_sd), float(np.sqrt(np.mean(np.square(initial_errors)))))
+        observed_variance = observation_sd ** 2
+        kernel, residual_square = bm_1_params_validation.diffusion_variance_fit(kernels, squares, observed_variance)
+        target_variance = np.maximum(residual_square - observed_variance, 0.0)
+        q = float(max(0.0, np.dot(kernel, target_variance) / np.dot(kernel, kernel)))
+        return {
+            "sigma_x": float(np.sqrt(q)), "q": q,
+            "observation_sd": observation_sd,
+            "historical_rmse": float(np.sqrt(np.mean(np.square(all_errors)))),
+            "variance_rmse": float(np.sqrt(np.mean(np.square(kernel * q - target_variance)))),
+            "samples": int(kernel.size),
+            "method": "historical linear-noise nonnegative variance regression",
+        }
