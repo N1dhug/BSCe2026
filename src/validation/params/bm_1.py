@@ -98,7 +98,7 @@ class bm_1_params_validation:
         fixed.pop("X0")
         return prepared, x0, free, fixed, seeds, lb, ub
 
-    @staticmethod
+    @classmethod
     def diffusion_controls(cls, sigma0, min_shape):
         sigma0, min_shape = cls.scalar(sigma0, "sigma0"), cls.scalar(min_shape, "min_shape")
         if sigma0 < 0.0 or min_shape <= 0.0: raise ValueError("sigma0 must be nonnegative and min_shape positive.")
