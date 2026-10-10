@@ -288,18 +288,18 @@ slår parameterstraffen helt fra. C/k/Xi/X0 estimeres sammen med kurverne.
 
 Solveren genbruges med den valgte kurves evaluering og maksimale hældning.
 Ved standardgrænser og 12 ønskede trin/time bruges 60 for stykvis lineær
-og Bernstein, 84 for PCHIP og 108 for beta-CDF. Gridet er fast gennem
+og Bernstein, 60 for logistic, 84 for PCHIP og 108 for beta-CDF. Gridet er fast gennem
 optimeringen af hver familie. Den efterfølgende kontrol med dobbelt opløsning
 skal bestås. De oprindelige lineære f/g genbruger den oprindelige solver.
 
-Prøv alle fem familier med én import og én baselineestimation:
+Prøv alle seks familier med én import og én baselineestimation:
 
 ```powershell
 $outputDir = "files/output/bm_1/runs/fit_compare_" + (Get-Date -Format "yyyyMMdd_HHmmss")
 python -m src.exe.run_model.bm_1.bm_1_known_input_fit --start 2022-01-01 --end 2022-02-05 --tag MED --compare-responses --output $outputDir
 ```
 
-Kørslen laver fem fits sekventielt med de samme input, normalisering,
+Kørslen laver seks fits sekventielt med de samme input, normalisering,
 observationsmaske, parametergrænser og startgæt. Alle strafled er slået fra,
 også for den lineære reference. Hver kandidat har ét startgæt og sin egen
 mappe med fit.json, trajectory.csv og grafer. Resultaterne bevares til inspektion.
