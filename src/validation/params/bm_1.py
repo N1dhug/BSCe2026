@@ -118,6 +118,25 @@ class bm_1_params_validation:
         return result
 
     @staticmethod
+    def capped_optimizer_result(result, name, *, limit_status):
+        """Accept usable bounded optimizer iterates at an iteration/evaluation cap.
+
+        Only the documented optimizer limit status is nonfatal. Invalid
+        parameters/objective values and all other failures remain errors.
+        """
+        point = np.asarray(result.x, dtype=float)
+        objective = np.asarray(result.fun, dtype=float)
+        if not point.size or not np.all(np.isfinite(point)) or not objective.size or not np.all(np.isfinite(objective)):
+            raise RuntimeError(f"BM1 {name} produced nonfinite optimizer values: {result.message}")
+        status, success = int(result.status), bool(result.success)
+        capped = not success and status == limit_status
+        if not (success or capped): raise RuntimeError(f"BM1 {name} optimizer failed: {result.message}")
+        return {
+            "converged": success, "limit_reached": capped, "status": status,
+            "nfev": int(getattr(result, "nfev", 0)), "message": str(result.message),
+        }
+
+    @staticmethod
     def historical_diffusion_data(datasets, states, fit):
         if not isinstance(datasets, (tuple, list)) or len(datasets) != 5:
             raise ValueError("Historical BM1 diffusion requires five fitting windows.")
