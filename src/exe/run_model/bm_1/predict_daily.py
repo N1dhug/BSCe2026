@@ -147,7 +147,7 @@ def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=N
         metrics = {"model": checks.metrics(actual, hourly["I_predicted"]), "baseline": checks.metrics(actual, hourly["B"])}
         hourly["I_observed"] = actual
     return {
-        "day": start, "training_days": days, "training": summary, "hourly": hourly, "fit": fitted,
+        "day": start, "tag": tag, "training_days": days, "training": summary, "hourly": hourly, "fit": fitted,
         "initial_states": fitted["initial_states"].copy(), "initial_weights": fitted["initial_weights"].copy(),
         "initial_mass": ensemble["initial_mass"], "initial_grid": ensemble["initial_grid"],
         "ensemble": ensemble, "baseline_fit": dict(base.metadata), "training_baselines": training_baselines,
@@ -164,7 +164,7 @@ def save_result(result, output_root=OUTPUT, plot=True):
     pd.DataFrame(result["fit"]["history"]).to_csv(directory / "iterations.csv", index=False)
     fit = result["fit"]
     metadata = {
-        "target_day": str(result["day"].date()), "training_days": [str(d.date()) for d in result["training_days"]],
+        "target_day": str(result["day"].date()), "tag": result["tag"], "training_days": [str(d.date()) for d in result["training_days"]],
         "theta": {key: float(fit[key]) for key in ("alpha", "beta", "k", "Xi", "C")},
         "state_X0": [float(v) for v in result["initial_states"]], "initial_weights": [float(v) for v in result["initial_weights"]],
         "pooled_mse": float(fit["mse"]), "iterations": int(fit["iterations"]),
