@@ -208,3 +208,12 @@ Python-indgangen er `aligned_bm_data(start,end,...)` efterfulgt af
 `fit_inputs(frame,baseline_path,...)` for en leveret baseline. Resultatet indeholder baseline_time,
 baseline, prices, demand og observation_mask til `fit_known_inputs(...)`,
 samt normalisering og metadata. Fitteren gemmer importmetadata i fit.json.
+
+### Fixed capacity
+
+Add `--c 5` to hold capacity at exactly 5 hours while fitting `k`, `Xi` and
+`X0`. This is different from `--initial 5 2 0.5`, which only sets a starting
+guess and still estimates capacity. `--x0` can also fix the initial state.
+The existing data import, baseline, solver and plots are reused. The JSON
+records `c_estimated: false`; optimizer parameter names and bounds list only
+free parameters. Use a new output directory for each fit.
