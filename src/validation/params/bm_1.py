@@ -81,6 +81,24 @@ class bm_1_params_validation:
         return X0, free, fixed, seeds, lb, ub
 
     @classmethod
+    def fit_many_inputs(cls, model, datasets, X0, *, C, Xi, alpha0, beta0, k0, C0, Xi0, max_iterations, min_improvement, max_nfev, state_maxiter, substeps, names, bounds):
+        """Validate pooled training data and optimizer configuration."""
+        if not isinstance(datasets, (list, tuple)) or len(datasets) != 5: raise ValueError("BM1 pooled weekday fit requires exactly five complete training days.")
+        if isinstance(max_iterations, bool) or not isinstance(max_iterations, int) or max_iterations < 1: raise ValueError("max_iterations must be a positive integer.")
+        if isinstance(state_maxiter, bool) or not isinstance(state_maxiter, int) or state_maxiter < 1: raise ValueError("state_maxiter must be a positive integer.")
+        min_improvement = cls.scalar(min_improvement, "min_improvement")
+        if min_improvement < 0.0: raise ValueError("min_improvement must be nonnegative.")
+        prepared = [cls.prepare(model, data) for data in datasets]
+        if any(len(data["I"]) != 24 or len(data["Time"]) != 25 for data in prepared): raise ValueError("Each fitting day must contain 24 hourly demand samples and a 25-point hourly time grid.")
+        if any(not np.allclose(data["dt"], 1.0, atol=1e-10, rtol=0.0) for data in prepared): raise ValueError("Each fitting day must use a one-hour time step.")
+        x0, free, fixed, seeds, lb, ub = cls.fit_inputs(
+            X0, C=C, Xi=Xi, fit_X0=False, initial={"alpha": alpha0, "beta": beta0, "k": k0, "Xi": Xi0, "C": C0, "X0": X0},
+            bounds=None, names=names, default_bounds=bounds, substeps=substeps, max_nfev=max_nfev,
+        )
+        fixed.pop("X0")
+        return prepared, x0, free, fixed, seeds, lb, ub
+
+    @staticmethod
     def diffusion_controls(cls, sigma0, min_shape):
         sigma0, min_shape = cls.scalar(sigma0, "sigma0"), cls.scalar(min_shape, "min_shape")
         if sigma0 < 0.0 or min_shape <= 0.0: raise ValueError("sigma0 must be nonnegative and min_shape positive.")
