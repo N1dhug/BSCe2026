@@ -152,7 +152,7 @@ def save_comparison(result, output_root=OUTPUT, *, save_plot=True):
     hourly.to_csv(directory / "predictions_hourly.csv", index_label="time")
     pd.DataFrame.from_dict(metrics, orient="index").rename_axis("model").to_csv(directory / "metrics.csv")
     result["wm4_forecasts"].to_csv(directory / "wm4_mpc_one_hour.csv", index=False)
-    serialized = {key: val for key, val in result.items() if key in ("sources", "bm1_sigma_x", "normalization", "interpretation")}
+    serialized = {key: val for key, val in result.items() if key in ("sources", "bm1_sigma_x", "normalization", "interpretation", "settings")}
     serialized.update({"day": str(result["day"].date()), "metrics": metrics})
     (directory / "comparison.json").write_text(json.dumps(serialized, indent=2, default=str), encoding="utf-8")
     if save_plot:
