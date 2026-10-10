@@ -198,7 +198,7 @@ def main(argv=None):
         for i in range(len(demand)):
             observed = args.demand_offset+args.demand_scale*demand[i] if result['observation_mask'][i] else ''
             residual = args.demand_scale*result['residuals'][i] if result['observation_mask'][i] else ''
-            writer.writerow([time[i], observed,
+            writer.writerow([time[0]+i, observed,
                 args.demand_offset+args.demand_scale*result['demand'][i],
                 args.demand_offset+args.demand_scale*result['baseline'][i],
                 args.price_offset+args.price_scale*price[i], result['state'][i],
@@ -214,6 +214,8 @@ def main(argv=None):
     if metadata is not None: summary['data_import'] = metadata
     with (args.output/'fit.json').open('w', encoding='utf-8') as handle:
         json.dump(summary, handle, indent=2, allow_nan=False)
+    from src.exe.run_model.bm_1.plot_fit import save_plots
+    save_plots(args.output)
     print(f"{result['status']}: RMSE={summary['rmse']:.8g}; X0={result['x0']:.8g}; {args.output}")
     return 0 if result['status'] == 'converged' else 1
 

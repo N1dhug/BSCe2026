@@ -126,6 +126,22 @@ Ved hourly-mean er outputbaseline et timegennemsnit. Den sidste række viser X
 ved periodens slutning. Exitkode 0 betyder "converged"; 1 betyder et ufærdigt
 eller numerisk utilstrækkeligt fit, hvis resultater stadig gemmes til inspektion.
 
+Grafer gemmes automatisk som `fit_overview.png` (observeret/fitted demand og
+baseline, pris, X og residualer) og `fit_daily_errors.png` (BM/baseline-RMSE
+pr. dag, kun målte timer). Kurverne bruger samme observationsmål og rå enheder
+som trajectory.csv; et historisk fit er ikke en prognoseevaluering.
+Grafer af eksisterende resultater kan laves uden et nyt fit:
+
+```powershell
+python -m src.exe.run_model.bm_1.plot_fit --run files/output/bm_1/runs/fit_historik_YYYYMMDD_HHMMSS
+python -m src.exe.run_model.bm_1.plot_fit --run files/output/bm_1/runs/fit_historik_YYYYMMDD_HHMMSS --day 2022-01-03
+```
+
+Erstat mappenavnet med din gemte kørsel. Dagvalget gemmer en detaljeret
+`fit_2022-01-03.png`. Tegneren genskaber timeaksen for ældre automatiske
+baseline-kørsler, hvis CSV-tidskolonnen brugte finere offsets; beregningerne
+genkøres ikke. Nye trajectory.csv-filer skriver de korrekte hele timer.
+
 ## Historisk import fra de samme Excel-filer som WM
 
 Den nye BM-specifikke datafil er `src/exe/run_model/bm_1/data.py`.
