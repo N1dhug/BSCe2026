@@ -1,4 +1,4 @@
-"""Regression tests for BM1 drift/diffusion least-squares fitting."""
+"""Regression tests for demand-only BM1 nonlinear least squares."""
 
 import unittest
 
@@ -10,59 +10,77 @@ from src.params.bm_1 import lsq_params
 
 class BM1ParameterTests(unittest.TestCase):
     @staticmethod
-    def case(*, sigma=0.0, n=5001, end=10.0, seed=42):
-        t = np.linspace(0.0, end, n)
-        B = lambda s: 0.35 + 0.2 * np.cos(0.3 * np.asarray(s))
-        U = 0.5 + 0.45 * np.sin(1.2 * t)
-        f = lambda x: 1.0 - 2.0 * np.asarray(x)
-        g = lambda u: 1.0 - 2.0 * np.asarray(u)
-        C, Xi, k = 2.0, 0.65, 1.6
-        X = np.empty(n)
-        X[0] = 0.25
-        rng = np.random.default_rng(seed)
-        for j in range(n - 1):
-            dt = t[j + 1] - t[j]
-            delta = np.tanh(0.5 * k * (f(X[j]) + g(U[j])))
-            b = B(t[j])
-            mu = Xi / C * delta * (1.0 - b if delta >= 0 else b)
-            X[j + 1] = X[j] + mu * dt + sigma * X[j] * (1.0 - X[j]) * np.sqrt(dt) * rng.standard_normal()
-        model = bm_1(B, lambda s: np.asarray(s) * 0.0 + 0.5, (0.0, end), n)
-        return model, {"Time": t, "X": X, "U": U}, f, g
+    def case(n=181):
+        time = np.linspace(0.0, 12.0, n)
+        B = lambda t: 0.45 + 0.15 * np.sin(0.9 * np.asarray(t))
+        U = 0.5 + 0.45 * np.cos(1.7 * time)
+        model = bm_1(B, lambda t: np.asarray(t) * 0.0 + 0.5, (0.0, 12.0), n)
+        fitter = lsq_params(model)
+        truth = {"alpha": 3.0, "beta": 5.0, "k": 2.0, "C": 1.5, "Xi": 0.7, "X0": 0.23}
+        basis = {"Time": time, "U": U, "B": B(time)}
+        X, D = fitter._predict({**basis, "dt": np.diff(time)}, truth["X0"], truth, 3)
+        return fitter, {**basis, "I": D}, truth
 
-    def test_exact_euler_drift_and_zero_diffusion(self):
-        model, data, f, g = self.case()
-        fitted = lsq_params(model).fit(data, f, g, C=2.0)
-        self.assertAlmostEqual(fitted["Xi"], 0.65, places=5)
-        self.assertAlmostEqual(fitted["k"], 1.6, places=5)
-        self.assertLess(fitted["sigma_x"], 0.005)
-        self.assertAlmostEqual(fitted["parameters"][0](data["Time"][100]), data["U"][100], places=12)
-        self.assertEqual(fitted["diffusion_samples"], data["X"].size - 1)
+    def test_logistic_has_exact_normalized_endpoints(self):
+        for slope in (0.05, 1.0, 5.0, 20.0):
+            fun = lsq_params.response(slope)
+            self.assertAlmostEqual(fun(0.0), 1.0, places=12)
+            self.assertAlmostEqual(fun(1.0), -1.0, places=12)
+            self.assertAlmostEqual(fun(0.5), 0.0, places=12)
+            self.assertTrue(np.all(np.diff(fun(np.linspace(0.0, 1.0, 50))) < 0.0))
 
-    def test_only_gain_is_identified_without_capacity_or_flexibility(self):
-        model, data, f, g = self.case()
-        fitted = lsq_params(model).fit(data, f, g)
-        self.assertAlmostEqual(fitted["gain"], 0.65 / 2.0, places=5)
-        self.assertIsNone(fitted["C"])
-        self.assertIsNone(fitted["Xi"])
-        self.assertIsNone(fitted["parameters"])
+    def test_demand_fit_from_unobserved_state_and_X0_guess(self):
+        fitter, data, true = self.case()
+        result = fitter.fit(data, 0.38, C=true["C"], Xi=true["Xi"],
+            alpha0=2.5, beta0=4.5, k0=1.8, substeps=3)
+        self.assertLess(result["mse"], 1e-7)
+        self.assertAlmostEqual(result["X0"], true["X0"], delta=0.03)
+        self.assertEqual(result["parameters"][3], true["C"])
+        self.assertAlmostEqual(result["parameters"][1](0.0), 1.0)
+        self.assertIsNone(result["sigma_x"])
+        self.assertNotIn("X", data)
 
-    def test_estimate_positive_diffusion_with_fixed_gain(self):
-        model, data, f, g = self.case(sigma=0.25, n=20001, end=100.0)
-        self.assertTrue(np.all((data["X"] >= 0.0) & (data["X"] <= 1.0)))
-        fitted = lsq_params(model).fit(data, f, g, C=2.0, Xi=0.65)
-        self.assertAlmostEqual(fitted["sigma_x"], 0.25, delta=0.06)
-        self.assertGreater(fitted["k"], 0.0)
-        self.assertAlmostEqual(fitted["gain"], 0.65 / 2.0, places=12)
+    def test_fixed_X0_and_interval_sample_data(self):
+        fitter, data, true = self.case(n=81)
+        data["I"] = data["I"][:-1]
+        data["U"] = data["U"][:-1]
+        result = fitter.fit(data, true["X0"], C=true["C"], Xi=true["Xi"],
+            alpha0=true["alpha"], beta0=true["beta"], k0=true["k"], fit_X0=False)
+        self.assertAlmostEqual(result["X0"], true["X0"])
+        self.assertEqual(result["X"].size, data["Time"].size)
+        self.assertEqual(result["D"].size, data["I"].size)
+        self.assertLess(result["mse"], 1e-6)
 
-    def test_requires_observed_state_and_interior_diffusion_samples(self):
-        model, data, f, g = self.case(n=21)
-        with self.assertRaisesRegex(ValueError, "Observed BM1 state"):
-            lsq_params(model).fit({"Time": data["Time"], "U": data["U"]}, f, g)
-        with self.assertRaisesRegex(ValueError, "Xi=0"):
-            lsq_params(model).fit(data, f, g, C=2.0, Xi=0.0)
-        boundary = dict(data, X=np.zeros_like(data["X"]))
-        with self.assertRaisesRegex(ValueError, "Too few interior"):
-            lsq_params(model).fit(boundary, f, g, C=2.0)
+    def test_unknown_capacity_and_flexibility_are_fitted(self):
+        fitter, data, true = self.case()
+        result = fitter.fit(data, true["X0"], alpha0=true["alpha"], beta0=true["beta"],
+            k0=true["k"], C0=true["C"], Xi0=true["Xi"], fit_X0=False, max_nfev=20)
+        self.assertLess(result["mse"], 1e-10)
+        self.assertIn("C", result["free_parameters"])
+        self.assertIn("Xi", result["free_parameters"])
+
+    def test_diffusion_requires_invertible_noiseless_demand(self):
+        fitter, data, true = self.case(n=251)
+        rng = np.random.default_rng(7)
+        x = np.empty(len(data["Time"]))
+        x[0] = true["X0"]
+        for k, dt in enumerate(np.diff(data["Time"])):
+            b, u = data["B"][k], data["U"][k]
+            mean = fitter._advance(x[k], dt, b, u, true, 3)
+            x[k + 1] = mean + 0.12 * x[k] * (1.0 - x[k]) * np.sqrt(dt) * rng.standard_normal()
+        self.assertTrue(np.all((x > 0.0) & (x < 1.0)))
+        measured = dict(data, I=np.array([fitter._demand(x[i], data["B"][i], data["U"][i], true) for i in range(len(x))]))
+        out = fitter._diffusion(fitter._prepare(measured), true, 0.1, 3, 1e-3)
+        self.assertAlmostEqual(out["sigma_x"], 0.12, delta=0.04)
+
+    def test_rejects_invalid_demand_and_state_guess(self):
+        fitter, data, _ = self.case(n=41)
+        with self.assertRaisesRegex(ValueError, "requires observed demand"):
+            fitter.fit({"Time": data["Time"], "U": data["U"]}, 0.5)
+        with self.assertRaisesRegex(ValueError, "X0 must"):
+            fitter.fit(data, 1.2)
+        with self.assertRaisesRegex(ValueError, "normalized"):
+            fitter.fit({**data, "I": data["I"] + 2.0}, 0.5)
 
 
 if __name__ == "__main__": unittest.main()
