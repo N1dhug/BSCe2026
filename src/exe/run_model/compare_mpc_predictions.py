@@ -35,6 +35,20 @@ ROOT = Path(__file__).resolve().parents[3]
 OUTPUT = ROOT / "files" / "output" / "compare_model_predictions" / "mpc_eight_hour"
 LABELS = (("BM1", "I_BM1"), ("WM4", "I_WM4"))
 
+def save_csv(frame, path, *, index=False):
+    """Save a report without failing if an existing CSV is locked on Windows."""
+    try:
+        frame.to_csv(path, index=index)
+        return path
+    except PermissionError as exc:
+        alternate = path.with_name(f"{path.stem}.{uuid4().hex[:10]}{path.suffix}")
+        frame.to_csv(alternate, index=index)
+        print(f"WARNING: {path.name} could not be overwritten ({exc}); "
+            f"updated results saved to {alternate.name} instead.", flush=True)
+        return alternate
+
+
+
 
 def matched_origin(frame, normalized, origin, bm_output, wm_output, *, horizon=8,
     steps_per_hour=2, max_state_iter=12, state_tol=1e-8, x_steps=101,
@@ -138,8 +152,12 @@ def plot_leads(exact, cumulative, output):
         axes[1, col].set_ylim(-3, 103); axes[2, col].set_ylim(-3, 103)
     fig.suptitle("BM1 vs WM4 | 24-hour shifted historical fitting, 8-hour receding-horizon forecasts")
     fig.tight_layout()
-    fig.savefig(output, dpi=190, bbox_inches="tight")
-    plt.close(fig)
+    try: fig.savefig(output, dpi=190, bbox_inches="tight")
+    except PermissionError as exc:
+        alternate = output.with_name(f"{output.stem}.{uuid4().hex[:10]}{output.suffix}")
+        fig.savefig(alternate, dpi=190, bbox_inches="tight")
+        print(f"WARNING: Cannot overwrite {output.name} ({exc}); saved {alternate.name}.", flush=True)
+    finally: plt.close(fig)
 
 
 def save_results(rows, skipped, start, end, output_root):
@@ -158,20 +176,20 @@ def save_results(rows, skipped, start, end, output_root):
     by_day_lead = grouped_scores(rows, [rows["origin_day"], rows["lead_hours"]], "day_lead")
     by_day_lead[["origin_day", "lead_hours"]] = pd.DataFrame(by_day_lead.pop("day_lead").tolist(), index=by_day_lead.index)
     overall = grouped_scores(rows)
-    rows.to_csv(directory / "matched_forecasts.csv", index=False)
-    exact.to_csv(directory / "rmse_coverage_by_lead.csv", index=False)
-    cumulative.to_csv(directory / "rmse_coverage_by_horizon.csv", index=False)
-    by_origin_hour.to_csv(directory / "rmse_coverage_by_origin_hour.csv", index=False)
-    by_day_lead.to_csv(directory / "daily_lead_metrics.csv", index=False)
-    overall.to_csv(directory / "aggregate_metrics.csv", index=False)
-    pd.DataFrame(skipped, columns=["origin", "reason"]).to_csv(directory / "skipped_origins.csv", index=False)
+    save_csv(rows, directory / "matched_forecasts.csv")
+    save_csv(exact, directory / "rmse_coverage_by_lead.csv")
+    save_csv(cumulative, directory / "rmse_coverage_by_horizon.csv")
+    save_csv(by_origin_hour, directory / "rmse_coverage_by_origin_hour.csv")
+    save_csv(by_day_lead, directory / "daily_lead_metrics.csv")
+    save_csv(overall, directory / "aggregate_metrics.csv")
+    save_csv(pd.DataFrame(skipped, columns=["origin", "reason"]), directory / "skipped_origins.csv")
     sigma = rows.groupby("origin", as_index=False).agg(
         BM1_sigma_x=("BM1_sigma_x", "first"), WM4_diffusion_sigma=("WM4_diffusion_sigma", "first"),
         BM1_observation_sd=("BM1_observation_sd", "first"),
         BM1_fit_converged=("BM1_fit_converged", "first"),
         BM1_fit_stop_reason=("BM1_fit_stop_reason", "first"),
         BM1_theta_nfev=("BM1_theta_nfev", "first"))
-    sigma.to_csv(directory / "historical_diffusion_estimates.csv", index=False)
+    save_csv(sigma, directory / "historical_diffusion_estimates.csv")
     plot_leads(exact, cumulative, directory / "lead_time_rmse_coverage.png")
     summary = {
         "start": str(start.date()), "end": str(end.date()), "matched_origins": int(rows["origin"].nunique()),
@@ -181,11 +199,16 @@ def save_results(rows, skipped, start, end, output_root):
         "uncertainty": "BM1 sigma_x estimated from historical linear-noise demand variance regression; BM1 probability intervals from FP. WM4 ±1σ and ±1.96σ Gaussian intervals.",
         "aggregation": "All exact and cumulative coverage and RMSE are calculated over paired prediction observations.",
     }
-    (directory / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    info = directory / "summary.json"
+    try: info.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    except PermissionError as exc:
+        alternate = directory / f"summary.{uuid4().hex[:10]}.json"
+        alternate.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        print(f"WARNING: Cannot overwrite summary.json ({exc}); saved {alternate.name}.", flush=True)
     return directory, exact, cumulative, overall
 
 
-def print_summary(exact, cumulative, overall, skipped, directory):
+def print_summary(exact, cumulative, overall, skipped, directory, rows):
     print(f"\nMatched origins={int(overall['origins'].iloc[0])}; paired hours={int(overall['n'].iloc[0])}; skipped={len(skipped)}")
     print("Both models use the same hourly origin and 1-8h horizon with five 24h aligned history windows.")
     print(f"{'Lead':>4} {'Model':<6} {'RMSE':>10} {'MSE':>10} {'MAE':>10} {'BIAS':>10} {'68%cov':>9} {'95%cov':>9} {'N':>7}")
@@ -194,7 +217,9 @@ def print_summary(exact, cumulative, overall, skipped, directory):
     print("\nCumulative 1..H forecast window scores:")
     for _, row in cumulative.iterrows():
         print(f"H={int(row['horizon_hours'])} {row['model']:<4} RMSE={row['rmse']:.6f} coverage68={row['coverage_68_pct']:.1f}% coverage95={row['coverage_95_pct']:.1f}%")
-    stats = pd.read_csv(directory / "historical_diffusion_estimates.csv")
+    stats = rows.groupby("origin", as_index=False).agg(
+        BM1_fit_converged=("BM1_fit_converged", "first"),
+        BM1_fit_stop_reason=("BM1_fit_stop_reason", "first"))
     nonconverged = int((~stats["BM1_fit_converged"].astype(bool)).sum())
     print(f"BM1 pooled fits stopped before convergence: {nonconverged}/{len(stats)} origins.")
     if nonconverged:
@@ -298,7 +323,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
     if not all_rows: raise RuntimeError("No paired BM1/WM4 MPC forecasts were produced.")
     frame_out = pd.DataFrame(all_rows)
     directory, exact, cumulative, overall = save_results(frame_out, skipped, start, end, output_root)
-    print_summary(exact, cumulative, overall, skipped, directory)
+    print_summary(exact, cumulative, overall, skipped, directory, frame_out)
     return {"matched": frame_out, "exact": exact, "cumulative": cumulative,
         "aggregate": overall, "skipped": skipped, "output": directory}
 
