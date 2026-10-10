@@ -116,3 +116,24 @@ class bm_1_params_validation:
     def optimizer_result(result, name):
         if not result.success: raise RuntimeError(f"BM1 {name} least squares failed: {result.message}")
         return result
+
+    @staticmethod
+    def historical_diffusion_data(datasets, states, fit):
+        if not isinstance(datasets, (tuple, list)) or len(datasets) != 5:
+            raise ValueError("Historical BM1 diffusion requires five fitting windows.")
+        states = np.asarray(states, dtype=float)
+        if states.shape != (5,) or not np.all(np.isfinite(states)) or np.any((states < 0.0) | (states > 1.0)):
+            raise ValueError("Diffusion estimator requires five fitted initial states in [0,1].")
+        for key in ("alpha", "beta", "k", "Xi", "C"):
+            if key not in fit or not np.isfinite(fit[key]) or fit[key] <= 0.0:
+                raise ValueError(f"Invalid fitted parameter {key}.")
+        return states
+
+    @staticmethod
+    def diffusion_variance_fit(kernel, squared_residual, noise_floor):
+        kernel, squared_residual = np.asarray(kernel, dtype=float), np.asarray(squared_residual, dtype=float)
+        if kernel.shape != squared_residual.shape or kernel.size < 20 or not np.all(np.isfinite(kernel)) or not np.all(np.isfinite(squared_residual)):
+            raise ValueError("Historical BM1 variance calibration requires >=20 finite kernel/residual pairs.")
+        if np.max(kernel) < 1e-12 or not np.isfinite(noise_floor) or noise_floor < 0:
+            raise ValueError("BM1 diffusion coefficient cannot be identified from this historical dataset.")
+        return kernel, squared_residual
