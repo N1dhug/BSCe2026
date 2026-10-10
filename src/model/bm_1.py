@@ -63,8 +63,7 @@ class bm_1(bm):
         [0, 1]. The supplied initial_mass must already be normalized; this
         reference does not clip or renormalize probability during evolution.
         """
-        if t_eval is None: t_eval = self.t.copy()
-        _, parameters, sigma_x = bm_1_validation.stochastic_inputs([0.5], parameters, sigma_x)
+        t_eval, parameters, sigma_x = bm_1_validation.reference_solver_inputs(self.t, t_eval, parameters, sigma_x)
 
         drift, diffusion, options = self._fv_evolution_fields(parameters, sigma_x, t_eval, breakpoints, max_step,)
         result = self.fokker_planc_reference.solve(t_eval, initial_mass, drift, diffusion, bounds=(0.0, 1.0), breakpoints=breakpoints, max_step=max_step, **options,)

@@ -70,6 +70,13 @@ class bm_1_validation:
         return (init_cond, parameters, sigma_x)
 
     @staticmethod
+    def reference_solver_inputs(default_t, t_eval, parameters, sigma_x):
+        """Normalize inputs for the finite-volume Fokker-Planck reference solver."""
+        if t_eval is None: t_eval = default_t.copy()
+        _, parameters, sigma_x = bm_1_validation.stochastic_inputs([0.5], parameters, sigma_x)
+        return t_eval, parameters, sigma_x
+
+    @staticmethod
     def stochastic_path_inputs(init_cond, parameters, sigma_x):
         """Validate F2 EM inputs with one shared or one initial state per path."""
         parameters = bm_validation.parameters(parameters)
