@@ -15,14 +15,14 @@ from scipy.optimize import least_squares
 
 from src.method.bm_1_deterministic_fit import BM1DeterministicInputs
 from src.method.bm_1_deterministic_response import BM1ResponseInputs
-from src.params.bm_1_response import BM1PiecewiseResponse
+from src.params.bm_1_response import BM1PiecewiseResponse, BM1BetaResponse, RESPONSE_FAMILIES, BETA_SHAPE_MAX
 
 
 def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
                      initial=(1., 2., .5), bounds=((1., .05, 0.), (744., 10., 1.)),
                      initial_x0=.5, c=None,
                      prior_center=(1., 2., .5), prior_weight=.01,
-                     fit_response=False, response_pieces=5,
+                     fit_response=False, response_pieces=5, response_family='piecewise-linear',
                      observation_contract='hourly-mean', steps_per_hour=12,
                      max_nfev=500, numerical_tolerance=1e-5, observation_mask=None):
     """Return parameters, fitted demand/state, residuals, RMSE and stop status.
@@ -45,6 +45,8 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     begun = perf_counter()
     if fit_response:
         prior_weight = 0.
+        if response_family not in RESPONSE_FAMILIES:
+            raise ValueError('Unknown response family.')
         if isinstance(response_pieces, bool) or int(response_pieces) != response_pieces or response_pieces < 2:
             raise ValueError('Use at least two response pieces.')
         response_pieces = int(response_pieces)
@@ -78,11 +80,12 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     full_initial = np.r_[initial, start_x0]
     if fit_response:
         # Equal drops initialize linear curves. Bounded fractions preserve order.
-        fractions = 1. / np.arange(response_pieces, 1, -1)
-        full_initial = np.r_[full_initial, fractions, fractions]
-        free = np.r_[free, np.ones(2*(response_pieces-1), dtype=bool)]
-        parameter_names += [f'{curve}_drop_fraction_{i}' for curve in ('f', 'g')
-                            for i in range(1, response_pieces)]
+        beta = response_family == 'beta-cdf'
+        shape_initial = np.ones(2) if beta else 1. / np.arange(response_pieces, 1, -1)
+        full_initial = np.r_[full_initial, shape_initial, shape_initial]
+        free = np.r_[free, np.ones(2*len(shape_initial), dtype=bool)]
+        shape_names = ('a', 'b') if beta else [f'drop_fraction_{i}' for i in range(1, response_pieces)]
+        parameter_names += [f'{curve}_{name}' for curve in ('f', 'g') for name in shape_names]
     if isinstance(max_nfev, bool) or int(max_nfev) != max_nfev or max_nfev < 1:
         raise ValueError('max_nfev must be a positive integer.')
     if not np.isfinite(numerical_tolerance) or numerical_tolerance <= 0:
@@ -92,8 +95,12 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     if fit_response:
         if isinstance(steps_per_hour, bool) or int(steps_per_hour) != steps_per_hour or steps_per_hour < 1:
             raise ValueError('steps_per_hour must be a positive integer.')
-        # A curve can drop by 2 over one piece: maximum |f slope|=2*pieces.
-        stable_steps = int(np.ceil(upper[1]*upper[2]*response_pieces/(lower[0] if c is None else c))) + 1
+        # Fixed grid over the whole search space. On a uniform PCHIP grid,
+        # |slope| <= 1.5*max secant; Bernstein: n*max coefficient drop.
+        # For Beta(a,b), a,b>=1, max density <= max(a,b).
+        slope_bound = (2*BETA_SHAPE_MAX if beta else
+                       (3 if response_family == 'pchip' else 2)*response_pieces)
+        stable_steps = int(np.ceil(.5*upper[1]*upper[2]*slope_bound/(lower[0] if c is None else c))) + 1
         steps_per_hour = int(steps_per_hour) * max(1, int(np.ceil(stable_steps/steps_per_hour)))
     input_class = BM1ResponseInputs if fit_response else BM1DeterministicInputs
     inputs = input_class(baseline_time, baseline, prices, observed,
@@ -127,9 +134,12 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
         return np.sqrt(prior_weight) * np.log(p[:3][free[:3]] / prior_center[free[:3]])
 
     def curves(p):
+        if response_family == 'beta-cdf':
+            return BM1BetaResponse(*p[4:6]), BM1BetaResponse(*p[6:8])
         split = 4 + response_pieces - 1
-        return (BM1PiecewiseResponse.from_drop_fractions(p[4:split]),
-                BM1PiecewiseResponse.from_drop_fractions(p[split:]))
+        interpolation = 'linear' if response_family == 'piecewise-linear' else response_family
+        return (BM1PiecewiseResponse.from_drop_fractions(p[4:split], interpolation=interpolation),
+                BM1PiecewiseResponse.from_drop_fractions(p[split:], interpolation=interpolation))
 
     def solve(p, grid=inputs):
         if not fit_response:
@@ -151,8 +161,8 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     fitted_lower = np.r_[lower, 0.]
     fitted_upper = np.r_[upper, 1.]
     if fit_response:
-        fitted_lower = np.r_[fitted_lower, np.zeros(2*(response_pieces-1))]
-        fitted_upper = np.r_[fitted_upper, np.ones(2*(response_pieces-1))]
+        fitted_lower = np.r_[fitted_lower, np.full(2*len(shape_initial), 1. if beta else 0.)]
+        fitted_upper = np.r_[fitted_upper, np.full(2*len(shape_initial), BETA_SHAPE_MAX if beta else 1.)]
     fit = least_squares(residual, encode(fitted_initial),
         bounds=(encode(fitted_lower), encode(fitted_upper)),
         method='trf', jac='2-point', diff_step=1e-4, x_scale='jac', loss='linear',
@@ -174,6 +184,7 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
         'response': dict(zip(('f', 'g'), (curve.to_record() for curve in curves(p)))) if fit_response else
                     {'f': '1-2X', 'g': '1-2u'},
         'response_fitted': bool(fit_response),
+        'response_family': response_family if fit_response else 'linear',
         'observation_contract': observation_contract, 'time_unit': 'hours',
         'state_time': np.arange(inputs.n_hours + 1, dtype=float), 'state': solved['state'],
         'price': inputs.prices.copy(), 'observed_demand': observed.copy(),
@@ -205,6 +216,54 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     }
 
 
+def _save_fit(args, output, result, time, price, demand, metadata):
+    output.mkdir(parents=True, exist_ok=False)
+    with (output/'trajectory.csv').open('w', newline='', encoding='utf-8') as handle:
+        writer = csv.writer(handle)
+        writer.writerow(['time_hours', 'observed_demand', 'fitted_demand', 'baseline', 'price', 'X', 'residual'])
+        for i in range(len(demand)):
+            observed = args.demand_offset+args.demand_scale*demand[i] if result['observation_mask'][i] else ''
+            residual = args.demand_scale*result['residuals'][i] if result['observation_mask'][i] else ''
+            writer.writerow([time[0]+i, observed,
+                args.demand_offset+args.demand_scale*result['demand'][i],
+                args.demand_offset+args.demand_scale*result['baseline'][i],
+                args.price_offset+args.price_scale*price[i], result['state'][i],
+                residual])
+        writer.writerow([time[-1], '', '', '', '', result['state'][-1], ''])
+    summary = {k: v for k, v in result.items() if not isinstance(v, np.ndarray)}
+    summary.update(rmse_normalized=result['rmse'], initial_rmse_normalized=result['initial_rmse'],
+        rmse=args.demand_scale*result['rmse'], initial_rmse=args.demand_scale*result['initial_rmse'],
+        normalization={'demand_offset': args.demand_offset, 'demand_scale': args.demand_scale,
+                       'price_offset': args.price_offset, 'price_scale': args.price_scale},
+        input_time_start=float(time[0]), input_time_end=float(time[-1]),
+        final_state=float(result['state'][-1]), initial_parameters=list(args.initial))
+    if metadata is not None: summary['data_import'] = metadata
+    with (output/'fit.json').open('w', encoding='utf-8') as handle:
+        json.dump(summary, handle, indent=2, allow_nan=False)
+    from src.exe.run_model.bm_1.plot_fit import save_plots
+    save_plots(output)
+    print(f"{result['status']}: RMSE={summary['rmse']:.8g}; X0={result['x0']:.8g}; {output}")
+    return summary
+
+
+def _save_comparison(output, entries):
+    eligible = [row for row in entries if row['status'] == 'converged'
+                and row.get('numerics_passed', False) and row.get('rmse') is not None
+                and np.isfinite(row['rmse'])]
+    best = min(eligible, key=lambda row: row['rmse']) if eligible else None
+    summary = dict(criterion='Lowest training RMSE among converged, numerically valid fits',
+        same_inputs=True, prior_weight=0., starts_per_family=1,
+        best_run=best['family'] if best else None, candidates=entries)
+    with (output/'comparison.json').open('w', encoding='utf-8') as handle:
+        json.dump(summary, handle, indent=2, allow_nan=False)
+    with (output/'comparison.csv').open('w', newline='', encoding='utf-8') as handle:
+        fields = ['family', 'status', 'rmse', 'rmse_normalized', 'parameter_count', 'seconds', 'numerics_passed', 'error']
+        writer = csv.DictWriter(handle, fieldnames=fields, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(entries)
+    return summary
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
@@ -232,10 +291,15 @@ def main(argv=None):
         help='Centers of the logarithmic parameter penalty (default: 1 2 0.5).')
     parser.add_argument('--prior-weight', type=float, default=.01,
         help='Log-penalty weight relative to normalized demand MSE (default: 0.01; 0 disables).')
-    parser.add_argument('--fit-response', action='store_true',
+    response_mode = parser.add_mutually_exclusive_group()
+    response_mode.add_argument('--fit-response', action='store_true',
         help='Jointly fit monotone f and g; disables all parameter/curve penalties.')
+    response_mode.add_argument('--compare-responses', action='store_true',
+        help='Fit linear, piecewise-linear, PCHIP, Bernstein and beta-CDF on identical inputs; no penalties.')
+    parser.add_argument('--response-family', choices=RESPONSE_FAMILIES, default='piecewise-linear',
+        help='Response family with --fit-response (default: piecewise-linear).')
     parser.add_argument('--response-pieces', type=int, default=5,
-        help='Straight pieces per fitted response (default: 5; requires --fit-response).')
+        help='Number of intervals or Bernstein degree (default: 5; unused for beta-CDF).')
     parser.add_argument('--contract', choices=('hourly-mean', 'hourly-point'), default='hourly-mean')
     parser.add_argument('--steps-per-hour', type=int, default=12)
     parser.add_argument('--max-nfev', type=int, default=500)
@@ -244,6 +308,8 @@ def main(argv=None):
     parser.add_argument('--price-offset', type=float)
     parser.add_argument('--price-scale', type=float)
     args = parser.parse_args(argv)
+    if args.response_family != 'piecewise-linear' and not args.fit_response:
+        parser.error('--response-family requires --fit-response; comparison already includes every family.')
     if args.input is not None and not args.input.is_file():
         parser.error(f'Input CSV not found: {args.input}. Supply an existing CSV; see docs/bm/KNOWN_INPUT_FIT.md.')
     if args.output.exists():
@@ -283,37 +349,36 @@ def main(argv=None):
         baseline = (np.array([float(row['baseline']) for row in rows])-args.demand_offset)/args.demand_scale
         price = (np.array([float(row['price']) for row in rows[:-1]])-args.price_offset)/args.price_scale
         demand = (np.array([float(row['demand']) for row in rows[:-1]])-args.demand_offset)/args.demand_scale
-    result = fit_known_inputs(time-time[0], baseline, price, demand, args.x0, observation_mask=measured,
-        initial=args.initial, initial_x0=args.initial_x0, c=args.c, observation_contract=args.contract,
-        prior_center=args.prior_center, prior_weight=args.prior_weight,
-        fit_response=args.fit_response, response_pieces=args.response_pieces,
-        steps_per_hour=args.steps_per_hour, max_nfev=args.max_nfev)
-    args.output.mkdir(parents=True, exist_ok=False)
-    with (args.output/'trajectory.csv').open('w', newline='', encoding='utf-8') as handle:
-        writer = csv.writer(handle)
-        writer.writerow(['time_hours', 'observed_demand', 'fitted_demand', 'baseline', 'price', 'X', 'residual'])
-        for i in range(len(demand)):
-            observed = args.demand_offset+args.demand_scale*demand[i] if result['observation_mask'][i] else ''
-            residual = args.demand_scale*result['residuals'][i] if result['observation_mask'][i] else ''
-            writer.writerow([time[0]+i, observed,
-                args.demand_offset+args.demand_scale*result['demand'][i],
-                args.demand_offset+args.demand_scale*result['baseline'][i],
-                args.price_offset+args.price_scale*price[i], result['state'][i],
-                residual])
-        writer.writerow([time[-1], '', '', '', '', result['state'][-1], ''])
-    summary = {k: v for k, v in result.items() if not isinstance(v, np.ndarray)}
-    summary.update(rmse_normalized=result['rmse'], initial_rmse_normalized=result['initial_rmse'],
-        rmse=args.demand_scale*result['rmse'], initial_rmse=args.demand_scale*result['initial_rmse'],
-        normalization={'demand_offset': args.demand_offset, 'demand_scale': args.demand_scale,
-                       'price_offset': args.price_offset, 'price_scale': args.price_scale},
-        input_time_start=float(time[0]), input_time_end=float(time[-1]),
-        final_state=float(result['state'][-1]), initial_parameters=list(args.initial))
-    if metadata is not None: summary['data_import'] = metadata
-    with (args.output/'fit.json').open('w', encoding='utf-8') as handle:
-        json.dump(summary, handle, indent=2, allow_nan=False)
-    from src.exe.run_model.bm_1.plot_fit import save_plots
-    save_plots(args.output)
-    print(f"{result['status']}: RMSE={summary['rmse']:.8g}; X0={result['x0']:.8g}; {args.output}")
+    def fit(family, *, compare=False):
+        return fit_known_inputs(time-time[0], baseline, price, demand, args.x0, observation_mask=measured,
+            initial=args.initial, initial_x0=args.initial_x0, c=args.c, observation_contract=args.contract,
+            prior_center=args.prior_center, prior_weight=0. if compare else args.prior_weight,
+            fit_response=family != 'linear', response_family=family, response_pieces=args.response_pieces,
+            steps_per_hour=args.steps_per_hour, max_nfev=args.max_nfev)
+    if args.compare_responses:
+        args.output.mkdir(parents=True, exist_ok=False)
+        entries = []
+        for family in ('linear', *RESPONSE_FAMILIES):
+            print(f'Fitting {family} ...', flush=True)
+            try:
+                result = fit(family, compare=True)
+            except (ValueError, FloatingPointError) as error:
+                entries.append(dict(family=family, status='failed', rmse=None, error=str(error)))
+                print(f'{family}: failed: {error}', flush=True)
+            else:
+                summary = _save_fit(args, args.output/family, result, time, price, demand, metadata)
+                entries.append(dict(family=family, status=summary['status'], rmse=summary['rmse'],
+                    rmse_normalized=summary['rmse_normalized'], seconds=summary['seconds'],
+                    parameter_count=len(summary['fit_settings']['parameter_names']),
+                    numerics_passed=summary['numerics']['passed'], parameters=summary['parameters']))
+            comparison = _save_comparison(args.output, entries)
+        from src.exe.run_model.bm_1.plot_fit import save_comparison_plot
+        save_comparison_plot(args.output)
+        winner = comparison['best_run']
+        print(f'Best converged fit: {args.output/winner}' if winner else 'No converged, numerically valid fit.')
+        return 0 if winner else 1
+    result = fit(args.response_family if args.fit_response else 'linear')
+    _save_fit(args, args.output, result, time, price, demand, metadata)
     return 0 if result['status'] == 'converged' else 1
 
 

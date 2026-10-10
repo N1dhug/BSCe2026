@@ -1,7 +1,7 @@
 """Fundamental piecewise response geometry, bounds and serialization."""
 import unittest
 import numpy as np
-from src.params.bm_1_response import BM1PiecewiseResponse
+from src.params.bm_1_response import BM1PiecewiseResponse, BM1BetaResponse, response_from_record
 
 class PiecewiseResponseTests(unittest.TestCase):
     def test_linear_reference_and_fitted_midpoint(self):
@@ -41,4 +41,27 @@ class PiecewiseResponseTests(unittest.TestCase):
         for x in (-.01,1.01,np.nan,1j):
             with self.assertRaises(ValueError):curve(x)
 
+    def test_smooth_families_preserve_bounds_and_scalar_solver_geometry(self):
+        grid = np.linspace(0,1,1001)
+        curves = [BM1PiecewiseResponse.from_drop_fractions(fractions, interpolation=family)
+                  for family in ('pchip','bernstein')
+                  for fractions in ([.1,.7,.2,.4], [0,1,0,1], [1,0,0,0])]
+        curves += [BM1BetaResponse(a,b) for a,b in ((1,1),(1,10),(10,1),(10,10),(2.3,1.2))]
+        for curve in curves:
+            with self.subTest(record=curve.to_record()):
+                values = curve(grid)
+                self.assertTrue(np.all(np.diff(values) <= 1e-13))
+                self.assertTrue(np.all(np.abs(values) <= 1+1e-13))
+                np.testing.assert_array_equal(curve([0,1]), [1,-1])
+                np.testing.assert_allclose([curve.scalar_evaluator()(x) for x in grid], values, atol=1e-13, rtol=0)
+                np.testing.assert_array_equal(response_from_record(curve.to_record())(grid), values)
+                self.assertLessEqual(np.max(np.abs(np.diff(values)/np.diff(grid))), curve.max_abs_slope+1e-10)
+                if isinstance(curve, BM1BetaResponse):
+                    self.assertLessEqual(curve.max_abs_slope, 20+1e-12)
+                else:
+                    self.assertLessEqual(curve.max_abs_slope, (15 if curve.interpolation == 'pchip' else 10)+1e-12)
+                with self.assertRaises(ValueError): curve(1.01)
+                with self.assertRaises(ValueError): curve.scalar_evaluator()(-.01)
+
 if __name__=='__main__':unittest.main()
+

@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.dates import AutoDateLocator, ConciseDateFormatter
 import numpy as np
 import pandas as pd
+from src.params.bm_1_response import response_from_record
 
 
 def save_plots(run, *, day=None):
@@ -84,8 +85,11 @@ def save_plots(run, *, day=None):
         if summary.get('response_fitted', False):
             fig, axes = plt.subplots(1, 2, figsize=(12, 4))
             for ax, name, xlabel_curve in zip(axes, ('f', 'g'), ('State X', 'Normalized price u')):
-                curve = summary['response'][name]
-                ax.plot(curve['knots'], curve['values'], marker='o', label=f'Fitted {name}')
+                curve = response_from_record(summary['response'][name])
+                grid = np.linspace(0, 1, 501)
+                ax.plot(grid, curve(grid), label=f'Fitted {name} ({summary.get("response_family", "piecewise-linear")})')
+                if hasattr(curve, 'knots') and curve.interpolation != 'bernstein':
+                    ax.scatter(curve.knots, curve.values, s=16)
                 ax.plot([0, 1], [1, -1], '--', alpha=.5, label='Linear reference')
                 ax.set(xlabel=xlabel_curve, ylabel=name, ylim=(-1.05, 1.05))
                 ax.grid(True, alpha=.25)
@@ -113,6 +117,36 @@ def save_plots(run, *, day=None):
         fig.savefig(paths[-1], dpi=200, bbox_inches='tight')
         plt.close(fig)
     return paths
+
+
+def save_comparison_plot(run):
+    run = Path(run)
+    comparison = json.loads((run/'comparison.json').read_text(encoding='utf-8'))
+    rows = [row for row in comparison['candidates'] if row.get('rmse') is not None]
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    for i, row in enumerate(rows):
+        label = row['family']
+        eligible = row['status'] == 'converged' and row.get('numerics_passed', False)
+        bar = axes[0].bar(i, row['rmse'], alpha=1. if eligible else .3)
+        if not eligible: bar[0].set_hatch('//')
+        axes[0].text(i, row['rmse'], f"{row['rmse']:.5g}", ha='center', va='bottom', fontsize=8)
+        summary = json.loads((run/label/'fit.json').read_text(encoding='utf-8'))
+        grid = np.linspace(0, 1, 501)
+        for ax, name in zip(axes[1:], ('f', 'g')):
+            values = response_from_record(summary['response'][name])(grid) if summary['response_fitted'] else 1-2*grid
+            ax.plot(grid, values, label=label if eligible else f'{label} ({row["status"]})')
+    axes[0].set_xticks(range(len(rows)), [row['family'] for row in rows], rotation=30, ha='right')
+    axes[0].set(ylabel='Training RMSE (original input units)', title='Hatched = not eligible')
+    for ax, name, xlabel in zip(axes[1:], ('f', 'g'), ('State X', 'Normalized price u')):
+        ax.set(xlabel=xlabel, ylabel=name, ylim=(-1.05, 1.05))
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=.25)
+    fig.suptitle(f"Response comparison | best valid training fit: {comparison['best_run'] or 'none'}")
+    fig.tight_layout()
+    path = run/'comparison.png'
+    fig.savefig(path, dpi=180, bbox_inches='tight')
+    plt.close(fig)
+    return path
 
 
 def main():
