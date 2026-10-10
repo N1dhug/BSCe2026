@@ -135,3 +135,57 @@ def predict_day(frame, day, *, X0=0.5, horizon=8, x_steps=101, max_iterations=3,
             if not skip_errors: raise
             skipped.append((origin, str(exc)))
     return pd.DataFrame(forecasts), pd.DataFrame(origins), skipped
+
+def main():
+    """One-day BM1 MPC executable; compare_mpc_predictions handles both models."""
+    from argparse import ArgumentParser
+    from src.exe.run_model.wm_4.fit_daily import aligned_wm4_data
+    from src.tools.forecast_metrics import forecast_metrics
+    from src.validation.exe.run_model.compare_model_predictions import model_comparison_validation as scale
+
+    parser = ArgumentParser(description="BM1 24-hour-window rolling MPC: estimate sigma_x historically and predict 1-8 hours each hour.")
+    parser.add_argument("--day", default="2022-08-22")
+    parser.add_argument("--tag", default="MED")
+    parser.add_argument("--horizon", type=int, default=8)
+    parser.add_argument("--X0", type=float, default=0.5)
+    parser.add_argument("--x-steps", type=int, default=101)
+    parser.add_argument("--max-iterations", type=int, default=3)
+    parser.add_argument("--max-nfev", type=int, default=120)
+    parser.add_argument("--state-maxiter", type=int, default=60)
+    parser.add_argument("--fp-max-step", type=float, default=0.25)
+    parser.add_argument("--prior-bandwidth", type=float, default=0.025)
+    parser.add_argument("--skip-errors", action="store_true")
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    args = parser.parse_args()
+    day = checks.origin(pd.Timestamp(args.day).normalize())
+    raw, _ = aligned_wm4_data(args.tag)
+    normalized, calibration = scale.bm1_scale(raw, day)
+    prediction, fit_diagnostics, skipped = predict_day(normalized, day, X0=args.X0, horizon=args.horizon,
+        x_steps=args.x_steps, max_iterations=args.max_iterations, max_nfev=args.max_nfev,
+        state_maxiter=args.state_maxiter, fp_max_step=args.fp_max_step,
+        prior_bandwidth=args.prior_bandwidth, skip_errors=args.skip_errors)
+    if prediction.empty: raise RuntimeError("BM1 MPC did not complete any forecast origins.")
+    for col in ("I_BM1", "lower_68", "upper_68", "lower_95", "upper_95"):
+        prediction[col] = scale.bm1_to_wm4(prediction[col].to_numpy(dtype=float), calibration)
+    prediction["I_observed"] = raw["I"].reindex(pd.DatetimeIndex(prediction["target_time"])).to_numpy(dtype=float)
+    output = args.output / f"{day:%Y-%m-%d}"
+    output.mkdir(parents=True, exist_ok=True)
+    prediction.to_csv(output / "bm1_mpc_forecasts.csv", index=False)
+    fit_diagnostics.to_csv(output / "historical_diffusion.csv", index=False)
+    pd.DataFrame(skipped, columns=["origin", "reason"]).to_csv(output / "skipped_origins.csv", index=False)
+    results = []
+    for lead, group in prediction.groupby("lead_hours"):
+        bounds = {p: (group[f"lower_{p}"].to_numpy(dtype=float),
+            group[f"upper_{p}"].to_numpy(dtype=float)) for p in (68, 95)}
+        result = forecast_metrics(group["I_observed"].to_numpy(dtype=float), group["I_BM1"].to_numpy(dtype=float), bounds)
+        results.append({"lead_hours": lead, **result})
+        print(f"lead {lead}h: RMSE={result['rmse']:.6f}, MSE={result['mse']:.6f}, "
+              f"MAE={result['mae']:.6f}, bias={result['bias']:+.6f}, "
+              f"coverage68={result['coverage_68_pct']:.1f}%, coverage95={result['coverage_95_pct']:.1f}%")
+    pd.DataFrame(results).to_csv(output / "rmse_coverage_by_lead.csv", index=False)
+    print(f"BM1 MPC fitted {prediction['origin'].nunique()}/24 hourly origins; "
+        f"sigma_x median={fit_diagnostics['sigma_x'].median():.6f}; output={output}")
+    return prediction
+
+
+if __name__ == "__main__": main()
