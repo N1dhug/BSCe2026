@@ -164,36 +164,68 @@ class lsq_params:
             p = unpack(theta)
             return np.concatenate([self._predict(data, float(x), p, substeps)[1][:len(data["I"])] - data["I"] for data, x in zip(prepared, states)])
         def refine_states(p, initial):
-            states, state_fits = [], []
+            states, state_fits, state_reports = [], [], []
             for data, x in zip(prepared, initial):
                 def error(candidate):
                     difference = self._predict(data, float(candidate), p, substeps)[1][:len(data["I"])] - data["I"]
                     return float(difference @ difference)
                 fit = minimize_scalar(error, bounds=(0.0, 1.0), method="bounded", options={"xatol": 1e-6, "maxiter": state_maxiter})
-                bm_1_params_validation.optimizer_result(fit, "initial-state")
-                states.append(float(fit.x)); state_fits.append(fit)
-            return np.asarray(states), state_fits
+                report = bm_1_params_validation.capped_optimizer_result(fit, "initial-state", limit_status=1)
+                # Even a capped scalar search must not worsen the candidate state.
+                states.append(float(fit.x) if error(fit.x) <= error(x) else float(x))
+                state_fits.append(fit); state_reports.append(report)
+            return np.asarray(states), state_fits, state_reports
 
         states = np.full(len(prepared), X0, dtype=float)
         history, best = [], None
         theta = seed.copy()
+        stop_reason = "max_iterations"
         for iteration in range(1, max_iterations + 1):
             theta_fit = least_squares(lambda values: residual(values, states), theta, bounds=(lower, upper), loss=loss, max_nfev=max_nfev)
-            bm_1_params_validation.optimizer_result(theta_fit, "pooled demand")
+            theta_report = bm_1_params_validation.capped_optimizer_result(theta_fit, "pooled demand", limit_status=0)
             candidate_theta = theta_fit.x.copy()
             p = unpack(candidate_theta)
-            candidate_states, state_fits = refine_states(p, states)
+            candidate_states, state_fits, state_reports = refine_states(p, states)
             differences = residual(candidate_theta, candidate_states)
             sse = float(differences @ differences)
             previous = np.inf if best is None else best["sse"]
             threshold = min_improvement * max(previous, 1e-10)
             improved = sse < previous
-            history.append({"iteration": iteration, "sse": sse, "mse": float(np.mean(differences ** 2)), "improvement": float(previous - sse) if best is not None else None, "accepted": improved})
-            if not improved: break
-            best = {"theta": candidate_theta, "params": p, "states": candidate_states, "state_fits": state_fits, "theta_fit": theta_fit, "sse": sse, "mse": float(np.mean(differences ** 2))}
+            state_limit = any(report["limit_reached"] for report in state_reports)
+            history.append({
+                "iteration": iteration, "sse": sse, "mse": float(np.mean(differences ** 2)),
+                "improvement": float(previous - sse) if best is not None else None, "accepted": improved,
+                "theta_converged": theta_report["converged"], "theta_nfev": theta_report["nfev"],
+                "theta_status": theta_report["status"], "theta_message": theta_report["message"],
+                "state_converged": not state_limit, "state_maxiter_reached": state_limit,
+            })
+            if not improved:
+                stop_reason = "max_nfev" if theta_report["limit_reached"] else ("state_maxiter" if state_limit else "no_improvement")
+                break
+            best = {
+                "theta": candidate_theta, "params": p, "states": candidate_states,
+                "state_fits": state_fits, "state_reports": state_reports, "theta_fit": theta_fit,
+                "theta_report": theta_report, "sse": sse, "mse": float(np.mean(differences ** 2)),
+            }
             theta, states = candidate_theta, candidate_states
-            if iteration > 1 and previous - sse <= threshold: break
+            if theta_report["limit_reached"]:
+                stop_reason = "max_nfev"
+                break
+            if state_limit:
+                stop_reason = "state_maxiter"
+                break
+            if iteration > 1 and previous - sse <= threshold:
+                stop_reason = "min_improvement"
+                break
 
+        converged = stop_reason in ("min_improvement", "no_improvement")
+        messages = {
+            "max_nfev": f"BM1 pooled LSQ reached max_nfev={max_nfev} without convergence; best finite fit retained.",
+            "state_maxiter": f"BM1 initial-state optimizer reached state_maxiter={state_maxiter}; best finite fit retained.",
+            "max_iterations": f"BM1 alternating fit reached max_iterations={max_iterations} without meeting its improvement stopping criterion; best fit retained.",
+            "min_improvement": "BM1 alternating fit stopped after improvement fell below tolerance.",
+            "no_improvement": "BM1 alternating fit stopped because the objective did not improve.",
+        }
         parameters = dict(best["params"])
         f, g = self.response(parameters["alpha"]), self.response(parameters["beta"])
         return {
@@ -203,6 +235,11 @@ class lsq_params:
             "mse": best["mse"], "sse": best["sse"], "history": history,
             "theta_fit": best["theta_fit"], "state_fits": best["state_fits"],
             "iterations": len(history), "free_parameters": tuple(free),
+            "converged": converged, "stop_reason": stop_reason, "message": messages[stop_reason],
+            "warning": None if converged else messages[stop_reason],
+            "theta_converged": best["theta_report"]["converged"],
+            "theta_nfev": best["theta_report"]["nfev"],
+            "state_converged": all(report["converged"] for report in best["state_reports"]),
             "fit_method": "pooled_demand_alternating_lsq",
         }
 
