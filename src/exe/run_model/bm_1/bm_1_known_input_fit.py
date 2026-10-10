@@ -29,8 +29,8 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
 
     prices/demand have N hourly values. baseline_time/baseline describe a
     piecewise-linear baseline over [0,N], including every integer hour edge.
-    Hourly prices are held on [i,i+1). With x0=None, X0 is estimated jointly
-    with C/k/Xi in [0,1], starting at initial_x0. An explicit x0 is held fixed.
+    Hourly prices are held on [i,i+1). With x0=None, X0 is estimated in [0,1]
+    jointly with C/k/Xi, starting at initial_x0. An explicit x0 is held fixed.
     An explicit c fixes capacity in hours and fits only the other parameters.
     There are no daily resets or warmup. Demand observations enter the fit
     objective, not the state propagation. The objective is normalized demand
@@ -38,7 +38,7 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     X0 is unpenalized. With prior_weight=0, use the original data-only sum of
     squares. C and k are optimized in log coordinates; RMSE is always data-only.
     fit_response=True jointly fits monotone f/g curves and disables all penalties.
-    Bounds and initial contain [C_hours,k,Xi]. No baseline or curve fitting.
+    Bounds and initial contain [C_hours,k,Xi]. This function does not fit baseline.
     observation_mask excludes unmeasured demand from the objective/RMSE while
     retaining every hourly input and the continuous state trajectory.
     """
