@@ -101,7 +101,8 @@ def forecast_from_distribution(data, fitted, *, sigma_x=0.0, x_steps=101, fp_max
             demand = model.D(data["B"][i], fitted["Xi"], delta)
             order = np.argsort(demand)
             cdf = np.cumsum(cell_mass[i, order])
-            lower[i], upper[i] = np.interp([0.1, 0.9], cdf, demand[order])
+            q = np.minimum(np.searchsorted(cdf, [0.1, 0.9], side="left"), len(x) - 1)
+            lower[i], upper[i] = demand[order[q]]
         fp = {"x": x, "cell_mass": cell_mass, "density": density, "state_mean": EX, "state_variance": VX, "diagnostics": diagnostics}
 
     return {"forecast": forecast, "lower": lower, "upper": upper, "ensemble": paths, "state_paths": state_paths, "initial_mass": mass, "initial_grid": model.fokker_planc_reference.grid(x_steps)[1], "fp": fp}
