@@ -15,6 +15,7 @@ from src.exe.run_model.wm_3.fit_weekly import aligned_data
 from src.model.bm_1 import bm_1
 from src.params.bm_1 import lsq_params
 from src.tools.baseline import statistical_output
+from src.tools.forecast_metrics import predictive_intervals, forecast_metrics
 from src.validation.exe.run_model.bm_1.predict_daily import bm_1_prediction_validation as checks
 
 
@@ -88,6 +89,8 @@ def forecast_from_distribution(data, fitted, *, sigma_x=0.0, x_steps=101, fp_max
     model = bm_1(held_signal(data["B"]), lambda t: 0.0 * np.asarray(t, dtype=float) + 0.5, (0.0, HOURS), HOURS + 1)
     forecast = paths.mean(axis=0)
     lower, upper = np.quantile(paths, [0.1, 0.9], axis=0)
+    support = [paths[:, i] for i in range(HOURS)]
+    probabilities = [np.full(states.size, 1.0 / states.size) for _ in range(HOURS)]
     fp = None
 
     if sigma_x > 0.0:
@@ -104,8 +107,16 @@ def forecast_from_distribution(data, fitted, *, sigma_x=0.0, x_steps=101, fp_max
             q = np.minimum(np.searchsorted(cdf, [0.1, 0.9], side="left"), len(x) - 1)
             lower[i], upper[i] = demand[order[q]]
         fp = {"x": x, "cell_mass": cell_mass, "density": density, "state_mean": EX, "state_variance": VX, "diagnostics": diagnostics}
+        support = []
+        for i in range(HOURS):
+            delta = model.l(fitted["f"](x), fitted["g"](data["U"][i]), fitted["k"])
+            support.append(model.D(data["B"][i], fitted["Xi"], delta))
+        probabilities = list(cell_mass[:HOURS])
 
-    return {"forecast": forecast, "lower": lower, "upper": upper, "ensemble": paths, "state_paths": state_paths, "initial_mass": mass, "initial_grid": model.fokker_planc_reference.grid(x_steps)[1], "fp": fp}
+    intervals = predictive_intervals(support, probabilities)
+    return {"forecast": forecast, "lower": lower, "upper": upper, "intervals": intervals,
+        "ensemble": paths, "state_paths": state_paths, "initial_mass": mass,
+        "initial_grid": model.fokker_planc_reference.grid(x_steps)[1], "fp": fp}
 
 
 def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, max_iterations=6, min_improvement=1e-6, max_nfev=150, state_maxiter=100, substeps=2, sigma_x=0.0, x_steps=101, fp_max_step=0.25, score=False):
@@ -135,6 +146,8 @@ def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=N
         "I_ensemble_mean": ensemble["ensemble"].mean(axis=0), "B": target["B"][:HOURS], "U": target["U"][:HOURS],
         "X_ensemble_mean": ensemble["state_paths"].mean(axis=0),
     }, index=index)
+    for level, (lo, hi) in ensemble["intervals"].items():
+        hourly[f"lower_{level}"], hourly[f"upper_{level}"] = lo, hi
     training_rows = []
     for day_index, (date, data, state) in enumerate(zip(days, training, fitted["initial_states"])):
         predicted = fitter._predict(data, float(state), fitted, substeps)[1][:HOURS]
@@ -144,7 +157,8 @@ def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=N
     metrics = None
     if score:
         actual = frame.reindex(index)["I"].to_numpy(dtype=float)
-        metrics = {"model": checks.metrics(actual, hourly["I_predicted"]), "baseline": checks.metrics(actual, hourly["B"])}
+        metrics = {"model": forecast_metrics(actual, hourly["I_predicted"], ensemble["intervals"]),
+            "baseline": forecast_metrics(actual, hourly["B"])}
         hourly["I_observed"] = actual
     return {
         "day": start, "tag": tag, "training_days": days, "training": summary, "hourly": hourly, "fit": fitted,
@@ -217,7 +231,14 @@ def main():
     print("Joint fit:", {key: round(float(fit[key]), 6) for key in ("alpha", "beta", "k", "Xi", "C")})
     print(f"Five fitted initial states: {np.array2string(forecast['initial_states'], precision=5)}")
     print(f"Pooled training MSE: {fit['mse']:.8f}; accepted/attempted cycles: {sum(v['accepted'] for v in fit['history'])}/{fit['iterations']}")
-    if forecast["metrics"] is not None: print("Held-out target metrics:", forecast["metrics"])
+    if forecast["metrics"] is not None:
+        print("Held-out target metrics:", forecast["metrics"])
+        model_metrics = forecast["metrics"]["model"]
+        for level in (68, 95):
+            print(f"BM1 central {level}% coverage: {model_metrics[f'coverage_{level}_count']}/24 "
+                f"({model_metrics[f'coverage_{level}_pct']:.2f}%), nominal gap "
+                f"{model_metrics[f'coverage_{level}_gap_pp']:+.2f} pp")
+        if args.sigma_x == 0: print("BM1 sigma_x=0: coverage reflects initial-state variability only.")
     if args.save: print("Saved:", save_result(forecast))
     return forecast
 
