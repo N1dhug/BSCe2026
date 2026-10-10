@@ -63,8 +63,12 @@ def predict_origin(frame, origin, output_model, *, X0=0.5, weeks=5, horizon=8, x
         fit_bounds={"C": (float(min_capacity), lsq_params.BOUNDS["C"][1])})
     if fitted["warning"]:
         print(f"[BM1 MPC {origin:%Y-%m-%d %H:%M}] WARNING: {fitted['warning']}", flush=True)
+    print(f"[BM1 MPC {origin:%Y-%m-%d %H:%M}] Historical diffusion calibration "
+        f"(C={fitted['C']:.5f}, Xi={fitted['Xi']:.5f})", flush=True)
     diffusion = historical_diffusion_params().fit_many(training, fitted, substeps=substeps)
     sigma = float(diffusion["sigma_x"])
+    print(f"[BM1 MPC {origin:%Y-%m-%d %H:%M}] Diffusion fitted sigma_x={sigma:.5f}; "
+        f"state posterior / Fokker-Planck forecast starting", flush=True)
 
     future = checks.window(frame, origin, output_model, hours=horizon + 1, observations=False)
     observed = checks.observation(frame, origin)
