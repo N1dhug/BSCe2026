@@ -295,10 +295,10 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
                     f"({checkpoint.name})", flush=True)
             except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError, KeyError) as exc:
                 day_skipped.append((origin, str(exc)))
-                pd.DataFrame(day_skipped, columns=["origin", "reason"]).to_csv(folder / "skipped_origins.csv", index=False)
+                save_csv(pd.DataFrame(day_skipped, columns=["origin", "reason"]), folder / "skipped_origins.csv")
                 print(f"[{origin:%Y-%m-%d %H:%M}] FAILED: {exc}", flush=True)
                 if fail_fast: raise
-        pd.DataFrame(day_skipped, columns=["origin", "reason"]).to_csv(folder / "skipped_origins.csv", index=False)
+        save_csv(pd.DataFrame(day_skipped, columns=["origin", "reason"]), folder / "skipped_origins.csv")
         skipped.extend(day_skipped)
         if day_rows:
             # This optional convenient daily CSV may be locked by another
