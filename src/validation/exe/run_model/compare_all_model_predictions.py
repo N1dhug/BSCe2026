@@ -51,6 +51,23 @@ class model_comparison_all_days_validation:
                     raise ValueError(f"{label} has inverted {level}% interval.")
         return frame
 
+    @staticmethod
+    def source_frame(frame):
+        """Check frame structure once before fitting a sequence of days."""
+        return model_comparison_validation.common_frame(frame)
+
+    @staticmethod
+    def wm4_cache(forecasts, start, end):
+        """Retain only lead-1 forecasts covering the requested date range."""
+        if forecasts is None: return None
+        if not isinstance(forecasts, pd.DataFrame): raise TypeError("WM4 saved forecasts must be a DataFrame.")
+        missing = {"target_time", "lead_hours"} - set(forecasts.columns)
+        if missing: raise ValueError("WM4 forecasts missing " + ", ".join(sorted(missing)))
+        times = pd.to_datetime(forecasts["target_time"], errors="raise")
+        lead = pd.to_numeric(forecasts["lead_hours"], errors="raise")
+        mask = (lead == 1) & (times >= start) & (times < end + pd.Timedelta(days=1))
+        return forecasts.loc[mask].copy()
+
     @classmethod
     def cached(cls, directory, day, settings):
         directory = Path(directory)
