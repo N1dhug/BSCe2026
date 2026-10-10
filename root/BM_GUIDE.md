@@ -6,6 +6,9 @@ Den læsbare matematik står i [grundmodellen](../docs/bm/G_INTERVAL_MODEL.md).
 Installer projektets afhængigheder med `python -m pip install -r requirements-bm.txt`.
 Kør kommandoerne fra projektets rod, og brug en ny outputmappe hver gang.
 
+Fit til en kendt demand med kendt baseline, pris og fast X0:
+[enkel C/k/Xi-fitter med lineære f/g](../docs/bm/KNOWN_INPUT_FIT.md).
+
 ## Fit
 
 ```powershell
@@ -38,3 +41,4 @@ F: [F-arkiv](https://github.com/N1dhug/BSCe2026/tree/archive/f-main-20261009).
 Seneste oprydning: [F-rester og ekstra indgange](https://github.com/N1dhug/BSCe2026/tree/archive/f-og-ekstra-grundmodel-20261009),
 med komplette kilder fra main 4011c10 og tilhørende tests.
 Status: [STATUS.txt](../docs/bm/STATUS.txt).
+
