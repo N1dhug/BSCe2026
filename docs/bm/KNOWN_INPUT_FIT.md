@@ -125,3 +125,45 @@ observeret/fitted demand, baseline, pris, X og residualer i de angivne inputenhe
 Ved hourly-mean er outputbaseline et timegennemsnit. Den sidste række viser X
 ved periodens slutning. Exitkode 0 betyder "converged"; 1 betyder et ufærdigt
 eller numerisk utilstrækkeligt fit, hvis resultater stadig gemmes til inspektion.
+
+## Historisk import fra de samme Excel-filer som WM
+
+Den nye BM-specifikke datafil er `src/exe/run_model/bm_1/data.py`.
+Den bruger de fælles `input_data`/`spot_price_data`-importører med WM's
+observerede gruppe-gennemsnit som reference. Der importeres ingen temperatur,
+og baseline estimeres ikke. S3's hidtidige hjælpere er særskilt bevaret i
+`src/exe/run_model/bm_1/s3_data.py`; den nye datafil bruger dem ikke.
+S3's kildehashes følger de ændrede filplaceringer; gamle snapshots kræver
+fortsat deres oprindelige kildeversion og omskrives ikke.
+
+```powershell
+python -m src.exe.run_model.bm_1.bm_1_known_input_fit --start 2022-01-01 --end 2022-02-05 --tag MED --baseline-csv baseline.csv --output bm-fit-historik
+```
+
+Perioden er [start,end). Standardfilerne er `files/input/data/input.xlsx`
+og `files/input/data/prices.xlsx`; de kan vælges med `--input-workbook` og
+`--prices-workbook`. Prisområdet er DK1 som standard (`--price-area`).
+Demand er gennemsnittet af gruppens tilgængelige originale målinger, ikke en
+sum og ikke gennemsnittet af interpolerede målere. En helt umålt time bevares
+i tilstandsbanen og udelades fra fit/RMSE med en observationsmaske. Den fælles
+prisimportørs eksisterende udfyldning af pristimer genbruges.
+
+`baseline.csv` skal have `Datetime,baseline` ved hver timegrænse, inklusive
+slutgrænsen. Baseline skal bruge samme rå enhed og gruppe-gennemsnit som demand.
+Den interpoleres lineært mellem timegrænserne. Naive tidsstempler fortolkes
+som Europe/Copenhagen. Tvetydige eller ikke-eksisterende lokale timer afvises;
+de sammenlægges ikke stiltiende. Tid til BM måles i fysisk forløbne timer.
+Demand mærkes som timebegyndelse som standard; vælg `--demand-label hour_end`,
+hvis målingerne beskriver den time, der slutter ved tidsstemplet. Dette er en
+erklæret fortolkning, ikke en verificering af Excel-filens målekonvention.
+
+Historisk import vælger som standard en fælles [0,1]-skala for demand/baseline
+fra den valgte periode og en [0,1]-prisskala fra periodens priser. Eksisterende
+offset/scale-flags kan i stedet levere forudbestemte skalaer. Skalaerne gemmes
+i fit.json og har ingen afhængighed af WM's normalisering for hele 2022.
+Med `--input` gælder fortsat CSV-indgangens standardoffset 0 og skala 1.
+
+Python-indgangen er `aligned_bm_data(start,end,...)` efterfulgt af
+`fit_inputs(frame,baseline_path,...)`. Resultatet indeholder baseline_time,
+baseline, prices, demand og observation_mask til `fit_known_inputs(...)`,
+samt normalisering og metadata. Fitteren gemmer importmetadata i fit.json.

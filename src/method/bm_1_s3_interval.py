@@ -17,12 +17,12 @@ from src.params.bm_1_response import BM1PiecewiseResponse
 from src.method.bm_1_s3_interval_baseline import IntervalStatisticalBaseline,IMPLEMENTATION,restore_interval_baseline
 from src.tools.bm_1_g_contract import ZONE
 from src.tools.bm_1_g_baseline import baseline_settings
-from src.tools.bm_1_deterministic_data import prepare_frame
+from src.exe.run_model.bm_1.s3_data import prepare_frame
 
 ROOT=Path(__file__).resolve().parents[2]
 PROTOCOL='G-S3-five-weeks-Monday-frozen-hourly-mean-v1'
 CONTRACT='hourly-mean-power-development-units-unverified'
-SOURCES=('src/method/bm_1_s3_interval.py', 'src/method/bm_1_s3_interval_baseline.py', 'src/method/bm_1_deterministic_fit.py', 'src/method/bm_1_deterministic_response.py', 'src/method/bm_1_deterministic_weekday.py', 'src/method/bm_1_deterministic_strategy.py', 'src/tools/bm_1_g_contract.py', 'src/tools/bm_1_g_baseline.py', 'src/tools/bm_1_deterministic_data.py', 'src/params/bm_1_response.py', 'src/validation/estimation.py', 'src/exe/run_model/wm_4/output_model.py')
+SOURCES=('src/method/bm_1_s3_interval.py', 'src/method/bm_1_s3_interval_baseline.py', 'src/method/bm_1_deterministic_fit.py', 'src/method/bm_1_deterministic_response.py', 'src/method/bm_1_deterministic_weekday.py', 'src/method/bm_1_deterministic_strategy.py', 'src/tools/bm_1_g_contract.py', 'src/tools/bm_1_g_baseline.py', 'src/exe/run_model/bm_1/s3_data.py', 'src/params/bm_1_response.py', 'src/validation/estimation.py', 'src/exe/run_model/wm_4/output_model.py')
 
 
 def source_hashes():

@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 
 from src.method import bm_1_s3_interval as interval
-from src.tools.bm_1_deterministic_data import raw_csv
+from src.exe.run_model.bm_1.s3_data import raw_csv
 from src.tools.bm_1_reports import _atomic_report
 from src.tools.bm_1_g_reports import write_forecast
 
