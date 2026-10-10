@@ -37,6 +37,13 @@ class compare_mpc_validation:
             raise ValueError("WM4 saved forecasts contain duplicate origin/lead rows.")
         return frame.set_index(["origin", "lead_hours"], drop=False).sort_index()
 
+
+    @staticmethod
+    def observed(value, timestamp):
+        value = float(value)
+        if not np.isfinite(value): raise ValueError(f"Missing actual consumption at {timestamp}.")
+        return value
+
     @staticmethod
     def complete_pair(bm_rows, wm_rows, origin, horizon):
         if len(bm_rows) != horizon or len(wm_rows) != horizon: raise ValueError(f"{origin}: incomplete {horizon}-lead predictions.")
