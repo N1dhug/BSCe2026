@@ -179,6 +179,9 @@ def save_comparison(result, output_root=OUTPUT, *, save_plot=True):
 def print_comparison(result):
     print(f"\nTarget day: {result['day']:%Y-%m-%d}; n=24 hourly forecasts")
     print(result["interpretation"])
+    print("Intervals: BM1 central equal-tail 68%/95%; WM4 Gaussian ±1σ (68.27%) / ±1.96σ (95.0%).")
+    sigma = result["wm4_forecasts"].get("diffusion_sigma")
+    if sigma is not None: print(f"WM4 fitted diffusion sigma: median {float(np.median(np.asarray(sigma, dtype=float))):.6f} across 24 hourly origins.")
     if result["bm1_sigma_x"] == 0.0:
         print("BM1: sigma_x=0; coverage reflects fitted initial-state uncertainty, not process diffusion.")
     else: print(f"BM1: supplied sigma_x={result['bm1_sigma_x']:.6g} (not estimated in this comparison).")
