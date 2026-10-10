@@ -68,4 +68,13 @@ class compare_mpc_validation:
             "WM4_lower_68", "WM4_upper_68", "WM4_lower_95", "WM4_upper_95"}
         if missing := required - set(frame.columns):
             raise ValueError("Cached matched MPC forecasts missing " + ", ".join(sorted(missing)))
+        horizon = int(options["horizon"])
+        if frame.duplicated(subset=("origin", "lead_hours")).any():
+            raise ValueError("Cached MPC comparison contains duplicate origin/lead combinations.")
+        for origin, group in frame.groupby("origin"):
+            if not np.array_equal(np.sort(group["lead_hours"].to_numpy(dtype=int)), np.arange(1, horizon + 1)):
+                raise ValueError(f"Cached origin {origin} contains incomplete or invalid prediction leads.")
+            expected = pd.Timestamp(origin) + pd.to_timedelta(group["lead_hours"], unit="h")
+            if not np.array_equal(pd.DatetimeIndex(group["target_time"]).to_numpy(), pd.DatetimeIndex(expected).to_numpy()):
+                raise ValueError(f"Cached origin {origin} has inconsistent prediction target times.")
         return frame
