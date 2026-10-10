@@ -1,6 +1,6 @@
 """Deterministic G response on the existing RK4 input grid.
 
-The state response is linear; the price response has two pieces.
+State and price responses use the shared monotone piecewise-linear geometry.
 """
 from bisect import bisect_right
 from math import tanh
@@ -34,7 +34,7 @@ class BM1ResponseInputs(BM1DeterministicInputs):
         super().__init__(*args, **kwargs)
         self.state_response = state_response or BM1PiecewiseResponse.linear(pieces=2)
         self.price_response = price_response or BM1PiecewiseResponse.linear(pieces=2)
-        if not all(isinstance(c, BM1PiecewiseResponse) for c in (self.state_response, self.price_response)) or not is_linear(self.state_response):
+        if not all(isinstance(c, BM1PiecewiseResponse) for c in (self.state_response, self.price_response)):
             raise ValueError('Use validated shared response geometry.')
 
     def refined(self):
@@ -43,18 +43,19 @@ class BM1ResponseInputs(BM1DeterministicInputs):
             observation_contract=self.contract, warmup_hours=self.warmup,
             steps_per_hour=2*self.steps, observation_mask=self.observation_mask)
 
-    def solve(self, parameters, *, deadline=None, keep_fine=False, price_response=None):
+    def solve(self, parameters, *, deadline=None, keep_fine=False, price_response=None, state_response=None):
+        state_curve = self.state_response if state_response is None else state_response
         g = self.price_response if price_response is None else price_response
-        if not isinstance(g, BM1PiecewiseResponse):
-            raise ValueError('Use validated shared price response geometry.')
-        if is_linear(self.state_response) and is_linear(g):
+        if not all(isinstance(curve, BM1PiecewiseResponse) for curve in (state_curve, g)):
+            raise ValueError('Use validated shared response geometry.')
+        if is_linear(state_curve) and is_linear(g):
             return super().solve(parameters, deadline=deadline, keep_fine=keep_fine)
         self.last_rhs_evaluations = 0
         C, k, xi, x = _parameters(parameters)
-        slope = float(np.max(np.abs(np.diff(self.state_response.values)/np.diff(self.state_response.knots))))
+        slope = float(np.max(np.abs(np.diff(state_curve.values)/np.diff(state_curve.knots))))
         if .5*k*xi*self.h*slope/C > 1:
             raise ValueError('Refine the declared RK4 grid for this state-response slope.')
-        f = _scalar_response(self.state_response)
+        f = _scalar_response(state_curve)
         hourly_g = g(self.prices)
         fine_g = np.repeat(hourly_g, self.steps)
         def demand(x, gv, baseline):

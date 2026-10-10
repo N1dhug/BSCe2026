@@ -1,7 +1,8 @@
 # BM1-fit med kendt demand, pris og baseline samt ukendt eller kendt X0
 
 Denne indgang fitter C, k, Xi og som standard X0 sammen.
-f(X)=1-2X og g(u)=1-2u er faste. Baseline og pris er kendte input.
+Som standard er f(X)=1-2X og g(u)=1-2u faste. Med --fit-response estimeres
+begge funktioner samtidig med de frie modelparametre. Baseline og pris er kendte input.
 X0 begrænses til [0,1]; en kendt X0 kan alternativt fastholdes.
 Ét fælles parametersæt og én sammenhængende tilstandsbane bruges over perioden.
 Der er ingen dagsreset, warmup eller stateopdatering med den observerede demand.
@@ -235,3 +236,35 @@ guess and still estimates capacity. `--x0` can also fix the initial state.
 The existing data import, baseline, solver and plots are reused. The JSON
 records `c_estimated: false`; optimizer parameter names and bounds list only
 free parameters. Use a new output directory for each fit.
+
+### Fælles fit af f og g med fem linjestykker
+
+Tilføj `--fit-response --response-pieces 5` til den eksisterende kommando.
+Fitteren genbruger `BM1PiecewiseResponse` og `BM1ResponseInputs`. Hver funktion
+har faste knuder [0,0.2,0.4,0.6,0.8,1], endepunkter 1 og -1 og fire frie
+indre værdier. Funktionerne er kontinuerte og ikke-voksende; flade stykker
+er tilladt. Ét fælles par f/g bruges gennem hele perioden.
+
+Denne tilstand slår ALLE strafled fra, også hvis --prior-weight er positiv.
+Målet er alene summen af kvadrerede normaliserede demand-fejl på målte timer.
+X0, C, k og Xi estimeres som før, medmindre --c eller --x0 fastholder dem.
+Med alle parametre frie er der 12 fit-parametre og mindst 12 målte timer kræves.
+De eksisterende fysiske parametergrænser gælder fortsat.
+
+Indre kurveværdier parameteriseres ved fire andele i [0,1] af det resterende
+fald fra 1 til -1. For andele q_i er v_i=-1+2*produkt(1-q_j, j<=i).
+Det sikrer monotonien uden ekstra straf eller sortering. Startandelene
+[1/5,1/4,1/3,1/2] giver lineære kurver. Optimizer-metadata gemmer disse andele;
+`response.f` og `response.g` gemmer de faktiske knuder/værdier i fit.json.
+`response_fitted` er true, og `regularization.weight` er 0.
+
+Stejle f-stykker kræver finere RK4-trin. Fitteren vælger et stabilt multiplum
+af --steps-per-hour ud fra grænserne (standard: 60 trin/time for fem stykker).
+Både det ønskede og anvendte antal gemmes under numerics. Den eksisterende
+kontrol ved dobbelt opløsning gælder stadig; en fejlet kontrol er ikke konvergens.
+Grafmodulet gemmer desuden `fit_response.png` med de estimerede f/g-kurver.
+
+Dette er et lokalt datafit uden regularisering, ikke garanti for entydige
+funktioner eller et globalt optimum. Kurvedele uden tilstrækkelige besøg i
+X/u kan være svagt bestemte. Vurder prognoser på en efterfølgende periode,
+hvor baseline, normalisering og modelparametre er fastlagt fra træningen.

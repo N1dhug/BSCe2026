@@ -81,6 +81,19 @@ def save_plots(run, *, day=None):
     fig.savefig(paths[-1], dpi=200, bbox_inches='tight')
     plt.close(fig)
     if day is None:
+        if summary.get('response_fitted', False):
+            fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+            for ax, name, xlabel_curve in zip(axes, ('f', 'g'), ('State X', 'Normalized price u')):
+                curve = summary['response'][name]
+                ax.plot(curve['knots'], curve['values'], marker='o', label=f'Fitted {name}')
+                ax.plot([0, 1], [1, -1], '--', alpha=.5, label='Linear reference')
+                ax.set(xlabel=xlabel_curve, ylabel=name, ylim=(-1.05, 1.05))
+                ax.grid(True, alpha=.25)
+                ax.legend()
+            fig.tight_layout()
+            paths.append(run/'fit_response.png')
+            fig.savefig(paths[-1], dpi=200, bbox_inches='tight')
+            plt.close(fig)
         errors = pd.DataFrame({'group': groups, 'BM': fit_error, 'Baseline': baseline_error})
         daily = errors.loc[measured].groupby('group')[['BM', 'Baseline']].agg(lambda v: np.sqrt(np.mean(v**2)))
         fig, ax = plt.subplots(figsize=(15, 4))

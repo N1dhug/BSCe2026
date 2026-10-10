@@ -1,4 +1,4 @@
-"""Fundamental two-piece response geometry, bounds and serialization."""
+"""Fundamental piecewise response geometry, bounds and serialization."""
 import unittest
 import numpy as np
 from src.params.bm_1_response import BM1PiecewiseResponse
@@ -20,7 +20,18 @@ class PiecewiseResponseTests(unittest.TestCase):
         self.assertAlmostEqual(float(curve(.5-1e-9)),float(curve(.5+1e-9)),places=7)
         np.testing.assert_array_equal(BM1PiecewiseResponse.from_record(curve.to_record()).values,curve.values)
 
-    def test_invalid_geometry_extra_pieces_and_extrapolation_are_rejected(self):
+    def test_five_piece_drop_fractions_preserve_monotonicity_and_endpoints(self):
+        for fractions in ([.2,.25,1/3,.5], [0,1,0,1], [.1,.7,.2,.4]):
+            curve = BM1PiecewiseResponse.from_drop_fractions(fractions)
+            np.testing.assert_allclose(curve.knots, [0,.2,.4,.6,.8,1])
+            self.assertEqual(curve.values[0], 1)
+            self.assertEqual(curve.values[-1], -1)
+            self.assertTrue(np.all(np.diff(curve.values) <= 0))
+            np.testing.assert_array_equal(BM1PiecewiseResponse.from_record(curve.to_record()).values, curve.values)
+        curve = BM1PiecewiseResponse.from_drop_fractions([.2,.25,1/3,.5])
+        np.testing.assert_allclose(curve(np.linspace(0,1,101)), 1-2*np.linspace(0,1,101), atol=1e-15)
+
+    def test_invalid_geometry_counts_and_extrapolation_are_rejected(self):
         for values in ([1.,1.1,-1.],[1.,np.nan,-1.],[1.,.2,-.9]):
             with self.assertRaises(ValueError):BM1PiecewiseResponse([0.,.5,1.],values)
         for inner,pieces in (([0.],4),([0.],True),([0.],3),([1.1],2)):
