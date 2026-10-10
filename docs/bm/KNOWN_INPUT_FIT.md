@@ -329,3 +329,13 @@ Invoke-Item (Join-Path $outputDir "comparison.png")
 
 Gemte kurver rekonstrueres med `response_from_record`; gamle lineære
 kurvebeskrivelser læses fortsat. Grafer tegner kurverne fra den gemte familie.
+
+### Thomas' normaliserede logistiske f/g
+
+`--fit-response --response-family logistic` estimerer alpha/beta i [0.05,20]
+med h(z)=tanh(s*(0.5-z)/2)/tanh(s/4). Endepunkter +1/-1 og nulpunkt 0.5
+bevares. Kurverne har én formparameter hver; C/k/Xi/X0 estimeres som før.
+Kurvefit slår alle strafled fra. --response-pieces bruges ikke til formen.
+Familien medtages også af --compare-responses og gemmes til genindlæsning.
+Den fulde Thomas-opskrift med matchingugedage/MPC findes i
+[THOMAS_PIPELINE.md](THOMAS_PIPELINE.md).

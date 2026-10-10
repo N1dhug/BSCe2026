@@ -42,3 +42,10 @@ F: [F-arkiv](https://github.com/N1dhug/BSCe2026/tree/archive/f-main-20261009).
 Seneste oprydning: [F-rester og ekstra indgange](https://github.com/N1dhug/BSCe2026/tree/archive/f-og-ekstra-grundmodel-20261009),
 med komplette kilder fra main 4011c10 og tilhørende tests.
 Status: [STATUS.txt](../docs/bm/STATUS.txt).
+
+## Thomas-opskrift på main
+
+Dagsprognose, timevis MPC, usikkerhed og resultatgrafer er beskrevet i
+[THOMAS_PIPELINE.md](../docs/bm/THOMAS_PIPELINE.md).
+Logistiske f/g kan også vælges i eksisterende fit med
+`--fit-response --response-family logistic`.

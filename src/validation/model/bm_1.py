@@ -67,3 +67,17 @@ class bm_1_validation:
         rtol = bm_validation.positive_scalar(rtol, 'rtol')
         atol = bm_validation.positive_scalar(atol, 'atol')
         return (init_cond, parameters, t_eval, breakpoints, rtol, atol, max_step)
+
+    @staticmethod
+    def reference_solver_inputs(default_t, t_eval, parameters, sigma_x):
+        """Validate density forecasts while retaining the deterministic interface."""
+        if t_eval is None:
+            t_eval = default_t.copy()
+        _, parameters = bm_1_validation.model_inputs([0.5], parameters)
+        _, sigma_x = bm_1_validation.diffusion_inputs(0.5, sigma_x)
+        for response in parameters[1:3]:
+            endpoints = [bm_validation.finite_scalar(response(x), "response endpoint")
+                         for x in (0.0, 1.0)]
+            if not np.allclose(endpoints, [1.0, -1.0], rtol=0.0, atol=1e-10):
+                raise ValueError("BM1 density forecasts require responses from +1 to -1.")
+        return t_eval, parameters, sigma_x

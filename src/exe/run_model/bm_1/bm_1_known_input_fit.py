@@ -15,7 +15,7 @@ from scipy.optimize import least_squares
 
 from src.method.bm_1_deterministic_fit import BM1DeterministicInputs
 from src.method.bm_1_deterministic_response import BM1ResponseInputs
-from src.params.bm_1_response import BM1PiecewiseResponse, BM1BetaResponse, RESPONSE_FAMILIES, BETA_SHAPE_MAX
+from src.params.bm_1_response import BM1PiecewiseResponse, BM1BetaResponse, BM1LogisticResponse, RESPONSE_FAMILIES, BETA_SHAPE_MAX, LOGISTIC_SHAPE_MIN, LOGISTIC_SHAPE_MAX
 
 
 def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
@@ -81,11 +81,12 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     if fit_response:
         # Equal drops initialize linear curves. Bounded fractions preserve order.
         beta = response_family == 'beta-cdf'
-        shape_initial = np.ones(2) if beta else 1. / np.arange(response_pieces, 1, -1)
+        logistic = response_family == 'logistic'
+        shape_initial = np.array([2.]) if logistic else (np.ones(2) if beta else 1. / np.arange(response_pieces, 1, -1))
         full_initial = np.r_[full_initial, shape_initial, shape_initial]
         free = np.r_[free, np.ones(2*len(shape_initial), dtype=bool)]
         shape_names = ('a', 'b') if beta else [f'drop_fraction_{i}' for i in range(1, response_pieces)]
-        parameter_names += [f'{curve}_{name}' for curve in ('f', 'g') for name in shape_names]
+        parameter_names += ['alpha', 'beta'] if logistic else [f'{curve}_{name}' for curve in ('f', 'g') for name in shape_names]
     if isinstance(max_nfev, bool) or int(max_nfev) != max_nfev or max_nfev < 1:
         raise ValueError('max_nfev must be a positive integer.')
     if not np.isfinite(numerical_tolerance) or numerical_tolerance <= 0:
@@ -98,8 +99,9 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
         # Fixed grid over the whole search space. On a uniform PCHIP grid,
         # |slope| <= 1.5*max secant; Bernstein: n*max coefficient drop.
         # For Beta(a,b), a,b>=1, max density <= max(a,b).
-        slope_bound = (2*BETA_SHAPE_MAX if beta else
-                       (3 if response_family == 'pchip' else 2)*response_pieces)
+        slope_bound = (LOGISTIC_SHAPE_MAX/(2*np.tanh(LOGISTIC_SHAPE_MAX/4)) if logistic else
+                       (2*BETA_SHAPE_MAX if beta else
+                        (3 if response_family == 'pchip' else 2)*response_pieces))
         stable_steps = int(np.ceil(.5*upper[1]*upper[2]*slope_bound/(lower[0] if c is None else c))) + 1
         steps_per_hour = int(steps_per_hour) * max(1, int(np.ceil(stable_steps/steps_per_hour)))
     input_class = BM1ResponseInputs if fit_response else BM1DeterministicInputs
@@ -134,6 +136,8 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
         return np.sqrt(prior_weight) * np.log(p[:3][free[:3]] / prior_center[free[:3]])
 
     def curves(p):
+        if response_family == 'logistic':
+            return BM1LogisticResponse(p[4]), BM1LogisticResponse(p[5])
         if response_family == 'beta-cdf':
             return BM1BetaResponse(*p[4:6]), BM1BetaResponse(*p[6:8])
         split = 4 + response_pieces - 1
@@ -161,8 +165,10 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     fitted_lower = np.r_[lower, 0.]
     fitted_upper = np.r_[upper, 1.]
     if fit_response:
-        fitted_lower = np.r_[fitted_lower, np.full(2*len(shape_initial), 1. if beta else 0.)]
-        fitted_upper = np.r_[fitted_upper, np.full(2*len(shape_initial), BETA_SHAPE_MAX if beta else 1.)]
+        shape_low = LOGISTIC_SHAPE_MIN if logistic else (1. if beta else 0.)
+        shape_high = LOGISTIC_SHAPE_MAX if logistic else (BETA_SHAPE_MAX if beta else 1.)
+        fitted_lower = np.r_[fitted_lower, np.full(2*len(shape_initial), shape_low)]
+        fitted_upper = np.r_[fitted_upper, np.full(2*len(shape_initial), shape_high)]
     fit = least_squares(residual, encode(fitted_initial),
         bounds=(encode(fitted_lower), encode(fitted_upper)),
         method='trf', jac='2-point', diff_step=1e-4, x_scale='jac', loss='linear',
@@ -295,11 +301,11 @@ def main(argv=None):
     response_mode.add_argument('--fit-response', action='store_true',
         help='Jointly fit monotone f and g; disables all parameter/curve penalties.')
     response_mode.add_argument('--compare-responses', action='store_true',
-        help='Fit linear, piecewise-linear, PCHIP, Bernstein and beta-CDF on identical inputs; no penalties.')
+        help='Fit linear, piecewise-linear, PCHIP, Bernstein, beta-CDF and logistic on identical inputs; no penalties.')
     parser.add_argument('--response-family', choices=RESPONSE_FAMILIES, default='piecewise-linear',
         help='Response family with --fit-response (default: piecewise-linear).')
     parser.add_argument('--response-pieces', type=int, default=5,
-        help='Number of intervals or Bernstein degree (default: 5; unused for beta-CDF).')
+        help='Number of intervals or Bernstein degree (default: 5; unused for beta-CDF/logistic).')
     parser.add_argument('--contract', choices=('hourly-mean', 'hourly-point'), default='hourly-mean')
     parser.add_argument('--steps-per-hour', type=int, default=12)
     parser.add_argument('--max-nfev', type=int, default=500)

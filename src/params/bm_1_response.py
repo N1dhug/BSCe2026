@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from functools import cached_property
 from bisect import bisect_right
-from math import isfinite
+from math import isfinite, tanh
 
 import numpy as np
 from scipy.interpolate import BPoly, PPoly
@@ -13,8 +13,9 @@ from src.validation import estimation as checks
 from src.tools.input_generator.input_builder import input_builder
 
 
-RESPONSE_FAMILIES = ('piecewise-linear', 'pchip', 'bernstein', 'beta-cdf')
+RESPONSE_FAMILIES = ('piecewise-linear', 'pchip', 'bernstein', 'beta-cdf', 'logistic')
 BETA_SHAPE_MAX = 10.
+LOGISTIC_SHAPE_MIN, LOGISTIC_SHAPE_MAX = 0.05, 20.
 
 
 def _argument(argument):
@@ -188,7 +189,46 @@ class BM1BetaResponse:
                     shape_bounds=[1., BETA_SHAPE_MAX], monotonicity='non-increasing', argument_domain=[0.,1.])
 
 
+
+@dataclass(frozen=True)
+class BM1LogisticResponse:
+    """Thomas' endpoint-normalized decreasing logistic curve with midpoint 0.5."""
+    slope: float
+
+    def __post_init__(self):
+        slope = float(self.slope)
+        if not np.isfinite(slope) or not LOGISTIC_SHAPE_MIN <= slope <= LOGISTIC_SHAPE_MAX:
+            raise ValueError(f'Logistic slope must lie in [{LOGISTIC_SHAPE_MIN},{LOGISTIC_SHAPE_MAX}].')
+        object.__setattr__(self, 'slope', slope)
+
+    @property
+    def is_linear(self):
+        return False
+
+    def __call__(self, argument):
+        x = _argument(argument)
+        values = np.tanh(0.5*self.slope*(0.5-x))/np.tanh(0.25*self.slope)
+        return np.where(x == 0., 1., np.where(x == 1., -1., values))
+
+    @cached_property
+    def max_abs_slope(self):
+        return float(self.slope/(2*np.tanh(self.slope/4)))
+
+    def scalar_evaluator(self):
+        slope, denominator = self.slope, tanh(self.slope/4)
+        return _checked_scalar(lambda x: tanh(0.5*slope*(0.5-x))/denominator)
+
+    def to_record(self):
+        return dict(schema='bm1-response-v2', interpolation='logistic', slope=self.slope,
+                    shape_bounds=[LOGISTIC_SHAPE_MIN, LOGISTIC_SHAPE_MAX],
+                    monotonicity='non-increasing', argument_domain=[0.,1.])
+
 def response_from_record(record):
+    if record.get('interpolation') == 'logistic':
+        if (record.get('schema') != 'bm1-response-v2' or record.get('argument_domain') != [0.,1.]
+                or record.get('monotonicity') != 'non-increasing'):
+            raise ValueError('Unsupported response description.')
+        return BM1LogisticResponse(record['slope'])
     if record.get('interpolation') != 'beta-cdf':
         return BM1PiecewiseResponse.from_record(record)
     if (record.get('schema') != 'bm1-response-v2' or record.get('argument_domain') != [0.,1.]

@@ -102,7 +102,7 @@ class KnownInputFitTests(unittest.TestCase):
             self.assertEqual(result['regularization']['penalized_parameters'],[])
             self.assertEqual(result['response_family'], family)
             self.assertTrue(result['numerics']['passed'])
-            self.assertEqual(len(result['fit_settings']['parameter_names']),(8 if family == 'beta-cdf' else 12)-(c is not None)-(fixed_x0 is not None))
+            self.assertEqual(len(result['fit_settings']['parameter_names']),(6 if family == 'logistic' else 8 if family == 'beta-cdf' else 12)-(c is not None)-(fixed_x0 is not None))
             for curve in result['response'].values():
                 self.assertTrue(np.all(np.diff(response_from_record(curve)(np.linspace(0,1,101))) <= 0))
             if c is not None:

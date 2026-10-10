@@ -7,7 +7,7 @@ from time import perf_counter
 import numpy as np
 
 from src.method.bm_1_deterministic_fit import BM1DeterministicInputs, BudgetStop, _parameters
-from src.params.bm_1_response import BM1PiecewiseResponse, BM1BetaResponse
+from src.params.bm_1_response import BM1PiecewiseResponse, BM1BetaResponse, BM1LogisticResponse
 
 
 def is_linear(curve):
@@ -23,7 +23,7 @@ class BM1ResponseInputs(BM1DeterministicInputs):
         super().__init__(*args, **kwargs)
         self.state_response = state_response or BM1PiecewiseResponse.linear(pieces=2)
         self.price_response = price_response or BM1PiecewiseResponse.linear(pieces=2)
-        if not all(isinstance(c, (BM1PiecewiseResponse, BM1BetaResponse)) for c in (self.state_response, self.price_response)):
+        if not all(isinstance(c, (BM1PiecewiseResponse, BM1BetaResponse, BM1LogisticResponse)) for c in (self.state_response, self.price_response)):
             raise ValueError('Use validated shared response geometry.')
 
     def refined(self):
@@ -35,7 +35,7 @@ class BM1ResponseInputs(BM1DeterministicInputs):
     def solve(self, parameters, *, deadline=None, keep_fine=False, price_response=None, state_response=None):
         state_curve = self.state_response if state_response is None else state_response
         g = self.price_response if price_response is None else price_response
-        if not all(isinstance(curve, (BM1PiecewiseResponse, BM1BetaResponse)) for curve in (state_curve, g)):
+        if not all(isinstance(curve, (BM1PiecewiseResponse, BM1BetaResponse, BM1LogisticResponse)) for curve in (state_curve, g)):
             raise ValueError('Use validated shared response geometry.')
         if is_linear(state_curve) and is_linear(g):
             return super().solve(parameters, deadline=deadline, keep_fine=keep_fine)

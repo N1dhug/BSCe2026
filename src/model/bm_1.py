@@ -4,6 +4,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from src.model.base.bm import bm
+from src.solver.finite_volume import finite_volume_1d, finite_volume_1d_cached
 from src.validation.model.bm_1 import bm_1_validation
 
 
@@ -18,6 +19,7 @@ class bm_1(bm):
 
     def __init__(self, B, A, T, t_steps):
         super().__init__(B, A, T, t_steps)
+        self.fokker_planc_reference = finite_volume_1d()
 
     def _drift(self, t, X, parameters):
         """Net charging rate (demand minus baseline) divided by capacity."""
@@ -103,3 +105,67 @@ class bm_1(bm):
             parameters[5],
         )
         return (t_eval.copy(), Xt, Ut, Bt, fXt, gUt, delta, Dt)
+
+    def diffusion_coefficient(self, X, sigma_x):
+        """BM1 process amplitude used by the transferred forecast pipeline."""
+        return self._diffusion(X, sigma_x)
+
+    def _fv_evolution_fields(self, parameters, sigma_x, t_eval, breakpoints, max_step):
+        """Build the shared FV fields and exact cache keys for fixed parameters."""
+        def drift(t, X):
+            return self._drift(t, X, parameters)
+
+        def diffusion(t, X):
+            return self.diffusion_coefficient(X, sigma_x)
+        options = {}
+        # In the standard BM1 equations time enters only through B(t), U(t).
+        # f/g and physical parameters are fixed pure inputs within this solve.
+        # Overrides keep the ordinary callback path; no stationarity is guessed.
+        standard = all(getattr(getattr(self, name), '__func__', None) is implementation for name, implementation in (('_drift', bm_1._drift), ('eval', bm.eval), ('l', bm.l), ('D', bm.D), ('diffusion_coefficient', bm_1.diffusion_coefficient)))
+        if isinstance(self.fokker_planc_reference, finite_volume_1d_cached) and standard:
+            if self.fokker_planc_reference.vectorized_inputs:
+                # Opt-in, like F3's blocked evaluator: both input callbacks
+                # must obey ordinary NumPy broadcasting. No fallback hides an
+                # invalid field. The grid is identical to the solver's grid.
+                grid, _ = self.fokker_planc_reference.build_time_grid(t_eval, breakpoints, max_step)
+                left = grid[:-1]
+                baseline = np.broadcast_to(self.B(left), left.shape)
+                price = np.broadcast_to(parameters[0](left), left.shape)
+                keys = dict(zip(left, zip(map(float, baseline), map(float, price))))
+                coefficient_key = keys.__getitem__
+            else:
+                def coefficient_key(time):
+                    return (float(self.B(time)), float(parameters[0](time)))
+            options['coefficient_key'] = coefficient_key
+        return drift, diffusion, options
+
+    def fokker_planc_reference_solver(self, initial_mass, parameters, sigma_x, *, t_eval=None, breakpoints=None, max_step=np.inf,):
+        """Solve stochastic bm_1 with the pure finite-volume Fokker-Planck reference.
+
+        The state distribution is represented by cell probability masses on
+        [0, 1]. The supplied initial_mass must already be normalized; this
+        reference does not clip or renormalize probability during evolution.
+        """
+        t_eval, parameters, sigma_x = bm_1_validation.reference_solver_inputs(self.t, t_eval, parameters, sigma_x)
+
+        drift, diffusion, options = self._fv_evolution_fields(parameters, sigma_x, t_eval, breakpoints, max_step,)
+        result = self.fokker_planc_reference.solve(t_eval, initial_mass, drift, diffusion, bounds=(0.0, 1.0), breakpoints=breakpoints, max_step=max_step, **options,)
+        x = result['x_grid']
+        cell_mass = result['cell_mass']
+        EXt = np.sum(cell_mass * x[None, :], axis=1)
+        EX2t = np.sum(cell_mass * np.square(x[None, :]), axis=1)
+        VarXt = np.maximum(EX2t - np.square(EXt), 0.0)
+        t = result['t']
+        Ut = np.asarray(parameters[0](t), dtype=float)
+        Bt = np.asarray(self.B(t), dtype=float)
+        EDt = np.empty(t.size, dtype=float)
+        for i, t_i in enumerate(t):
+            Ut_i = parameters[0](t_i)
+            Bt_i = self.B(t_i)
+            fXt_i = parameters[1](x)
+            gUt_i = parameters[2](Ut_i)
+            delta_i = self.l(fXt_i, gUt_i, parameters[4])
+            Dt_i = self.D(Bt_i, parameters[5], delta_i)
+            EDt[i] = np.sum(Dt_i * cell_mass[i])
+        return (t.copy(), x.copy(), result['density'].copy(), cell_mass.copy(), EXt, VarXt, Ut, Bt, EDt, result['diagnostics'].copy(),)
+
