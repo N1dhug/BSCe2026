@@ -50,7 +50,6 @@ def matched_origin(frame, normalized, origin, bm_output, wm_output, *, horizon=8
         try: wm = cached_wm4.loc[[(origin, lead) for lead in range(1, horizon + 1)]].to_dict(orient="records")
         except KeyError as exc: raise ValueError(f"WM4 cached forecasts lack a complete 8-hour horizon at {origin}.") from exc
     bm, wm = checks.complete_pair(bm, wm, origin, horizon)
-    conversion = extra["normalization"] if "normalization" in extra else None
     return bm, wm, extra
 
 
@@ -135,7 +134,7 @@ def save_results(rows, skipped, start, end, output_root):
     rows = rows.sort_values(["origin", "lead_hours"]).reset_index(drop=True)
     exact = grouped_scores(rows, "lead_hours", "lead_hours")
     windows = []
-    for horizon in range(1, 9):
+    for horizon in range(1, int(rows["lead_hours"].max()) + 1):
         part = grouped_scores(rows[rows["lead_hours"] <= horizon])
         part = part.rename(columns={"horizon": "horizon_hours"})
         part["horizon_hours"] = horizon
@@ -203,6 +202,10 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
         loaded = checks.saved_day(folder, options) if resume else None
         if loaded is not None:
             all_rows.extend(loaded.to_dict(orient="records"))
+            missing_path = folder / "skipped_origins.csv"
+            if missing_path.exists():
+                missing = pd.read_csv(missing_path)
+                skipped.extend([(pd.Timestamp(row["origin"]), str(row["reason"])) for _, row in missing.iterrows()])
             print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: restored {len(loaded)} paired forecasts", flush=True)
             continue
         day_rows, day_skipped = [], []
@@ -233,6 +236,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
         if day_rows:
             folder.mkdir(parents=True, exist_ok=True)
             pd.DataFrame(day_rows).to_csv(folder / "matched_forecasts.csv", index=False)
+            pd.DataFrame(day_skipped, columns=["origin", "reason"]).to_csv(folder / "skipped_origins.csv", index=False)
             (folder / "settings.json").write_text(json.dumps(options, indent=2), encoding="utf-8")
             all_rows.extend(day_rows)
         print(f"[{number}/{len(days)}] {day:%Y-%m-%d} matched={len(day_rows)//horizon}/24 "
