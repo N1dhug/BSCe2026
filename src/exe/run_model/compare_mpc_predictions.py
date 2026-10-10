@@ -14,6 +14,7 @@ matched windows. 24 origins per day, predicting lead hours 1..8.
 from argparse import ArgumentParser
 from pathlib import Path
 from time import perf_counter
+from uuid import uuid4
 import json
 
 import matplotlib.pyplot as plt
@@ -247,8 +248,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
             print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: baseline fitting failed ({exc})", flush=True)
             continue
 
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / "settings.json").write_text(json.dumps(options, indent=2), encoding="utf-8")
+        checks.write_settings(folder, options)
         for hour in range(24):
             origin = day + pd.Timedelta(hours=hour)
             if origin in complete: continue
@@ -260,14 +260,14 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
                     X0=X0, C=C, Xi=Xi, max_iterations=max_iterations,
                     max_nfev=max_nfev, state_maxiter=state_maxiter,
                     substeps=substeps, cached_wm4=cached_wm4, min_capacity=min_capacity)
-                day_rows.extend(normalized_rows(bm, wm, calibration, frame))
+                origin_rows = normalized_rows(bm, wm, calibration, frame)
+                # Never replace a destination possibly open in Excel / OneDrive.
+                # Each origin is committed once to a separate, immutable file.
+                checkpoint = checks.write_origin(folder, options, origin, origin_rows)
+                day_rows.extend(origin_rows)
                 complete.add(origin)
-                # Checkpoint every completed origin, rather than after all 24 fits.
-                # Atomic replacement retains a valid CSV even on interrupted runs.
-                staged = folder / "matched_forecasts.pending.csv"
-                pd.DataFrame(day_rows).to_csv(staged, index=False)
-                staged.replace(folder / "matched_forecasts.csv")
-                print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: checkpoint {len(complete)}/24 origins", flush=True)
+                print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: checkpoint {len(complete)}/24 origins "
+                    f"({checkpoint.name})", flush=True)
             except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError, KeyError) as exc:
                 day_skipped.append((origin, str(exc)))
                 pd.DataFrame(day_skipped, columns=["origin", "reason"]).to_csv(folder / "skipped_origins.csv", index=False)
@@ -275,6 +275,22 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
                 if fail_fast: raise
         pd.DataFrame(day_skipped, columns=["origin", "reason"]).to_csv(folder / "skipped_origins.csv", index=False)
         skipped.extend(day_skipped)
+        if day_rows:
+            # This optional convenient daily CSV may be locked by another
+            # Windows program. Forecasts remain safe in immutable checkpoints.
+            consolidated = folder / "matched_forecasts.csv"
+            staged = folder / f"matched_forecasts.{uuid4().hex}.pending.csv"
+            pd.DataFrame(day_rows).sort_values(["origin", "lead_hours"]).to_csv(staged, index=False)
+            try:
+                staged.replace(consolidated)
+            except PermissionError as exc:
+                print(f"[{day:%Y-%m-%d}] WARNING: Cannot replace locked {consolidated.name} "
+                    f"({exc}); forecast checkpoints are saved and will be resumed normally. "
+                    f"Close the CSV in Excel before rerunning.", flush=True)
+                try: staged.unlink()
+                except PermissionError: pass
+            else:
+                checks.consolidated_settings(folder, options)
         all_rows.extend(day_rows)
         print(f"[{number}/{len(days)}] {day:%Y-%m-%d} matched={len(complete)}/24 "
             f"skipped={len(day_skipped)}", flush=True)
