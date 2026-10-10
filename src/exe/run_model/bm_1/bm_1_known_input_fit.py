@@ -16,8 +16,9 @@ from src.method.bm_1_deterministic_fit import BM1DeterministicInputs
 
 
 def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
-                     initial=(12., 2., .5), bounds=((1., .05, 0.), (744., 10., 1.)),
+                     initial=(1., 2., .5), bounds=((1., .05, 0.), (744., 10., 1.)),
                      initial_x0=.5, c=None,
+                     prior_center=(1., 2., .5), prior_weight=.01,
                      observation_contract='hourly-mean', steps_per_hour=12,
                      max_nfev=500, numerical_tolerance=1e-5, observation_mask=None):
     """Return parameters, fitted demand/state, residuals, RMSE and stop status.
@@ -28,15 +29,17 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     with C/k/Xi in [0,1], starting at initial_x0. An explicit x0 is held fixed.
     An explicit c fixes capacity in hours and fits only the other parameters.
     There are no daily resets or warmup. Demand observations enter the fit
-    objective, not the state propagation. The objective
-    is unweighted least squares; C and k are optimized in log coordinates.
+    objective, not the state propagation. The objective is normalized demand
+    MSE + prior_weight * sum(log(parameter/prior_center)**2) over free C/k/Xi.
+    X0 is unpenalized. With prior_weight=0, use the original data-only sum of
+    squares. C and k are optimized in log coordinates; RMSE is always data-only.
     Bounds and initial contain [C_hours,k,Xi]. No baseline or curve fitting.
     observation_mask excludes unmeasured demand from the objective/RMSE while
     retaining every hourly input and the continuous state trajectory.
     """
     begun = perf_counter()
     initial = np.asarray(initial, float).copy()
-    lower, upper = np.asarray(bounds, float)
+    lower, upper = np.asarray(bounds, float).copy()
     if (initial.shape != (3,) or lower.shape != (3,) or upper.shape != (3,)
             or not np.isfinite(np.r_[initial, lower, upper]).all()
             or np.any(lower >= upper) or np.any(initial < lower) or np.any(initial > upper)
@@ -46,6 +49,16 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
         if not np.isfinite(c) or not lower[0] <= c <= upper[0]:
             raise ValueError("Fixed C must be finite and within the capacity bounds.")
         initial[0] = c
+    prior_center = np.asarray(prior_center, float)
+    if (prior_center.shape != (3,) or not np.isfinite(prior_center).all()
+            or np.any(prior_center <= 0) or prior_center[2] > 1
+            or not np.isfinite(prior_weight) or prior_weight < 0):
+        raise ValueError('Use positive finite prior centers [C,k,Xi] (Xi<=1) and nonnegative weight.')
+    if prior_weight > 0:
+        # log(Xi/center) diverges at zero; retain positive floating-point Xi.
+        lower[2] = max(lower[2], np.finfo(float).tiny)
+        if initial[2] <= 0:
+            raise ValueError('Initial Xi must be positive with a logarithmic prior.')
     estimate_x0 = x0 is None
     start_x0 = initial_x0 if estimate_x0 else x0
     if not np.isfinite(start_x0) or not 0 <= start_x0 <= 1:
@@ -81,11 +94,21 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
         return p
 
     calls = 0
+    data_scale = np.sqrt(np.count_nonzero(measured))
+
+    def prior_residual(p):
+        if prior_weight == 0:
+            return np.empty(0)
+        return np.sqrt(prior_weight) * np.log(p[:3][free[:3]] / prior_center[free[:3]])
 
     def residual(v):
         nonlocal calls
         calls += 1
-        return (inputs.solve(decode(v))['demand'] - observed)[measured]
+        p = decode(v)
+        data_error = (inputs.solve(p)['demand'] - observed)[measured]
+        if prior_weight == 0:
+            return data_error
+        return np.r_[data_error / data_scale, prior_residual(p)]
 
     initial_prediction = inputs.solve(np.r_[initial, start_x0])['demand']
     fitted_initial = full_initial
@@ -100,6 +123,9 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
     fine = inputs.refined().solve(p)
     numerical_error = float(np.max(np.abs(solved['demand'] - fine['demand'])))
     errors = solved['demand'] - observed
+    data_mse = float(np.mean(errors[measured]**2))
+    penalty = prior_residual(p)
+    prior_penalty = float(penalty @ penalty)
     numerical_passed = numerical_error <= numerical_tolerance
     status = 'converged' if fit.success and numerical_passed else (
         'numerics-failed' if not numerical_passed else 'not-converged')
@@ -114,7 +140,14 @@ def fit_known_inputs(baseline_time, baseline, prices, demand, x0=None, *,
         'baseline': inputs.b_mean.copy() if observation_contract == 'hourly-mean' else
                     np.interp(np.arange(inputs.n_hours), inputs.time, inputs.baseline),
         'demand': solved['demand'], 'residuals': errors,
-        'rmse': float(np.sqrt(np.mean(errors[measured]**2))),
+        'rmse': float(np.sqrt(data_mse)),
+        'regularization': {
+            'weight': float(prior_weight),
+            'center': dict(zip(['C_hours', 'k', 'Xi'], prior_center.tolist())),
+            'penalized_parameters': np.array(['C_hours', 'k', 'Xi'])[free[:3]].tolist() if prior_weight > 0 else [],
+            'data_mse_normalized': data_mse, 'penalty': prior_penalty,
+            'objective_mse_plus_penalty': data_mse + prior_penalty,
+        },
         'initial_rmse': float(np.sqrt(np.mean((initial_prediction[measured]-observed[measured])**2))),
         'fit_settings': {'parameter_names': parameter_names,
                          'initial': fitted_initial[free].tolist(), 'initial_x0': float(start_x0),
@@ -152,7 +185,11 @@ def main(argv=None):
     parser.add_argument('--initial-x0', type=float, default=.5,
         help='Initial guess for unknown X0 (default: 0.5; unused with --x0).')
     parser.add_argument('--output', required=True, type=Path)
-    parser.add_argument('--initial', nargs=3, type=float, default=(12., 2., .5), metavar=('C', 'K', 'XI'))
+    parser.add_argument('--initial', nargs=3, type=float, default=(1., 2., .5), metavar=('C', 'K', 'XI'))
+    parser.add_argument('--prior-center', nargs=3, type=float, default=(1., 2., .5), metavar=('C', 'K', 'XI'),
+        help='Centers of the logarithmic parameter penalty (default: 1 2 0.5).')
+    parser.add_argument('--prior-weight', type=float, default=.01,
+        help='Log-penalty weight relative to normalized demand MSE (default: 0.01; 0 disables).')
     parser.add_argument('--contract', choices=('hourly-mean', 'hourly-point'), default='hourly-mean')
     parser.add_argument('--steps-per-hour', type=int, default=12)
     parser.add_argument('--max-nfev', type=int, default=500)
@@ -202,6 +239,7 @@ def main(argv=None):
         demand = (np.array([float(row['demand']) for row in rows[:-1]])-args.demand_offset)/args.demand_scale
     result = fit_known_inputs(time-time[0], baseline, price, demand, args.x0, observation_mask=measured,
         initial=args.initial, initial_x0=args.initial_x0, c=args.c, observation_contract=args.contract,
+        prior_center=args.prior_center, prior_weight=args.prior_weight,
         steps_per_hour=args.steps_per_hour, max_nfev=args.max_nfev)
     args.output.mkdir(parents=True, exist_ok=False)
     with (args.output/'trajectory.csv').open('w', newline='', encoding='utf-8') as handle:
