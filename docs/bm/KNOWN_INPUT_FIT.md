@@ -31,7 +31,7 @@ Kun konvergens med bestået numerisk kontrol får status "converged".
 Kør fra repoets rod med projektets afhængigheder installeret:
 
 ```python
-from src.method.bm_1_known_input_fit import fit_known_inputs
+from src.exe.run_model.bm_1.bm_1_known_input_fit import fit_known_inputs
 
 result = fit_known_inputs(
     baseline_time, baseline, prices, observed_demand, x0=0.23,
@@ -61,7 +61,7 @@ Et andet initial kan bruges i et særskilt kald ved behov.
 En færdig syntetisk funktionsprøve følger med repoet:
 
 ```powershell
-python -m src.method.bm_1_known_input_fit --input files/input/bm_1/known_input_synthetic.csv --x0 0.23 --output bm-fit-synthetic
+python -m src.exe.run_model.bm_1.bm_1_known_input_fit --input files/input/bm_1/known_input_synthetic.csv --x0 0.23 --output bm-fit-synthetic
 ```
 
 Den indeholder 72 timer med kendt baseline 0.43 og demand fra den analytiske
@@ -87,7 +87,7 @@ Baseline i CSV er værdier ved timegrænser, ikke timegennemsnit.
 time_hours skal være sammenhængende fysiske timer; starten kan være forskellig fra 0.
 
 ```powershell
-python -m src.method.bm_1_known_input_fit --input bm_inputs.csv --x0 0.23 --output bm-fit
+python -m src.exe.run_model.bm_1.bm_1_known_input_fit --input bm_inputs.csv --x0 0.23 --output bm-fit
 ```
 
 Standardinput er allerede normaliseret. Rå enheder kan bruges med eksplicitte
@@ -95,7 +95,7 @@ skalaer: D_norm=(D_raw-demand_offset)/demand_scale, og tilsvarende for baseline;
 u=(price_raw-price_offset)/price_scale. Eksempel:
 
 ```powershell
-python -m src.method.bm_1_known_input_fit --input bm_inputs.csv --x0 0.23 --demand-offset 0 --demand-scale 1000 --price-offset -500 --price-scale 6500 --output bm-fit
+python -m src.exe.run_model.bm_1.bm_1_known_input_fit --input bm_inputs.csv --x0 0.23 --demand-offset 0 --demand-scale 1000 --price-offset -500 --price-scale 6500 --output bm-fit
 ```
 
 Skalaerne er kendte input og estimeres ikke. Vælg dem så modelinput ligger i [0,1].

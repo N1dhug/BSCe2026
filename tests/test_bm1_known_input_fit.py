@@ -8,7 +8,7 @@ import unittest
 import numpy as np
 
 from src.method.bm_1_deterministic_fit import exact_linear_interval
-from src.method.bm_1_known_input_fit import fit_known_inputs, main
+from src.exe.run_model.bm_1.bm_1_known_input_fit import fit_known_inputs, main
 
 
 def fixture():
