@@ -157,10 +157,13 @@ class compare_mpc_validation:
             except (OSError, ValueError, KeyError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
                 print(f"WARNING: ignored incomplete MPC checkpoint {path.name}: {exc}", flush=True)
                 continue
-            stamp = path.stat().st_mtime_ns
+            # Prefer a committed origin journal over an older daily CSV,
+            # even if Excel modifies the latter after the forecast completed.
+            priority = 1 if path.parent == cls.checkpoint_directory(folder, options) else 0
+            version = (priority, path.stat().st_mtime_ns)
             for origin, group in validated.groupby("origin"):
-                if origin not in latest or stamp >= latest[origin][0]:
-                    latest[origin] = (stamp, group)
+                if origin not in latest or version >= latest[origin][0]:
+                    latest[origin] = (version, group)
         if not latest: return None
         return pd.concat([part for _, part in latest.values()], ignore_index=True).sort_values(
             ["origin", "lead_hours"]).reset_index(drop=True)
