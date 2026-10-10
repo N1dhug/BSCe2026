@@ -141,11 +141,10 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", X0=0.5,
     checks.settings(steps_per_hour, max_state_iter, state_tol, tag, sigma_x,
         bm1_max_iterations, bm1_max_nfev, bm1_state_maxiter, substeps, x_steps, fp_max_step)
     if frame is None: frame, _ = aligned_wm4_data(tag)
-    frame = frame.sort_index()
+    frame = checks.source_frame(frame)
     path = wm4_forecasts if isinstance(wm4_forecasts, (str, Path)) else None
     wm4_rows = pd.read_csv(path) if path is not None else wm4_forecasts
-    if wm4_rows is not None and not isinstance(wm4_rows, pd.DataFrame):
-        raise TypeError("wm4_forecasts must be a saved CSV path or DataFrame.")
+    wm4_rows = checks.wm4_cache(wm4_rows, start, end)
     settings = {
         "tag": tag, "X0": float(X0), "sigma_x": float(sigma_x),
         "steps_per_hour": int(steps_per_hour), "max_state_iter": int(max_state_iter),
