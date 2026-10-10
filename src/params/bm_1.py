@@ -7,13 +7,13 @@ from scipy.optimize import least_squares
 class lsq_params:
     """Estimate BM1 response shapes and drift from observed demand.
 
-    The state X is propagated from the supplied, fixed X0. The deterministic
+    The state X is propagated from an X0 guess (fitted by default). The deterministic
     demand residual does not identify sigma_x; optional diffusion estimation
     inverts the demand map under a noise-free observation assumption.
     """
 
-    NAMES = ("alpha", "beta", "k", "Xi", "C")
-    BOUNDS = {"alpha": (0.05, 20.0), "beta": (0.05, 20.0), "k": (0.05, 12.0), "Xi": (1e-4, 1.0), "C": (1e-3, 100.0)}
+    NAMES = ("alpha", "beta", "k", "Xi", "C", "X0")
+    BOUNDS = {"alpha": (0.05, 20.0), "beta": (0.05, 20.0), "k": (0.05, 12.0), "Xi": (1e-4, 1.0), "C": (1e-3, 100.0), "X0": (0.0, 1.0)}
 
     def __init__(self, model): self.model = model
 
@@ -141,10 +141,10 @@ class lsq_params:
         if not fit.success: raise RuntimeError(f"BM1 diffusion least squares failed: {fit.message}")
         return {"sigma_x": float(np.sqrt(max(0.0, fit.x[0]))), "diffusion_fit": fit, "diffusion_samples": int(indices.size), "inferred_X": X}
 
-    def fit(self, input_data, X0, *, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, bounds=None, loss="linear", substeps=2, max_nfev=500, estimate_diffusion=False, sigma0=0.1, min_shape=1e-3):
-        """Minimize sum((D_model(t)-I_observed(t))**2) with fixed X0.
+    def fit(self, input_data, X0, *, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, fit_X0=True, bounds=None, loss="linear", substeps=2, max_nfev=500, estimate_diffusion=False, sigma0=0.1, min_shape=1e-3):
+        """Minimize sum((D_model(t)-I_observed(t))**2) from an X0 guess.
 
-        Fit alpha,beta,k,Xi,C; fixed C and/or Xi are optional. The price
+        Fit alpha,beta,k,Xi,C,X0; C, Xi or X0 may be fixed. The price
         response and state response use endpoint-normalized logistic functions.
         The optional sigma estimator assumes observed demand has no noise.
         """
@@ -159,10 +159,10 @@ class lsq_params:
             bds.update(bounds)
         bds = {key: tuple(np.asarray(value, dtype=float).reshape(-1)) for key, value in bds.items()}
         for key, pair in bds.items():
-            if len(pair) != 2 or not np.all(np.isfinite(pair)) or pair[0] <= 0.0 or pair[1] <= pair[0]: raise ValueError(f"Invalid bounds for {key}.")
+            if len(pair) != 2 or not np.all(np.isfinite(pair)) or pair[0] < (0.0 if key == "X0" else 1e-15) or pair[1] <= pair[0]: raise ValueError(f"Invalid bounds for {key}.")
         if bds["Xi"][1] > 1.0: raise ValueError("Xi cannot exceed 1.")
-        initial = {"alpha": alpha0, "beta": beta0, "k": k0, "Xi": Xi0, "C": C0}
-        fixed = {key: value for key, value in (("C", C), ("Xi", Xi)) if value is not None}
+        initial = {"alpha": alpha0, "beta": beta0, "k": k0, "Xi": Xi0, "C": C0, "X0": X0}
+        fixed = {key: value for key, value in (("C", C), ("Xi", Xi), ("X0", X0 if not fit_X0 else None)) if value is not None}
         for key, value in fixed.items():
             value = self._scalar(value, key)
             if not bds[key][0] <= value <= bds[key][1]: raise ValueError(f"{key} lies outside fit bounds.")
@@ -175,13 +175,13 @@ class lsq_params:
 
         def unpack(theta): return {**fixed, **dict(zip(free, theta))}
         def residual(theta):
-            _, predicted = self._predict(data, X0, unpack(theta), substeps)
+            _, predicted = self._predict(data, unpack(theta)["X0"], unpack(theta), substeps)
             return predicted[:data["I"].size] - data["I"]
 
         result = least_squares(residual, seeds, bounds=(lb, ub), loss=loss, max_nfev=max_nfev)
         if not result.success: raise RuntimeError(f"BM1 demand least squares failed: {result.message}")
         p = unpack(result.x)
-        X, D = self._predict(data, X0, p, substeps)
+        X, D = self._predict(data, p["X0"], p, substeps)
         f, g = self.response(p["alpha"]), self.response(p["beta"])
         extra = {"sigma_x": None, "diffusion_fit": None, "diffusion_samples": 0, "inferred_X": None}
         if estimate_diffusion:
@@ -190,7 +190,7 @@ class lsq_params:
             extra = self._diffusion(data, p, sigma0, substeps, min_shape)
         error = D[:len(data["I"])] - data["I"]
         return {
-            **p, "gain": float(p["Xi"] / p["C"]), "X0": X0, "f": f, "g": g,
+            **p, "gain": float(p["Xi"] / p["C"]), "X0": float(p["X0"]), "X0_seed": X0, "f": f, "g": g,
             "parameters": [self._price(input_data, data), f, g, float(p["C"]), float(p["k"]), float(p["Xi"])],
             "Time": data["Time"].copy(), "X": X, "D": D[:len(data["I"])], "I_data": data["I"].copy(),
             "mse": float(np.mean(error**2)), "rmse": float(np.sqrt(np.mean(error**2))),
