@@ -43,7 +43,7 @@ def posterior_mass(states, x_grid, prediction, observed, observation_sd, bandwid
 
 def predict_origin(frame, origin, output_model, *, X0=0.5, weeks=5, horizon=8, x_steps=101,
     max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2,
-    fp_max_step=0.25, prior_bandwidth=0.025, C=None, Xi=None):
+    fp_max_step=0.25, prior_bandwidth=0.025, C=None, Xi=None, min_capacity=0.05):
     """Return 1..horizon predictive demand distributions for one MPC origin.
 
     frame must be normalized to BM1's [0,1] I and U before calling.
@@ -51,11 +51,16 @@ def predict_origin(frame, origin, output_model, *, X0=0.5, weeks=5, horizon=8, x
     """
     origin = checks.origin(origin)
     checks.options(horizon, x_steps, fp_max_step, prior_bandwidth, substeps, weeks)
+    if not np.isfinite(min_capacity) or not 0.001 <= min_capacity < lsq_params.BOUNDS["C"][1]:
+        raise ValueError("min_capacity must be finite and in [0.001, 100).")
+    if C is not None and C < min_capacity:
+        raise ValueError(f"Fixed BM1 C={C} is smaller than min_capacity={min_capacity}; lower --min-capacity explicitly.")
     training_origins = [origin - pd.Timedelta(weeks=k) for k in range(weeks, 0, -1)]
     training = [checks.window(frame, t, output_model, hours=24) for t in training_origins]
     model = bm_1(held_signal(training[0]["B"]), lambda t: 0.5, (0.0, 24.0), 25)
     fitted = lsq_params(model).fit_many(training, X0, C=C, Xi=Xi, max_iterations=max_iterations,
-        max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps)
+        max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps,
+        fit_bounds={"C": (float(min_capacity), lsq_params.BOUNDS["C"][1])})
     if fitted["warning"]:
         print(f"[BM1 MPC {origin:%Y-%m-%d %H:%M}] WARNING: {fitted['warning']}", flush=True)
     diffusion = historical_diffusion_params().fit_many(training, fitted, substeps=substeps)
@@ -120,7 +125,7 @@ def predict_origin(frame, origin, output_model, *, X0=0.5, weeks=5, horizon=8, x
 
 def predict_day(frame, day, *, X0=0.5, horizon=8, x_steps=101, max_iterations=3,
     max_nfev=120, state_maxiter=60, substeps=2, fp_max_step=0.25, prior_bandwidth=0.025,
-    C=None, Xi=None, skip_errors=False):
+    C=None, Xi=None, skip_errors=False, min_capacity=0.05):
     """Apply the same 24h five-week historical fitting at all 24 hourly origins."""
     day = checks.origin(pd.Timestamp(day).normalize())
     frame = checks.frame(frame)
@@ -132,7 +137,8 @@ def predict_day(frame, day, *, X0=0.5, horizon=8, x_steps=101, max_iterations=3,
             predicted, diagnostics = predict_origin(frame, origin, baseline, X0=X0,
                 horizon=horizon, x_steps=x_steps, max_iterations=max_iterations,
                 max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps,
-                fp_max_step=fp_max_step, prior_bandwidth=prior_bandwidth, C=C, Xi=Xi)
+                fp_max_step=fp_max_step, prior_bandwidth=prior_bandwidth, C=C, Xi=Xi,
+                min_capacity=min_capacity)
             forecasts.extend(predicted)
             origins.append({"origin": origin, **diagnostics["diffusion"],
                 "fit_converged": diagnostics["fit"]["converged"],
@@ -162,6 +168,8 @@ def main():
     parser.add_argument("--state-maxiter", type=int, default=60)
     parser.add_argument("--fp-max-step", type=float, default=0.25)
     parser.add_argument("--prior-bandwidth", type=float, default=0.025)
+    parser.add_argument("--min-capacity", type=float, default=0.05,
+        help="Minimum BM1 fitted capacity C; prevents extremely expensive stiff RK4 candidate solves (default 0.05).")
     parser.add_argument("--skip-errors", action="store_true")
     parser.add_argument("--compare-wm4", action="store_true", help="Compare BM1 against WM4 MPC using identical 1-8h leads on this single day.")
     parser.add_argument("--wm4-forecasts", type=Path, help="Optional saved WM4 mpc_forecasts.csv with all requested leads.")
@@ -181,6 +189,7 @@ def main():
             max_nfev=args.max_nfev, state_maxiter=args.state_maxiter,
             steps_per_hour=args.steps_per_hour, max_state_iter=args.wm4_max_state_iter,
             state_tol=args.wm4_state_tol, wm4_forecasts=args.wm4_forecasts,
+            min_capacity=args.min_capacity,
             output_root=args.output if args.output is not None else COMPARISON_OUTPUT,
             resume=not args.no_resume, fail_fast=not args.skip_errors)
     raw, _ = aligned_wm4_data(args.tag)
@@ -188,7 +197,8 @@ def main():
     prediction, fit_diagnostics, skipped = predict_day(normalized, day, X0=args.X0, horizon=args.horizon,
         x_steps=args.x_steps, max_iterations=args.max_iterations, max_nfev=args.max_nfev,
         state_maxiter=args.state_maxiter, fp_max_step=args.fp_max_step,
-        prior_bandwidth=args.prior_bandwidth, skip_errors=args.skip_errors)
+        prior_bandwidth=args.prior_bandwidth, skip_errors=args.skip_errors,
+        min_capacity=args.min_capacity)
     if prediction.empty: raise RuntimeError("BM1 MPC did not complete any forecast origins.")
     for col in ("I_BM1", "lower_68", "upper_68", "lower_95", "upper_95"):
         prediction[col] = scale.bm1_to_wm4(prediction[col].to_numpy(dtype=float), calibration)
