@@ -74,7 +74,7 @@ def plot_saved(day, *, output_root=OUTPUT, tag="MED", bins=180, bandwidth=0.012,
     bins, bandwidth, x_steps, fp_max_step, substeps = checks.settings(bins, bandwidth, x_steps, fp_max_step, substeps)
     directory = Path(output_root) / f"{start:%Y-%m-%d}"
     hourly, metadata = checks.saved(directory, start)
-    actual, actual_source = checks.actual_from_saved_or_import(hourly, metadata, tag, import_actual)
+    actual, actual_source = checks.actual_from_saved_or_import(hourly, metadata, metadata.get("tag", tag), import_actual)
     demand_values, weights, reconstructed_mean, method = reconstructed_demand(hourly, metadata,
         x_steps=x_steps, fp_max_step=fp_max_step, substeps=substeps)
     y_edges, pdf = demand_heatmap(demand_values, weights, bins=bins, bandwidth=bandwidth)
