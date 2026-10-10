@@ -141,7 +141,7 @@ class lsq_params:
             **extra,
         }
 
-    def fit_many(self, datasets, X0=0.5, *, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, max_iterations=6, min_improvement=1e-6, max_nfev=150, state_maxiter=100, substeps=2, loss="linear"):
+    def fit_many(self, datasets, X0=0.5, *, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, max_iterations=6, min_improvement=1e-6, max_nfev=150, state_maxiter=100, substeps=2, loss="linear", fit_bounds=None):
         """Alternating pooled-theta / separate-X0 demand LSQ for matching days.
 
         First fit one common theta from five days initialized at the same X0.
@@ -157,7 +157,7 @@ class lsq_params:
             k0=k0, C0=C0, Xi0=Xi0, max_iterations=max_iterations,
             min_improvement=min_improvement, max_nfev=max_nfev,
             state_maxiter=state_maxiter, substeps=substeps,
-            names=self.NAMES, bounds=self.BOUNDS,
+            names=self.NAMES, bounds=self.BOUNDS, fit_bounds=fit_bounds,
         )
         def unpack(theta): return {**fixed, **dict(zip(free, theta))}
         def residual(theta, states):
