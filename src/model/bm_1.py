@@ -11,6 +11,7 @@ class bm_1(bm):
     """Battery Model 1 with normalized state X in [0, 1].
 
     dX/dt = (D(X,U,B) - B) / C.
+    The separate Ito diffusion coefficient is sigma_X * X * (1 - X).
     A(t) is the tracking target, B(t) the baseline and U(t) the price input.
     Response functions and physical parameters are supplied to each solve.
     """
@@ -23,6 +24,17 @@ class bm_1(bm):
         U, f, g, C, k, Xi = parameters
         _, Bt, _, _, _, Dt = self.eval(t, X, U, f, g, k, Xi)
         return np.asarray((Dt - Bt) / C, dtype=float)
+
+    @staticmethod
+    def _diffusion(X, sigma_X):
+        """Return b(X) = sigma_X * X * (1 - X) for scalar or array states.
+
+        This is the Ito coefficient, without a time-step factor or Wiener draw.
+        sigma_X has units of inverse square root of the model time unit.
+        The deterministic solver does not use this coefficient.
+        """
+        X, sigma_X = bm_1_validation.diffusion_inputs(X, sigma_X)
+        return sigma_X * X * (1.0 - X)
 
     def deterministic_solver(
         self,

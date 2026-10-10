@@ -4,7 +4,18 @@ from src.validation.model.bm import bm_validation
 
 
 class bm_1_validation:
-    """Validation for bm_1 deterministic solver entry points."""
+    """Validation for bm_1 deterministic solver and diffusion entry points."""
+
+    @staticmethod
+    def diffusion_inputs(X, sigma_X):
+        """Require real states in [0, 1] and a finite nonnegative intensity."""
+        if np.iscomplexobj(X) or np.iscomplexobj(sigma_X):
+            raise ValueError('X and sigma_X must be real.')
+        X = bm_validation.bounded_array(X, 0.0, 1.0, 'X', tol=0.0)
+        sigma_X = bm_validation.finite_scalar(sigma_X, 'sigma_X')
+        if sigma_X < 0.0:
+            raise ValueError('sigma_X must be nonnegative.')
+        return X, sigma_X
 
     @staticmethod
     def model_inputs(init_cond, parameters):
