@@ -13,6 +13,7 @@ matched windows. 24 origins per day, predicting lead hours 1..8.
 
 from argparse import ArgumentParser
 from pathlib import Path
+from time import perf_counter
 import json
 
 import matplotlib.pyplot as plt
@@ -39,11 +40,16 @@ def matched_origin(frame, normalized, origin, bm_output, wm_output, *, horizon=8
     fp_max_step=0.25, prior_bandwidth=0.025, X0=0.5, C=None, Xi=None,
     max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2, cached_wm4=None, min_capacity=0.05):
     """Construct matching BM1 and WM4 forecasts at exactly the same origin."""
+    started = perf_counter()
+    print(f"[{origin:%Y-%m-%d %H:%M}] BM1 fitting / sigma / forecast started", flush=True)
     bm, extra = bm1_predict_origin(normalized, origin, bm_output, X0=X0,
         horizon=horizon, x_steps=x_steps, fp_max_step=fp_max_step,
         prior_bandwidth=prior_bandwidth, max_iterations=max_iterations,
         max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps, C=C, Xi=Xi,
         min_capacity=min_capacity)
+    print(f"[{origin:%Y-%m-%d %H:%M}] BM1 completed in {perf_counter() - started:.1f}s; "
+        f"WM4 {'loaded' if cached_wm4 is not None else 'fitting'} started", flush=True)
+    wm_started = perf_counter()
     if cached_wm4 is None:
         wm, state = _mpc_origin(frame, origin, 5, steps_per_hour, wm_output, horizon,
             max_state_iter=max_state_iter, state_tol=state_tol)
@@ -51,6 +57,8 @@ def matched_origin(frame, normalized, origin, bm_output, wm_output, *, horizon=8
         try: wm = cached_wm4.loc[[(origin, lead) for lead in range(1, horizon + 1)]].to_dict(orient="records")
         except KeyError as exc: raise ValueError(f"WM4 cached forecasts lack a complete 8-hour horizon at {origin}.") from exc
     bm, wm = checks.complete_pair(bm, wm, origin, horizon)
+    print(f"[{origin:%Y-%m-%d %H:%M}] WM4 completed in {perf_counter() - wm_started:.1f}s; "
+        f"total origin {perf_counter() - started:.1f}s", flush=True)
     return bm, wm, extra
 
 
