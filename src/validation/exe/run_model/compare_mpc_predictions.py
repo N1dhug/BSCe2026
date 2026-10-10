@@ -1,6 +1,8 @@
 """Validation for matched 1-8h BM1 / WM4 MPC evaluation."""
 
 from pathlib import Path
+from hashlib import sha256
+from uuid import uuid4
 import json
 
 import numpy as np
@@ -55,26 +57,88 @@ class compare_mpc_validation:
             raise ValueError(f"{origin}: target timestamps disagree across BM1 and WM4.")
         return b, w
 
+    REQUIRED = {"origin", "origin_day", "target_time", "lead_hours", "I_observed", "I_BM1", "I_WM4",
+        "BM1_lower_68", "BM1_upper_68", "BM1_lower_95", "BM1_upper_95",
+        "WM4_lower_68", "WM4_upper_68", "WM4_lower_95", "WM4_upper_95"}
+
     @staticmethod
-    def saved_day(folder, options):
+    def checkpoint_directory(folder, options):
+        """Separate journals for distinct model settings; never overwrite a running CSV."""
+        fingerprint = sha256(json.dumps(options, sort_keys=True).encode("utf-8")).hexdigest()[:20]
+        return Path(folder) / "origin_checkpoints" / fingerprint
+
+    @classmethod
+    def checked_rows(cls, frame, horizon, *, day=None):
+        if frame.empty: raise ValueError("Checkpoint has no forecast rows.")
+        missing = cls.REQUIRED - set(frame.columns)
+        if missing: raise ValueError("Checkpoint lacks " + ", ".join(sorted(missing)))
+        if frame.duplicated(subset=("origin", "lead_hours")).any():
+            raise ValueError("Checkpoint has duplicated origin/lead rows.")
+        frame = frame.copy()
+        for col in ("origin", "origin_day", "target_time"): frame[col] = pd.to_datetime(frame[col])
+        frame["lead_hours"] = pd.to_numeric(frame["lead_hours"], errors="raise").astype(int)
+        for col in ("I_observed", "I_BM1", "I_WM4", "BM1_lower_68", "BM1_upper_68",
+            "BM1_lower_95", "BM1_upper_95", "WM4_lower_68", "WM4_upper_68",
+            "WM4_lower_95", "WM4_upper_95"):
+            if not np.all(np.isfinite(pd.to_numeric(frame[col], errors="coerce"))):
+                raise ValueError(f"Checkpoint has invalid {col}.")
+        for origin, group in frame.groupby("origin"):
+            if len(group) != horizon or not np.array_equal(
+                np.sort(group["lead_hours"].to_numpy(dtype=int)), np.arange(1, horizon + 1)
+            ): raise ValueError(f"Checkpoint {origin} has incomplete prediction leads.")
+            if day is not None and pd.Timestamp(origin).normalize() != pd.Timestamp(day).normalize():
+                raise ValueError(f"Checkpoint belongs to a different day: {origin}.")
+            expected = origin + pd.to_timedelta(group["lead_hours"], unit="h")
+            if not np.array_equal(group["target_time"].to_numpy(), expected.to_numpy()):
+                raise ValueError(f"Checkpoint {origin} has inconsistent target timestamps.")
+        return frame.sort_values(["origin", "lead_hours"]).reset_index(drop=True)
+
+    @classmethod
+    def write_origin(cls, folder, options, origin, rows):
+        """Commit one immutable origin CSV; Windows-locked aggregate files are untouched."""
         folder = Path(folder)
-        csv, info = folder / "matched_forecasts.csv", folder / "settings.json"
-        if not csv.exists() or not info.exists(): return None
+        frame = cls.checked_rows(pd.DataFrame(rows), int(options["horizon"]), day=origin)
+        if frame["origin"].nunique() != 1 or frame["origin"].iloc[0] != pd.Timestamp(origin):
+            raise ValueError(f"Invalid origin checkpoint for {origin}.")
+        directory = cls.checkpoint_directory(folder, options)
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{pd.Timestamp(origin):%H}_{uuid4().hex}.csv"
+        # A unique filename with exclusive creation avoids Windows os.replace on
+        # a destination held open by Excel, OneDrive or another process.
+        with path.open("x", encoding="utf-8", newline="") as handle:
+            frame.to_csv(handle, index=False)
+            handle.flush()
+        return path
+
+    @classmethod
+    def saved_day(cls, folder, options):
+        """Recover the latest valid version of each origin from legacy and journal files.
+
+        The previous implementation can leave matched_forecasts.pending.csv
+        when Windows prevents replacement of an opened matched_forecasts.csv.
+        Both files are recoverable. Journal files are validated independently,
+        so an interrupted write cannot masquerade as a complete forecast.
+        """
+        folder = Path(folder)
+        info = folder / "settings.json"
+        if not info.is_file(): return None
         with info.open(encoding="utf-8") as handle: previous = json.load(handle)
         if previous != options: return None
-        frame = pd.read_csv(csv, parse_dates=["origin", "target_time", "origin_day"])
-        required = {"origin", "target_time", "lead_hours", "I_observed", "I_BM1", "I_WM4",
-            "BM1_lower_68", "BM1_upper_68", "BM1_lower_95", "BM1_upper_95",
-            "WM4_lower_68", "WM4_upper_68", "WM4_lower_95", "WM4_upper_95"}
-        if missing := required - set(frame.columns):
-            raise ValueError("Cached matched MPC forecasts missing " + ", ".join(sorted(missing)))
-        horizon = int(options["horizon"])
-        if frame.duplicated(subset=("origin", "lead_hours")).any():
-            raise ValueError("Cached MPC comparison contains duplicate origin/lead combinations.")
-        for origin, group in frame.groupby("origin"):
-            if not np.array_equal(np.sort(group["lead_hours"].to_numpy(dtype=int)), np.arange(1, horizon + 1)):
-                raise ValueError(f"Cached origin {origin} contains incomplete or invalid prediction leads.")
-            expected = pd.Timestamp(origin) + pd.to_timedelta(group["lead_hours"], unit="h")
-            if not np.array_equal(pd.DatetimeIndex(group["target_time"]).to_numpy(), pd.DatetimeIndex(expected).to_numpy()):
-                raise ValueError(f"Cached origin {origin} has inconsistent prediction target times.")
-        return frame
+        sources = [folder / "matched_forecasts.csv", folder / "matched_forecasts.pending.csv"]
+        sources += sorted(cls.checkpoint_directory(folder, options).glob("*.csv"))
+        latest = {}
+        for path in sources:
+            if not path.is_file(): continue
+            try:
+                frame = pd.read_csv(path)
+                validated = cls.checked_rows(frame, int(options["horizon"]), day=folder.name)
+            except (OSError, ValueError, KeyError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
+                print(f"WARNING: ignored incomplete MPC checkpoint {path.name}: {exc}", flush=True)
+                continue
+            stamp = path.stat().st_mtime_ns
+            for origin, group in validated.groupby("origin"):
+                if origin not in latest or stamp >= latest[origin][0]:
+                    latest[origin] = (stamp, group)
+        if not latest: return None
+        return pd.concat([part for _, part in latest.values()], ignore_index=True).sort_values(
+            ["origin", "lead_hours"]).reset_index(drop=True)
