@@ -137,7 +137,7 @@ def predict_day(frame, day, *, X0=0.5, horizon=8, x_steps=101, max_iterations=3,
     return pd.DataFrame(forecasts), pd.DataFrame(origins), skipped
 
 def main():
-    """One-day BM1 MPC executable; compare_mpc_predictions handles both models."""
+    """Run standalone BM1 MPC, or evaluate BM1 and WM4 on one identical day."""
     from argparse import ArgumentParser
     from src.exe.run_model.wm_4.fit_daily import aligned_wm4_data
     from src.tools.forecast_metrics import forecast_metrics
@@ -155,9 +155,26 @@ def main():
     parser.add_argument("--fp-max-step", type=float, default=0.25)
     parser.add_argument("--prior-bandwidth", type=float, default=0.025)
     parser.add_argument("--skip-errors", action="store_true")
-    parser.add_argument("--output", type=Path, default=OUTPUT)
+    parser.add_argument("--compare-wm4", action="store_true", help="Compare BM1 against WM4 MPC using identical 1-8h leads on this single day.")
+    parser.add_argument("--wm4-forecasts", type=Path, help="Optional saved WM4 mpc_forecasts.csv with all requested leads.")
+    parser.add_argument("--steps-per-hour", type=int, default=2, help="WM4 numerical steps per hour, when comparing.")
+    parser.add_argument("--wm4-max-state-iter", type=int, default=12, help="WM4 alternating state-fit iterations, when comparing.")
+    parser.add_argument("--wm4-state-tol", type=float, default=1e-8)
+    parser.add_argument("--no-resume", action="store_true", help="Refit comparison even if a matching daily checkpoint exists.")
+    parser.add_argument("--output", type=Path, help="Output root; defaults to the BM1 or comparison output directory.")
     args = parser.parse_args()
     day = checks.origin(pd.Timestamp(args.day).normalize())
+
+    if args.compare_wm4:
+        from src.exe.run_model.compare_mpc_predictions import OUTPUT as COMPARISON_OUTPUT, run_all_days
+        return run_all_days(day, day, tag=args.tag, horizon=args.horizon, X0=args.X0,
+            x_steps=args.x_steps, fp_max_step=args.fp_max_step,
+            prior_bandwidth=args.prior_bandwidth, max_iterations=args.max_iterations,
+            max_nfev=args.max_nfev, state_maxiter=args.state_maxiter,
+            steps_per_hour=args.steps_per_hour, max_state_iter=args.wm4_max_state_iter,
+            state_tol=args.wm4_state_tol, wm4_forecasts=args.wm4_forecasts,
+            output_root=args.output if args.output is not None else COMPARISON_OUTPUT,
+            resume=not args.no_resume, fail_fast=not args.skip_errors)
     raw, _ = aligned_wm4_data(args.tag)
     normalized, calibration = scale.bm1_scale(raw, day)
     prediction, fit_diagnostics, skipped = predict_day(normalized, day, X0=args.X0, horizon=args.horizon,
@@ -168,7 +185,7 @@ def main():
     for col in ("I_BM1", "lower_68", "upper_68", "lower_95", "upper_95"):
         prediction[col] = scale.bm1_to_wm4(prediction[col].to_numpy(dtype=float), calibration)
     prediction["I_observed"] = raw["I"].reindex(pd.DatetimeIndex(prediction["target_time"])).to_numpy(dtype=float)
-    output = args.output / f"{day:%Y-%m-%d}"
+    output = (args.output if args.output is not None else OUTPUT) / f"{day:%Y-%m-%d}"
     output.mkdir(parents=True, exist_ok=True)
     prediction.to_csv(output / "bm1_mpc_forecasts.csv", index=False)
     fit_diagnostics.to_csv(output / "historical_diffusion.csv", index=False)
