@@ -20,6 +20,7 @@ from scipy.ndimage import gaussian_filter1d
 
 from src.model.bm_1 import bm_1
 from src.params.bm_1 import lsq_params
+from src.tools.forecast_metrics import forecast_metrics, predictive_intervals
 from src.exe.run_model.bm_1.predict_daily import held_signal
 from src.validation.exe.run_model.bm_1.plot_prediction import bm_1_plot_validation as checks
 
@@ -77,12 +78,14 @@ def plot_saved(day, *, output_root=OUTPUT, tag="MED", bins=180, bandwidth=0.012,
     actual, actual_source = checks.actual_from_saved_or_import(hourly, metadata, metadata.get("tag", tag), import_actual)
     demand_values, weights, reconstructed_mean, method = reconstructed_demand(hourly, metadata,
         x_steps=x_steps, fp_max_step=fp_max_step, substeps=substeps)
+    intervals = predictive_intervals(demand_values, weights)
     y_edges, pdf = demand_heatmap(demand_values, weights, bins=bins, bandwidth=bandwidth)
 
     predicted = hourly["I_predicted"].to_numpy(dtype=float)
     baseline = hourly["B"].to_numpy(dtype=float)
     errors = predicted - actual
-    mse, bias, mae = float(np.mean(errors ** 2)), float(np.mean(errors)), float(np.mean(np.abs(errors)))
+    scores = forecast_metrics(actual, predicted, intervals)
+    mse, bias, mae = scores["mse"], scores["bias"], scores["mae"]
     difference = float(np.max(np.abs(reconstructed_mean - predicted)))
     dates = hourly.index
     date_edges = pd.date_range(start, periods=25, freq="h")
@@ -97,6 +100,8 @@ def plot_saved(day, *, output_root=OUTPUT, tag="MED", bins=180, bandwidth=0.012,
     mesh = ax.pcolormesh(mdates.date2num(date_edges), y_edges, pdf.T, cmap="magma", shading="flat", rasterized=True)
     colorbar = fig.colorbar(mesh, ax=ax, pad=0.012, fraction=0.027)
     colorbar.set_label("Demand probability density (normalized)")
+    ax.fill_between(dates, *intervals[95], color="#93dbeb", alpha=0.17, label="Central 95% interval")
+    ax.fill_between(dates, *intervals[68], color="#5fdfed", alpha=0.3, label="Central 68% interval")
     ax.plot(dates, predicted, color="#39e4f1", linewidth=2.3, label="Saved BM1 mean forecast")
     ax.plot(dates, actual, color="white", linewidth=2.2, linestyle="-", marker="o", markersize=3.8,
         markeredgecolor="black", markeredgewidth=0.5, label="Actual demand")
@@ -124,9 +129,15 @@ def plot_saved(day, *, output_root=OUTPUT, tag="MED", bins=180, bandwidth=0.012,
     if save:
         directory.mkdir(parents=True, exist_ok=True)
         fig.savefig(destination, dpi=190, bbox_inches="tight")
+        cover = pd.DataFrame({"I_observed": actual, "I_predicted": predicted}, index=hourly.index)
+        for level, (lower, upper) in intervals.items():
+            cover[f"lower_{level}"], cover[f"upper_{level}"] = lower, upper
+            cover[f"within_{level}"] = (actual >= lower - 1e-12) & (actual <= upper + 1e-12)
+        cover.to_csv(directory / "coverage_hourly.csv", index_label="time")
+        pd.DataFrame([scores]).to_csv(directory / "coverage_summary.csv", index=False)
     if show: plt.show()
     plt.close(fig)
-    return {"plot": destination if save else None, "mse": mse, "mae": mae, "bias": bias,
+    return {"plot": destination if save else None, **scores, "intervals": intervals,
         "heatmap": pdf, "heatmap_density_edges": y_edges, "method": method,
         "actual_source": actual_source, "max_reconstruction_difference": difference}
 
@@ -149,7 +160,16 @@ def main():
         substeps=args.substeps, import_actual=not args.saved_only, show=args.show)
     print(f"Plot: {result['plot']}")
     print(f"Demand source: {result['actual_source']}; heatmap: {result['method']}")
-    print(f"MSE={result['mse']:.7f}; MAE={result['mae']:.7f}; bias={result['bias']:+.7f}")
+    print(f"MSE={result['mse']:.7f}; RMSE={result['rmse']:.7f}; MAE={result['mae']:.7f}; bias={result['bias']:+.7f}")
+    for level in (68, 95):
+        print(f"Central {level}% coverage: {result[f'coverage_{level}_pct']:.2f}% "
+            f"({result[f'coverage_{level}_count']}/{result['n']} hours); "
+            f"nominal gap {result[f'coverage_{level}_gap_pp']:+.2f} pp; "
+            f"mean width {result[f'width_{level}_mean']:.6f}")
+    if "empirical" in result["method"].lower():
+        print("Uncertainty includes fitted initial-state dispersion only (sigma_x=0); no process diffusion.")
+    else:
+        print("Coverage measures full BM1 Fokker-Planck demand distribution; heatmap KDE is visual only.")
     if result["max_reconstruction_difference"] > 1e-3:
         print(f"Note: reconstructed distribution mean differs from saved prediction by up to {result['max_reconstruction_difference']:.6f}; verify original --substeps/--x-steps/--fp-max-step settings.")
     return result
