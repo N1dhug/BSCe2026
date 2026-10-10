@@ -76,7 +76,7 @@ def score_forecast(forecast,observations):
     if not isinstance(observations,pd.Series) or observations.index.has_duplicates:
         raise ValueError('Scoring requires a uniquely indexed raw-demand Series.')
     result=deepcopy(forecast);table=result['predictions']
-    actual=pd.to_numeric(observations.reindex(table.index),errors='coerce').to_numpy(dtype=float)
+    actual=pd.to_numeric(observations.reindex(table.index),errors='coerce').to_numpy(dtype=float, copy=True)
     actual[~np.isfinite(actual)]=np.nan;mask=np.isfinite(actual)
     table['observed']=actual;table['scored']=mask
     scales=result['manifest']['scales']
