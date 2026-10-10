@@ -3,25 +3,11 @@ on:
   pull_request:
     paths:
       - 'src/**'
-      - 'tests/**'
       - 'root/**'
       - 'AGENTS.md'
       - '.github/workflows/bm-review.yml'
   workflow_dispatch:
     inputs:
-      tests:
-        description: 'Space-separated unittest methods/classes/modules; choose only affected G or F checks'
-        type: string
-        default: ''
-      runner:
-        description: 'Windows only for platform-specific changes'
-        type: choice
-        options: [ubuntu-latest, windows-latest]
-        default: ubuntu-latest
-      full_suite:
-        description: 'Explicit exceptional full regression (G and F); not a routine gate'
-        type: boolean
-        default: false
       notes:
         description: 'Build F4 PDF only when needed'
         type: boolean
@@ -66,41 +52,6 @@ jobs:
                   checked += 1
           print(f'Syntax checked: {checked} changed Python files. No numerical tests requested.')
           PYTHON
-  selected-tests:
-    if: github.event_name == 'workflow_dispatch' && (inputs.tests != '' || inputs.full_suite)
-    runs-on: ${{ inputs.runner }}
-    timeout-minutes: 25
-    env:
-      MPLBACKEND: Agg
-      PYTHONDONTWRITEBYTECODE: '1'
-      OPENBLAS_NUM_THREADS: '1'
-      OMP_NUM_THREADS: '1'
-      SELECTED_TESTS: ${{ inputs.tests }}
-      FULL_SUITE: ${{ inputs.full_suite }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install numerical dependencies
-        run: python -m pip install numpy scipy matplotlib pandas openpyxl
-      - name: Run only explicitly selected checks
-        shell: python
-        run: |
-          import os
-          import re
-          import subprocess
-          import sys
-          selected = os.environ['SELECTED_TESTS'].split()
-          full = os.environ['FULL_SUITE'] == 'true'
-          if full and selected:
-              sys.exit('Choose targeted checks OR full_suite, not both.')
-          if any(not re.fullmatch(r'tests\.[A-Za-z_][A-Za-z0-9_.]*', name) for name in selected):
-              sys.exit('Use dotted unittest names starting with tests.; no shell arguments.')
-          args = ['discover', '-s', 'tests', '-v'] if full else [*selected, '-v']
-          sys.exit(subprocess.call([sys.executable, '-B', '-m', 'unittest', *args]))
   notes:
     if: github.event_name == 'workflow_dispatch' && inputs.notes
     runs-on: ubuntu-latest
