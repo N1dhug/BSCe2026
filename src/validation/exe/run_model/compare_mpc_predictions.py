@@ -110,6 +110,24 @@ class compare_mpc_validation:
             handle.flush()
         return path
 
+    @staticmethod
+    def write_settings(folder, options):
+        """Keep provenance for an older consolidated CSV when settings change."""
+        folder = Path(folder)
+        folder.mkdir(parents=True, exist_ok=True)
+        info = folder / "settings.json"
+        marker = folder / "matched_forecasts.settings.json"
+        previous = json.loads(info.read_text(encoding="utf-8")) if info.exists() else None
+        if previous is not None and not marker.exists():
+            marker.write_text(json.dumps(previous, indent=2), encoding="utf-8")
+        if previous != options:
+            info.write_text(json.dumps(options, indent=2), encoding="utf-8")
+
+    @staticmethod
+    def consolidated_settings(folder, options):
+        marker = Path(folder) / "matched_forecasts.settings.json"
+        marker.write_text(json.dumps(options, indent=2), encoding="utf-8")
+
     @classmethod
     def saved_day(cls, folder, options):
         """Recover the latest valid version of each origin from legacy and journal files.
@@ -124,7 +142,11 @@ class compare_mpc_validation:
         if not info.is_file(): return None
         with info.open(encoding="utf-8") as handle: previous = json.load(handle)
         if previous != options: return None
-        sources = [folder / "matched_forecasts.csv", folder / "matched_forecasts.pending.csv"]
+        sources = []
+        marker = folder / "matched_forecasts.settings.json"
+        legacy_options = json.loads(marker.read_text(encoding="utf-8")) if marker.exists() else previous
+        if legacy_options == options:
+            sources.extend((folder / "matched_forecasts.csv", folder / "matched_forecasts.pending.csv"))
         sources += sorted(cls.checkpoint_directory(folder, options).glob("*.csv"))
         latest = {}
         for path in sources:
