@@ -154,6 +154,7 @@ def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=N
         training_rows.append({"day": date, "X0": state, **checks.metrics(data["I"], predicted),
             "baseline_mse": checks.metrics(data["I"], data["B"][:HOURS])["mse"]})
     summary = pd.DataFrame(training_rows).set_index("day")
+    if fitted["warning"]: print(f"[BM1 day-ahead {start:%Y-%m-%d}] WARNING: {fitted['warning']}", flush=True)
     metrics = None
     if score:
         actual = frame.reindex(index)["I"].to_numpy(dtype=float)
@@ -182,6 +183,8 @@ def save_result(result, output_root=OUTPUT, plot=True):
         "theta": {key: float(fit[key]) for key in ("alpha", "beta", "k", "Xi", "C")},
         "state_X0": [float(v) for v in result["initial_states"]], "initial_weights": [float(v) for v in result["initial_weights"]],
         "pooled_mse": float(fit["mse"]), "iterations": int(fit["iterations"]),
+        "fit_converged": bool(fit["converged"]), "fit_stop_reason": fit["stop_reason"],
+        "fit_message": fit["message"], "theta_nfev": int(fit["theta_nfev"]),
         "sigma_x": float(result["sigma_x"]), "baseline_fit_start": str(result["baseline_fit"]["fit_start"]),
         "baseline_fit_end": str(result["baseline_fit"]["fit_end"]), "normalization": result["normalization"], "metrics": result["metrics"],
     }
@@ -231,6 +234,7 @@ def main():
     print("Joint fit:", {key: round(float(fit[key]), 6) for key in ("alpha", "beta", "k", "Xi", "C")})
     print(f"Five fitted initial states: {np.array2string(forecast['initial_states'], precision=5)}")
     print(f"Pooled training MSE: {fit['mse']:.8f}; accepted/attempted cycles: {sum(v['accepted'] for v in fit['history'])}/{fit['iterations']}")
+    print(f"Fit converged: {fit['converged']}; stop_reason={fit['stop_reason']}; {fit['message']}")
     if forecast["metrics"] is not None:
         print("Held-out target metrics:", forecast["metrics"])
         model_metrics = forecast["metrics"]["model"]
