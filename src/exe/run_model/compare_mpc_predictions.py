@@ -74,6 +74,10 @@ def normalized_rows(bm, wm, calibration, raw_frame):
             "BM1_observation_sd": float(b["observation_sd"]),
             "BM1_post_state_mean": float(b["posterior_state_mean"]),
             "BM1_post_state_std": float(b["posterior_state_std"]),
+            "BM1_fit_converged": bool(b["fit_converged"]),
+            "BM1_fit_stop_reason": str(b["fit_stop_reason"]),
+            "BM1_fit_message": str(b["fit_message"]),
+            "BM1_theta_nfev": int(b["theta_nfev"]),
         })
     return out
 
@@ -153,12 +157,16 @@ def save_results(rows, skipped, start, end, output_root):
     pd.DataFrame(skipped, columns=["origin", "reason"]).to_csv(directory / "skipped_origins.csv", index=False)
     sigma = rows.groupby("origin", as_index=False).agg(
         BM1_sigma_x=("BM1_sigma_x", "first"), WM4_diffusion_sigma=("WM4_diffusion_sigma", "first"),
-        BM1_observation_sd=("BM1_observation_sd", "first"))
+        BM1_observation_sd=("BM1_observation_sd", "first"),
+        BM1_fit_converged=("BM1_fit_converged", "first"),
+        BM1_fit_stop_reason=("BM1_fit_stop_reason", "first"),
+        BM1_theta_nfev=("BM1_theta_nfev", "first"))
     sigma.to_csv(directory / "historical_diffusion_estimates.csv", index=False)
     plot_leads(exact, cumulative, directory / "lead_time_rmse_coverage.png")
     summary = {
         "start": str(start.date()), "end": str(end.date()), "matched_origins": int(rows["origin"].nunique()),
         "matched_forecasts": int(len(rows)), "skipped_origins": int(len(skipped)),
+        "BM1_nonconverged_origins": int((~sigma["BM1_fit_converged"].astype(bool)).sum()),
         "information": "Both refit five prior 24h aligned weekly windows at each hour. WM4 updates R with observed I(origin); BM1 updates a Bayesian X0 distribution with observed I(origin).",
         "uncertainty": "BM1 sigma_x estimated from historical linear-noise demand variance regression; BM1 probability intervals from FP. WM4 ±1σ and ±1.96σ Gaussian intervals.",
         "aggregation": "All exact and cumulative coverage and RMSE are calculated over paired prediction observations.",
@@ -176,6 +184,12 @@ def print_summary(exact, cumulative, overall, skipped, directory):
     print("\nCumulative 1..H forecast window scores:")
     for _, row in cumulative.iterrows():
         print(f"H={int(row['horizon_hours'])} {row['model']:<4} RMSE={row['rmse']:.6f} coverage68={row['coverage_68_pct']:.1f}% coverage95={row['coverage_95_pct']:.1f}%")
+    stats = pd.read_csv(directory / "historical_diffusion_estimates.csv")
+    nonconverged = int((~stats["BM1_fit_converged"].astype(bool)).sum())
+    print(f"BM1 pooled fits stopped before convergence: {nonconverged}/{len(stats)} origins.")
+    if nonconverged:
+        print("WARNING: Predictions from capped fits are retained and marked BM1_fit_converged=False in saved forecasts.")
+        print(stats.loc[~stats["BM1_fit_converged"].astype(bool), "BM1_fit_stop_reason"].value_counts().to_string())
     print(f"Saved: {directory}")
 
 
@@ -193,6 +207,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
         "max_nfev": max_nfev, "state_maxiter": state_maxiter, "substeps": substeps,
         "max_state_iter": max_state_iter, "state_tol": state_tol,
         "fp_max_step": fp_max_step, "prior_bandwidth": prior_bandwidth,
+        "fit_status_schema": 2,
         "wm4_forecasts": str(Path(wm4_forecasts).resolve()) if isinstance(wm4_forecasts, (str, Path))
             else ("supplied DataFrame" if cached_wm4 is not None else None)}
     all_rows, skipped = [], []
