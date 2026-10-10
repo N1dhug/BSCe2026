@@ -56,6 +56,8 @@ def predict_origin(frame, origin, output_model, *, X0=0.5, weeks=5, horizon=8, x
     model = bm_1(held_signal(training[0]["B"]), lambda t: 0.5, (0.0, 24.0), 25)
     fitted = lsq_params(model).fit_many(training, X0, C=C, Xi=Xi, max_iterations=max_iterations,
         max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps)
+    if fitted["warning"]:
+        print(f"[BM1 MPC {origin:%Y-%m-%d %H:%M}] WARNING: {fitted['warning']}", flush=True)
     diffusion = historical_diffusion_params().fit_many(training, fitted, substeps=substeps)
     sigma = float(diffusion["sigma_x"])
 
@@ -109,6 +111,8 @@ def predict_origin(frame, origin, output_model, *, X0=0.5, weeks=5, horizon=8, x
             "posterior_state_mean": float(np.dot(x_grid, masses0)),
             "posterior_state_std": float(np.sqrt(np.dot(np.square(x_grid - np.dot(x_grid, masses0)), masses0))),
             "pooled_training_mse": float(fitted["mse"]), "fit_iterations": int(fitted["iterations"]),
+            "fit_converged": bool(fitted["converged"]), "fit_stop_reason": fitted["stop_reason"],
+            "fit_message": fitted["message"], "theta_nfev": int(fitted["theta_nfev"]),
         })
     return rows, {"fit": fitted, "diffusion": diffusion, "posterior": masses0,
         "training_origins": training_origins, "origin_observed_I": observed}
@@ -130,7 +134,11 @@ def predict_day(frame, day, *, X0=0.5, horizon=8, x_steps=101, max_iterations=3,
                 max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps,
                 fp_max_step=fp_max_step, prior_bandwidth=prior_bandwidth, C=C, Xi=Xi)
             forecasts.extend(predicted)
-            origins.append({"origin": origin, **diagnostics["diffusion"]})
+            origins.append({"origin": origin, **diagnostics["diffusion"],
+                "fit_converged": diagnostics["fit"]["converged"],
+                "fit_stop_reason": diagnostics["fit"]["stop_reason"],
+                "fit_message": diagnostics["fit"]["message"],
+                "theta_nfev": diagnostics["fit"]["theta_nfev"]})
         except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError) as exc:
             if not skip_errors: raise
             skipped.append((origin, str(exc)))
@@ -200,8 +208,12 @@ def main():
               f"MAE={result['mae']:.6f}, bias={result['bias']:+.6f}, "
               f"coverage68={result['coverage_68_pct']:.1f}%, coverage95={result['coverage_95_pct']:.1f}%")
     pd.DataFrame(results).to_csv(output / "rmse_coverage_by_lead.csv", index=False)
+    nonconverged = int((~fit_diagnostics["fit_converged"]).sum())
     print(f"BM1 MPC fitted {prediction['origin'].nunique()}/24 hourly origins; "
+        f"nonconverged={nonconverged}; "
         f"sigma_x median={fit_diagnostics['sigma_x'].median():.6f}; output={output}")
+    if nonconverged: print(f"WARNING: {nonconverged} origin(s) hit an optimizer cap; "
+        "their predictions were retained and marked fit_converged=False in the output.")
     return prediction
 
 
