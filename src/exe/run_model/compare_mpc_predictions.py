@@ -59,7 +59,7 @@ def normalized_rows(bm, wm, calibration, raw_frame):
     out = []
     for (_, b), (_, w) in zip(bm.iterrows(), wm.iterrows()):
         time = pd.Timestamp(b["target_time"])
-        actual = float(raw_frame["I"].reindex([time]).iloc[0])
+        actual = checks.observed(raw_frame["I"].reindex([time]).iloc[0], time)
         converted = normalization_checks.bm1_to_wm4(
             np.array([b["I_BM1"], b["lower_68"], b["upper_68"], b["lower_95"], b["upper_95"]]), calibration)
         out.append({
