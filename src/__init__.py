@@ -1,5 +1,5 @@
 """BSCe2026 source package."""
 
-from . import diagnostics, method, model, solver, validation
+from . import method, model, params, solver, tools, validation
 
-__all__ = ["diagnostics", "model", "method", "solver", "validation"]
+__all__ = ["method", "model", "params", "solver", "tools", "validation"]
