@@ -6,6 +6,10 @@ Den læsbare matematik står i [grundmodellen](../docs/bm/G_INTERVAL_MODEL.md).
 Installer projektets afhængigheder med `python -m pip install -r requirements-bm.txt`.
 Kør kommandoerne fra projektets rod, og brug en ny outputmappe hver gang.
 
+Fit til en kendt demand med kendt baseline og pris, hvor X0 estimeres sammen
+med C/k/Xi (eller fastholdes, hvis den er kendt):
+[enkel fitter med lineære f/g](../docs/bm/KNOWN_INPUT_FIT.md).
+
 ## Fit
 
 ```powershell
