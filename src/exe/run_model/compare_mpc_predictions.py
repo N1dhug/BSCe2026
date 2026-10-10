@@ -218,7 +218,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
         "max_nfev": max_nfev, "state_maxiter": state_maxiter, "substeps": substeps,
         "max_state_iter": max_state_iter, "state_tol": state_tol,
         "fp_max_step": fp_max_step, "prior_bandwidth": prior_bandwidth,
-        "fit_status_schema": 3, "min_capacity": float(min_capacity),
+        "fit_status_schema": 4, "min_capacity": float(min_capacity),
         "wm4_forecasts": str(Path(wm4_forecasts).resolve()) if isinstance(wm4_forecasts, (str, Path))
             else ("supplied DataFrame" if cached_wm4 is not None else None)}
     all_rows, skipped = [], []
@@ -226,26 +226,32 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
     for number, day in enumerate(days, start=1):
         folder = Path(output_root) / f"{day:%Y-%m-%d}"
         loaded = checks.saved_day(folder, options) if resume else None
-        if loaded is not None:
-            all_rows.extend(loaded.to_dict(orient="records"))
-            missing_path = folder / "skipped_origins.csv"
-            if missing_path.exists():
-                missing = pd.read_csv(missing_path)
-                skipped.extend([(pd.Timestamp(row["origin"]), str(row["reason"])) for _, row in missing.iterrows()])
-            print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: restored {len(loaded)} paired forecasts", flush=True)
+        day_rows = loaded.to_dict(orient="records") if loaded is not None else []
+        complete = set(pd.to_datetime(loaded["origin"])) if loaded is not None else set()
+        if len(complete) == 24:
+            all_rows.extend(day_rows)
+            print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: restored all 24 origin checkpoints", flush=True)
             continue
-        day_rows, day_skipped = [], []
+        if complete:
+            print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: resuming after {len(complete)}/24 complete origins", flush=True)
+
+        day_skipped = []
         try:
             normalized, calibration = normalization_checks.bm1_scale(frame, day)
             bm_baseline = statistical_output().fit(normalized, day)
             wm_baseline = None if cached_wm4 is not None else fit_expected_output(frame, day)[0]
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
             if fail_fast: raise
-            skipped.extend([(day + pd.Timedelta(hours=h), str(exc)) for h in range(24)])
-            print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: skipped all origins ({exc})", flush=True)
+            skipped.extend([(day + pd.Timedelta(hours=h), str(exc)) for h in range(24) if day + pd.Timedelta(hours=h) not in complete])
+            all_rows.extend(day_rows)
+            print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: baseline fitting failed ({exc})", flush=True)
             continue
+
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "settings.json").write_text(json.dumps(options, indent=2), encoding="utf-8")
         for hour in range(24):
             origin = day + pd.Timedelta(hours=hour)
+            if origin in complete: continue
             try:
                 bm, wm, extra = matched_origin(frame, normalized, origin, bm_baseline, wm_baseline,
                     horizon=horizon, steps_per_hour=steps_per_hour,
@@ -255,17 +261,22 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
                     max_nfev=max_nfev, state_maxiter=state_maxiter,
                     substeps=substeps, cached_wm4=cached_wm4, min_capacity=min_capacity)
                 day_rows.extend(normalized_rows(bm, wm, calibration, frame))
+                complete.add(origin)
+                # Checkpoint every completed origin, rather than after all 24 fits.
+                # Atomic replacement retains a valid CSV even on interrupted runs.
+                staged = folder / "matched_forecasts.pending.csv"
+                pd.DataFrame(day_rows).to_csv(staged, index=False)
+                staged.replace(folder / "matched_forecasts.csv")
+                print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: checkpoint {len(complete)}/24 origins", flush=True)
             except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError, KeyError) as exc:
-                if fail_fast: raise
                 day_skipped.append((origin, str(exc)))
+                pd.DataFrame(day_skipped, columns=["origin", "reason"]).to_csv(folder / "skipped_origins.csv", index=False)
+                print(f"[{origin:%Y-%m-%d %H:%M}] FAILED: {exc}", flush=True)
+                if fail_fast: raise
+        pd.DataFrame(day_skipped, columns=["origin", "reason"]).to_csv(folder / "skipped_origins.csv", index=False)
         skipped.extend(day_skipped)
-        if day_rows:
-            folder.mkdir(parents=True, exist_ok=True)
-            pd.DataFrame(day_rows).to_csv(folder / "matched_forecasts.csv", index=False)
-            pd.DataFrame(day_skipped, columns=["origin", "reason"]).to_csv(folder / "skipped_origins.csv", index=False)
-            (folder / "settings.json").write_text(json.dumps(options, indent=2), encoding="utf-8")
-            all_rows.extend(day_rows)
-        print(f"[{number}/{len(days)}] {day:%Y-%m-%d} matched={len(day_rows)//horizon}/24 "
+        all_rows.extend(day_rows)
+        print(f"[{number}/{len(days)}] {day:%Y-%m-%d} matched={len(complete)}/24 "
             f"skipped={len(day_skipped)}", flush=True)
 
     if not all_rows: raise RuntimeError("No paired BM1/WM4 MPC forecasts were produced.")
