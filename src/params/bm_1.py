@@ -161,6 +161,7 @@ class lsq_params:
         for key, pair in bds.items():
             if len(pair) != 2 or not np.all(np.isfinite(pair)) or pair[0] < (0.0 if key == "X0" else 1e-15) or pair[1] <= pair[0]: raise ValueError(f"Invalid bounds for {key}.")
         if bds["Xi"][1] > 1.0: raise ValueError("Xi cannot exceed 1.")
+        if bds["X0"][0] < 0.0 or bds["X0"][1] > 1.0: raise ValueError("X0 bounds must remain inside [0, 1].")
         initial = {"alpha": alpha0, "beta": beta0, "k": k0, "Xi": Xi0, "C": C0, "X0": X0}
         fixed = {key: value for key, value in (("C", C), ("Xi", Xi), ("X0", X0 if not fit_X0 else None)) if value is not None}
         for key, value in fixed.items():
