@@ -128,7 +128,7 @@ def main(argv=None):
     source.add_argument('--start', help='Historical window start in Europe/Copenhagen local time.')
     parser.add_argument('--end', help='Exclusive historical window end.')
     parser.add_argument('--baseline-csv', type=Path,
-        help='Supplied raw baseline: Datetime,baseline including the final hour edge.')
+        help='Optional raw baseline: Datetime,baseline including final edge; otherwise fit WM4 baseline.')
     parser.add_argument('--input-workbook', type=Path)
     parser.add_argument('--prices-workbook', type=Path)
     parser.add_argument('--tag', default='MED')
@@ -157,14 +157,15 @@ def main(argv=None):
     metadata, measured = None, None
     if args.start is not None:
         from src.exe.run_model.bm_1.data import aligned_bm_data, fit_inputs
-        if args.end is None or args.baseline_csv is None:
-            parser.error('Historical import requires --end and --baseline-csv; baseline is not estimated.')
+        if args.end is None:
+            parser.error('Historical import requires --end.')
         paths = {}
         if args.input_workbook is not None: paths['input_path'] = args.input_workbook
         if args.prices_workbook is not None: paths['prices_path'] = args.prices_workbook
         frame = aligned_bm_data(args.start, args.end, tag=args.tag,
             price_area=args.price_area, demand_label=args.demand_label, **paths)
-        data = fit_inputs(frame, args.baseline_csv, **{name: getattr(args, name) for name in names})
+        data = fit_inputs(frame, args.baseline_csv, steps_per_hour=args.steps_per_hour,
+                          **{name: getattr(args, name) for name in names})
         time, baseline, price, demand = (data[name] for name in ('baseline_time', 'baseline', 'prices', 'demand'))
         metadata, measured = data['metadata'], data['observation_mask']
         for name, value in data['normalization'].items(): setattr(args, name, value)

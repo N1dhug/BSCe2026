@@ -129,15 +129,18 @@ eller numerisk utilstrækkeligt fit, hvis resultater stadig gemmes til inspektio
 ## Historisk import fra de samme Excel-filer som WM
 
 Den nye BM-specifikke datafil er `src/exe/run_model/bm_1/data.py`.
-Den bruger de fælles `input_data`/`spot_price_data`-importører med WM's
-observerede gruppe-gennemsnit som reference. Der importeres ingen temperatur,
-og baseline estimeres ikke. S3's hidtidige hjælpere er særskilt bevaret i
+Den bruger de fælles `input_data`/`spot_price_data`-importører med WM4's
+observerede gruppe-gennemsnit som reference. Som standard estimeres baseline
+med WM4's uændrede `statistical_output` fra
+`src/exe/run_model/wm_4/output_model.py`. Temperatur importeres med den fælles
+`weather_data`-importør fra DMI eller lokal cache, kun til baselineberegningen.
+S3's hidtidige hjælpere er særskilt bevaret i
 `src/exe/run_model/bm_1/s3_data.py`; den nye datafil bruger dem ikke.
 S3's kildehashes følger de ændrede filplaceringer; gamle snapshots kræver
 fortsat deres oprindelige kildeversion og omskrives ikke.
 
 ```powershell
-python -m src.exe.run_model.bm_1.bm_1_known_input_fit --start 2022-01-01 --end 2022-02-05 --tag MED --baseline-csv baseline.csv --output bm-fit-historik
+python -m src.exe.run_model.bm_1.bm_1_known_input_fit --start 2022-01-01 --end 2022-02-05 --tag MED --output bm-fit-historik
 ```
 
 Perioden er [start,end). Standardfilerne er `files/input/data/input.xlsx`
@@ -148,6 +151,23 @@ sum og ikke gennemsnittet af interpolerede målere. En helt umålt time bevares
 i tilstandsbanen og udelades fra fit/RMSE med en observationsmaske. Den fælles
 prisimportørs eksisterende udfyldning af pristimer genbruges.
 
+Baseline-regressionen bruger gruppens tilgængelige målte forbrug før `--end`,
+også historik før `--start`, hvis den findes. Den kræver mindst 168 gyldige
+forbrugs-/temperaturobservationer og bruger WM4's standardindstillinger:
+døgn-/ugedags-/sæsonled, temperaturled, Huber-vægtning og ridge.
+Pris indgår ikke. Ved dette historiske parameterfit er `--end` skæringsdatoen;
+der bruges intet demand ved eller efter den dato. Baseline må gerne estimeres
+på selve træningsperiodens demand. Dette er et fit, ikke en prognoseevaluering.
+
+Baseline beregnes på et grid med `--steps-per-hour` støttepunkter pr. fysisk
+time, inklusive slutgrænsen. Temperaturen interpoleres på gridet som i WM4.
+BM bruger den samme estimerede funktion som B(t), holder den fast under
+C/k/Xi/X0-fittet og beregner timegennemsnit med sin eksisterende simulator.
+WM4's regressionsmål genbruges uændret; der tilføjes ikke en ny estimator.
+Baseline-fitmetadata og skæringsdato gemmes i fit.json.
+
+En allerede kendt baseline kan stadig leveres med `--baseline-csv baseline.csv`.
+Da springes baselineestimation og temperaturimport over.
 `baseline.csv` skal have `Datetime,baseline` ved hver timegrænse, inklusive
 slutgrænsen. Baseline skal bruge samme rå enhed og gruppe-gennemsnit som demand.
 Den interpoleres lineært mellem timegrænserne. Naive tidsstempler fortolkes
@@ -157,13 +177,18 @@ Demand mærkes som timebegyndelse som standard; vælg `--demand-label hour_end`,
 hvis målingerne beskriver den time, der slutter ved tidsstemplet. Dette er en
 erklæret fortolkning, ikke en verificering af Excel-filens målekonvention.
 
-Historisk import vælger som standard en fælles [0,1]-skala for demand/baseline
-fra den valgte periode og en [0,1]-prisskala fra periodens priser. Eksisterende
+Ved automatisk baseline bruger demand og baseline den samme [0,1]-skala fra
+forbrugshistorikken før `--end`. WM4's estimator forudsiger allerede på denne
+normaliserede skala og klipper baseline til [0,1], ligesom i WM4. Den færdige
+baseline normaliseres derfor ikke igen. Med leveret baseline vælges fortsat
+den fælles demand/baseline-skala fra den valgte periode og CSV-baseline.
+Prisskalaen kommer i begge tilfælde fra periodens priser. Eksisterende
 offset/scale-flags kan i stedet levere forudbestemte skalaer. Skalaerne gemmes
 i fit.json og har ingen afhængighed af WM's normalisering for hele 2022.
 Med `--input` gælder fortsat CSV-indgangens standardoffset 0 og skala 1.
 
 Python-indgangen er `aligned_bm_data(start,end,...)` efterfulgt af
-`fit_inputs(frame,baseline_path,...)`. Resultatet indeholder baseline_time,
+`fit_inputs(frame,...)` for automatisk WM4-baseline eller
+`fit_inputs(frame,baseline_path,...)` for en leveret baseline. Resultatet indeholder baseline_time,
 baseline, prices, demand og observation_mask til `fit_known_inputs(...)`,
 samt normalisering og metadata. Fitteren gemmer importmetadata i fit.json.
