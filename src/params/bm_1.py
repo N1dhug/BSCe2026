@@ -140,3 +140,68 @@ class lsq_params:
             "drift_fit": result, "fit_method": "demand_lsq", "free_parameters": tuple(free),
             **extra,
         }
+
+    def fit_many(self, datasets, X0=0.5, *, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, max_iterations=6, min_improvement=1e-6, max_nfev=150, state_maxiter=100, substeps=2, loss="linear"):
+        """Alternating pooled-theta / separate-X0 demand LSQ for matching days.
+
+        First fit one common theta from five days initialized at the same X0.
+        Then minimize each day's demand MSE over only that day's X0, with
+        theta fixed. Subsequent cycles refit theta jointly holding the five
+        states fixed, and repeat per-day state optimization. Keep the best
+        complete cycle and stop when its SSE no longer improves.
+        """
+        from scipy.optimize import minimize_scalar
+
+        prepared, X0, free, fixed, seed, lower, upper = bm_1_params_validation.fit_many_inputs(
+            self.model, datasets, X0, C=C, Xi=Xi, alpha0=alpha0, beta0=beta0,
+            k0=k0, C0=C0, Xi0=Xi0, max_iterations=max_iterations,
+            min_improvement=min_improvement, max_nfev=max_nfev,
+            state_maxiter=state_maxiter, substeps=substeps,
+            names=self.NAMES, bounds=self.BOUNDS,
+        )
+        def unpack(theta): return {**fixed, **dict(zip(free, theta))}
+        def residual(theta, states):
+            p = unpack(theta)
+            return np.concatenate([self._predict(data, float(x), p, substeps)[1][:len(data["I"])] - data["I"] for data, x in zip(prepared, states)])
+        def refine_states(p, initial):
+            states, state_fits = [], []
+            for data, x in zip(prepared, initial):
+                def error(candidate):
+                    difference = self._predict(data, float(candidate), p, substeps)[1][:len(data["I"])] - data["I"]
+                    return float(difference @ difference)
+                fit = minimize_scalar(error, bounds=(0.0, 1.0), method="bounded", options={"xatol": 1e-6, "maxiter": state_maxiter})
+                bm_1_params_validation.optimizer_result(fit, "initial-state")
+                states.append(float(fit.x)); state_fits.append(fit)
+            return np.asarray(states), state_fits
+
+        states = np.full(len(prepared), X0, dtype=float)
+        history, best = [], None
+        theta = seed.copy()
+        for iteration in range(1, max_iterations + 1):
+            theta_fit = least_squares(lambda values: residual(values, states), theta, bounds=(lower, upper), loss=loss, max_nfev=max_nfev)
+            bm_1_params_validation.optimizer_result(theta_fit, "pooled demand")
+            candidate_theta = theta_fit.x.copy()
+            p = unpack(candidate_theta)
+            candidate_states, state_fits = refine_states(p, states)
+            differences = residual(candidate_theta, candidate_states)
+            sse = float(differences @ differences)
+            previous = np.inf if best is None else best["sse"]
+            threshold = min_improvement * max(previous, 1e-10)
+            improved = sse < previous
+            history.append({"iteration": iteration, "sse": sse, "mse": float(np.mean(differences ** 2)), "improvement": float(previous - sse) if best is not None else None, "accepted": improved})
+            if not improved: break
+            best = {"theta": candidate_theta, "params": p, "states": candidate_states, "state_fits": state_fits, "theta_fit": theta_fit, "sse": sse, "mse": float(np.mean(differences ** 2))}
+            theta, states = candidate_theta, candidate_states
+            if iteration > 1 and previous - sse <= threshold: break
+
+        parameters = dict(best["params"])
+        f, g = self.response(parameters["alpha"]), self.response(parameters["beta"])
+        return {
+            **parameters, "gain": float(parameters["Xi"] / parameters["C"]),
+            "f": f, "g": g, "initial_states": best["states"].copy(), "X0_seed": float(X0),
+            "initial_weights": np.full(len(prepared), 1.0 / len(prepared)),
+            "mse": best["mse"], "sse": best["sse"], "history": history,
+            "theta_fit": best["theta_fit"], "state_fits": best["state_fits"],
+            "iterations": len(history), "free_parameters": tuple(free),
+            "fit_method": "pooled_demand_alternating_lsq",
+        }
