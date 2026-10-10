@@ -37,12 +37,13 @@ LABELS = (("BM1", "I_BM1"), ("WM4", "I_WM4"))
 def matched_origin(frame, normalized, origin, bm_output, wm_output, *, horizon=8,
     steps_per_hour=2, max_state_iter=12, state_tol=1e-8, x_steps=101,
     fp_max_step=0.25, prior_bandwidth=0.025, X0=0.5, C=None, Xi=None,
-    max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2, cached_wm4=None):
+    max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2, cached_wm4=None, min_capacity=0.05):
     """Construct matching BM1 and WM4 forecasts at exactly the same origin."""
     bm, extra = bm1_predict_origin(normalized, origin, bm_output, X0=X0,
         horizon=horizon, x_steps=x_steps, fp_max_step=fp_max_step,
         prior_bandwidth=prior_bandwidth, max_iterations=max_iterations,
-        max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps, C=C, Xi=Xi)
+        max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps, C=C, Xi=Xi,
+        min_capacity=min_capacity)
     if cached_wm4 is None:
         wm, state = _mpc_origin(frame, origin, 5, steps_per_hour, wm_output, horizon,
             max_state_iter=max_state_iter, state_tol=state_tol)
@@ -197,8 +198,10 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
     steps_per_hour=2, X0=0.5, C=None, Xi=None, x_steps=101,
     max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2,
     max_state_iter=12, state_tol=1e-8, fp_max_step=0.25, prior_bandwidth=0.025,
-    wm4_forecasts=None, output_root=OUTPUT, resume=True, fail_fast=False):
+    wm4_forecasts=None, output_root=OUTPUT, resume=True, fail_fast=False, min_capacity=0.05):
     start, end = checks.date_range(start, end, horizon, steps_per_hour, x_steps, fp_max_step, prior_bandwidth, substeps)
+    if not np.isfinite(min_capacity) or not 0.001 <= min_capacity < 100.0:
+        raise ValueError("min_capacity must be finite and in [0.001, 100).")
     if frame is None: frame, _ = aligned_wm4_data(tag)
     frame = normalization_checks.common_frame(frame)
     cached_wm4 = checks.wm4_saved(wm4_forecasts)
@@ -207,7 +210,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
         "max_nfev": max_nfev, "state_maxiter": state_maxiter, "substeps": substeps,
         "max_state_iter": max_state_iter, "state_tol": state_tol,
         "fp_max_step": fp_max_step, "prior_bandwidth": prior_bandwidth,
-        "fit_status_schema": 2,
+        "fit_status_schema": 3, "min_capacity": float(min_capacity),
         "wm4_forecasts": str(Path(wm4_forecasts).resolve()) if isinstance(wm4_forecasts, (str, Path))
             else ("supplied DataFrame" if cached_wm4 is not None else None)}
     all_rows, skipped = [], []
@@ -242,7 +245,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
                     x_steps=x_steps, fp_max_step=fp_max_step, prior_bandwidth=prior_bandwidth,
                     X0=X0, C=C, Xi=Xi, max_iterations=max_iterations,
                     max_nfev=max_nfev, state_maxiter=state_maxiter,
-                    substeps=substeps, cached_wm4=cached_wm4)
+                    substeps=substeps, cached_wm4=cached_wm4, min_capacity=min_capacity)
                 day_rows.extend(normalized_rows(bm, wm, calibration, frame))
             except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError, KeyError) as exc:
                 if fail_fast: raise
@@ -278,6 +281,8 @@ def main():
     parser.add_argument("--x-steps", type=int, default=101)
     parser.add_argument("--fp-max-step", type=float, default=0.25)
     parser.add_argument("--prior-bandwidth", type=float, default=0.025)
+    parser.add_argument("--min-capacity", type=float, default=0.05,
+        help="BM1 C lower bound to limit nonlinear RK4 work; default 0.05.")
     parser.add_argument("--bm1-max-iterations", type=int, default=3)
     parser.add_argument("--bm1-max-nfev", type=int, default=120)
     parser.add_argument("--bm1-state-maxiter", type=int, default=60)
@@ -296,6 +301,7 @@ def main():
         substeps=args.bm1_substeps, max_state_iter=args.wm4_max_state_iter,
         state_tol=args.wm4_state_tol, fp_max_step=args.fp_max_step,
         prior_bandwidth=args.prior_bandwidth, wm4_forecasts=args.wm4_forecasts,
+        min_capacity=args.min_capacity,
         output_root=args.output_root, resume=not args.no_resume, fail_fast=args.fail_fast)
 
 
