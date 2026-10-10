@@ -58,6 +58,18 @@ Et andet initial kan bruges i et særskilt kald ved behov.
 
 ## CSV og kommando
 
+En færdig syntetisk funktionsprøve følger med repoet:
+
+```powershell
+python -m src.method.bm_1_known_input_fit --input files/input/bm_1/known_input_synthetic.csv --x0 0.23 --output bm-fit-synthetic
+```
+
+Den indeholder 72 timer med kendt baseline 0.43 og demand fra den analytiske
+lineære BM1-løsning, med C=7.3, k=2.6 og Xi=0.67. Fitteren skal genfinde
+disse parametre med en meget lille RMSE. Dette er syntetiske data, ikke
+historiske observationer. Startværdien 0.23 hører til netop dette eksempel.
+Til et rigtigt fit bruges din egen input-CSV og din kendte X0.
+
 CSV har time_hours,baseline,price,demand. Hver række angiver en timebegyndelse.
 Sidste række angiver periodens slutgrænse og kun baseline:
 

@@ -115,6 +115,8 @@ def main(argv=None):
     parser.add_argument('--price-offset', type=float, default=0.)
     parser.add_argument('--price-scale', type=float, default=1.)
     args = parser.parse_args(argv)
+    if not args.input.is_file():
+        parser.error(f'Input CSV not found: {args.input}. Supply an existing CSV; see docs/bm/KNOWN_INPUT_FIT.md.')
     if args.output.exists():
         parser.error('Use a new output directory.')
     scales = np.array([args.demand_offset, args.demand_scale, args.price_offset, args.price_scale])
