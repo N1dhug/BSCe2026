@@ -115,8 +115,8 @@ def compare_day(day="2022-08-22", *, tag="MED", frame=None, X0=0.5, sigma_x=0.0,
         mpc = wm4_mpc_day(frame, day, steps_per_hour=steps_per_hour, max_state_iter=max_state_iter, state_tol=state_tol)
         wm_source = "new hourly one-step WM4 MPC fit"
     else:
-        mpc = pd.read_csv(wm4_forecasts)
-        wm_source = str(wm4_forecasts)
+        mpc = wm4_forecasts if isinstance(wm4_forecasts, pd.DataFrame) else pd.read_csv(wm4_forecasts)
+        wm_source = "preloaded WM4 MPC forecasts" if isinstance(wm4_forecasts, pd.DataFrame) else str(wm4_forecasts)
 
     rows, actual, timestamps = checks.hourly_wm4(frame, day, mpc)
     bm_hourly = bm_hourly.reindex(timestamps)
