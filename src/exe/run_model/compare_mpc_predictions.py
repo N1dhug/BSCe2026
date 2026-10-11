@@ -53,7 +53,8 @@ def save_csv(frame, path, *, index=False):
 def matched_origin(frame, normalized, origin, bm_output, wm_output, *, horizon=8,
     steps_per_hour=2, max_state_iter=12, state_tol=1e-8, x_steps=101,
     fp_max_step=0.25, prior_bandwidth=0.025, X0=0.5, C=None, Xi=None,
-    max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2, cached_wm4=None, min_capacity=0.05):
+    max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2, cached_wm4=None, min_capacity=0.05,
+    wm4_sigma_fit_mode="historical_p0"):
     """Construct matching BM1 and WM4 forecasts at exactly the same origin."""
     started = perf_counter()
     print(f"[{origin:%Y-%m-%d %H:%M}] BM1 fitting / sigma / forecast started", flush=True)
@@ -67,7 +68,8 @@ def matched_origin(frame, normalized, origin, bm_output, wm_output, *, horizon=8
     wm_started = perf_counter()
     if cached_wm4 is None:
         wm, state = _mpc_origin(frame, origin, 5, steps_per_hour, wm_output, horizon,
-            max_state_iter=max_state_iter, state_tol=state_tol)
+            max_state_iter=max_state_iter, state_tol=state_tol,
+            sigma_fit_mode=wm4_sigma_fit_mode)
     else:
         try: wm = cached_wm4.loc[[(origin, lead) for lead in range(1, horizon + 1)]].to_dict(orient="records")
         except KeyError as exc: raise ValueError(f"WM4 cached forecasts lack a complete 8-hour horizon at {origin}.") from exc
@@ -102,6 +104,9 @@ def normalized_rows(bm, wm, calibration, raw_frame):
             "BM1_fit_stop_reason": str(b["fit_stop_reason"]),
             "BM1_fit_message": str(b["fit_message"]),
             "BM1_theta_nfev": int(b["theta_nfev"]),
+            "WM4_sigma_fit_mode": str(w.get("sigma_fit_mode", "zero_p0")),
+            "WM4_training_initial_variance_mean": float(w.get("training_initial_variance_mean", np.nan)),
+            "WM4_training_centered_variance_mean": float(w.get("training_centered_variance_mean", np.nan)),
         })
     return out
 
@@ -232,19 +237,21 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
     steps_per_hour=2, X0=0.5, C=None, Xi=None, x_steps=101,
     max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2,
     max_state_iter=12, state_tol=1e-8, fp_max_step=0.25, prior_bandwidth=0.025,
-    wm4_forecasts=None, output_root=OUTPUT, resume=True, fail_fast=False, min_capacity=0.05):
+    wm4_forecasts=None, output_root=OUTPUT, resume=True, fail_fast=False, min_capacity=0.05,
+    wm4_sigma_fit_mode="historical_p0"):
     start, end = checks.date_range(start, end, horizon, steps_per_hour, x_steps, fp_max_step, prior_bandwidth, substeps)
     if not np.isfinite(min_capacity) or not 0.001 <= min_capacity < 100.0:
         raise ValueError("min_capacity must be finite and in [0.001, 100).")
     if frame is None: frame, _ = aligned_wm4_data(tag)
     frame = normalization_checks.common_frame(frame)
-    cached_wm4 = checks.wm4_saved(wm4_forecasts)
+    cached_wm4 = checks.wm4_saved(wm4_forecasts, sigma_fit_mode=wm4_sigma_fit_mode)
     options = {"tag": tag, "horizon": horizon, "steps_per_hour": steps_per_hour, "X0": X0,
         "C": C, "Xi": Xi, "x_steps": x_steps, "max_iterations": max_iterations,
         "max_nfev": max_nfev, "state_maxiter": state_maxiter, "substeps": substeps,
         "max_state_iter": max_state_iter, "state_tol": state_tol,
         "fp_max_step": fp_max_step, "prior_bandwidth": prior_bandwidth,
-        "fit_status_schema": 4, "min_capacity": float(min_capacity),
+        "fit_status_schema": 5, "min_capacity": float(min_capacity),
+        "wm4_sigma_fit_mode": wm4_sigma_fit_mode,
         "wm4_forecasts": str(Path(wm4_forecasts).resolve()) if isinstance(wm4_forecasts, (str, Path))
             else ("supplied DataFrame" if cached_wm4 is not None else None)}
     all_rows, skipped = [], []
@@ -284,7 +291,8 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
                     x_steps=x_steps, fp_max_step=fp_max_step, prior_bandwidth=prior_bandwidth,
                     X0=X0, C=C, Xi=Xi, max_iterations=max_iterations,
                     max_nfev=max_nfev, state_maxiter=state_maxiter,
-                    substeps=substeps, cached_wm4=cached_wm4, min_capacity=min_capacity)
+                    substeps=substeps, cached_wm4=cached_wm4, min_capacity=min_capacity,
+                    wm4_sigma_fit_mode=wm4_sigma_fit_mode)
                 origin_rows = normalized_rows(bm, wm, calibration, frame)
                 # Never replace a destination possibly open in Excel / OneDrive.
                 # Each origin is committed once to a separate, immutable file.
@@ -349,7 +357,9 @@ def main():
     parser.add_argument("--bm1-substeps", type=int, default=2)
     parser.add_argument("--wm4-max-state-iter", type=int, default=12)
     parser.add_argument("--wm4-state-tol", type=float, default=1e-8)
-    parser.add_argument("--wm4-forecasts", type=Path, help="Existing WM4 mpc_forecasts.csv with all 8 leads; avoids WM4 refitting.")
+    parser.add_argument("--wm4-forecasts", type=Path, help="WM4 mpc_forecasts.csv with all 8 leads, matching --wm4-sigma-fit-mode; avoids WM4 refitting.")
+    parser.add_argument("--wm4-sigma-fit-mode", choices=("historical_p0", "zero_p0"), default="historical_p0",
+        help="WM4 sigma fit subtracts propagated historical P0 by default. Legacy zero_p0 also available.")
     parser.add_argument("--output-root", type=Path, default=OUTPUT)
     parser.add_argument("--no-resume", action="store_true", help="Refit all origins even if matching day checkpoints exist.")
     parser.add_argument("--fail-fast", action="store_true")
@@ -361,7 +371,7 @@ def main():
         substeps=args.bm1_substeps, max_state_iter=args.wm4_max_state_iter,
         state_tol=args.wm4_state_tol, fp_max_step=args.fp_max_step,
         prior_bandwidth=args.prior_bandwidth, wm4_forecasts=args.wm4_forecasts,
-        min_capacity=args.min_capacity,
+        min_capacity=args.min_capacity, wm4_sigma_fit_mode=args.wm4_sigma_fit_mode,
         output_root=args.output_root, resume=not args.no_resume, fail_fast=args.fail_fast)
 
 
