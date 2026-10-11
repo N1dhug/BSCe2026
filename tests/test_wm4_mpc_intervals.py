@@ -33,6 +33,12 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
                         "initial_variance": initial, "process_variance": process,
                         "predicted_variance": variance, "diffusion_sigma": sigma,
                         "sigma_fit_mode": "historical_p0",
+                        "r0_variance_mode": "baseline_residual",
+                        "initial_F_variance": 0.003,
+                        "initial_R_variance": 0.008,
+                        "initial_F_component_variance": 0.2 * initial,
+                        "initial_R_component_variance": 0.8 * initial,
+                        "baseline_origin_residual_variance": 0.008,
                         "lower_68": mean - sd, "upper_68": mean + sd,
                         "lower_95": mean - 1.96 * sd, "upper_95": mean + 1.96 * sd,
                     })
@@ -65,6 +71,41 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
             invalid.loc[0, "predicted_variance"] = 100
             invalid.to_csv(path, index=False)
             with self.assertRaisesRegex(ValueError, "disagrees"):
+                load_forecasts(path)
+
+    def test_stale_mpc_csv_is_rejected_instead_of_silently_plotting(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "forecasts.csv"
+            old = self.simulated_forecasts(1).drop(columns=[
+                "r0_variance_mode", "initial_F_variance", "initial_R_variance",
+                "initial_F_component_variance", "initial_R_component_variance",
+                "baseline_origin_residual_variance",
+            ])
+            old.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "OUTDATED WM4 MPC FORECAST DATA"):
+                load_forecasts(path)
+            accepted, _, _ = load_forecasts(path, allow_legacy=True)
+            self.assertEqual(len(accepted), 192)
+
+    def test_zero_r0_and_inconsistent_covariance_are_rejected_by_default(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "forecasts.csv"
+            data = self.simulated_forecasts(1)
+            data["r0_variance_mode"] = "zero"
+            data["initial_R_variance"] = 0.0
+            data["initial_R_component_variance"] = 0.0
+            data["initial_F_component_variance"] = data["initial_variance"]
+            data.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "expects"):
+                load_forecasts(path)
+            accepted, _, _ = load_forecasts(path, expected_r0_variance_mode="zero")
+            self.assertEqual(len(accepted), 192)
+
+            data["r0_variance_mode"] = "baseline_residual"
+            data["initial_R_variance"] = 0.008
+            data["initial_R_component_variance"] = 0.001
+            data.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "propagated F0"):
                 load_forecasts(path)
 
     def test_all_csv_and_plots_are_created_without_refitting(self):
