@@ -146,6 +146,10 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
 def _stochastic_forecast_variance(model, state, fit, diffusion, max_horizon, steps_per_hour):
     lead_steps = np.arange(1, int(max_horizon) + 1, dtype=int) * int(steps_per_hour)
     sensitivity = model.sensitivity({"r": fit["r"]})["input"][lead_steps]
+    # The historical sigma fit uses full [F0,R0] covariance. In an MPC
+    # forecast R0 is instead set from the current observed demand I-O, so
+    # its prior variance is not propagated a second time. Keep the original
+    # marginal historical F0 variance assumption for the unobserved state.
     F_variance = float(np.asarray(fit.get("x_cov", np.cov(np.asarray(fit["init_cond"], dtype=float), rowvar=False, ddof=1)), dtype=float)[0, 0])
     F_variance = max(F_variance, 0.0)
     P0 = np.array([[F_variance, 0.0], [0.0, 0.0]], dtype=float)
