@@ -327,7 +327,7 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8):
     }
     saved = [_save_csv(table, output / name) for name, table in tables.items()]
     saved += [
-        plot_day_fans(day, selected, output / f"day_{day:%Y-%m-%d}_8h_fans.png", horizon),
+        plot_day_fans(day, selected, output / f"day_{day:%Y-%m-%d}_{horizon}h_fans.png", horizon),
         plot_rolling_one_hour(day, selected, output / f"day_{day:%Y-%m-%d}_rolling_1h.png"),
         plot_diffusion(exact, cumulative, output / "diffusion_variance_by_horizon.png"),
         plot_coverage(exact, cumulative, output / "interval_coverage_by_horizon.png"),
