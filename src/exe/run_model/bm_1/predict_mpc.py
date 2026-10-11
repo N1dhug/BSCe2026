@@ -43,7 +43,8 @@ def posterior_mass(states, x_grid, prediction, observed, observation_sd, bandwid
 
 def predict_origin(frame, origin, output_model, *, X0=0.5, weeks=5, horizon=8, x_steps=101,
     max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2,
-    fp_max_step=0.25, prior_bandwidth=0.025, C=None, Xi=None, min_capacity=0.05):
+    fp_max_step=0.25, prior_bandwidth=0.025, C=None, Xi=None, min_capacity=0.05,
+    fitted=None, joint_max_nfev=0, joint_max_seconds=20.0, joint_gtol=1e-5):
     """Return 1..horizon predictive demand distributions for one MPC origin.
 
     frame must be normalized to BM1's [0,1] I and U before calling.
@@ -58,9 +59,11 @@ def predict_origin(frame, origin, output_model, *, X0=0.5, weeks=5, horizon=8, x
     training_origins = [origin - pd.Timedelta(weeks=k) for k in range(weeks, 0, -1)]
     training = [checks.window(frame, t, output_model, hours=24) for t in training_origins]
     model = bm_1(held_signal(training[0]["B"]), lambda t: 0.5, (0.0, 24.0), 25)
-    fitted = lsq_params(model).fit_many(training, X0, C=C, Xi=Xi, max_iterations=max_iterations,
-        max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps,
-        fit_bounds={"C": (float(min_capacity), lsq_params.BOUNDS["C"][1])})
+    if fitted is None:
+        fitted = lsq_params(model).fit_many(training, X0, C=C, Xi=Xi, max_iterations=max_iterations,
+            max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps,
+            fit_bounds={"C": (float(min_capacity), lsq_params.BOUNDS["C"][1])},
+            joint_max_nfev=joint_max_nfev,joint_max_seconds=joint_max_seconds,joint_gtol=joint_gtol)
     if fitted["warning"]:
         print(f"[BM1 MPC {origin:%Y-%m-%d %H:%M}] WARNING: {fitted['warning']}", flush=True)
     print(f"[BM1 MPC {origin:%Y-%m-%d %H:%M}] Historical diffusion calibration "

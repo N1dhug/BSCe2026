@@ -49,3 +49,6 @@ Dagsprognose, timevis MPC, usikkerhed og resultatgrafer er beskrevet i
 [THOMAS_PIPELINE.md](../docs/bm/THOMAS_PIPELINE.md).
 Logistiske f/g kan også vælges i eksisterende fit med
 `--fit-response --response-family logistic`.
+
+Valgfri fælles efteroptimering og uge-sammenligning med alle seks f/g-par:
+[JOINT_FIT.md](../docs/bm/JOINT_FIT.md).

@@ -119,7 +119,7 @@ def forecast_from_distribution(data, fitted, *, sigma_x=0.0, x_steps=101, fp_max
         "initial_grid": model.fokker_planc_reference.grid(x_steps)[1], "fp": fp}
 
 
-def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, max_iterations=6, min_improvement=1e-6, max_nfev=150, state_maxiter=100, substeps=2, sigma_x=0.0, x_steps=101, fp_max_step=0.25, score=False):
+def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, max_iterations=6, min_improvement=1e-6, max_nfev=150, state_maxiter=100, substeps=2, sigma_x=0.0, x_steps=101, fp_max_step=0.25, score=False, joint_max_nfev=0, joint_max_seconds=20., joint_gtol=1e-5):
     """Fit one shared theta over five previous same weekdays, then forecast a day.
 
     First stage: a pooled theta LSQ with one shared X0 guess. Second stage:
@@ -139,7 +139,8 @@ def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=N
     model = bm_1(held_signal(target["B"]), lambda t: 0.0 * np.asarray(t, dtype=float) + 0.5, (0.0, HOURS), HOURS + 1)
     fitter = lsq_params(model)
     fitted = fitter.fit_many(training, X0, C=C, Xi=Xi, alpha0=alpha0, beta0=beta0, k0=k0, C0=C0, Xi0=Xi0,
-        max_iterations=max_iterations, min_improvement=min_improvement, max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps)
+        max_iterations=max_iterations, min_improvement=min_improvement, max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps,
+        joint_max_nfev=joint_max_nfev,joint_max_seconds=joint_max_seconds,joint_gtol=joint_gtol)
     ensemble = forecast_from_distribution(target, fitted, sigma_x=sigma_x, x_steps=x_steps, fp_max_step=fp_max_step, substeps=substeps)
     hourly = pd.DataFrame({
         "I_predicted": ensemble["forecast"], "I_lower": ensemble["lower"], "I_upper": ensemble["upper"],
@@ -188,6 +189,7 @@ def save_result(result, output_root=OUTPUT, plot=True):
         "sigma_x": float(result["sigma_x"]), "baseline_fit_start": str(result["baseline_fit"]["fit_start"]),
         "baseline_fit_end": str(result["baseline_fit"]["fit_end"]), "normalization": result["normalization"], "metrics": result["metrics"],
     }
+    if 'joint_fit' in fit:metadata['joint_fit']=fit['joint_fit']
     (directory / "fit.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     if plot:
         import matplotlib.pyplot as plt
@@ -220,6 +222,9 @@ def main():
     parser.add_argument("--min-improvement", type=float, default=1e-6, help="Stop when relative SSE gain drops below this.")
     parser.add_argument("--max-nfev", type=int, default=150, help="Maximum evaluations per joint theta least-squares step.")
     parser.add_argument("--state-maxiter", type=int, default=100, help="Maximum bounded scalar optimizer iterations per day.")
+    parser.add_argument('--joint-max-nfev',type=int,default=0,help='Optional final joint refinement budget; 0 keeps the original fit.')
+    parser.add_argument('--joint-max-seconds',type=float,default=20.)
+    parser.add_argument('--joint-gtol',type=float,default=1e-5)
     parser.add_argument("--sigma-x", type=float, default=0.0, help="Known diffusion amplitude; 0 uses an empirical deterministic ensemble.")
     parser.add_argument("--x-steps", type=int, default=101, help="Finite-volume cells if sigma-x > 0.")
     parser.add_argument("--fp-max-step", type=float, default=0.25, help="Maximum internal FV time step in hours.")
@@ -228,7 +233,8 @@ def main():
     args = parser.parse_args()
     forecast = predict_day(args.day, tag=args.tag, X0=args.X0, C=args.C, Xi=args.Xi, max_iterations=args.max_iterations,
         min_improvement=args.min_improvement, max_nfev=args.max_nfev, state_maxiter=args.state_maxiter, sigma_x=args.sigma_x,
-        x_steps=args.x_steps, fp_max_step=args.fp_max_step, score=args.score)
+        x_steps=args.x_steps, fp_max_step=args.fp_max_step, score=args.score,
+        joint_max_nfev=args.joint_max_nfev,joint_max_seconds=args.joint_max_seconds,joint_gtol=args.joint_gtol)
     fit = forecast["fit"]
     print(f"Target: {forecast['day']:%Y-%m-%d}; training days: {', '.join(str(d.date()) for d in forecast['training_days'])}")
     print("Joint fit:", {key: round(float(fit[key]), 6) for key in ("alpha", "beta", "k", "Xi", "C")})

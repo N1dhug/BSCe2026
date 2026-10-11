@@ -98,3 +98,7 @@ python -B -m unittest tests.test_bm1_thomas_pipeline tests.test_mpc_checkpoint_w
 Kontrollerne omfatter kurveparitet, isolering af måldemand, stateprognose,
 gem/genindlæs/grafer, checkpoints og eksisterende deterministisk BM.
 De bruger syntetiske data og starter ingen historisk benchmarkkampagne.
+# Fælles efteroptimering
+
+En valgfri fælles optimering af modelparametre og fem starttilstande samt en
+parvis uge-sammenligning med gemte fits er beskrevet i [JOINT_FIT.md](JOINT_FIT.md).

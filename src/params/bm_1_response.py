@@ -178,8 +178,11 @@ class BM1BetaResponse:
     @cached_property
     def max_abs_slope(self):
         if self.is_linear: return 2.
-        mode = (self.a-1)/(self.a+self.b-2)
-        return float(2*np.exp(xlogy(self.a-1, mode)+xlogy(self.b-1, 1-mode)-betaln(self.a,self.b)))
+        left, right = self.a-1, self.b-1
+        total = left+right
+        # 1-mode can round to zero when a shape is 1+eps, spuriously
+        # returning a zero slope bound. Compute both coordinates directly.
+        return float(2*np.exp(xlogy(left, left/total)+xlogy(right, right/total)-betaln(self.a,self.b)))
 
     def scalar_evaluator(self):
         return _checked_scalar(lambda x: 1.-2.*betainc(self.a, self.b, x))

@@ -141,7 +141,7 @@ class lsq_params:
             **extra,
         }
 
-    def fit_many(self, datasets, X0=0.5, *, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, max_iterations=6, min_improvement=1e-6, max_nfev=150, state_maxiter=100, substeps=2, loss="linear", fit_bounds=None):
+    def fit_many(self, datasets, X0=0.5, *, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, max_iterations=6, min_improvement=1e-6, max_nfev=150, state_maxiter=100, substeps=2, loss="linear", fit_bounds=None, joint_max_nfev=0, joint_max_seconds=20.0, joint_gtol=1e-5):
         """Alternating pooled-theta / separate-X0 demand LSQ for matching days.
 
         First fit one common theta from five days initialized at the same X0.
@@ -228,7 +228,7 @@ class lsq_params:
         }
         parameters = dict(best["params"])
         f, g = self.response(parameters["alpha"]), self.response(parameters["beta"])
-        return {
+        fitted = {
             **parameters, "gain": float(parameters["Xi"] / parameters["C"]),
             "f": f, "g": g, "initial_states": best["states"].copy(), "X0_seed": float(X0),
             "initial_weights": np.full(len(prepared), 1.0 / len(prepared)),
@@ -242,6 +242,27 @@ class lsq_params:
             "state_converged": all(report["converged"] for report in best["state_reports"]),
             "fit_method": "pooled_demand_alternating_lsq",
         }
+        if joint_max_nfev:
+            if loss!='linear':raise ValueError('Joint refinement currently uses unpenalized squared residuals.')
+            return self.refine_joint(prepared,fitted,C=C,Xi=Xi,fit_bounds=fit_bounds,
+                max_nfev=joint_max_nfev,max_seconds=joint_max_seconds,gtol=joint_gtol,substeps=substeps)
+        return fitted
+
+    def refine_joint(self, datasets, fitted, *, C=None, Xi=None, fit_bounds=None,
+                     max_nfev=80, max_seconds=20.0, gtol=1e-5, substeps=2):
+        """Jointly refine an existing pooled logistic fit and its five X0s."""
+        from src.params.bm_1_joint import refine_joint
+        from src.params.bm_1_response import BM1LogisticResponse
+        bounds={**self.BOUNDS,**(fit_bounds or {})}
+        fixed={key:float(value) for key,value in (('C',C),('Xi',Xi)) if value is not None}
+        names=[key for key in self.NAMES if key!='X0' and key not in fixed]
+        def unpack(values):
+            p={**fixed,**dict(zip(names,values))}
+            p.update(f=BM1LogisticResponse(p['alpha']),g=BM1LogisticResponse(p['beta']))
+            return p
+        return refine_joint(datasets,fitted,predict=self._predict,unpack=unpack,names=names,
+            lower=[bounds[key][0] for key in names],upper=[bounds[key][1] for key in names],
+            max_nfev=max_nfev,max_seconds=max_seconds,gtol=gtol,substeps=substeps)
 
 
 class historical_diffusion_params:
