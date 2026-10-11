@@ -23,13 +23,23 @@ class compare_mpc_validation:
         return start, end
 
     @staticmethod
-    def wm4_saved(source):
+    def wm4_saved(source, sigma_fit_mode="historical_p0"):
+        if sigma_fit_mode not in ("historical_p0", "zero_p0"):
+            raise ValueError("WM4 sigma fitting must use historical_p0 or zero_p0.")
         if source is None: return None
         frame = pd.read_csv(source) if isinstance(source, (str, Path)) else source.copy()
         if not isinstance(frame, pd.DataFrame): raise TypeError("WM4 saved forecasts must be a DataFrame/CSV path.")
         required = {"origin", "target_time", "lead_hours", "I_mpc", "lower_68", "upper_68", "lower_95", "upper_95"}
         if missing := required - set(frame.columns):
             raise ValueError("WM4 saved forecast missing " + ", ".join(sorted(missing)))
+        if "sigma_fit_mode" not in frame.columns:
+            # Old saved WM4 forecasts used residual-only (zero-P0) sigma fits.
+            if sigma_fit_mode != "zero_p0":
+                raise ValueError("Saved WM4 forecasts predate historical-P0 sigma fitting. "
+                    "Regenerate the WM4 forecasts or explicitly request --wm4-sigma-fit-mode zero_p0.")
+            frame["sigma_fit_mode"] = "zero_p0"
+        if not frame["sigma_fit_mode"].eq(sigma_fit_mode).all():
+            raise ValueError(f"Saved WM4 sigma_fit_mode does not match requested {sigma_fit_mode}.")
         frame["origin"] = pd.to_datetime(frame["origin"])
         frame["target_time"] = pd.to_datetime(frame["target_time"])
         if frame["origin"].dt.tz is not None or frame["target_time"].dt.tz is not None:
