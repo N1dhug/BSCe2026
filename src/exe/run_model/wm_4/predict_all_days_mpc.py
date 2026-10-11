@@ -215,7 +215,6 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
             "diffusion_q": float(diffusion["q"]),
             "diffusion_sigma": float(diffusion["sigma"]),
             "sigma_fit_mode": sigma_fit_mode,
-            "training_initial_variance_fit": float(diffusion["initial_variance"][lead - 1]) if lead <= DAY_HOURS else np.nan,
             "training_initial_variance_mean": float(np.mean(diffusion["training_initial_variance"])),
             "training_centered_variance_mean": float(np.mean(diffusion["training_centered_residual_variance"])),
             "initial_F_variance": float(stochastic["F_variance"]),
