@@ -177,12 +177,15 @@ def _stochastic_forecast_variance(model, state, fit, diffusion, max_horizon, ste
     lead_steps = np.arange(1, int(max_horizon) + 1, dtype=int) * int(steps_per_hour)
     sensitivity = model.sensitivity({"r": fit["r"]})["input"][lead_steps]
     P0 = np.asarray(diffusion["mpc_initial_covariance"], dtype=float)
-    initial_variance = np.maximum(np.einsum("ni,ij,nj->n", sensitivity, P0, sensitivity), 0.0)
+    initial_F_component = P0[0, 0] * sensitivity[:, 0] ** 2
+    initial_R_component = P0[1, 1] * sensitivity[:, 1] ** 2
+    initial_variance = np.maximum(initial_F_component + initial_R_component, 0.0)
     kernel = model.process_variance_kernel(state, lead_steps)
     process_variance = kernel @ np.full(model.t_steps, float(diffusion["q"]), dtype=float)
     total_variance = np.maximum(initial_variance + process_variance, 0.0)
     return {
         "F_variance": float(P0[0, 0]), "R_variance": float(P0[1, 1]),
+        "initial_F_component": initial_F_component, "initial_R_component": initial_R_component,
         "initial_variance": initial_variance,
         "process_variance": process_variance,
         "variance": total_variance,
@@ -246,6 +249,8 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
             "sigma_fit_mode": sigma_fit_mode,
             "r0_variance_mode": r0_variance_mode,
             "initial_R_variance": float(stochastic["R_variance"]),
+            "initial_F_component_variance": float(stochastic["initial_F_component"][lead - 1]),
+            "initial_R_component_variance": float(stochastic["initial_R_component"][lead - 1]),
             "baseline_origin_residual_variance": float(diffusion["baseline_residual_variance"]),
             "training_initial_variance_mean": float(np.mean(diffusion["training_initial_variance"])),
             "training_centered_variance_mean": float(np.mean(diffusion["training_centered_residual_variance"])),
@@ -331,6 +336,7 @@ def _stochastic_metrics(part):
         "z_excess_kurtosis": z_excess_kurtosis,
         "mean_sigma": float(part["diffusion_sigma"].mean()),
         "mean_initial_F_std": float(np.sqrt(np.maximum(part["initial_F_variance"].to_numpy(dtype=float), 0.0)).mean()),
+        "mean_initial_R_std": float(np.sqrt(np.maximum(part["initial_R_variance"].to_numpy(dtype=float), 0.0)).mean()),
     }
 
 
@@ -566,7 +572,7 @@ def main():
         "lead_hours", "origins", "days", "mpc_bias", "mpc_rmse",
         "empirical_error_std", "predicted_rms_std", "std_to_rmse_ratio",
         "coverage_68_pct", "coverage_95_pct", "z_mean", "z_std",
-        "z_skew", "z_excess_kurtosis", "mean_sigma", "mean_initial_F_std",
+        "z_skew", "z_excess_kurtosis", "mean_sigma", "mean_initial_F_std", "mean_initial_R_std",
     ]].to_csv(output / "stochastic_calibration_by_lead.csv", index=False)
     if skipped:
         pd.DataFrame([{"origin": origin, "reason": reason} for origin, reason in skipped]).to_csv(output / "skipped_origins.csv", index=False)
