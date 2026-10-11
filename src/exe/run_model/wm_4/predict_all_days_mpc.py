@@ -15,6 +15,7 @@ from src.params.wm_4 import constant_diffusion_qp, optimized_qp_params
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_mpc"
 HORIZONS = (1, 2, 3, 4, 6, 8)
+SIGMA_FIT_MODES = ("historical_p0", "zero_p0")
 
 
 def _window_input(frame, start, steps_per_hour, output_model):
@@ -80,26 +81,65 @@ def _fit_shifted_history(frame, origin, baseline_weeks, steps_per_hour, output_m
     return fit, model, datasets
 
 
-def _fit_stochastic_variance(model, fit, datasets, steps_per_hour):
+def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mode="historical_p0"):
+    """Estimate WM4 process q after accounting for fitted historical P0.
+
+    Historical demand is centred on each day's model trajectory *with the
+    shared mean initial state*, not its individually optimized initial state.
+    For this linear model the counterfactual adjustment is exactly
+    J(t) @ (x0_i - mean(x0)). Its cross-history variance therefore includes
+    initial-state dispersion. Subtract J(t) P0 J(t)^T before fitting q.
+
+    The legacy zero_p0 option retains residual-only variance fitting for
+    direct comparisons, but must not be confused with P0-adjusted fitting.
+    """
+    if sigma_fit_mode not in SIGMA_FIT_MODES:
+        raise ValueError(f"sigma_fit_mode must be one of {SIGMA_FIT_MODES}.")
     hourly_index = np.arange(DAY_HOURS, dtype=int) * int(steps_per_hour)
-    residuals = np.vstack([
+    states = np.asarray(fit["init_cond"], dtype=float)
+    if states.shape != (len(datasets), 2) or len(datasets) < 2 or not np.all(np.isfinite(states)):
+        raise ValueError("Historical WM4 P0 estimation requires >=2 finite fitted [F0,R0] state pairs.")
+    if len(fit["deterministic_states"]) != len(datasets):
+        raise ValueError("Historical WM4 deterministic states must align with fitting datasets.")
+
+    estimate = optimized_qp_params.estimate_prediction_initial_state(states)
+    P0 = np.asarray(estimate["covariance"], dtype=float)
+    x_hat = np.asarray(estimate["x_hat"], dtype=float)
+    J = np.asarray(model.sensitivity({"r": fit["r"]})["input"], dtype=float)[hourly_index]
+    historical_initial_variance = np.maximum(np.einsum("ni,ij,nj->n", J, P0, J), 0.0)
+
+    # Fit-specific residuals omit historical X0 variation. Reintroduce that
+    # variation using exact linear WM4 sensitivities before estimating Var(I).
+    fitted_residuals = np.vstack([
         np.asarray(data["I"], dtype=float)[hourly_index] - np.asarray(state["I"], dtype=float)[hourly_index]
         for data, state in zip(datasets, fit["deterministic_states"])
     ])
-    ddof = 1 if residuals.shape[0] > 1 else 0
-    observed_variance = np.var(residuals, axis=0, ddof=ddof)
-    kernel = model.process_variance_kernel(fit["deterministic_state"], hourly_index)
+    centered_residuals = fitted_residuals + (states - x_hat) @ J.T
+    fitted_variance = np.var(fitted_residuals, axis=0, ddof=1)
+    centered_variance = np.var(centered_residuals, axis=0, ddof=1)
+    if sigma_fit_mode == "historical_p0":
+        observed_variance, initial_variance = centered_variance, historical_initial_variance
+    else:
+        observed_variance, initial_variance = fitted_variance, np.zeros(DAY_HOURS, dtype=float)
+
+    kernel = model.process_variance_kernel({"r": fit["r"]}, hourly_index)
+    # At hour zero there has been no process noise; exclude its zero kernel.
     fit_mask = np.arange(DAY_HOURS, dtype=int) > 0
     diffusion = constant_diffusion_qp(model).fit(
-        kernel,
-        observed_variance,
-        initial_variance=np.zeros(DAY_HOURS, dtype=float),
+        kernel, observed_variance,
+        initial_variance=initial_variance,
         fit_mask=fit_mask,
     )
     return {
         **diffusion,
+        "sigma_fit_mode": sigma_fit_mode,
         "training_residual_variance": observed_variance,
-        "training_residuals": residuals,
+        "training_residuals": centered_residuals if sigma_fit_mode == "historical_p0" else fitted_residuals,
+        "training_fit_residual_variance": fitted_variance,
+        "training_centered_residual_variance": centered_variance,
+        "training_initial_variance": historical_initial_variance,
+        "training_initial_covariance": P0,
+        "training_initial_state_mean": x_hat,
     }
 
 
@@ -122,7 +162,7 @@ def _stochastic_forecast_variance(model, state, fit, diffusion, max_horizon, ste
     }
 
 
-def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max_horizon, **fit_kwargs):
+def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max_horizon, *, sigma_fit_mode="historical_p0", **fit_kwargs):
     origin = pd.Timestamp(origin)
     fit, fit_model, datasets = _fit_shifted_history(
         frame, origin, baseline_weeks, steps_per_hour, output_model, **fit_kwargs,
@@ -137,7 +177,7 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
     R_observed = float(prepared["I"][0] - prepared["O"][0])
     init = np.array([historical[0], R_observed], dtype=float)
     state = helper._state_from_parameters(prepared, init, fit["r"], full=True)
-    diffusion = _fit_stochastic_variance(fit_model, fit, datasets, steps_per_hour)
+    diffusion = _fit_stochastic_variance(fit_model, fit, datasets, steps_per_hour, sigma_fit_mode=sigma_fit_mode)
     stochastic = _stochastic_forecast_variance(
         model, state, fit, diffusion, max_horizon, steps_per_hour,
     )
@@ -174,6 +214,10 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
             "qp_loss": float(fit["qp_loss"]),
             "diffusion_q": float(diffusion["q"]),
             "diffusion_sigma": float(diffusion["sigma"]),
+            "sigma_fit_mode": sigma_fit_mode,
+            "training_initial_variance_fit": float(diffusion["initial_variance"][lead - 1]) if lead <= DAY_HOURS else np.nan,
+            "training_initial_variance_mean": float(np.mean(diffusion["training_initial_variance"])),
+            "training_centered_variance_mean": float(np.mean(diffusion["training_centered_residual_variance"])),
             "initial_F_variance": float(stochastic["F_variance"]),
             "initial_variance": float(stochastic["initial_variance"][lead - 1]),
             "process_variance": float(stochastic["process_variance"][lead - 1]),
@@ -206,6 +250,13 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
         "qp_loss": float(fit["qp_loss"]),
         "diffusion_q": float(diffusion["q"]),
         "diffusion_sigma": float(diffusion["sigma"]),
+        "sigma_fit_mode": sigma_fit_mode,
+        "training_P0_FF": float(diffusion["training_initial_covariance"][0, 0]),
+        "training_P0_FR": float(diffusion["training_initial_covariance"][0, 1]),
+        "training_P0_RR": float(diffusion["training_initial_covariance"][1, 1]),
+        "training_initial_variance_mean": float(np.mean(diffusion["training_initial_variance"])),
+        "training_centered_variance_mean": float(np.mean(diffusion["training_centered_residual_variance"])),
+        "training_fit_residual_variance_mean": float(np.mean(diffusion["training_fit_residual_variance"])),
         "initial_F_variance": float(stochastic["F_variance"]),
         "training_diffusion_variance_rmse": float(diffusion["variance_rmse"]),
         "training_diffusion_std_rmse": float(diffusion["std_rmse"]),
@@ -433,6 +484,8 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--max-horizon", type=int, default=8)
+    parser.add_argument("--sigma-fit-mode", choices=SIGMA_FIT_MODES, default="historical_p0",
+        help="Fit sigma after subtracting propagated historical P0 (default), or use the legacy zero-P0 residual fit.")
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
     parser.add_argument("--fail-fast", action="store_true")
@@ -450,6 +503,7 @@ def main():
         args.steps_per_hour,
         max_horizon=args.max_horizon,
         fail_fast=args.fail_fast,
+        sigma_fit_mode=args.sigma_fit_mode,
         max_state_iter=args.max_state_iter,
         state_tol=args.state_tol,
     )
@@ -480,6 +534,7 @@ def main():
     print()
     print(f"days={forecasts['origin_day'].nunique()}, MPC origins={forecasts['origin'].nunique()}, forecasts={len(forecasts)}")
     print_summary(cumulative, lead, skipped)
+    print(f"sigma fit mode={args.sigma_fit_mode} (historical initial-state variance included during estimation in historical_p0 mode)")
     print(f"output={output}")
 
 
