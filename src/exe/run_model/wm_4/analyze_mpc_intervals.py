@@ -24,13 +24,53 @@ REQUIRED = {
     "initial_variance", "process_variance", "predicted_variance", "diffusion_sigma",
     "lower_68", "upper_68", "lower_95", "upper_95",
 }
+P0_REQUIRED = {
+    "sigma_fit_mode", "r0_variance_mode", "initial_F_variance", "initial_R_variance",
+    "initial_F_component_variance", "initial_R_component_variance",
+    "baseline_origin_residual_variance",
+}
 
 
-def load_forecasts(path, horizon=8):
-    """Validate saved distributions and retain origins with every requested lead."""
+def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_residual", allow_legacy=False):
+    """Validate saved distributions; reject incompatible pre-update CSVs by default.
+
+    The analyzer does not refit WM4 or recompute covariance. It must not plot
+    stale forecast intervals as if they contained baseline-derived R0 uncertainty.
+    """
     horizon = int(horizon)
     if not 1 <= horizon <= 8: raise ValueError("horizon must be in [1, 8].")
+    if expected_r0_variance_mode not in ("baseline_residual", "zero", "any"):
+        raise ValueError("expected_r0_variance_mode must be baseline_residual, zero, or any.")
+    path = Path(path).resolve()
+    if not path.is_file(): raise FileNotFoundError(
+        f"WM4 MPC forecasts not found at {path}. Run python -m "
+        "src.exe.run_model.wm_4.predict_all_days_mpc first, or specify --forecasts.")
     frame = pd.read_csv(path)
+    missing_p0 = P0_REQUIRED - set(frame.columns)
+    if missing_p0 and not allow_legacy:
+        raise ValueError(
+            f"OUTDATED WM4 MPC FORECAST DATA: {path}\n"
+            f"Missing baseline-P0 columns: {sorted(missing_p0)}.\n"
+            "The analysis reads an existing CSV and does not refit WM4. "
+            "Regenerate it with: python -m src.exe.run_model.wm_4.predict_all_days_mpc "
+            "--r0-variance-mode baseline_residual --sigma-fit-mode historical_p0\n"
+            "If MPC was saved with --output, pass its mpc_forecasts.csv via --forecasts. "
+            "To analyze older predictions explicitly, pass --allow-legacy.")
+    if missing_p0: print(
+        f"WARNING: legacy WM4 MPC forecast data missing {sorted(missing_p0)}; "
+        "baseline-derived R0 variance is NOT verified.", flush=True)
+    if "r0_variance_mode" in frame:
+        modes = frame["r0_variance_mode"].dropna().astype(str).unique()
+        if len(modes) != 1: raise ValueError(f"Mixed or missing r0_variance_mode values: {list(modes)}")
+        if expected_r0_variance_mode != "any" and modes[0] != expected_r0_variance_mode:
+            raise ValueError(
+                f"WM4 forecast CSV has r0_variance_mode={modes[0]!r}, but analysis expects "
+                f"{expected_r0_variance_mode!r}.\n"
+                "Regenerate MPC forecasts with --r0-variance-mode "
+                f"{expected_r0_variance_mode}, or use --expected-r0-variance-mode "
+                f"{modes[0]} to analyze these results.")
+    elif not allow_legacy:
+        raise ValueError("WM4 forecast CSV is missing r0_variance_mode.")
     missing = REQUIRED - set(frame.columns)
     if missing: raise ValueError(f"Forecast CSV is missing required columns: {sorted(missing)}")
     frame["origin"] = pd.to_datetime(frame["origin"])
@@ -43,10 +83,14 @@ def load_forecasts(path, horizon=8):
     frame = frame[frame["lead_hours"].between(1, horizon)].copy()
     if frame.empty: raise ValueError("Forecast CSV has no predictions within the requested horizon.")
 
-    for name in REQUIRED - {"origin", "target_time", "lead_hours"}:
+    numeric = (REQUIRED - {"origin", "target_time", "lead_hours"}) | (
+        (P0_REQUIRED - {"sigma_fit_mode", "r0_variance_mode"}) & set(frame.columns))
+    for name in numeric:
         frame[name] = pd.to_numeric(frame[name], errors="raise")
         if not np.all(np.isfinite(frame[name].to_numpy(dtype=float))):
             raise ValueError(f"Forecast column {name} contains nonfinite values.")
+    for name in (P0_REQUIRED - {"sigma_fit_mode", "r0_variance_mode"}) & set(frame.columns):
+        if (frame[name] < 0).any(): raise ValueError(f"{name} must be nonnegative.")
     for name in ("initial_variance", "process_variance", "predicted_variance", "diffusion_sigma"):
         if (frame[name] < 0).any(): raise ValueError(f"{name} must be nonnegative.")
     for confidence in (68, 95):
@@ -55,6 +99,16 @@ def load_forecasts(path, horizon=8):
     components = frame["initial_variance"] + frame["process_variance"]
     if not np.allclose(frame["predicted_variance"], components, atol=1e-8, rtol=1e-5):
         raise ValueError("Saved predicted_variance disagrees with initial_variance + process_variance.")
+    if {"initial_F_component_variance", "initial_R_component_variance"} <= set(frame.columns):
+        derived = frame["initial_F_component_variance"] + frame["initial_R_component_variance"]
+        if not np.allclose(frame["initial_variance"], derived, atol=1e-8, rtol=1e-5):
+            raise ValueError("Saved initial_variance disagrees with propagated F0 + R0 variance.")
+        if "initial_R_variance" in frame and "r0_variance_mode" in frame:
+            zero = frame["r0_variance_mode"].eq("zero")
+            if np.any(zero) and not (
+                np.allclose(frame.loc[zero, "initial_R_variance"], 0.0, atol=1e-10)
+                and np.allclose(frame.loc[zero, "initial_R_component_variance"], 0.0, atol=1e-10)):
+                raise ValueError("R0=zero mode contains nonzero initial R0 uncertainty.")
     expected = frame["origin"] + pd.to_timedelta(frame["lead_hours"], unit="h")
     if not (frame["target_time"] == expected).all():
         raise ValueError("Saved target_time must equal origin + lead_hours.")
@@ -62,6 +116,8 @@ def load_forecasts(path, horizon=8):
     modes = frame["sigma_fit_mode"].dropna().unique() if "sigma_fit_mode" in frame else []
     if len(modes) > 1: raise ValueError(f"Forecast data mixes diffusion fitting modes: {list(modes)}")
     mode = str(modes[0]) if len(modes) else "legacy/unspecified"
+    if not allow_legacy and mode != "historical_p0":
+        print(f"NOTE: WM4 sigma_fit_mode={mode!r}; 'historical_p0' is the P0-aware diffusion QP.", flush=True)
     complete = frame.groupby("origin")["lead_hours"].agg(
         lambda values: np.array_equal(np.sort(values.to_numpy()), np.arange(1, horizon + 1)))
     discarded = int((~complete).sum())
@@ -218,7 +274,7 @@ def plot_rolling_one_hour(day, frame, output):
     return _save_fig(fig, output)
 
 
-def plot_diffusion(exact, cumulative, output):
+def plot_diffusion(exact, cumulative, output, *, covariance_mode="legacy/unspecified"):
     """Separate variance accumulated by the SDE from 1..H pooled forecast scores."""
     h = exact["lead_hours"].to_numpy(dtype=int)
     initial = exact["mean_initial_variance"].to_numpy(dtype=float)
@@ -251,7 +307,10 @@ def plot_diffusion(exact, cumulative, output):
         ax.grid(alpha=0.25); ax.legend(loc="best")
         ax.set_xticks(h)
     axes[2].set_xlabel("Horizon H (hours)")
-    fig.suptitle("WM4 | initial covariance and accumulated stochastic diffusion")
+    if not (np.all(np.isfinite(F)) and np.all(np.isfinite(R))):
+        fig.suptitle("WM4 | LEGACY covariance data (F/R decomposition unavailable)")
+    else:
+        fig.suptitle(f"WM4 | initial covariance and accumulated stochastic diffusion | R0: {covariance_mode}")
     fig.tight_layout()
     return _save_fig(fig, output)
 
@@ -320,9 +379,15 @@ def plot_sigma(origins, daily, output):
     return _save_fig(fig, output)
 
 
-def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8):
-    path, output = Path(path), Path(output)
-    frame, incomplete, mode = load_forecasts(path, horizon)
+def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
+    *, expected_r0_variance_mode="baseline_residual", allow_legacy=False):
+    path, output = Path(path).resolve(), Path(output)
+    frame, incomplete, mode = load_forecasts(path, horizon,
+        expected_r0_variance_mode=expected_r0_variance_mode, allow_legacy=allow_legacy)
+    r0_mode = str(frame["r0_variance_mode"].iloc[0]) if "r0_variance_mode" in frame else "legacy/unspecified"
+    print(f"Loaded WM4 forecasts: {path} | last modified: "
+          f"{pd.Timestamp(path.stat().st_mtime, unit='s'):%Y-%m-%d %H:%M:%S} (system local) | "
+          f"sigma_fit_mode={mode} | r0_variance_mode={r0_mode}", flush=True)
     horizon = int(horizon)
     exact, cumulative, by_hour, origins, daily = summaries(frame, horizon)
     day, selected = selected_day(frame, day)
@@ -339,13 +404,16 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8):
     saved += [
         plot_day_fans(day, selected, output / f"day_{day:%Y-%m-%d}_{horizon}h_fans.png", horizon),
         plot_rolling_one_hour(day, selected, output / f"day_{day:%Y-%m-%d}_rolling_1h.png"),
-        plot_diffusion(exact, cumulative, output / "diffusion_variance_by_horizon.png"),
+        plot_diffusion(exact, cumulative, output / "diffusion_variance_by_horizon.png",
+            covariance_mode=r0_mode),
         plot_coverage(exact, cumulative, output / "interval_coverage_by_horizon.png"),
         plot_hour_lead_heatmaps(by_hour, output / "origin_hour_lead_heatmaps.png", horizon),
         plot_sigma(origins, daily, output / "fitted_sigma_over_time.png"),
     ]
     summary = {
-        "source": str(path), "sigma_fit_mode": mode, "forecast_horizon_hours": horizon,
+        "source": str(path), "sigma_fit_mode": mode, "r0_variance_mode": r0_mode,
+        "source_modified_timestamp": pd.Timestamp(path.stat().st_mtime, unit="s").isoformat(),
+        "forecast_horizon_hours": horizon,
         "matched_origins": int(origins.shape[0]), "paired_forecast_rows": int(len(frame)),
         "days": int(frame["origin_day"].nunique()), "incomplete_origins_discarded": incomplete,
         "example_day": day.strftime("%Y-%m-%d"),
@@ -358,10 +426,13 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8):
     except PermissionError:
         info = output / f"summary.{uuid4().hex[:8]}.json"
         info.write_text(json.dumps(summary, indent=2, allow_nan=True), encoding="utf-8")
-    print(f"WM4 MPC {horizon}h interval analysis | sigma mode={mode} | "
+    print(f"WM4 MPC {horizon}h interval analysis | sigma mode={mode} | R0 mode={r0_mode} | "
           f"origins={len(origins)} | days={frame['origin_day'].nunique()} | "
           f"discarded incomplete origins={incomplete}")
     print(f"{'Lead':>4} {'RMSE':>10} {'pred std':>10} {'diff std':>10} {'68%cov':>9} {'95%cov':>9}")
+    if "initial_R_variance" in frame:
+        print(f"Mean origin baseline-derived R0 std: "
+              f"{np.sqrt(frame.drop_duplicates('origin')['initial_R_variance'].mean()):.6f}")
     for row in exact.itertuples(index=False):
         print(f"{row.lead_hours:>4d} {row.rmse:>10.6f} {row.predicted_rms_std:>10.6f} "
               f"{row.process_rms_std:>10.6f} {row.coverage_68_pct:>8.1f}% {row.coverage_95_pct:>8.1f}%")
@@ -382,8 +453,13 @@ def main():
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--day", help="Day for 24 receding forecast fans; defaults to first complete day.")
     parser.add_argument("--horizon", type=int, default=8, help="Max lead horizon (1..8).")
+    parser.add_argument("--expected-r0-variance-mode", choices=("baseline_residual", "zero", "any"),
+        default="baseline_residual", help="Reject a CSV produced using a different R0 covariance assumption.")
+    parser.add_argument("--allow-legacy", action="store_true",
+        help="Permit plotting pre-update CSVs, explicitly labeled legacy; does not recompute covariance.")
     args = parser.parse_args()
-    return analyze(args.forecasts, args.output, args.day, args.horizon)
+    return analyze(args.forecasts, args.output, args.day, args.horizon,
+        expected_r0_variance_mode=args.expected_r0_variance_mode, allow_legacy=args.allow_legacy)
 
 
 if __name__ == "__main__": main()
