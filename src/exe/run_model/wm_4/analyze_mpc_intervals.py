@@ -100,6 +100,10 @@ def scores(frame):
         "coverage_68_pct": 100.0 * float(frame["covered_68"].mean()),
         "coverage_95_pct": 100.0 * float(frame["covered_95"].mean()),
         "mean_initial_variance": initial,
+        "mean_initial_F_component_variance": float(frame["initial_F_component_variance"].mean())
+            if "initial_F_component_variance" in frame else np.nan,
+        "mean_initial_R_component_variance": float(frame["initial_R_component_variance"].mean())
+            if "initial_R_component_variance" in frame else np.nan,
         "mean_process_variance": process,
         "mean_predicted_variance": variance,
         "initial_rms_std": float(np.sqrt(initial)),
@@ -221,7 +225,13 @@ def plot_diffusion(exact, cumulative, output):
     process = exact["mean_process_variance"].to_numpy(dtype=float)
     total = exact["mean_predicted_variance"].to_numpy(dtype=float)
     fig, axes = plt.subplots(3, 1, figsize=(13, 13), sharex=True)
-    axes[0].fill_between(h, 0, initial, alpha=0.65, label="Propagated initial-state variance")
+    F = exact["mean_initial_F_component_variance"].to_numpy(dtype=float)
+    R = exact["mean_initial_R_component_variance"].to_numpy(dtype=float)
+    if np.all(np.isfinite(F)) and np.all(np.isfinite(R)):
+        axes[0].fill_between(h, 0, F, alpha=0.65, label="Historical F0 variance contribution")
+        axes[0].fill_between(h, F, F + R, alpha=0.55, label="Baseline-derived R0 variance contribution")
+    else:
+        axes[0].fill_between(h, 0, initial, alpha=0.65, label="Propagated initial-state variance")
     axes[0].fill_between(h, initial, initial + process, alpha=0.6, label="Cumulative process (Wiener) variance")
     axes[0].plot(h, exact["mse"], marker="o", linestyle="--", label="Observed MSE")
     axes[0].set_ylabel("Variance"); axes[0].set_title("Variance budget at exact prediction lead")
