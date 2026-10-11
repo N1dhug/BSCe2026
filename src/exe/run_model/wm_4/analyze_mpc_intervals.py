@@ -6,6 +6,7 @@ forecast errors/variances over all leads up to H (not a sum of variances).
 """
 
 from argparse import ArgumentParser
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 import json
@@ -386,7 +387,7 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
         expected_r0_variance_mode=expected_r0_variance_mode, allow_legacy=allow_legacy)
     r0_mode = str(frame["r0_variance_mode"].iloc[0]) if "r0_variance_mode" in frame else "legacy/unspecified"
     print(f"Loaded WM4 forecasts: {path} | last modified: "
-          f"{pd.Timestamp(path.stat().st_mtime, unit='s'):%Y-%m-%d %H:%M:%S} (system local) | "
+          f"{datetime.fromtimestamp(path.stat().st_mtime):%Y-%m-%d %H:%M:%S} (system local) | "
           f"sigma_fit_mode={mode} | r0_variance_mode={r0_mode}", flush=True)
     horizon = int(horizon)
     exact, cumulative, by_hour, origins, daily = summaries(frame, horizon)
@@ -412,7 +413,7 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
     ]
     summary = {
         "source": str(path), "sigma_fit_mode": mode, "r0_variance_mode": r0_mode,
-        "source_modified_timestamp": pd.Timestamp(path.stat().st_mtime, unit="s").isoformat(),
+        "source_modified_timestamp": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
         "forecast_horizon_hours": horizon,
         "matched_origins": int(origins.shape[0]), "paired_forecast_rows": int(len(frame)),
         "days": int(frame["origin_day"].nunique()), "incomplete_origins_discarded": incomplete,
