@@ -38,6 +38,21 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
                         "calibration_horizon": 8,
                         "process_kernel_unit": process / sigma ** 2,
                         "r0_variance_mode": "oracle_reconstruction",
+                        "f0_variance_mode": "mpc_reconstruction",
+                        "F_historical": 0.12,
+                        "F_initialized_origin": 0.10,
+                        "F_oracle_origin": 0.09,
+                        "F_reconstruction_error_origin": 0.03,
+                        "F_corrected_error_origin": 0.01,
+                        "F_reconstruction_bias": 0.02,
+                        "F_reconstruction_variance": 0.003,
+                        "F_reconstruction_rmse": 0.06,
+                        "F_bias_correction": 0.02,
+                        "F_calibration_mpc_count": 1,
+                        "F_calibration_oracle_count": 4,
+                        "FR_reconstruction_covariance": 0.0,
+                        "initial_FR_covariance": 0.0,
+                        "initial_FR_component_variance": 0.0,
                         "R_observed_origin": 0.15,
                         "R_initialized_origin": 0.13,
                         "R_reconstruction_bias": 0.02,
@@ -122,6 +137,25 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
             data["initial_R_component_variance"] = 0.001
             data.to_csv(path, index=False)
             with self.assertRaisesRegex(ValueError, "propagated F0"):
+                load_forecasts(path)
+
+    def test_f_reconstruction_and_joint_variance_inconsistency_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "forecasts.csv"
+            data = self.simulated_forecasts(1)
+            data["initial_F_variance"] = 0.05
+            data.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "F0 reconstruction covariance"):
+                load_forecasts(path)
+            data = self.simulated_forecasts(1)
+            data["initial_FR_component_variance"] = 0.003
+            data.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "cross-covariance"):
+                load_forecasts(path)
+            data = self.simulated_forecasts(1)
+            data["initial_FR_covariance"] = 0.3
+            data.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "positive semidefinite"):
                 load_forecasts(path)
 
     def test_oracle_reconstruction_inconsistency_rejected(self):
