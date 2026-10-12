@@ -326,8 +326,10 @@ def parameter_associations(scores):
 
 
 def analyze(forecasts=FORECASTS, output=OUTPUT, horizon=8, fully_mpc=False,
-    history_windows=5, quantiles=5, top_k=3, origin=None):
-    frame, dropped, _ = load_forecasts(forecasts, horizon)
+    history_windows=5, quantiles=5, top_k=3, origin=None,
+    expected_sigma_fit_mode="mpc_replay"):
+    frame, dropped, _ = load_forecasts(forecasts, horizon,
+        expected_sigma_fit_mode=expected_sigma_fit_mode)
     frame = select_origins(frame, fully_mpc=fully_mpc, history_windows=history_windows)
     trajectories = prepare_trajectories(frame, horizon)
     scores = origin_scores(trajectories, horizon)
@@ -374,9 +376,11 @@ def main():
         help="Number of origins to show in each best/worst/overconfident/conservative category.")
     parser.add_argument("--origin", type=str,
         help="Plot this exact MPC origin timestamp, e.g. '2022-05-17 14:00'.")
+    parser.add_argument("--expected-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "any"), default="mpc_replay")
     args = parser.parse_args()
     return analyze(args.forecasts, args.output, args.horizon, args.fully_mpc,
-        args.history_windows, args.quantiles, args.top_k, args.origin)
+        args.history_windows, args.quantiles, args.top_k, args.origin,
+        args.expected_sigma_fit_mode)
 
 
 if __name__ == "__main__": main()
