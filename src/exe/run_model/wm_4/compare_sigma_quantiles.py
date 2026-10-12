@@ -20,7 +20,6 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.analyze_mpc_intervals import FORECASTS, load_forecasts
-from src.exe.run_model.wm_4.analyze_mpc_trajectories import prepare_trajectories, origin_scores
 
 
 NEW_FORECASTS = FORECASTS.parent.parent / "all_days_mpc_sigma_24d_24h" / "mpc_forecasts.csv"
