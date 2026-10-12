@@ -1,0 +1,38 @@
+{
+  "archive_branch": "archive/bm-legacy-cleanup-20261012",
+  "source_commit": "a80d99b817cc045b35bebb41ad0f0d18dd12ff7c",
+  "removed_paths": [
+    "src/exe/run_model/bm_1_g.py",
+    "src/exe/run_model/bm_1/s3.py",
+    "src/exe/run_model/bm_1/s3_data.py",
+    "src/method/bm_1_s3_interval.py",
+    "src/method/bm_1_s3_interval_baseline.py",
+    "src/method/bm_1_deterministic_strategy.py",
+    "src/method/bm_1_deterministic_weekday.py",
+    "src/tools/bm_1_g_baseline.py",
+    "src/tools/bm_1_g_contract.py",
+    "src/tools/bm_1_g_reports.py",
+    "tests/g_fixtures.py",
+    "tests/test_bm1_g_basic.py",
+    "tests/test_bm1_s3_interval.py",
+    "tests/test_bm1_deterministic_strategy.py",
+    "tests/test_bm1_deterministic_weekday.py",
+    "src/exe/run_model/weekday_backtest.py",
+    "src/tools/weekday_backtest.py",
+    "tests/test_weekday_backtest.py",
+    "src/tools/run_bundle.py",
+    "tests/test_run_bundle.py",
+    "docs/bm/G_GRUNDMODEL.txt",
+    "docs/bm/G_INTERVAL_MODEL.md",
+    "root/WEEKDAY_BACKTEST_GUIDE.md",
+    "src/tools/bm_1_reports.py",
+    "src/validation/estimation.py"
+  ],
+  "retained_source_changes": 0,
+  "validation": {
+    "targeted_tests": 29,
+    "result": "passed",
+    "new_broken_absolute_imports": 0
+  },
+  "scope": "Tracked repository files only; local and ignored output preserved."
+}

@@ -1,15 +1,12 @@
-# Aktuel modelafgrænsning
+# Aktuel modelafgrÃ¦nsning
 
-| Område | På main efter beskæring |
+| OmrÃ¥de | Status |
 |---|---|
-| G | Deterministisk respons, baseline, energibalance, timegennemsnit, C/k/Xi/a-fit og prognose |
-| G-udvidelser | Arkiveret: bank, Bayes-filter, Bernstein/Beta, støj, residualer, bånd, kontrol- og G/WM-studier |
-| WM og WM-MPC | Bevarede med nødvendige fælles afhængigheder |
-| F | Tidligere arkiveret på archive/f-main-20261009; genindføres ikke af G-beskæringen |
+| BM1/BM2 | Aktive dags- og MPC-prognoser, parameterfit og usikkerhed |
+| Kendt-input-fit | Bevaret med deterministiske fit-/responsafhÃ¦ngigheder |
+| Separat G/S3-indgang | Arkiveret 12. oktober 2026 |
+| Generisk weekday-backtest og run-bundle | Arkiveret 12. oktober 2026 |
+| F/H og tidligere G-udvidelser | Bevares pÃ¥ eksisterende arkivbranches |
+| WM og WM-MPC | Bevarede med fÃ¦lles afhÃ¦ngigheder |
 
-G-kernen er uændret. De fælles moduler kan fortsat indeholde stokastisk numerik,
-som WM eller historiske referencekontroller bruger. Det er ikke en del af G's aktive indgang.
-Der udføres ingen ny fælles modelrangering eller historisk fitkampagne.
-
-Læs [grundmodel](G_INTERVAL_MODEL.md), [brug](../../root/BM_GUIDE.md) og
-[arkivoversigt](../../archive/bm/INDEX.md).
+Dette er en kodeafgrÃ¦nsning, ikke en rangering af modellerne. [Brug](../../root/BM_GUIDE.md) og [arkiver](../../archive/bm/INDEX.md).

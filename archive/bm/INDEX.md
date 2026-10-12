@@ -22,3 +22,9 @@ Skrivebordskopien hedder F-og-ekstra-grundmodel-2026-10-09.
 [Tidligere originaltræ](ORIGINALS.md) og [stikort](old-paths.json) bevarer
 oprindelige kilder og kildeidentiteter. Historiske manifests omskrives ikke.
 Gamle kildebundne checkpoints kræver deres præcise oprindelige kilder.
+
+## Oprydning 12. oktober 2026
+
+Hele versionen før oprydningen er bevaret på [archive/bm-legacy-cleanup-20261012](https://github.com/N1dhug/BSCe2026/tree/archive/bm-legacy-cleanup-20261012), commit `a80d99b817cc045b35bebb41ad0f0d18dd12ff7c`.
+
+Arkivet indeholder G/S3-indgangen, dens særlige moduler og tests, generisk weekday-backtest, run-bundle og tidligere dokumentation. Gendan et separat checkout af arkivbranchen ved historisk brug. Tidligere F/H-filer forbliver på de ovenfor anførte arkivbranches. Lokale og ignorerede resultater er ikke en del af dette git-arkiv og er ikke slettet.

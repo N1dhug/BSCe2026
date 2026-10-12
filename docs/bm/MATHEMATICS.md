@@ -1,20 +1,12 @@
-# G: grundlæggende matematik
+# BM: matematisk dokumentation
 
-Den aktuelle G-model er beskrevet med almindeligt læsbare ligninger i
-[G_INTERVAL_MODEL.md](G_INTERVAL_MODEL.md) og [G_GRUNDMODEL.txt](G_GRUNDMODEL.txt).
+Den aktive matematiks beskrivelser findes i:
 
-Modellen bevarer lineær tilstandsrespons, to rette prisresponsstykker, en
-tanh-respons, forbrug omkring baseline og energibalance. Tid måles i timer.
-C, k, Xi og a tilpasses ved mindste kvadrater på timegennemsnit.
-Baseline, skalaer og starttilstande fryses før prognosen.
+- [BM1 og usikkerhedsbehandling](THOMAS_PIPELINE.md)
+- [Fit til kendte input og responsfamilier](KNOWN_INPUT_FIT.md)
+- [FÃ¦lles efteroptimering](JOINT_FIT.md)
+- [BM2 med to tilstande](BM2.md)
 
-Den deterministiske respons, fitkerne, RK4-integration og timeoperator er
-uændrede af beskæringen. Ingen støj-, filter-, bank- eller båndmodel indgår.
-Parameteridentifikation, baselinebegrænsninger og ekstrapolation er fortsat
-modelspørgsmål; beskæringen er ikke en ny statistisk validering.
+Den tidligere G/S3-models timegennemsnit, baseline og snapshot-prognose er bevaret pÃ¥ `archive/bm-legacy-cleanup-20261012` i `docs/bm/G_INTERVAL_MODEL.md` og `docs/bm/G_GRUNDMODEL.txt`.
 
-WM og fælles afhængigheder bevares. BM's lagertilstand og WM's tilstande har
-deres egne betydninger. De oprindelige F-referencer findes på F-arkivbranchen.
-
-Brug: [BM-guide](../../root/BM_GUIDE.md).
-Arkiver: [oversigt](../../archive/bm/INDEX.md).
+Oprydningen Ã¦ndrer ikke de aktive modelligninger, enheder, grids eller tolerancer. [Arkivoversigt](../../archive/bm/INDEX.md).

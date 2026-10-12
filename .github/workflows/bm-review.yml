@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tests:
-        description: 'Space-separated unittest methods/classes/modules; choose only affected G checks'
+        description: 'Space-separated unittest methods/classes/modules; choose only affected BM/WM checks'
         type: string
         default: ''
       runner:
@@ -19,7 +19,7 @@ on:
         options: [ubuntu-latest, windows-latest]
         default: ubuntu-latest
       full_suite:
-        description: 'Explicit exceptional full regression (G and shared modules); not a routine gate'
+        description: 'Explicit exceptional full regression (BM/WM and shared modules); not a routine gate'
         type: boolean
         default: false
 permissions:

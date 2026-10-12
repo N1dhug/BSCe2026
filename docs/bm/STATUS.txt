@@ -1,37 +1,12 @@
-G — AKTUEL STATUS, 9. OKTOBER 2026
+BM â€” STATUS 12. OKTOBER 2026
 
-Main indeholder den deterministiske grundmodel: lineær tilstandsrespons,
-to-delt prisrespons, baseline, balance, timegennemsnit, fælles C/k/Xi/a-fit,
-gemt snapshot og prognose. Parameteren a bevares.
-WM, WM-MPC og deres nødvendige fælles numeriske moduler er bevaret.
+Aktive indgange: BM1 daily/MPC, BM2, kendt-input-fit og f/g-ugesammenligning med valgfri fÃ¦lles efteroptimering.
+WM og WM-MPC samt fÃ¦lles numerik er bevaret.
 
-ARKIVERING
-88 G-filer blev tidligere arkiveret på archive/g-udvidelser-20261009.
-F's tidligere arkiver: archive/f-main-20261009 og archive/f-local-20261009.
-Yderligere 29 filer med F, benchmark, punktprognose, gamle studieindgange
-og deres særlige tests er fjernet fra main. Tilbageværende G-moduler og
-tests er beskåret til grundmodellen og nødvendige fælles hjælpefunktioner.
-Bank, filter, ekstra kurvefamilier, støj, residualer, bånd og BM-kontrol
-indgår ikke i grundmodellen.
+Den separate G/S3-indgang, dens sÃ¦rlige fit-/baseline-/rapportmoduler og tests er arkiveret sammen med generisk weekday-backtest og run-bundle.
+Deterministisk fit og respons samt deres tests bevares, fordi kendt-input-fitteren bruger dem. FÃ¦lles responsfamilier, checkpointfunktioner og numerik bevares.
 
-Seneste arkivbranch: archive/f-og-ekstra-grundmodel-20261009.
-Grundlag før sidste beskæring: 4011c1029339c70e67fa7ea5a4a472a48445b75a.
-Skrivebordskopi: F-og-ekstra-grundmodel-2026-10-09, med kilde-ZIP og kontrol.
-
-VERIFIKATION
-Alle 71 tilbageværende tests består og dækker grundmatematik, fælles parameterfit,
-intervalprognose, historisk normalisering, kalender, budgetstop, scoring,
-filhåndtering og snapshot-/kildeguards samt fælles numeriske funktioner.
-Kun korte syntetiske cases bruges; ingen historiske studier genstartes.
-En 168-timers syntetisk prognose er identisk med versionen før beskæring.
-Baseline, skalaer, parametre og ugedagsstarter er ligeledes uændrede.
-64 beskyttede WM-filer og grundmodellens numeriske kerner er uændrede.
-Arkivet er kontrolleret mod det præcise oprindelige indhold.
-Ingen aktive importer eller lokale dokumentlinks peger på fjernede filer.
-
-BEGRÆNSNINGER
-Gamle kildebundne snapshots og checkpoints bruges med deres egne
-arkivkilder. Hashguards bevares og afviser snapshots fra andre kilder.
-Fysisk demand-enhed og timeetiketter skal fortsat verificeres.
-Fremtidig pris og temperatur er erklærede scenarieinput.
-Parameteridentifikation og ekstrapolation er fortsat åbne modelspørgsmål.
+Hele versionen fÃ¸r denne oprydning findes pÃ¥ archive/bm-legacy-cleanup-20261012, commit a80d99b817cc045b35bebb41ad0f0d18dd12ff7c.
+Tidligere F/H- og G-udvidelser findes pÃ¥ deres eksisterende arkivbranches; se archive/bm/INDEX.md.
+Lokale rÃ¥data, output og historiske checkpoints er ikke slettet.
+Oprydningen Ã¦ndrer ikke BM1/BM2's fit, numerik eller prognosealgoritmer.
