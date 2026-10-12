@@ -19,6 +19,10 @@ class lsq_params:
 
     def __init__(self, model): self.model = model
 
+    def _model_parameters(self, parameters):
+        """Allow related models to attach fixed dynamics to the shared fitter."""
+        return parameters
+
     @staticmethod
     def logistic(x, slope):
         """Endpoint-normalized decreasing logistic curve: h(0)=1, h(1)=-1."""
@@ -117,7 +121,7 @@ class lsq_params:
             initial={"alpha": alpha0, "beta": beta0, "k": k0, "Xi": Xi0, "C": C0, "X0": X0},
         )
 
-        def unpack(theta): return {**fixed, **dict(zip(free, theta))}
+        def unpack(theta): return self._model_parameters({**fixed, **dict(zip(free, theta))})
         def residual(theta):
             _, predicted = self._predict(data, unpack(theta)["X0"], unpack(theta), substeps)
             return predicted[:data["I"].size] - data["I"]
@@ -159,7 +163,7 @@ class lsq_params:
             state_maxiter=state_maxiter, substeps=substeps,
             names=self.NAMES, bounds=self.BOUNDS, fit_bounds=fit_bounds,
         )
-        def unpack(theta): return {**fixed, **dict(zip(free, theta))}
+        def unpack(theta): return self._model_parameters({**fixed, **dict(zip(free, theta))})
         def residual(theta, states):
             p = unpack(theta)
             return np.concatenate([self._predict(data, float(x), p, substeps)[1][:len(data["I"])] - data["I"] for data, x in zip(prepared, states)])
