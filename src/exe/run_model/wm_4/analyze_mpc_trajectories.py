@@ -202,9 +202,10 @@ def plot_trajectory(frame, origin, output, label="MPC origin"):
         ax.set_xticks(h)
         ax.grid(alpha=0.22)
     row = forecast.iloc[0]
-    ptxt = " | ".join(f"{p}={row[p]:.3g}" for p in ("r_F", "r_U", "r_R")
+    ptxt = " | ".join(f"{p}={row[p]:.3g}" for p in
+        ("r_F", "r_U", "r_R", "F_initialized_origin", "R_initialized_origin")
         if p in row and pd.notna(row[p]))
-    text = f"Fixed WM4 parameters: {ptxt}" if ptxt else "Parameters fixed within this MPC origin"
+    text = f"Fitted parameters and initial state: {ptxt}" if ptxt else "Parameters fixed within this MPC origin"
     fig.suptitle(f"WM4 | {label} | origin {pd.Timestamp(origin):%Y-%m-%d %H:%M}\n{text}",
         fontsize=14)
     fig.tight_layout(rect=(0, 0, 1, 0.91), h_pad=2.3, w_pad=1.6)
@@ -227,7 +228,8 @@ def reliability_bins(scores, trajectories, quantiles=5):
         validate="many_to_one")
     rows = []
     for (q, h), part in data.groupby(["uncertainty_quantile", "lead_hours"], sort=True):
-        # Aggregate the SAME complete set of independent-origin forecasts at all h.
+        # Aggregate the SAME complete set of origins at every h. Hourly
+        # origins overlap and are not statistically independent.
         rows.append({
             "uncertainty_quantile": int(q), "horizon_hours": int(h),
             "n_origins": int(part["origin"].nunique()),
@@ -351,6 +353,9 @@ def analyze(forecasts=FORECASTS, output=OUTPUT, horizon=8, fully_mpc=False,
     print("Examples: " + ", ".join(
         f"{entry['category']}={entry['origin']:%Y-%m-%d %H:%M}" for entry in selections))
     print(f"Cumulative curves, origin scores and fitted-parameter associations: {output}")
+    print("Note: individual trajectories provide realized MSE, not observed conditional "
+        "variance; parameter-estimation uncertainty is not included in WM4's "
+        "saved stochastic forecast variance.")
     return {"trajectories": trajectories, "scores": scores, "bins": bins,
         "reliability": reliability, "selected": selections, "output": output}
 
