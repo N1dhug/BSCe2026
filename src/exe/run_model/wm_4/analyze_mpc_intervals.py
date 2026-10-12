@@ -29,10 +29,13 @@ P0_REQUIRED = {
     "sigma_fit_mode", "r0_variance_mode", "initial_F_variance", "initial_R_variance",
     "initial_F_component_variance", "initial_R_component_variance",
     "baseline_origin_residual_variance",
+    "R_reconstruction_bias", "R_reconstruction_variance",
+    "R_reconstruction_rmse", "R_reconstruction_samples", "R_bias_correction",
+    "R_observed_origin", "R_initialized_origin",
 }
 
 
-def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_residual", expected_sigma_fit_mode="mpc_replay", allow_legacy=False):
+def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconstruction", expected_sigma_fit_mode="mpc_replay", allow_legacy=False):
     """Validate saved distributions; reject incompatible pre-update CSVs by default.
 
     The analyzer does not refit WM4 or recompute covariance. It must not plot
@@ -40,8 +43,8 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_resid
     """
     horizon = int(horizon)
     if not 1 <= horizon <= 8: raise ValueError("horizon must be in [1, 8].")
-    if expected_r0_variance_mode not in ("baseline_residual", "zero", "any"):
-        raise ValueError("expected_r0_variance_mode must be baseline_residual, zero, or any.")
+    if expected_r0_variance_mode not in ("oracle_reconstruction", "baseline_residual", "zero", "any"):
+        raise ValueError("expected_r0_variance_mode must be oracle_reconstruction, baseline_residual, zero, or any.")
     if expected_sigma_fit_mode not in ("mpc_replay", "historical_p0", "zero_p0", "any"):
         raise ValueError("expected_sigma_fit_mode must be mpc_replay, historical_p0, zero_p0 or any.")
     path = Path(path).resolve()
@@ -56,7 +59,7 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_resid
             f"Missing baseline-P0 columns: {sorted(missing_p0)}.\n"
             "The analysis reads an existing CSV and does not refit WM4. "
             "Regenerate it with: python -m src.exe.run_model.wm_4.predict_all_days_mpc "
-            "--r0-variance-mode baseline_residual --sigma-fit-mode mpc_replay\n"
+            "--r0-variance-mode oracle_reconstruction --sigma-fit-mode mpc_replay\n"
             "If MPC was saved with --output, pass its mpc_forecasts.csv via --forecasts. "
             "To analyze older predictions explicitly, pass --allow-legacy.")
     if missing_p0: print(
@@ -92,8 +95,23 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_resid
         frame[name] = pd.to_numeric(frame[name], errors="raise")
         if not np.all(np.isfinite(frame[name].to_numpy(dtype=float))):
             raise ValueError(f"Forecast column {name} contains nonfinite values.")
-    for name in (P0_REQUIRED - {"sigma_fit_mode", "r0_variance_mode"}) & set(frame.columns):
+    signed_fields = {"R_reconstruction_bias", "R_bias_correction",
+        "R_observed_origin", "R_initialized_origin"}
+    for name in (P0_REQUIRED - {"sigma_fit_mode", "r0_variance_mode"} - signed_fields) & set(frame.columns):
         if (frame[name] < 0).any(): raise ValueError(f"{name} must be nonnegative.")
+    if {"R_observed_origin", "R_initialized_origin", "R_bias_correction"} <= set(frame):
+        if not np.allclose(frame["R_initialized_origin"],
+            frame["R_observed_origin"] - frame["R_bias_correction"], atol=1e-8, rtol=1e-6):
+            raise ValueError("Initial R0 center must equal observed R0 minus oracle reconstruction bias correction.")
+    if {"r0_variance_mode", "R_bias_correction", "R_reconstruction_bias",
+        "initial_R_variance", "R_reconstruction_variance"} <= set(frame):
+        oracle = frame["r0_variance_mode"].eq("oracle_reconstruction")
+        if np.any(oracle) and not (
+            np.allclose(frame.loc[oracle, "R_bias_correction"],
+                frame.loc[oracle, "R_reconstruction_bias"], atol=1e-8, rtol=1e-6)
+            and np.allclose(frame.loc[oracle, "initial_R_variance"],
+                frame.loc[oracle, "R_reconstruction_variance"], atol=1e-8, rtol=1e-6)):
+            raise ValueError("Oracle R0 covariance or bias correction disagrees with reconstruction-error samples.")
     for name in ("initial_variance", "process_variance", "predicted_variance", "diffusion_sigma"):
         if (frame[name] < 0).any(): raise ValueError(f"{name} must be nonnegative.")
     for confidence in (68, 95):
@@ -304,7 +322,7 @@ def plot_diffusion(exact, cumulative, output, *, covariance_mode="legacy/unspeci
     R = exact["mean_initial_R_component_variance"].to_numpy(dtype=float)
     if np.all(np.isfinite(F)) and np.all(np.isfinite(R)):
         axes[0].fill_between(h, 0, F, alpha=0.65, label="Historical F0 variance contribution")
-        axes[0].fill_between(h, F, F + R, alpha=0.55, label="Baseline-derived R0 variance contribution")
+        axes[0].fill_between(h, F, F + R, alpha=0.55, label="Oracle-reconstruction R0 variance contribution")
     else:
         axes[0].fill_between(h, 0, initial, alpha=0.65, label="Propagated initial-state variance")
     axes[0].fill_between(h, initial, initial + process, alpha=0.6, label="Cumulative process (Wiener) variance")
@@ -399,7 +417,7 @@ def plot_sigma(origins, daily, output):
 
 
 def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
-    *, expected_r0_variance_mode="baseline_residual", expected_sigma_fit_mode="mpc_replay", allow_legacy=False):
+    *, expected_r0_variance_mode="oracle_reconstruction", expected_sigma_fit_mode="mpc_replay", allow_legacy=False):
     path, output = Path(path).resolve(), Path(output)
     frame, incomplete, mode = load_forecasts(path, horizon,
         expected_r0_variance_mode=expected_r0_variance_mode,
@@ -457,8 +475,11 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
           f"discarded incomplete origins={incomplete}")
     print(f"{'Lead':>4} {'RMSE':>10} {'pred std':>10} {'diff std':>10} {'68%cov':>9} {'95%cov':>9}")
     if "initial_R_variance" in frame:
-        print(f"Mean origin baseline-derived R0 std: "
-              f"{np.sqrt(frame.drop_duplicates('origin')['initial_R_variance'].mean()):.6f}")
+        unique = frame.drop_duplicates("origin")
+        print(f"Mean initial R0 std: "
+              f"{np.sqrt(unique['initial_R_variance'].mean()):.6f} | "
+              f"oracle reconstruction RMSE={unique['R_reconstruction_rmse'].mean():.6f} | "
+              f"oracle reconstruction bias={unique['R_reconstruction_bias'].mean():+.6f}")
     for row in exact.itertuples(index=False):
         print(f"{row.lead_hours:>4d} {row.rmse:>10.6f} {row.predicted_rms_std:>10.6f} "
               f"{row.process_rms_std:>10.6f} {row.coverage_68_pct:>8.1f}% {row.coverage_95_pct:>8.1f}%")
@@ -481,8 +502,8 @@ def main():
     parser.add_argument("--horizon", type=int, default=8, help="Max lead horizon (1..8).")
     parser.add_argument("--expected-sigma-fit-mode", choices=("mpc_replay", "historical_p0", "zero_p0", "any"),
         default="mpc_replay", help="Require MPC-replay diffusion calibration (default); refuse stale oracle-based CSVs.")
-    parser.add_argument("--expected-r0-variance-mode", choices=("baseline_residual", "zero", "any"),
-        default="baseline_residual", help="Reject a CSV produced using a different R0 covariance assumption.")
+    parser.add_argument("--expected-r0-variance-mode", choices=("oracle_reconstruction", "baseline_residual", "zero", "any"),
+        default="oracle_reconstruction", help="Require oracle-reconstruction R0 uncertainty (default).")
     parser.add_argument("--allow-legacy", action="store_true",
         help="Permit plotting pre-update CSVs, explicitly labeled legacy; does not recompute covariance.")
     args = parser.parse_args()
