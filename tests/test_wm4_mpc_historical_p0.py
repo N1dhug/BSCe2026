@@ -1,4 +1,4 @@
-"""WM4 MPC P0 regression: baseline-origin uncertainty enters sigma QP and forecast."""
+"""WM4 MPC P0 regression: oracle rate reconstruction and causal diffusion calibration."""
 
 import unittest
 
@@ -6,8 +6,10 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.predict_all_days_mpc import (
-    _archive_mpc_origin, _fit_stochastic_variance, _mpc_initial_covariance, _stochastic_forecast_variance,
+    _archive_mpc_origin, _fit_stochastic_variance, _mpc_initial_covariance,
+    _mpc_origin, _stochastic_forecast_variance,
 )
+from unittest.mock import patch
 from src.model.wm_4 import wm_4
 from src.validation.exe.run_model.compare_mpc_predictions import compare_mpc_validation as checks
 
@@ -45,7 +47,7 @@ class HistoricalP0SigmaTests(unittest.TestCase):
     def test_historical_sigma_fit_uses_same_diagonal_mpc_p0(self):
         q_true = 0.07
         model, fit, datasets = self.setup_history(q_true)
-        result = _fit_stochastic_variance(model, fit, datasets, 2, "historical_p0")
+        result = _fit_stochastic_variance(model, fit, datasets, 2, "historical_p0", "baseline_residual")
         f_var = np.var(fit["init_cond"][:, 0], ddof=1)
         r_var = np.var([float(d["I"][0] - d["O"][0]) for d in datasets], ddof=1)
         self.assertAlmostEqual(result["F_variance"], f_var)
@@ -60,6 +62,82 @@ class HistoricalP0SigmaTests(unittest.TestCase):
         self.assertTrue(np.allclose(
             result["training_centered_residual_variance"] - prior_variance,
             result["training_fit_residual_variance"], atol=1e-12))
+
+    def test_oracle_reconstruction_error_controls_R0_variance_and_bias(self):
+        model, fit, datasets = self.setup_history(0.05)
+        # Historical R rates vary widely, but observed-minus-oracle errors do not.
+        errors = np.array([0.02, 0.04, -0.01, 0.03, -0.03])
+        for i, data in enumerate(datasets):
+            data["I"][0] = data["O"][0] + fit["init_cond"][i, 1] + errors[i]
+        result = _mpc_initial_covariance(fit, datasets)
+        self.assertEqual(result["r0_variance_mode"], "oracle_reconstruction")
+        self.assertAlmostEqual(result["R_variance"], np.var(errors, ddof=1))
+        self.assertAlmostEqual(result["R_reconstruction_bias"], np.mean(errors))
+        self.assertAlmostEqual(result["R_bias_correction"], np.mean(errors))
+        self.assertAlmostEqual(result["R_reconstruction_rmse"],
+            np.sqrt(np.mean(errors ** 2)))
+        self.assertEqual(result["R_reconstruction_samples"], len(errors))
+        self.assertTrue(np.allclose(result["R_reconstruction_errors"], errors))
+        self.assertGreater(result["baseline_residual_variance"], result["R_variance"])
+        self.assertAlmostEqual(result["covariance"][0, 1], 0.0)
+        old = _mpc_initial_covariance(fit, datasets, "baseline_residual")
+        zero = _mpc_initial_covariance(fit, datasets, "zero")
+        self.assertAlmostEqual(old["R_variance"], old["baseline_residual_variance"])
+        self.assertEqual(old["R_bias_correction"], 0.0)
+        self.assertEqual(zero["R_variance"], 0.0)
+        self.assertEqual(zero["R_bias_correction"], 0.0)
+
+    def test_zero_oracle_reconstruction_error_creates_no_rate_uncertainty(self):
+        model, fit, datasets = self.setup_history(0.05)
+        # At t=0 the synthetic observation agrees exactly with oracle R0.
+        actual = _mpc_initial_covariance(fit, datasets)
+        self.assertAlmostEqual(actual["R_variance"], 0.0, delta=1e-25)
+        self.assertAlmostEqual(actual["R_bias_correction"], 0.0, delta=1e-12)
+        self.assertGreater(actual["baseline_residual_variance"], 0.0)
+
+    def test_mpc_origin_corrects_observed_R_center_before_forecast(self):
+        model, fit, datasets = self.setup_history(0.05)
+        correction = np.array([0.01, 0.03, -0.02, 0.04, -0.01])
+        for i, dataset in enumerate(datasets):
+            dataset["I"][0] = dataset["O"][0] + fit["init_cond"][i, 1] + correction[i]
+        origin = pd.Timestamp("2022-06-01 12:00")
+        fit["training_origins"] = [origin - pd.Timedelta(weeks=k) for k in range(1, 6)]
+        fit["x_hat"] = np.mean(fit["init_cond"], axis=0)
+        fit["state_iterations"] = 1
+        fit["qp_loss"] = 0.0
+        initial_R_observed = 0.23
+        current = {"I": np.full(model.t_steps, 0.4 + initial_R_observed),
+            "O": np.full(model.t_steps, 0.4), "U": np.zeros(model.t_steps),
+            "PE": np.zeros(model.t_steps), "Time": np.linspace(0, 24, model.t_steps),
+            "observation_mask": np.zeros(model.t_steps, dtype=bool),
+            "transition_mask": np.ones(model.t_steps - 1, dtype=bool)}
+        times = pd.date_range(origin, periods=model.t_steps, freq="30min")
+
+        class FakeHelper:
+            def __init__(self, model): self.model = model
+            def _prepare_data(self, data): return data
+            def _state_from_parameters(self, data, initial, r, full=True):
+                sensitivity = self.model.sensitivity({"r": r})["state"]
+                trajectory = sensitivity @ np.asarray(initial, dtype=float)
+                return {"I": data["O"] + trajectory[:, 1], "O": data["O"],
+                    "R": trajectory[:, 1], "F": trajectory[:, 0]}
+
+        with patch("src.exe.run_model.wm_4.predict_all_days_mpc._fit_shifted_history",
+                return_value=(fit, model, datasets)), patch(
+                "src.exe.run_model.wm_4.predict_all_days_mpc._window_input",
+                return_value=(current, times)), patch(
+                "src.exe.run_model.wm_4.predict_all_days_mpc.optimized_qp_params",
+                FakeHelper):
+            rows, state = _mpc_origin(None, origin, 5, 2, None, 8)
+        b = float(np.mean(correction))
+        self.assertAlmostEqual(state["R_observed"], initial_R_observed)
+        self.assertAlmostEqual(state["R_reconstruction_bias"], b)
+        self.assertAlmostEqual(state["R_initialized"], initial_R_observed - b)
+        self.assertAlmostEqual(state["mpc_P0_RR"], np.var(correction, ddof=1))
+        self.assertAlmostEqual(rows[0]["R_bias_correction"], b)
+        J = model.sensitivity({"r": fit["r"]})["input"][2]
+        prediction = 0.4 + J @ np.array([fit["x_hat"][0], initial_R_observed - b])
+        self.assertAlmostEqual(rows[0]["I_mpc"], prediction)
 
     def test_initial_R_variance_propagates_and_can_be_ablated(self):
         model, fit, datasets = self.setup_history(0.05)
