@@ -54,7 +54,7 @@ def matched_origin(frame, normalized, origin, bm_output, wm_output, *, horizon=8
     steps_per_hour=2, max_state_iter=12, state_tol=1e-8, x_steps=101,
     fp_max_step=0.25, prior_bandwidth=0.025, X0=0.5, C=None, Xi=None,
     max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2, cached_wm4=None, min_capacity=0.05,
-    wm4_sigma_fit_mode="mpc_replay", wm4_r0_variance_mode="baseline_residual", mpc_archive=None):
+    wm4_sigma_fit_mode="mpc_replay", wm4_r0_variance_mode="oracle_reconstruction", mpc_archive=None):
     """Construct matching BM1 and WM4 forecasts at exactly the same origin."""
     started = perf_counter()
     print(f"[{origin:%Y-%m-%d %H:%M}] BM1 fitting / sigma / forecast started", flush=True)
@@ -112,6 +112,12 @@ def normalized_rows(bm, wm, calibration, raw_frame):
             "WM4_calibration_mpc_count": int(w.get("calibration_mpc_count", 0)),
             "WM4_calibration_oracle_count": int(w.get("calibration_oracle_count", 0)),
             "WM4_initial_R_variance": float(w.get("initial_R_variance", np.nan)),
+            "WM4_R_reconstruction_bias": float(w.get("R_reconstruction_bias", np.nan)),
+            "WM4_R_reconstruction_variance": float(w.get("R_reconstruction_variance", np.nan)),
+            "WM4_R_reconstruction_rmse": float(w.get("R_reconstruction_rmse", np.nan)),
+            "WM4_R_bias_correction": float(w.get("R_bias_correction", np.nan)),
+            "WM4_R_observed_origin": float(w.get("R_observed_origin", np.nan)),
+            "WM4_R_initialized_origin": float(w.get("R_initialized_origin", np.nan)),
             "WM4_baseline_origin_residual_variance": float(w.get("baseline_origin_residual_variance", np.nan)),
             "WM4_training_initial_variance_mean": float(w.get("training_initial_variance_mean", np.nan)),
             "WM4_training_centered_variance_mean": float(w.get("training_centered_variance_mean", np.nan)),
@@ -263,7 +269,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
     max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2,
     max_state_iter=12, state_tol=1e-8, fp_max_step=0.25, prior_bandwidth=0.025,
     wm4_forecasts=None, output_root=OUTPUT, resume=True, fail_fast=False, min_capacity=0.05,
-    wm4_sigma_fit_mode="mpc_replay", wm4_r0_variance_mode="baseline_residual"):
+    wm4_sigma_fit_mode="mpc_replay", wm4_r0_variance_mode="oracle_reconstruction"):
     start, end = checks.date_range(start, end, horizon, steps_per_hour, x_steps, fp_max_step, prior_bandwidth, substeps)
     if not np.isfinite(min_capacity) or not 0.001 <= min_capacity < 100.0:
         raise ValueError("min_capacity must be finite and in [0.001, 100).")
@@ -277,7 +283,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
         "max_nfev": max_nfev, "state_maxiter": state_maxiter, "substeps": substeps,
         "max_state_iter": max_state_iter, "state_tol": state_tol,
         "fp_max_step": fp_max_step, "prior_bandwidth": prior_bandwidth,
-        "fit_status_schema": 7, "min_capacity": float(min_capacity),
+        "fit_status_schema": 8, "min_capacity": float(min_capacity),
         "wm4_sigma_fit_mode": wm4_sigma_fit_mode,
         "wm4_r0_variance_mode": wm4_r0_variance_mode,
         "wm4_forecasts": str(Path(wm4_forecasts).resolve()) if isinstance(wm4_forecasts, (str, Path))
@@ -391,7 +397,7 @@ def main():
     parser.add_argument("--wm4-forecasts", type=Path, help="WM4 mpc_forecasts.csv with all 8 leads, matching --wm4-sigma-fit-mode; avoids WM4 refitting.")
     parser.add_argument("--wm4-sigma-fit-mode", choices=("mpc_replay", "historical_p0", "zero_p0"), default="mpc_replay",
         help="WM4 diffusion estimated from historical causal MPC forecasts with oracle warmup (default).")
-    parser.add_argument("--wm4-r0-variance-mode", choices=("baseline_residual", "zero"), default="baseline_residual",
+    parser.add_argument("--wm4-r0-variance-mode", choices=("oracle_reconstruction", "baseline_residual", "zero"), default="oracle_reconstruction",
         help="Use historical baseline-residual proxy for WM4 R0 variance (default), or zero for an ablation.")
     parser.add_argument("--output-root", type=Path, default=OUTPUT)
     parser.add_argument("--no-resume", action="store_true", help="Refit all origins even if matching day checkpoints exist.")
