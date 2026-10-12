@@ -23,9 +23,12 @@ class compare_mpc_validation:
         return start, end
 
     @staticmethod
-    def wm4_saved(source, sigma_fit_mode="mpc_replay", r0_variance_mode="oracle_reconstruction"):
+    def wm4_saved(source, sigma_fit_mode="mpc_replay", r0_variance_mode="oracle_reconstruction",
+        f0_variance_mode="mpc_reconstruction"):
         if sigma_fit_mode not in ("mpc_replay", "historical_p0", "zero_p0"):
             raise ValueError("WM4 sigma fitting must use mpc_replay, historical_p0 or zero_p0.")
+        if f0_variance_mode not in ("mpc_reconstruction", "oracle_spread"):
+            raise ValueError("WM4 F0 variance mode must be mpc_reconstruction or oracle_spread.")
         if r0_variance_mode not in ("oracle_reconstruction", "baseline_residual", "zero"):
             raise ValueError("WM4 R0 initial variance mode must be oracle_reconstruction, baseline_residual or zero.")
         if source is None: return None
@@ -58,6 +61,34 @@ class compare_mpc_validation:
             frame["r0_variance_mode"] = "zero"
         if not frame["r0_variance_mode"].eq(r0_variance_mode).all():
             raise ValueError(f"Saved WM4 r0_variance_mode does not match requested {r0_variance_mode}.")
+        if "f0_variance_mode" not in frame.columns:
+            if f0_variance_mode != "oracle_spread":
+                raise ValueError("Saved WM4 forecasts predate MPC-versus-oracle F0 reconstruction. "
+                    "Regenerate forecasts or request --wm4-f0-variance-mode oracle_spread.")
+            frame["f0_variance_mode"] = "oracle_spread"
+        if not frame["f0_variance_mode"].eq(f0_variance_mode).all():
+            raise ValueError(f"Saved WM4 f0_variance_mode does not match requested {f0_variance_mode}.")
+        if f0_variance_mode == "mpc_reconstruction":
+            required_f = {"F_reconstruction_bias", "F_reconstruction_variance",
+                "F_reconstruction_rmse", "F_bias_correction", "F_initialized_origin",
+                "F_oracle_origin", "F_reconstruction_error_origin", "F_historical",
+                "initial_F_variance", "initial_FR_covariance", "initial_FR_component_variance",
+                "F_calibration_mpc_count", "F_calibration_oracle_count"}
+            if missing_f := required_f - set(frame.columns):
+                raise ValueError("Saved WM4 MPC F0-reconstruction forecasts missing "
+                    + ", ".join(sorted(missing_f)) + "; regenerate WM4 MPC forecasts.")
+            for name in required_f:
+                if not np.all(np.isfinite(pd.to_numeric(frame[name], errors="coerce"))):
+                    raise ValueError(f"Invalid saved WM4 F0-reconstruction column {name}.")
+            if not np.allclose(frame["initial_F_variance"],
+                frame["F_reconstruction_variance"], atol=1e-8, rtol=1e-6):
+                raise ValueError("Saved WM4 F0 variance does not match oracle reconstruction variance.")
+            if not np.allclose(frame["F_initialized_origin"],
+                frame["F_historical"] - frame["F_bias_correction"], atol=1e-8, rtol=1e-6):
+                raise ValueError("Saved WM4 F0 center does not match historical mean minus reconstruction bias.")
+            if not np.allclose(frame["F_reconstruction_error_origin"],
+                frame["F_historical"] - frame["F_oracle_origin"], atol=1e-8, rtol=1e-6):
+                raise ValueError("Saved WM4 F0 oracle mismatch is inconsistent.")
         if r0_variance_mode == "oracle_reconstruction":
             required_oracle = {"R_reconstruction_bias", "R_reconstruction_variance",
                 "R_reconstruction_rmse", "R_bias_correction",
