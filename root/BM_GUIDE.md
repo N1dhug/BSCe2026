@@ -4,6 +4,7 @@ BM1 og BM2 bruger dagsprognoser og MPC. KÃ¸r fra projektets rod efter installa
 
 - [BM1: dagsprognose, MPC og usikkerhed](../docs/bm/THOMAS_PIPELINE.md)
 - [BM2: dynamik, fit og prognose](../docs/bm/BM2.md)
+- [BM3: bløde tilstandsgrænser, additiv støj og samme fit-/outputstruktur](../docs/bm/BM3.md)
 - [Fit til kendte input](../docs/bm/KNOWN_INPUT_FIT.md)
 - [FÃ¦lles efteroptimering og f/g-ugesammenligning](../docs/bm/JOINT_FIT.md)
 

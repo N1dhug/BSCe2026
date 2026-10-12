@@ -119,7 +119,8 @@ def forecast_from_distribution(data, fitted, *, sigma_x=0.0, x_steps=101, fp_max
         "initial_grid": model.fokker_planc_reference.grid(x_steps)[1], "fp": fp}
 
 
-def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, max_iterations=6, min_improvement=1e-6, max_nfev=150, state_maxiter=100, substeps=2, sigma_x=0.0, x_steps=101, fp_max_step=0.25, score=False, joint_max_nfev=0, joint_max_seconds=20., joint_gtol=1e-5):
+def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=None, alpha0=2.0, beta0=2.0, k0=1.0, C0=1.0, Xi0=0.5, max_iterations=6, min_improvement=1e-6, max_nfev=150, state_maxiter=100, substeps=2, sigma_x=0.0, x_steps=101, fp_max_step=0.25, score=False, joint_max_nfev=0, joint_max_seconds=20., joint_gtol=1e-5,
+    _model_factory=None, _fitter_factory=None, _forecast=None, _model_name="BM1"):
     """Fit one shared theta over five previous same weekdays, then forecast a day.
 
     First stage: a pooled theta LSQ with one shared X0 guess. Second stage:
@@ -136,12 +137,12 @@ def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=N
     base = statistical_output().fit(frame, start)
     target, index = checks.day_signals(frame, start, base, require_demand=False)
 
-    model = bm_1(held_signal(target["B"]), lambda t: 0.0 * np.asarray(t, dtype=float) + 0.5, (0.0, HOURS), HOURS + 1)
-    fitter = lsq_params(model)
+    model = (_model_factory or bm_1)(held_signal(target["B"]), lambda t: 0.0 * np.asarray(t, dtype=float) + 0.5, (0.0, HOURS), HOURS + 1)
+    fitter = (_fitter_factory or lsq_params)(model)
     fitted = fitter.fit_many(training, X0, C=C, Xi=Xi, alpha0=alpha0, beta0=beta0, k0=k0, C0=C0, Xi0=Xi0,
         max_iterations=max_iterations, min_improvement=min_improvement, max_nfev=max_nfev, state_maxiter=state_maxiter, substeps=substeps,
         joint_max_nfev=joint_max_nfev,joint_max_seconds=joint_max_seconds,joint_gtol=joint_gtol)
-    ensemble = forecast_from_distribution(target, fitted, sigma_x=sigma_x, x_steps=x_steps, fp_max_step=fp_max_step, substeps=substeps)
+    ensemble = (_forecast or forecast_from_distribution)(target, fitted, sigma_x=sigma_x, x_steps=x_steps, fp_max_step=fp_max_step, substeps=substeps)
     hourly = pd.DataFrame({
         "I_predicted": ensemble["forecast"], "I_lower": ensemble["lower"], "I_upper": ensemble["upper"],
         "I_ensemble_mean": ensemble["ensemble"].mean(axis=0), "B": target["B"][:HOURS], "U": target["U"][:HOURS],
@@ -155,7 +156,7 @@ def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=N
         training_rows.append({"day": date, "X0": state, **checks.metrics(data["I"], predicted),
             "baseline_mse": checks.metrics(data["I"], data["B"][:HOURS])["mse"]})
     summary = pd.DataFrame(training_rows).set_index("day")
-    if fitted["warning"]: print(f"[BM1 day-ahead {start:%Y-%m-%d}] WARNING: {fitted['warning']}", flush=True)
+    if fitted["warning"]: print(f"[{_model_name} day-ahead {start:%Y-%m-%d}] WARNING: {fitted['warning']}", flush=True)
     metrics = None
     if score:
         actual = frame.reindex(index)["I"].to_numpy(dtype=float)
@@ -163,7 +164,7 @@ def predict_day(day="2022-08-22", *, frame=None, tag="MED", X0=0.5, C=None, Xi=N
             "baseline": forecast_metrics(actual, hourly["B"])}
         hourly["I_observed"] = actual
     return {
-        "day": start, "tag": tag, "training_days": days, "training": summary, "hourly": hourly, "fit": fitted,
+        "model": _model_name, "day": start, "tag": tag, "training_days": days, "training": summary, "hourly": hourly, "fit": fitted,
         "initial_states": fitted["initial_states"].copy(), "initial_weights": fitted["initial_weights"].copy(),
         "initial_mass": ensemble["initial_mass"], "initial_grid": ensemble["initial_grid"],
         "ensemble": ensemble, "baseline_fit": dict(base.metadata), "training_baselines": training_baselines,
@@ -180,6 +181,7 @@ def save_result(result, output_root=OUTPUT, plot=True):
     pd.DataFrame(result["fit"]["history"]).to_csv(directory / "iterations.csv", index=False)
     fit = result["fit"]
     metadata = {
+        "model": result.get("model", "BM1"),
         "target_day": str(result["day"].date()), "tag": result["tag"], "training_days": [str(d.date()) for d in result["training_days"]],
         "theta": {key: float(fit[key]) for key in ("alpha", "beta", "k", "Xi", "C")},
         "state_X0": [float(v) for v in result["initial_states"]], "initial_weights": [float(v) for v in result["initial_weights"]],
@@ -190,13 +192,15 @@ def save_result(result, output_root=OUTPUT, plot=True):
         "baseline_fit_end": str(result["baseline_fit"]["fit_end"]), "normalization": result["normalization"], "metrics": result["metrics"],
     }
     if 'joint_fit' in fit:metadata['joint_fit']=fit['joint_fit']
+    if 'model_configuration' in result:metadata['model_configuration']=result['model_configuration']
     (directory / "fit.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     if plot:
         import matplotlib.pyplot as plt
         fig, axes = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
         hourly = result["hourly"]
-        axes[0].plot(hourly.index, hourly["I_predicted"], label="BM1 forecast")
-        axes[0].fill_between(hourly.index, hourly["I_lower"], hourly["I_upper"], alpha=0.2, label="Initial-state uncertainty" if result["sigma_x"] == 0 else "BM1 FP uncertainty")
+        name = result.get("model", "BM1")
+        axes[0].plot(hourly.index, hourly["I_predicted"], label=f"{name} forecast")
+        axes[0].fill_between(hourly.index, hourly["I_lower"], hourly["I_upper"], alpha=0.2, label="Initial-state uncertainty" if result["sigma_x"] == 0 else f"{name} FP uncertainty")
         axes[0].plot(hourly.index, hourly["B"], label="Baseline B(t)", linestyle="--")
         if "I_observed" in hourly: axes[0].plot(hourly.index, hourly["I_observed"], label="Observed demand", alpha=0.8)
         axes[0].set_ylabel("Normalized demand")
@@ -204,7 +208,7 @@ def save_result(result, output_root=OUTPUT, plot=True):
         axes[1].plot(hourly.index, hourly["U"], label="Price U(t)")
         axes[1].set_ylabel("Normalized price"); axes[1].legend(); axes[1].grid(True, alpha=0.3)
         axes[1].set_xlabel("Time")
-        fig.suptitle(f"BM1 forecast {result['day']:%Y-%m-%d} | pooled five matching weekdays")
+        fig.suptitle(f"{name} forecast {result['day']:%Y-%m-%d} | pooled five matching weekdays")
         fig.tight_layout()
         fig.savefig(directory / "forecast.png", dpi=180, bbox_inches="tight")
         plt.close(fig)

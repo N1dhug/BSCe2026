@@ -9,7 +9,7 @@ import numpy as np
 from scipy.interpolate import BPoly, PPoly
 from scipy.special import betainc, betaln, xlogy
 
-from src.validation import estimation as checks
+from src.validation.params import bm_1_response as checks
 from src.tools.input_generator.input_builder import input_builder
 
 
