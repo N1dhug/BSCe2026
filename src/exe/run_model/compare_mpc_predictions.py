@@ -23,7 +23,7 @@ import pandas as pd
 
 from src.exe.run_model.bm_1.predict_mpc import predict_origin as bm1_predict_origin
 from src.exe.run_model.wm_4.fit_daily import aligned_wm4_data, fit_expected_output
-from src.exe.run_model.wm_4.predict_all_days_mpc import _archive_mpc_origin, _mpc_origin
+from src.exe.run_model.wm_4.predict_all_days_mpc import _archive_mpc_origin, _archive_reconstruction_origin, _mpc_origin
 from src.exe.run_model.wm_4.predict_all_days_optimized import START_DAY, END_DAY
 from src.tools.baseline import statistical_output
 from src.tools.forecast_metrics import forecast_metrics
@@ -54,7 +54,8 @@ def matched_origin(frame, normalized, origin, bm_output, wm_output, *, horizon=8
     steps_per_hour=2, max_state_iter=12, state_tol=1e-8, x_steps=101,
     fp_max_step=0.25, prior_bandwidth=0.025, X0=0.5, C=None, Xi=None,
     max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2, cached_wm4=None, min_capacity=0.05,
-    wm4_sigma_fit_mode="mpc_replay", wm4_r0_variance_mode="oracle_reconstruction", mpc_archive=None):
+    wm4_sigma_fit_mode="mpc_replay", wm4_r0_variance_mode="oracle_reconstruction",
+    wm4_f0_variance_mode="mpc_reconstruction", mpc_archive=None, state_archive=None):
     """Construct matching BM1 and WM4 forecasts at exactly the same origin."""
     started = perf_counter()
     print(f"[{origin:%Y-%m-%d %H:%M}] BM1 fitting / sigma / forecast started", flush=True)
@@ -70,7 +71,8 @@ def matched_origin(frame, normalized, origin, bm_output, wm_output, *, horizon=8
         wm, state = _mpc_origin(frame, origin, 5, steps_per_hour, wm_output, horizon,
             max_state_iter=max_state_iter, state_tol=state_tol,
             sigma_fit_mode=wm4_sigma_fit_mode, r0_variance_mode=wm4_r0_variance_mode,
-            mpc_archive=mpc_archive)
+            mpc_archive=mpc_archive, state_archive=state_archive,
+            f0_variance_mode=wm4_f0_variance_mode)
     else:
         try: wm = cached_wm4.loc[[(origin, lead) for lead in range(1, horizon + 1)]].to_dict(orient="records")
         except KeyError as exc: raise ValueError(f"WM4 cached forecasts lack a complete 8-hour horizon at {origin}.") from exc
@@ -107,6 +109,23 @@ def normalized_rows(bm, wm, calibration, raw_frame):
             "BM1_theta_nfev": int(b["theta_nfev"]),
             "WM4_sigma_fit_mode": str(w.get("sigma_fit_mode", "zero_p0")),
             "WM4_r0_variance_mode": str(w.get("r0_variance_mode", "zero")),
+            "WM4_f0_variance_mode": str(w.get("f0_variance_mode", "oracle_spread")),
+            "WM4_F_historical": float(w.get("F_historical", np.nan)),
+            "WM4_F_initialized_origin": float(w.get("F_initialized_origin", np.nan)),
+            "WM4_F_oracle_origin": float(w.get("F_oracle_origin", np.nan)),
+            "WM4_F_reconstruction_error_origin": float(w.get("F_reconstruction_error_origin", np.nan)),
+            "WM4_F_corrected_error_origin": float(w.get("F_corrected_error_origin", np.nan)),
+            "WM4_R_oracle_origin": float(w.get("R_oracle_origin", np.nan)),
+            "WM4_R_reconstruction_error_origin": float(w.get("R_reconstruction_error_origin", np.nan)),
+            "WM4_F_reconstruction_bias": float(w.get("F_reconstruction_bias", np.nan)),
+            "WM4_F_reconstruction_variance": float(w.get("F_reconstruction_variance", np.nan)),
+            "WM4_F_reconstruction_rmse": float(w.get("F_reconstruction_rmse", np.nan)),
+            "WM4_F_bias_correction": float(w.get("F_bias_correction", np.nan)),
+            "WM4_FR_reconstruction_covariance": float(w.get("FR_reconstruction_covariance", np.nan)),
+            "WM4_initial_FR_covariance": float(w.get("initial_FR_covariance", np.nan)),
+            "WM4_initial_FR_component_variance": float(w.get("initial_FR_component_variance", np.nan)),
+            "WM4_F_calibration_mpc_count": int(w.get("F_calibration_mpc_count", 0)),
+            "WM4_F_calibration_oracle_count": int(w.get("F_calibration_oracle_count", 0)),
             "WM4_initial_variance": float(w.get("initial_variance", np.nan)),
             "WM4_process_kernel_unit": float(w.get("process_kernel_unit", np.nan)),
             "WM4_calibration_mpc_count": int(w.get("calibration_mpc_count", 0)),
@@ -125,7 +144,7 @@ def normalized_rows(bm, wm, calibration, raw_frame):
     return out
 
 
-def _archive_comparison_rows(archive, rows, horizon):
+def _archive_comparison_rows(archive, rows, horizon, state_archive=None):
     """Recover causal WM4 MPC calibration records from matched checkpoints."""
     if archive is None or not rows: return
     by_origin = {}
@@ -140,6 +159,16 @@ def _archive_comparison_rows(archive, rows, horizon):
         })
     for origin, part in by_origin.items():
         _archive_mpc_origin(archive, origin, part, horizon)
+    if state_archive is not None:
+        for origin, part in by_origin.items():
+            row = next((r for r in rows if pd.Timestamp(r["origin"]) == origin), None)
+            if row is None: continue
+            f = float(row.get("WM4_F_reconstruction_error_origin", np.nan))
+            r = float(row.get("WM4_R_reconstruction_error_origin", np.nan))
+            if np.isfinite(f) and np.isfinite(r):
+                _archive_reconstruction_origin(state_archive, origin, {
+                    "origin": origin, "F_reconstruction_error_origin": f,
+                    "R_reconstruction_error_origin": r})
 
 
 def metrics(frame, model):
@@ -269,23 +298,26 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
     max_iterations=3, max_nfev=120, state_maxiter=60, substeps=2,
     max_state_iter=12, state_tol=1e-8, fp_max_step=0.25, prior_bandwidth=0.025,
     wm4_forecasts=None, output_root=OUTPUT, resume=True, fail_fast=False, min_capacity=0.05,
-    wm4_sigma_fit_mode="mpc_replay", wm4_r0_variance_mode="oracle_reconstruction"):
+    wm4_sigma_fit_mode="mpc_replay", wm4_r0_variance_mode="oracle_reconstruction",
+    wm4_f0_variance_mode="mpc_reconstruction"):
     start, end = checks.date_range(start, end, horizon, steps_per_hour, x_steps, fp_max_step, prior_bandwidth, substeps)
     if not np.isfinite(min_capacity) or not 0.001 <= min_capacity < 100.0:
         raise ValueError("min_capacity must be finite and in [0.001, 100).")
     if frame is None: frame, _ = aligned_wm4_data(tag)
     frame = normalization_checks.common_frame(frame)
-    mpc_archive = {}
+    mpc_archive, state_archive = {}, {}
     cached_wm4 = checks.wm4_saved(wm4_forecasts, sigma_fit_mode=wm4_sigma_fit_mode,
-        r0_variance_mode=wm4_r0_variance_mode)
+        r0_variance_mode=wm4_r0_variance_mode,
+        f0_variance_mode=wm4_f0_variance_mode)
     options = {"tag": tag, "horizon": horizon, "steps_per_hour": steps_per_hour, "X0": X0,
         "C": C, "Xi": Xi, "x_steps": x_steps, "max_iterations": max_iterations,
         "max_nfev": max_nfev, "state_maxiter": state_maxiter, "substeps": substeps,
         "max_state_iter": max_state_iter, "state_tol": state_tol,
         "fp_max_step": fp_max_step, "prior_bandwidth": prior_bandwidth,
-        "fit_status_schema": 8, "min_capacity": float(min_capacity),
+        "fit_status_schema": 9, "min_capacity": float(min_capacity),
         "wm4_sigma_fit_mode": wm4_sigma_fit_mode,
         "wm4_r0_variance_mode": wm4_r0_variance_mode,
+        "wm4_f0_variance_mode": wm4_f0_variance_mode,
         "wm4_forecasts": str(Path(wm4_forecasts).resolve()) if isinstance(wm4_forecasts, (str, Path))
             else ("supplied DataFrame" if cached_wm4 is not None else None)}
     all_rows, skipped = [], []
@@ -295,7 +327,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
         loaded = checks.saved_day(folder, options) if resume else None
         day_rows = loaded.to_dict(orient="records") if loaded is not None else []
         complete = set(pd.to_datetime(loaded["origin"])) if loaded is not None else set()
-        _archive_comparison_rows(mpc_archive, day_rows, horizon)
+        _archive_comparison_rows(mpc_archive, day_rows, horizon, state_archive=state_archive)
         if len(complete) == 24:
             all_rows.extend(day_rows)
             print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: restored all 24 origin checkpoints", flush=True)
@@ -328,12 +360,14 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
                     max_nfev=max_nfev, state_maxiter=state_maxiter,
                     substeps=substeps, cached_wm4=cached_wm4, min_capacity=min_capacity,
                     wm4_sigma_fit_mode=wm4_sigma_fit_mode,
-                    wm4_r0_variance_mode=wm4_r0_variance_mode, mpc_archive=mpc_archive)
+                    wm4_r0_variance_mode=wm4_r0_variance_mode,
+                    wm4_f0_variance_mode=wm4_f0_variance_mode,
+                    mpc_archive=mpc_archive, state_archive=state_archive)
                 origin_rows = normalized_rows(bm, wm, calibration, frame)
                 # Never replace a destination possibly open in Excel / OneDrive.
                 # Each origin is committed once to a separate, immutable file.
                 checkpoint = checks.write_origin(folder, options, origin, origin_rows)
-                _archive_comparison_rows(mpc_archive, origin_rows, horizon)
+                _archive_comparison_rows(mpc_archive, origin_rows, horizon, state_archive=state_archive)
                 day_rows.extend(origin_rows)
                 complete.add(origin)
                 print(f"[{number}/{len(days)}] {day:%Y-%m-%d}: checkpoint {len(complete)}/24 origins "
@@ -397,6 +431,8 @@ def main():
     parser.add_argument("--wm4-forecasts", type=Path, help="WM4 mpc_forecasts.csv with all 8 leads, matching --wm4-sigma-fit-mode; avoids WM4 refitting.")
     parser.add_argument("--wm4-sigma-fit-mode", choices=("mpc_replay", "historical_p0", "zero_p0"), default="mpc_replay",
         help="WM4 diffusion estimated from historical causal MPC forecasts with oracle warmup (default).")
+    parser.add_argument("--wm4-f0-variance-mode", choices=("mpc_reconstruction", "oracle_spread"), default="mpc_reconstruction",
+        help="WM4 historical MPC-versus-oracle F0 uncertainty (default) or oracle-state spread.")
     parser.add_argument("--wm4-r0-variance-mode", choices=("oracle_reconstruction", "baseline_residual", "zero"), default="oracle_reconstruction",
         help="Use historical baseline-residual proxy for WM4 R0 variance (default), or zero for an ablation.")
     parser.add_argument("--output-root", type=Path, default=OUTPUT)
@@ -412,6 +448,7 @@ def main():
         prior_bandwidth=args.prior_bandwidth, wm4_forecasts=args.wm4_forecasts,
         min_capacity=args.min_capacity, wm4_sigma_fit_mode=args.wm4_sigma_fit_mode,
         wm4_r0_variance_mode=args.wm4_r0_variance_mode,
+        wm4_f0_variance_mode=args.wm4_f0_variance_mode,
         output_root=args.output_root, resume=not args.no_resume, fail_fast=args.fail_fast)
 
 
