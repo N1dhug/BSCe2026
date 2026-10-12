@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.predict_all_days_mpc import (
-    _archive_mpc_origin, _fit_stochastic_variance, _mpc_initial_covariance,
+    _archive_mpc_origin, _archive_reconstruction_origin, _fit_stochastic_variance, _mpc_initial_covariance,
     _mpc_origin, _stochastic_forecast_variance,
 )
 from unittest.mock import patch
@@ -63,6 +63,78 @@ class HistoricalP0SigmaTests(unittest.TestCase):
             result["training_centered_residual_variance"] - prior_variance,
             result["training_fit_residual_variance"], atol=1e-12))
 
+    def test_historical_mpc_state_errors_replace_oracle_bootstrap_and_fit_full_P0(self):
+        model, fit, datasets = self.setup_history(0.05)
+        origin = pd.Timestamp("2022-07-12 08:00")
+        training = [origin - pd.Timedelta(weeks=k) for k in range(1, 6)]
+        fit["training_origins"] = training
+        fit["prediction_origin"] = origin
+        boot = _mpc_initial_covariance(fit, datasets)
+        self.assertEqual(boot["F_calibration_oracle_count"], 5)
+        self.assertEqual(boot["F_calibration_mpc_count"], 0)
+        self.assertAlmostEqual(boot["F_bias_correction"], 0.0)
+
+        eF = np.array([-0.12, -0.04, 0.03, 0.08, 0.16])
+        eR = np.array([-0.06, -0.03, 0.01, 0.04, 0.09])
+        archive = {}
+        for i, stamp in enumerate(training):
+            _archive_reconstruction_origin(archive, stamp, {
+                "origin": stamp, "F_reconstruction_error_origin": float(eF[i]),
+                "R_reconstruction_error_origin": float(eR[i])})
+        cal = _mpc_initial_covariance(fit, datasets, state_archive=archive)
+        expected = np.cov(np.column_stack([eF, eR]), rowvar=False, ddof=1)
+        self.assertEqual(cal["F_calibration_mpc_count"], 5)
+        self.assertEqual(cal["F_calibration_oracle_count"], 0)
+        self.assertTrue(np.allclose(cal["covariance"], expected))
+        self.assertAlmostEqual(cal["F_bias_correction"], np.mean(eF))
+        self.assertAlmostEqual(cal["R_bias_correction"], np.mean(eR))
+        self.assertGreater(cal["FR_covariance"], 0.0)
+        self.assertGreater(cal["F_variance"], 0.0)
+        self.assertGreater(cal["R_variance"], 0.0)
+        diffusion = _fit_stochastic_variance(model, fit, datasets, 2,
+            state_archive=archive, max_horizon=8)
+        self.assertTrue(np.allclose(diffusion["mpc_initial_covariance"], expected))
+        prediction = _stochastic_forecast_variance(model, {"r": fit["r"]},
+            fit, diffusion, 8, 2)
+        J = model.sensitivity({"r": fit["r"]})["input"][2 * np.arange(1, 9)]
+        propagated = np.einsum("ni,ij,nj->n", J, expected, J)
+        self.assertTrue(np.allclose(prediction["initial_variance"], propagated))
+        self.assertTrue(np.allclose(prediction["initial_variance"],
+            prediction["initial_F_component"] + prediction["initial_R_component"]
+            + prediction["initial_FR_component"]))
+        self.assertTrue(np.any(abs(prediction["initial_FR_component"]) > 1e-10))
+
+        archive.pop(training[0])
+        partial = _mpc_initial_covariance(fit, datasets, state_archive=archive)
+        self.assertEqual(partial["F_calibration_mpc_count"], 4)
+        self.assertEqual(partial["F_calibration_oracle_count"], 1)
+
+    def test_f_oracle_spread_ablation_retains_diagonal_P0(self):
+        model, fit, datasets = self.setup_history(0.05)
+        origin = pd.Timestamp("2022-07-12 08:00")
+        fit["training_origins"] = [origin - pd.Timedelta(weeks=k) for k in range(1, 6)]
+        archive = {stamp: np.array([0.03, 0.08])
+            for stamp in fit["training_origins"]}
+        old = _mpc_initial_covariance(fit, datasets, f0_variance_mode="oracle_spread",
+            state_archive=archive)
+        self.assertAlmostEqual(old["F_variance"], np.var(fit["init_cond"][:, 0], ddof=1))
+        self.assertEqual(old["F_bias_correction"], 0.0)
+        self.assertEqual(old["FR_covariance"], 0.0)
+        self.assertEqual(old["F_calibration_mpc_count"], 0)
+
+    def test_incomplete_historical_origin_does_not_enter_state_calibration(self):
+        model, fit, datasets = self.setup_history(0.05)
+        origin = pd.Timestamp("2022-07-12 08:00")
+        fit["prediction_origin"] = origin
+        fit["training_origins"] = [origin - pd.Timedelta(weeks=k) for k in range(1, 6)]
+        training = fit["training_origins"]
+        archive = {training[0]: np.array([0.12, -0.07])}
+        usable = _mpc_initial_covariance(fit, datasets, state_archive=archive)
+        self.assertEqual(usable["F_calibration_mpc_count"], 1)
+        fit["prediction_origin"] = training[0] + pd.Timedelta(hours=23)
+        excluded = _mpc_initial_covariance(fit, datasets, state_archive=archive)
+        self.assertEqual(excluded["F_calibration_mpc_count"], 0)
+
     def test_oracle_reconstruction_error_controls_R0_variance_and_bias(self):
         model, fit, datasets = self.setup_history(0.05)
         # Historical R rates vary widely, but observed-minus-oracle errors do not.
@@ -116,6 +188,8 @@ class HistoricalP0SigmaTests(unittest.TestCase):
         class FakeHelper:
             def __init__(self, model): self.model = model
             def _prepare_data(self, data): return data
+            def optimize_prediction_initial_state(self, data, r, **kwargs):
+                return {"init_cond": np.array([0.05, 0.19])}
             def _state_from_parameters(self, data, initial, r, full=True):
                 sensitivity = self.model.sensitivity({"r": r})["state"]
                 trajectory = sensitivity @ np.asarray(initial, dtype=float)
@@ -230,18 +304,20 @@ class HistoricalP0SigmaTests(unittest.TestCase):
             checks.wm4_saved(old, sigma_fit_mode="historical_p0")
         with self.assertRaisesRegex(ValueError, "predate baseline-derived"):
             checks.wm4_saved(old, sigma_fit_mode="zero_p0", r0_variance_mode="baseline_residual")
-        recovered = checks.wm4_saved(old, sigma_fit_mode="zero_p0", r0_variance_mode="zero")
+        recovered = checks.wm4_saved(old, sigma_fit_mode="zero_p0", r0_variance_mode="zero",
+            f0_variance_mode="oracle_spread")
         self.assertEqual(recovered.iloc[0]["sigma_fit_mode"], "zero_p0")
         new = old.copy()
         new["sigma_fit_mode"] = "historical_p0"
         new["r0_variance_mode"] = "baseline_residual"
-        loaded = checks.wm4_saved(new, sigma_fit_mode="historical_p0")
+        loaded = checks.wm4_saved(new, sigma_fit_mode="historical_p0",
+            f0_variance_mode="oracle_spread")
         self.assertEqual(loaded.iloc[0]["r0_variance_mode"], "baseline_residual")
         with self.assertRaisesRegex(ValueError, "sigma_fit_mode"):
-            checks.wm4_saved(new, sigma_fit_mode="mpc_replay")
+            checks.wm4_saved(new, sigma_fit_mode="mpc_replay", f0_variance_mode="oracle_spread")
         new["sigma_fit_mode"] = "mpc_replay"
         with self.assertRaisesRegex(ValueError, "MPC-replay forecasts missing"):
-            checks.wm4_saved(new, sigma_fit_mode="mpc_replay")
+            checks.wm4_saved(new, sigma_fit_mode="mpc_replay", f0_variance_mode="oracle_spread")
 
 
 if __name__ == "__main__":
