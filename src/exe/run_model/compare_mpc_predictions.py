@@ -314,7 +314,7 @@ def run_all_days(start=START_DAY, end=END_DAY, *, frame=None, tag="MED", horizon
         "max_nfev": max_nfev, "state_maxiter": state_maxiter, "substeps": substeps,
         "max_state_iter": max_state_iter, "state_tol": state_tol,
         "fp_max_step": fp_max_step, "prior_bandwidth": prior_bandwidth,
-        "fit_status_schema": 9, "min_capacity": float(min_capacity),
+        "fit_status_schema": 10, "min_capacity": float(min_capacity),
         "wm4_sigma_fit_mode": wm4_sigma_fit_mode,
         "wm4_r0_variance_mode": wm4_r0_variance_mode,
         "wm4_f0_variance_mode": wm4_f0_variance_mode,
@@ -429,7 +429,7 @@ def main():
     parser.add_argument("--wm4-max-state-iter", type=int, default=12)
     parser.add_argument("--wm4-state-tol", type=float, default=1e-8)
     parser.add_argument("--wm4-forecasts", type=Path, help="WM4 mpc_forecasts.csv with all 8 leads, matching --wm4-sigma-fit-mode; avoids WM4 refitting.")
-    parser.add_argument("--wm4-sigma-fit-mode", choices=("mpc_replay", "historical_p0", "zero_p0"), default="mpc_replay",
+    parser.add_argument("--wm4-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "historical_p0", "zero_p0"), default="mpc_replay",
         help="WM4 diffusion estimated from historical causal MPC forecasts with oracle warmup (default).")
     parser.add_argument("--wm4-f0-variance-mode", choices=("mpc_reconstruction", "oracle_spread"), default="mpc_reconstruction",
         help="WM4 historical MPC-versus-oracle F0 uncertainty (default) or oracle-state spread.")
