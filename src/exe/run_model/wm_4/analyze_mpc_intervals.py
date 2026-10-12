@@ -32,10 +32,18 @@ P0_REQUIRED = {
     "R_reconstruction_bias", "R_reconstruction_variance",
     "R_reconstruction_rmse", "R_reconstruction_samples", "R_bias_correction",
     "R_observed_origin", "R_initialized_origin",
+    "f0_variance_mode", "F_historical", "F_initialized_origin",
+    "F_oracle_origin", "F_reconstruction_error_origin", "F_corrected_error_origin",
+    "F_reconstruction_bias", "F_reconstruction_variance", "F_reconstruction_rmse",
+    "F_bias_correction", "F_calibration_mpc_count", "F_calibration_oracle_count",
+    "FR_reconstruction_covariance", "initial_FR_covariance",
+    "initial_FR_component_variance",
 }
 
 
-def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconstruction", expected_sigma_fit_mode="mpc_replay", allow_legacy=False):
+def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconstruction",
+    expected_f0_variance_mode="mpc_reconstruction", expected_sigma_fit_mode="mpc_replay",
+    allow_legacy=False):
     """Validate saved distributions; reject incompatible pre-update CSVs by default.
 
     The analyzer does not refit WM4 or recompute covariance. It must not plot
@@ -45,6 +53,8 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
     if not 1 <= horizon <= 8: raise ValueError("horizon must be in [1, 8].")
     if expected_r0_variance_mode not in ("oracle_reconstruction", "baseline_residual", "zero", "any"):
         raise ValueError("expected_r0_variance_mode must be oracle_reconstruction, baseline_residual, zero, or any.")
+    if expected_f0_variance_mode not in ("mpc_reconstruction", "oracle_spread", "any"):
+        raise ValueError("expected_f0_variance_mode must be mpc_reconstruction, oracle_spread or any.")
     if expected_sigma_fit_mode not in ("mpc_replay", "historical_p0", "zero_p0", "any"):
         raise ValueError("expected_sigma_fit_mode must be mpc_replay, historical_p0, zero_p0 or any.")
     path = Path(path).resolve()
@@ -52,14 +62,20 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
         f"WM4 MPC forecasts not found at {path}. Run python -m "
         "src.exe.run_model.wm_4.predict_all_days_mpc first, or specify --forecasts.")
     frame = pd.read_csv(path)
-    missing_p0 = P0_REQUIRED - set(frame.columns)
+    old_fields = {"f0_variance_mode", "F_historical", "F_initialized_origin",
+        "F_oracle_origin", "F_reconstruction_error_origin", "F_corrected_error_origin",
+        "F_reconstruction_bias", "F_reconstruction_variance", "F_reconstruction_rmse",
+        "F_bias_correction", "F_calibration_mpc_count", "F_calibration_oracle_count",
+        "FR_reconstruction_covariance", "initial_FR_covariance", "initial_FR_component_variance"}
+    required_p0 = P0_REQUIRED if not allow_legacy else P0_REQUIRED - old_fields
+    missing_p0 = required_p0 - set(frame.columns)
     if missing_p0 and not allow_legacy:
         raise ValueError(
             f"OUTDATED WM4 MPC FORECAST DATA: {path}\n"
             f"Missing current-P0 columns: {sorted(missing_p0)}.\n"
             "The analysis reads an existing CSV and does not refit WM4. "
             "Regenerate it with: python -m src.exe.run_model.wm_4.predict_all_days_mpc "
-            "--r0-variance-mode oracle_reconstruction --sigma-fit-mode mpc_replay\n"
+            "--f0-variance-mode mpc_reconstruction --r0-variance-mode oracle_reconstruction --sigma-fit-mode mpc_replay\n"
             "If MPC was saved with --output, pass its mpc_forecasts.csv via --forecasts. "
             "To analyze older predictions explicitly, pass --allow-legacy.")
     if missing_p0: print(
@@ -77,6 +93,13 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
                 f"{modes[0]} to analyze these results.")
     elif not allow_legacy:
         raise ValueError("WM4 forecast CSV is missing r0_variance_mode.")
+    f_modes = frame["f0_variance_mode"].dropna().astype(str).unique() if "f0_variance_mode" in frame else []
+    if len(f_modes) > 1: raise ValueError(f"Mixed F0 variance modes: {list(f_modes)}")
+    f_mode = str(f_modes[0]) if len(f_modes) else "oracle_spread"
+    if f_mode != expected_f0_variance_mode and expected_f0_variance_mode != "any" and not allow_legacy:
+        raise ValueError(f"WM4 forecast CSV has f0_variance_mode={f_mode!r}, "
+            f"but analysis expects {expected_f0_variance_mode!r}. "
+            "Regenerate forecasts or set --expected-f0-variance-mode explicitly.")
     missing = REQUIRED - set(frame.columns)
     if missing: raise ValueError(f"Forecast CSV is missing required columns: {sorted(missing)}")
     frame["origin"] = pd.to_datetime(frame["origin"])
@@ -90,14 +113,17 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
     if frame.empty: raise ValueError("Forecast CSV has no predictions within the requested horizon.")
 
     numeric = (REQUIRED - {"origin", "target_time", "lead_hours"}) | (
-        (P0_REQUIRED - {"sigma_fit_mode", "r0_variance_mode"}) & set(frame.columns))
+        (P0_REQUIRED - {"sigma_fit_mode", "r0_variance_mode", "f0_variance_mode"}) & set(frame.columns))
     for name in numeric:
         frame[name] = pd.to_numeric(frame[name], errors="raise")
         if not np.all(np.isfinite(frame[name].to_numpy(dtype=float))):
             raise ValueError(f"Forecast column {name} contains nonfinite values.")
     signed_fields = {"R_reconstruction_bias", "R_bias_correction",
-        "R_observed_origin", "R_initialized_origin"}
-    for name in (P0_REQUIRED - {"sigma_fit_mode", "r0_variance_mode"} - signed_fields) & set(frame.columns):
+        "R_observed_origin", "R_initialized_origin", "F_historical", "F_initialized_origin",
+        "F_oracle_origin", "F_reconstruction_error_origin", "F_corrected_error_origin",
+        "F_reconstruction_bias", "F_bias_correction", "FR_reconstruction_covariance",
+        "initial_FR_covariance", "initial_FR_component_variance"}
+    for name in (P0_REQUIRED - {"sigma_fit_mode", "r0_variance_mode", "f0_variance_mode"} - signed_fields) & set(frame.columns):
         if (frame[name] < 0).any(): raise ValueError(f"{name} must be nonnegative.")
     if {"R_observed_origin", "R_initialized_origin", "R_bias_correction"} <= set(frame):
         if not np.allclose(frame["R_initialized_origin"],
@@ -112,6 +138,30 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
             and np.allclose(frame.loc[oracle, "initial_R_variance"],
                 frame.loc[oracle, "R_reconstruction_variance"], atol=1e-8, rtol=1e-6)):
             raise ValueError("Oracle R0 covariance or bias correction disagrees with reconstruction-error samples.")
+    if {"f0_variance_mode", "F_historical", "F_initialized_origin", "F_bias_correction",
+        "F_reconstruction_variance", "initial_F_variance"} <= set(frame):
+        reconstruction = frame["f0_variance_mode"].eq("mpc_reconstruction")
+        if np.any(reconstruction) and not (
+            np.allclose(frame.loc[reconstruction, "initial_F_variance"],
+                frame.loc[reconstruction, "F_reconstruction_variance"], atol=1e-8, rtol=1e-6)
+            and np.allclose(frame.loc[reconstruction, "F_initialized_origin"],
+                frame.loc[reconstruction, "F_historical"] -
+                frame.loc[reconstruction, "F_bias_correction"], atol=1e-8, rtol=1e-6)):
+            raise ValueError("F0 reconstruction covariance or center does not match historical MPC errors.")
+        if {"F_reconstruction_error_origin", "F_oracle_origin"} <= set(frame):
+            if not np.allclose(frame["F_reconstruction_error_origin"],
+                frame["F_historical"] - frame["F_oracle_origin"], atol=1e-8, rtol=1e-6):
+                raise ValueError("Saved F0 oracle reconstruction error differs from the raw MPC estimate.")
+    if {"initial_FR_covariance", "initial_F_variance", "initial_R_variance"} <= set(frame):
+        if np.any(frame["initial_FR_covariance"] ** 2 >
+            frame["initial_F_variance"] * frame["initial_R_variance"] + 1e-10):
+            raise ValueError("Initial F/R covariance must be positive semidefinite.")
+        if {"FR_reconstruction_covariance", "f0_variance_mode", "r0_variance_mode"} <= set(frame):
+            full = (frame["f0_variance_mode"].eq("mpc_reconstruction")
+                & frame["r0_variance_mode"].eq("oracle_reconstruction"))
+            if np.any(full) and not np.allclose(frame.loc[full, "initial_FR_covariance"],
+                frame.loc[full, "FR_reconstruction_covariance"], atol=1e-8, rtol=1e-6):
+                raise ValueError("Saved F/R cross-covariance differs from reconstruction error covariance.")
     for name in ("initial_variance", "process_variance", "predicted_variance", "diffusion_sigma"):
         if (frame[name] < 0).any(): raise ValueError(f"{name} must be nonnegative.")
     for confidence in (68, 95):
@@ -122,8 +172,10 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
         raise ValueError("Saved predicted_variance disagrees with initial_variance + process_variance.")
     if {"initial_F_component_variance", "initial_R_component_variance"} <= set(frame.columns):
         derived = frame["initial_F_component_variance"] + frame["initial_R_component_variance"]
+        if "initial_FR_component_variance" in frame:
+            derived = derived + frame["initial_FR_component_variance"]
         if not np.allclose(frame["initial_variance"], derived, atol=1e-8, rtol=1e-5):
-            raise ValueError("Saved initial_variance disagrees with propagated F0 + R0 variance.")
+            raise ValueError("Saved initial_variance disagrees with propagated F0 + R0 + cross-covariance variance.")
         if "initial_R_variance" in frame and "r0_variance_mode" in frame:
             zero = frame["r0_variance_mode"].eq("zero")
             if np.any(zero) and not (
@@ -195,6 +247,8 @@ def scores(frame):
             if "initial_F_component_variance" in frame else np.nan,
         "mean_initial_R_component_variance": float(frame["initial_R_component_variance"].mean())
             if "initial_R_component_variance" in frame else np.nan,
+        "mean_initial_FR_component_variance": float(frame["initial_FR_component_variance"].mean())
+            if "initial_FR_component_variance" in frame else 0.0,
         "mean_process_variance": process,
         "mean_predicted_variance": variance,
         "initial_rms_std": float(np.sqrt(initial)),
@@ -216,11 +270,14 @@ def summaries(frame, horizon):
     origins = frame.drop_duplicates("origin").sort_values("origin")[
         ["origin", "origin_day", "origin_hour", "diffusion_sigma"]].copy()
     origin_rows = frame.drop_duplicates("origin").sort_values("origin")
-    for name in ("sigma_fit_mode", "r0_variance_mode", "calibration_mpc_count",
+    for name in ("sigma_fit_mode", "r0_variance_mode", "f0_variance_mode", "calibration_mpc_count",
                  "calibration_oracle_count", "calibration_horizon",
                  "R_reconstruction_bias", "R_reconstruction_variance",
                  "R_reconstruction_rmse", "R_reconstruction_samples", "R_bias_correction",
-                 "baseline_origin_residual_variance", "initial_R_variance"):
+                 "baseline_origin_residual_variance", "initial_R_variance",
+                 "initial_F_variance", "initial_FR_covariance",
+                 "F_reconstruction_bias", "F_reconstruction_variance", "F_reconstruction_rmse",
+                 "F_bias_correction", "F_calibration_mpc_count", "F_calibration_oracle_count"):
         if name in frame: origins[name] = origin_rows[name].to_numpy()
     daily = origins.groupby("origin_day")["diffusion_sigma"].agg(
         origins="size", sigma_mean="mean", sigma_median="median",
@@ -323,12 +380,15 @@ def plot_diffusion(exact, cumulative, output, *, covariance_mode="legacy/unspeci
     fig, axes = plt.subplots(3, 1, figsize=(13, 13), sharex=True)
     F = exact["mean_initial_F_component_variance"].to_numpy(dtype=float)
     R = exact["mean_initial_R_component_variance"].to_numpy(dtype=float)
+    cross = exact["mean_initial_FR_component_variance"].to_numpy(dtype=float)
     if np.all(np.isfinite(F)) and np.all(np.isfinite(R)):
-        axes[0].fill_between(h, 0, F, alpha=0.65, label="Historical F0 variance contribution")
-        axes[0].fill_between(h, F, F + R, alpha=0.55, label="Oracle-reconstruction R0 variance contribution")
+        axes[0].plot(h, F, marker="o", label="F0 reconstruction variance")
+        axes[0].plot(h, R, marker="o", label="R0 reconstruction variance")
+        axes[0].plot(h, cross, marker=".", linestyle="--", label="F/R covariance contribution (signed)")
+        axes[0].fill_between(h, 0, initial, alpha=0.35, label="Propagated full initial covariance")
     else:
-        axes[0].fill_between(h, 0, initial, alpha=0.65, label="Propagated initial-state variance")
-    axes[0].fill_between(h, initial, initial + process, alpha=0.6, label="Cumulative process (Wiener) variance")
+        axes[0].fill_between(h, 0, initial, alpha=0.55, label="Propagated initial-state variance")
+    axes[0].fill_between(h, initial, initial + process, alpha=0.5, label="Cumulative process (Wiener) variance")
     axes[0].plot(h, exact["mse"], marker="o", linestyle="--", label="Observed MSE")
     axes[0].set_ylabel("Variance"); axes[0].set_title("Variance budget at exact prediction lead")
     axes[1].plot(h, np.sqrt(initial), marker="o", label="Initial-state RMS std")
@@ -420,15 +480,19 @@ def plot_sigma(origins, daily, output):
 
 
 def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
-    *, expected_r0_variance_mode="oracle_reconstruction", expected_sigma_fit_mode="mpc_replay", allow_legacy=False):
+    *, expected_r0_variance_mode="oracle_reconstruction",
+    expected_f0_variance_mode="mpc_reconstruction",
+    expected_sigma_fit_mode="mpc_replay", allow_legacy=False):
     path, output = Path(path).resolve(), Path(output)
     frame, incomplete, mode = load_forecasts(path, horizon,
         expected_r0_variance_mode=expected_r0_variance_mode,
+        expected_f0_variance_mode=expected_f0_variance_mode,
         expected_sigma_fit_mode=expected_sigma_fit_mode, allow_legacy=allow_legacy)
     r0_mode = str(frame["r0_variance_mode"].iloc[0]) if "r0_variance_mode" in frame else "legacy/unspecified"
+    f0_mode = str(frame["f0_variance_mode"].iloc[0]) if "f0_variance_mode" in frame else "oracle_spread"
     print(f"Loaded WM4 forecasts: {path} | last modified: "
           f"{datetime.fromtimestamp(path.stat().st_mtime):%Y-%m-%d %H:%M:%S} (system local) | "
-          f"sigma_fit_mode={mode} | r0_variance_mode={r0_mode}", flush=True)
+          f"sigma_fit_mode={mode} | f0_variance_mode={f0_mode} | r0_variance_mode={r0_mode}", flush=True)
     horizon = int(horizon)
     exact, cumulative, by_hour, origins, daily = summaries(frame, horizon)
     day, selected = selected_day(frame, day)
@@ -453,6 +517,7 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
     ]
     summary = {
         "source": str(path), "sigma_fit_mode": mode, "r0_variance_mode": r0_mode,
+        "f0_variance_mode": f0_mode,
         "source_modified_timestamp": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
         "forecast_horizon_hours": horizon,
         "matched_origins": int(origins.shape[0]), "paired_forecast_rows": int(len(frame)),
@@ -473,10 +538,18 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
         print(f"MPC replay calibration: origins with five actual MPC histories={(live == 5).sum()}; "
               f"origins using oracle bootstrap={(boot > 0).sum()}; "
               f"mean historical MPC fraction={np.mean(live / np.maximum(live + boot, 1)):.1%}", flush=True)
-    print(f"WM4 MPC {horizon}h interval analysis | sigma mode={mode} | R0 mode={r0_mode} | "
+    print(f"WM4 MPC {horizon}h interval analysis | sigma mode={mode} | "
+          f"F0 mode={f0_mode} | R0 mode={r0_mode} | "
           f"origins={len(origins)} | days={frame['origin_day'].nunique()} | "
           f"discarded incomplete origins={incomplete}")
     print(f"{'Lead':>4} {'RMSE':>10} {'pred std':>10} {'diff std':>10} {'68%cov':>9} {'95%cov':>9}")
+    if "initial_F_variance" in frame:
+        unique = frame.drop_duplicates("origin")
+        print(f"Mean initial F0 std: {np.sqrt(unique['initial_F_variance'].mean()):.6f}")
+        if "F_reconstruction_rmse" in unique:
+            print(f"Mean F0 reconstruction RMSE={unique['F_reconstruction_rmse'].mean():.6f}; "
+                  f"bias={unique['F_reconstruction_bias'].mean():+.6f}; "
+                  f"F0 MPC records={int(unique['F_calibration_mpc_count'].sum())}")
     if "initial_R_variance" in frame:
         unique = frame.drop_duplicates("origin")
         print(f"Mean initial R0 std: "
@@ -508,6 +581,8 @@ def main():
     parser.add_argument("--horizon", type=int, default=8, help="Max lead horizon (1..8).")
     parser.add_argument("--expected-sigma-fit-mode", choices=("mpc_replay", "historical_p0", "zero_p0", "any"),
         default="mpc_replay", help="Require MPC-replay diffusion calibration (default); refuse stale oracle-based CSVs.")
+    parser.add_argument("--expected-f0-variance-mode", choices=("mpc_reconstruction", "oracle_spread", "any"),
+        default="mpc_reconstruction", help="Require F0 historical MPC-versus-oracle reconstruction errors.")
     parser.add_argument("--expected-r0-variance-mode", choices=("oracle_reconstruction", "baseline_residual", "zero", "any"),
         default="oracle_reconstruction", help="Require oracle-reconstruction R0 uncertainty (default).")
     parser.add_argument("--allow-legacy", action="store_true",
@@ -515,6 +590,7 @@ def main():
     args = parser.parse_args()
     return analyze(args.forecasts, args.output, args.day, args.horizon,
         expected_r0_variance_mode=args.expected_r0_variance_mode,
+        expected_f0_variance_mode=args.expected_f0_variance_mode,
         expected_sigma_fit_mode=args.expected_sigma_fit_mode, allow_legacy=args.allow_legacy)
 
 
