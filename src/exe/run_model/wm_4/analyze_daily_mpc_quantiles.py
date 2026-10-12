@@ -143,14 +143,15 @@ def quantile_overlap(daily, x, y, quantiles):
 def overlap_summary(daily, quantiles):
     """Compare best/bad-day coincidences to chance under independent ranks."""
     n = len(daily)
+    def correlation(first, second):
+        value = float(daily[first].corr(daily[second], method="spearman"))
+        return value if np.isfinite(value) else None
     best = daily["rmse_quantile"] == 1
     worst = daily["rmse_quantile"] == quantiles
     info = {"days": int(n), "quantiles": int(quantiles),
         "expected_best_overlap_independent": float(best.sum() * (daily["calibration_quantile"] == 1).sum() / n),
-        "spearman_rmse_vs_predicted_std": float(daily["rmse"].corr(
-            daily["predicted_rms_std"], method="spearman")),
-        "spearman_rmse_vs_calibration_error": float(daily["rmse"].corr(
-            daily["variance_calibration_error"], method="spearman"))}
+        "spearman_rmse_vs_predicted_std": correlation("rmse", "predicted_rms_std"),
+        "spearman_rmse_vs_calibration_error": correlation("rmse", "variance_calibration_error")}
     for label, name in (("calibration", "calibration_quantile"),
         ("uncertainty", "uncertainty_quantile")):
         good = daily[name] == 1
@@ -256,8 +257,12 @@ def analyze(forecasts=FORECASTS, output=OUTPUT, horizon=8, quantiles=5,
         f"{info['best_rmse_and_best_calibration_days']}/{info['best_rmse_days']}, "
         f"lowest predicted uncertainty "
         f"{info['best_rmse_and_best_uncertainty_days']}/{info['best_rmse_days']}")
-    print(f"Spearman RMSE vs predicted std={info['spearman_rmse_vs_predicted_std']:.3f}; "
-        f"RMSE vs calibration error={info['spearman_rmse_vs_calibration_error']:.3f}")
+    corr_std = info["spearman_rmse_vs_predicted_std"]
+    corr_cal = info["spearman_rmse_vs_calibration_error"]
+    print(f"Spearman RMSE vs predicted std={corr_std:.3f}" if corr_std is not None
+        else "Spearman RMSE vs predicted std=undefined (constant ranks)")
+    print(f"Spearman RMSE vs calibration error={corr_cal:.3f}" if corr_cal is not None
+        else "Spearman RMSE vs calibration error=undefined (constant ranks)")
     print(f"Figure: {fig}\nDaily rankings, overlap matrices and quantile-spread tables: {output}")
     return {"daily": ranked, "excluded": skipped, "calibration_overlap": cal,
         "uncertainty_overlap": unc, "summary": info, "figure": fig, "output": output}
