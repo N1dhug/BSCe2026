@@ -54,7 +54,7 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_resid
             f"Missing baseline-P0 columns: {sorted(missing_p0)}.\n"
             "The analysis reads an existing CSV and does not refit WM4. "
             "Regenerate it with: python -m src.exe.run_model.wm_4.predict_all_days_mpc "
-            "--r0-variance-mode baseline_residual --sigma-fit-mode historical_p0\n"
+            "--r0-variance-mode baseline_residual --sigma-fit-mode mpc_replay\n"
             "If MPC was saved with --output, pass its mpc_forecasts.csv via --forecasts. "
             "To analyze older predictions explicitly, pass --allow-legacy.")
     if missing_p0: print(
@@ -117,8 +117,19 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_resid
     modes = frame["sigma_fit_mode"].dropna().unique() if "sigma_fit_mode" in frame else []
     if len(modes) > 1: raise ValueError(f"Forecast data mixes diffusion fitting modes: {list(modes)}")
     mode = str(modes[0]) if len(modes) else "legacy/unspecified"
-    if not allow_legacy and mode != "historical_p0":
-        print(f"NOTE: WM4 sigma_fit_mode={mode!r}; 'historical_p0' is the P0-aware diffusion QP.", flush=True)
+    if not allow_legacy and mode != "mpc_replay":
+        print(f"NOTE: WM4 sigma_fit_mode={mode!r} uses legacy oracle-based diffusion estimation. "
+              "Use --sigma-fit-mode mpc_replay for causal replay calibration.", flush=True)
+    if mode == "mpc_replay":
+        required_replay = {"calibration_mpc_count", "calibration_oracle_count",
+            "calibration_horizon", "process_kernel_unit"}
+        if missing_replay := required_replay - set(frame.columns):
+            raise ValueError(f"WM4 mpc_replay data lack required replay columns: {sorted(missing_replay)}. "
+                "Rerun the updated MPC forecaster.")
+        if not np.allclose(frame["process_variance"],
+            frame["process_kernel_unit"] * frame["diffusion_sigma"] ** 2,
+            atol=1e-8, rtol=1e-5):
+            raise ValueError("Stored Wiener process variance disagrees with process_kernel_unit * sigma^2.")
     complete = frame.groupby("origin")["lead_hours"].agg(
         lambda values: np.array_equal(np.sort(values.to_numpy()), np.arange(1, horizon + 1)))
     discarded = int((~complete).sum())
@@ -181,8 +192,10 @@ def summaries(frame, horizon):
         by_hour.append({"origin_hour": int(hour), "lead_hours": int(lead), **scores(part)})
     origins = frame.drop_duplicates("origin").sort_values("origin")[
         ["origin", "origin_day", "origin_hour", "diffusion_sigma"]].copy()
-    if "sigma_fit_mode" in frame:
-        origins["sigma_fit_mode"] = frame.drop_duplicates("origin").sort_values("origin")["sigma_fit_mode"].to_numpy()
+    origin_rows = frame.drop_duplicates("origin").sort_values("origin")
+    for name in ("sigma_fit_mode", "r0_variance_mode", "calibration_mpc_count",
+                 "calibration_oracle_count", "calibration_horizon"):
+        if name in frame: origins[name] = origin_rows[name].to_numpy()
     daily = origins.groupby("origin_day")["diffusion_sigma"].agg(
         origins="size", sigma_mean="mean", sigma_median="median",
         sigma_q25=lambda x: x.quantile(0.25), sigma_q75=lambda x: x.quantile(0.75)).reset_index()
@@ -427,6 +440,12 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
     except PermissionError:
         info = output / f"summary.{uuid4().hex[:8]}.json"
         info.write_text(json.dumps(summary, indent=2, allow_nan=True), encoding="utf-8")
+    if mode == "mpc_replay":
+        boot = origins["calibration_oracle_count"].to_numpy(dtype=int)
+        live = origins["calibration_mpc_count"].to_numpy(dtype=int)
+        print(f"MPC replay calibration: origins with five actual MPC histories={(live == 5).sum()}; "
+              f"origins using oracle bootstrap={(boot > 0).sum()}; "
+              f"mean historical MPC fraction={np.mean(live / np.maximum(live + boot, 1)):.1%}", flush=True)
     print(f"WM4 MPC {horizon}h interval analysis | sigma mode={mode} | R0 mode={r0_mode} | "
           f"origins={len(origins)} | days={frame['origin_day'].nunique()} | "
           f"discarded incomplete origins={incomplete}")
