@@ -178,6 +178,7 @@ def main():
     parser.add_argument("--compare-wm4", action="store_true", help="Compare BM1 against WM4 MPC using identical 1-8h leads on this single day.")
     parser.add_argument("--wm4-forecasts", type=Path, help="Optional saved WM4 mpc_forecasts.csv with all requested leads.")
     parser.add_argument("--wm4-sigma-fit-mode", choices=("mpc_replay", "historical_p0", "zero_p0"), default="mpc_replay")
+    parser.add_argument("--wm4-f0-variance-mode", choices=("mpc_reconstruction", "oracle_spread"), default="mpc_reconstruction")
     parser.add_argument("--wm4-r0-variance-mode", choices=("oracle_reconstruction", "baseline_residual", "zero"), default="oracle_reconstruction")
     parser.add_argument("--steps-per-hour", type=int, default=2, help="WM4 numerical steps per hour, when comparing.")
     parser.add_argument("--wm4-max-state-iter", type=int, default=12, help="WM4 alternating state-fit iterations, when comparing.")
@@ -197,6 +198,7 @@ def main():
             state_tol=args.wm4_state_tol, wm4_forecasts=args.wm4_forecasts,
             wm4_sigma_fit_mode=args.wm4_sigma_fit_mode,
             wm4_r0_variance_mode=args.wm4_r0_variance_mode,
+            wm4_f0_variance_mode=args.wm4_f0_variance_mode,
             min_capacity=args.min_capacity,
             output_root=args.output if args.output is not None else COMPARISON_OUTPUT,
             resume=not args.no_resume, fail_fast=not args.skip_errors)
