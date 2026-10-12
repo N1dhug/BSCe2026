@@ -636,7 +636,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
 
 
 def main():
-    parser = ArgumentParser(description="Evaluate WM4 receding-horizon MPC forecasting. At every hourly update, refit a shifted 24-hour WM4 model on corresponding historical weekdays, initialize F from the historical fitted state and R from the current observed residual I-O, then compare the next 1-8 forecast hours with baseline O(t).")
+    parser = ArgumentParser(description="Evaluate WM4 receding-horizon MPC forecasting. At every hourly update, refit a shifted 24-hour WM4 model on corresponding historical weekdays, initialize F from the historical fitted state and R from the oracle-bias-corrected current residual I-O, then compare the next 1-8 forecast hours with baseline O(t).")
     parser.add_argument("--start-day", default=START_DAY)
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
