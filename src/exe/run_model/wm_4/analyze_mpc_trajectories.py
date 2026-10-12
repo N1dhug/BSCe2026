@@ -255,7 +255,7 @@ def plot_reliability(grouped, output):
     qs = sorted(grouped["uncertainty_quantile"].unique())
     n = len(qs)
     fig, axes = plt.subplots(2, int(np.ceil((n + 1) / 2)),
-        figsize=(17, 9), sharex=True, sharey=True)
+        figsize=(17, 9))
     axes = np.asarray(axes).ravel()
     for j, q in enumerate(qs):
         g = grouped.loc[grouped["uncertainty_quantile"] == q].sort_values("horizon_hours")
