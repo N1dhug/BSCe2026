@@ -108,6 +108,32 @@ Ugerunneren sammenligner prognosen med dobbelt antal celler og halvt tidsskridt.
 
 Den fælles responskode anvender nu tre små geometri-checks i `src/validation/params/bm_1_response.py`. Det reparerer dens afhængighed af den arkiverede `src.validation.estimation` uden at gendanne den gamle pipeline.
 
+## Hele den tilgængelige periode
+
+`compare_week` kræver gemte BM1-referencejobs for de valgte datoer. Brug derfor den separate periodeindgang ved kørsel på alle tilgængelige dage:
+
+```powershell
+python -B -m src.exe.run_model.bm_3.run_all_days --workers 8 --mode both
+```
+
+Den indlæser data én gang, bruger januar–oktober 2022 som standardperiode, og kontrollerer hvert dags-/MPC-job for faktisk tilgængelige timer. De første dage mangler fem ugers historik og tilstrækkelig baseline-/normaliseringshistorik. Andre datoer kan have manglende historiske eller fremtidige timer. Disse bliver ikke udfyldt kunstigt: `skipped_jobs.csv` angiver dato, metode, time og årsag. Et MPC-job kan godt køres på en dag, hvor andre timeorigins eller den særskilte dagsprognose er udelukket.
+
+Kontrollér omfanget uden at starte parameterfits:
+
+```powershell
+python -B -m src.exe.run_model.bm_3.run_all_days --mode both --plan-only
+```
+
+Med de nuværende input findes 3.451 brugbare jobs på 146 datoer: 138 dagsprognoser og 3.313 MPC-origins. 4.149 af de 7.600 mulige metode-/timejobs i kalenderperioden udelukkes af datakontrollen. Antallet genberegnes fra de lokale data ved hver kørsel.
+
+Komplette gemte BM1-dage fra standard-majreferencen genbruges efter kontrol af inputhashes og checkpoint-fingerprints. Manglende BM1-jobs beregnes med den eksisterende BM1-fitter og week-worker, hvorefter BM3 bruger det samme kontrollerede fit og præcis de samme forberedte data. Gamle referencefiler og metadata ændres ikke. Nye BM1-referencefits ligger i `files/output/bm_1/runs/logistic_all_days_reference/`; BM3-resultaterne ligger i `files/output/bm_3/runs/logistic_all_days/`, med samme jobstruktur og summeringsfiler som ugeprøven. Forberedte kilders hashes gemmes i `prepared_manifest.json`. Brug `--output` med et nyt mappenavn til et separat forsøg; navnet bruges også til den tilhørende nye BM1-referencemappe.
+
+Kør samme kommando igen for at genoptage: færdige BM1- og BM3-jobs genbruges, og manglende/fejlede jobs forsøges igen. Ændrede kilder, input eller indstillinger afvises; vælg da en ny outputmappe. Der bruges 8 workers og én BLAS-tråd per worker som standard. Processtøjen estimeres historisk i MPC; dagsprognosen har sigma_x=0, som i den gemte uge.
+
+En kortere kontrol kan afgrænses med `--start 2022-05-09 --end 2022-05-09 --hours 0`; `--mode daily` vælger kun dagsprognoser og `--mode mpc` kun MPC. Fitbudgetterne kan angives med `--daily-max-iterations`, `--daily-max-nfev`, `--mpc-max-iterations` og `--mpc-max-nfev`. Gemte referencefits bevarer deres oprindelige fitbudgetter og konvergensflag.
+
+Hele perioden kræver mange nye fits og har derfor et andet tidsbehov end ugeprøven med genbrug. En grov ekstrapolation fra majreferencens gennemsnitlige MPC-worker-tid peger på omkring to timer med 8 workers; perioden er ikke tidsmålt, og længere tid er mulig. Kun korte funktionelle prøver er udført her: en ny dagsprognose og en MPC-origin for 9. maj med små fitbudgetter, genbrug for 2. maj, samt 14 relevante BM3-/periodekontroller.
+
 ## Gennemført prøve, 12. oktober 2026
 
 Alle 175 jobs for 2.-8. maj 2022 blev gennemført med 8 workers, BLAS=1, lambda=10, numerisk område [-6,7], 2601 celler og maksimalt tidsskridt 0,125 time. BM1's gemte logistiske fits blev genbrugt efter kontrol af den deterministiske historiske lighed. Dagsprognoserne brugte sigma_x=0; MPC estimerede BM3's additive støj på de historiske vinduer. Tiden var 47,29 sekunder inklusive numerisk forfining og eksport i denne kørsel. Det er ikke et tidsmål for nye parameterfits.

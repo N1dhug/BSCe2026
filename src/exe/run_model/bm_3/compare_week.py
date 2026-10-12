@@ -32,6 +32,11 @@ OUTPUT = ROOT/'files'/'output'/'bm_3'/'runs'/'logistic_week_2022-05-02_2022-05-0
 REFERENCE = ROOT/'files'/'output'/'bm_1'/'runs'/'fg_week_2022-05-02_2022-05-08'
 
 
+def reference_root(settings, day):
+    """Period runs can reuse intact older reference collections by date."""
+    return Path(settings.get('reference_by_day', {}).get(day, settings['reference']))
+
+
 def restore_fit(metadata, strength):
     p = {**metadata['theta'], **metadata['shape_parameters'], 'restoring_strength': strength}
     if metadata['family'] != 'logistic': raise ValueError('BM3 first version supports the logistic reference.')
@@ -61,13 +66,10 @@ def worker(output, task):
     started = time.perf_counter()
     try:
         day, family, kind, hour = task
-        reference = Path(settings['reference']); oldfolder = job_folder(reference,*task)
+        reference = reference_root(settings, day); oldfolder = job_folder(reference,*task)
         old = json.loads((oldfolder/'fit.json').read_text(encoding='utf-8'))
         with (out/'prepared'/f'{day}.pkl').open('rb') as handle: data = pickle.load(handle)
         fit = restore_fit(old,settings['restoring_strength'])
-        model = bm_3(held_signal(data['target']['B']),lambda t:.5,(0.,24.),25,
-            restoring_strength=settings['restoring_strength'], state_bounds=settings['state_bounds'],
-            tail_tolerance=settings['tail_tolerance'])
         if kind == 'daily': training = data['training']
         else:
             from src.validation.exe.run_model.bm_1.predict_mpc import bm_1_mpc_validation as checks
@@ -86,6 +88,9 @@ def worker(output, task):
         if equivalence > settings['numeric_tolerance']:
             raise ValueError('BM1/BM3 deterministic historical dynamics do not match at the required tolerance.')
         if settings['refit']:
+            model = bm_3(held_signal(training[0]['B']),lambda t:.5,(0.,24.),25,
+                restoring_strength=settings['restoring_strength'], state_bounds=settings['state_bounds'],
+                tail_tolerance=settings['tail_tolerance'])
             fit = lsq_params(model).fit_many(training, float(np.mean(fit['initial_states'])),
                 alpha0=fit['alpha'], beta0=fit['beta'], k0=fit['k'], C0=fit['C'], Xi0=fit['Xi'],
                 max_iterations=settings[f'{kind}_max_iterations'], max_nfev=settings[f'{kind}_max_nfev'],
@@ -170,7 +175,7 @@ def summarize(out, settings, tasks):
         folder = job_folder(out,*task)
         report = json.loads((folder/'fit.json').read_text(encoding='utf-8'))
         kind = task[2]; csv = 'hourly.csv' if kind=='daily' else 'forecasts.csv'
-        new = pd.read_csv(folder/csv); old = pd.read_csv(job_folder(Path(settings['reference']),*task)/csv)
+        new = pd.read_csv(folder/csv); old = pd.read_csv(job_folder(reference_root(settings, task[0]),*task)/csv)
         p = 'I_predicted' if kind=='daily' else 'I_BM3'; oldp = 'I_predicted' if kind=='daily' else 'I_BM1'
         new['I_BM1_reference'] = old[oldp].to_numpy(); new['mode'] = kind
         tables.append(new.rename(columns={p:'prediction'}))
