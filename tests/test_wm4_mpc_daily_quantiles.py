@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.analyze_daily_mpc_quantiles import (
-    analyze, assign_quantiles, daily_metrics, overlap_summary, quantile_overlap,
-    quantile_spread,
+    analyze, assign_quantiles, daily_metrics, origin_metrics, overlap_summary, quantile_overlap,
+    quantile_spread, plot_quantiles,
 )
 
 
@@ -62,6 +62,29 @@ class WM4MPCDailyQuantilesTests(unittest.TestCase):
         self.assertEqual(len(daily), 5)
         self.assertEqual(excluded.iloc[0]["complete_origins"], 23)
 
+    def test_individual_origin_scatter_uses_eight_leads_not_daily_averages(self):
+        frame = self.forecasts(2)
+        origins = origin_metrics(frame)
+        self.assertEqual(len(origins), 2 * 24)
+        self.assertTrue((origins["n_predictions"] == 8).all())
+        first_origin = frame.loc[frame["origin"] == pd.Timestamp("2022-05-01")]
+        first = origins.loc[origins["origin"] == pd.Timestamp("2022-05-01")].iloc[0]
+        self.assertAlmostEqual(first["rmse"],
+            np.sqrt(np.mean(first_origin["error"] ** 2)))
+        self.assertAlmostEqual(first["predicted_rms_std"],
+            np.sqrt(np.mean(first_origin["predicted_variance"])))
+        self.assertAlmostEqual(first["mse_calibration_error"],
+            abs(np.log(first["predicted_variance"] / first["observed_mse"])))
+        daily, _ = daily_metrics(frame)
+        self.assertNotAlmostEqual(first["rmse"], daily.iloc[0]["rmse"])
+        self.assertEqual(len(daily), 2)
+        missing_lead = frame[~((frame["origin"] == pd.Timestamp("2022-05-01")) &
+            (frame["lead_hours"] == 5))]
+        with self.assertRaisesRegex(ValueError, "Expected one full"):
+            origin_metrics(missing_lead)
+        with self.assertRaisesRegex(ValueError, "requires columns"):
+            origin_metrics(frame.drop(columns="predicted_variance"))
+
     def test_all_three_quantile_rankings_and_overlap_tables(self):
         days, _ = daily_metrics(self.forecasts())
         ranked = assign_quantiles(days, quantiles=5)
@@ -90,16 +113,26 @@ class WM4MPCDailyQuantilesTests(unittest.TestCase):
         frame = self.forecasts()
         with tempfile.TemporaryDirectory() as temp:
             with patch("src.exe.run_model.wm_4.analyze_daily_mpc_quantiles.load_forecasts",
-                return_value=(frame, 0, "mpc_replay")) as loader:
+                return_value=(frame, 0, "mpc_replay")) as loader, patch(
+                "src.exe.run_model.wm_4.analyze_daily_mpc_quantiles.plot_quantiles",
+                wraps=plot_quantiles) as plotter:
                 result = analyze(forecasts=Path(temp) / "saved.csv",
                     output=Path(temp) / "reports", fully_mpc=True)
                 loader.assert_called_once()
+                plotter.assert_called_once()
+                self.assertEqual(len(plotter.call_args.args[3]), 14 * 24)
             self.assertEqual(len(result["daily"]), 14)
+            self.assertEqual(len(result["origins"]), 14 * 24)
+            self.assertTrue((result["origins"]["n_predictions"] == 8).all())
             self.assertTrue((result["daily"]["n_predictions"] == 192).all())
             self.assertTrue(result["figure"].is_file())
             self.assertGreater(result["figure"].stat().st_size, 1000)
             output = result["output"]
-            for name in ("daily_quality_quantiles.csv", "excluded_incomplete_days.csv",
+            origins_csv = pd.read_csv(output / "mpc_origin_quality.csv")
+            self.assertEqual(len(origins_csv), 14 * 24)
+            self.assertEqual(len(origins_csv["origin"].unique()), 14 * 24)
+            for name in ("daily_quality_quantiles.csv", "mpc_origin_quality.csv",
+                "excluded_incomplete_days.csv",
                 "rmse_vs_calibration_quantiles.csv", "rmse_vs_uncertainty_quantiles.csv",
                 "rmse_quantile_spread.csv", "calibration_quantile_spread.csv",
                 "uncertainty_quantile_spread.csv", "quantile_overlap_summary.json"):
