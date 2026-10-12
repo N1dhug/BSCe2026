@@ -132,8 +132,10 @@ def compare_metrics(data, origins):
 
 def plot_paired(curves, output, quantiles=5):
     """Same old-estimator quintile membership for both sigma forecasts."""
-    fig, axes = plt.subplots(2, 3, figsize=(17, 10))
-    axes = axes.ravel()
+    columns = 3
+    rows = int(np.ceil((int(quantiles) + 1) / columns))
+    fig, axes = plt.subplots(rows, columns, figsize=(17, 5 * rows))
+    axes = np.asarray(axes).ravel()
     for i, q in enumerate(range(1, int(quantiles) + 1)):
         ax = axes[i]
         group = curves[curves["quantile"] == q]
@@ -150,7 +152,7 @@ def plot_paired(curves, output, quantiles=5):
         ax.set_ylim(bottom=0)
         ax.grid(alpha=0.2)
         ax.legend(fontsize=8)
-    ax = axes[5]
+    ax = axes[int(quantiles)]
     last = curves[curves["horizon"] == curves["horizon"].max()]
     for method, label in (("old", "5-week/8h"), ("new", "24-day/24h")):
         group = last[last["method"] == method].sort_values("quantile")
@@ -169,6 +171,7 @@ def plot_paired(curves, output, quantiles=5):
     ax.set_ylabel("Mean observed 1..8h MSE")
     ax.legend(fontsize=8)
     ax.grid(alpha=0.2)
+    for unused in axes[int(quantiles) + 1:]: unused.axis("off")
     fig.suptitle("WM4 | rolling 24-day/24h versus five-week/8h sigma calibration"
         "\nMatched 8h MPC origins, stratified by ORIGINAL predicted variance",
         fontsize=15)
