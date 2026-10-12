@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.predict_all_days_mpc import (
-    _fit_stochastic_variance, _mpc_initial_covariance, _stochastic_forecast_variance,
+    _archive_mpc_origin, _fit_stochastic_variance, _mpc_initial_covariance, _stochastic_forecast_variance,
 )
 from src.model.wm_4 import wm_4
 from src.validation.exe.run_model.compare_mpc_predictions import compare_mpc_validation as checks
@@ -89,6 +89,59 @@ class HistoricalP0SigmaTests(unittest.TestCase):
         self.assertEqual(legacy["sigma_fit_mode"], "zero_p0")
         self.assertEqual(legacy["r0_variance_mode"], "zero")
 
+    def test_mpc_replay_bootstraps_then_replaces_oracle_errors(self):
+        model, fit, datasets = self.setup_history(0.05)
+        origins = [pd.Timestamp("2022-06-01 12:00") - pd.Timedelta(weeks=k)
+                   for k in range(1, 6)]
+        fit["training_origins"] = origins
+        initial = _mpc_initial_covariance(fit, datasets)
+        indices = 2 * np.arange(1, 9)
+        J = model.sensitivity({"r": fit["r"]})["input"][indices]
+        V0 = np.einsum("ni,ij,nj->n", J, initial["covariance"], J)
+        K = model.process_variance_kernel({"r": fit["r"]}, indices) @ np.ones(model.t_steps)
+        oracle = _fit_stochastic_variance(model, fit, datasets, 2, max_horizon=8)
+        self.assertEqual(oracle["sigma_fit_mode"], "mpc_replay")
+        self.assertEqual(oracle["calibration_mpc_count"], 0)
+        self.assertEqual(oracle["calibration_oracle_count"], 5)
+
+        # Populate five genuine MPC forecast records; for each lead their
+        # sample errors have Var = propagated P0 + known q*K exactly.
+        q_true = 0.15
+        standardized = np.array([-2., -1., 0., 1., 2.])
+        standardized /= np.std(standardized, ddof=1)
+        archive = {}
+        for i, origin in enumerate(origins):
+            std = np.sqrt(V0 + q_true * K)
+            rows = [{
+                "lead_hours": h, "target_time": origin + pd.Timedelta(hours=h),
+                "forecast_error": float(standardized[i] * std[h - 1]),
+                "initial_variance": float(V0[h - 1]),
+                "process_kernel_unit": float(K[h - 1]),
+            } for h in range(1, 9)]
+            _archive_mpc_origin(archive, origin, rows)
+        updated = _fit_stochastic_variance(model, fit, datasets, 2, mpc_archive=archive)
+        self.assertEqual(updated["calibration_mpc_count"], 5)
+        self.assertEqual(updated["calibration_oracle_count"], 0)
+        self.assertEqual(updated["calibration_origin_types"], ["mpc"] * 5)
+        self.assertAlmostEqual(updated["q"], q_true, delta=1e-4)
+        self.assertTrue(np.allclose(updated["initial_variance"], V0, atol=1e-10))
+
+        # Losing a single weekly record restores exactly one oracle bootstrap.
+        archive.pop(origins[0])
+        partial = _fit_stochastic_variance(model, fit, datasets, 2, mpc_archive=archive)
+        self.assertEqual(partial["calibration_mpc_count"], 4)
+        self.assertEqual(partial["calibration_oracle_count"], 1)
+        self.assertEqual(partial["calibration_origin_types"].count("oracle_bootstrap"), 1)
+
+    def test_mpc_replay_does_not_use_nonhistorical_origin(self):
+        model, fit, datasets = self.setup_history(0.05)
+        fit["training_origins"] = [
+            pd.Timestamp("2022-06-01") - pd.Timedelta(weeks=k) for k in range(1, 6)]
+        archive = {pd.Timestamp("2022-06-02"): np.ones((8, 3))}
+        fit_result = _fit_stochastic_variance(model, fit, datasets, 2, mpc_archive=archive)
+        self.assertEqual(fit_result["calibration_mpc_count"], 0)
+        self.assertEqual(fit_result["calibration_oracle_count"], 5)
+
     def test_saved_wm4_comparison_requires_correct_variance_mode(self):
         old = pd.DataFrame([{
             "origin": "2022-03-04 08:00:00", "target_time": "2022-03-04 09:00:00",
@@ -104,8 +157,13 @@ class HistoricalP0SigmaTests(unittest.TestCase):
         new = old.copy()
         new["sigma_fit_mode"] = "historical_p0"
         new["r0_variance_mode"] = "baseline_residual"
-        loaded = checks.wm4_saved(new)
+        loaded = checks.wm4_saved(new, sigma_fit_mode="historical_p0")
         self.assertEqual(loaded.iloc[0]["r0_variance_mode"], "baseline_residual")
+        with self.assertRaisesRegex(ValueError, "sigma_fit_mode"):
+            checks.wm4_saved(new, sigma_fit_mode="mpc_replay")
+        new["sigma_fit_mode"] = "mpc_replay"
+        with self.assertRaisesRegex(ValueError, "MPC-replay forecasts missing"):
+            checks.wm4_saved(new, sigma_fit_mode="mpc_replay")
 
 
 if __name__ == "__main__":
