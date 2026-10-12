@@ -54,7 +54,7 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
             self.simulated_forecasts().to_csv(path, index=False)
             frame, discarded, mode = load_forecasts(path)
             self.assertEqual(discarded, 0)
-            self.assertEqual(mode, "historical_p0")
+            self.assertEqual(mode, "mpc_replay")
             self.assertEqual(len(frame), 2 * 24 * 8)
             result = scores(frame)
             self.assertAlmostEqual(result["mse"], float(np.mean(frame["error"] ** 2)))
