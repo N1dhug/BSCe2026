@@ -359,7 +359,9 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
         sigma_fit_mode=sigma_fit_mode, r0_variance_mode=r0_variance_mode,
         mpc_archive=mpc_archive, max_horizon=max_horizon,
         f0_variance_mode=f0_variance_mode, state_archive=state_archive)
-    F_initialized = float(historical[0] - diffusion["F_bias_correction"])
+    # WM4's flexibility state must remain in [-1, 1] after bias correction.
+    F_initialized = float(np.clip(historical[0] - diffusion["F_bias_correction"], -1.0, 1.0))
+    F_bias_applied = float(historical[0] - F_initialized)
     R_initialized = float(R_observed - diffusion["R_bias_correction"])
     init = np.array([F_initialized, R_initialized], dtype=float)
     state = helper._state_from_parameters(prepared, init, fit["r"], full=True)
@@ -400,7 +402,8 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
             "R_oracle_origin": float(oracle[1]),
             "R_reconstruction_error_origin": float(R_observed - oracle[1]),
             "f0_variance_mode": f0_variance_mode,
-            "F_bias_correction": float(diffusion["F_bias_correction"]),
+            "F_bias_correction": F_bias_applied,
+            "F_bias_correction_estimated": float(diffusion["F_bias_correction"]),
             "F_reconstruction_bias": float(diffusion["F_reconstruction_bias"]),
             "F_reconstruction_variance": float(diffusion["F_reconstruction_variance"]),
             "F_reconstruction_rmse": float(diffusion["F_reconstruction_rmse"]),
@@ -465,7 +468,8 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
         "R_oracle_origin": float(oracle[1]),
         "R_reconstruction_error_origin": float(R_observed - oracle[1]),
         "f0_variance_mode": f0_variance_mode,
-        "F_bias_correction": float(diffusion["F_bias_correction"]),
+        "F_bias_correction": F_bias_applied,
+        "F_bias_correction_estimated": float(diffusion["F_bias_correction"]),
         "F_reconstruction_bias": float(diffusion["F_reconstruction_bias"]),
         "F_reconstruction_variance": float(diffusion["F_reconstruction_variance"]),
         "F_reconstruction_rmse": float(diffusion["F_reconstruction_rmse"]),
