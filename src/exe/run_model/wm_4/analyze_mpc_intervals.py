@@ -32,7 +32,7 @@ P0_REQUIRED = {
 }
 
 
-def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_residual", allow_legacy=False):
+def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_residual", expected_sigma_fit_mode="mpc_replay", allow_legacy=False):
     """Validate saved distributions; reject incompatible pre-update CSVs by default.
 
     The analyzer does not refit WM4 or recompute covariance. It must not plot
@@ -42,6 +42,8 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_resid
     if not 1 <= horizon <= 8: raise ValueError("horizon must be in [1, 8].")
     if expected_r0_variance_mode not in ("baseline_residual", "zero", "any"):
         raise ValueError("expected_r0_variance_mode must be baseline_residual, zero, or any.")
+    if expected_sigma_fit_mode not in ("mpc_replay", "historical_p0", "zero_p0", "any"):
+        raise ValueError("expected_sigma_fit_mode must be mpc_replay, historical_p0, zero_p0 or any.")
     path = Path(path).resolve()
     if not path.is_file(): raise FileNotFoundError(
         f"WM4 MPC forecasts not found at {path}. Run python -m "
@@ -117,9 +119,12 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="baseline_resid
     modes = frame["sigma_fit_mode"].dropna().unique() if "sigma_fit_mode" in frame else []
     if len(modes) > 1: raise ValueError(f"Forecast data mixes diffusion fitting modes: {list(modes)}")
     mode = str(modes[0]) if len(modes) else "legacy/unspecified"
-    if not allow_legacy and mode != "mpc_replay":
-        print(f"NOTE: WM4 sigma_fit_mode={mode!r} uses legacy oracle-based diffusion estimation. "
-              "Use --sigma-fit-mode mpc_replay for causal replay calibration.", flush=True)
+    if mode != expected_sigma_fit_mode and expected_sigma_fit_mode != "any" and not allow_legacy:
+        raise ValueError(
+            f"WM4 MPC forecast CSV has sigma_fit_mode={mode!r}, but analysis expects "
+            f"{expected_sigma_fit_mode!r}. Refit predictions using --sigma-fit-mode "
+            f"{expected_sigma_fit_mode}, or request --expected-sigma-fit-mode {mode} "
+            "to explicitly analyze the older method.")
     if mode == "mpc_replay":
         required_replay = {"calibration_mpc_count", "calibration_oracle_count",
             "calibration_horizon", "process_kernel_unit"}
@@ -394,10 +399,11 @@ def plot_sigma(origins, daily, output):
 
 
 def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
-    *, expected_r0_variance_mode="baseline_residual", allow_legacy=False):
+    *, expected_r0_variance_mode="baseline_residual", expected_sigma_fit_mode="mpc_replay", allow_legacy=False):
     path, output = Path(path).resolve(), Path(output)
     frame, incomplete, mode = load_forecasts(path, horizon,
-        expected_r0_variance_mode=expected_r0_variance_mode, allow_legacy=allow_legacy)
+        expected_r0_variance_mode=expected_r0_variance_mode,
+        expected_sigma_fit_mode=expected_sigma_fit_mode, allow_legacy=allow_legacy)
     r0_mode = str(frame["r0_variance_mode"].iloc[0]) if "r0_variance_mode" in frame else "legacy/unspecified"
     print(f"Loaded WM4 forecasts: {path} | last modified: "
           f"{datetime.fromtimestamp(path.stat().st_mtime):%Y-%m-%d %H:%M:%S} (system local) | "
@@ -473,13 +479,16 @@ def main():
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--day", help="Day for 24 receding forecast fans; defaults to first complete day.")
     parser.add_argument("--horizon", type=int, default=8, help="Max lead horizon (1..8).")
+    parser.add_argument("--expected-sigma-fit-mode", choices=("mpc_replay", "historical_p0", "zero_p0", "any"),
+        default="mpc_replay", help="Require MPC-replay diffusion calibration (default); refuse stale oracle-based CSVs.")
     parser.add_argument("--expected-r0-variance-mode", choices=("baseline_residual", "zero", "any"),
         default="baseline_residual", help="Reject a CSV produced using a different R0 covariance assumption.")
     parser.add_argument("--allow-legacy", action="store_true",
         help="Permit plotting pre-update CSVs, explicitly labeled legacy; does not recompute covariance.")
     args = parser.parse_args()
     return analyze(args.forecasts, args.output, args.day, args.horizon,
-        expected_r0_variance_mode=args.expected_r0_variance_mode, allow_legacy=args.allow_legacy)
+        expected_r0_variance_mode=args.expected_r0_variance_mode,
+        expected_sigma_fit_mode=args.expected_sigma_fit_mode, allow_legacy=args.allow_legacy)
 
 
 if __name__ == "__main__": main()
