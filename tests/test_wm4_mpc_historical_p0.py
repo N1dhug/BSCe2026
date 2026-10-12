@@ -194,7 +194,7 @@ class HistoricalP0SigmaTests(unittest.TestCase):
                 sensitivity = self.model.sensitivity({"r": r})["state"]
                 trajectory = sensitivity @ np.asarray(initial, dtype=float)
                 return {"I": data["O"] + trajectory[:, 1], "O": data["O"],
-                    "R": trajectory[:, 1], "F": trajectory[:, 0]}
+                    "R": trajectory[:, 1], "F": trajectory[:, 0], "r": r}
 
         with patch("src.exe.run_model.wm_4.predict_all_days_mpc._fit_shifted_history",
                 return_value=(fit, model, datasets)), patch(
