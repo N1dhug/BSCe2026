@@ -17,6 +17,7 @@ OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_mpc"
 HORIZONS = (1, 2, 3, 4, 6, 8)
 SIGMA_FIT_MODES = ("mpc_replay", "historical_p0", "zero_p0")
 R0_VARIANCE_MODES = ("oracle_reconstruction", "baseline_residual", "zero")
+F0_VARIANCE_MODES = ("mpc_reconstruction", "oracle_spread")
 
 
 def _window_input(frame, start, steps_per_hour, output_model):
@@ -82,51 +83,104 @@ def _fit_shifted_history(frame, origin, baseline_weeks, steps_per_hour, output_m
     return fit, model, datasets
 
 
-def _mpc_initial_covariance(fit, datasets, r0_variance_mode="oracle_reconstruction"):
-    """Estimate MPC initialization error against retrospective WM4 oracle states.
+def _mpc_initial_covariance(fit, datasets, r0_variance_mode="oracle_reconstruction",
+    *, f0_variance_mode="mpc_reconstruction", state_archive=None):
+    """Estimate errors between causal MPC initialization and retrospective oracles.
 
-    The fitted historical R0 is the model-relative oracle state. MPC observes
-    R0=I0-O_hat0 instead; its reconstruction errors (observed - oracle)
-    measure uncertainty of initialization, NOT cross-week variability in R.
-    The historical error mean is removed from the current MPC point estimate.
-    Baseline-residual and zero modes are retained for controlled ablations.
+    For a historical origin, an archived error compares that origin's genuine
+    MPC initial state with the oracle fitted subsequently using the SAME fixed
+    parameter set. Five historical oracles bootstrap missing archived records.
+    Archived reconstruction errors are only read after the historical 24-hour
+    trajectory is complete. Correlated F/R errors yield a full 2x2 P0.
     """
     if r0_variance_mode not in R0_VARIANCE_MODES:
         raise ValueError(f"r0_variance_mode must be one of {R0_VARIANCE_MODES}.")
+    if f0_variance_mode not in F0_VARIANCE_MODES:
+        raise ValueError(f"f0_variance_mode must be one of {F0_VARIANCE_MODES}.")
     states = np.asarray(fit["init_cond"], dtype=float)
     if states.shape != (len(datasets), 2) or len(datasets) < 2 or not np.all(np.isfinite(states)):
-        raise ValueError("WM4 MPC covariance needs at least two finite fitted historical [F0,R0] oracle states.")
+        raise ValueError("WM4 covariance needs at least two finite historical [F0,R0] oracle states.")
     for data in datasets:
         if "I" not in data or "O" not in data:
-            raise ValueError("R0 reconstruction uncertainty requires I and O in each historical window.")
+            raise ValueError("Reconstruction uncertainty needs I and O in every historical window.")
     observed_R = np.array([
         float(np.asarray(data["I"], dtype=float)[0] - np.asarray(data["O"], dtype=float)[0])
         for data in datasets], dtype=float)
     if not np.all(np.isfinite(observed_R)):
-        raise ValueError("Historical observed initial-rate estimates must be finite.")
-    oracle_R = states[:, 1].copy()
-    reconstruction_errors = observed_R - oracle_R
-    reconstruction_bias = float(np.mean(reconstruction_errors))
-    reconstruction_variance = float(np.var(reconstruction_errors, ddof=1))
-    baseline_residual_variance = float(np.var(observed_R, ddof=1))
-    F_variance = float(np.var(states[:, 0], ddof=1))
-    R_variance = (reconstruction_variance if r0_variance_mode == "oracle_reconstruction"
-        else baseline_residual_variance if r0_variance_mode == "baseline_residual" else 0.0)
-    R_bias_correction = reconstruction_bias if r0_variance_mode == "oracle_reconstruction" else 0.0
-    P0 = np.diag([max(F_variance, 0.0), max(R_variance, 0.0)])
+        raise ValueError("Historical observed rate estimates must be finite.")
+    oracle_mean_F = float(np.mean(states[:, 0]))
+    bootstrap_errors = np.column_stack([
+        oracle_mean_F - states[:, 0], observed_R - states[:, 1]])
+    errors = bootstrap_errors.copy()
+    kinds = ["oracle_bootstrap"] * len(datasets)
+    training_origins = fit.get("training_origins")
+    archive = {} if state_archive is None else state_archive
+    if training_origins is not None and len(training_origins) != len(datasets):
+        raise ValueError("Historical training origins must align with oracle states.")
+    prediction_origin = pd.Timestamp(fit["prediction_origin"]) if "prediction_origin" in fit else None
+    if f0_variance_mode == "mpc_reconstruction" and training_origins is not None:
+        for i, origin in enumerate(training_origins):
+            origin = pd.Timestamp(origin)
+            if origin not in archive: continue
+            if prediction_origin is not None and origin + pd.Timedelta(hours=DAY_HOURS) > prediction_origin:
+                continue
+            record = np.asarray(archive[origin], dtype=float).reshape(-1)
+            if record.shape != (2,) or not np.all(np.isfinite(record)):
+                raise ValueError(f"Invalid archived F/R oracle reconstruction errors at {origin}.")
+            errors[i] = record
+            kinds[i] = "mpc"
+    reconstruction_bias = np.mean(errors, axis=0)
+    reconstruction_covariance = np.cov(errors, rowvar=False, ddof=1)
+    reconstruction_covariance = 0.5 * (reconstruction_covariance + reconstruction_covariance.T)
+    if f0_variance_mode == "mpc_reconstruction":
+        F_variance = float(max(reconstruction_covariance[0, 0], 0.0))
+        F_bias_correction = float(reconstruction_bias[0])
+    else:
+        F_variance = float(np.var(states[:, 0], ddof=1))
+        F_bias_correction = 0.0
+    R_variance = (float(max(reconstruction_covariance[1, 1], 0.0))
+        if r0_variance_mode == "oracle_reconstruction"
+        else float(np.var(observed_R, ddof=1)) if r0_variance_mode == "baseline_residual" else 0.0)
+    R_bias_correction = float(reconstruction_bias[1]) if r0_variance_mode == "oracle_reconstruction" else 0.0
+    FR_covariance = (float(reconstruction_covariance[0, 1])
+        if f0_variance_mode == "mpc_reconstruction" and r0_variance_mode == "oracle_reconstruction" else 0.0)
+    P0 = np.array([[F_variance, FR_covariance], [FR_covariance, R_variance]], dtype=float)
+    if np.linalg.eigvalsh(P0)[0] < -1e-10:
+        raise ValueError("Empirical initial reconstruction covariance must be positive semidefinite.")
     return {
-        "covariance": P0, "F_variance": float(P0[0, 0]),
-        "R_variance": float(P0[1, 1]), "R_bias_correction": R_bias_correction,
-        "R_reconstruction_bias": reconstruction_bias,
-        "R_reconstruction_variance": max(reconstruction_variance, 0.0),
-        "R_reconstruction_rmse": float(np.sqrt(np.mean(reconstruction_errors ** 2))),
-        "R_reconstruction_errors": reconstruction_errors.copy(),
-        "R_reconstruction_samples": int(len(reconstruction_errors)),
-        "baseline_residual_variance": baseline_residual_variance,
+        "covariance": P0, "F_variance": F_variance, "R_variance": R_variance,
+        "FR_covariance": FR_covariance,
+        "F_bias_correction": F_bias_correction, "R_bias_correction": R_bias_correction,
+        "F_reconstruction_bias": float(reconstruction_bias[0]),
+        "F_reconstruction_variance": float(max(reconstruction_covariance[0, 0], 0.0)),
+        "F_reconstruction_rmse": float(np.sqrt(np.mean(errors[:, 0] ** 2))),
+        "R_reconstruction_bias": float(reconstruction_bias[1]),
+        "R_reconstruction_variance": float(max(reconstruction_covariance[1, 1], 0.0)),
+        "R_reconstruction_rmse": float(np.sqrt(np.mean(errors[:, 1] ** 2))),
+        "FR_reconstruction_covariance": float(reconstruction_covariance[0, 1]),
+        "reconstruction_errors": errors.copy(),
+        "R_reconstruction_errors": errors[:, 1].copy(),
+        "reconstruction_samples": int(len(errors)),
+        "R_reconstruction_samples": int(len(errors)),
+        "F_calibration_mpc_count": kinds.count("mpc"),
+        "F_calibration_oracle_count": kinds.count("oracle_bootstrap"),
+        "F_calibration_origin_types": kinds,
+        "baseline_residual_variance": float(np.var(observed_R, ddof=1)),
         "baseline_residual_mean": float(np.mean(observed_R)),
         "baseline_residual_samples": int(len(observed_R)),
-        "r0_variance_mode": r0_variance_mode,
+        "r0_variance_mode": r0_variance_mode, "f0_variance_mode": f0_variance_mode,
     }
+
+
+def _archive_reconstruction_origin(state_archive, origin, state):
+    """Store post-hoc oracle mismatch for use by future weekly origins only."""
+    if state_archive is None: return
+    origin = pd.Timestamp(origin)
+    if pd.Timestamp(state["origin"]) != origin: raise ValueError("Archive origin mismatch.")
+    errors = np.array([state["F_reconstruction_error_origin"],
+        state["R_reconstruction_error_origin"]], dtype=float)
+    if not np.all(np.isfinite(errors)): raise ValueError("Oracle reconstruction errors must be finite.")
+    state_archive[origin] = errors
 
 
 def _archive_mpc_origin(archive, origin, rows, horizon=8):
@@ -148,7 +202,8 @@ def _archive_mpc_origin(archive, origin, rows, horizon=8):
 
 
 def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mode="mpc_replay",
-    r0_variance_mode="oracle_reconstruction", mpc_archive=None, max_horizon=8):
+    r0_variance_mode="oracle_reconstruction", mpc_archive=None, max_horizon=8,
+    *, f0_variance_mode="mpc_reconstruction", state_archive=None):
     """Fit q=sigma^2 from causal historical MPC errors, with oracle bootstrap.
 
     Each of the five aligned historical origins contributes a forward MPC
@@ -160,7 +215,8 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
     """
     if sigma_fit_mode not in SIGMA_FIT_MODES:
         raise ValueError(f"sigma_fit_mode must be one of {SIGMA_FIT_MODES}.")
-    initial = _mpc_initial_covariance(fit, datasets, r0_variance_mode)
+    initial = _mpc_initial_covariance(fit, datasets, r0_variance_mode,
+        f0_variance_mode=f0_variance_mode, state_archive=state_archive)
     P0 = initial["covariance"]
     hourly_index = np.arange(DAY_HOURS, dtype=int) * int(steps_per_hour)
     states = np.asarray(fit["init_cond"], dtype=float)
@@ -265,14 +321,17 @@ def _stochastic_forecast_variance(model, state, fit, diffusion, max_horizon, ste
     P0 = np.asarray(diffusion["mpc_initial_covariance"], dtype=float)
     initial_F_component = P0[0, 0] * sensitivity[:, 0] ** 2
     initial_R_component = P0[1, 1] * sensitivity[:, 1] ** 2
-    initial_variance = np.maximum(initial_F_component + initial_R_component, 0.0)
+    initial_FR_component = 2.0 * P0[0, 1] * sensitivity[:, 0] * sensitivity[:, 1]
+    initial_variance = np.maximum(initial_F_component + initial_R_component + initial_FR_component, 0.0)
     kernel = model.process_variance_kernel(state, lead_steps)
     process_kernel_unit = kernel @ np.ones(model.t_steps, dtype=float)
     process_variance = process_kernel_unit * float(diffusion["q"])
     total_variance = np.maximum(initial_variance + process_variance, 0.0)
     return {
         "F_variance": float(P0[0, 0]), "R_variance": float(P0[1, 1]),
+        "FR_covariance": float(P0[0, 1]),
         "initial_F_component": initial_F_component, "initial_R_component": initial_R_component,
+        "initial_FR_component": initial_FR_component,
         "initial_variance": initial_variance,
         "process_variance": process_variance,
         "process_kernel_unit": process_kernel_unit,
@@ -281,7 +340,8 @@ def _stochastic_forecast_variance(model, state, fit, diffusion, max_horizon, ste
     }
 
 
-def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max_horizon, *, sigma_fit_mode="mpc_replay", r0_variance_mode="oracle_reconstruction", mpc_archive=None, **fit_kwargs):
+def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max_horizon, *, sigma_fit_mode="mpc_replay", r0_variance_mode="oracle_reconstruction",
+    f0_variance_mode="mpc_reconstruction", mpc_archive=None, state_archive=None, **fit_kwargs):
     origin = pd.Timestamp(origin)
     fit, fit_model, datasets = _fit_shifted_history(
         frame, origin, baseline_weeks, steps_per_hour, output_model, **fit_kwargs,
@@ -296,13 +356,21 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
     R_observed = float(prepared["I"][0] - prepared["O"][0])
     diffusion = _fit_stochastic_variance(fit_model, fit, datasets, steps_per_hour,
         sigma_fit_mode=sigma_fit_mode, r0_variance_mode=r0_variance_mode,
-        mpc_archive=mpc_archive, max_horizon=max_horizon)
-    R_initialized = R_observed - float(diffusion["R_bias_correction"])
-    init = np.array([historical[0], R_initialized], dtype=float)
+        mpc_archive=mpc_archive, max_horizon=max_horizon,
+        f0_variance_mode=f0_variance_mode, state_archive=state_archive)
+    F_initialized = float(historical[0] - diffusion["F_bias_correction"])
+    R_initialized = float(R_observed - diffusion["R_bias_correction"])
+    init = np.array([F_initialized, R_initialized], dtype=float)
     state = helper._state_from_parameters(prepared, init, fit["r"], full=True)
     stochastic = _stochastic_forecast_variance(
-        model, state, fit, diffusion, max_horizon, steps_per_hour,
-    )
+        model, state, fit, diffusion, max_horizon, steps_per_hour)
+    # Retrospective oracle reconstruction is for future historical calibration
+    # only; the CURRENT forecast mean, q, and P0 have already been fixed.
+    oracle = helper.optimize_prediction_initial_state(data, fit["r"],
+        r_bounds=(-np.inf, np.inf))["init_cond"]
+    oracle = np.asarray(oracle, dtype=float)
+    if oracle.shape != (2,) or not np.all(np.isfinite(oracle)):
+        raise ValueError("Retrospective current-origin WM4 oracle state must be finite [F0,R0].")
 
     rows = []
     for lead in range(1, int(max_horizon) + 1):
@@ -324,6 +392,21 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
             "F_predicted": float(state["F"][step]),
             "R_predicted": float(state["R"][step]),
             "F_historical": float(historical[0]),
+            "F_initialized_origin": F_initialized,
+            "F_oracle_origin": float(oracle[0]),
+            "F_reconstruction_error_origin": float(F_initialized - oracle[0]),
+            "R_oracle_origin": float(oracle[1]),
+            "R_reconstruction_error_origin": float(R_observed - oracle[1]),
+            "f0_variance_mode": f0_variance_mode,
+            "F_bias_correction": float(diffusion["F_bias_correction"]),
+            "F_reconstruction_bias": float(diffusion["F_reconstruction_bias"]),
+            "F_reconstruction_variance": float(diffusion["F_reconstruction_variance"]),
+            "F_reconstruction_rmse": float(diffusion["F_reconstruction_rmse"]),
+            "FR_reconstruction_covariance": float(diffusion["FR_reconstruction_covariance"]),
+            "initial_FR_covariance": float(stochastic["FR_covariance"]),
+            "initial_FR_component_variance": float(stochastic["initial_FR_component"][lead - 1]),
+            "F_calibration_mpc_count": int(diffusion["F_calibration_mpc_count"]),
+            "F_calibration_oracle_count": int(diffusion["F_calibration_oracle_count"]),
             "R_observed_origin": R_observed,
             "R_initialized_origin": R_initialized,
             "R_reconstruction_bias": float(diffusion["R_reconstruction_bias"]),
@@ -373,6 +456,19 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
         "origin_day": origin.normalize(),
         "origin_hour": origin.hour,
         "F_historical": float(historical[0]),
+        "F_initialized": F_initialized,
+        "F_oracle_origin": float(oracle[0]),
+        "F_reconstruction_error_origin": float(F_initialized - oracle[0]),
+        "R_oracle_origin": float(oracle[1]),
+        "R_reconstruction_error_origin": float(R_observed - oracle[1]),
+        "f0_variance_mode": f0_variance_mode,
+        "F_bias_correction": float(diffusion["F_bias_correction"]),
+        "F_reconstruction_bias": float(diffusion["F_reconstruction_bias"]),
+        "F_reconstruction_variance": float(diffusion["F_reconstruction_variance"]),
+        "F_reconstruction_rmse": float(diffusion["F_reconstruction_rmse"]),
+        "FR_reconstruction_covariance": float(diffusion["FR_reconstruction_covariance"]),
+        "F_calibration_mpc_count": int(diffusion["F_calibration_mpc_count"]),
+        "F_calibration_oracle_count": int(diffusion["F_calibration_oracle_count"]),
         "R_historical": float(historical[1]),
         "R_observed": R_observed,
         "R_initialized": R_initialized,
@@ -398,12 +494,14 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
         "calibration_horizon": int(diffusion["calibration_horizon"]),
         "r0_variance_mode": r0_variance_mode,
         "mpc_P0_FF": float(stochastic["F_variance"]),
-        "mpc_P0_FR": 0.0,
+        "mpc_P0_FR": float(stochastic["FR_covariance"]),
         "mpc_P0_RR": float(stochastic["R_variance"]),
         "baseline_origin_residual_variance": float(diffusion["baseline_residual_variance"]),
         "baseline_origin_residual_mean": float(diffusion["baseline_residual_mean"]),
         "baseline_origin_residual_samples": int(diffusion["baseline_residual_samples"]),
         "R_reconstruction_errors": ";".join(f"{v:.9g}" for v in diffusion["R_reconstruction_errors"]),
+        "F_reconstruction_errors": ";".join(f"{v:.9g}" for v in diffusion["reconstruction_errors"][:, 0]),
+        "F_calibration_origin_types": ";".join(diffusion["F_calibration_origin_types"]),
         "training_P0_FF": float(diffusion["training_initial_covariance"][0, 0]),
         "training_P0_FR": float(diffusion["training_initial_covariance"][0, 1]),
         "training_P0_RR": float(diffusion["training_initial_covariance"][1, 1]),
@@ -606,11 +704,13 @@ def print_summary(cumulative, lead, skipped):
         for origin, reason in skipped: print(f"{origin}: {reason}")
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, max_horizon=8, fail_fast=False, mpc_archive=None, **fit_kwargs):
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, max_horizon=8,
+    fail_fast=False, mpc_archive=None, state_archive=None, **fit_kwargs):
     start, end = day_start(start), day_start(end)
     if end < start: raise ValueError("end must be on or after start.")
     forecast_rows, state_rows, skipped = [], [], []
     mpc_archive = {} if mpc_archive is None else mpc_archive
+    state_archive = {} if state_archive is None else state_archive
 
     for day in pd.date_range(start, end, freq="D"):
         output_model, _ = fit_expected_output(frame, day)
@@ -620,9 +720,11 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
             try:
                 rows, state = _mpc_origin(
                     frame, origin, baseline_weeks, steps_per_hour,
-                    output_model, max_horizon, mpc_archive=mpc_archive, **fit_kwargs,
+                    output_model, max_horizon, mpc_archive=mpc_archive,
+                    state_archive=state_archive, **fit_kwargs,
                 )
                 _archive_mpc_origin(mpc_archive, origin, rows, max_horizon)
+                _archive_reconstruction_origin(state_archive, origin, state)
                 forecast_rows.extend(rows)
                 state_rows.append(state)
                 fitted += 1
@@ -642,6 +744,8 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--max-horizon", type=int, default=8)
+    parser.add_argument("--f0-variance-mode", choices=F0_VARIANCE_MODES, default="mpc_reconstruction",
+        help="Calibrate F0 bias, variance and F/R covariance from causal historical MPC-versus-oracle errors (default), or legacy oracle_spread.")
     parser.add_argument("--r0-variance-mode", choices=R0_VARIANCE_MODES, default="oracle_reconstruction",
         help="Initialize R0 uncertainty from historical (I-O_hat)-R_oracle reconstruction errors (default), baseline_residual or zero for ablations.")
     parser.add_argument("--sigma-fit-mode", choices=SIGMA_FIT_MODES, default="mpc_replay",
@@ -665,6 +769,7 @@ def main():
         fail_fast=args.fail_fast,
         sigma_fit_mode=args.sigma_fit_mode,
         r0_variance_mode=args.r0_variance_mode,
+        f0_variance_mode=args.f0_variance_mode,
         max_state_iter=args.max_state_iter,
         state_tol=args.state_tol,
     )
@@ -695,7 +800,8 @@ def main():
     print()
     print(f"days={forecasts['origin_day'].nunique()}, MPC origins={forecasts['origin'].nunique()}, forecasts={len(forecasts)}")
     print_summary(cumulative, lead, skipped)
-    print(f"sigma fit mode={args.sigma_fit_mode}; initial R0 variance mode={args.r0_variance_mode} "
+    print(f"sigma fit mode={args.sigma_fit_mode}; initial F0 variance mode={args.f0_variance_mode}; "
+        f"initial R0 variance mode={args.r0_variance_mode} "
         "(oracle_reconstruction uses observed-minus-oracle initial-rate error)")
     print(f"output={output}")
 
