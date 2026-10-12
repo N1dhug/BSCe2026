@@ -39,7 +39,7 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
     """Validate saved distributions; reject incompatible pre-update CSVs by default.
 
     The analyzer does not refit WM4 or recompute covariance. It must not plot
-    stale forecast intervals as if they contained baseline-derived R0 uncertainty.
+    stale forecast intervals as if they contained oracle-reconstruction R0 uncertainty.
     """
     horizon = int(horizon)
     if not 1 <= horizon <= 8: raise ValueError("horizon must be in [1, 8].")
@@ -56,7 +56,7 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
     if missing_p0 and not allow_legacy:
         raise ValueError(
             f"OUTDATED WM4 MPC FORECAST DATA: {path}\n"
-            f"Missing baseline-P0 columns: {sorted(missing_p0)}.\n"
+            f"Missing current-P0 columns: {sorted(missing_p0)}.\n"
             "The analysis reads an existing CSV and does not refit WM4. "
             "Regenerate it with: python -m src.exe.run_model.wm_4.predict_all_days_mpc "
             "--r0-variance-mode oracle_reconstruction --sigma-fit-mode mpc_replay\n"
@@ -64,7 +64,7 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
             "To analyze older predictions explicitly, pass --allow-legacy.")
     if missing_p0: print(
         f"WARNING: legacy WM4 MPC forecast data missing {sorted(missing_p0)}; "
-        "baseline-derived R0 variance is NOT verified.", flush=True)
+        "oracle-reconstruction R0 variance is NOT verified.", flush=True)
     if "r0_variance_mode" in frame:
         modes = frame["r0_variance_mode"].dropna().astype(str).unique()
         if len(modes) != 1: raise ValueError(f"Mixed or missing r0_variance_mode values: {list(modes)}")
@@ -217,7 +217,10 @@ def summaries(frame, horizon):
         ["origin", "origin_day", "origin_hour", "diffusion_sigma"]].copy()
     origin_rows = frame.drop_duplicates("origin").sort_values("origin")
     for name in ("sigma_fit_mode", "r0_variance_mode", "calibration_mpc_count",
-                 "calibration_oracle_count", "calibration_horizon"):
+                 "calibration_oracle_count", "calibration_horizon",
+                 "R_reconstruction_bias", "R_reconstruction_variance",
+                 "R_reconstruction_rmse", "R_reconstruction_samples", "R_bias_correction",
+                 "baseline_origin_residual_variance", "initial_R_variance"):
         if name in frame: origins[name] = origin_rows[name].to_numpy()
     daily = origins.groupby("origin_day")["diffusion_sigma"].agg(
         origins="size", sigma_mean="mean", sigma_median="median",
@@ -477,9 +480,12 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
     if "initial_R_variance" in frame:
         unique = frame.drop_duplicates("origin")
         print(f"Mean initial R0 std: "
-              f"{np.sqrt(unique['initial_R_variance'].mean()):.6f} | "
-              f"oracle reconstruction RMSE={unique['R_reconstruction_rmse'].mean():.6f} | "
-              f"oracle reconstruction bias={unique['R_reconstruction_bias'].mean():+.6f}")
+              f"{np.sqrt(unique['initial_R_variance'].mean()):.6f}")
+        if {"R_reconstruction_rmse", "R_reconstruction_bias", "baseline_origin_residual_variance"} <= set(unique):
+            print(f"Mean oracle R0 reconstruction RMSE={unique['R_reconstruction_rmse'].mean():.6f}; "
+                  f"bias={unique['R_reconstruction_bias'].mean():+.6f}; "
+                  f"cross-week observed R0 std="
+                  f"{np.sqrt(unique['baseline_origin_residual_variance'].mean()):.6f}")
     for row in exact.itertuples(index=False):
         print(f"{row.lead_hours:>4d} {row.rmse:>10.6f} {row.predicted_rms_std:>10.6f} "
               f"{row.process_rms_std:>10.6f} {row.coverage_68_pct:>8.1f}% {row.coverage_95_pct:>8.1f}%")
