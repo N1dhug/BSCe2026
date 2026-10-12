@@ -80,6 +80,7 @@ def _fit_shifted_history(frame, origin, baseline_weeks, steps_per_hour, output_m
         **fit_kwargs,
     )
     fit["training_origins"] = training_origins
+    fit["prediction_origin"] = origin
     return fit, model, datasets
 
 
@@ -394,7 +395,8 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
             "F_historical": float(historical[0]),
             "F_initialized_origin": F_initialized,
             "F_oracle_origin": float(oracle[0]),
-            "F_reconstruction_error_origin": float(F_initialized - oracle[0]),
+            "F_reconstruction_error_origin": float(historical[0] - oracle[0]),
+            "F_corrected_error_origin": float(F_initialized - oracle[0]),
             "R_oracle_origin": float(oracle[1]),
             "R_reconstruction_error_origin": float(R_observed - oracle[1]),
             "f0_variance_mode": f0_variance_mode,
@@ -458,7 +460,8 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
         "F_historical": float(historical[0]),
         "F_initialized": F_initialized,
         "F_oracle_origin": float(oracle[0]),
-        "F_reconstruction_error_origin": float(F_initialized - oracle[0]),
+        "F_reconstruction_error_origin": float(historical[0] - oracle[0]),
+        "F_corrected_error_origin": float(F_initialized - oracle[0]),
         "R_oracle_origin": float(oracle[1]),
         "R_reconstruction_error_origin": float(R_observed - oracle[1]),
         "f0_variance_mode": f0_variance_mode,
