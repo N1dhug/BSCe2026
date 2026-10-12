@@ -32,7 +32,11 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
                         "lead_hours": lead, "I_observed": observed, "I_mpc": mean,
                         "initial_variance": initial, "process_variance": process,
                         "predicted_variance": variance, "diffusion_sigma": sigma,
-                        "sigma_fit_mode": "historical_p0",
+                        "sigma_fit_mode": "mpc_replay",
+                        "calibration_mpc_count": 1,
+                        "calibration_oracle_count": 4,
+                        "calibration_horizon": 8,
+                        "process_kernel_unit": process / sigma ** 2,
                         "r0_variance_mode": "baseline_residual",
                         "initial_F_variance": 0.003,
                         "initial_R_variance": 0.008,
@@ -81,6 +85,7 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
                 "initial_F_component_variance", "initial_R_component_variance",
                 "baseline_origin_residual_variance",
             ])
+            old["sigma_fit_mode"] = "historical_p0"
             old.to_csv(path, index=False)
             with self.assertRaisesRegex(ValueError, "OUTDATED WM4 MPC FORECAST DATA"):
                 load_forecasts(path)
@@ -107,6 +112,18 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
             data.to_csv(path, index=False)
             with self.assertRaisesRegex(ValueError, "propagated F0"):
                 load_forecasts(path)
+
+    def test_old_oracle_sigma_fit_is_rejected_by_default(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "forecasts.csv"
+            data = self.simulated_forecasts(1)
+            data["sigma_fit_mode"] = "historical_p0"
+            data.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "expects 'mpc_replay'"):
+                load_forecasts(path)
+            accepted, _, mode = load_forecasts(path, expected_sigma_fit_mode="historical_p0")
+            self.assertEqual(mode, "historical_p0")
+            self.assertEqual(len(accepted), 192)
 
     def test_all_csv_and_plots_are_created_without_refitting(self):
         with tempfile.TemporaryDirectory() as temp:
