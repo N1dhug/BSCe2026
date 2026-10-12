@@ -12,6 +12,10 @@ Three distinct lower-is-better rankings:
 Calibration and sharpness are NOT equivalent: large, correctly anticipated
 forecast errors can have excellent calibration but high RMSE. The quantile
 overlap tables make these relationships measurable without refitting WM4.
+
+The bottom-left scatter is DIFFERENT: each point is one hourly MPC origin's
+complete 1..H forecast, not the pooled quality of a whole day. All complete
+MPC origins are shown, including origins from days excluded by daily ranking.
 """
 
 from argparse import ArgumentParser
@@ -89,6 +93,48 @@ def daily_metrics(frame, horizon=8):
         raise ValueError("No full MPC days with 24 complete hourly forecast origins. "
             "Check the requested horizon and --fully-mpc filter.")
     return pd.DataFrame(rows).sort_values("day").reset_index(drop=True), pd.DataFrame(excluded)
+
+
+def origin_metrics(frame, horizon=8):
+    """One observation per hourly MPC origin, pooling that origin's 1..H leads.
+
+    Observed RMSE is sqrt(mean(e_h^2)); predicted RMS uncertainty is
+    sqrt(mean(V_h)). A single eight-lead realization cannot reliably
+    identify an empirical error *variance*, so the color instead depicts
+    absolute log(predicted MSE / realized MSE), not variance calibration.
+    """
+    horizon = int(horizon)
+    if not 1 <= horizon <= 8: raise ValueError("horizon must be in [1, 8].")
+    needed = {"origin", "lead_hours", "error", "predicted_variance"}
+    if missing := needed - set(frame.columns):
+        raise ValueError(f"MPC origin quality requires columns {sorted(missing)}.")
+    rows = []
+    for origin, group in frame.groupby("origin", sort=True):
+        if sorted(group["lead_hours"].tolist()) != list(range(1, horizon + 1)):
+            raise ValueError(f"Expected one full 1..{horizon} forecast at origin {origin}.")
+        errors = group["error"].to_numpy(dtype=float)
+        variances = group["predicted_variance"].to_numpy(dtype=float)
+        if not np.all(np.isfinite(errors)) or not np.all(np.isfinite(variances)):
+            raise ValueError(f"Nonfinite forecast errors or predicted variance at {origin}.")
+        if np.any(variances < 0.0):
+            raise ValueError(f"Negative predicted variance at {origin}.")
+        mse, predicted = float(np.mean(errors ** 2)), float(np.mean(variances))
+        ratio = predicted / mse if mse > 0 else np.nan
+        rows.append({
+            "origin": pd.Timestamp(origin),
+            "origin_day": pd.Timestamp(origin).normalize(),
+            "origin_hour": pd.Timestamp(origin).hour,
+            "horizon_hours": horizon,
+            "n_predictions": len(group),
+            "rmse": float(np.sqrt(mse)),
+            "predicted_rms_std": float(np.sqrt(predicted)),
+            "observed_mse": mse,
+            "predicted_variance": predicted,
+            "mse_ratio_predicted_to_observed": ratio,
+            "mse_calibration_error": abs(float(np.log(ratio))) if ratio > 0 else np.nan,
+        })
+    if not rows: raise ValueError("No complete individual MPC forecasts to plot.")
+    return pd.DataFrame(rows).sort_values("origin").reset_index(drop=True)
 
 
 def assign_quantiles(daily, quantiles=5):
@@ -183,24 +229,29 @@ def _heatmap(ax, counts, label):
     ax.set_title(f"Daily RMSE vs {label.lower()}\ncount (share of RMSE-quantile days)")
 
 
-def plot_quantiles(daily, overlap_calibration, overlap_uncertainty, output):
-    """View day overlap, sharpness vs realized error and season-by-season regimes."""
+def plot_quantiles(daily, overlap_calibration, overlap_uncertainty, origins, output):
+    """Daily heatmaps/timeline plus one scatter point per eight-hour MPC origin."""
     q = len(overlap_calibration)
     fig, axes = plt.subplots(2, 2, figsize=(16, 11))
     _heatmap(axes[0, 0], overlap_calibration, "Variance calibration")
     _heatmap(axes[0, 1], overlap_uncertainty, "Predicted uncertainty")
-    sc = axes[1, 0].scatter(daily["predicted_rms_std"], daily["rmse"],
-        c=daily["variance_calibration_error"], cmap="viridis", s=40, alpha=0.83,
-        edgecolors="white", linewidths=0.4)
-    lo = float(min(daily["predicted_rms_std"].min(), daily["rmse"].min()))
-    hi = float(max(daily["predicted_rms_std"].max(), daily["rmse"].max()))
+    # Each dot is ONE hourly-origin MPC forecast, not a daily average.
+    # Within an origin, eight forecast leads are pooled as RMSE and RMS std.
+    color = origins["mse_calibration_error"].to_numpy(dtype=float)
+    if not np.all(np.isfinite(color)):
+        raise ValueError("Origin-level forecast MSE ratio is undefined for zero realized or predicted MSE.")
+    sc = axes[1, 0].scatter(origins["predicted_rms_std"], origins["rmse"],
+        c=color, cmap="viridis", s=15, alpha=0.55,
+        edgecolors="none", rasterized=True)
+    lo = float(min(origins["predicted_rms_std"].min(), origins["rmse"].min()))
+    hi = float(max(origins["predicted_rms_std"].max(), origins["rmse"].max()))
     axes[1, 0].plot([lo, hi], [lo, hi], "k--", alpha=0.45, label="RMSE = predicted std")
-    axes[1, 0].set_xlabel("Predicted RMS standard deviation (daily)")
-    axes[1, 0].set_ylabel("Observed 1..H MPC RMSE (daily)")
-    axes[1, 0].set_title("Forecast accuracy vs expected uncertainty by day")
+    axes[1, 0].set_xlabel("Predicted RMS standard deviation (per MPC origin)")
+    axes[1, 0].set_ylabel("Observed 1..H MPC RMSE (per origin)")
+    axes[1, 0].set_title(f"Individual 1..H MPC forecasts | {len(origins)} hourly origins")
     axes[1, 0].grid(alpha=0.2)
     axes[1, 0].legend(loc="upper left", fontsize=8)
-    fig.colorbar(sc, ax=axes[1, 0], label="Absolute log variance calibration error")
+    fig.colorbar(sc, ax=axes[1, 0], label="|log(predicted MSE / observed MSE)|")
 
     for col, label, marker in (
         ("rmse_quantile", "RMSE", "o"),
@@ -229,6 +280,7 @@ def analyze(forecasts=FORECASTS, output=OUTPUT, horizon=8, quantiles=5,
     fully_mpc=False, history_windows=5):
     frame, incomplete_origins, mode = load_forecasts(forecasts, horizon)
     frame = select_origins(frame, fully_mpc=fully_mpc, history_windows=history_windows)
+    origins = origin_metrics(frame, horizon)
     days, skipped = daily_metrics(frame, horizon)
     ranked = assign_quantiles(days, quantiles)
     q = int(quantiles)
@@ -237,10 +289,12 @@ def analyze(forecasts=FORECASTS, output=OUTPUT, horizon=8, quantiles=5,
     info = overlap_summary(ranked, q)
     info.update({"horizon_hours": int(horizon), "fully_mpc": bool(fully_mpc),
         "sigma_fit_mode": mode, "incomplete_origins_excluded": int(incomplete_origins),
-        "incomplete_days_excluded": int(len(skipped))})
+        "incomplete_days_excluded": int(len(skipped)),
+        "individual_mpc_origins_plotted": int(len(origins))})
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     ranked.to_csv(output / "daily_quality_quantiles.csv", index=False)
+    origins.to_csv(output / "mpc_origin_quality.csv", index=False)
     skipped.to_csv(output / "excluded_incomplete_days.csv", index=False)
     cal.to_csv(output / "rmse_vs_calibration_quantiles.csv")
     unc.to_csv(output / "rmse_vs_uncertainty_quantiles.csv")
@@ -250,9 +304,11 @@ def analyze(forecasts=FORECASTS, output=OUTPUT, horizon=8, quantiles=5,
         quantile_spread(ranked, col).to_csv(output / f"{label}_quantile_spread.csv", index=False)
     with (output / "quantile_overlap_summary.json").open("w", encoding="utf-8") as f:
         json.dump(info, f, indent=2, allow_nan=False)
-    fig = plot_quantiles(ranked, cal, unc, output / "daily_mpc_quality_quantiles.png")
+    fig = plot_quantiles(ranked, cal, unc, origins, output / "daily_mpc_quality_quantiles.png")
     print(f"WM4 daily MPC quality | {len(ranked)} complete days, {len(skipped)} partial days excluded; "
         f"each day = 24 origins x {horizon} horizons; fully MPC={fully_mpc}")
+    print(f"Bottom-left scatter: {len(origins)} individual hourly MPC-origin forecasts, "
+        f"each pooling {horizon} leads (including origins from incomplete days).")
     print(f"Best RMSE quantile overlaps: best-calibrated "
         f"{info['best_rmse_and_best_calibration_days']}/{info['best_rmse_days']}, "
         f"lowest predicted uncertainty "
@@ -263,8 +319,9 @@ def analyze(forecasts=FORECASTS, output=OUTPUT, horizon=8, quantiles=5,
         else "Spearman RMSE vs predicted std=undefined (constant ranks)")
     print(f"Spearman RMSE vs calibration error={corr_cal:.3f}" if corr_cal is not None
         else "Spearman RMSE vs calibration error=undefined (constant ranks)")
-    print(f"Figure: {fig}\nDaily rankings, overlap matrices and quantile-spread tables: {output}")
-    return {"daily": ranked, "excluded": skipped, "calibration_overlap": cal,
+    print(f"Figure: {fig}\nDaily rankings, per-origin metrics, overlap matrices "
+        f"and quantile-spread tables: {output}")
+    return {"daily": ranked, "origins": origins, "excluded": skipped, "calibration_overlap": cal,
         "uncertainty_overlap": unc, "summary": info, "figure": fig, "output": output}
 
 
