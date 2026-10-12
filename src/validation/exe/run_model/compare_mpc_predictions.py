@@ -23,11 +23,11 @@ class compare_mpc_validation:
         return start, end
 
     @staticmethod
-    def wm4_saved(source, sigma_fit_mode="mpc_replay", r0_variance_mode="baseline_residual"):
+    def wm4_saved(source, sigma_fit_mode="mpc_replay", r0_variance_mode="oracle_reconstruction"):
         if sigma_fit_mode not in ("mpc_replay", "historical_p0", "zero_p0"):
             raise ValueError("WM4 sigma fitting must use mpc_replay, historical_p0 or zero_p0.")
-        if r0_variance_mode not in ("baseline_residual", "zero"):
-            raise ValueError("WM4 R0 initial variance mode must be baseline_residual or zero.")
+        if r0_variance_mode not in ("oracle_reconstruction", "baseline_residual", "zero"):
+            raise ValueError("WM4 R0 initial variance mode must be oracle_reconstruction, baseline_residual or zero.")
         if source is None: return None
         frame = pd.read_csv(source) if isinstance(source, (str, Path)) else source.copy()
         if not isinstance(frame, pd.DataFrame): raise TypeError("WM4 saved forecasts must be a DataFrame/CSV path.")
@@ -58,6 +58,22 @@ class compare_mpc_validation:
             frame["r0_variance_mode"] = "zero"
         if not frame["r0_variance_mode"].eq(r0_variance_mode).all():
             raise ValueError(f"Saved WM4 r0_variance_mode does not match requested {r0_variance_mode}.")
+        if r0_variance_mode == "oracle_reconstruction":
+            required_oracle = {"R_reconstruction_bias", "R_reconstruction_variance",
+                "R_reconstruction_rmse", "R_bias_correction",
+                "R_observed_origin", "R_initialized_origin", "initial_R_variance"}
+            if missing_oracle := required_oracle - set(frame.columns):
+                raise ValueError("Saved WM4 oracle-reconstruction forecasts missing "
+                    + ", ".join(sorted(missing_oracle)) + "; regenerate WM4 MPC forecasts.")
+            for name in required_oracle:
+                if not np.all(np.isfinite(pd.to_numeric(frame[name], errors="coerce"))):
+                    raise ValueError(f"Invalid saved WM4 oracle-reconstruction column {name}.")
+            if not np.allclose(frame["initial_R_variance"], frame["R_reconstruction_variance"],
+                atol=1e-8, rtol=1e-6):
+                raise ValueError("Saved WM4 R0 variance does not match oracle reconstruction error variance.")
+            if not np.allclose(frame["R_initialized_origin"],
+                frame["R_observed_origin"] - frame["R_bias_correction"], atol=1e-8, rtol=1e-6):
+                raise ValueError("Saved WM4 R0 initialization does not match oracle reconstruction bias correction.")
         frame["origin"] = pd.to_datetime(frame["origin"])
         frame["target_time"] = pd.to_datetime(frame["target_time"])
         if frame["origin"].dt.tz is not None or frame["target_time"].dt.tz is not None:
