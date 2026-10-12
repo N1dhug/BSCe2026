@@ -18,7 +18,7 @@ class HistoricalP0SigmaTests(unittest.TestCase):
     def setup_history(self, q):
         steps_per_hour = 2
         model = wm_4((0.0, 1.0), 49, lambda t: 0.0)
-        r = np.array([-2.0, 0.1, -1.0], dtype=float)
+        r = np.array([-2.0, -0.1, -3.0], dtype=float)
         init = np.array([[-0.3, 0.1], [-0.1, -0.1], [0.0, 0.0],
                          [0.1, -0.1], [0.3, 0.1]], dtype=float)
         sample = 2 * np.arange(24, dtype=int)
