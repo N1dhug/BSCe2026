@@ -37,7 +37,14 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
                         "calibration_oracle_count": 4,
                         "calibration_horizon": 8,
                         "process_kernel_unit": process / sigma ** 2,
-                        "r0_variance_mode": "baseline_residual",
+                        "r0_variance_mode": "oracle_reconstruction",
+                        "R_observed_origin": 0.15,
+                        "R_initialized_origin": 0.13,
+                        "R_reconstruction_bias": 0.02,
+                        "R_reconstruction_variance": 0.008,
+                        "R_reconstruction_rmse": 0.095,
+                        "R_reconstruction_samples": 5,
+                        "R_bias_correction": 0.02,
                         "initial_F_variance": 0.003,
                         "initial_R_variance": 0.008,
                         "initial_F_component_variance": 0.2 * initial,
@@ -97,6 +104,8 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
             path = Path(temp) / "forecasts.csv"
             data = self.simulated_forecasts(1)
             data["r0_variance_mode"] = "zero"
+            data["R_bias_correction"] = 0.0
+            data["R_initialized_origin"] = data["R_observed_origin"]
             data["initial_R_variance"] = 0.0
             data["initial_R_component_variance"] = 0.0
             data["initial_F_component_variance"] = data["initial_variance"]
@@ -106,11 +115,27 @@ class MPCIntervalAnalysisTests(unittest.TestCase):
             accepted, _, _ = load_forecasts(path, expected_r0_variance_mode="zero")
             self.assertEqual(len(accepted), 192)
 
-            data["r0_variance_mode"] = "baseline_residual"
+            data["r0_variance_mode"] = "oracle_reconstruction"
+            data["R_bias_correction"] = data["R_reconstruction_bias"]
+            data["R_initialized_origin"] = data["R_observed_origin"] - data["R_bias_correction"]
             data["initial_R_variance"] = 0.008
             data["initial_R_component_variance"] = 0.001
             data.to_csv(path, index=False)
             with self.assertRaisesRegex(ValueError, "propagated F0"):
+                load_forecasts(path)
+
+    def test_oracle_reconstruction_inconsistency_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "forecasts.csv"
+            data = self.simulated_forecasts(1)
+            data["initial_R_variance"] = 0.5
+            data.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "Oracle R0 covariance"):
+                load_forecasts(path)
+            data["initial_R_variance"] = data["R_reconstruction_variance"]
+            data["R_initialized_origin"] = data["R_observed_origin"]
+            data.to_csv(path, index=False)
+            with self.assertRaisesRegex(ValueError, "Initial R0 center"):
                 load_forecasts(path)
 
     def test_old_oracle_sigma_fit_is_rejected_by_default(self):
