@@ -445,7 +445,12 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
         raise ValueError("Retrospective current-origin WM4 oracle state must be finite [F0,R0].")
 
     if sigma_fit_mode == "mpc_replay_24d_24h":
-        _archive_mpc_24h(mpc_archive, origin, model, state, prepared, fit, diffusion, steps_per_hour)
+        # At the end of the observation dataset, interpolation can fill the
+        # T+24h endpoint. Never archive that imputed value as an MPC error.
+        endpoint = origin + pd.Timedelta(hours=SIGMA_HOURS)
+        if endpoint in frame.index and np.isfinite(float(frame.loc[endpoint, "I"])):
+            _archive_mpc_24h(mpc_archive, origin, model, state, prepared,
+                fit, diffusion, steps_per_hour)
 
     rows = []
     for lead in range(1, int(max_horizon) + 1):
