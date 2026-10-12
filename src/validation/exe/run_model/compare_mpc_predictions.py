@@ -23,9 +23,9 @@ class compare_mpc_validation:
         return start, end
 
     @staticmethod
-    def wm4_saved(source, sigma_fit_mode="historical_p0", r0_variance_mode="baseline_residual"):
-        if sigma_fit_mode not in ("historical_p0", "zero_p0"):
-            raise ValueError("WM4 sigma fitting must use historical_p0 or zero_p0.")
+    def wm4_saved(source, sigma_fit_mode="mpc_replay", r0_variance_mode="baseline_residual"):
+        if sigma_fit_mode not in ("mpc_replay", "historical_p0", "zero_p0"):
+            raise ValueError("WM4 sigma fitting must use mpc_replay, historical_p0 or zero_p0.")
         if r0_variance_mode not in ("baseline_residual", "zero"):
             raise ValueError("WM4 R0 initial variance mode must be baseline_residual or zero.")
         if source is None: return None
@@ -42,6 +42,11 @@ class compare_mpc_validation:
             frame["sigma_fit_mode"] = "zero_p0"
         if not frame["sigma_fit_mode"].eq(sigma_fit_mode).all():
             raise ValueError(f"Saved WM4 sigma_fit_mode does not match requested {sigma_fit_mode}.")
+        if sigma_fit_mode == "mpc_replay":
+            required_replay = {"process_kernel_unit", "initial_variance",
+                "calibration_mpc_count", "calibration_oracle_count"}
+            if missing_replay := required_replay - set(frame.columns):
+                raise ValueError("Saved WM4 MPC-replay forecasts missing " + ", ".join(sorted(missing_replay)))
         if "r0_variance_mode" not in frame.columns:
             # Previously saved WM4 MPC forecasts set R0 variance to zero.
             if r0_variance_mode != "zero":
