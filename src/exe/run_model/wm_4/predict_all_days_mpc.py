@@ -15,8 +15,12 @@ from src.params.wm_4 import constant_diffusion_qp, optimized_qp_params
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_mpc"
 HORIZONS = (1, 2, 3, 4, 6, 8)
-SIGMA_FIT_MODES = ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "historical_p0", "zero_p0")
-ROLLING_SIGMA_HORIZONS = {"mpc_replay_24d_24h": 24, "mpc_replay_24d_6h": 6}
+SIGMA_FIT_MODES = ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h",
+    "mpc_replay_30d_6h", "historical_p0", "zero_p0")
+ROLLING_SIGMA_HORIZONS = {"mpc_replay_24d_24h": 24,
+    "mpc_replay_24d_6h": 6, "mpc_replay_30d_6h": 6}
+ROLLING_SIGMA_DAYS = {"mpc_replay_24d_24h": 24,
+    "mpc_replay_24d_6h": 24, "mpc_replay_30d_6h": 30}
 SIGMA_DAYS = 24
 SIGMA_HOURS = 24
 R0_VARIANCE_MODES = ("oracle_reconstruction", "baseline_residual", "zero")
@@ -266,7 +270,7 @@ def _fit_sigma_rolling_qp(model, rolling, horizon=SIGMA_HOURS):
 
 def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mode="mpc_replay",
     r0_variance_mode="oracle_reconstruction", mpc_archive=None, max_horizon=8,
-    *, f0_variance_mode="mpc_reconstruction", state_archive=None, rolling_days=SIGMA_DAYS):
+    *, f0_variance_mode="mpc_reconstruction", state_archive=None, rolling_days=None):
     """Fit q=sigma^2 from causal historical MPC errors, with oracle bootstrap.
 
     Each of the five aligned historical origins contributes a forward MPC
@@ -278,6 +282,9 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
     """
     if sigma_fit_mode not in SIGMA_FIT_MODES:
         raise ValueError(f"sigma_fit_mode must be one of {SIGMA_FIT_MODES}.")
+    rolling_days = int(ROLLING_SIGMA_DAYS.get(sigma_fit_mode, SIGMA_DAYS)
+        if rolling_days is None else rolling_days)
+    if rolling_days < 2: raise ValueError("rolling_days must be at least 2.")
     initial = _mpc_initial_covariance(fit, datasets, r0_variance_mode,
         f0_variance_mode=f0_variance_mode, state_archive=state_archive)
     P0 = initial["covariance"]
@@ -422,7 +429,7 @@ def _stochastic_forecast_variance(model, state, fit, diffusion, max_horizon, ste
 
 def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max_horizon, *, sigma_fit_mode="mpc_replay", r0_variance_mode="oracle_reconstruction",
     f0_variance_mode="mpc_reconstruction", mpc_archive=None, state_archive=None,
-    sigma_rolling_days=SIGMA_DAYS, **fit_kwargs):
+    sigma_rolling_days=None, **fit_kwargs):
     origin = pd.Timestamp(origin)
     fit, fit_model, datasets = _fit_shifted_history(
         frame, origin, baseline_weeks, steps_per_hour, output_model, **fit_kwargs,
@@ -856,8 +863,10 @@ def main():
     parser.add_argument("--sigma-fit-mode", choices=SIGMA_FIT_MODES, default="mpc_replay",
         help="mpc_replay: previous five matching weekdays, 8h (default). "
              "mpc_replay_24d_24h: last 24 days, 24h MPC errors. "
-             "mpc_replay_24d_6h: last 24 days, 6h MPC errors.")
-    parser.add_argument("--sigma-rolling-days", type=int, default=SIGMA_DAYS)
+             "mpc_replay_24d_6h: last 24 days, six-hour MPC errors. "
+             "mpc_replay_30d_6h: last 30 days, six-hour MPC errors.")
+    parser.add_argument("--sigma-rolling-days", type=int, default=None,
+        help="Override rolling history length; default is 24 or 30 according to sigma-fit-mode.")
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
     parser.add_argument("--fail-fast", action="store_true")
@@ -865,7 +874,8 @@ def main():
     args = parser.parse_args()
 
     if args.max_horizon < 1 or args.max_horizon > 8: raise ValueError("max-horizon must lie in [1, 8].")
-    if args.sigma_rolling_days < 2: raise ValueError("sigma-rolling-days must be >=2.")
+    if args.sigma_rolling_days is not None and args.sigma_rolling_days < 2:
+        raise ValueError("sigma-rolling-days must be >=2.")
 
     frame, _ = aligned_wm4_data("MED")
     forecasts, states, skipped = run_all_days(
