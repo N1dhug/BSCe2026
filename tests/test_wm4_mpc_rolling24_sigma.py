@@ -7,7 +7,7 @@ import pandas as pd
 
 from src.model.wm_4 import wm_4
 from src.exe.run_model.wm_4.predict_all_days_mpc import (
-    _archive_mpc_origin, _fit_sigma_rolling_qp, _fit_stochastic_variance,
+    _archive_mpc_origin, _archive_mpc_calibration, _fit_sigma_rolling_qp, _fit_stochastic_variance,
     _rolling_sigma_training, ROLLING_SIGMA_HORIZONS,
 )
 
@@ -180,6 +180,20 @@ class WM4RollingSigmaTests(unittest.TestCase):
         self.assertEqual(len(fresh["origins"]), 30)
         self.assertNotIn(origin, fresh["origins"])
         self.assertNotIn(origin - pd.Timedelta(days=31), fresh["origins"])
+
+    def test_six_hour_archive_retains_only_six_forecast_leads(self):
+        origin = pd.Timestamp("2022-08-01 14:00")
+        model, r = self.model()
+        archive = {}
+        state = {"r": r, "I": np.linspace(0.3, 0.8, model.t_steps)}
+        prepared = {"I": np.linspace(0.4, 0.9, model.t_steps)}
+        fit = {"r": r}
+        diffusion = {"q": 0.035, "mpc_initial_covariance": np.diag([0.004, 0.003])}
+        _archive_mpc_calibration(archive, origin, model, state,
+            prepared, fit, diffusion, steps_per_hour=2, horizon=6)
+        self.assertEqual(archive[origin].shape, (6, 3))
+        self.assertTrue(np.allclose(archive[origin][:, 0], 0.1))
+        self.assertTrue(np.all(archive[origin][:, 1:] >= 0))
 
     def test_thirty_day_mode_defaults_to_thirty_complete_historical_mpcs(self):
         origin = pd.Timestamp("2022-08-01 14:00")
