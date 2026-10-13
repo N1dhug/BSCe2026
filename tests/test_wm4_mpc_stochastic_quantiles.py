@@ -98,6 +98,27 @@ class WM4StochasticQuintileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "quantiles required"):
             select_mpc_origins(changed, quantiles=17, mode="mpc_replay_24d_6h")
 
+    def test_thirty_day_six_hour_mode_filters_only_fully_mature_origins(self):
+        frame = self.forecasts().copy()
+        frame["sigma_rolling_days"] = 30
+        frame["sigma_rolling_count"] = np.where(frame["sigma_rolling_complete"], 30, 4)
+        thirty, origins = select_mpc_origins(frame, mode="mpc_replay_30d_6h",
+            quantiles=4)
+        self.assertEqual(thirty["origin"].nunique(), 16)
+        self.assertEqual(len(origins), 16)
+        self.assertTrue((thirty["calibration_horizon"] == 6).all())
+        self.assertEqual(summarize_quantiles(thirty).shape[0], 4 * 8)
+        with self.assertRaisesRegex(ValueError, "Only 0 complete MPC origins"):
+            select_mpc_origins(frame, mode="mpc_replay_24d_6h", quantiles=4)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("src.exe.run_model.wm_4.plot_mpc_stochastic_quantiles.load_forecasts",
+                return_value=(frame, 0, "mpc_replay_30d_6h")):
+                result = analyze(Path(tmp) / "saved.csv", Path(tmp) / "plots",
+                    mode="mpc_replay_30d_6h", quantiles=4)
+            self.assertEqual(len(result["origins"]), 16)
+            self.assertTrue(result["figure"].is_file())
+
     def test_chart_is_reproducible_from_archived_csv_without_refitting(self):
         frame = self.forecasts()
         with tempfile.TemporaryDirectory() as tmp:
