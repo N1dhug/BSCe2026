@@ -25,10 +25,10 @@ from src.exe.run_model.wm_4.analyze_mpc_intervals import FORECASTS, load_forecas
 
 ROLLING_MODES = {"mpc_replay_24d_6h": 6, "mpc_replay_24d_24h": 24,
     "mpc_replay_30d_6h": 6, "mpc_replay_28d_6h": 6,
-    "mpc_replay_32d_6h_clip4": 6}
+    "mpc_replay_32d_6h_clip4": 6, "mpc_replay_24d_6h_no_p0": 6}
 ROLLING_DAYS = {"mpc_replay_24d_6h": 24, "mpc_replay_24d_24h": 24,
     "mpc_replay_30d_6h": 30, "mpc_replay_28d_6h": 28,
-    "mpc_replay_32d_6h_clip4": 32}
+    "mpc_replay_32d_6h_clip4": 32, "mpc_replay_24d_6h_no_p0": 24}
 MODES = ("mpc_replay", *ROLLING_MODES)
 DEFAULT_FORECASTS = FORECASTS.parent.parent / "all_days_mpc_sigma_32d_6h_clip4" / "mpc_forecasts.csv"
 DEFAULT_OUTPUT = DEFAULT_FORECASTS.parent / "stochastic_quantiles"
@@ -197,7 +197,7 @@ def main():
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--sigma-fit-mode", choices=MODES, default="mpc_replay_32d_6h_clip4")
     parser.add_argument("--horizon", type=int, default=None,
-        help="Forecast horizon (6 for 28d/6h or 32d/6h clip4, otherwise 8).")
+        help="Forecast horizon (6 for 28d/6h, 32d/6h clip4, or 24d/6h no-P0; otherwise 8).")
     parser.add_argument("--quantiles", type=int, default=5)
     parser.add_argument("--rolling-days", type=int, default=None,
         help="Required calibration history; defaults to 24, 28, 30 or 32 by mode.")
@@ -207,7 +207,8 @@ def main():
     if args.rolling_days is not None and args.rolling_days < 2:
         parser.error("--rolling-days must be at least 2")
     output = args.output or Path(args.forecasts).parent / "stochastic_quantiles"
-    horizon = ((6 if args.sigma_fit_mode in ("mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4") else 8)
+    horizon = ((6 if args.sigma_fit_mode in ("mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4",
+        "mpc_replay_24d_6h_no_p0") else 8)
         if args.horizon is None else args.horizon)
     return analyze(args.forecasts, output, horizon, args.quantiles,
         args.sigma_fit_mode, not args.include_warmup, args.rolling_days)
