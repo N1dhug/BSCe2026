@@ -429,7 +429,7 @@ def main():
     parser.add_argument("--wm4-max-state-iter", type=int, default=12)
     parser.add_argument("--wm4-state-tol", type=float, default=1e-8)
     parser.add_argument("--wm4-forecasts", type=Path, help="WM4 mpc_forecasts.csv with all 8 leads, matching --wm4-sigma-fit-mode; avoids WM4 refitting.")
-    parser.add_argument("--wm4-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "historical_p0", "zero_p0"), default="mpc_replay",
+    parser.add_argument("--wm4-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "historical_p0", "zero_p0"), default="mpc_replay",
         help="WM4 diffusion estimated from historical causal MPC forecasts with oracle warmup (default).")
     parser.add_argument("--wm4-f0-variance-mode", choices=("mpc_reconstruction", "oracle_spread"), default="mpc_reconstruction",
         help="WM4 historical MPC-versus-oracle F0 uncertainty (default) or oracle-state spread.")
