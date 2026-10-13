@@ -448,6 +448,8 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
     f0_variance_mode="mpc_reconstruction", mpc_archive=None, state_archive=None,
     sigma_rolling_days=None, fit_hours=DAY_HOURS, **fit_kwargs):
     origin = pd.Timestamp(origin)
+    if sigma_fit_mode == "mpc_replay_28d_6h" and (max_horizon != 6 or fit_hours != 12):
+        raise ValueError("mpc_replay_28d_6h requires 12-hour parameter/baseline windows and 6-hour MPC forecasts.")
     fit, fit_model, datasets = _fit_shifted_history(
         frame, origin, baseline_weeks, steps_per_hour, output_model,
         fit_hours=fit_hours, **fit_kwargs,
@@ -847,8 +849,8 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
     is_six_hour = fit_kwargs.get("sigma_fit_mode") == "mpc_replay_28d_6h"
     max_horizon = (6 if is_six_hour else 8) if max_horizon is None else int(max_horizon)
     fit_hours = (12 if is_six_hour else DAY_HOURS) if fit_hours is None else int(fit_hours)
-    if is_six_hour and max_horizon != 6:
-        raise ValueError("mpc_replay_28d_6h requires a genuine six-hour MPC forecast.")
+    if is_six_hour and (max_horizon != 6 or fit_hours != 12):
+        raise ValueError("mpc_replay_28d_6h requires 6-hour MPC and 12-hour fitting windows.")
     if fit_hours < 2 or fit_hours > DAY_HOURS:
         raise ValueError("fit_hours must be in [2, 24].")
     if not 1 <= max_horizon < fit_hours:
@@ -921,8 +923,8 @@ def main():
     if not 1 <= args.max_horizon <= 8: raise ValueError("max-horizon must lie in [1, 8].")
     if not 2 <= args.fit_hours <= 24 or args.max_horizon >= args.fit_hours:
         raise ValueError("Require 2 <= fit-hours <= 24 and max-horizon < fit-hours.")
-    if preset and args.max_horizon != 6:
-        raise ValueError("28-day/6h sigma mode requires --max-horizon 6 to archive genuine 6h MPC forecasts.")
+    if preset and (args.max_horizon != 6 or args.fit_hours != 12):
+        raise ValueError("28-day/6h mode requires --max-horizon 6 and --fit-hours 12.")
     if args.sigma_rolling_days is not None and args.sigma_rolling_days < 2:
         raise ValueError("sigma-rolling-days must be >=2.")
 
