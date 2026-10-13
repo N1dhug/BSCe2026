@@ -336,7 +336,7 @@ def main():
         help="Require five historical MPC samples (no oracle bootstrap) for every hourly origin in a day.")
     parser.add_argument("--history-windows", type=int, default=5)
     parser.add_argument("--expected-sigma-fit-mode",
-        choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "any"),
+        choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "mpc_replay_28d_6h", "any"),
         default="mpc_replay")
     args = parser.parse_args()
     return analyze(args.forecasts, args.output, args.horizon, args.quantiles,
