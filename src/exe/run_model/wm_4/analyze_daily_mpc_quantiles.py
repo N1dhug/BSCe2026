@@ -277,8 +277,9 @@ def plot_quantiles(daily, overlap_calibration, overlap_uncertainty, origins, out
 
 
 def analyze(forecasts=FORECASTS, output=OUTPUT, horizon=8, quantiles=5,
-    fully_mpc=False, history_windows=5):
-    frame, incomplete_origins, mode = load_forecasts(forecasts, horizon)
+    fully_mpc=False, history_windows=5, expected_sigma_fit_mode="mpc_replay"):
+    frame, incomplete_origins, mode = load_forecasts(forecasts, horizon,
+        expected_sigma_fit_mode=expected_sigma_fit_mode)
     frame = select_origins(frame, fully_mpc=fully_mpc, history_windows=history_windows)
     origins = origin_metrics(frame, horizon)
     days, skipped = daily_metrics(frame, horizon)
@@ -334,9 +335,12 @@ def main():
     parser.add_argument("--fully-mpc", action="store_true",
         help="Require five historical MPC samples (no oracle bootstrap) for every hourly origin in a day.")
     parser.add_argument("--history-windows", type=int, default=5)
+    parser.add_argument("--expected-sigma-fit-mode",
+        choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "any"),
+        default="mpc_replay")
     args = parser.parse_args()
     return analyze(args.forecasts, args.output, args.horizon, args.quantiles,
-        args.fully_mpc, args.history_windows)
+        args.fully_mpc, args.history_windows, args.expected_sigma_fit_mode)
 
 
 if __name__ == "__main__": main()
