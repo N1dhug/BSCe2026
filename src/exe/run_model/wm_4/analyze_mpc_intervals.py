@@ -55,8 +55,8 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
         raise ValueError("expected_r0_variance_mode must be oracle_reconstruction, baseline_residual, zero, or any.")
     if expected_f0_variance_mode not in ("mpc_reconstruction", "oracle_spread", "any"):
         raise ValueError("expected_f0_variance_mode must be mpc_reconstruction, oracle_spread or any.")
-    if expected_sigma_fit_mode not in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "historical_p0", "zero_p0", "any"):
-        raise ValueError("expected_sigma_fit_mode must be mpc_replay, mpc_replay_24d_24h, mpc_replay_24d_6h, historical_p0, zero_p0 or any.")
+    if expected_sigma_fit_mode not in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "historical_p0", "zero_p0", "any"):
+        raise ValueError("expected_sigma_fit_mode must be mpc_replay, mpc_replay_24d_24h, mpc_replay_24d_6h, mpc_replay_30d_6h, historical_p0, zero_p0 or any.")
     path = Path(path).resolve()
     if not path.is_file(): raise FileNotFoundError(
         f"WM4 MPC forecasts not found at {path}. Run python -m "
@@ -195,7 +195,7 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
             f"{expected_sigma_fit_mode!r}. Refit predictions using --sigma-fit-mode "
             f"{expected_sigma_fit_mode}, or request --expected-sigma-fit-mode {mode} "
             "to explicitly analyze the older method.")
-    if mode in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h"):
+    if mode in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h"):
         required_replay = {"calibration_mpc_count", "calibration_oracle_count",
             "calibration_horizon", "process_kernel_unit"}
         if missing_replay := required_replay - set(frame.columns):
@@ -532,7 +532,7 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
     except PermissionError:
         info = output / f"summary.{uuid4().hex[:8]}.json"
         info.write_text(json.dumps(summary, indent=2, allow_nan=True), encoding="utf-8")
-    if mode in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h"):
+    if mode in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h"):
         boot = origins["calibration_oracle_count"].to_numpy(dtype=int)
         live = origins["calibration_mpc_count"].to_numpy(dtype=int)
         print(f"MPC replay calibration: origins with five actual MPC histories={(live == 5).sum()}; "
@@ -579,7 +579,7 @@ def main():
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--day", help="Day for 24 receding forecast fans; defaults to first complete day.")
     parser.add_argument("--horizon", type=int, default=8, help="Max lead horizon (1..8).")
-    parser.add_argument("--expected-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "historical_p0", "zero_p0", "any"),
+    parser.add_argument("--expected-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "historical_p0", "zero_p0", "any"),
         default="mpc_replay", help="Require MPC-replay diffusion calibration (default); refuse stale oracle-based CSVs.")
     parser.add_argument("--expected-f0-variance-mode", choices=("mpc_reconstruction", "oracle_spread", "any"),
         default="mpc_reconstruction", help="Require F0 historical MPC-versus-oracle reconstruction errors.")
