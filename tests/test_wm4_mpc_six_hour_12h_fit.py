@@ -95,5 +95,38 @@ class WM4SixHourTwelveHourTests(unittest.TestCase):
             run_all_days(self.data(), "2022-03-09", "2022-03-09",
                 max_horizon=8, sigma_fit_mode="mpc_replay_28d_6h")
 
+    def test_32_day_clip4_preset_is_24h_fit_and_true_6h_mpc(self):
+        calls = []
+
+        def fake_origin(frame, origin, baseline_weeks, steps_per_hour, output_model,
+            max_horizon, *, fit_hours, **kwargs):
+            calls.append((max_horizon, fit_hours, kwargs["sigma_fit_mode"]))
+            rows = [{"lead_hours": h, "target_time": origin + pd.Timedelta(hours=h),
+                "forecast_error": float(h * 0.01), "initial_variance": 0.01,
+                "process_kernel_unit": 0.03} for h in range(1, max_horizon + 1)]
+            return rows, {"origin": origin}
+
+        with patch("src.exe.run_model.wm_4.predict_all_days_mpc.fit_expected_output",
+            return_value=(Baseline(), {})), patch(
+            "src.exe.run_model.wm_4.predict_all_days_mpc._mpc_origin",
+            side_effect=fake_origin), patch(
+            "src.exe.run_model.wm_4.predict_all_days_mpc._archive_reconstruction_origin"):
+            forecasts, states, skipped = run_all_days(self.data(),
+                start="2022-03-09", end="2022-03-09", steps_per_hour=2,
+                sigma_fit_mode="mpc_replay_32d_6h_clip4")
+
+        self.assertEqual(len(calls), 24)
+        self.assertEqual(len(forecasts), 24 * 6)
+        self.assertEqual(len(states), 24)
+        self.assertFalse(skipped)
+        self.assertTrue(all(h == 6 and fit == 24 and mode == "mpc_replay_32d_6h_clip4"
+            for h, fit, mode in calls))
+        with self.assertRaisesRegex(ValueError, "24-hour fitting"):
+            run_all_days(self.data(), "2022-03-09", "2022-03-09",
+                fit_hours=12, sigma_fit_mode="mpc_replay_32d_6h_clip4")
+        with self.assertRaisesRegex(ValueError, "6-hour MPC"):
+            run_all_days(self.data(), "2022-03-09", "2022-03-09",
+                max_horizon=8, sigma_fit_mode="mpc_replay_32d_6h_clip4")
+
 
 if __name__ == "__main__": unittest.main()
