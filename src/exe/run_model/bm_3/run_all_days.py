@@ -22,7 +22,8 @@ import pandas as pd
 from src.exe.run_model.bm_1 import predict_daily as daily
 from src.exe.run_model.bm_1.compare_fg_week import (
     write_json, sha, job_folder, completed, load_modules, worker as bm1_worker)
-from src.exe.run_model.bm_3.compare_week import worker as bm3_worker, summarize, reference_root
+from src.exe.run_model.bm_3.compare_week import (
+    worker as bm3_worker, summarize, reference_root, print_daily_result, print_progress)
 from src.exe.run_model.bm_3.predict_daily import add_model_options
 from src.exe.run_model.wm_3.fit_weekly import aligned_data, END
 from src.tools.baseline import statistical_output
@@ -138,7 +139,8 @@ def main():
     out,reference = args.output.resolve(),args.reference.resolve()
     if out==reference or reference in out.parents or out in reference.parents:
         p.error('Keep BM3 output separate from the saved reference.')
-    print('Loading aligned consumption, prices and cached temperatures once...',flush=True)
+    print('Indlæser MED-forbrug, priser og temperatur...' if args.tag=='MED'
+          else f'Indlæser {args.tag}-forbrug, priser og temperatur...',flush=True)
     frame,measurements = aligned_data(args.tag,price_domain=(-1.,1.),price_year=2022)
     raw = measurements.mean(axis=1).reindex(frame.index)
     start = pd.Timestamp(args.start).normalize() if args.start else frame.index.min().normalize()
@@ -190,6 +192,7 @@ def main():
         else:
             import shutil
             shutil.copyfile(source_file,target)
+        print(f'Data/baselines klar: {day}',flush=True)
     previous_manifest = out/'prepared_manifest.json'
     if previous_manifest.exists() and json.loads(previous_manifest.read_text())!=prepared_manifest:
         raise ValueError('Prepared source identity changed; use a new output folder.')
@@ -198,7 +201,9 @@ def main():
     for task in pending:
         job_folder(out,*task).mkdir(parents=True,exist_ok=True)
         if task[0] not in reuse: job_folder(generated,*task).mkdir(parents=True,exist_ok=True)
-    print(f'{len(reuse)} complete saved BM1 days reused. {len(pending)} paired jobs remain; workers={args.workers}; BLAS=1.',flush=True)
+    print(f'{len(reuse)} komplette gemte BM1-dage genbruges.',flush=True)
+    saved = len(tasks)-len(pending)
+    print(f'{len(tasks)} jobs; {saved} gemt; {len(pending)} tilbage; workers={args.workers}; BLAS=1.',flush=True)
     started = time.perf_counter(); failures = []
     try:
         with ProcessPoolExecutor(max_workers=args.workers) as pool:
@@ -209,9 +214,9 @@ def main():
                 except Exception as exc:
                     error = str(exc); write_json(job_folder(out,*task)/'error.json',
                         {'task':list(task),'error':error,'traceback':traceback.format_exc()})
-                if error: failures.append((list(task),error)); print('ERROR',task,error,flush=True)
-                if count%25==0 or count==len(pending):
-                    print(f'Progress {count}/{len(pending)}, failed={len(failures)}, elapsed={(time.perf_counter()-started)/60:.1f} min.',flush=True)
+                if error: failures.append((list(task),error)); print('FEJL',task,error,flush=True)
+                else: print_daily_result(out,task)
+                print_progress(count,saved,len(tasks),failures,started)
     finally:
         summarize(out,settings,tasks)
         file = out/'runtime.json'
@@ -220,7 +225,7 @@ def main():
             'completed_jobs':sum(completed(out,t,settings['fingerprint']) for t in tasks),
             'expected_jobs':len(tasks),'failed_tasks':failures})
         write_json(file,runtime)
-    print('Saved period summary:',out/'comparison.csv')
+    print('Færdig. Resultater:',out,flush=True)
     return 1 if failures else 0
 
 
