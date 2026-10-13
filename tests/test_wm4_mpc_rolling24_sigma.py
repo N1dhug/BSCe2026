@@ -160,6 +160,65 @@ class WM4RollingSigmaTests(unittest.TestCase):
         self.assertAlmostEqual(six["q"], 0.035, delta=0.0001)
         self.assertGreater(full["q"], six["q"])
 
+    def test_32_day_clip4_limits_four_extreme_squared_errors_at_each_lead(self):
+        origin = pd.Timestamp("2022-08-01 14:00")
+        model, r = self.model()
+        archive, _ = self.archive(origin, model, r, days=32)
+        for i, values in enumerate(archive.values()):
+            values = values[:6].copy()
+            if i == 0: values[:, 0] += 30.0
+            if i == 1: values[:, 0] -= 20.0
+            archive[origin - pd.Timedelta(days=i + 1)] = values
+        rolling = _rolling_sigma_training(archive, origin, days=32, horizon=6)
+        self.assertEqual(rolling["values"].shape, (32, 6, 3))
+        normal, naive, base, kernel = _fit_sigma_rolling_qp(model, rolling, horizon=6)
+        robust, clipped, robust_base, robust_kernel = _fit_sigma_rolling_qp(
+            model, rolling, horizon=6, clip_each_tail=4)
+        errors = rolling["values"][:, :, 0]
+        sq = (errors - errors.mean(axis=0)) ** 2
+        ordered = np.sort(sq, axis=0)
+        expected = np.clip(sq, ordered[4], ordered[-5]).sum(axis=0) / 31.0
+        self.assertTrue(np.allclose(clipped, expected))
+        self.assertTrue(np.all(clipped < naive))
+        self.assertTrue(np.allclose(base, robust_base))
+        self.assertTrue(np.allclose(kernel, robust_kernel))
+        self.assertLess(robust["q"], normal["q"])
+        self.assertEqual(ROLLING_SIGMA_HORIZONS["mpc_replay_32d_6h_clip4"], 6)
+        self.assertEqual(ROLLING_SIGMA_DAYS["mpc_replay_32d_6h_clip4"], 32)
+        with self.assertRaisesRegex(ValueError, "clip_each_tail"):
+            _fit_sigma_rolling_qp(model, rolling, horizon=6, clip_each_tail=16)
+
+    def test_32_day_mode_requires_full_history_and_reports_clip_metadata(self):
+        origin = pd.Timestamp("2022-08-01 14:00")
+        model, r = self.model()
+        archive, _ = self.archive(origin, model, r, days=32)
+        for stamp in archive: archive[stamp] = archive[stamp][:6].copy()
+        states = np.array([[0.04, 0.07], [-0.02, 0.09], [0.12, 0.0],
+            [0.17, -0.03], [0.02, 0.15]])
+        datasets = [{"I": np.ones(49) * 0.5, "O": np.ones(49) * 0.5} for _ in range(5)]
+        fit = {"r": r, "prediction_origin": origin,
+            "training_origins": [origin - pd.Timedelta(weeks=i) for i in range(1, 6)],
+            "init_cond": states,
+            "deterministic_states": [{"I": np.ones(49) * 0.5} for _ in range(5)]}
+        sigma = _fit_stochastic_variance(model, fit, datasets, 2,
+            sigma_fit_mode="mpc_replay_32d_6h_clip4", mpc_archive=archive,
+            max_horizon=6)
+        self.assertEqual(sigma["calibration_horizon"], 6)
+        self.assertEqual(sigma["calibration_mpc_count"], 32)
+        self.assertEqual(sigma["sigma_rolling_days"], 32)
+        self.assertTrue(sigma["sigma_rolling_complete"])
+        self.assertFalse(sigma["sigma_rolling_bootstrap"])
+        self.assertEqual(sigma["sigma_variance_clip_each_tail"], 4)
+        missing = archive.copy()
+        missing.pop(origin - pd.Timedelta(days=1))
+        boot = _fit_stochastic_variance(model, fit, datasets, 2,
+            sigma_fit_mode="mpc_replay_32d_6h_clip4", mpc_archive=missing,
+            max_horizon=6)
+        self.assertEqual(boot["sigma_rolling_count"], 31)
+        self.assertFalse(boot["sigma_rolling_complete"])
+        self.assertTrue(boot["sigma_rolling_bootstrap"])
+        self.assertEqual(boot["sigma_variance_clip_each_tail"], 0)
+
     def test_28_day_sigma_uses_only_real_six_hour_mpc_errors(self):
         origin = pd.Timestamp("2022-08-01 14:00")
         model, r = self.model()
