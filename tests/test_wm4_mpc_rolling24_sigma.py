@@ -160,6 +160,51 @@ class WM4RollingSigmaTests(unittest.TestCase):
         self.assertAlmostEqual(six["q"], 0.035, delta=0.0001)
         self.assertGreater(full["q"], six["q"])
 
+    def test_thirty_day_six_hour_mode_uses_only_six_mpc_leads(self):
+        origin = pd.Timestamp("2022-08-01 14:00")
+        model, r = self.model()
+        archive, _ = self.archive(origin, model, r, days=30)
+        # The old model may forecast 24h, but the new fit ONLY sees 1..6h.
+        for row in archive.values(): row[6:, 0] *= 20.0
+        samples = _rolling_sigma_training(archive, origin, days=30, horizon=6)
+        self.assertEqual(samples["values"].shape, (30, 6, 3))
+        qp, observed, initial, kernel = _fit_sigma_rolling_qp(model, samples, horizon=6)
+        self.assertEqual(len(observed), 6)
+        self.assertTrue(np.allclose(observed, initial + 0.035 * kernel))
+        self.assertAlmostEqual(qp["q"], 0.035, delta=0.0001)
+        self.assertEqual(ROLLING_SIGMA_HORIZONS["mpc_replay_30d_6h"], 6)
+        # A 31st older day is never selected; the current origin is never used.
+        archive[origin - pd.Timedelta(days=31)] = np.full((6, 3), 500.0)
+        archive[origin] = np.full((6, 3), 500.0)
+        fresh = _rolling_sigma_training(archive, origin, days=30, horizon=6)
+        self.assertEqual(len(fresh["origins"]), 30)
+        self.assertNotIn(origin, fresh["origins"])
+        self.assertNotIn(origin - pd.Timedelta(days=31), fresh["origins"])
+
+    def test_thirty_day_mode_defaults_to_thirty_complete_historical_mpcs(self):
+        origin = pd.Timestamp("2022-08-01 14:00")
+        model, r = self.model()
+        archive, _ = self.archive(origin, model, r, days=30)
+        states = np.array([[0.04, 0.07], [-0.02, 0.09], [0.12, 0.0],
+            [0.17, -0.03], [0.02, 0.15]])
+        datasets = [{"I": np.ones(49) * 0.5, "O": np.ones(49) * 0.5} for _ in range(5)]
+        fit = {"r": r, "prediction_origin": origin,
+            "training_origins": [origin - pd.Timedelta(weeks=i) for i in range(1, 6)],
+            "init_cond": states,
+            "deterministic_states": [{"I": np.ones(49) * 0.5} for _ in range(5)]}
+        fitted = _fit_stochastic_variance(model, fit, datasets, 2,
+            sigma_fit_mode="mpc_replay_30d_6h", mpc_archive=archive,
+            r0_variance_mode="oracle_reconstruction", max_horizon=8)
+        self.assertEqual(fitted["calibration_horizon"], 6)
+        self.assertEqual(fitted["calibration_mpc_count"], 30)
+        self.assertEqual(fitted["calibration_oracle_count"], 0)
+        self.assertEqual(fitted["sigma_rolling_days"], 30)
+        self.assertEqual(fitted["sigma_rolling_count"], 30)
+        self.assertTrue(fitted["sigma_rolling_complete"])
+        self.assertFalse(fitted["sigma_rolling_bootstrap"])
+        self.assertAlmostEqual(fitted["q"], 0.035, delta=0.0001)
+        self.assertEqual(fitted["mpc_initial_covariance"].shape, (2, 2))
+
     def test_insufficient_history_bootstraps_eight_hour_weekly_fit(self):
         origin = pd.Timestamp("2022-08-01 14:00")
         model, r = self.model()
