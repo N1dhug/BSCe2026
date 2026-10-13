@@ -841,10 +841,14 @@ def print_summary(cumulative, lead, skipped):
         for origin, reason in skipped: print(f"{origin}: {reason}")
 
 
-def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, max_horizon=8,
-    fail_fast=False, mpc_archive=None, state_archive=None, fit_hours=DAY_HOURS, **fit_kwargs):
+def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, max_horizon=None,
+    fail_fast=False, mpc_archive=None, state_archive=None, fit_hours=None, **fit_kwargs):
     start, end = day_start(start), day_start(end)
-    fit_hours = int(fit_hours)
+    is_six_hour = fit_kwargs.get("sigma_fit_mode") == "mpc_replay_28d_6h"
+    max_horizon = (6 if is_six_hour else 8) if max_horizon is None else int(max_horizon)
+    fit_hours = (12 if is_six_hour else DAY_HOURS) if fit_hours is None else int(fit_hours)
+    if is_six_hour and max_horizon != 6:
+        raise ValueError("mpc_replay_28d_6h requires a genuine six-hour MPC forecast.")
     if fit_hours < 2 or fit_hours > DAY_HOURS:
         raise ValueError("fit_hours must be in [2, 24].")
     if not 1 <= max_horizon < fit_hours:
