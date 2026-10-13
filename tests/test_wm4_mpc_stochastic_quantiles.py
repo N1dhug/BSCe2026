@@ -98,6 +98,26 @@ class WM4StochasticQuintileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "quantiles required"):
             select_mpc_origins(changed, quantiles=17, mode="mpc_replay_24d_6h")
 
+    def test_32_day_clip4_quantiles_only_use_completed_six_hour_mpcs(self):
+        frame = self.forecasts(horizon=6).copy()
+        frame["sigma_rolling_days"] = 32
+        frame["sigma_rolling_count"] = np.where(frame["sigma_rolling_complete"], 32, 4)
+        frame["calibration_horizon"] = 6
+        selected, origins = select_mpc_origins(frame, mode="mpc_replay_32d_6h_clip4",
+            horizon=6, quantiles=4)
+        self.assertEqual(len(origins), 16)
+        self.assertEqual(len(selected), 16 * 6)
+        self.assertEqual(len(summarize_quantiles(selected, horizon=6)), 4 * 6)
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("src.exe.run_model.wm_4.plot_mpc_stochastic_quantiles.load_forecasts",
+                return_value=(frame, 0, "mpc_replay_32d_6h_clip4")) as reader:
+                result = analyze(Path(tmp) / "saved.csv", Path(tmp) / "quantiles",
+                    mode="mpc_replay_32d_6h_clip4", horizon=6, quantiles=4)
+                self.assertEqual(reader.call_args.kwargs["expected_sigma_fit_mode"],
+                    "mpc_replay_32d_6h_clip4")
+            self.assertEqual(result["summary"]["lead_hours"].max(), 6)
+            self.assertTrue(result["figure"].is_file())
+
     def test_28_day_6_hour_quantiles_mature_only_and_six_leads(self):
         frame = self.forecasts(horizon=6).copy()
         frame["sigma_rolling_days"] = 28
