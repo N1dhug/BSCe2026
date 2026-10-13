@@ -25,12 +25,15 @@ from src.exe.run_model.wm_4.analyze_mpc_intervals import FORECASTS, load_forecas
 NEW_FORECASTS = FORECASTS.parent.parent / "all_days_mpc_sigma_24d_24h" / "mpc_forecasts.csv"
 NEW_FORECASTS_6H = FORECASTS.parent.parent / "all_days_mpc_sigma_24d_6h" / "mpc_forecasts.csv"
 NEW_FORECASTS_30D_6H = FORECASTS.parent.parent / "all_days_mpc_sigma_30d_6h" / "mpc_forecasts.csv"
+NEW_FORECASTS_32D_CLIP4 = FORECASTS.parent.parent / "all_days_mpc_sigma_32d_6h_clip4" / "mpc_forecasts.csv"
 OUTPUT = FORECASTS.parent.parent / "sigma_estimator_comparison"
 ROLLING_MODES = {"mpc_replay_24d_24h": (24, "24-day/24h"),
     "mpc_replay_24d_6h": (6, "24-day/6h"),
-    "mpc_replay_30d_6h": (6, "30-day/6h")}
+    "mpc_replay_30d_6h": (6, "30-day/6h"),
+    "mpc_replay_32d_6h_clip4": (6, "32-day/6h clip4")}
 ROLLING_DAYS = {"mpc_replay_24d_24h": 24, "mpc_replay_24d_6h": 24,
-    "mpc_replay_30d_6h": 30}
+    "mpc_replay_30d_6h": 30,
+    "mpc_replay_32d_6h_clip4": 32}
 
 
 def _mature_rolling(frame, days, calibration_horizon):
@@ -274,7 +277,7 @@ def analyze(old_path=FORECASTS, new_path=NEW_FORECASTS, output=OUTPUT,
 
 
 def main():
-    parser = ArgumentParser(description="Compare five-week/8h, 24-day/6h, 24-day/24h and 30-day/6h sigma estimates on matched MPC origins.")
+    parser = ArgumentParser(description="Compare historical 24d/6h and 32d/6h clip4 Wiener estimates on matched MPC origins, or other rolling modes.")
     parser.add_argument("--old", type=Path, default=FORECASTS,
         help="Original five-week/8h or alternative existing WM4 mpc_forecasts.csv")
     parser.add_argument("--old-mode", choices=("mpc_replay", *ROLLING_MODES),
@@ -282,23 +285,28 @@ def main():
     parser.add_argument("--new", type=Path, default=None,
         help="New rolling sigma mpc_forecasts.csv; default is inferred from --new-mode.")
     parser.add_argument("--new-mode", choices=tuple(ROLLING_MODES), default="mpc_replay_24d_24h",
-        help="Select 24-day/6h, 24-day/24h, or 30-day/6h sigma calibration.")
+        help="Choose the rolling Wiener calibration mode, including 32d/6h clip4.")
     parser.add_argument("--output", type=Path, default=None,
         help="Comparison output folder; defaults to a mode-specific directory.")
-    parser.add_argument("--horizon", type=int, default=8)
+    parser.add_argument("--horizon", type=int, default=None,
+        help="Matched forecast horizon: 6h for 32d/6h clip4, 8h otherwise.")
     parser.add_argument("--quantiles", type=int, default=5)
     parser.add_argument("--history-days", type=int, default=None,
-        help="Required rolling history for new mode (default: 24 or 30 according to mode).")
+        help="Required rolling history for new mode (default: 24, 30 or 32 by mode).")
     parser.add_argument("--include-warmup", action="store_true",
         help="Include origins before the full rolling calibration history is available.")
     args = parser.parse_args()
     defaults = {"mpc_replay_24d_24h": NEW_FORECASTS,
         "mpc_replay_24d_6h": NEW_FORECASTS_6H,
-        "mpc_replay_30d_6h": NEW_FORECASTS_30D_6H}
+        "mpc_replay_30d_6h": NEW_FORECASTS_30D_6H,
+        "mpc_replay_32d_6h_clip4": NEW_FORECASTS_32D_CLIP4}
     new_path = args.new or defaults[args.new_mode]
-    output = args.output or (OUTPUT / "30d_6h" if args.new_mode == "mpc_replay_30d_6h"
+    output = args.output or (OUTPUT / "32d_6h_clip4" if args.new_mode == "mpc_replay_32d_6h_clip4"
+        else OUTPUT / "30d_6h" if args.new_mode == "mpc_replay_30d_6h"
         else OUTPUT / "24d_6h" if args.new_mode == "mpc_replay_24d_6h" else OUTPUT)
-    return analyze(args.old, new_path, output, args.quantiles, args.horizon,
+    horizon = ((6 if args.new_mode == "mpc_replay_32d_6h_clip4" else 8)
+        if args.horizon is None else args.horizon)
+    return analyze(args.old, new_path, output, args.quantiles, horizon,
         not args.include_warmup, args.history_days, args.new_mode, args.old_mode)
 
 
