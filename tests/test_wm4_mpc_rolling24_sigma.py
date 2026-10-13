@@ -8,7 +8,7 @@ import pandas as pd
 from src.model.wm_4 import wm_4
 from src.exe.run_model.wm_4.predict_all_days_mpc import (
     _archive_mpc_origin, _archive_mpc_calibration, _fit_sigma_rolling_qp, _fit_stochastic_variance,
-    _rolling_sigma_training, ROLLING_SIGMA_HORIZONS,
+    _rolling_sigma_training, ROLLING_SIGMA_HORIZONS, ROLLING_SIGMA_DAYS,
 )
 
 
@@ -159,6 +159,41 @@ class WM4RollingSigmaTests(unittest.TestCase):
             _rolling_sigma_training(archive, origin, horizon=24), horizon=24)
         self.assertAlmostEqual(six["q"], 0.035, delta=0.0001)
         self.assertGreater(full["q"], six["q"])
+
+    def test_28_day_sigma_uses_only_real_six_hour_mpc_errors(self):
+        origin = pd.Timestamp("2022-08-01 14:00")
+        model, r = self.model()
+        archive, _ = self.archive(origin, model, r, days=28)
+        # After hour 6, artificially magnify errors. The six-hour QP
+        # must be unaffected (the 24-hour estimator would not be).
+        for values in archive.values(): values[6:, 0] *= 25.0
+        training = _rolling_sigma_training(archive, origin, days=28, horizon=6)
+        self.assertEqual(len(training["origins"]), 28)
+        self.assertEqual(training["values"].shape, (28, 6, 3))
+        fitted, observed, initial, kernel = _fit_sigma_rolling_qp(
+            model, training, horizon=6)
+        self.assertEqual(observed.shape, (6,))
+        self.assertAlmostEqual(fitted["q"], 0.035, delta=0.0001)
+        self.assertTrue(np.allclose(observed, initial + 0.035 * kernel))
+        self.assertEqual(ROLLING_SIGMA_HORIZONS["mpc_replay_28d_6h"], 6)
+        self.assertEqual(ROLLING_SIGMA_DAYS["mpc_replay_28d_6h"], 28)
+
+        states = np.array([[0.04, 0.07], [-0.02, 0.09], [0.12, 0.0],
+            [0.17, -0.03], [0.02, 0.15]])
+        datasets = [{"I": np.ones(49) * 0.5, "O": np.ones(49) * 0.5}
+            for _ in range(5)]
+        fit = {"r": r, "prediction_origin": origin,
+            "training_origins": [origin - pd.Timedelta(weeks=i) for i in range(1, 6)],
+            "init_cond": states,
+            "deterministic_states": [{"I": np.ones(49) * 0.5} for _ in range(5)]}
+        sigma = _fit_stochastic_variance(model, fit, datasets, 2,
+            sigma_fit_mode="mpc_replay_28d_6h", mpc_archive=archive,
+            max_horizon=6)
+        self.assertEqual(sigma["calibration_horizon"], 6)
+        self.assertEqual(sigma["calibration_mpc_count"], 28)
+        self.assertEqual(sigma["sigma_rolling_days"], 28)
+        self.assertTrue(sigma["sigma_rolling_complete"])
+        self.assertAlmostEqual(sigma["q"], 0.035, delta=0.0001)
 
     def test_thirty_day_six_hour_mode_uses_only_six_mpc_leads(self):
         origin = pd.Timestamp("2022-08-01 14:00")
