@@ -195,6 +195,16 @@ class WM4RollingSigmaTests(unittest.TestCase):
         self.assertTrue(sigma["sigma_rolling_complete"])
         self.assertAlmostEqual(sigma["q"], 0.035, delta=0.0001)
 
+        incomplete_archive = dict(archive)
+        incomplete_archive.pop(origin - pd.Timedelta(days=1))
+        boot = _fit_stochastic_variance(model, fit, datasets, 2,
+            sigma_fit_mode="mpc_replay_28d_6h", mpc_archive=incomplete_archive,
+            max_horizon=6)
+        self.assertEqual(boot["sigma_rolling_count"], 27)
+        self.assertTrue(boot["sigma_rolling_bootstrap"])
+        self.assertFalse(boot["sigma_rolling_complete"])
+        self.assertEqual(boot["calibration_horizon"], 6)
+
     def test_thirty_day_six_hour_mode_uses_only_six_mpc_leads(self):
         origin = pd.Timestamp("2022-08-01 14:00")
         model, r = self.model()
