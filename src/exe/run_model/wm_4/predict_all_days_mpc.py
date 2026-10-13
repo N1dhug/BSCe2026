@@ -17,13 +17,15 @@ OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_mpc"
 HORIZONS = (1, 2, 3, 4, 6, 8)
 SIGMA_FIT_MODES = ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h",
     "mpc_replay_30d_6h", "mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4",
-    "historical_p0", "zero_p0")
+    "mpc_replay_24d_6h_no_p0", "historical_p0", "zero_p0")
 ROLLING_SIGMA_HORIZONS = {"mpc_replay_24d_24h": 24,
     "mpc_replay_24d_6h": 6, "mpc_replay_30d_6h": 6,
-    "mpc_replay_28d_6h": 6, "mpc_replay_32d_6h_clip4": 6}
+    "mpc_replay_28d_6h": 6, "mpc_replay_32d_6h_clip4": 6,
+    "mpc_replay_24d_6h_no_p0": 6}
 ROLLING_SIGMA_DAYS = {"mpc_replay_24d_24h": 24,
     "mpc_replay_24d_6h": 24, "mpc_replay_30d_6h": 30,
-    "mpc_replay_28d_6h": 28, "mpc_replay_32d_6h_clip4": 32}
+    "mpc_replay_28d_6h": 28, "mpc_replay_32d_6h_clip4": 32,
+    "mpc_replay_24d_6h_no_p0": 24}
 SIGMA_DAYS = 24
 SIGMA_HOURS = 24
 R0_VARIANCE_MODES = ("oracle_reconstruction", "baseline_residual", "zero")
@@ -296,14 +298,12 @@ def _fit_sigma_rolling_qp(model, rolling, horizon=SIGMA_HOURS, clip_each_tail=0)
 def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mode="mpc_replay",
     r0_variance_mode="oracle_reconstruction", mpc_archive=None, max_horizon=8,
     *, f0_variance_mode="mpc_reconstruction", state_archive=None, rolling_days=None):
-    """Fit q=sigma^2 from causal historical MPC errors, with oracle bootstrap.
+    """Fit q=sigma^2 causally from historical MPC errors, with oracle bootstrap.
 
-    Each of the five aligned historical origins contributes a forward MPC
-    trajectory if already archived. Unavailable early-history origins use
-    oracle-centred historical residuals as bootstrap only. The initial
-    covariance for this fit and for the final forecast is always the same
-    oracle-reconstruction covariance. The current trajectory's future
-    observations are never used to estimate its own initial state.
+    The no_p0 mode retains deterministic F/R state reconstruction and its bias
+    correction but sets the propagated covariance to zero BOTH in the rolling
+    six-hour Wiener QP and in the six-hour forecast variance. The current
+    origin's future observations never enter its own sigma estimation.
     """
     if sigma_fit_mode not in SIGMA_FIT_MODES:
         raise ValueError(f"sigma_fit_mode must be one of {SIGMA_FIT_MODES}.")
@@ -312,7 +312,9 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
     if rolling_days < 2: raise ValueError("rolling_days must be at least 2.")
     initial = _mpc_initial_covariance(fit, datasets, r0_variance_mode,
         f0_variance_mode=f0_variance_mode, state_archive=state_archive)
-    P0 = initial["covariance"]
+    no_p0 = sigma_fit_mode == "mpc_replay_24d_6h_no_p0"
+    P0 = (np.zeros((2, 2), dtype=float) if no_p0
+        else np.asarray(initial["covariance"], dtype=float))
     fit_hours = (model.t_steps - 1) // int(steps_per_hour)
     if fit_hours < 2 or fit_hours * int(steps_per_hour) + 1 != model.t_steps:
         raise ValueError("WM4 sigma calibration needs a whole-hour fitting grid.")
@@ -349,6 +351,12 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
     required_count = rolling_days if require_full else 2
     rolling_active = rolling_count >= required_count
     if rolling_active:
+        if no_p0:
+            # Historical six-hour MPC errors still enter the variance QP,
+            # but their initial-state propagation must NOT be subtracted.
+            samples = np.asarray(rolling["values"], dtype=float).copy()
+            samples[:, :, 1] = 0.0
+            rolling = {**rolling, "values": samples}
         diffusion, observed_variance, initial_variance, response = _fit_sigma_rolling_qp(
             model, rolling, horizon=rolling_horizon,
             clip_each_tail=4 if sigma_fit_mode == "mpc_replay_32d_6h_clip4" else 0)
@@ -386,7 +394,8 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
                 if not np.all(np.isfinite(archived[:horizon])) or np.any(archived[:horizon, 1:] < 0.0):
                     raise ValueError(f"Invalid MPC calibration record at {historical_origin}.")
                 errors.append(archived[:horizon, 0])
-                initial_samples.append(archived[:horizon, 1])
+                initial_samples.append(np.zeros(horizon) if no_p0
+                    else archived[:horizon, 1])
                 kernel_samples.append(archived[:horizon, 2])
                 calibration_mpc_count += 1
                 calibration_origin_types.append("mpc")
@@ -472,6 +481,8 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
     f0_variance_mode="mpc_reconstruction", mpc_archive=None, state_archive=None,
     sigma_rolling_days=None, fit_hours=DAY_HOURS, **fit_kwargs):
     origin = pd.Timestamp(origin)
+    if sigma_fit_mode == "mpc_replay_24d_6h_no_p0" and (max_horizon != 6 or fit_hours != 24):
+        raise ValueError("mpc_replay_24d_6h_no_p0 requires a 24-hour parameter fit and six-hour MPC.")
     if sigma_fit_mode == "mpc_replay_32d_6h_clip4" and (max_horizon != 6 or fit_hours != 24):
         raise ValueError("mpc_replay_32d_6h_clip4 requires 24-hour parameter fitting and six-hour MPC.")
     if sigma_fit_mode == "mpc_replay_28d_6h" and (max_horizon != 6 or fit_hours != 12):
@@ -875,13 +886,16 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
     fail_fast=False, mpc_archive=None, state_archive=None, fit_hours=None, **fit_kwargs):
     start, end = day_start(start), day_start(end)
     sigma_mode = fit_kwargs.get("sigma_fit_mode")
-    is_six_hour = sigma_mode in ("mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4")
+    is_six_hour = sigma_mode in ("mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4",
+        "mpc_replay_24d_6h_no_p0")
     max_horizon = (6 if is_six_hour else 8) if max_horizon is None else int(max_horizon)
     fit_hours = (12 if sigma_mode == "mpc_replay_28d_6h" else DAY_HOURS) if fit_hours is None else int(fit_hours)
     if sigma_mode == "mpc_replay_28d_6h" and (max_horizon != 6 or fit_hours != 12):
         raise ValueError("mpc_replay_28d_6h requires 6-hour MPC and 12-hour fitting windows.")
     if sigma_mode == "mpc_replay_32d_6h_clip4" and (max_horizon != 6 or fit_hours != 24):
         raise ValueError("mpc_replay_32d_6h_clip4 requires 6-hour MPC and 24-hour fitting windows.")
+    if sigma_mode == "mpc_replay_24d_6h_no_p0" and (max_horizon != 6 or fit_hours != 24):
+        raise ValueError("mpc_replay_24d_6h_no_p0 requires 6-hour MPC and 24-hour fitting windows.")
     if fit_hours < 2 or fit_hours > DAY_HOURS:
         raise ValueError("fit_hours must be in [2, 24].")
     if not 1 <= max_horizon < fit_hours:
@@ -927,7 +941,7 @@ def main():
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
     parser.add_argument("--max-horizon", type=int, default=None,
-        help="MPC forecast horizon: 6h for 28-day/6h and clipped 32-day/6h modes, otherwise 8h.")
+        help="MPC forecast horizon: 6h for 28-day/6h, clipped 32-day/6h, and 24-day/6h no-P0 modes; otherwise 8h.")
     parser.add_argument("--fit-hours", type=int, default=None,
         help="Historical parameter and O(t) trajectory fitting window: 12h for 28-day/6h, otherwise 24h.")
     parser.add_argument("--f0-variance-mode", choices=F0_VARIANCE_MODES, default="mpc_reconstruction",
@@ -941,7 +955,8 @@ def main():
              "mpc_replay_30d_6h: last 30 days, six-hour MPC errors. "
              "mpc_replay_28d_6h: 28 days, 6h MPC, 12h parameter fit. "
              "mpc_replay_32d_6h_clip4: 32 days, clip four smallest/largest centered squared "
-             "MPC errors per lead, 6h MPC, 24h parameter fit.")
+             "MPC errors per lead, 6h MPC, 24h parameter fit. "
+             "mpc_replay_24d_6h_no_p0: last 24 days, 6h MPC, refit sigma with zero initial covariance.")
     parser.add_argument("--sigma-rolling-days", type=int, default=None,
         help="Override rolling history length; defaults are 24, 28, 30 or 32 days by mode.")
     parser.add_argument("--max-state-iter", type=int, default=50)
@@ -950,7 +965,8 @@ def main():
     parser.add_argument("--output", default=str(OUTPUT))
     args = parser.parse_args()
 
-    preset = args.sigma_fit_mode in ("mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4")
+    preset = args.sigma_fit_mode in ("mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4",
+        "mpc_replay_24d_6h_no_p0")
     args.max_horizon = (6 if preset else 8) if args.max_horizon is None else args.max_horizon
     args.fit_hours = (12 if args.sigma_fit_mode == "mpc_replay_28d_6h"
         else DAY_HOURS) if args.fit_hours is None else args.fit_hours
@@ -961,6 +977,8 @@ def main():
         raise ValueError("28-day/6h mode requires --max-horizon 6 and --fit-hours 12.")
     if args.sigma_fit_mode == "mpc_replay_32d_6h_clip4" and (args.max_horizon != 6 or args.fit_hours != 24):
         raise ValueError("32-day/6h clip mode requires --max-horizon 6 and --fit-hours 24.")
+    if args.sigma_fit_mode == "mpc_replay_24d_6h_no_p0" and (args.max_horizon != 6 or args.fit_hours != 24):
+        raise ValueError("24-day/6h no-P0 mode requires --max-horizon 6 and --fit-hours 24.")
     if args.sigma_rolling_days is not None and args.sigma_rolling_days < 2:
         raise ValueError("sigma-rolling-days must be >=2.")
 
