@@ -8,7 +8,7 @@ import pandas as pd
 from src.model.wm_4 import wm_4
 from src.exe.run_model.wm_4.predict_all_days_mpc import (
     _archive_mpc_origin, _fit_sigma_rolling_qp, _fit_stochastic_variance,
-    _rolling_sigma_training,
+    _rolling_sigma_training, ROLLING_SIGMA_HORIZONS,
 )
 
 
@@ -95,6 +95,70 @@ class WM4RollingSigmaTests(unittest.TestCase):
         self.assertTrue(result["sigma_rolling_complete"])
         self.assertAlmostEqual(result["q"], 0.035, delta=0.0001)
         self.assertEqual(result["mpc_initial_covariance"].shape, (2, 2))
+
+    def test_six_hour_rolling_fit_uses_24_days_and_six_sample_variances(self):
+        origin = pd.Timestamp("2022-08-01 14:00")
+        model, r = self.model()
+        archive, _ = self.archive(origin, model, r)
+        training = _rolling_sigma_training(archive, origin, horizon=6)
+        self.assertEqual(len(training["origins"]), 24)
+        self.assertEqual(training["values"].shape, (24, 6, 3))
+        fit, observed, initial, response = _fit_sigma_rolling_qp(
+            model, training, horizon=6)
+        self.assertEqual(len(observed), 6)
+        self.assertTrue(np.allclose(observed, initial + 0.035 * response))
+        self.assertAlmostEqual(fit["q"], 0.035, delta=0.0001)
+        self.assertEqual(ROLLING_SIGMA_HORIZONS["mpc_replay_24d_6h"], 6)
+
+    def test_six_hour_mode_retains_eight_hour_forecast_and_weekly_P0(self):
+        origin = pd.Timestamp("2022-08-01 14:00")
+        model, r = self.model()
+        archive, _ = self.archive(origin, model, r)
+        states = np.array([[0.04, 0.07], [-0.02, 0.09], [0.12, 0.0],
+            [0.17, -0.03], [0.02, 0.15]])
+        datasets = [{"I": np.ones(49) * 0.5, "O": np.ones(49) * 0.5} for _ in range(5)]
+        fit = {"r": r, "prediction_origin": origin,
+            "training_origins": [origin - pd.Timedelta(weeks=i) for i in range(1, 6)],
+            "init_cond": states,
+            "deterministic_states": [{"I": np.ones(49) * 0.5} for _ in range(5)]}
+        result = _fit_stochastic_variance(model, fit, datasets, 2,
+            sigma_fit_mode="mpc_replay_24d_6h", mpc_archive=archive,
+            r0_variance_mode="oracle_reconstruction", max_horizon=8)
+        self.assertEqual(result["calibration_horizon"], 6)
+        self.assertEqual(result["calibration_mpc_count"], 24)
+        self.assertEqual(result["sigma_rolling_count"], 24)
+        self.assertEqual(result["calibration_oracle_count"], 0)
+        self.assertTrue(result["sigma_rolling_complete"])
+        self.assertAlmostEqual(result["q"], 0.035, delta=0.0001)
+        self.assertEqual(result["mpc_initial_covariance"].shape, (2, 2))
+
+    def test_six_hour_archive_does_not_require_horizon_24(self):
+        origin = pd.Timestamp("2022-08-01 14:00")
+        model, r = self.model()
+        archive, _ = self.archive(origin, model, r)
+        for stamp in archive: archive[stamp] = archive[stamp][:6].copy()
+        selected = _rolling_sigma_training(archive, origin, horizon=6)
+        self.assertEqual(len(selected["origins"]), 24)
+        long = _rolling_sigma_training(archive, origin, horizon=24)
+        self.assertEqual(len(long["origins"]), 0)
+        incomplete = archive.copy()
+        first = origin - pd.Timedelta(days=1)
+        incomplete[first] = archive[first][:5].copy()
+        self.assertEqual(len(_rolling_sigma_training(incomplete, origin, horizon=6)["origins"]), 23)
+        self.assertNotIn(first, _rolling_sigma_training(incomplete, origin, horizon=6)["origins"])
+
+    def test_six_hour_variance_fit_excludes_later_error_misspecification(self):
+        origin = pd.Timestamp("2022-08-01 14:00")
+        model, r = self.model()
+        archive, _ = self.archive(origin, model, r)
+        for val in archive.values():
+            val[6:, 0] *= 5.0
+        six, _, _, _ = _fit_sigma_rolling_qp(model,
+            _rolling_sigma_training(archive, origin, horizon=6), horizon=6)
+        full, _, _, _ = _fit_sigma_rolling_qp(model,
+            _rolling_sigma_training(archive, origin, horizon=24), horizon=24)
+        self.assertAlmostEqual(six["q"], 0.035, delta=0.0001)
+        self.assertGreater(full["q"], six["q"])
 
     def test_insufficient_history_bootstraps_eight_hour_weekly_fit(self):
         origin = pd.Timestamp("2022-08-01 14:00")
