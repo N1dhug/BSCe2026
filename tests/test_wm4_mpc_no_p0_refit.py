@@ -190,14 +190,17 @@ class WM4NoP0RefittingTests(unittest.TestCase):
         fake_states = pd.DataFrame([{"origin": sample["origin"].iloc[0]}])
         fake_summary = pd.DataFrame([{"lead_hours": 6, "n_origins": 1}])
         with tempfile.TemporaryDirectory() as tmp:
+            from contextlib import ExitStack
             module = "src.exe.run_model.wm_4.predict_all_days_mpc_no_p0."
-            with patch(module + "run_all_days", return_value=(sample, fake_states, [])) as mpc, \\
-                patch(module + "summary_by_lead", return_value=fake_summary), \\
-                patch(module + "cumulative_summary", return_value=fake_summary), \\
-                patch(module + "summary_by_origin_hour", return_value=fake_summary), \\
-                patch(module + "save_plot"), patch(module + "save_stochastic_plot"), \\
-                patch(module + "print_summary"), \\
-                patch(module + "plot_quantiles", return_value={"summary": fake_summary}) as plot:
+            with ExitStack() as stack:
+                mpc = stack.enter_context(patch(module + "run_all_days",
+                    return_value=(sample, fake_states, [])))
+                for method in ("summary_by_lead", "cumulative_summary", "summary_by_origin_hour"):
+                    stack.enter_context(patch(module + method, return_value=fake_summary))
+                for method in ("save_plot", "save_stochastic_plot", "print_summary"):
+                    stack.enter_context(patch(module + method))
+                plot = stack.enter_context(patch(module + "plot_quantiles",
+                    return_value={"summary": fake_summary}))
                 result = run(pd.DataFrame(), output=Path(tmp))
             kwargs = mpc.call_args.kwargs
             self.assertEqual(kwargs["sigma_fit_mode"], MODE)
