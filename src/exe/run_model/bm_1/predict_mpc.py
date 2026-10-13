@@ -177,7 +177,7 @@ def main():
     parser.add_argument("--skip-errors", action="store_true")
     parser.add_argument("--compare-wm4", action="store_true", help="Compare BM1 against WM4 MPC using identical 1-8h leads on this single day.")
     parser.add_argument("--wm4-forecasts", type=Path, help="Optional saved WM4 mpc_forecasts.csv with all requested leads.")
-    parser.add_argument("--wm4-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "historical_p0", "zero_p0"), default="mpc_replay")
+    parser.add_argument("--wm4-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "historical_p0", "zero_p0"), default="mpc_replay")
     parser.add_argument("--wm4-f0-variance-mode", choices=("mpc_reconstruction", "oracle_spread"), default="mpc_reconstruction")
     parser.add_argument("--wm4-r0-variance-mode", choices=("oracle_reconstruction", "baseline_residual", "zero"), default="oracle_reconstruction")
     parser.add_argument("--steps-per-hour", type=int, default=2, help="WM4 numerical steps per hour, when comparing.")
