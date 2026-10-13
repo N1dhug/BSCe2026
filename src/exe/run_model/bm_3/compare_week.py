@@ -37,6 +37,20 @@ def reference_root(settings, day):
     return Path(settings.get('reference_by_day', {}).get(day, settings['reference']))
 
 
+def print_daily_result(out, task):
+    """Show the saved BM3 forecast RMSE and the parameter fit's convergence."""
+    if task[2] == 'daily':
+        report = json.loads((job_folder(out,*task)/'fit.json').read_text(encoding='utf-8'))
+        print(f'DAG {task[0]} {task[1]} RMSE {report["metrics"]["rmse"]:.6g} '
+              f'konvergeret {report["converged"]}',flush=True)
+
+
+def print_progress(count, saved, total, failures, started):
+    if count%10 == 0 or saved+count == total:
+        print(f'Status {saved+count}/{total}, fejl={len(failures)}, '
+              f'tid={(time.perf_counter()-started)/60:.1f} min.',flush=True)
+
+
 def restore_fit(metadata, strength):
     p = {**metadata['theta'], **metadata['shape_parameters'], 'restoring_strength': strength}
     if metadata['family'] != 'logistic': raise ValueError('BM3 first version supports the logistic reference.')
@@ -272,31 +286,34 @@ def main():
         if target.exists():
             if sha(target)!=manifest[f'prepared/{day}.pkl']: raise ValueError('Prepared checkpoint was modified.')
         else: shutil.copyfile(reference/'prepared'/f'{day}.pkl',target)
+        print(f'Data/baselines klar: {day}',flush=True)
     pending = [t for t in tasks if not completed(out,t,config['fingerprint'])]
     # Create shared parents sequentially. Concurrent mkdir(parents=True) can
     # report transient PermissionError on Windows even when no ACL denies it.
     (out/'logs').mkdir(exist_ok=True)
     for task in pending: job_folder(out,*task).mkdir(parents=True,exist_ok=True)
-    print(f'BM3: {len(tasks)} jobs, {len(pending)} remaining; workers={args.workers}, BLAS=1.',flush=True)
+    saved = len(tasks)-len(pending)
+    print(f'{len(tasks)} jobs; {saved} gemt; {len(pending)} tilbage; workers={args.workers}; BLAS=1.',flush=True)
     start = time.perf_counter(); failures = []
     try:
         with ProcessPoolExecutor(max_workers=args.workers) as pool:
             futures = {pool.submit(worker,str(out),task):task for task in pending}
-            for future in as_completed(futures):
+            for count,future in enumerate(as_completed(futures),start=1):
                 task = futures[future]
                 try: task,error = future.result()
                 except Exception as exc:
                     error = str(exc)
                     write_json(job_folder(out,*task)/'error.json',
                                {'task':list(task),'error':error,'traceback':traceback.format_exc()})
-                if error: failures.append((task,error))
-                print('ERROR' if error else 'SAVED',task,error or '',flush=True)
+                if error: failures.append((task,error)); print('FEJL',task,error,flush=True)
+                else: print_daily_result(out,task)
+                print_progress(count,saved,len(tasks),failures,start)
     finally:
         summarize(out,config,tasks)
         write_json(out/'runtime.json',{'wall_seconds':time.perf_counter()-start,'workers':args.workers,
             'failures':clean(failures),'completed_jobs':sum(completed(out,t,config['fingerprint']) for t in tasks),
             'expected_jobs':len(tasks)})
-    print('Summary:',out/'comparison.csv')
+    print('Færdig. Resultater:',out,flush=True)
     return 1 if failures else 0
 
 
