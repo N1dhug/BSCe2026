@@ -91,7 +91,7 @@ class WM4SixHourTwelveHourTests(unittest.TestCase):
         self.assertEqual(len(states), 24)
         self.assertFalse(skipped)
 
-        with self.assertRaisesRegex(ValueError, "genuine six-hour"):
+        with self.assertRaisesRegex(ValueError, "6-hour MPC"):
             run_all_days(self.data(), "2022-03-09", "2022-03-09",
                 max_horizon=8, sigma_fit_mode="mpc_replay_28d_6h")
 
