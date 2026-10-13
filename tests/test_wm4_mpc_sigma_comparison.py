@@ -70,6 +70,31 @@ class SigmaComparisonTests(unittest.TestCase):
         self.assertEqual(metric.shape[0], 16)
         self.assertTrue(np.all(np.isfinite(metric["mean_gaussian_nll"])))
 
+    def test_six_hour_mode_checks_rolling_calibration_horizon_and_is_paired(self):
+        old, new = self.forecasts()
+        new = new.copy()
+        new["calibration_horizon"] = np.where(
+            new["sigma_rolling_complete"], 6, 8)
+        paired = matched_forecasts(old, new, calibration_horizon=6)
+        self.assertEqual(paired["origin"].nunique(), 16)
+        self.assertEqual(len(paired), 16 * 8)
+        with self.assertRaisesRegex(ValueError, "No fully mature"):
+            matched_forecasts(old, new, calibration_horizon=24)
+
+        with tempfile.TemporaryDirectory() as temp:
+            with patch("src.exe.run_model.wm_4.compare_sigma_quantiles.load_forecasts",
+                side_effect=[(old, 0, "mpc_replay"), (new, 0, "mpc_replay_24d_6h")]) as reader:
+                result = analyze(old_path=Path(temp) / "old.csv",
+                    new_path=Path(temp) / "six.csv",
+                    output=Path(temp) / "six_hour", quantiles=4,
+                    new_mode="mpc_replay_24d_6h")
+                self.assertEqual(reader.call_count, 2)
+                self.assertEqual(reader.call_args_list[1].kwargs["expected_sigma_fit_mode"],
+                    "mpc_replay_24d_6h")
+            self.assertEqual(len(result["origins"]), 16)
+            self.assertTrue(result["figure"].exists())
+            self.assertTrue(result["reliability"].exists())
+
     def test_figure_csv_and_nll_summary_generated_without_refit(self):
         old, new = self.forecasts()
         with tempfile.TemporaryDirectory() as temp:
