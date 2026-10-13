@@ -16,25 +16,29 @@ ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_mpc"
 HORIZONS = (1, 2, 3, 4, 6, 8)
 SIGMA_FIT_MODES = ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h",
-    "mpc_replay_30d_6h", "historical_p0", "zero_p0")
+    "mpc_replay_30d_6h", "mpc_replay_28d_6h", "historical_p0", "zero_p0")
 ROLLING_SIGMA_HORIZONS = {"mpc_replay_24d_24h": 24,
-    "mpc_replay_24d_6h": 6, "mpc_replay_30d_6h": 6}
+    "mpc_replay_24d_6h": 6, "mpc_replay_30d_6h": 6,
+    "mpc_replay_28d_6h": 6}
 ROLLING_SIGMA_DAYS = {"mpc_replay_24d_24h": 24,
-    "mpc_replay_24d_6h": 24, "mpc_replay_30d_6h": 30}
+    "mpc_replay_24d_6h": 24, "mpc_replay_30d_6h": 30,
+    "mpc_replay_28d_6h": 28}
 SIGMA_DAYS = 24
 SIGMA_HOURS = 24
 R0_VARIANCE_MODES = ("oracle_reconstruction", "baseline_residual", "zero")
 F0_VARIANCE_MODES = ("mpc_reconstruction", "oracle_spread")
 
 
-def _window_input(frame, start, steps_per_hour, output_model):
+def _window_input(frame, start, steps_per_hour, output_model, hours=DAY_HOURS):
     start = pd.Timestamp(start)
-    steps_per_hour = int(steps_per_hour)
+    steps_per_hour, hours = int(steps_per_hour), int(hours)
     if steps_per_hour < 2: raise ValueError("steps_per_hour must be at least 2.")
+    if hours < 2 or hours > DAY_HOURS:
+        raise ValueError("WM4 fitting window must be between 2 and 24 hours.")
 
-    end = start + pd.Timedelta(hours=DAY_HOURS)
-    n_steps = DAY_HOURS * steps_per_hour + 1
-    elapsed = np.linspace(0.0, float(DAY_HOURS), n_steps)
+    end = start + pd.Timedelta(hours=hours)
+    n_steps = hours * steps_per_hour + 1
+    elapsed = np.linspace(0.0, float(hours), n_steps)
     fine_index = start + pd.to_timedelta(elapsed, unit="h")
 
     source_index = pd.date_range(start, end, freq="h")
@@ -44,13 +48,13 @@ def _window_input(frame, start, steps_per_hour, output_model):
     source["U"] = source["U"].ffill().bfill()
     source["Temp"] = source["Temp"].interpolate(method="time", limit_direction="both").ffill().bfill()
 
-    hour_bin = np.minimum(np.floor(elapsed + 1e-12).astype(int), DAY_HOURS)
-    I = np.interp(elapsed, np.arange(DAY_HOURS + 1, dtype=float), source["I"].to_numpy(dtype=float))
+    hour_bin = np.minimum(np.floor(elapsed + 1e-12).astype(int), hours)
+    I = np.interp(elapsed, np.arange(hours + 1, dtype=float), source["I"].to_numpy(dtype=float))
     U = source["U"].to_numpy(dtype=float)[hour_bin]
-    Temp = np.interp(elapsed, np.arange(DAY_HOURS + 1, dtype=float), source["Temp"].to_numpy(dtype=float))
+    Temp = np.interp(elapsed, np.arange(hours + 1, dtype=float), source["Temp"].to_numpy(dtype=float))
 
     observation_mask = np.zeros(n_steps, dtype=bool)
-    observation_mask[np.arange(DAY_HOURS, dtype=int) * steps_per_hour] = True
+    observation_mask[np.arange(hours, dtype=int) * steps_per_hour] = True
     transition_mask = np.ones(n_steps - 1, dtype=bool)
     data = {
         "I": I,
@@ -65,7 +69,8 @@ def _window_input(frame, start, steps_per_hour, output_model):
     return data, fine_index
 
 
-def _fit_shifted_history(frame, origin, baseline_weeks, steps_per_hour, output_model, **fit_kwargs):
+def _fit_shifted_history(frame, origin, baseline_weeks, steps_per_hour, output_model,
+    fit_hours=DAY_HOURS, **fit_kwargs):
     origin, baseline_weeks = pd.Timestamp(origin), int(baseline_weeks)
     if baseline_weeks < 1: raise ValueError("baseline_weeks must be at least 1.")
 
@@ -73,7 +78,8 @@ def _fit_shifted_history(frame, origin, baseline_weeks, steps_per_hour, output_m
     datasets, indices, seeds = [], [], []
 
     for historical_origin in training_origins:
-        data, fine_index = _window_input(frame, historical_origin, steps_per_hour, output_model)
+        data, fine_index = _window_input(frame, historical_origin, steps_per_hour,
+            output_model, hours=fit_hours)
         datasets.append(data)
         indices.append(fine_index)
         seeds.append(fitted_initial_condition(data))
@@ -88,6 +94,7 @@ def _fit_shifted_history(frame, origin, baseline_weeks, steps_per_hour, output_m
     )
     fit["training_origins"] = training_origins
     fit["prediction_origin"] = origin
+    fit["fit_hours"] = int(fit_hours)
     return fit, model, datasets
 
 
@@ -130,7 +137,8 @@ def _mpc_initial_covariance(fit, datasets, r0_variance_mode="oracle_reconstructi
         for i, origin in enumerate(training_origins):
             origin = pd.Timestamp(origin)
             if origin not in archive: continue
-            if prediction_origin is not None and origin + pd.Timedelta(hours=DAY_HOURS) > prediction_origin:
+            if prediction_origin is not None and origin + pd.Timedelta(
+                hours=int(fit.get("fit_hours", DAY_HOURS))) > prediction_origin:
                 continue
             record = np.asarray(archive[origin], dtype=float).reshape(-1)
             if record.shape != (2,) or not np.all(np.isfinite(record)):
@@ -288,7 +296,10 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
     initial = _mpc_initial_covariance(fit, datasets, r0_variance_mode,
         f0_variance_mode=f0_variance_mode, state_archive=state_archive)
     P0 = initial["covariance"]
-    hourly_index = np.arange(DAY_HOURS, dtype=int) * int(steps_per_hour)
+    fit_hours = (model.t_steps - 1) // int(steps_per_hour)
+    if fit_hours < 2 or fit_hours * int(steps_per_hour) + 1 != model.t_steps:
+        raise ValueError("WM4 sigma calibration needs a whole-hour fitting grid.")
+    hourly_index = np.arange(fit_hours, dtype=int) * int(steps_per_hour)
     states = np.asarray(fit["init_cond"], dtype=float)
     if len(fit["deterministic_states"]) != len(datasets):
         raise ValueError("Historical WM4 deterministic states must align with fitting datasets.")
@@ -377,8 +388,8 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
             initial_variance=initial_variance, fit_mask=fit_mask)
     else:
         observed_variance = centered_variance if sigma_fit_mode == "historical_p0" else fitted_variance
-        initial_variance = propagated_initial_variance if sigma_fit_mode == "historical_p0" else np.zeros(DAY_HOURS)
-        fit_mask = np.arange(DAY_HOURS, dtype=int) > 0
+        initial_variance = propagated_initial_variance if sigma_fit_mode == "historical_p0" else np.zeros(fit_hours)
+        fit_mask = np.arange(fit_hours, dtype=int) > 0
         diffusion = constant_diffusion_qp(model).fit(
             kernel, observed_variance, initial_variance=initial_variance, fit_mask=fit_mask)
         calibration_errors = centered_residuals if sigma_fit_mode == "historical_p0" else fitted_residuals
@@ -435,13 +446,17 @@ def _stochastic_forecast_variance(model, state, fit, diffusion, max_horizon, ste
 
 def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max_horizon, *, sigma_fit_mode="mpc_replay", r0_variance_mode="oracle_reconstruction",
     f0_variance_mode="mpc_reconstruction", mpc_archive=None, state_archive=None,
-    sigma_rolling_days=None, **fit_kwargs):
+    sigma_rolling_days=None, fit_hours=DAY_HOURS, **fit_kwargs):
     origin = pd.Timestamp(origin)
     fit, fit_model, datasets = _fit_shifted_history(
-        frame, origin, baseline_weeks, steps_per_hour, output_model, **fit_kwargs,
+        frame, origin, baseline_weeks, steps_per_hour, output_model,
+        fit_hours=fit_hours, **fit_kwargs,
     )
 
-    data, fine_index = _window_input(frame, origin, steps_per_hour, output_model)
+    data, fine_index = _window_input(frame, origin, steps_per_hour,
+        output_model, hours=fit_hours)
+    if max_horizon >= fit_hours:
+        raise ValueError("MPC prediction horizon must be shorter than the fitted model window.")
     model = wm_4((0.0, 1.0), len(fine_index), model_output(data, fine_index))
     helper = optimized_qp_params(model)
     prepared = helper._prepare_data(data)
@@ -534,6 +549,8 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
             "diffusion_q": float(diffusion["q"]),
             "diffusion_sigma": float(diffusion["sigma"]),
             "sigma_fit_mode": sigma_fit_mode,
+            "parameter_fit_hours": int(fit_hours),
+            "baseline_window_hours": int(fit_hours),
             "calibration_mpc_count": int(diffusion["calibration_mpc_count"]),
             "calibration_oracle_count": int(diffusion["calibration_oracle_count"]),
             "calibration_horizon": int(diffusion["calibration_horizon"]),
@@ -620,6 +637,8 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
         "R_reconstruction_errors": ";".join(f"{v:.9g}" for v in diffusion["R_reconstruction_errors"]),
         "F_reconstruction_errors": ";".join(f"{v:.9g}" for v in diffusion["reconstruction_errors"][:, 0]),
         "F_calibration_origin_types": ";".join(diffusion["F_calibration_origin_types"]),
+        "parameter_fit_hours": int(fit_hours),
+        "baseline_window_hours": int(fit_hours),
         "training_P0_FF": float(diffusion["training_initial_covariance"][0, 0]),
         "training_P0_FR": float(diffusion["training_initial_covariance"][0, 1]),
         "training_P0_RR": float(diffusion["training_initial_covariance"][1, 1]),
@@ -823,8 +842,13 @@ def print_summary(cumulative, lead, skipped):
 
 
 def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WEEKS, steps_per_hour=60, max_horizon=8,
-    fail_fast=False, mpc_archive=None, state_archive=None, **fit_kwargs):
+    fail_fast=False, mpc_archive=None, state_archive=None, fit_hours=DAY_HOURS, **fit_kwargs):
     start, end = day_start(start), day_start(end)
+    fit_hours = int(fit_hours)
+    if fit_hours < 2 or fit_hours > DAY_HOURS:
+        raise ValueError("fit_hours must be in [2, 24].")
+    if not 1 <= max_horizon < fit_hours:
+        raise ValueError("MPC horizon must be between 1 and fit_hours-1.")
     if end < start: raise ValueError("end must be on or after start.")
     forecast_rows, state_rows, skipped = [], [], []
     mpc_archive = {} if mpc_archive is None else mpc_archive
@@ -839,7 +863,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
                 rows, state = _mpc_origin(
                     frame, origin, baseline_weeks, steps_per_hour,
                     output_model, max_horizon, mpc_archive=mpc_archive,
-                    state_archive=state_archive, **fit_kwargs,
+                    state_archive=state_archive, fit_hours=fit_hours, **fit_kwargs,
                 )
                 if fit_kwargs.get("sigma_fit_mode", "mpc_replay") not in ROLLING_SIGMA_HORIZONS:
                     _archive_mpc_origin(mpc_archive, origin, rows, max_horizon)
@@ -865,7 +889,10 @@ def main():
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
     parser.add_argument("--steps-per-hour", type=int, default=60)
-    parser.add_argument("--max-horizon", type=int, default=8)
+    parser.add_argument("--max-horizon", type=int, default=None,
+        help="MPC forecast horizon: 6h for 28-day/6h mode, otherwise 8h.")
+    parser.add_argument("--fit-hours", type=int, default=None,
+        help="Historical parameter and O(t) trajectory fitting window: 12h for 28-day/6h, otherwise 24h.")
     parser.add_argument("--f0-variance-mode", choices=F0_VARIANCE_MODES, default="mpc_reconstruction",
         help="Calibrate F0 bias, variance and F/R covariance from causal historical MPC-versus-oracle errors (default), or legacy oracle_spread.")
     parser.add_argument("--r0-variance-mode", choices=R0_VARIANCE_MODES, default="oracle_reconstruction",
@@ -874,7 +901,8 @@ def main():
         help="mpc_replay: previous five matching weekdays, 8h (default). "
              "mpc_replay_24d_24h: last 24 days, 24h MPC errors. "
              "mpc_replay_24d_6h: last 24 days, six-hour MPC errors. "
-             "mpc_replay_30d_6h: last 30 days, six-hour MPC errors.")
+             "mpc_replay_30d_6h: last 30 days, six-hour MPC errors. "
+             "mpc_replay_28d_6h: last 28 days, 6-hour receding forecasts, 12-hour parameter/baseline window.")
     parser.add_argument("--sigma-rolling-days", type=int, default=None,
         help="Override rolling history length; default is 24 or 30 according to sigma-fit-mode.")
     parser.add_argument("--max-state-iter", type=int, default=50)
@@ -883,7 +911,14 @@ def main():
     parser.add_argument("--output", default=str(OUTPUT))
     args = parser.parse_args()
 
-    if args.max_horizon < 1 or args.max_horizon > 8: raise ValueError("max-horizon must lie in [1, 8].")
+    preset = args.sigma_fit_mode == "mpc_replay_28d_6h"
+    args.max_horizon = (6 if preset else 8) if args.max_horizon is None else args.max_horizon
+    args.fit_hours = (12 if preset else DAY_HOURS) if args.fit_hours is None else args.fit_hours
+    if not 1 <= args.max_horizon <= 8: raise ValueError("max-horizon must lie in [1, 8].")
+    if not 2 <= args.fit_hours <= 24 or args.max_horizon >= args.fit_hours:
+        raise ValueError("Require 2 <= fit-hours <= 24 and max-horizon < fit-hours.")
+    if preset and args.max_horizon != 6:
+        raise ValueError("28-day/6h sigma mode requires --max-horizon 6 to archive genuine 6h MPC forecasts.")
     if args.sigma_rolling_days is not None and args.sigma_rolling_days < 2:
         raise ValueError("sigma-rolling-days must be >=2.")
 
@@ -895,6 +930,7 @@ def main():
         args.baseline_weeks,
         args.steps_per_hour,
         max_horizon=args.max_horizon,
+        fit_hours=args.fit_hours,
         fail_fast=args.fail_fast,
         sigma_fit_mode=args.sigma_fit_mode,
         sigma_rolling_days=args.sigma_rolling_days,
@@ -930,6 +966,7 @@ def main():
     print()
     print(f"days={forecasts['origin_day'].nunique()}, MPC origins={forecasts['origin'].nunique()}, forecasts={len(forecasts)}")
     print_summary(cumulative, lead, skipped)
+    print(f"fitting window={args.fit_hours}h; baseline O evaluated over {args.fit_hours}h; MPC horizon={args.max_horizon}h")
     print(f"sigma fit mode={args.sigma_fit_mode}; initial F0 variance mode={args.f0_variance_mode}; "
         f"initial R0 variance mode={args.r0_variance_mode} "
         "(oracle_reconstruction uses observed-minus-oracle initial-rate error)")
