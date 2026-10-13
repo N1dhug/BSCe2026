@@ -55,8 +55,8 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
         raise ValueError("expected_r0_variance_mode must be oracle_reconstruction, baseline_residual, zero, or any.")
     if expected_f0_variance_mode not in ("mpc_reconstruction", "oracle_spread", "any"):
         raise ValueError("expected_f0_variance_mode must be mpc_reconstruction, oracle_spread or any.")
-    if expected_sigma_fit_mode not in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4", "historical_p0", "zero_p0", "any"):
-        raise ValueError("expected_sigma_fit_mode must be mpc_replay, mpc_replay_24d_24h, mpc_replay_24d_6h, mpc_replay_30d_6h, mpc_replay_28d_6h, mpc_replay_32d_6h_clip4, historical_p0, zero_p0 or any.")
+    if expected_sigma_fit_mode not in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4", "mpc_replay_24d_6h_no_p0", "historical_p0", "zero_p0", "any"):
+        raise ValueError("expected_sigma_fit_mode must be mpc_replay, mpc_replay_24d_24h, mpc_replay_24d_6h, mpc_replay_30d_6h, mpc_replay_28d_6h, mpc_replay_32d_6h_clip4, mpc_replay_24d_6h_no_p0, historical_p0, zero_p0 or any.")
     path = Path(path).resolve()
     if not path.is_file(): raise FileNotFoundError(
         f"WM4 MPC forecasts not found at {path}. Run python -m "
@@ -129,21 +129,24 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
         if not np.allclose(frame["R_initialized_origin"],
             frame["R_observed_origin"] - frame["R_bias_correction"], atol=1e-8, rtol=1e-6):
             raise ValueError("Initial R0 center must equal observed R0 minus oracle reconstruction bias correction.")
+    no_p0 = frame["sigma_fit_mode"].eq("mpc_replay_24d_6h_no_p0")
     if {"r0_variance_mode", "R_bias_correction", "R_reconstruction_bias",
         "initial_R_variance", "R_reconstruction_variance"} <= set(frame):
         oracle = frame["r0_variance_mode"].eq("oracle_reconstruction")
+        expected = np.where(no_p0, 0., frame["R_reconstruction_variance"])
         if np.any(oracle) and not (
             np.allclose(frame.loc[oracle, "R_bias_correction"],
                 frame.loc[oracle, "R_reconstruction_bias"], atol=1e-8, rtol=1e-6)
             and np.allclose(frame.loc[oracle, "initial_R_variance"],
-                frame.loc[oracle, "R_reconstruction_variance"], atol=1e-8, rtol=1e-6)):
-            raise ValueError("Oracle R0 covariance or bias correction disagrees with reconstruction-error samples.")
+                expected[oracle.to_numpy()], atol=1e-8, rtol=1e-6)):
+            raise ValueError("Oracle R0 covariance or bias correction disagrees with reconstruction-error samples or explicit no-P0 mode.")
     if {"f0_variance_mode", "F_historical", "F_initialized_origin", "F_bias_correction",
         "F_reconstruction_variance", "initial_F_variance"} <= set(frame):
         reconstruction = frame["f0_variance_mode"].eq("mpc_reconstruction")
+        expected = np.where(no_p0, 0., frame["F_reconstruction_variance"])
         if np.any(reconstruction) and not (
             np.allclose(frame.loc[reconstruction, "initial_F_variance"],
-                frame.loc[reconstruction, "F_reconstruction_variance"], atol=1e-8, rtol=1e-6)
+                expected[reconstruction.to_numpy()], atol=1e-8, rtol=1e-6)
             and np.allclose(frame.loc[reconstruction, "F_initialized_origin"],
                 frame.loc[reconstruction, "F_historical"] -
                 frame.loc[reconstruction, "F_bias_correction"], atol=1e-8, rtol=1e-6)):
@@ -159,9 +162,17 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
         if {"FR_reconstruction_covariance", "f0_variance_mode", "r0_variance_mode"} <= set(frame):
             full = (frame["f0_variance_mode"].eq("mpc_reconstruction")
                 & frame["r0_variance_mode"].eq("oracle_reconstruction"))
+            expected = np.where(no_p0, 0., frame["FR_reconstruction_covariance"])
             if np.any(full) and not np.allclose(frame.loc[full, "initial_FR_covariance"],
-                frame.loc[full, "FR_reconstruction_covariance"], atol=1e-8, rtol=1e-6):
+                expected[full.to_numpy()], atol=1e-8, rtol=1e-6):
                 raise ValueError("Saved F/R cross-covariance differs from reconstruction error covariance.")
+    if np.any(no_p0):
+        zero_fields = ("initial_variance", "initial_F_variance",
+            "initial_R_variance", "initial_FR_covariance", "initial_F_component_variance",
+            "initial_R_component_variance", "initial_FR_component_variance")
+        for field in zero_fields:
+            if not np.allclose(frame.loc[no_p0, field], 0., atol=1e-10):
+                raise ValueError(f"No-P0 sigma fit contains propagated covariance in {field}.")
     for name in ("initial_variance", "process_variance", "predicted_variance", "diffusion_sigma"):
         if (frame[name] < 0).any(): raise ValueError(f"{name} must be nonnegative.")
     for confidence in (68, 95):
@@ -195,7 +206,7 @@ def load_forecasts(path, horizon=8, *, expected_r0_variance_mode="oracle_reconst
             f"{expected_sigma_fit_mode!r}. Refit predictions using --sigma-fit-mode "
             f"{expected_sigma_fit_mode}, or request --expected-sigma-fit-mode {mode} "
             "to explicitly analyze the older method.")
-    if mode in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4"):
+    if mode in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4", "mpc_replay_24d_6h_no_p0"):
         required_replay = {"calibration_mpc_count", "calibration_oracle_count",
             "calibration_horizon", "process_kernel_unit"}
         if missing_replay := required_replay - set(frame.columns):
@@ -532,7 +543,7 @@ def analyze(path=FORECASTS, output=OUTPUT, day=None, horizon=8,
     except PermissionError:
         info = output / f"summary.{uuid4().hex[:8]}.json"
         info.write_text(json.dumps(summary, indent=2, allow_nan=True), encoding="utf-8")
-    if mode in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4"):
+    if mode in ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4", "mpc_replay_24d_6h_no_p0"):
         boot = origins["calibration_oracle_count"].to_numpy(dtype=int)
         live = origins["calibration_mpc_count"].to_numpy(dtype=int)
         print(f"MPC replay calibration: origins with five actual MPC histories={(live == 5).sum()}; "
@@ -579,7 +590,7 @@ def main():
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--day", help="Day for 24 receding forecast fans; defaults to first complete day.")
     parser.add_argument("--horizon", type=int, default=8, help="Max lead horizon (1..8).")
-    parser.add_argument("--expected-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4", "historical_p0", "zero_p0", "any"),
+    parser.add_argument("--expected-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "mpc_replay_28d_6h", "mpc_replay_32d_6h_clip4", "mpc_replay_24d_6h_no_p0", "historical_p0", "zero_p0", "any"),
         default="mpc_replay", help="Require MPC-replay diffusion calibration (default); refuse stale oracle-based CSVs.")
     parser.add_argument("--expected-f0-variance-mode", choices=("mpc_reconstruction", "oracle_spread", "any"),
         default="mpc_reconstruction", help="Require F0 historical MPC-versus-oracle reconstruction errors.")
