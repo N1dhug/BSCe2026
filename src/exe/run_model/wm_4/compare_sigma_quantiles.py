@@ -29,19 +29,28 @@ ROLLING_MODES = {"mpc_replay_24d_24h": (24, "24-day/24h"),
     "mpc_replay_24d_6h": (6, "24-day/6h")}
 
 
+def _mature_rolling(frame, days, calibration_horizon):
+    required = {"sigma_rolling_complete", "sigma_rolling_count",
+        "sigma_rolling_days", "calibration_horizon"}
+    if missing := required - set(frame):
+        raise ValueError(f"New sigma forecast data missing rolling maturity columns: {sorted(missing)}.")
+    ready = (frame["sigma_rolling_complete"].astype(str).str.lower().eq("true")
+        & (pd.to_numeric(frame["sigma_rolling_count"]) >= int(days))
+        & (pd.to_numeric(frame["sigma_rolling_days"]) == int(days))
+        & (pd.to_numeric(frame["calibration_horizon"]) == int(calibration_horizon)))
+    mature = frame.loc[ready].copy()
+    if mature.empty: raise ValueError(f"No fully mature {days}-day/{calibration_horizon}-hour sigma fits. "
+        "Run the rolling MPC for at least 25 complete days or use --include-warmup.")
+    return mature
+
+
 def matched_forecasts(old, new, horizon=8, require_full_history=True, days=24,
-    calibration_horizon=24):
-    """Align exact same MPC origins/leads and verify deterministic forecasts match."""
+    calibration_horizon=24, old_calibration_horizon=None):
+    """Align matching MPC origins/leads; require full rolling history if selected."""
+    if require_full_history and old_calibration_horizon is not None:
+        old = _mature_rolling(old, days, old_calibration_horizon)
     if require_full_history:
-        if missing := {"sigma_rolling_complete", "sigma_rolling_count", "sigma_rolling_days"} - set(new):
-            raise ValueError(f"New sigma forecast data missing rolling maturity columns: {sorted(missing)}.")
-        ready = (new["sigma_rolling_complete"].astype(str).str.lower().eq("true")
-            & (pd.to_numeric(new["sigma_rolling_count"]) >= int(days))
-            & (pd.to_numeric(new["sigma_rolling_days"]) == int(days))
-            & (pd.to_numeric(new["calibration_horizon"]) == int(calibration_horizon)))
-        new = new.loc[ready].copy()
-        if new.empty: raise ValueError(f"No fully mature {days}-day/{calibration_horizon}-hour sigma fits. "
-            "Run the rolling MPC for at least 25 complete days or use --include-warmup.")
+        new = _mature_rolling(new, days, calibration_horizon)
     keys = ["origin", "lead_hours"]
     retain = keys + ["I_observed", "I_mpc", "initial_variance", "process_variance",
         "predicted_variance", "diffusion_sigma"]
@@ -133,7 +142,7 @@ def compare_metrics(data, origins):
     return pd.DataFrame(stats)
 
 
-def plot_paired(curves, output, quantiles=5, new_label="24-day/24h"):
+def plot_paired(curves, output, quantiles=5, new_label="24-day/24h", old_label="5-week/8h"):
     """Same old-estimator quintile membership for both sigma forecasts."""
     columns = 3
     rows = int(np.ceil((int(quantiles) + 1) / columns))
@@ -145,7 +154,7 @@ def plot_paired(curves, output, quantiles=5, new_label="24-day/24h"):
         old = group[group["method"] == "old"].sort_values("horizon")
         new = group[group["method"] == "new"].sort_values("horizon")
         h = old["horizon"].to_numpy(dtype=int)
-        ax.plot(h, old["predicted_variance"], "o-", label="5-week/8h predicted")
+        ax.plot(h, old["predicted_variance"], "o-", label=f"{old_label} predicted")
         ax.plot(h, new["predicted_variance"], "o-", label=f"{new_label} predicted")
         ax.plot(h, old["realized_mse"], "ks--", label="Same origins: observed MSE")
         ax.set_title(f"Original predicted-variance Q{q} | {int(old.iloc[0]['n_origins'])} origins")
@@ -157,7 +166,7 @@ def plot_paired(curves, output, quantiles=5, new_label="24-day/24h"):
         ax.legend(fontsize=8)
     ax = axes[int(quantiles)]
     last = curves[curves["horizon"] == curves["horizon"].max()]
-    for method, label in (("old", "5-week/8h"), ("new", new_label)):
+    for method, label in (("old", old_label), ("new", new_label)):
         group = last[last["method"] == method].sort_values("quantile")
         ax.plot(group["predicted_variance"], group["realized_mse"], "o-",
             label=label)
@@ -175,7 +184,7 @@ def plot_paired(curves, output, quantiles=5, new_label="24-day/24h"):
     ax.legend(fontsize=8)
     ax.grid(alpha=0.2)
     for unused in axes[int(quantiles) + 1:]: unused.axis("off")
-    fig.suptitle(f"WM4 | {new_label} versus five-week/8h sigma calibration"
+    fig.suptitle(f"WM4 | {new_label} versus {old_label} sigma calibration"
         "\nMatched 8h MPC origins, stratified by ORIGINAL predicted variance",
         fontsize=15)
     fig.tight_layout(rect=(0, 0, 1, 0.92))
@@ -186,11 +195,11 @@ def plot_paired(curves, output, quantiles=5, new_label="24-day/24h"):
     return output
 
 
-def plot_independent(curves, output, new_label="24-day/24h"):
+def plot_independent(curves, output, new_label="24-day/24h", old_label="5-week/8h"):
     """Separate quantile rankings show each estimator's own conditional calibration."""
     fig, axes = plt.subplots(1, 2, figsize=(13, 5))
     last = curves[curves["horizon"] == curves["horizon"].max()]
-    for method, label in (("old", "5-week/8h"), ("new", new_label)):
+    for method, label in (("old", old_label), ("new", new_label)):
         g = last[last["method"] == method].sort_values("quantile")
         axes[0].plot(g["predicted_variance"], g["realized_mse"], "o-", label=label)
         axes[1].plot(g["quantile"], g["predicted_to_observed"], "o-", label=label)
@@ -220,14 +229,18 @@ def plot_independent(curves, output, new_label="24-day/24h"):
 
 def analyze(old_path=FORECASTS, new_path=NEW_FORECASTS, output=OUTPUT,
     quantiles=5, horizon=8, full_history=True, history_days=24,
-    new_mode="mpc_replay_24d_24h"):
+    new_mode="mpc_replay_24d_24h", old_mode="mpc_replay"):
     if new_mode not in ROLLING_MODES:
         raise ValueError(f"Expected new sigma mode in {tuple(ROLLING_MODES)}.")
+    if old_mode != "mpc_replay" and old_mode not in ROLLING_MODES:
+        raise ValueError("Old sigma mode must be mpc_replay or a rolling sigma mode.")
     cal_horizon, new_label = ROLLING_MODES[new_mode]
-    old, _, _ = load_forecasts(old_path, horizon, expected_sigma_fit_mode="mpc_replay")
+    old_label = ROLLING_MODES[old_mode][1] if old_mode in ROLLING_MODES else "5-week/8h"
+    old, _, _ = load_forecasts(old_path, horizon, expected_sigma_fit_mode=old_mode)
     new, _, _ = load_forecasts(new_path, horizon, expected_sigma_fit_mode=new_mode)
     paired = matched_forecasts(old, new, horizon, require_full_history=full_history,
-        days=history_days, calibration_horizon=cal_horizon)
+        days=history_days, calibration_horizon=cal_horizon,
+        old_calibration_horizon=ROLLING_MODES[old_mode][0] if old_mode in ROLLING_MODES else None)
     origins = summarize_origins(paired, quantiles)
     paired_curves = quantile_curves(paired, origins, quantiles, independent=False)
     independent = quantile_curves(paired, origins, quantiles, independent=True)
@@ -239,10 +252,11 @@ def analyze(old_path=FORECASTS, new_path=NEW_FORECASTS, output=OUTPUT,
     paired_curves.to_csv(output / "paired_baseline_quintile_curves.csv", index=False)
     independent.to_csv(output / "independent_quintile_curves.csv", index=False)
     stats.to_csv(output / "paired_cumulative_nll_mse.csv", index=False)
-    figure = plot_paired(paired_curves, output / "paired_sigma_quintiles.png", quantiles, new_label)
+    figure = plot_paired(paired_curves, output / "paired_sigma_quintiles.png", quantiles,
+        new_label, old_label)
     reliability = plot_independent(independent,
-        output / "independent_sigma_reliability.png", new_label)
-    print(f"Paired sigma: 5-week/8h vs {new_label}, {len(origins)} identical 1..{horizon}h "
+        output / "independent_sigma_reliability.png", new_label, old_label)
+    print(f"Paired sigma: {old_label} vs {new_label}, {len(origins)} identical 1..{horizon}h "
         f"MPC origins; full {history_days}d history={full_history}")
     print(stats.loc[stats["cumulative_horizon"] == horizon].to_string(
         index=False, float_format=lambda x: f"{x:.6f}"))
@@ -255,7 +269,9 @@ def analyze(old_path=FORECASTS, new_path=NEW_FORECASTS, output=OUTPUT,
 def main():
     parser = ArgumentParser(description="Compare original five-week/8h sigma with 24-day/6h or 24-day/24h on matched MPC origins.")
     parser.add_argument("--old", type=Path, default=FORECASTS,
-        help="Existing 5-week/8h MPC mpc_forecasts.csv")
+        help="Original five-week/8h or alternative existing WM4 mpc_forecasts.csv")
+    parser.add_argument("--old-mode", choices=("mpc_replay", *ROLLING_MODES),
+        default="mpc_replay", help="Sigma mode of --old CSV.")
     parser.add_argument("--new", type=Path, default=None,
         help="New rolling sigma mpc_forecasts.csv; default is inferred from --new-mode.")
     parser.add_argument("--new-mode", choices=tuple(ROLLING_MODES), default="mpc_replay_24d_24h",
@@ -271,7 +287,7 @@ def main():
     new_path = args.new or (NEW_FORECASTS_6H if args.new_mode == "mpc_replay_24d_6h" else NEW_FORECASTS)
     output = args.output or (OUTPUT / "24d_6h" if args.new_mode == "mpc_replay_24d_6h" else OUTPUT)
     return analyze(args.old, new_path, output, args.quantiles, args.horizon,
-        not args.include_warmup, args.history_days, args.new_mode)
+        not args.include_warmup, args.history_days, args.new_mode, args.old_mode)
 
 
 if __name__ == "__main__": main()
