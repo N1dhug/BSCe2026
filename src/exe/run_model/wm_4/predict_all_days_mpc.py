@@ -894,7 +894,7 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
 
 
 def main():
-    parser = ArgumentParser(description="Evaluate WM4 receding-horizon MPC forecasting. At every hourly update, refit a shifted 24-hour WM4 model on corresponding historical weekdays, initialize F from the historical fitted state and R from the oracle-bias-corrected current residual I-O, then compare the next 1-8 forecast hours with baseline O(t).")
+    parser = ArgumentParser(description="WM4 hourly receding-horizon MPC with configurable historical 12h/24h parameter and baseline trajectory windows, 6h/8h forecast horizon and causal rolling Wiener variance calibration.")
     parser.add_argument("--start-day", default=START_DAY)
     parser.add_argument("--end-day", default=END_DAY)
     parser.add_argument("--baseline-weeks", type=int, default=BASELINE_WEEKS)
@@ -914,7 +914,7 @@ def main():
              "mpc_replay_30d_6h: last 30 days, six-hour MPC errors. "
              "mpc_replay_28d_6h: last 28 days, 6-hour receding forecasts, 12-hour parameter/baseline window.")
     parser.add_argument("--sigma-rolling-days", type=int, default=None,
-        help="Override rolling history length; default is 24 or 30 according to sigma-fit-mode.")
+        help="Override rolling history length; defaults are 24, 28 or 30 days according to sigma-fit-mode.")
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
     parser.add_argument("--fail-fast", action="store_true")
