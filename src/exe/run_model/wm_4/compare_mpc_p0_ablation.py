@@ -157,23 +157,27 @@ def plot_comparison(origins, metrics, output, history_days):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(2, 2, figsize=(15, 11))
+    max_quantile = int(metrics["uncertainty_quantile"].max())
     for ax, mode in zip(axes[0], ("fixed", "own")):
         ref = metrics.loc[(metrics["variant"] == "full_p0")
             & (metrics["binning"] == mode)].sort_values("uncertainty_quantile")
-        ax.plot(ref["uncertainty_quantile"], ref["observed_mse"], "ko--",
-            label="Observed MSE" if mode == "fixed" else "Observed MSE (original bins only)")
+        if mode == "fixed":
+            ax.plot(ref["uncertainty_quantile"], ref["observed_mse"], "ko--",
+                label="Observed MSE (identical bins)")
         for name in VARIANTS:
             frame = metrics.loc[(metrics["variant"] == name)
                 & (metrics["binning"] == mode)].sort_values("uncertainty_quantile")
-            ax.plot(frame["uncertainty_quantile"], frame["predicted_variance"], "o-",
-                label=VARIANT_LABELS[name])
+            line, = ax.plot(frame["uncertainty_quantile"], frame["predicted_variance"],
+                "o-", label=VARIANT_LABELS[name])
             if mode == "own":
-                # Each variant's quintiles contain different origins.
+                # Each variant has its own ranks; show each one's actual
+                # conditional MSE using its corresponding line color.
                 ax.plot(frame["uncertainty_quantile"], frame["observed_mse"],
-                    ":", alpha=0.7)
-        ax.set(title=f"{mode.capitalize()} Q1–Q5: mean predicted variance vs realized MSE",
+                    ":", color=line.get_color(), alpha=0.8,
+                    label=f"{VARIANT_LABELS[name]}: observed")
+        ax.set(title=f"{mode.capitalize()} Q1–Q{max_quantile}: predicted vs realized MSE",
             xlabel="Predicted uncertainty quantile", ylabel="Mean six-hour variance / MSE")
-        ax.set_xticks(range(1, 6))
+        ax.set_xticks(range(1, max_quantile + 1))
         ax.grid(alpha=0.25)
         ax.legend(fontsize=8)
     for ax, (column, target) in zip(axes[1],
@@ -189,7 +193,7 @@ def plot_comparison(origins, metrics, output, history_days):
                 else "95% Gaussian interval coverage (%)",
             title="Conditional variance calibration" if column.startswith("predicted_")
                 else "Conditional interval coverage")
-        ax.set_xticks(range(1, 6))
+        ax.set_xticks(range(1, max_quantile + 1))
         ax.grid(alpha=0.25)
         ax.legend(fontsize=8)
     fig.suptitle(f"WM4 | {history_days}-day / 6h Wiener QP | P0 propagation ablation\n"
