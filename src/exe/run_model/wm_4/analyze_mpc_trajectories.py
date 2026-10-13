@@ -376,7 +376,7 @@ def main():
         help="Number of origins to show in each best/worst/overconfident/conservative category.")
     parser.add_argument("--origin", type=str,
         help="Plot this exact MPC origin timestamp, e.g. '2022-05-17 14:00'.")
-    parser.add_argument("--expected-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "any"), default="mpc_replay")
+    parser.add_argument("--expected-sigma-fit-mode", choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "any"), default="mpc_replay")
     args = parser.parse_args()
     return analyze(args.forecasts, args.output, args.horizon, args.fully_mpc,
         args.history_windows, args.quantiles, args.top_k, args.origin,
