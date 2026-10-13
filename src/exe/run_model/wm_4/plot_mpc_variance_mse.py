@@ -201,7 +201,7 @@ def main():
         choices=("oracle_reconstruction", "baseline_residual", "zero", "any"),
         default="oracle_reconstruction")
     parser.add_argument("--expected-sigma-fit-mode",
-        choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "historical_p0", "zero_p0", "any"), default="mpc_replay")
+        choices=("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "mpc_replay_30d_6h", "mpc_replay_28d_6h", "historical_p0", "zero_p0", "any"), default="mpc_replay")
     args = parser.parse_args()
     if not 1 <= args.horizon <= 8: parser.error("horizon must be in [1, 8].")
     return analyze(args.forecasts, args.output, args.horizon, args.fully_mpc, args.history_windows,
