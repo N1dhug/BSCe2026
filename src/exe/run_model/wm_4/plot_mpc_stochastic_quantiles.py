@@ -4,7 +4,7 @@ This reproduces stochastic_variance_calibration.png at the *conditional*
 level: one row per predicted-uncertainty quantile, with exact-lead RMSE vs
 predicted RMS standard deviation and observed 1-sigma / 95% coverage.
 
-An origin is ranked by its mean predicted variance across all eight leads.
+An origin is ranked by its mean predicted variance across its full forecast horizon.
 Quantiles are fixed across leads: the same MPC origins appear in every
 hour of a given quintile. This avoids mixing forecast difficulty with lead.
 
@@ -156,7 +156,7 @@ def plot_quantiles(summary, output, *, mode="mpc_replay_28d_6h", mature_only=Tru
     status = "mature rolling fits only" if mature_only and mode in ROLLING_MODES else "all complete origins"
     fig.suptitle(
         f"WM4 MPC | RMSE and Gaussian interval coverage by predicted-uncertainty quantile\n"
-        f"{mode} | {status} | fixed eight-hour MPC-origin cohorts (Q1 lowest uncertainty)",
+        f"{mode} | {status} | fixed {int(summary['lead_hours'].max())}-hour MPC-origin cohorts (Q1 lowest uncertainty)",
         fontsize=15)
     fig.tight_layout(rect=(0, 0, 1, 0.95), h_pad=2.5)
     output = Path(output)
