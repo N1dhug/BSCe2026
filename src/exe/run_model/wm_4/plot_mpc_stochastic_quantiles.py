@@ -8,7 +8,7 @@ An origin is ranked by its mean predicted variance across all eight leads.
 Quantiles are fixed across leads: the same MPC origins appear in every
 hour of a given quintile. This avoids mixing forecast difficulty with lead.
 
-The default 30-day/6h evaluation excludes origins before all 30 previous
+The default 28-day/6h evaluation excludes origins before all 28 previous
 days of calibration data were available. All plots use existing predictions,
 without refitting the WM4 model.
 """
@@ -24,15 +24,15 @@ from src.exe.run_model.wm_4.analyze_mpc_intervals import FORECASTS, load_forecas
 
 
 ROLLING_MODES = {"mpc_replay_24d_6h": 6, "mpc_replay_24d_24h": 24,
-    "mpc_replay_30d_6h": 6}
+    "mpc_replay_30d_6h": 6, "mpc_replay_28d_6h": 6}
 ROLLING_DAYS = {"mpc_replay_24d_6h": 24, "mpc_replay_24d_24h": 24,
-    "mpc_replay_30d_6h": 30}
+    "mpc_replay_30d_6h": 30, "mpc_replay_28d_6h": 28}
 MODES = ("mpc_replay", *ROLLING_MODES)
-DEFAULT_FORECASTS = FORECASTS.parent.parent / "all_days_mpc_sigma_30d_6h" / "mpc_forecasts.csv"
+DEFAULT_FORECASTS = FORECASTS.parent.parent / "all_days_mpc_sigma_28d_6h_fit12" / "mpc_forecasts.csv"
 DEFAULT_OUTPUT = DEFAULT_FORECASTS.parent / "stochastic_quantiles"
 
 
-def select_mpc_origins(frame, horizon=8, *, quantiles=5, mode="mpc_replay_30d_6h",
+def select_mpc_origins(frame, horizon=8, *, quantiles=5, mode="mpc_replay_28d_6h",
     mature_only=True, rolling_days=None):
     """Keep complete origins, optionally require full rolling sigma history."""
     horizon, quantiles = int(horizon), int(quantiles)
@@ -122,7 +122,7 @@ def summarize_quantiles(frame, horizon=8):
     return result
 
 
-def plot_quantiles(summary, output, *, mode="mpc_replay_30d_6h", mature_only=True):
+def plot_quantiles(summary, output, *, mode="mpc_replay_28d_6h", mature_only=True):
     """Five rows (Q1–Q5) x two columns (RMSE/std, interval coverage)."""
     groups = sorted(summary["uncertainty_quantile"].unique())
     rows = len(groups)
@@ -166,8 +166,8 @@ def plot_quantiles(summary, output, *, mode="mpc_replay_30d_6h", mature_only=Tru
     return output
 
 
-def analyze(forecasts=DEFAULT_FORECASTS, output=DEFAULT_OUTPUT, horizon=8,
-    quantiles=5, mode="mpc_replay_30d_6h", mature_only=True, rolling_days=None):
+def analyze(forecasts=DEFAULT_FORECASTS, output=DEFAULT_OUTPUT, horizon=6,
+    quantiles=5, mode="mpc_replay_28d_6h", mature_only=True, rolling_days=None):
     frame, excluded, verified_mode = load_forecasts(forecasts, horizon,
         expected_sigma_fit_mode=mode)
     selected, origin_bins = select_mpc_origins(frame, horizon=horizon, quantiles=quantiles,
@@ -193,18 +193,21 @@ def main():
     parser = ArgumentParser(description="Plot WM4 stochastic RMSE and 68%/95% interval coverage by uncertainty quintile, not pooled across all MPC forecasts.")
     parser.add_argument("--forecasts", type=Path, default=DEFAULT_FORECASTS)
     parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument("--sigma-fit-mode", choices=MODES, default="mpc_replay_30d_6h")
-    parser.add_argument("--horizon", type=int, default=8)
+    parser.add_argument("--sigma-fit-mode", choices=MODES, default="mpc_replay_28d_6h")
+    parser.add_argument("--horizon", type=int, default=None,
+        help="Forecast horizon (6 for 28d/6h, otherwise 8 by default).")
     parser.add_argument("--quantiles", type=int, default=5)
     parser.add_argument("--rolling-days", type=int, default=None,
-        help="Required calibration history; defaults to 24 or 30 according to sigma-fit-mode.")
+        help="Required calibration history; defaults to 24, 28 or 30 by sigma-fit-mode.")
     parser.add_argument("--include-warmup", action="store_true",
-        help="Include origins without the full mode-specific 24- or 30-day rolling history.")
+        help="Include origins without the full mode-specific rolling history.")
     args = parser.parse_args()
     if args.rolling_days is not None and args.rolling_days < 2:
         parser.error("--rolling-days must be at least 2")
     output = args.output or Path(args.forecasts).parent / "stochastic_quantiles"
-    return analyze(args.forecasts, output, args.horizon, args.quantiles,
+    horizon = ((6 if args.sigma_fit_mode == "mpc_replay_28d_6h" else 8)
+        if args.horizon is None else args.horizon)
+    return analyze(args.forecasts, output, horizon, args.quantiles,
         args.sigma_fit_mode, not args.include_warmup, args.rolling_days)
 
 
