@@ -326,7 +326,11 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
         fit["prediction_origin"], days=rolling_days, horizon=rolling_horizon)
         if rolling_horizon is not None else None)
     rolling_count = len(rolling["origins"]) if rolling is not None else 0
-    rolling_active = rolling_count >= 2
+    # New 28d/6h experiment must not fit sigma to an incomplete daily
+    # sample. Retain the established weekly/oracle bootstrap until all
+    # 28 completed same-clock-hour MPC histories are present.
+    required_count = (rolling_days if sigma_fit_mode == "mpc_replay_28d_6h" else 2)
+    rolling_active = rolling_count >= required_count
     if rolling_active:
         diffusion, observed_variance, initial_variance, response = _fit_sigma_rolling_qp(
             model, rolling, horizon=rolling_horizon)
