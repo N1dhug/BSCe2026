@@ -26,14 +26,17 @@ NEW_FORECASTS = FORECASTS.parent.parent / "all_days_mpc_sigma_24d_24h" / "mpc_fo
 NEW_FORECASTS_6H = FORECASTS.parent.parent / "all_days_mpc_sigma_24d_6h" / "mpc_forecasts.csv"
 NEW_FORECASTS_30D_6H = FORECASTS.parent.parent / "all_days_mpc_sigma_30d_6h" / "mpc_forecasts.csv"
 NEW_FORECASTS_32D_CLIP4 = FORECASTS.parent.parent / "all_days_mpc_sigma_32d_6h_clip4" / "mpc_forecasts.csv"
+NEW_FORECASTS_NO_P0 = FORECASTS.parent.parent / "all_days_mpc_sigma_24d_6h_no_p0" / "mpc_forecasts.csv"
 OUTPUT = FORECASTS.parent.parent / "sigma_estimator_comparison"
 ROLLING_MODES = {"mpc_replay_24d_24h": (24, "24-day/24h"),
     "mpc_replay_24d_6h": (6, "24-day/6h"),
     "mpc_replay_30d_6h": (6, "30-day/6h"),
-    "mpc_replay_32d_6h_clip4": (6, "32-day/6h clip4")}
+    "mpc_replay_32d_6h_clip4": (6, "32-day/6h clip4"),
+    "mpc_replay_24d_6h_no_p0": (6, "24-day/6h no P0")}
 ROLLING_DAYS = {"mpc_replay_24d_24h": 24, "mpc_replay_24d_6h": 24,
     "mpc_replay_30d_6h": 30,
-    "mpc_replay_32d_6h_clip4": 32}
+    "mpc_replay_32d_6h_clip4": 32,
+    "mpc_replay_24d_6h_no_p0": 24}
 
 
 def _mature_rolling(frame, days, calibration_horizon):
@@ -299,12 +302,15 @@ def main():
     defaults = {"mpc_replay_24d_24h": NEW_FORECASTS,
         "mpc_replay_24d_6h": NEW_FORECASTS_6H,
         "mpc_replay_30d_6h": NEW_FORECASTS_30D_6H,
-        "mpc_replay_32d_6h_clip4": NEW_FORECASTS_32D_CLIP4}
+        "mpc_replay_32d_6h_clip4": NEW_FORECASTS_32D_CLIP4,
+        "mpc_replay_24d_6h_no_p0": NEW_FORECASTS_NO_P0}
     new_path = args.new or defaults[args.new_mode]
-    output = args.output or (OUTPUT / "32d_6h_clip4" if args.new_mode == "mpc_replay_32d_6h_clip4"
+    output = args.output or (OUTPUT / "24d_6h_no_p0" if args.new_mode == "mpc_replay_24d_6h_no_p0"
+        else OUTPUT / "32d_6h_clip4" if args.new_mode == "mpc_replay_32d_6h_clip4"
         else OUTPUT / "30d_6h" if args.new_mode == "mpc_replay_30d_6h"
         else OUTPUT / "24d_6h" if args.new_mode == "mpc_replay_24d_6h" else OUTPUT)
-    horizon = ((6 if args.new_mode == "mpc_replay_32d_6h_clip4" else 8)
+    horizon = ((6 if args.new_mode in ("mpc_replay_32d_6h_clip4",
+        "mpc_replay_24d_6h_no_p0") else 8)
         if args.horizon is None else args.horizon)
     return analyze(args.old, new_path, output, args.quantiles, horizon,
         not args.include_warmup, args.history_days, args.new_mode, args.old_mode)
