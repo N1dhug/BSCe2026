@@ -1,7 +1,7 @@
 """Paired WM4 uncertainty-quintile comparison: 5-week/8h vs 24-day/24h sigma.
 
 Only evaluate origins with forecasts from BOTH fits; by default require that
-the rolling estimator used a FULL 24 historical days, not its warmup.
+the rolling estimator used a FULL 24 or 30 historical days, not its warmup.
 
 Main 2x3 figure stratifies by the OLD estimator's predicted eight-hour
 variance. Every panel uses exactly the same origins and empirical errors,
@@ -44,7 +44,7 @@ def _mature_rolling(frame, days, calibration_horizon):
         & (pd.to_numeric(frame["calibration_horizon"]) == int(calibration_horizon)))
     mature = frame.loc[ready].copy()
     if mature.empty: raise ValueError(f"No fully mature {days}-day/{calibration_horizon}-hour sigma fits. "
-        "Run the rolling MPC for at least 25 complete days or use --include-warmup.")
+        f"Run the rolling MPC for at least {int(days) + 1} complete days or use --include-warmup.")
     return mature
 
 
