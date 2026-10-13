@@ -15,7 +15,8 @@ from src.params.wm_4 import constant_diffusion_qp, optimized_qp_params
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "prediction" / "all_days_mpc"
 HORIZONS = (1, 2, 3, 4, 6, 8)
-SIGMA_FIT_MODES = ("mpc_replay", "mpc_replay_24d_24h", "historical_p0", "zero_p0")
+SIGMA_FIT_MODES = ("mpc_replay", "mpc_replay_24d_24h", "mpc_replay_24d_6h", "historical_p0", "zero_p0")
+ROLLING_SIGMA_HORIZONS = {"mpc_replay_24d_24h": 24, "mpc_replay_24d_6h": 6}
 SIGMA_DAYS = 24
 SIGMA_HOURS = 24
 R0_VARIANCE_MODES = ("oracle_reconstruction", "baseline_residual", "zero")
@@ -206,51 +207,60 @@ def _archive_mpc_origin(archive, origin, rows, horizon=8):
         archive[origin] = values
 
 
-def _archive_mpc_24h(archive, origin, model, state, prepared, fit, diffusion, steps_per_hour):
-    """Archive all 24 hours, including origin-specific P0 and unit Wiener response."""
+def _archive_mpc_calibration(archive, origin, model, state, prepared, fit, diffusion,
+    steps_per_hour, horizon=SIGMA_HOURS):
+    """Archive a complete forward MPC trajectory and its origin-specific P0/J/K."""
     if archive is None: return
-    if SIGMA_HOURS * steps_per_hour >= model.t_steps:
-        raise ValueError("24h archival exceeds the model time grid.")
-    stochastic = _stochastic_forecast_variance(model, state, fit, diffusion, SIGMA_HOURS, steps_per_hour)
+    horizon, steps_per_hour = int(horizon), int(steps_per_hour)
+    if horizon < 1 or horizon > SIGMA_HOURS or horizon * steps_per_hour >= model.t_steps:
+        raise ValueError("Invalid calibration archive horizon.")
+    stochastic = _stochastic_forecast_variance(model, state, fit, diffusion, horizon, steps_per_hour)
     records = []
-    for h in range(1, SIGMA_HOURS + 1):
+    for h in range(1, horizon + 1):
         k = h * steps_per_hour
         records.append({"lead_hours": h, "target_time": origin + pd.Timedelta(hours=h),
             "forecast_error": float(prepared["I"][k] - state["I"][k]),
             "initial_variance": float(stochastic["initial_variance"][h - 1]),
             "process_kernel_unit": float(stochastic["process_kernel_unit"][h - 1])})
-    _archive_mpc_origin(archive, origin, records, SIGMA_HOURS)
+    _archive_mpc_origin(archive, origin, records, horizon)
 
 
-def _rolling_sigma_training(archive, origin, days=SIGMA_DAYS):
-    """Extract completed 24h MPC records at the same hour over the preceding days."""
-    origin = pd.Timestamp(origin)
+def _archive_mpc_24h(archive, origin, model, state, prepared, fit, diffusion, steps_per_hour):
+    """Compatibility wrapper for the 24-hour rolling estimator."""
+    return _archive_mpc_calibration(archive, origin, model, state, prepared,
+        fit, diffusion, steps_per_hour, horizon=SIGMA_HOURS)
+
+
+def _rolling_sigma_training(archive, origin, days=SIGMA_DAYS, horizon=SIGMA_HOURS):
+    """Extract completed historical MPC errors at the same hour of the last 24 days."""
+    origin, horizon = pd.Timestamp(origin), int(horizon)
+    if not 1 <= horizon <= SIGMA_HOURS: raise ValueError("Invalid rolling sigma horizon.")
     selected, stamps = [], []
     for k in range(1, int(days) + 1):
         historical = origin - pd.Timedelta(days=k)
-        if historical + pd.Timedelta(hours=SIGMA_HOURS) > origin: continue
+        if historical + pd.Timedelta(hours=horizon) > origin: continue
         record = archive.get(historical)
         if record is None: continue
         values = np.asarray(record, dtype=float)
-        if values.ndim != 2 or values.shape[1] != 3 or values.shape[0] < SIGMA_HOURS:
+        if values.ndim != 2 or values.shape[1] != 3 or values.shape[0] < horizon:
             continue
-        values = values[:SIGMA_HOURS]
+        values = values[:horizon]
         if not np.all(np.isfinite(values)) or np.any(values[:, 1:] < 0): continue
         selected.append(values)
         stamps.append(historical)
     return {"values": np.asarray(selected, dtype=float), "origins": stamps}
 
 
-def _fit_sigma_rolling_qp(model, rolling):
-    """QP on 24 sample variances estimated from prior 24h MPC paths."""
-    samples = rolling["values"]
-    if samples.ndim != 3 or samples.shape[1:] != (SIGMA_HOURS, 3) or len(samples) < 2:
-        raise ValueError("Rolling sigma QP requires two or more complete 24h MPC trajectories.")
+def _fit_sigma_rolling_qp(model, rolling, horizon=SIGMA_HOURS):
+    """Convex QP on 6 or 24 lead-specific sample variances across historical MPC paths."""
+    samples, horizon = np.asarray(rolling["values"], dtype=float), int(horizon)
+    if samples.ndim != 3 or samples.shape[1:] != (horizon, 3) or len(samples) < 2:
+        raise ValueError(f"Rolling sigma QP requires two or more complete {horizon}h MPC trajectories.")
     observed = np.var(samples[:, :, 0], axis=0, ddof=1)
     initial = np.mean(samples[:, :, 1], axis=0)
     response = np.mean(samples[:, :, 2], axis=0)
     fit = constant_diffusion_qp(model).fit(response[:, None], observed,
-        initial_variance=initial, fit_mask=np.ones(SIGMA_HOURS, dtype=bool))
+        initial_variance=initial, fit_mask=np.ones(horizon, dtype=bool))
     return fit, observed, initial, response
 
 
@@ -293,18 +303,20 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
 
     calibration_mpc_count, calibration_oracle_count = 0, 0
     calibration_origin_types = []
+    rolling_horizon = ROLLING_SIGMA_HORIZONS.get(sigma_fit_mode)
     rolling = (_rolling_sigma_training({} if mpc_archive is None else mpc_archive,
-        fit["prediction_origin"], days=rolling_days)
-        if sigma_fit_mode == "mpc_replay_24d_24h" else None)
+        fit["prediction_origin"], days=rolling_days, horizon=rolling_horizon)
+        if rolling_horizon is not None else None)
     rolling_count = len(rolling["origins"]) if rolling is not None else 0
     rolling_active = rolling_count >= 2
     if rolling_active:
-        diffusion, observed_variance, initial_variance, response = _fit_sigma_rolling_qp(model, rolling)
+        diffusion, observed_variance, initial_variance, response = _fit_sigma_rolling_qp(
+            model, rolling, horizon=rolling_horizon)
         calibration_errors = rolling["values"][:, :, 0]
         calibration_mpc_count = rolling_count
         calibration_origin_types = ["daily_mpc"] * rolling_count
-    elif sigma_fit_mode in ("mpc_replay", "mpc_replay_24d_24h"):
-        # Before two complete historical 24h records: bootstrap using old 5-week 8h fit.
+    elif sigma_fit_mode == "mpc_replay" or rolling_horizon is not None:
+        # Before two complete historical rolling paths: bootstrap with five-week 8h fit.
         horizon = int(max_horizon)
         if horizon < 1 or horizon > 8: raise ValueError("max_horizon must be in [1, 8].")
         indices = np.arange(1, horizon + 1, dtype=int) * int(steps_per_hour)
@@ -376,10 +388,10 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
         "calibration_oracle_count": calibration_oracle_count,
         "calibration_origin_types": calibration_origin_types,
         "calibration_horizon": int(len(observed_variance)),
-        "sigma_rolling_days": int(rolling_days) if sigma_fit_mode == "mpc_replay_24d_24h" else 0,
+        "sigma_rolling_days": int(rolling_days) if rolling_horizon is not None else 0,
         "sigma_rolling_count": int(rolling_count),
         "sigma_rolling_complete": bool(rolling_active and rolling_count == int(rolling_days)),
-        "sigma_rolling_bootstrap": bool(sigma_fit_mode == "mpc_replay_24d_24h" and not rolling_active),
+        "sigma_rolling_bootstrap": bool(rolling_horizon is not None and not rolling_active),
     }
 
 
@@ -444,13 +456,14 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
     if oracle.shape != (2,) or not np.all(np.isfinite(oracle)):
         raise ValueError("Retrospective current-origin WM4 oracle state must be finite [F0,R0].")
 
-    if sigma_fit_mode == "mpc_replay_24d_24h":
-        # At the end of the observation dataset, interpolation can fill the
-        # T+24h endpoint. Never archive that imputed value as an MPC error.
-        endpoint = origin + pd.Timedelta(hours=SIGMA_HOURS)
+    rolling_horizon = ROLLING_SIGMA_HORIZONS.get(sigma_fit_mode)
+    if rolling_horizon is not None:
+        # The rolling archive must include the REAL horizon endpoint.
+        # Otherwise _window_input may interpolate missing future observations.
+        endpoint = origin + pd.Timedelta(hours=rolling_horizon)
         if endpoint in frame.index and np.isfinite(float(frame.loc[endpoint, "I"])):
-            _archive_mpc_24h(mpc_archive, origin, model, state, prepared,
-                fit, diffusion, steps_per_hour)
+            _archive_mpc_calibration(mpc_archive, origin, model, state, prepared,
+                fit, diffusion, steps_per_hour, horizon=rolling_horizon)
 
     rows = []
     for lead in range(1, int(max_horizon) + 1):
@@ -842,7 +855,8 @@ def main():
         help="Initialize R0 uncertainty from historical (I-O_hat)-R_oracle reconstruction errors (default), baseline_residual or zero for ablations.")
     parser.add_argument("--sigma-fit-mode", choices=SIGMA_FIT_MODES, default="mpc_replay",
         help="mpc_replay: previous five matching weekdays, 8h (default). "
-             "mpc_replay_24d_24h: last 24 days same clock hour, complete 24h MPC errors.")
+             "mpc_replay_24d_24h: last 24 days, 24h MPC errors. "
+             "mpc_replay_24d_6h: last 24 days, 6h MPC errors.")
     parser.add_argument("--sigma-rolling-days", type=int, default=SIGMA_DAYS)
     parser.add_argument("--max-state-iter", type=int, default=50)
     parser.add_argument("--state-tol", type=float, default=1e-8)
