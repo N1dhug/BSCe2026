@@ -185,6 +185,30 @@ class SigmaComparisonTests(unittest.TestCase):
             self.assertTrue(result["figure"].is_file())
             self.assertTrue(result["reliability"].is_file())
 
+    def test_fresh_no_p0_can_be_compared_to_24_day_original(self):
+        old, new = self.forecasts(horizon=6)
+        old = old.copy()
+        new = new.copy()
+        for data in (old, new):
+            data["sigma_rolling_complete"] = np.arange(len(data)) // 6 >= 4
+            data["sigma_rolling_count"] = np.where(data["sigma_rolling_complete"], 24, 4)
+            data["sigma_rolling_days"] = 24
+            data["calibration_horizon"] = np.where(data["sigma_rolling_complete"], 6, 8)
+        compared = matched_forecasts(old, new, horizon=6, days=24,
+            calibration_horizon=6, old_calibration_horizon=6, old_days=24)
+        self.assertEqual(compared["origin"].nunique(), 16)
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("src.exe.run_model.wm_4.compare_sigma_quantiles.load_forecasts",
+                side_effect=[(old, 0, "mpc_replay_24d_6h"),
+                    (new, 0, "mpc_replay_24d_6h_no_p0")]):
+                report = analyze(old_path=Path(tmp) / "old.csv",
+                    new_path=Path(tmp) / "new.csv",
+                    output=Path(tmp) / "results", horizon=6, quantiles=4,
+                    old_mode="mpc_replay_24d_6h",
+                    new_mode="mpc_replay_24d_6h_no_p0")
+            self.assertEqual(report["origins"].shape[0], 16)
+            self.assertTrue(report["reliability"].is_file())
+
     def test_figure_csv_and_nll_summary_generated_without_refit(self):
         old, new = self.forecasts()
         with tempfile.TemporaryDirectory() as temp:
