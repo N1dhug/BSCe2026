@@ -121,6 +121,39 @@ class SigmaComparisonTests(unittest.TestCase):
             self.assertEqual(len(result["origins"]), 13)
             self.assertTrue(result["figure"].exists())
 
+    def test_thirty_day_six_hour_against_24_day_six_hour(self):
+        old, new = self.forecasts()
+        old = old.copy()
+        old["sigma_rolling_complete"] = np.arange(len(old)) // 8 >= 4
+        old["sigma_rolling_count"] = np.where(old["sigma_rolling_complete"], 24, 4)
+        old["sigma_rolling_days"] = 24
+        old["calibration_horizon"] = np.where(old["sigma_rolling_complete"], 6, 8)
+
+        new = new.copy()
+        new["sigma_rolling_complete"] = np.arange(len(new)) // 8 >= 7
+        new["sigma_rolling_count"] = np.where(new["sigma_rolling_complete"], 30, 4)
+        new["sigma_rolling_days"] = 30
+        new["calibration_horizon"] = np.where(new["sigma_rolling_complete"], 6, 8)
+        paired = matched_forecasts(old, new, calibration_horizon=6, days=30,
+            old_calibration_horizon=6, old_days=24)
+        self.assertEqual(paired["origin"].nunique(), 13)
+        self.assertEqual(len(paired), 13 * 8)
+
+        with tempfile.TemporaryDirectory() as temp:
+            with patch("src.exe.run_model.wm_4.compare_sigma_quantiles.load_forecasts",
+                side_effect=[(old, 0, "mpc_replay_24d_6h"),
+                    (new, 0, "mpc_replay_30d_6h")]) as reader:
+                result = analyze(old_path=Path(temp) / "old.csv",
+                    new_path=Path(temp) / "new.csv", output=Path(temp) / "report",
+                    quantiles=4, old_mode="mpc_replay_24d_6h",
+                    new_mode="mpc_replay_30d_6h")
+                self.assertEqual(reader.call_count, 2)
+                self.assertEqual(reader.call_args_list[1].kwargs["expected_sigma_fit_mode"],
+                    "mpc_replay_30d_6h")
+            self.assertEqual(len(result["origins"]), 13)
+            self.assertTrue(result["figure"].is_file())
+            self.assertTrue(result["reliability"].is_file())
+
     def test_figure_csv_and_nll_summary_generated_without_refit(self):
         old, new = self.forecasts()
         with tempfile.TemporaryDirectory() as temp:
