@@ -154,6 +154,37 @@ class SigmaComparisonTests(unittest.TestCase):
             self.assertTrue(result["figure"].is_file())
             self.assertTrue(result["reliability"].is_file())
 
+    def test_32_day_clip4_compared_to_24_day_six_hour_on_common_origins(self):
+        old, new = self.forecasts(horizon=6)
+        old = old.copy()
+        old["sigma_rolling_complete"] = np.arange(len(old)) // 6 >= 4
+        old["sigma_rolling_count"] = np.where(old["sigma_rolling_complete"], 24, 4)
+        old["sigma_rolling_days"] = 24
+        old["calibration_horizon"] = np.where(old["sigma_rolling_complete"], 6, 8)
+
+        new = new.copy()
+        new["sigma_rolling_complete"] = np.arange(len(new)) // 6 >= 8
+        new["sigma_rolling_count"] = np.where(new["sigma_rolling_complete"], 32, 4)
+        new["sigma_rolling_days"] = 32
+        new["calibration_horizon"] = np.where(new["sigma_rolling_complete"], 6, 8)
+        paired = matched_forecasts(old, new, horizon=6, days=32,
+            calibration_horizon=6, old_calibration_horizon=6, old_days=24)
+        self.assertEqual(paired["origin"].nunique(), 12)
+        self.assertEqual(len(paired), 12 * 6)
+        with tempfile.TemporaryDirectory() as temp:
+            with patch("src.exe.run_model.wm_4.compare_sigma_quantiles.load_forecasts",
+                side_effect=[(old, 0, "mpc_replay_24d_6h"),
+                    (new, 0, "mpc_replay_32d_6h_clip4")]):
+                result = analyze(old_path=Path(temp) / "old.csv",
+                    new_path=Path(temp) / "clipped.csv",
+                    output=Path(temp) / "report", horizon=6, quantiles=4,
+                    old_mode="mpc_replay_24d_6h",
+                    new_mode="mpc_replay_32d_6h_clip4")
+            self.assertEqual(len(result["origins"]), 12)
+            self.assertEqual(result["paired"]["lead_hours"].max(), 6)
+            self.assertTrue(result["figure"].is_file())
+            self.assertTrue(result["reliability"].is_file())
+
     def test_figure_csv_and_nll_summary_generated_without_refit(self):
         old, new = self.forecasts()
         with tempfile.TemporaryDirectory() as temp:
