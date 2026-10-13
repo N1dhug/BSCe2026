@@ -72,6 +72,9 @@ class SigmaDaysSweepTests(unittest.TestCase):
         self.assertTrue(np.allclose(result["matched_summary"]["observed_rmse"],
             result["matched_summary"]["observed_rmse"].iloc[0]))
         self.assertEqual(len(result["matched_quantiles"]), 22 * 5)
+        self.assertEqual(len(result["matched_leads"]), 22 * 6)
+        self.assertEqual(len(result["all_leads"]), 22 * 6)
+        self.assertTrue((result["matched_leads"]["n_origins"] == 45 - 28).all())
         self.assertEqual(int(result["all_summary"].iloc[0]["n_origins"]), 45 - 7)
         self.assertEqual(int(result["all_summary"].iloc[-1]["n_origins"]), 45 - 28)
         self.assertTrue(result["all_quantiles"]["coverage_95_pct"].between(0, 100).all())
@@ -116,9 +119,10 @@ class SigmaDaysSweepTests(unittest.TestCase):
             self.assertEqual(len(result["matched_summary"]), 22)
             self.assertEqual(len(result["matched_quantiles"]), 110)
             for name in ("matched_sigma_sweep.png", "matched_quintile_sweep.png",
-                "fitted_origins_by_window.png", "fits.csv", "matched_fits.csv",
-                "all_summary.csv", "all_quantiles.csv", "matched_summary.csv",
-                "matched_quantiles.csv"):
+                "fitted_origins_by_window.png", "matched_lead_calibration_heatmap.png",
+                "fits.csv", "matched_fits.csv", "all_summary.csv", "all_quantiles.csv",
+                "matched_summary.csv", "matched_quantiles.csv", "all_leads.csv",
+                "matched_leads.csv"):
                 self.assertTrue((output / name).is_file(), msg=name)
 
 
