@@ -172,6 +172,29 @@ def _evaluate(fits, archive, quantiles=5, cohort="all"):
     return pd.DataFrame(metrics), pd.DataFrame(bins)
 
 
+def summarize_by_lead(fits, archive, cohort):
+    """Exact-lead variance/coverage scores for every historical fit length."""
+    rows = []
+    for days, part in fits.groupby("history_days", sort=True):
+        errors = np.stack([archive[o][:, 0] for o in part["origin"]])
+        variance = part[[f"variance_h{h}" for h in range(1, HORIZON + 1)]].to_numpy(dtype=float)
+        for lead in range(HORIZON):
+            e, v = errors[:, lead], variance[:, lead]
+            mse, vbar = float(np.mean(e ** 2)), float(np.mean(v))
+            std = np.sqrt(v)
+            safe = np.maximum(v, 1e-12)
+            rows.append({"cohort": cohort, "history_days": int(days),
+                "lead_hours": lead + 1, "n_origins": int(len(e)),
+                "observed_rmse": float(np.sqrt(mse)),
+                "predicted_rms_std": float(np.sqrt(vbar)),
+                "predicted_to_observed_mse": vbar / mse if mse > 0 else np.nan,
+                "coverage_68_pct": 100.0 * float(np.mean(np.abs(e) <= std)),
+                "coverage_95_pct": 100.0 * float(np.mean(np.abs(e) <= 1.96 * std)),
+                "gaussian_nll": 0.5 * float(np.mean(
+                    np.log(2.0 * np.pi * safe) + e ** 2 / safe))})
+    return pd.DataFrame(rows)
+
+
 def sweep(archive, min_days=7, max_days=28, quantiles=5):
     fits = replay(archive, min_days, max_days)
     # Full-cohort scores use every eligible origin for each window (sample size
@@ -185,7 +208,9 @@ def sweep(archive, min_days=7, max_days=28, quantiles=5):
     paired_summary, paired_bins = _evaluate(matched, archive, quantiles, cohort="matched")
     return {"fits": fits, "matched_fits": matched,
         "all_summary": full_summary, "all_quantiles": full_bins,
-        "matched_summary": paired_summary, "matched_quantiles": paired_bins}
+        "matched_summary": paired_summary, "matched_quantiles": paired_bins,
+        "all_leads": summarize_by_lead(fits, archive, "all"),
+        "matched_leads": summarize_by_lead(matched, archive, "matched")}
 
 
 def save_plots(result, output):
@@ -219,7 +244,7 @@ def save_plots(result, output):
         a.set_xlabel("Historical diffusion fitting days")
         a.set_xticks(days[::max(1, len(days) // 11)])
         a.grid(alpha=0.25)
-    fig.suptitle(f"WM4 | six-hour Wiener sigma fit | rolling 7–28 day sweep\n"
+    fig.suptitle(f"WM4 | six-hour Wiener sigma fit | rolling {int(days.min())}–{int(days.max())} day sweep\n"
         f"Identical {int(score['n_origins'].iloc[0])} complete MPC origins across all windows")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(output / "matched_sigma_sweep.png", dpi=170, bbox_inches="tight")
@@ -250,7 +275,8 @@ def save_plots(result, output):
     fig, ax = plt.subplots(figsize=(12, 5))
     full = result["all_summary"]
     ax.plot(full["history_days"], full["n_origins"], "o-", label="All eligible fits")
-    ax.plot(score["history_days"], score["n_origins"], "o-", label="Matched 28d cohort")
+    ax.plot(score["history_days"], score["n_origins"], "o-",
+        label=f"Matched {int(days.max())}d cohort")
     ax.set_xlabel("Historical diffusion fitting days")
     ax.set_ylabel("Number of six-hour MPC origins fitted")
     ax.set_title("Total fitted origins by rolling calibration window")
@@ -258,6 +284,22 @@ def save_plots(result, output):
     ax.legend()
     fig.tight_layout()
     fig.savefig(output / "fitted_origins_by_window.png", dpi=170, bbox_inches="tight")
+    plt.close(fig)
+
+    leads = result["matched_leads"]
+    fig, ax = plt.subplots(figsize=(12, 5))
+    table = leads.pivot(index="lead_hours", columns="history_days",
+        values="predicted_to_observed_mse").sort_index()
+    heat = ax.imshow(table.to_numpy(), origin="lower", aspect="auto", vmin=0.25, vmax=2.0)
+    ax.set_xticks(range(len(table.columns)), table.columns, rotation=90)
+    ax.set_yticks(range(len(table.index)), table.index)
+    ax.set_xlabel("Historical diffusion fitting days")
+    ax.set_ylabel("MPC forecast lead (hours)")
+    ax.set_title("Variance calibration by fit backlog and exact MPC lead (ideal = 1)")
+    fig.colorbar(heat, ax=ax, label="Predicted variance / empirical MSE")
+    fig.tight_layout()
+    fig.savefig(output / "matched_lead_calibration_heatmap.png", dpi=170,
+        bbox_inches="tight")
     plt.close(fig)
     return output
 
@@ -276,7 +318,7 @@ def analyze(forecasts=SOURCE, output=OUTPUT, min_days=7, max_days=28,
     print(report[["history_days", "n_origins", "predicted_to_observed_mse",
         "coverage_68_pct", "coverage_95_pct", "gaussian_nll", "mean_sigma"]].to_string(
         index=False, float_format=lambda v: f"{v:.5f}"))
-    print(f"Saved CSVs and three plots: {output}")
+    print(f"Saved complete fit tables, exact-lead scores, and four plots: {output}")
     return {**result, "output": output}
 
 
