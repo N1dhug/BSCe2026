@@ -340,6 +340,12 @@ def _fit_stochastic_variance(model, fit, datasets, steps_per_hour, sigma_fit_mod
         for i, historical_origin in enumerate(training_origins):
             historical_origin = pd.Timestamp(historical_origin)
             archived = archive.get(historical_origin)
+            if archived is not None and rolling_horizon is not None:
+                # The rolling sigma archive intentionally stores only its
+                # 6h (or 24h) MPC path. During early bootstrap, a 6h path
+                # cannot fill an 8h weekly sample: use the oracle bootstrap.
+                values = np.asarray(archived, dtype=float)
+                if values.ndim == 2 and values.shape[0] < horizon: archived = None
             if archived is not None:
                 archived = np.asarray(archived, dtype=float)
                 if archived.ndim != 2 or archived.shape[1] != 3 or archived.shape[0] < horizon:
@@ -835,7 +841,11 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
                     output_model, max_horizon, mpc_archive=mpc_archive,
                     state_archive=state_archive, **fit_kwargs,
                 )
-                _archive_mpc_origin(mpc_archive, origin, rows, max_horizon)
+                if fit_kwargs.get("sigma_fit_mode", "mpc_replay") not in ROLLING_SIGMA_HORIZONS:
+                    _archive_mpc_origin(mpc_archive, origin, rows, max_horizon)
+                # Rolling modes archive only completed 6h or 24h MPC
+                # calibration paths inside _mpc_origin. Do not overwrite
+                # their six-hour records with eight-hour evaluation outputs.
                 _archive_reconstruction_origin(state_archive, origin, state)
                 forecast_rows.extend(rows)
                 state_rows.append(state)
