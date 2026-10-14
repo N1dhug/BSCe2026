@@ -145,6 +145,23 @@ class FourHourWM4DiffusionSweepTests(unittest.TestCase):
             self.assertTrue(np.allclose(cached["summary"]["gaussian_nll"],
                 original["summary"]["gaussian_nll"]))
 
+    def test_reuse_prior_six_hour_forecasts_on_exactly_four_leads(self):
+        archive, forecasts = self.example()
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "previous_6h"
+            output = Path(tmp) / "four_hour"
+            source.mkdir(parents=True)
+            save_archive(archive, source / "mpc_calibration_24h.csv")
+            forecasts.to_csv(source / "mpc_forecasts.csv", index=False)
+            with patch("src.exe.run_model.wm_4.sweep_mpc_sigma_fit_hours_eval4_no_p0.run_all_days",
+                side_effect=AssertionError("Already fitted MPC paths must be reused")):
+                result = run(source=source, output=output, reuse_only=True)
+            self.assertEqual(len(result["fits"]), 17 * 7)
+            self.assertTrue((output / "mpc_calibration_24h.csv").is_file())
+            self.assertTrue((output / "mpc_forecasts.csv").is_file())
+            self.assertTrue(all(v.shape == (4, 2) for v in result["evaluations"].values()))
+            self.assertTrue((result["summary"]["n_forecasts"] == 17 * 4).all())
+
     def test_reuse_only_never_silently_runs_deterministic_wm4(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaisesRegex(FileNotFoundError, "No saved 24h"):
