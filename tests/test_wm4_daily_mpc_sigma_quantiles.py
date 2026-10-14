@@ -76,6 +76,8 @@ class DailyWM4SigmaQuantilesTests(unittest.TestCase):
             variance[[f"variance_h{h}" for h in range(1, 7)]].to_numpy().mean())
         self.assertAlmostEqual(example["mean_predicted_consumption"], subset["I_mpc"].mean())
         self.assertAlmostEqual(example["mean_observed_consumption"], subset["I_observed"].mean())
+        self.assertAlmostEqual(example["squared_mean_forecast_error"],
+            example["mean_forecast_error"] ** 2)
         # Pooling MSE != square of mean error or variance of the daily mean.
         self.assertGreater(example["observed_mse"], example["mean_forecast_error"] ** 2)
 
@@ -129,8 +131,10 @@ class DailyWM4SigmaQuantilesTests(unittest.TestCase):
                 "daily_summary_all.csv", "daily_summary_matched.csv",
                 "incomplete_days.csv", "all_daily_scatter.png", "all_daily_quintile_sweep.png",
                 "all_daily_quantiles_reference.png", "all_daily_calibration.png",
+                "all_daily_mean_forecasts.png",
                 "matched_daily_scatter.png", "matched_daily_quintile_sweep.png",
-                "matched_daily_quantiles_reference.png", "matched_daily_calibration.png"):
+                "matched_daily_quantiles_reference.png", "matched_daily_calibration.png",
+                "matched_daily_mean_forecasts.png"):
                 self.assertTrue((output / name).exists(), name)
 
     def test_saved_fit_must_match_wiener_kernel_and_original_origin(self):
