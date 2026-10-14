@@ -5,8 +5,8 @@ MPC paths; no initial-state covariance propagation. Every candidate horizon
 H fits an independent scalar QP using historical errors h=1..H, but scores the
 SAME current-origin forecasts at leads h=1..4.
 
-If a saved 24h MPC calibration archive and six-hour MPC forecast CSV are
-available, reuse them without refitting WM4. Older 6..24h sweep outputs did
+If a saved 24h MPC calibration archive and four- or six-hour MPC forecast
+CSV are available, reuse the first four leads without refitting WM4. Older 6..24h sweep outputs did
 not save the 24h calibration paths; in that case run the MPC ONCE and persist
 both files so subsequent experiments can reuse them. Never reuse saved q.
 """
@@ -86,7 +86,7 @@ def load_archive(path):
 
 
 def four_hour_evaluation(forecasts):
-    """Use four actual MPC forecast leads; original CSV can contain six leads."""
+    """Use four actual MPC forecast leads; cached original CSV may contain six."""
     required = {"origin", "lead_hours", "I_observed", "I_mpc", "initial_variance",
         "process_kernel_unit", "parameter_fit_hours", "sigma_fit_mode"}
     if missing := required - set(forecasts):
@@ -254,7 +254,9 @@ def save_figures(fits, scores, quantiles, leads, output):
         bbox_inches="tight")
     plt.close(fig)
 
-    fig, ax = plt.subplots(2, 4, figsize=(17, 8))
+    columns = 4
+    rows = int(np.ceil(len(hours) / columns))
+    fig, ax = plt.subplots(rows, columns, figsize=(17, 3.8 * rows), squeeze=False)
     high = 1.05 * max(float(fits["observed_mse"].max()),
         float(fits["predicted_variance"].max()), 1e-8)
     for a, horizon in zip(ax.flat, hours):
@@ -305,7 +307,7 @@ def run(frame=None, start=START_DAY, end=END_DAY, *, source=SOURCE,
         archive = {}
         forecasts, states, skipped = run_all_days(frame, start=start, end=end,
             steps_per_hour=steps_per_hour, baseline_weeks=baseline_weeks,
-            max_horizon=6, fit_hours=DAY_HOURS,
+            max_horizon=EVALUATION_HOURS, fit_hours=DAY_HOURS,
             sigma_fit_mode=MODE, sigma_rolling_days=history_days,
             mpc_archive=archive, archive_horizon=ARCHIVE_HOURS,
             fail_fast=fail_fast)
