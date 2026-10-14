@@ -95,6 +95,35 @@ class WM4SixHourTwelveHourTests(unittest.TestCase):
             run_all_days(self.data(), "2022-03-09", "2022-03-09",
                 max_horizon=8, sigma_fit_mode="mpc_replay_28d_6h")
 
+    def test_no_p0_mode_accepts_true_4h_mpc_with_24h_parameter_fit(self):
+        calls = []
+
+        def fake_origin(frame, origin, baseline_weeks, steps_per_hour, output_model,
+            max_horizon, *, fit_hours, archive_horizon=None, **kwargs):
+            calls.append((max_horizon, fit_hours, archive_horizon))
+            rows = [{"lead_hours": h, "target_time": origin + pd.Timedelta(hours=h),
+                "forecast_error": 0.01, "initial_variance": 0.0,
+                "process_kernel_unit": .02} for h in range(1, max_horizon + 1)]
+            return rows, {"origin": origin}
+
+        with patch("src.exe.run_model.wm_4.predict_all_days_mpc.fit_expected_output",
+            return_value=(Baseline(), {})), patch(
+            "src.exe.run_model.wm_4.predict_all_days_mpc._mpc_origin",
+            side_effect=fake_origin), patch(
+            "src.exe.run_model.wm_4.predict_all_days_mpc._archive_reconstruction_origin"):
+            forecasts, states, skipped = run_all_days(self.data(),
+                start="2022-03-09", end="2022-03-09", steps_per_hour=2,
+                sigma_fit_mode="mpc_replay_24d_6h_no_p0",
+                max_horizon=4, fit_hours=24, archive_horizon=24)
+        self.assertEqual(len(calls), 24)
+        self.assertTrue(all(item == (4, 24, 24) for item in calls))
+        self.assertEqual(len(forecasts), 24 * 4)
+        self.assertEqual(len(states), 24)
+        self.assertFalse(skipped)
+        with self.assertRaisesRegex(ValueError, "4h or 6h MPC"):
+            run_all_days(self.data(), start="2022-03-09", end="2022-03-09",
+                max_horizon=8, sigma_fit_mode="mpc_replay_24d_6h_no_p0")
+
     def test_32_day_clip4_preset_is_24h_fit_and_true_6h_mpc(self):
         calls = []
 
