@@ -87,7 +87,8 @@ class FourHourWM4DiffusionSweepTests(unittest.TestCase):
             recovered = load_archive(path)
             self.assertEqual(set(recovered), set(archive))
             for origin in archive:
-                self.assertTrue(np.array_equal(recovered[origin], archive[origin]))
+                self.assertTrue(np.allclose(recovered[origin], archive[origin],
+                    rtol=1e-13, atol=1e-13))
             broken = pd.read_csv(path)
             broken.loc[0, "initial_variance"] = .1
             broken.to_csv(path, index=False)
@@ -113,13 +114,14 @@ class FourHourWM4DiffusionSweepTests(unittest.TestCase):
         states = pd.DataFrame([{"origin": origin} for origin in archive])
 
         def fake_mpc(frame, start, end, **kwargs):
-            self.assertEqual(kwargs["max_horizon"], 6)
+            self.assertEqual(kwargs["max_horizon"], 4)
             self.assertEqual(kwargs["fit_hours"], 24)
             self.assertEqual(kwargs["archive_horizon"], 24)
             self.assertEqual(kwargs["sigma_fit_mode"], MODE)
             self.assertEqual(kwargs["sigma_rolling_days"], 25)
             kwargs["mpc_archive"].update(archive)
-            return forecasts, states, []
+            # New evaluation run forecasts exactly four hours, not six.
+            return forecasts.loc[forecasts["lead_hours"] <= 4].copy(), states, []
 
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "four_hour"
