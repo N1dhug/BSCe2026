@@ -291,6 +291,16 @@ def run(frame, start=START_DAY, end=END_DAY, *, steps_per_hour=60,
     tables = {"fits": fits, "summary": score, "quantiles": groups,
         "leads": leads, "mpc_forecasts": forecasts, "mpc_states": states}
     for name, table in tables.items(): table.to_csv(output / f"{name}.csv", index=False)
+    # Preserve the real 24-hour historical MPC paths for later experiments
+    # with different diffusion fitting/evaluation horizons, without refitting WM4.
+    archive_rows = []
+    for origin, values in sorted(archive.items()):
+        for h, (error, initial, kernel) in enumerate(values, 1):
+            archive_rows.append({"origin": origin, "lead_hours": h,
+                "forecast_error": float(error),
+                "initial_variance": float(initial),
+                "process_kernel_unit": float(kernel)})
+    pd.DataFrame(archive_rows).to_csv(output / "mpc_calibration_24h.csv", index=False)
     if skipped:
         pd.DataFrame([{"origin": o, "reason": reason} for o, reason in skipped]
             ).to_csv(output / "skipped_origins.csv", index=False)
