@@ -487,8 +487,8 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
             raise ValueError("archive_horizon requires a rolling MPC diffusion mode.")
         if not max_horizon <= archive_horizon <= fit_hours:
             raise ValueError("archive_horizon must be between evaluation horizon and fit_hours.")
-    if sigma_fit_mode == "mpc_replay_24d_6h_no_p0" and (max_horizon != 6 or fit_hours != 24):
-        raise ValueError("mpc_replay_24d_6h_no_p0 requires a 24-hour parameter fit and six-hour MPC.")
+    if sigma_fit_mode == "mpc_replay_24d_6h_no_p0" and (max_horizon not in (4, 6) or fit_hours != 24):
+        raise ValueError("mpc_replay_24d_6h_no_p0 requires a 24-hour parameter fit and 4h or 6h MPC.")
     if sigma_fit_mode == "mpc_replay_32d_6h_clip4" and (max_horizon != 6 or fit_hours != 24):
         raise ValueError("mpc_replay_32d_6h_clip4 requires 24-hour parameter fitting and six-hour MPC.")
     if sigma_fit_mode == "mpc_replay_28d_6h" and (max_horizon != 6 or fit_hours != 12):
@@ -902,8 +902,8 @@ def run_all_days(frame, start=START_DAY, end=END_DAY, baseline_weeks=BASELINE_WE
         raise ValueError("mpc_replay_28d_6h requires 6-hour MPC and 12-hour fitting windows.")
     if sigma_mode == "mpc_replay_32d_6h_clip4" and (max_horizon != 6 or fit_hours != 24):
         raise ValueError("mpc_replay_32d_6h_clip4 requires 6-hour MPC and 24-hour fitting windows.")
-    if sigma_mode == "mpc_replay_24d_6h_no_p0" and (max_horizon != 6 or fit_hours != 24):
-        raise ValueError("mpc_replay_24d_6h_no_p0 requires 6-hour MPC and 24-hour fitting windows.")
+    if sigma_mode == "mpc_replay_24d_6h_no_p0" and (max_horizon not in (4, 6) or fit_hours != 24):
+        raise ValueError("mpc_replay_24d_6h_no_p0 requires 4h or 6h MPC and 24-hour fitting windows.")
     if fit_hours < 2 or fit_hours > DAY_HOURS:
         raise ValueError("fit_hours must be in [2, 24].")
     if not 1 <= max_horizon < fit_hours:
@@ -985,8 +985,8 @@ def main():
         raise ValueError("28-day/6h mode requires --max-horizon 6 and --fit-hours 12.")
     if args.sigma_fit_mode == "mpc_replay_32d_6h_clip4" and (args.max_horizon != 6 or args.fit_hours != 24):
         raise ValueError("32-day/6h clip mode requires --max-horizon 6 and --fit-hours 24.")
-    if args.sigma_fit_mode == "mpc_replay_24d_6h_no_p0" and (args.max_horizon != 6 or args.fit_hours != 24):
-        raise ValueError("24-day/6h no-P0 mode requires --max-horizon 6 and --fit-hours 24.")
+    if args.sigma_fit_mode == "mpc_replay_24d_6h_no_p0" and (args.max_horizon not in (4, 6) or args.fit_hours != 24):
+        raise ValueError("24-day no-P0 mode requires --max-horizon 4 or 6 and --fit-hours 24.")
     if args.sigma_rolling_days is not None and args.sigma_rolling_days < 2:
         raise ValueError("sigma-rolling-days must be >=2.")
 
