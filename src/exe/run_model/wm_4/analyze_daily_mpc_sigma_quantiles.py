@@ -114,6 +114,7 @@ def daily_metrics(fits, archive, raw, *, origins_per_day=HOURS):
             "mean_predicted_consumption": float(predicted.mean()),
             "mean_observed_consumption": float(observed.mean()),
             "mean_forecast_error": float(error.mean()),
+            "squared_mean_forecast_error": float(np.mean(error) ** 2),
             "observed_mse": mse, "observed_rmse": float(np.sqrt(mse)),
             "predicted_variance": v, "predicted_rms_std": float(np.sqrt(v)),
             "predicted_to_observed_mse": v / mse if mse > 0 else np.nan,
@@ -197,6 +198,8 @@ def analyze(fits=FITS, forecasts=FORECASTS, output=OUTPUT,
         ("matched", matched, matched_summary, matched_quantiles)):
         if detail.empty: continue
         _plot_daily_scatter(detail, output / f"{cohort}_daily_scatter.png", cohort)
+        _plot_mean_forecasts(detail,
+            output / f"{cohort}_daily_mean_forecasts.png", cohort)
         if quintile_table.empty: continue
         _plot_daily_quantiles(quintile_table,
             output / f"{cohort}_daily_quintile_sweep.png", cohort)
@@ -240,6 +243,34 @@ def _plot_daily_scatter(daily, path, cohort):
     fig.suptitle(f"WM4 | {cohort} days | each point is one origin calendar day")
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _plot_mean_forecasts(daily, path, cohort, reference=24):
+    """Visualize the 144-prediction daily mean AND pooled forecast-error scale."""
+    window = reference if reference in set(daily["history_days"]) else int(
+        daily["history_days"].max())
+    sub = daily.loc[daily["history_days"] == window].sort_values("date")
+    fig, axes = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
+    axes[0].plot(sub["date"], sub["mean_observed_consumption"], "o-",
+        label="Mean observed demand")
+    axes[0].plot(sub["date"], sub["mean_predicted_consumption"], "o-",
+        label="Mean MPC predicted demand")
+    axes[0].set(ylabel="Mean normalized demand",
+        title=f"{window}d: average of 24 hourly MPC origins × six leads")
+    axes[1].plot(sub["date"], sub["observed_rmse"], "o-",
+        label="RMSE across 144 forecasts")
+    axes[1].plot(sub["date"], sub["predicted_rms_std"], "o-",
+        label="Predicted RMS std across 144 forecasts")
+    axes[1].set(ylabel="Normalized demand", xlabel="MPC origin calendar day",
+        title="Daily pooled forecast-error scale (not uncertainty of the mean demand)")
+    for ax in axes:
+        ax.grid(alpha=0.25)
+        ax.legend()
+    fig.suptitle(f"WM4 | {cohort} daily MPC averages | forecasts saved, no refitting")
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    fig.savefig(path, dpi=170, bbox_inches="tight")
     plt.close(fig)
 
 
