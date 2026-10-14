@@ -119,8 +119,8 @@ def replay(archive, evaluations, *, days=BACKLOG_DAYS, min_hours=6, max_hours=24
                 for h in range(1, FORECAST_HOURS + 1)})
             rows.append(row)
     if not rows:
-        raise ValueError("No six-hour evaluation origin has a full 25-day backlog of "
-            "completed 24-hour historical MPC trajectories.")
+        raise ValueError(f"No six-hour evaluation origin has a full {days}-day backlog "
+            "of completed 24-hour historical MPC trajectories.")
     return pd.DataFrame(rows)
 
 
@@ -197,7 +197,7 @@ def save_plots(fits, overview, quantiles, leads, output):
         ax.set_xlabel("Diffusion fitting horizon (hours)")
         ax.set_xticks(h[::max(1, len(h) // 9)])
         ax.grid(alpha=0.2)
-    fig.suptitle(f"WM4 | constant Wiener q, 25-day backlog, 24h historical MPC paths\n"
+    fig.suptitle(f"WM4 | constant Wiener q, {int(fits['history_days'].iloc[0])}-day backlog, 24h historical MPC paths\n"
         f"Evaluation: same {int(overview['n_origins'].iloc[0])} origins, next six hours, no P0")
     fig.tight_layout(rect=(0, 0, 1, .95))
     fig.savefig(output / "fit_hours_sweep.png", dpi=165, bbox_inches="tight")
@@ -282,6 +282,9 @@ def run(frame, start=START_DAY, end=END_DAY, *, steps_per_hour=60,
             raise ValueError(f"Unexpected initial-state covariance at {origin}.")
     fits = replay(archive, evaluations, days=history_days,
         min_hours=min_hours, max_hours=max_hours)
+    if fits["origin"].nunique() < quantiles:
+        raise ValueError(f"Only {fits['origin'].nunique()} full-history MPC origins; "
+            f"at least {quantiles} are needed for uncertainty quantiles.")
     score, groups, leads = summarize(fits, evaluations, quantiles=quantiles)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -293,7 +296,7 @@ def run(frame, start=START_DAY, end=END_DAY, *, steps_per_hour=60,
             ).to_csv(output / "skipped_origins.csv", index=False)
     save_plots(fits, score, groups, leads, output)
     print(f"WM4: 24h deterministic parameter fitting; "
-        f"25 historical full 24h MPC trajectories per origin; "
+        f"{history_days} historical full 24h MPC trajectories per origin; "
         f"evaluation next {FORECAST_HOURS}h; no initial-state variance.")
     print(f"Full-history eligible origins: {fits['origin'].nunique()}; "
         f"fresh constant-diffusion QP fits: {len(fits)}.")
