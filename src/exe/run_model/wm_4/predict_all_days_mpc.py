@@ -479,8 +479,14 @@ def _stochastic_forecast_variance(model, state, fit, diffusion, max_horizon, ste
 
 def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max_horizon, *, sigma_fit_mode="mpc_replay", r0_variance_mode="oracle_reconstruction",
     f0_variance_mode="mpc_reconstruction", mpc_archive=None, state_archive=None,
-    sigma_rolling_days=None, fit_hours=DAY_HOURS, **fit_kwargs):
+    sigma_rolling_days=None, fit_hours=DAY_HOURS, archive_horizon=None, **fit_kwargs):
     origin = pd.Timestamp(origin)
+    if archive_horizon is not None:
+        archive_horizon = int(archive_horizon)
+        if sigma_fit_mode not in ROLLING_SIGMA_HORIZONS:
+            raise ValueError("archive_horizon requires a rolling MPC diffusion mode.")
+        if not max_horizon <= archive_horizon <= fit_hours:
+            raise ValueError("archive_horizon must be between evaluation horizon and fit_hours.")
     if sigma_fit_mode == "mpc_replay_24d_6h_no_p0" and (max_horizon != 6 or fit_hours != 24):
         raise ValueError("mpc_replay_24d_6h_no_p0 requires a 24-hour parameter fit and six-hour MPC.")
     if sigma_fit_mode == "mpc_replay_32d_6h_clip4" and (max_horizon != 6 or fit_hours != 24):
@@ -525,12 +531,14 @@ def _mpc_origin(frame, origin, baseline_weeks, steps_per_hour, output_model, max
 
     rolling_horizon = ROLLING_SIGMA_HORIZONS.get(sigma_fit_mode)
     if rolling_horizon is not None:
-        # The rolling archive must include the REAL horizon endpoint.
-        # Otherwise _window_input may interpolate missing future observations.
-        endpoint = origin + pd.Timedelta(hours=rolling_horizon)
+        # Optional longer archive for comparing 6..24h constant-diffusion
+        # fits, while preserving six-hour evaluation and rolling prediction.
+        # Only archive if the real endpoint is observed, not interpolated.
+        record_horizon = (rolling_horizon if archive_horizon is None else archive_horizon)
+        endpoint = origin + pd.Timedelta(hours=record_horizon)
         if endpoint in frame.index and np.isfinite(float(frame.loc[endpoint, "I"])):
             _archive_mpc_calibration(mpc_archive, origin, model, state, prepared,
-                fit, diffusion, steps_per_hour, horizon=rolling_horizon)
+                fit, diffusion, steps_per_hour, horizon=record_horizon)
 
     rows = []
     for lead in range(1, int(max_horizon) + 1):
