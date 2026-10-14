@@ -10,6 +10,8 @@ matplotlib.use("Agg")
 import numpy as np
 import pandas as pd
 
+from src.model.wm_4 import wm_4
+from src.exe.run_model.wm_4.predict_all_days_mpc import _archive_mpc_calibration
 from src.exe.run_model.wm_4.sweep_mpc_sigma_fit_hours_no_p0 import (
     ARCHIVE_HOURS, BACKLOG_DAYS, FORECAST_HOURS, MODE,
     fit_diffusion_horizons, replay, run, six_hour_evaluation, summarize,
@@ -32,6 +34,24 @@ class WM4SixToTwentyFourHourSigmaTests(unittest.TestCase):
                     "initial_variance": 0., "process_kernel_unit": K[lead - 1],
                     "parameter_fit_hours": 24, "sigma_fit_mode": MODE})
         return archive, pd.DataFrame(rows)
+
+    def test_actual_24h_calibration_archive_contains_24_historical_mpc_leads(self):
+        origin = pd.Timestamp("2022-07-01 14:00")
+        model = wm_4((0., 1.), 49, lambda t: 0.)
+        r = np.array([-2., -0.1, -3.], dtype=float)
+        state = {"r": r, "I": np.full(49, 0.5)}
+        prepared = {"I": np.full(49, 0.52)}
+        fit = {"r": r}
+        diffusion = {"mpc_initial_covariance": np.zeros((2, 2)), "q": 0.04}
+        archive = {}
+        _archive_mpc_calibration(archive, origin, model, state, prepared,
+            fit, diffusion, steps_per_hour=2, horizon=24)
+        self.assertEqual(archive[origin].shape, (24, 3))
+        self.assertTrue(np.allclose(archive[origin][:, 0], .02))
+        self.assertTrue(np.allclose(archive[origin][:, 1], 0.))
+        self.assertGreater(float(archive[origin][-1, 2]), 0.)
+        self.assertGreater(float(archive[origin][-1, 2]),
+            float(archive[origin][5, 2]))
 
     def test_6_to_24_hour_qp_matches_explicit_lead_limited_least_squares(self):
         archive, _ = self.fake_data(40)
