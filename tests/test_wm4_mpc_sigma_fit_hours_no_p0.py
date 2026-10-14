@@ -135,7 +135,8 @@ class WM4SixToTwentyFourHourSigmaTests(unittest.TestCase):
             self.assertEqual(len(result["leads"]), 19 * 6)
             self.assertTrue((result["mpc_forecasts"]["initial_variance"] == 0).all())
             for name in ("fits.csv", "summary.csv", "quantiles.csv", "leads.csv",
-                "mpc_forecasts.csv", "mpc_states.csv", "fit_hours_sweep.png",
+                "mpc_forecasts.csv", "mpc_states.csv", "mpc_calibration_24h.csv",
+                "fit_hours_sweep.png",
                 "fit_hours_quintile_sweep.png", "fit_hours_lead_heatmap.png",
                 "fit_hours_scatter.png"):
                 self.assertTrue((Path(tmp) / name).is_file(), name)
