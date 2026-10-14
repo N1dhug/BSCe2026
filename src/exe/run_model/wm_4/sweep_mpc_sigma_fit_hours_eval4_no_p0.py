@@ -299,6 +299,12 @@ def run(frame=None, start=START_DAY, end=END_DAY, *, source=SOURCE,
     if cached is not None:
         forecasts, archive, used = cached
         print(f"Reusing saved MPC forecasts and 24h historical archive from {used}")
+        if Path(used) != output:
+            # Make the analysis output self-contained even when it reuses
+            # trajectories from a previous 6–24h experiment.
+            output.mkdir(parents=True, exist_ok=True)
+            forecasts.to_csv(output / FORECAST_FILE, index=False)
+            save_archive(archive, output / ARCHIVE_FILE)
     else:
         if reuse_only:
             raise FileNotFoundError("No saved 24h MPC calibration archive. "
