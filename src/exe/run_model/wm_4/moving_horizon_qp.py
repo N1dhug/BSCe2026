@@ -53,16 +53,22 @@ def fit_windows(group, start, end, stride, steps_per_hour, f0_grid, max_origins=
             if (count - 1) % sensitivity_stride == 0:
                 grid_rows = []
                 for F0_seed in f0_grid:
-                    fit = (fit_observed if np.isclose(F0_seed, 0.0, atol=1e-12)
-                           else sequential.fit(data, [float(F0_seed), observed_R0], **alternating_kwargs))
-                    entry = fit_row(group, origin, "f0_grid", fit, observed, steps_per_hour, f0_grid=float(F0_seed))
-                    grid_rows.append(entry)
+                    try:
+                        fit = (fit_observed if np.isclose(F0_seed, 0.0, atol=1e-12)
+                               else sequential.fit(data, [float(F0_seed), observed_R0], **alternating_kwargs))
+                        entry = fit_row(group, origin, "f0_grid", fit, observed, steps_per_hour, f0_grid=float(F0_seed))
+                        grid_rows.append(entry)
+                    except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
+                        if fail_fast: raise
+                        failures.append({"group": group, "origin": origin, "F_0_seed": float(F0_seed),
+                                         "error": f"sequential sensitivity seed failed: {exc}"})
                 rows.extend(grid_rows)
                 # Selection uses the same transition-residual objective as the alternating QP.
-                converged = [row for row in grid_rows if row["state_converged"]]
-                selected = dict(min(converged if converged else grid_rows, key=lambda row: row["qp_loss"]))
-                selected["variant"] = "grid_best"
-                rows.append(selected)
+                if grid_rows:
+                    converged = [row for row in grid_rows if row["state_converged"]]
+                    selected = dict(min(converged if converged else grid_rows, key=lambda row: row["qp_loss"]))
+                    selected["variant"] = "grid_best"
+                    rows.append(selected)
             if count % 24 == 0:
                 print(f"[qp sequential] {group} {count}/{len(timeline)} origins; latest={origin}")
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
