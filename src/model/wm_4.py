@@ -33,10 +33,10 @@ class wm_4(wm):
         self.dt = self.t[1] - self.t[0]
         self.O = O
 
-    def dR(self, P_R, r):
+    def dR(self, P_R, r, r_0=0.0):
         P_R = wm_4_validation.vector(P_R, 3, "P_R")
         r = wm_4_validation.r_coefficients(r)
-        return r @ P_R
+        return float(r @ P_R + wm_4_validation._finite_scalar(r_0, "r_0"))
 
     @staticmethod
     def I(O, R):
@@ -55,18 +55,18 @@ class wm_4(wm):
         return r[:2] / kappa_R, kappa_R
 
     @classmethod
-    def expected_equilibrium(cls, U, r):
+    def expected_equilibrium(cls, U, r, r_0=0.0):
         U = wm_4_validation.signal_value(U, "U")
         r = wm_4_validation.r_coefficients(r)
-        return -(r[1] * U) / r[0]
+        return -(wm_4_validation._finite_scalar(r_0, "r_0") + r[1] * U) / r[0]
 
     @staticmethod
-    def drift(F, R, U, r):
+    def drift(F, R, U, r, r_0=0.0):
         F = wm_4_validation._finite_scalar(F, "F")
         R = wm_4_validation._finite_scalar(R, "R")
         U = wm_4_validation.signal_value(U, "U")
         r = wm_4_validation.r_coefficients(r)
-        return np.array([R, r @ np.array([F, U, R], dtype=float)], dtype=float)
+        return np.array([R, r @ np.array([F, U, R], dtype=float) + wm_4_validation._finite_scalar(r_0, "r_0")], dtype=float)
 
     def process_variance_kernel(self, state, sample_indices):
         """Exact Euler kernel mapping fine-grid g^2 to sampled Var(I)=Var(R), with P0=0."""
@@ -114,19 +114,20 @@ class wm_4(wm):
             O[k] = wm_4_validation.feature_value(self.O(Time[k]), "O(Time(t))")
         return U, PE, Time, O
 
-    def _solve_deterministic(self, init_cond, U, PE, Time, O, r, gamma=None):
+    def _solve_deterministic(self, init_cond, U, PE, Time, O, r, gamma=None, r_0=0.0):
         F, R, R_dot = np.empty(self.t_steps), np.empty(self.t_steps), np.empty(self.t_steps)
         I, Q = np.empty(self.t_steps), np.empty(self.t_steps)
         A = np.full(self.t_steps, np.nan)
         P_R = np.empty((self.t_steps, 3))
         P_A = np.full((self.t_steps, 4), np.nan)
         r = wm_4_validation.r_coefficients(r)
+        r_0 = wm_4_validation._finite_scalar(r_0, "r_0")
         q, kappa_R = self.equivalent_q(r)
         F[0], R[0] = init_cond
 
         for k in range(self.t_steps):
             P_R[k] = np.array([F[k], U[k], R[k]], dtype=float)
-            R_dot[k] = r @ P_R[k]
+            R_dot[k] = r_0 + r @ P_R[k]
             Q[k] = q @ np.array([F[k], U[k]], dtype=float)
             I[k] = O[k] + R[k]
             if gamma is not None:
@@ -141,13 +142,13 @@ class wm_4(wm):
             "U": np.asarray(U, dtype=float).copy(), "PE": np.asarray(PE, dtype=float).copy(),
             "Time": np.asarray(Time, dtype=float).copy(), "O": np.asarray(O, dtype=float).copy(),
             "P_R": P_R, "P_A": P_A, "I": I, "A": A, "r": r.copy(),
-            "Q": Q, "q": q.copy(), "kappa_R": float(kappa_R),
+            "Q": Q, "q": q.copy(), "kappa_R": float(kappa_R), "r_0": float(r_0),
         }
 
     def deterministic_solver(self, init_cond, parameters):
         init_cond, parameters = wm_4_validation.deterministic_inputs(init_cond, parameters)
         U, PE, Time, O = self._sample_signals(parameters)
-        return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["r"], gamma=parameters["gamma"])
+        return self._solve_deterministic(init_cond, U, PE, Time, O, parameters["r"], gamma=parameters["gamma"], r_0=parameters.get("r_0", 0.0))
 
     @staticmethod
     def _least_squares_qp(X, y, A_ub=None, b_ub=None, A_eq=None, b_eq=None, lb=None, ub=None, ridge=1e-10, x0=None, max_iter=10000):
@@ -159,6 +160,10 @@ class wm_4(wm):
         return active_set.solve(H, f, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, lb=lb, ub=ub, x0=x0, tol=1e-9, max_iter=max_iter)
 
     def fit_params_qp(self, input_data, initial_conditions, **kwargs): return qp_params(self).fit(input_data, initial_conditions, **kwargs)
+
+    def fit_params_numerical(self, input_data, initial_conditions=None, **kwargs):
+        from src.params.fit_params_numerical import numerical_params
+        return numerical_params(self).fit(input_data, initial_conditions, **kwargs)
 
     def fit_params_optimized_qp(self, input_data, initial_conditions, **kwargs): return optimized_qp_params(self).fit(input_data, initial_conditions, **kwargs)
 
