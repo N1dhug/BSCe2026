@@ -9,7 +9,7 @@ from src.exe.run_model.wm_4.moving_horizon_common import OUTPUT, GROUPS, HOURS, 
 from src.params.wm_4 import optimized_qp_params
 
 
-DEFAULT_QP_VARIANTS = ("zero", "observed", "observed_intercept", "grid_best", "zero_intercept")
+DEFAULT_QP_VARIANTS = ("zero", "observed", "zero_fixed", "observed_fixed", "observed_intercept", "grid_best", "zero_intercept")
 DEFAULT_NUMERICAL_VARIANTS = ("zero", "zero_intercept")
 
 
@@ -84,11 +84,11 @@ def evaluate(fits, steps_per_hour, fail_fast=False):
     return pd.DataFrame(results), pd.DataFrame(hourly_rows), failed
 
 
-def paired_primary(daily, hourly):
-    a = daily.loc[(daily["fitter"] == "qp") & (daily["variant"] == "zero")]
+def paired_primary(daily, hourly, qp_variant="zero"):
+    a = daily.loc[(daily["fitter"] == "qp") & (daily["variant"] == qp_variant)]
     b = daily.loc[(daily["fitter"] == "numerical") & (daily["variant"] == "zero")]
     pairs = a.merge(b, on=["group", "origin"], suffixes=("_qp", "_numerical"))
-    if pairs.empty: raise ValueError("No matching QP/numerical zero-initialized non-intercept windows.")
+    if pairs.empty: raise ValueError(f"No matching QP/{qp_variant} and numerical/zero windows.")
     pairs["mse_gain_numerical"] = pairs["mse_qp"] - pairs["mse_numerical"]
     pairs["rmse_gain_numerical"] = pairs["rmse_qp"] - pairs["rmse_numerical"]
     keys = pairs[["group", "origin"]].drop_duplicates()
@@ -205,7 +205,8 @@ def main():
     if fits.empty: raise RuntimeError("No successful saved fitting windows found for the selected variants.")
     daily, hourly, failures = evaluate(fits, args.steps_per_hour, args.fail_fast)
     summary, horizon = summary_tables(daily, hourly)
-    paired, common = paired_primary(daily, hourly)
+    paired, common = paired_primary(daily, hourly, qp_variant="zero")
+    fixed_paired, fixed_common = paired_primary(daily, hourly, qp_variant="zero_fixed")
     common_summary, common_horizon = summary_tables(
         daily.merge(paired[["group", "origin"]].drop_duplicates(), on=["group", "origin"], how="inner"),
         common,
@@ -217,11 +218,20 @@ def main():
     paired.to_csv(output / "paired_qp_numerical.csv", index=False)
     common_summary.to_csv(output / "matched_oracle_summary.csv", index=False)
     common_horizon.to_csv(output / "matched_oracle_horizon.csv", index=False)
+    fixed_paired.to_csv(output / "paired_fixed_qp_numerical.csv", index=False)
+    fixed_summary, fixed_horizon = summary_tables(
+        daily.merge(fixed_paired[["group", "origin"]].drop_duplicates(), on=["group", "origin"], how="inner"),
+        fixed_common,
+    )
+    fixed_summary.to_csv(output / "matched_fixed_oracle_summary.csv", index=False)
+    fixed_horizon.to_csv(output / "matched_fixed_oracle_horizon.csv", index=False)
     save_table(failures, output / "skipped.csv")
     save_plots(paired, common, common_summary, common_horizon, daily, common, output)
     print(f"Oracle comparison: {output}; evaluated windows={len(daily)}, skipped={len(failures)}")
-    print("Matched-origin oracle comparison (use aggregate_rmse for pooled performance):")
+    print("Matched-origin sequential-QP versus numerical oracle (aggregate RMSE is pooled):")
     print(common_summary.loc[(common_summary["variant"] == "zero")].to_string(index=False))
+    print("Matched-origin fixed-state-QP versus numerical oracle (same historical initial state):")
+    print(fixed_summary.loc[(fixed_summary["variant"].isin(("zero_fixed", "zero")))].to_string(index=False))
 
 
 if __name__ == "__main__": main()
