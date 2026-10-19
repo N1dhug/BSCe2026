@@ -13,7 +13,7 @@ class wm_4(wm):
     O = O(Time)
 
     dF = R dt
-    dR = (r_F F + r_U U + r_R R) dt
+    dR = (r_0 + r_F F + r_U U + r_R R) dt
     I = O + R
 
     The structural model and parameter fit are deterministic. Constant additive
