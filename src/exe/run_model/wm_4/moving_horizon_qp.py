@@ -7,44 +7,68 @@ import pandas as pd
 from scipy.stats import norm, t
 
 from src.exe.run_model.wm_4.moving_horizon_common import OUTPUT, GROUPS, baseline_before, fit_row, group_frame, origins, plot_parameter_time, save_table, window_data
-from src.params.wm_4 import qp_params
+from src.params.wm_4 import optimized_qp_params, qp_params
 
 
-def fit_windows(group, start, end, stride, steps_per_hour, f0_grid, max_origins=0, fail_fast=False):
+def fit_windows(group, start, end, stride, steps_per_hour, f0_grid, max_origins=0, fail_fast=False,
+                max_state_iter=50, state_tol=1e-8, sensitivity_stride=1):
+    """Fit alternating QP parameters and states; F0 grid points are *seeds*, not fixed states."""
     frame = group_frame(group)
     cache, rows, failures = {}, [], []
     timeline = origins(start, end, stride)
     if max_origins: timeline = timeline[:max_origins]
+    if sensitivity_stride < 1: raise ValueError("sensitivity_stride must be at least 1.")
 
     for count, origin in enumerate(timeline, start=1):
         try:
             baseline = baseline_before(frame, origin, cache)
             model, data, _, observed = window_data(frame, origin - pd.Timedelta(hours=24), baseline, steps_per_hour)
-            fitter = qp_params(model)
-            observed_r0 = float(data["I"][0] - data["O"][0])
-            fit_zero = fitter.fit(data, [0.0, 0.0])
-            fit_observed = fitter.fit(data, [0.0, observed_r0])
-            fit_zero_intercept = fitter.fit(data, [0.0, 0.0], fit_intercept=True)
-            fit_observed_intercept = fitter.fit(data, [0.0, observed_r0], fit_intercept=True)
-            fits = (("zero", fit_zero), ("observed", fit_observed),
-                    ("zero_intercept", fit_zero_intercept), ("observed_intercept", fit_observed_intercept))
-            for name, fit in fits: rows.append(fit_row(group, origin, name, fit, observed, steps_per_hour))
-            grid_rows = []
-            for f0 in f0_grid:
-                fit = fit_observed if np.isclose(f0, 0.0, atol=1e-12) else fitter.fit(data, [float(f0), observed_r0])
-                entry = fit_row(group, origin, "f0_grid", fit, observed, steps_per_hour, f0_grid=float(f0))
-                grid_rows.append(entry)
-            rows.extend(grid_rows)
-            selected = dict(min(grid_rows, key=lambda row: row["fit_mse"]))
-            selected["variant"] = "grid_best"
-            rows.append(selected)
-            if count % 24 == 0: print(f"[qp] {group} {count}/{len(timeline)} origins; latest={origin}")
+            fixed = qp_params(model)
+            sequential = optimized_qp_params(model)
+            observed_R0 = float(data["I"][0] - data["O"][0])
+            alternating_kwargs = {
+                "fit_initial_state": True, "max_state_iter": max_state_iter, "state_tol": state_tol,
+                "f_bounds": (-1.0, 1.0), "r_bounds": (-1.0, 1.0),
+            }
+            # The initial [F0, R0] is a seed; the alternating QP re-estimates both states.
+            fit_zero = sequential.fit(data, [0.0, 0.0], **alternating_kwargs)
+            fit_observed = sequential.fit(data, [0.0, observed_R0], **alternating_kwargs)
+            rows.append(fit_row(group, origin, "zero", fit_zero, observed, steps_per_hour))
+            rows.append(fit_row(group, origin, "observed", fit_observed, observed, steps_per_hour))
+
+            # Separate fixed-state ablations are retained for the r_0 hypothesis test:
+            # optimizing r_0 and unrestricted F_0 together creates exact location non-identifiability.
+            fit_zero_fixed = fixed.fit(data, [0.0, 0.0])
+            fit_observed_fixed = fixed.fit(data, [0.0, observed_R0])
+            fit_zero_intercept = fixed.fit(data, [0.0, 0.0], fit_intercept=True)
+            fit_observed_intercept = fixed.fit(data, [0.0, observed_R0], fit_intercept=True)
+            for name, fit in (
+                ("zero_fixed", fit_zero_fixed), ("observed_fixed", fit_observed_fixed),
+                ("zero_intercept", fit_zero_intercept), ("observed_intercept", fit_observed_intercept),
+            ):
+                rows.append(fit_row(group, origin, name, fit, observed, steps_per_hour))
+
+            # Independently initialize and fully converge the alternating QP from every F0 guess.
+            # This is a basin-of-attraction / seed-sensitivity experiment, not a fixed-F0 profile.
+            if (count - 1) % sensitivity_stride == 0:
+                grid_rows = []
+                for F0_seed in f0_grid:
+                    fit = (fit_observed if np.isclose(F0_seed, 0.0, atol=1e-12)
+                           else sequential.fit(data, [float(F0_seed), observed_R0], **alternating_kwargs))
+                    entry = fit_row(group, origin, "f0_grid", fit, observed, steps_per_hour, f0_grid=float(F0_seed))
+                    grid_rows.append(entry)
+                rows.extend(grid_rows)
+                # Selection uses the same transition-residual objective as the alternating QP.
+                selected = dict(min(grid_rows, key=lambda row: row["qp_loss"]))
+                selected["variant"] = "grid_best"
+                rows.append(selected)
+            if count % 24 == 0:
+                print(f"[qp sequential] {group} {count}/{len(timeline)} origins; latest={origin}")
         except (ValueError, RuntimeError, np.linalg.LinAlgError) as exc:
             if fail_fast: raise
             failures.append({"group": group, "origin": origin, "error": str(exc)})
-            print(f"[qp] {group} {origin} skipped: {exc}")
+            print(f"[qp sequential] {group} {origin} skipped: {exc}")
     return rows, failures
-
 
 def hac_inference(values, alpha=0.05, lag=24, equivalence_margin=None):
     values = np.asarray(values, dtype=float)
@@ -83,8 +107,8 @@ def hac_inference(values, alpha=0.05, lag=24, equivalence_margin=None):
 def save_r0_analysis(frame, output, alpha, hac_lag, equivalence_margin):
     rows = []
     for group, data in frame.groupby("group"):
-        pairs = data.loc[data["variant"].isin(("observed", "observed_intercept"))]
-        free = pairs.loc[pairs["variant"] == "observed"].set_index("origin")
+        pairs = data.loc[data["variant"].isin(("observed_fixed", "observed_intercept"))]
+        free = pairs.loc[pairs["variant"] == "observed_fixed"].set_index("origin")
         intercept = pairs.loc[pairs["variant"] == "observed_intercept"].set_index("origin")
         matched = free[["fit_mse"]].join(intercept[["r_0", "fit_mse"]], how="inner", lsuffix="_free", rsuffix="_intercept")
         if len(matched) < 3: continue
@@ -117,44 +141,70 @@ def save_r0_analysis(frame, output, alpha, hac_lag, equivalence_margin):
 
 
 def save_sensitivity(frame, output):
+    """Analyse convergence *from* each F0 seed, including recovered state and parameters."""
     for group, data in frame.groupby("group"):
         grid = data.loc[data["variant"] == "f0_grid"].copy()
         if grid.empty: continue
-        summary = grid.groupby("F_0_grid", as_index=False).agg({
-            "r_F": ["mean", "std"], "r_U": ["mean", "std"], "r_R": ["mean", "std"],
-            "fit_mse": ["mean", "std"],
-        })
+        keys = ("r_F", "r_U", "r_R", "F_0", "R_0", "qp_loss", "fit_mse", "state_iterations")
+        summary = grid.groupby("F_0_grid", as_index=False).agg({key: ["mean", "std"] for key in keys})
         summary.columns = ["F_0_grid"] + [f"{a}_{b}" for a, b in summary.columns.to_list()[1:]]
-        summary.to_csv(output / f"{group.lower()}_f0_sensitivity_summary.csv", index=False)
-        best = data.loc[data["variant"] == "grid_best", ["origin", "F_0", "fit_mse"]]
+        summary.to_csv(output / f"{group.lower()}_f0_seed_sensitivity_summary.csv", index=False)
+
+        # A per-window spread isolates initialization effects from genuine across-window variability.
+        spread_rows = []
+        for origin, subset in grid.groupby("origin"):
+            row = {"origin": origin, "seeds": len(subset),
+                   "converged_fraction": float(subset["state_converged"].astype(bool).mean())}
+            for key in keys:
+                values = subset[key].to_numpy(dtype=float)
+                row[f"{key}_seed_range"] = float(np.max(values) - np.min(values))
+                row[f"{key}_seed_std"] = float(np.std(values))
+            spread_rows.append(row)
+        spread = pd.DataFrame(spread_rows).sort_values("origin")
+        spread.to_csv(output / f"{group.lower()}_f0_seed_per_window_spread.csv", index=False)
+        best = data.loc[data["variant"] == "grid_best",
+                        ["origin", "F_0_seed", "R_0_seed", "F_0", "R_0", "qp_loss", "fit_mse", "state_iterations", "state_converged"]]
         best.to_csv(output / f"{group.lower()}_f0_selected.csv", index=False)
 
-        fig, axes = plt.subplots(4, 1, figsize=(11, 15), sharex=True)
-        for ax, key in zip(axes, ("r_F", "r_U", "r_R", "fit_mse")):
-            x, y = summary["F_0_grid"].to_numpy(dtype=float), summary[f"{key}_mean"].to_numpy(dtype=float)
-            ax.plot(x, y, marker="o", label="Window-mean estimate")
-            std = summary[f"{key}_std"].fillna(0.0).to_numpy(dtype=float)
-            ax.fill_between(x, y - std, y + std, alpha=0.2, label="Across-window SD")
-            ax.set_ylabel(key); ax.grid(True, alpha=0.2); ax.legend()
-        axes[-1].set_xlabel("Fixed initial flexibility F_0 (one window only)")
-        fig.suptitle(f"{group}: QP parameter sensitivity to F_0")
+        fig, axes = plt.subplots(len(keys), 1, figsize=(12, 24), sharex=True)
+        for ax, key in zip(axes, keys):
+            x = summary["F_0_grid"].to_numpy(dtype=float)
+            y = summary[f"{key}_mean"].to_numpy(dtype=float)
+            sd = summary[f"{key}_std"].fillna(0.0).to_numpy(dtype=float)
+            ax.plot(x, y, marker="o", label="Across-window mean after convergence")
+            ax.fill_between(x, y - sd, y + sd, alpha=0.2, label="Across-window SD")
+            if key == "F_0": ax.plot(x, x, linestyle="--", linewidth=1, label="Initial guess")
+            ax.set_ylabel("final " + key); ax.grid(True, alpha=0.2); ax.legend()
+        axes[-1].set_xlabel("Initial F_0 guess supplied to alternating QP")
+        fig.suptitle(f"{group}: alternating QP sensitivity to initial F0 seed")
         fig.tight_layout(); fig.savefig(output / f"{group.lower()}_f0_parameter_sensitivity.png", dpi=180); plt.close(fig)
 
+        fig, axes = plt.subplots(3, 1, figsize=(15, 10), sharex=True)
+        for ax, key in zip(axes, ("r_F", "r_U", "r_R")):
+            ax.plot(spread["origin"], spread[f"{key}_seed_range"], label=f"{key} range across converged seeds")
+            ax.set_ylabel(key + " seed range"); ax.grid(True, alpha=0.2); ax.legend()
+        axes[-1].set_xlabel("Fit origin")
+        fig.suptitle(f"{group}: within-window sensitivity to sequential-fit initial guesses")
+        fig.tight_layout(); fig.savefig(output / f"{group.lower()}_f0_seed_within_window_spread.png", dpi=180); plt.close(fig)
+
         fig, ax = plt.subplots(figsize=(15, 5))
-        ax.plot(best["origin"], best["F_0"], label="Per-window lowest fitting MSE")
+        ax.plot(best["origin"], best["F_0_seed"], label="Best seed by final QP loss")
+        ax.plot(best["origin"], best["F_0"], label="Corresponding optimized F_0", alpha=0.8)
         ax.axhline(0.0, linestyle="--")
-        ax.set_ylim(-1.1, 1.1); ax.set_title(f"{group}: independent per-window selected F_0")
+        ax.set_ylim(-1.1, 1.1); ax.set_title(f"{group}: selected initial guess versus optimized F_0")
         ax.set_xlabel("Origin"); ax.set_ylabel("F_0"); ax.grid(True, alpha=0.2); ax.legend()
         fig.tight_layout(); fig.savefig(output / f"{group.lower()}_f0_selected_time.png", dpi=180); plt.close(fig)
 
-
 def main():
-    parser = ArgumentParser(description="Hourly 24-hour moving WM4 constrained-QP fit: intercept null test and initial F0 sensitivity.")
+    parser = ArgumentParser(description="Hourly 24-hour moving alternating-QP WM4 fit: drift-intercept test and sequential-fit seed sensitivity.")
     parser.add_argument("--start", default="2022-02-28")
     parser.add_argument("--end", default="2022-08-22 23:00")
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--steps-per-hour", type=int, default=4)
     parser.add_argument("--f0-steps", type=int, default=21)
+    parser.add_argument("--sensitivity-stride", type=int, default=1, help="Evaluate the full alternating QP F0-seed sweep every N fitting origins; default every origin.")
+    parser.add_argument("--max-state-iter", type=int, default=50)
+    parser.add_argument("--state-tol", type=float, default=1e-8)
     parser.add_argument("--max-origins", type=int, default=0)
     parser.add_argument("--alpha", type=float, default=0.05)
     parser.add_argument("--hac-lag", type=int, default=24)
@@ -164,12 +214,15 @@ def main():
     args = parser.parse_args()
     if args.f0_steps < 3 or args.f0_steps % 2 != 1: raise ValueError("f0-steps must be odd and at least 3 so the grid includes 0.")
     if not 0.0 < args.alpha < 1.0 or args.hac_lag < 0: raise ValueError("Invalid alpha or HAC lag.")
+    if args.sensitivity_stride < 1 or args.max_state_iter < 1 or args.state_tol <= 0.0: raise ValueError("Invalid alternating fitting settings.")
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     all_rows, failures = [], []
     for group in GROUPS:
         rows, missed = fit_windows(group, args.start, args.end, args.stride, args.steps_per_hour,
-                                  np.linspace(-1.0, 1.0, args.f0_steps), args.max_origins, args.fail_fast)
+                                  np.linspace(-1.0, 1.0, args.f0_steps), args.max_origins, args.fail_fast,
+                                  max_state_iter=args.max_state_iter, state_tol=args.state_tol,
+                                  sensitivity_stride=args.sensitivity_stride)
         all_rows.extend(rows); failures.extend(missed)
         if rows: save_table(rows, output / f"{group.lower()}_fit_parameters.csv")
     save_table(all_rows, output / "fit_parameters.csv")
