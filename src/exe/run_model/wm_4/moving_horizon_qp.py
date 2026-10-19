@@ -131,9 +131,9 @@ def save_sensitivity(frame, output):
 
         fig, axes = plt.subplots(4, 1, figsize=(11, 15), sharex=True)
         for ax, key in zip(axes, ("r_F", "r_U", "r_R", "fit_mse")):
-            x, y = summary["F_0_grid"], summary[f"{key}_mean"]
+            x, y = summary["F_0_grid"].to_numpy(dtype=float), summary[f"{key}_mean"].to_numpy(dtype=float)
             ax.plot(x, y, marker="o", label="Window-mean estimate")
-            std = summary[f"{key}_std"].fillna(0.0)
+            std = summary[f"{key}_std"].fillna(0.0).to_numpy(dtype=float)
             ax.fill_between(x, y - std, y + std, alpha=0.2, label="Across-window SD")
             ax.set_ylabel(key); ax.grid(True, alpha=0.2); ax.legend()
         axes[-1].set_xlabel("Fixed initial flexibility F_0 (one window only)")
