@@ -72,6 +72,10 @@ class wm_4_validation(wm_1_validation):
         kappa_R = -r[2]
         validated["kappa_R"] = float(kappa_R)
         validated["q"] = r[:2] / kappa_R
+        r_0 = cls._finite_scalar(validated.get("r_0", 0.0), "r_0")
+        if abs(r_0) - r[1] > -r[0] + 1e-8: raise ValueError("WM4 intercept violates the [-1,1] flexibility equilibrium restriction.")
+        if abs(r_0) - r[0] - r[1] > -r[2] + 1e-8: raise ValueError("WM4 intercept violates the [-1,1] rate equilibrium restriction.")
+        validated["r_0"] = r_0
         return validated
 
     @classmethod
