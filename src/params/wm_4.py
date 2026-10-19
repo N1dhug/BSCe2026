@@ -306,7 +306,7 @@ class optimized_qp_params(qp_params):
             "r": r.copy(), "deterministic_state": state, "observed_state": observed[0],
             "recovered_model_loss": deterministic_loss, "deterministic_loss": deterministic_loss,
             "structural_viable": True, "initial_rate_mismatch": observed[0]["initial_rate_mismatch"],
-            "state_optimization_history": history, "state_iterations": len(history),
+            "state_optimization_history": history, "state_iterations": len(history), "state_tol": float(state_tol),
         }
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         result["fit_method"] = "optimized_qp" if fit_initial_state else "qp"
@@ -352,7 +352,7 @@ class optimized_qp_params(qp_params):
             "recovered_model_loss": deterministic_loss, "deterministic_loss": deterministic_loss,
             "structural_viable": True, "fit_trajectories": len(datasets),
             "initial_rate_mismatch": np.asarray([state["initial_rate_mismatch"] for state in observed], dtype=float),
-            "state_optimization_history": history, "state_iterations": len(history),
+            "state_optimization_history": history, "state_iterations": len(history), "state_tol": float(state_tol),
         }
         if fit_initial_state:
             prediction_state = self.estimate_prediction_initial_state(result["init_cond"])
@@ -594,7 +594,7 @@ class brute_force_params(qp_params):
             "structural_viable": True, "fit_trajectories": len(datasets),
             "initial_rate_mismatch": np.asarray([state["initial_rate_mismatch"] for state in observed], dtype=float),
             "F0": f0_values, "f0_grid": grid.copy(), "f0_profile": profiles,
-            "state_optimization_history": history, "state_iterations": len(history),
+            "state_optimization_history": history, "state_iterations": len(history), "state_tol": float(state_tol),
         }
         result = self._finish_result(result, qp_loss, qp_solve_time, fit_start, stabilize)
         result["fit_method"] = "brute_force_many"
