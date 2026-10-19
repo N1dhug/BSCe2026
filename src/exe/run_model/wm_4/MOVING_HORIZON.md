@@ -20,19 +20,57 @@ Both fitters use exactly 24 hourly observations in each trailing window, advanci
 
 By default the internal deterministic Euler time step is one quarter-hour (`--steps-per-hour 4`); set `--steps-per-hour 60` to reproduce the minute-resolution convention used by existing WM4 daily executables. The 24 observations occur at indices `[0, sph, ..., 23*sph]`; the unobserved hour-24 endpoint is not scored. In the QP, transitions beyond the last observed hour are excluded. The fit and oracle use identical grids and the same historical baseline at each prediction origin. `fit_bias` and `bias` are *predicted minus observed*.
 
-## QP initialization and structural intercept
+## Sequential QP optimization, initialization sensitivity and structural intercept
 
-The standard deterministic model is
+The default deterministic model is
 `dF/dt=R; dR/dt=r_F F+r_U U+r_R R; I=O+R`.
+For the **main QP variants** `zero` and `observed`, the executable now calls
+`optimized_qp_params.fit(..., fit_initial_state=True)`. Every 24-hour window
+iterates between (i) a constrained QP fit for `r_F,r_U,r_R` at fixed
+`[F_0,R_0]`, and (ii) a bounded QP fit for **both** initial states
+`F_0,R_0 in [-1,1]`, at the fitted coefficients. Iteration continues until
+the state and rate-residual objective changes fall below `--state-tol`, or
+`--max-state-iter` is reached.
 
-With `fit_intercept=True` it becomes
-`dR/dt=r_0+r_F F+r_U U+r_R R`. The constant `r_0` is **not** the rate initial condition `R_0`. An intercept-free fitter fixes `r_0=0`, and both models use the signed equilibrium restrictions. The QP includes the additional linear constraints
-`r_F-r_U+|r_0|<=0` and `r_R-r_F-r_U+|r_0|<=0`
-(written as four linear inequalities).
+`zero` initializes this alternating fit from `[F_0,R_0]=[0,0]`.
+`observed` initializes from `[0,I_0-O_0]`. Neither seed fixes
+the initial state during the final fit. The saved `F_0_seed`, `R_0_seed`
+and fitted `F_0`, `R_0` columns distinguish starting guesses from results.
 
-The QP executable saves `zero` and `observed` initializations (fixed `F_0=0`; `R_0=0` or measured `I_0-O_0`), and `zero_intercept` and `observed_intercept` ablations. Only QP performs the `F_0` sensitivity sweep: it evaluates a configurable symmetric grid in `[-1,1]` with observed `R_0` **separately within each window**. The additional `grid_best` row selects the minimum free-run in-window MSE among that window's grid candidates. No state is propagated to the next window, and `grid_best` is an in-sample diagnostic rather than a deployable state estimator.
+The **F0 sensitivity test** re-runs the entire alternating parameter/state
+optimization from a configurable symmetric grid of **starting guesses**
+`F_0_seed in [-1,1]`, always with `R_0_seed=I_0-O_0`. These guesses
+do not constrain the final fitted `F_0`: they probe sensitivity to starting
+conditions, convergence basins, and optimization stability. Each fitting window
+is processed independently, with no state propagated from any earlier window.
+The `f0_grid` rows record all converged solutions and optimizer diagnostics.
+The `grid_best` row chooses the smallest **final QP transition loss** among
+the seeds, which matches the alternating fit objective; it does not choose
+the smallest deterministic consumption MSE. The seed-response plot now
+shows the final parameters **and fitted states** versus initial `F_0_seed`,
+and the saved per-window spread measures variability across seeds in the
+*same* 24-hour window (rather than confounding it with across-window changes).
+A full sensitivity sweep for every hourly origin is the default; to reduce
+the substantial additional QP compute, use `--sensitivity-stride 24`
+to evaluate it once every 24 origins, while still fitting the main sequential
+QP parameters hourly.
 
-The optional intercept null analysis tests `H0: E[r_0_hat]=0`, based on the `observed_intercept` fits. It reports IID t-tests for reference and HAC/Newey-West standard errors with default lag 24 for overlapping hourly windows. A non-significant mean test does **not** demonstrate the structural term is unnecessary; in-window loss comparisons and the out-of-sample parameter/oracle benchmarks should also be examined. Set `--equivalence-margin M` for an additional practical-equivalence TOST around zero.
+**Separate fixed-state intercept ablations** are retained to study the
+drift constant. The variants `zero_fixed` and `observed_fixed` fit
+the intercept-free model at the specified fixed initial states; the
+`zero_intercept` and `observed_intercept` variants allow the additional
+constant `r_0` in `dR/dt` while retaining the same fixed starting states.
+The intercept QP includes
+`r_F-r_U+|r_0|<=0` and `r_R-r_F-r_U+|r_0|<=0`,
+enforced as four linear inequalities. The null analysis compares **only**
+`observed_fixed` against `observed_intercept` on matched fitting windows,
+using HAC/Newey-West standard errors with configurable lag 24. It **does not**
+compare a fixed-state intercept fit against the freely optimized-state
+sequential fit, because `r_0` is structurally confounded with the origin
+of freely optimized `F_0`. A non-significant zero-mean intercept test does
+not alone prove the constant is structurally unnecessary; the model-fit and
+oracle benchmarks are also relevant. Set `--equivalence-margin M` to test
+a user-chosen practical equivalence band around zero.
 
 ## Numerical fitter
 
@@ -42,6 +80,6 @@ The optional intercept null analysis tests `H0: E[r_0_hat]=0`, based on the `obs
 
 `compare_oracle_predictions.py` reads the saved parameter CSVs, and optimizes **both** `F_0,R_0 in [-1,1]` against the next 24 hourly observations, independently for each fixed fitted parameter vector. It reuses `optimized_qp_params.optimize_prediction_initial_state`: conditional on fixed WM4 coefficients, the consumption trajectory is affine in initial state, so the oracle is another convex constrained least-squares QP.
 
-The primary apples-to-apples comparison is `qp/zero` against `numerical/zero` with `r_0=0`, restricted to common hourly prediction origins. Additional intercept and QP-F0 scenarios are saved separately. Outputs include fitted-parameter CSV files, fitting MSE/RMSE/MAE/bias, QP transition residual loss, convergence/runtime diagnostics, fitted intercept distributions and HAC tests, F0 sensitivity charts, oracle state trajectories, 24-hour per-origin scores, *pooled* aggregate RMSE, empirical 20/40/60/80% quintile boundaries of per-window RMSE, and RMSE by forecast hour.
+The primary comparison is `qp/zero` (alternating QP initialized at `[0,0]`, with **optimized historical initial state**) against `numerical/zero` (top-down parameter fit with **fixed historical initial state** `[0,0]`) with `r_0=0`, restricted to common hourly prediction origins. They optimize different parameter-fitting objectives and impose different historical-state fitting conditions by design; they are not a controlled comparison of parameter optimizers under identical state assumptions. For a fixed-state comparator, use the `zero_fixed` QP variant. Additional intercept and QP-F0 scenarios are saved separately. Outputs include fitted-parameter CSV files, fitting MSE/RMSE/MAE/bias, QP transition residual loss, convergence/runtime diagnostics, fitted intercept distributions and HAC tests, F0 sensitivity charts, oracle state trajectories, 24-hour per-origin scores, *pooled* aggregate RMSE, empirical 20/40/60/80% quintile boundaries of per-window RMSE, and RMSE by forecast hour.
 
 **Interpretation:** Oracle-state performance uses future observations and is an optimistic upper-bound-style diagnostic, not a feasible operational forecast. The two parameter fitters have distinct objective functions: direct consumption error versus reconstructed state-rate residuals. Both must be assessed against identical oracle state selection and matched data windows. The current experiment intentionally omits synthetic-data tests.
