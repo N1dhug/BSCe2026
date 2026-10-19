@@ -129,6 +129,113 @@ class statistical_output:
         return np.clip(X @ self.coef, 0.0, 1.0)
 
 
+
+class weekly_average:
+    """Historical weekday/hour means O(t)=L(weekday, hour)."""
+
+    def __init__(self):
+        self.coef = None
+        self.metadata = None
+        self.levels = None
+        self.base_temperature = 18.0
+        self.beta_C = 0.0
+        self.chill_center = 0.0
+
+    @staticmethod
+    def _index(index):
+        index = pd.DatetimeIndex(index)
+        if index.empty or index.hasnans: raise ValueError("A non-empty datetime index without NaT is required.")
+        return index
+
+    @staticmethod
+    def _temperature(temperature, n):
+        values = np.asarray(temperature, dtype=float).reshape(-1)
+        if values.size != n or not np.all(np.isfinite(values)): raise ValueError("Temperature must contain one finite value per timestamp.")
+        return values
+
+    @staticmethod
+    def _groups(index):
+        return index.dayofweek.to_numpy(dtype=int) * 24 + index.hour.to_numpy(dtype=int)
+
+    @staticmethod
+    def _profile(groups, values):
+        counts = np.bincount(groups, minlength=168)
+        sums = np.bincount(groups, weights=values, minlength=168)
+        hours = groups % 24
+        hour_counts = np.bincount(hours, minlength=24)
+        hour_sums = np.bincount(hours, weights=values, minlength=24)
+        hour_means = np.divide(hour_sums, hour_counts, out=np.full(24, np.mean(values)), where=hour_counts > 0)
+        fallback = hour_means[np.arange(168) % 24]
+        return np.divide(sums, counts, out=fallback.copy(), where=counts > 0)
+
+    def _training(self, frame, end):
+        if not isinstance(frame, pd.DataFrame): raise TypeError("frame must be a pandas DataFrame.")
+        missing = [name for name in ("I", "Temp") if name not in frame.columns]
+        if missing: raise ValueError("frame is missing required columns: " + ", ".join(missing) + ".")
+        self._index(frame.index)
+        end = pd.Timestamp(end)
+        if pd.isna(end): raise ValueError("end must be a valid timestamp.")
+        train = frame.loc[frame.index < end, ["I", "Temp"]].dropna().copy()
+        if len(train) < 7 * 24: raise ValueError("At least seven days of historical I/temperature observations are required to fit O.")
+        if not np.all(np.isfinite(train[["I", "Temp"]].to_numpy(dtype=float))): raise ValueError("Training data must be finite.")
+        return train
+
+    def _finish(self, train, features):
+        temp = train["Temp"].to_numpy(dtype=float)
+        y = train["I"].to_numpy(dtype=float)
+        residual = y - self.predict(train.index, temp)
+        self.metadata = {
+            "fit_start": train.index.min(), "fit_end": train.index.max(), "samples": int(len(train)),
+            "features": int(features), "iterations": 1, "ridge": 0.0, "huber_delta": None,
+            "base_temperature": self.base_temperature,
+            "temperature_min": float(np.min(temp)), "temperature_max": float(np.max(temp)),
+            "mse": float(np.mean(residual * residual)), "mae": float(np.mean(np.abs(residual))),
+        }
+        return self
+
+    def fit(self, frame, end):
+        train = self._training(frame, end)
+        groups = self._groups(train.index)
+        self.levels = self._profile(groups, train["I"].to_numpy(dtype=float))
+        self.beta_C, self.chill_center = 0.0, 0.0
+        self.coef = self.levels.copy()
+        return self._finish(train, 168)
+
+    def predict(self, index, temperature):
+        if self.coef is None: raise RuntimeError(f"{type(self).__name__} must be fitted before prediction.")
+        index = self._index(index)
+        temp = self._temperature(temperature, len(index))
+        chill = np.maximum(0.0, self.base_temperature - temp)
+        return np.clip(self.levels[self._groups(index)] + self.beta_C * (chill - self.chill_center), 0.0, 1.0)
+
+
+class weekly_temperature(weekly_average):
+    """Weekday/hour fixed effects and one global linear heating-degree response."""
+
+    def __init__(self, base_temperature=18.0):
+        super().__init__()
+        self.base_temperature = float(base_temperature)
+        if not np.isfinite(self.base_temperature): raise ValueError("base_temperature must be finite.")
+
+    def fit(self, frame, end):
+        train = self._training(frame, end)
+        groups = self._groups(train.index)
+        y = train["I"].to_numpy(dtype=float)
+        chill = np.maximum(0.0, self.base_temperature - train["Temp"].to_numpy(dtype=float))
+        mean_y = self._profile(groups, y)
+        mean_C = self._profile(groups, chill)
+        centered_y, centered_C = y - mean_y[groups], chill - mean_C[groups]
+        denominator = float(np.dot(centered_C, centered_C))
+        self.beta_C = float(np.dot(centered_C, centered_y) / denominator) if denominator > 1e-12 else 0.0
+        self.chill_center = float(np.mean(chill))
+        self.levels = mean_y - self.beta_C * (mean_C - self.chill_center)
+        self.coef = np.r_[self.levels, self.beta_C]
+        self._finish(train, 169)
+        self.metadata["beta_C"] = self.beta_C
+        self.metadata["chill_center"] = self.chill_center
+        return self
+
+
 def output_callable(index, values):
     index = pd.DatetimeIndex(index)
     values = np.asarray(values, dtype=float).reshape(-1)
