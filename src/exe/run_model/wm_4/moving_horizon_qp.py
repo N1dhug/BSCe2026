@@ -59,7 +59,8 @@ def fit_windows(group, start, end, stride, steps_per_hour, f0_grid, max_origins=
                     grid_rows.append(entry)
                 rows.extend(grid_rows)
                 # Selection uses the same transition-residual objective as the alternating QP.
-                selected = dict(min(grid_rows, key=lambda row: row["qp_loss"]))
+                converged = [row for row in grid_rows if row["state_converged"]]
+                selected = dict(min(converged if converged else grid_rows, key=lambda row: row["qp_loss"]))
                 selected["variant"] = "grid_best"
                 rows.append(selected)
             if count % 24 == 0:
@@ -146,19 +147,24 @@ def save_sensitivity(frame, output):
         grid = data.loc[data["variant"] == "f0_grid"].copy()
         if grid.empty: continue
         keys = ("r_F", "r_U", "r_R", "F_0", "R_0", "qp_loss", "fit_mse", "state_iterations")
-        summary = grid.groupby("F_0_grid", as_index=False).agg({key: ["mean", "std"] for key in keys})
+        converged_grid = grid.loc[grid["state_converged"] == True].copy()
+        if converged_grid.empty:
+            print(f"[qp sequential] {group}: no converged grid runs; skipping seed sensitivity means.")
+            continue
+        summary = converged_grid.groupby("F_0_grid", as_index=False).agg({key: ["mean", "std"] for key in keys})
         summary.columns = ["F_0_grid"] + [f"{a}_{b}" for a, b in summary.columns.to_list()[1:]]
         summary.to_csv(output / f"{group.lower()}_f0_seed_sensitivity_summary.csv", index=False)
 
         # A per-window spread isolates initialization effects from genuine across-window variability.
         spread_rows = []
-        for origin, subset in grid.groupby("origin"):
-            row = {"origin": origin, "seeds": len(subset),
-                   "converged_fraction": float(subset["state_converged"].astype(bool).mean())}
+        for origin, subset_all in grid.groupby("origin"):
+            subset = subset_all.loc[subset_all["state_converged"] == True]
+            row = {"origin": origin, "seeds": len(subset_all), "converged_seeds": len(subset),
+                   "converged_fraction": float(len(subset) / len(subset_all))}
             for key in keys:
                 values = subset[key].to_numpy(dtype=float)
-                row[f"{key}_seed_range"] = float(np.max(values) - np.min(values))
-                row[f"{key}_seed_std"] = float(np.std(values))
+                row[f"{key}_seed_range"] = float(np.max(values) - np.min(values)) if values.size else np.nan
+                row[f"{key}_seed_std"] = float(np.std(values)) if values.size else np.nan
             spread_rows.append(row)
         spread = pd.DataFrame(spread_rows).sort_values("origin")
         spread.to_csv(output / f"{group.lower()}_f0_seed_per_window_spread.csv", index=False)
@@ -171,7 +177,7 @@ def save_sensitivity(frame, output):
             x = summary["F_0_grid"].to_numpy(dtype=float)
             y = summary[f"{key}_mean"].to_numpy(dtype=float)
             sd = summary[f"{key}_std"].fillna(0.0).to_numpy(dtype=float)
-            ax.plot(x, y, marker="o", label="Across-window mean after convergence")
+            ax.plot(x, y, marker="o", label="Across-window mean (converged runs)")
             ax.fill_between(x, y - sd, y + sd, alpha=0.2, label="Across-window SD")
             if key == "F_0": ax.plot(x, x, linestyle="--", linewidth=1, label="Initial guess")
             ax.set_ylabel("final " + key); ax.grid(True, alpha=0.2); ax.legend()
