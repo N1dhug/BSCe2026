@@ -11,7 +11,7 @@ python -m src.exe.run_model.wm_4.compare_oracle_predictions
 For a quick *real-data* smoke run (no synthetic datasets or synthetic-data tests):
 
 ```bash
-python -m src.exe.run_model.wm_4.moving_horizon_qp --max-origins 3 --f0-steps 5
+python -m src.exe.run_model.wm_4.moving_horizon_qp --max-origins 3 --f0-steps 5 --max-state-iter 30
 python -m src.exe.run_model.wm_4.moving_horizon_numerical --max-origins 3
 python -m src.exe.run_model.wm_4.compare_oracle_predictions --max-origins 3
 ```
@@ -50,10 +50,14 @@ the smallest deterministic consumption MSE. The seed-response plot now
 shows the final parameters **and fitted states** versus initial `F_0_seed`,
 and the saved per-window spread measures variability across seeds in the
 *same* 24-hour window (rather than confounding it with across-window changes).
-A full sensitivity sweep for every hourly origin is the default; to reduce
-the substantial additional QP compute, use `--sensitivity-stride 24`
-to evaluate it once every 24 origins, while still fitting the main sequential
-QP parameters hourly.
+A full sensitivity sweep for every hourly origin is the default; this is far
+more computationally expensive than a fixed-state QP. For a practical first
+full-period run, use `--sensitivity-stride 24` to examine sensitivity every
+24 fitting origins while still fitting the main sequential QP parameters
+hourly. Use `--sensitivity-stride 1` if results are needed for every hour.
+The sensitivity means and per-origin seed-spreads only include runs meeting
+the alternating optimizer's convergence tolerance; unconverged attempts remain
+in the raw fit CSV with their iteration counts and convergence flags.
 
 **Separate fixed-state intercept ablations** are retained to study the
 drift constant. The variants `zero_fixed` and `observed_fixed` fit
@@ -80,6 +84,6 @@ a user-chosen practical equivalence band around zero.
 
 `compare_oracle_predictions.py` reads the saved parameter CSVs, and optimizes **both** `F_0,R_0 in [-1,1]` against the next 24 hourly observations, independently for each fixed fitted parameter vector. It reuses `optimized_qp_params.optimize_prediction_initial_state`: conditional on fixed WM4 coefficients, the consumption trajectory is affine in initial state, so the oracle is another convex constrained least-squares QP.
 
-The primary comparison is `qp/zero` (alternating QP initialized at `[0,0]`, with **optimized historical initial state**) against `numerical/zero` (top-down parameter fit with **fixed historical initial state** `[0,0]`) with `r_0=0`, restricted to common hourly prediction origins. They optimize different parameter-fitting objectives and impose different historical-state fitting conditions by design; they are not a controlled comparison of parameter optimizers under identical state assumptions. For a fixed-state comparator, use the `zero_fixed` QP variant. Additional intercept and QP-F0 scenarios are saved separately. Outputs include fitted-parameter CSV files, fitting MSE/RMSE/MAE/bias, QP transition residual loss, convergence/runtime diagnostics, fitted intercept distributions and HAC tests, F0 sensitivity charts, oracle state trajectories, 24-hour per-origin scores, *pooled* aggregate RMSE, empirical 20/40/60/80% quintile boundaries of per-window RMSE, and RMSE by forecast hour.
+The primary comparison is `qp/zero` (alternating QP initialized at `[0,0]`, with **optimized historical initial state**) against `numerical/zero` (top-down parameter fit with **fixed historical initial state** `[0,0]`) with `r_0=0`, restricted to common hourly prediction origins. They optimize different parameter-fitting objectives and impose different historical-state fitting conditions by design; they are not a controlled comparison of parameter optimizers under identical state assumptions. The oracle executable reports this controlled comparison automatically in `matched_fixed_oracle_summary.csv` and `paired_fixed_qp_numerical.csv`, in addition to its sequential-QP comparison. The `zero_fixed` QP variant is the fixed-state comparator. Additional intercept and QP-F0 scenarios are saved separately. Outputs include fitted-parameter CSV files, fitting MSE/RMSE/MAE/bias, QP transition residual loss, convergence/runtime diagnostics, fitted intercept distributions and HAC tests, F0 sensitivity charts, oracle state trajectories, 24-hour per-origin scores, *pooled* aggregate RMSE, empirical 20/40/60/80% quintile boundaries of per-window RMSE, and RMSE by forecast hour.
 
 **Interpretation:** Oracle-state performance uses future observations and is an optimistic upper-bound-style diagnostic, not a feasible operational forecast. The two parameter fitters have distinct objective functions: direct consumption error versus reconstructed state-rate residuals. Both must be assessed against identical oracle state selection and matched data windows. The current experiment intentionally omits synthetic-data tests.
