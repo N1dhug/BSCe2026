@@ -77,12 +77,22 @@ def fit_row(group, origin, variant, fit, observed, steps_per_hour, f0_grid=np.na
     quality = metrics(observed, prediction)
     r = np.asarray(fit["r"], dtype=float)
     init = np.asarray(fit["init_cond"], dtype=float)
+    seed = np.asarray(fit.get("initial_condition_seed", init), dtype=float)
+    history = fit.get("state_optimization_history", [])
+    final_iteration = history[-1] if history else None
+    state_converged = (bool(final_iteration is not None and final_iteration["max_state_change"] <= fit.get("state_tol", 1e-8) and final_iteration["loss_change"] <= fit.get("state_tol", 1e-8))
+                       if fit.get("fit_initial_state", False) else np.nan)
     return {
         "group": group, "origin": pd.Timestamp(origin), "variant": variant,
         "method": fit["fit_method"], "success": bool(fit.get("success", True)),
         "r_0": float(fit.get("r_0", 0.0)), "r_F": float(r[0]), "r_U": float(r[1]), "r_R": float(r[2]),
         "q_F": float(fit["q"][0]), "q_U": float(fit["q"][1]), "kappa_R": float(fit["kappa_R"]),
-        "F_0": float(init[0]), "R_0": float(init[1]), "F_0_grid": float(f0_grid),
+        "F_0": float(init[0]), "R_0": float(init[1]),
+        "F_0_seed": float(seed[0]), "R_0_seed": float(seed[1]),
+        "F_0_grid": float(f0_grid),
+        "fit_initial_state": bool(fit.get("fit_initial_state", False)),
+        "state_iterations": int(fit.get("state_iterations", 0)),
+        "state_converged": state_converged,
         "fit_intercept": bool(fit.get("fit_intercept", False)),
         "fit_mse": quality["mse"], "fit_rmse": quality["rmse"],
         "fit_mae": quality["mae"], "fit_bias": quality["bias"],
