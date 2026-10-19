@@ -9,7 +9,7 @@ from src.validation.model.wm_4 import wm_4_validation
 class wm_4(wm):
     """Water Model 4 with signed flexibility and price domains.
 
-    P_R = [F, U, R], dR/dt = r @ P_R
+    P_R = [F, U, R], dR/dt = r_0 + r @ P_R (r_0 defaults to 0)
     O = O(Time)
 
     dF = R dt
@@ -128,7 +128,7 @@ class wm_4(wm):
         for k in range(self.t_steps):
             P_R[k] = np.array([F[k], U[k], R[k]], dtype=float)
             R_dot[k] = r_0 + r @ P_R[k]
-            Q[k] = q @ np.array([F[k], U[k]], dtype=float)
+            Q[k] = r_0 / kappa_R + q @ np.array([F[k], U[k]], dtype=float)
             I[k] = O[k] + R[k]
             if gamma is not None:
                 P_A[k] = np.array([1.0 - U[k], I[k], F[k], 1.0 - PE[k]], dtype=float)
@@ -142,7 +142,7 @@ class wm_4(wm):
             "U": np.asarray(U, dtype=float).copy(), "PE": np.asarray(PE, dtype=float).copy(),
             "Time": np.asarray(Time, dtype=float).copy(), "O": np.asarray(O, dtype=float).copy(),
             "P_R": P_R, "P_A": P_A, "I": I, "A": A, "r": r.copy(),
-            "Q": Q, "q": q.copy(), "kappa_R": float(kappa_R), "r_0": float(r_0),
+            "Q": Q, "q": q.copy(), "q_0": float(r_0 / kappa_R), "kappa_R": float(kappa_R), "r_0": float(r_0),
         }
 
     def deterministic_solver(self, init_cond, parameters):
