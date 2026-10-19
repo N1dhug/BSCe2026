@@ -88,7 +88,11 @@ def fit_row(group, origin, variant, fit, observed, steps_per_hour, f0_grid=np.na
         "fit_mae": quality["mae"], "fit_bias": quality["bias"],
         "qp_loss": float(fit.get("qp_loss", np.nan)),
         "fit_time": float(fit.get("fit_time", fit.get("qp_fit_time", np.nan))),
-        "iterations": int(fit.get("iterations", 0)), "message": str(fit.get("message", "")),
+        "qp_solve_time": float(fit.get("qp_solve_time", np.nan)),
+        "qp_seed_time": float(fit.get("qp_seed_time", np.nan)),
+        "numerical_solve_time": float(fit.get("numerical_solve_time", np.nan)),
+        "iterations": int(fit.get("iterations", 0)), "evaluations": int(fit.get("evaluations", 0)),
+        "message": str(fit.get("message", "")),
     }
 
 
