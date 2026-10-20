@@ -32,6 +32,22 @@ CASES = {
 WM4_NAME = "wm4_linear"
 
 
+class wm4_fixed_rate_qp(wm4_optimized_qp):
+    """WM4 alternating parameter-QP and scalar F0-QP with observed R0 held fixed."""
+
+    def _optimize_initial_state(self, data, r, seed, f_bounds=(-1.0, 1.0), r_bounds=(-np.inf, np.inf)):
+        R0 = float(data["I"][0] - data["O"][0])
+        if not np.isclose(float(seed[1]), R0, atol=1e-10):
+            raise ValueError("The fair WM4 comparator must keep R0=Iobs[0]-O[0].")
+        obs = self._observed_state(data, [0.0, R0])
+        mask = obs["transition_mask"]
+        residual = obs["y"][mask] - obs["X"][mask] @ r
+        rFdt = self.model.dt * float(r[0])
+        if abs(rFdt) < 1e-14: raise RuntimeError("WM4 flexibility coefficient is too close to zero.")
+        f0 = float(np.clip(np.mean(residual) / rFdt, *f_bounds))
+        return np.array([f0, R0])
+
+
 def model_variant(reference, case, library):
     r_names, u_names = CASES[case]
     return wm_5(reference.T, reference.t_steps, reference.O,
@@ -43,9 +59,9 @@ def fit_window(reference, data, cases, library, max_state_iter, state_tol, fail_
     R0 = float(data["I"][0] - data["O"][0])
     fits, failures = {}, []
     try:
-        # Existing WM4 alternating fitter, with R0 constrained to its observed value.
-        # WM4 and WM5 use the same drift transition least-squares objective.
-        fit = wm4_optimized_qp(reference).fit(
+        # WM4 uses its existing structural parameter QP, but its state block
+        # is the same scalar exact F0 QP as WM5, with R0 observed and fixed.
+        fit = wm4_fixed_rate_qp(reference).fit(
             data, [0.0, R0], fit_initial_state=True,
             f_bounds=(-1.0, 1.0), r_bounds=(R0, R0),
             max_state_iter=max_state_iter, state_tol=state_tol,
