@@ -10,7 +10,7 @@ from src.params.wm_5 import qp_params
 
 class wm_5_tests(unittest.TestCase):
     @staticmethod
-    def test_case(r_names=("linear",), u_names=("linear",)):
+    def _case(r_names=("linear",), u_names=("linear",)):
         library = response_library()
         model = wm_5((0.0, 1.0), 49, lambda _: 0.5,
                      [library[n] for n in r_names], [library[n] for n in u_names])
@@ -24,7 +24,7 @@ class wm_5_tests(unittest.TestCase):
         return model, U, Time, O, obs, transitions
 
     def test_linear_reproduces_wm4(self):
-        model, U, Time, O, _, _ = self.test_case()
+        model, U, Time, O, _, _ = self._case()
         p = np.array([-2.0, -3.0, -0.5])
         initial = [0.12, -0.08]
         actual = model._solve_deterministic(initial, U, Time, O, p)
@@ -35,7 +35,7 @@ class wm_5_tests(unittest.TestCase):
         np.testing.assert_allclose(actual["I"], reference["I"], atol=2e-14)
 
     def test_nonlinear_rate_price_fit_and_oracle(self):
-        model, U, Time, O, mask, transitions = self.test_case(
+        model, U, Time, O, mask, transitions = self._case(
             ("linear", "cubic"), ("linear", "exponential"))
         true_p = np.array([-2.0, -3.0, -0.1, -0.5, -0.1])
         model.coefficients(true_p)
@@ -55,7 +55,7 @@ class wm_5_tests(unittest.TestCase):
         self.assertLess(oracle["loss"], 1e-10)
 
     def test_closed_form_fixed_rate_matches_wm4(self):
-        model, U, Time, O, mask, transitions = self.test_case()
+        model, U, Time, O, mask, transitions = self._case()
         p = np.array([-2.0, -3.0, -0.5])
         initial = [0.12, -0.08]
         simulated = model._solve_deterministic(initial, U, Time, O, p)
