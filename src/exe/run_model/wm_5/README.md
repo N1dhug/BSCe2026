@@ -56,8 +56,9 @@ is not necessarily convex due to the bilinear `r_F*F0` term. Saved
 `state_converged` flags distinguish convergence from iteration limits.
 
 **Fair WM4 control:** The executable calls WM4's existing alternating QP
-with `R0` fixed to the **same observed** value, via equal lower/upper
-`R0` bounds. It initializes both models with `F0=0`. Baseline,
+with `R0` fixed to the **same observed** value. A WM4 fitter subclass
+uses the same closed-form scalar `F0` QP update as WM5, retaining WM4's
+original structural parameter QP. It initializes both models with `F0=0`. Baseline,
 normalization, time discretization, transition mask, observation mask,
 window timing and state bounds match.
 
@@ -72,6 +73,13 @@ least squares with analytic sensitivity and multiple starting points;
 its oracle solution is **not guaranteed to be globally optimal**.
 These future-optimal initial states are retrospective diagnostic upper
 bounds, not deployable forecasts.
+
+Regression checks for the linear WM4 equivalence, nonlinear coefficients,
+and nonlinear prediction oracle are in `tests/test_wm_5.py`:
+
+```bash
+python -m unittest discover -s tests -p 'test_wm_5.py'
+```
 
 Run from repository root:
 
