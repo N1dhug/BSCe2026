@@ -95,7 +95,7 @@ def evaluate_window(group, origin, name, model, fit, train_observed, forecast_da
         "group": group, "origin": origin, "variant": name,
         "fit_mse": fitting["mse"], "fit_rmse": fitting["rmse"],
         "fit_bias": fitting["bias"], "fit_mae": fitting["mae"],
-        "qp_loss": float(fit["qp_loss"]), "fit_time": float(fit["fit_time"]),
+        "qp_loss": float(fit["qp_loss"]), "fit_time": float(fit.get("fit_time", fit.get("qp_fit_time", np.nan))),
         "qp_solve_time": float(fit["qp_solve_time"]),
         "state_iterations": int(fit["state_iterations"]),
         "state_converged": bool(fit["state_converged"]),
@@ -172,7 +172,7 @@ def run(args):
     library = response_library()
     output = Path(args.output); output.mkdir(parents=True, exist_ok=True)
     cases = list(CASES) if args.variants.lower() == "all" else [x.strip() for x in args.variants.split(",")]
-    fit_rows, oracle_rows, horizon_rows, failures = [], [], [], []
+    fit_rows, horizon_rows, failures = [], [], []
     timeline = origins(args.start, args.end, args.stride)
     if args.max_origins: timeline = timeline[:args.max_origins]
 
@@ -193,7 +193,7 @@ def run(args):
                         score, hourly = evaluate_window(
                             group, origin, name, model, fit, historical, future_data, future,
                             args.steps_per_hour, args.oracle_starts, args.oracle_nfev)
-                        fit_rows.append(score); oracle_rows.append(score); horizon_rows.append(hourly)
+                        fit_rows.append(score); horizon_rows.append(hourly)
                     except (RuntimeError, ValueError, np.linalg.LinAlgError) as exc:
                         if args.fail_fast: raise
                         failures.append({"group": group, "origin": origin, "variant": name,
@@ -208,7 +208,7 @@ def run(args):
     save_table(horizon_rows, output / "oracle_horizon_errors.csv")
     save_table(failures, output / "skipped.csv")
     if not fit_rows: raise RuntimeError("No fitting windows completed WM5/WM4 oracle evaluation.")
-    frame, errors = pd.DataFrame(oracle_rows), pd.DataFrame(horizon_rows)
+    frame, errors = pd.DataFrame(fit_rows), pd.DataFrame(horizon_rows)
     summary, horizon = summaries(frame, errors)
     summary.to_csv(output / "oracle_summary_all_available.csv", index=False)
     horizon.to_csv(output / "oracle_horizon_all_available.csv", index=False)
