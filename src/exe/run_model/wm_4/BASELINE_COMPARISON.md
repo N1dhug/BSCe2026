@@ -87,7 +87,7 @@ Output directory: `files/output/wm_4/baseline_comparison/`.
   **Do not use these for direct comparison if any baseline fails
   disproportionately.** The matched variants use only origins where
   *every requested baseline* succeeds, per group.
-- `skipped.csv`: the failed group/origin/baseline windows with reasons.
+- `paired_baseline_gains.csv`: matched pairwise MSE and RMSE differences\n  and descriptive win percentages for baseline-only, standard and oracle.\n  Rolling windows overlap, so percentages are **not** independent-sample\n  significance tests.\n- `skipped.csv`: the failed group/origin/baseline windows with reasons.
 - Group-specific comparison plots: aggregate RMSE, horizon RMSE, and
   example 24-hour trajectories.
 
