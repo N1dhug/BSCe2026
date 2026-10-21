@@ -151,6 +151,33 @@ def summaries(rows, errors):
             pd.DataFrame(horizons))
 
 
+def paired_gains(rows):
+    """Paired per-window differences; negative MSE difference favors the first baseline.
+
+    Rolling 24-hour windows overlap, so these descriptive win rates are not
+    independent-observation hypothesis tests.
+    """
+    comparisons = []
+    for group, subset in rows.groupby("group"):
+        names = sorted(subset["baseline"].unique())
+        for i, first in enumerate(names):
+            for second in names[i+1:]:
+                left = subset.loc[subset["baseline"] == first].set_index("origin")
+                right = subset.loc[subset["baseline"] == second].set_index("origin")
+                common = left.index.intersection(right.index)
+                if len(common) < 1: continue
+                for method in METHODS:
+                    delta_mse = left.loc[common, f"{method}_mse"].to_numpy() - right.loc[common, f"{method}_mse"].to_numpy()
+                    delta_rmse = left.loc[common, f"{method}_rmse"].to_numpy() - right.loc[common, f"{method}_rmse"].to_numpy()
+                    comparisons.append({"group": group, "first": first, "second": second,
+                                        "method": method, "windows": len(common),
+                                        "mean_mse_first_minus_second": float(np.mean(delta_mse)),
+                                        "mean_rmse_first_minus_second": float(np.mean(delta_rmse)),
+                                        "first_better_pct": float(100 * np.mean(delta_mse < 0.0)),
+                                        "equal_pct": float(100 * np.mean(delta_mse == 0.0))})
+    return pd.DataFrame(comparisons)
+
+
 def save_plots(summary, horizon, examples, output):
     for group in GROUPS:
         subset = summary.loc[summary["group"] == group].sort_values("baseline")
@@ -232,6 +259,7 @@ def run(args):
     matched_errors.to_csv(output / "matched_hourly_errors_wide.csv", index=False)
     summary.to_csv(output / "matched_summary.csv", index=False)
     horizon.to_csv(output / "matched_horizon.csv", index=False)
+    paired_gains(matched_rows).to_csv(output / "paired_baseline_gains.csv", index=False)
     save_plots(summary, horizon, examples, output)
 
     print(f"WM4 baseline comparison: {output}")
