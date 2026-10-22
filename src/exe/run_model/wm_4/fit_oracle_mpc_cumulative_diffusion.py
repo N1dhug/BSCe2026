@@ -286,16 +286,18 @@ def save_plot(origins, summary, output):
 QUINTILE_NAMES = ("Lowest", "Low", "Neutral", "High", "Highest")
 
 
-def day_error_quintiles(hourly, mode="midnight"):
+def day_error_quintiles(hourly, mode="calendar-day"):
     """Rank days by MODEL-predicted 24h RMS std, never by observed RMSE.
 
-    midnight: one 24h oracle forecast issued at 00:00 for each calendar day;
-    all_origins: pool all 24h forecasts issued during each calendar day.
+    calendar-day: select the 23:00 origin on the PREVIOUS day; its leads
+    1..24 target exactly 00:00..23:00 of the next calendar day.
+    midnight: 00:00-origin forecast, leads 1..24 (01:00..next 00:00).
+    all-origins: pool forecasts by their origin day, not target day.
     All fitted sigmas originate from that SAME day/origin's observed errors:
     this is an in-sample association, not ex-ante forecast-skill validation.
     """
-    if mode not in ("midnight", "all-origins"):
-        raise ValueError("day quintile mode must be 'midnight' or 'all-origins'.")
+    if mode not in ("calendar-day", "midnight", "all-origins"):
+        raise ValueError("day quintile mode must be calendar-day, midnight or all-origins.")
     required = {"origin", "lead_hours", "oracle_error", "total_variance"}
     missing = sorted(required.difference(hourly.columns))
     if missing: raise ValueError(f"Hourly oracle predictions lack: {', '.join(missing)}")
@@ -305,7 +307,9 @@ def day_error_quintiles(hourly, mode="midnight"):
         raise ValueError("Oracle residual and fitted variance must not contain missing values.")
     if (df["total_variance"] < 0).any():
         raise ValueError("Fitted marginal variance must be nonnegative.")
-    if mode == "midnight":
+    if mode == "calendar-day":
+        df = df.loc[df["origin"].dt.hour.eq(23) & df["origin"].dt.minute.eq(0)]
+    elif mode == "midnight":
         df = df.loc[df["origin"].dt.hour.eq(0) & df["origin"].dt.minute.eq(0)]
     if df.empty: raise ValueError(f"No MPC origins available for day quintile mode '{mode}'.")
 
@@ -315,7 +319,7 @@ def day_error_quintiles(hourly, mode="midnight"):
         if sorted(group["lead_hours"].astype(int).tolist()) != expected:
             raise ValueError(f"MPC origin {origin} lacks a complete 24-hour trajectory.")
 
-    df["day"] = df["origin"].dt.normalize()
+    df["day"] = (df["origin"] + pd.Timedelta(hours=1)).dt.normalize() if mode == "calendar-day" else df["origin"].dt.normalize()
     daily = df.groupby("day", sort=True).agg(
         origins=("origin", "nunique"),
         evaluated_hours=("lead_hours", "size"),
@@ -356,7 +360,7 @@ def day_error_quintiles(hourly, mode="midnight"):
     return daily, pd.DataFrame(rows)
 
 
-def save_day_error_quintiles(daily, quintiles, output, mode="midnight"):
+def save_day_error_quintiles(daily, quintiles, output, mode="calendar-day"):
     """Compare mean expected vs realized 24h error by *predicted* difficulty quintile."""
     fig, axes = plt.subplots(2, 1, figsize=(12, 10))
     x = np.arange(5, dtype=float)
@@ -380,7 +384,8 @@ def save_day_error_quintiles(daily, quintiles, output, mode="midnight"):
     axes[1].set_ylabel("Actual daily 24h oracle RMSE")
     axes[1].legend(ncol=2); axes[1].grid(True, alpha=0.25)
 
-    context = "midnight-origin 24h forecasts" if mode == "midnight" else "all hourly MPC origins pooled by origin day"
+    context = ("calendar days (previous 23:00-origin forecast)" if mode == "calendar-day" else
+        "midnight-origin 24h forecasts" if mode == "midnight" else "all MPC origins pooled by origin day")
     fig.suptitle(f"WM4 predicted-error quintiles vs observed error ({context}; in-sample)")
     fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
@@ -391,8 +396,8 @@ def main():
     parser.add_argument("--input", default=str(INPUT), help="Saved oracle_24h_by_origin_and_lead.csv.")
     parser.add_argument("--start-day", default=None)
     parser.add_argument("--end-day", default=None)
-    parser.add_argument("--day-quintile-mode", choices=("midnight", "all-origins"), default="midnight",
-        help="Use only 00:00-origin 24h forecasts for actual calendar days (default), or all origins pooled by start day.")
+    parser.add_argument("--day-quintile-mode", choices=("calendar-day", "midnight", "all-origins"),
+        default="calendar-day", help="Default: exact 00-23 calendar-day targets via previous 23:00 MPC origin; or midnight-origin forecasts / all origins pooled by start day.")
     parser.add_argument("--output", default=str(OUTPUT))
     args = parser.parse_args()
     if args.start_day and args.end_day and day_start(args.end_day) < day_start(args.start_day):
