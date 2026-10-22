@@ -11,7 +11,7 @@ import pandas as pd
 
 from src.exe.run_model.wm_4.fit_oracle_mpc_cumulative_diffusion import (
     NOMINAL_68_PCT, NOMINAL_95_PCT, fit_all_origins, fit_cumulative_origin,
-    fit_nonnegative_variances,
+    fit_nonnegative_variances, day_error_quintiles, save_day_error_quintiles,
     horizon_summary, load_predictions, save_calibration_plot, save_plot,
 )
 
@@ -154,6 +154,71 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         self.assertTrue(np.all(
             hourly["upper_95"] - hourly["I_oracle"] > hourly["upper_68"] - hourly["I_oracle"]
         ))
+
+    @staticmethod
+    def daily_quintile_forecasts(include_noon=False):
+        predicted = np.array([0.11, 0.05, 0.13, 0.07, 0.09, 0.03, 0.15, 0.12, 0.06, 0.10])
+        actual = np.array([0.04, 0.15, 0.05, 0.12, 0.08, 0.16, 0.03, 0.09, 0.14, 0.11])
+        rows = []
+        for index, day in enumerate(pd.date_range("2022-05-01", periods=10, freq="D")):
+            for hour in ([0, 12] if include_noon else [0]):
+                origin = day + pd.Timedelta(hours=hour)
+                for lead in range(1, 25):
+                    # Midday origins deliberately have different metrics.
+                    predicted_std = predicted[index] if hour == 0 else 0.20
+                    observed_err = actual[index] if hour == 0 else 0.01
+                    rows.append({
+                        "origin": origin, "lead_hours": lead,
+                        "oracle_error": observed_err,
+                        "total_variance": predicted_std ** 2,
+                    })
+        return pd.DataFrame(rows)
+
+    def test_predicted_quintiles_rank_days_not_actual_errors(self):
+        daily, quintiles = day_error_quintiles(self.daily_quintile_forecasts())
+        self.assertEqual(daily["quintile_name"].unique().tolist(),
+            ["Lowest", "Low", "Neutral", "High", "Highest"])
+        self.assertEqual(quintiles["days"].tolist(), [2] * 5)
+        self.assertEqual(daily["origins"].tolist(), [1] * 10)
+        self.assertEqual(daily["evaluated_hours"].tolist(), [24] * 10)
+        self.assertTrue(daily["predicted_24h_rms_std"].is_monotonic_increasing)
+        self.assertAlmostEqual(daily.iloc[0]["predicted_24h_rms_std"], 0.03)
+        self.assertAlmostEqual(daily.iloc[0]["actual_24h_rmse"], 0.16)
+        self.assertAlmostEqual(quintiles.iloc[0]["predicted_24h_rms_std"],
+            np.sqrt(np.mean([0.03 ** 2, 0.05 ** 2])))
+        self.assertAlmostEqual(quintiles.iloc[0]["actual_24h_rmse"],
+            np.sqrt(np.mean([0.16 ** 2, 0.15 ** 2])))
+        self.assertLess(quintiles.iloc[0]["predicted_24h_rms_std"],
+            quintiles.iloc[-1]["predicted_24h_rms_std"])
+        self.assertGreater(quintiles.iloc[0]["actual_24h_rmse"],
+            quintiles.iloc[-1]["actual_24h_rmse"])
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "day_error_quintiles.png"
+            save_day_error_quintiles(daily, quintiles, path)
+            self.assertTrue(path.is_file())
+            self.assertGreater(path.stat().st_size, 0)
+
+    def test_midnight_vs_all_origin_calendar_day_aggregation(self):
+        hourly = self.daily_quintile_forecasts(include_noon=True)
+        midnight, _ = day_error_quintiles(hourly)
+        all_origins, quintiles = day_error_quintiles(hourly, mode="all-origins")
+        self.assertEqual(midnight["origins"].tolist(), [1] * 10)
+        self.assertEqual(all_origins["origins"].tolist(), [2] * 10)
+        self.assertEqual(all_origins["evaluated_hours"].tolist(), [48] * 10)
+        self.assertNotAlmostEqual(
+            midnight["predicted_24h_rms_std"].mean(),
+            all_origins["predicted_24h_rms_std"].mean(),
+        )
+        self.assertEqual(quintiles["days"].sum(), 10)
+
+    def test_day_quintiles_reject_too_few_days_and_partial_forecasts(self):
+        hourly = self.daily_quintile_forecasts()
+        with self.assertRaisesRegex(ValueError, "At least five"):
+            day_error_quintiles(hourly[hourly["origin"] < pd.Timestamp("2022-05-05")])
+        partial = hourly.drop(hourly.index[0])
+        with self.assertRaisesRegex(ValueError, "complete 24-hour"):
+            day_error_quintiles(partial)
+
 
     def test_missing_or_duplicate_horizon_is_rejected(self):
         frame = self.forecast()
