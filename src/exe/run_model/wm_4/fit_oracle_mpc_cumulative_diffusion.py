@@ -116,8 +116,8 @@ def fit_cumulative_origin(group):
     group["process_std"] = process_std
     group["total_std"] = total_std
     group["lower_68"] = group["I_oracle"] - Z_68 * total_std
-    group["upper_68"] = group["I_oracle"] + Z_68 * process_std
-    group["covered_68"] = np.abs(error) <= Z_68 * process_std
+    group["upper_68"] = group["I_oracle"] + Z_68 * total_std
+    group["covered_68"] = np.abs(error) <= Z_68 * total_std
     group["lower_95"] = group["I_oracle"] - Z_95 * total_std
     group["upper_95"] = group["I_oracle"] + Z_95 * total_std
     group["covered_95"] = np.abs(error) <= Z_95 * total_std
@@ -172,11 +172,13 @@ def horizon_summary(hourly):
         residual = group["oracle_error"].to_numpy(dtype=float)
         n = residual.size
         observed_cum = group["cumulative_error_squared"].to_numpy(dtype=float)
-        model_cum = group["fitted_cumulative_process_variance"].to_numpy(dtype=float)
+        model_cum = group["fitted_cumulative_total_variance"].to_numpy(dtype=float)
         covered_68 = group["covered_68"].to_numpy(dtype=bool)
         covered_95 = group["covered_95"].to_numpy(dtype=bool)
         empirical_var = float(np.var(residual, ddof=1)) if n > 1 else np.nan
-        predicted_var = float(np.mean(group["process_variance"]))
+        observation_var = float(np.mean(group["observation_variance"]))
+        process_var = float(np.mean(group["process_variance"]))
+        predicted_var = float(np.mean(group["total_variance"]))
         coverage_68 = 100.0 * float(np.mean(covered_68))
         coverage_95 = 100.0 * float(np.mean(covered_95))
         rows.append({
@@ -186,8 +188,11 @@ def horizon_summary(hourly):
             "hourly_oracle_mse": float(np.mean(residual ** 2)),
             "empirical_oracle_variance": empirical_var,
             "empirical_oracle_std": float(np.sqrt(empirical_var)),
-            "mean_predicted_process_variance": predicted_var,
-            "mean_predicted_process_std": float(np.sqrt(predicted_var)),
+            "mean_predicted_observation_variance": observation_var,
+            "mean_predicted_process_variance": process_var,
+            "mean_predicted_total_variance": predicted_var,
+            "mean_predicted_process_std": float(np.sqrt(process_var)),
+            "mean_predicted_total_std": float(np.sqrt(predicted_var)),
             "predicted_to_empirical_variance_ratio": (
                 predicted_var / empirical_var if empirical_var > 0.0 else np.nan
             ),
@@ -200,6 +205,8 @@ def horizon_summary(hourly):
             "covered_95_origins": int(np.count_nonzero(covered_95)),
             "nominal_68_coverage_pct": NOMINAL_68_PCT,
             "nominal_95_coverage_pct": NOMINAL_95_PCT,
+            "total_68_coverage_pct": coverage_68,
+            "total_95_coverage_pct": coverage_95,
             "process_68_coverage_pct": coverage_68,
             "process_95_coverage_pct": coverage_95,
             "coverage_68_error_pp": coverage_68 - NOMINAL_68_PCT,
@@ -217,13 +224,17 @@ def save_calibration_plot(summary, output):
 
     axes[0].plot(h, summary["empirical_oracle_variance"], marker="o",
         label="Empirical oracle-residual variance across MPC origins")
-    axes[0].plot(h, summary["mean_predicted_process_variance"], marker="o",
-        label="Mean WM4 fitted process variance")
+    axes[0].plot(h, summary["mean_predicted_total_variance"], marker="o",
+        label="Mean WM4 fitted total variance")
+    axes[0].plot(h, summary["mean_predicted_observation_variance"], linestyle=":",
+        label="Observation variance sigma_0^2")
+    axes[0].plot(h, summary["mean_predicted_process_variance"], linestyle="--",
+        label="Propagated process variance sigma_p^2 K_h")
     axes[0].set_ylabel("Marginal variance")
-    axes[0].legend(); axes[0].grid(True, alpha=0.25)
+    axes[0].legend(ncol=2); axes[0].grid(True, alpha=0.25)
 
-    axes[1].plot(h, summary["process_68_coverage_pct"], marker="o", label="Observed +/-1 sigma coverage")
-    axes[1].plot(h, summary["process_95_coverage_pct"], marker="o", label="Observed 95% coverage")
+    axes[1].plot(h, summary["process_68_coverage_pct"], marker="o", label="Observed +/-1 total sigma coverage")
+    axes[1].plot(h, summary["process_95_coverage_pct"], marker="o", label="Observed 95% total sigma coverage")
     axes[1].axhline(NOMINAL_68_PCT, linestyle="--", label="Gaussian 68.27% nominal")
     axes[1].axhline(NOMINAL_95_PCT, linestyle="--", label="95% nominal")
     axes[1].set_ylabel("Empirical coverage (%)")
@@ -239,7 +250,7 @@ def save_calibration_plot(summary, output):
     axes[2].set_xticks(np.arange(1, DAY_HOURS + 1, 2))
     axes[2].set_xlim(1, DAY_HOURS)
 
-    fig.suptitle("WM4 oracle diffusion: marginal variance and 68% / 95% coverage by horizon (in-sample)")
+    fig.suptitle("WM4 observation + Wiener process variance and 68% / 95% coverage (in-sample)")
     fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
 
