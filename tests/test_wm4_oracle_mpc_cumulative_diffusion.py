@@ -11,18 +11,19 @@ import pandas as pd
 
 from src.exe.run_model.wm_4.fit_oracle_mpc_cumulative_diffusion import (
     NOMINAL_68_PCT, NOMINAL_95_PCT, fit_all_origins, fit_cumulative_origin,
+    fit_nonnegative_variances,
     horizon_summary, load_predictions, save_calibration_plot, save_plot,
 )
 
 
 class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
     @staticmethod
-    def forecast(origin="2022-05-01 14:00", q=0.04, bias=0.0):
+    def forecast(origin="2022-05-01 14:00", q=0.04, bias=0.0, q0=0.0):
         origin = pd.Timestamp(origin)
         h = np.arange(1, 25, dtype=int)
         k = 0.0005 + 0.0003 * h
-        # With zero bias each squared error equals q times the model unit variance.
-        error = np.sqrt(q * k) + bias
+        # With zero bias squared errors match observation variance plus q*K.
+        error = np.sqrt(q0 + q * k) + bias
         return pd.DataFrame({
             "origin": origin, "lead_hours": h, "I_observed": 0.5 + error,
             "I_oracle": np.full(h.size, 0.5),
@@ -55,6 +56,7 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         self.assertEqual(len(hourly), 48)
         self.assertTrue(np.allclose(origin_fits["q"], [0.04, 0.09]))
         self.assertTrue(np.allclose(origin_fits["sigma"], [0.2, 0.3]))
+        self.assertTrue(np.allclose(origin_fits["sigma_0"], 0.0))
         summary = horizon_summary(hourly)
         self.assertEqual(summary["lead_hours"].tolist(), list(range(1, 25)))
         self.assertTrue(np.allclose(
@@ -75,6 +77,9 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
                 "oracle_error": np.full(24, error),
                 "cumulative_error_squared": hours * error ** 2,
                 "fitted_cumulative_process_variance": hours.astype(float),
+                "fitted_cumulative_total_variance": hours.astype(float),
+                "observation_variance": np.zeros(24),
+                "total_variance": np.ones(24),
                 "process_variance": np.ones(24),
                 "covered_68": np.full(24, abs(error) <= 1.0),
                 "covered_95": np.full(24, abs(error) <= 1.959963984540054),
@@ -83,6 +88,8 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         self.assertEqual(len(summary), 24)
         self.assertTrue(np.allclose(summary["empirical_oracle_variance"], np.var(errors, ddof=1)))
         self.assertTrue(np.allclose(summary["mean_predicted_process_variance"], 1.0))
+        self.assertTrue(np.allclose(summary["mean_predicted_observation_variance"], 0.0))
+        self.assertTrue(np.allclose(summary["mean_predicted_total_variance"], 1.0))
         self.assertTrue(np.allclose(summary["process_68_coverage_pct"], 50.0))
         self.assertTrue(np.allclose(summary["process_95_coverage_pct"], 75.0))
         self.assertTrue(np.allclose(summary["coverage_68_ratio"], 50.0 / NOMINAL_68_PCT))
