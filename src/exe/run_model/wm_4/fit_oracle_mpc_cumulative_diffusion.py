@@ -170,6 +170,108 @@ def fit_all_origins(forecasts):
     return origins, hourly
 
 
+def fit_historical_variances(groups):
+    """Fit q0 and qp jointly on COMPLETE, already-observed historical oracle horizons.
+
+    For each historical origin j and horizon H, minimize
+      [sum_{h<=H} error[j,h]**2 - H*q0 - q_p*sum_{h<=H}K[j,h]]**2.
+    This is a two-variable convex QP with nonnegative constraints.
+    """
+    if not groups: raise ValueError("Historical diffusion estimation requires prior completed horizons.")
+    design, targets = [], []
+    for group in groups:
+        group = group.sort_values("lead_hours")
+        lead = group["lead_hours"].to_numpy(dtype=int)
+        if len(lead) != DAY_HOURS or not np.array_equal(lead, np.arange(1, DAY_HOURS + 1)):
+            raise ValueError("Historical origins must contain every hour 1..24 exactly once.")
+        residual = group["oracle_error"].to_numpy(dtype=float)
+        kernel = group["unit_process_variance"].to_numpy(dtype=float)
+        if not np.isfinite(residual).all() or not np.isfinite(kernel).all() or np.any(kernel < 0.0):
+            raise ValueError("Historical residuals and kernels must be valid.")
+        design.append(np.column_stack((lead.astype(float), np.cumsum(kernel))))
+        targets.append(np.cumsum(residual ** 2))
+    A, y = np.concatenate(design), np.concatenate(targets)
+    norm = np.linalg.norm(A, axis=0)
+    if np.any(norm <= 0.0) or np.linalg.svd(A / norm, compute_uv=False)[-1] < 1e-10:
+        raise ValueError("Historical observation and process variances are not separately identifiable.")
+
+    feasible = [np.zeros(2, dtype=float)]
+    for i in (0, 1):
+        q = np.zeros(2, dtype=float)
+        q[i] = max(0.0, float(A[:, i] @ y) / float(A[:, i] @ A[:, i]))
+        feasible.append(q)
+    interior = np.linalg.lstsq(A, y, rcond=None)[0]
+    if np.all(interior >= -1e-12): feasible.append(np.maximum(interior, 0.0))
+    fitted = min(feasible, key=lambda q: float(np.sum((A @ q - y) ** 2)))
+    return float(fitted[0]), float(fitted[1])
+
+
+def fit_all_origins_historical(forecasts, lookback_days=24, min_training_days=5,
+    start_day=None, end_day=None):
+    """Use only prior fully observed same-clock-hour oracle horizons to fit sigma.
+
+    Training origin j must satisfy j+24h<=target origin k, so no target
+    residuals can affect its q0/qp. The target's already fitted oracle x0 is
+    retained as an explicit retrospective exception.
+    """
+    lookback_days, min_training_days = int(lookback_days), int(min_training_days)
+    if lookback_days < 1 or min_training_days < 2:
+        raise ValueError("lookback_days >= 1 and min_training_days >= 2 are required.")
+    if min_training_days > lookback_days:
+        raise ValueError("min_training_days cannot exceed lookback_days when matching calendar days.")
+    all_groups = {}
+    for stamp, group in forecasts.groupby("origin", sort=True):
+        stamp = pd.Timestamp(stamp)
+        lead = group["lead_hours"].to_numpy(dtype=int)
+        if not np.array_equal(np.sort(lead), np.arange(1, DAY_HOURS + 1)):
+            raise ValueError(f"Incomplete 24-hour oracle trajectory at {stamp}.")
+        all_groups[stamp] = group.sort_values("lead_hours")
+    if not all_groups: raise ValueError("No oracle trajectories were supplied.")
+    first = day_start(start_day) if start_day is not None else None
+    last = day_start(end_day) + pd.Timedelta(days=1) if end_day is not None else None
+    if first is not None and last is not None and first >= last:
+        raise ValueError("end_day must be on or after start_day.")
+
+    origin_fits, forecast_rows = [], []
+    missing_history = 0
+    for target, group in all_groups.items():
+        # Include the previous day's 23:00 origin for a calendar-day
+        # 00:00..23:00 validation trajectory when --start-day is set.
+        if first is not None and target < first - pd.Timedelta(hours=1): continue
+        if last is not None and target >= last: continue
+        lower = target - pd.Timedelta(days=lookback_days)
+        eligible = [origin for origin in all_groups if
+            lower <= origin <= target - pd.Timedelta(hours=DAY_HOURS) and
+            (origin.hour, origin.minute, origin.second) ==
+            (target.hour, target.minute, target.second)]
+        if len(eligible) < min_training_days:
+            missing_history += 1
+            continue
+        history = [all_groups[t] for t in eligible]
+        q0, qp = fit_historical_variances(history)
+        fit, evaluated = fit_cumulative_origin(group, q_0=q0, q_p=qp)
+        # The training window's last observed instant is <= target origin.
+        last_training_observation = max(eligible) + pd.Timedelta(hours=DAY_HOURS)
+        if last_training_observation > target:
+            raise AssertionError("Historical diffusion calibration used future data.")
+        fit["training_origins"] = len(eligible)
+        fit["training_first_origin"] = min(eligible)
+        fit["training_last_origin"] = max(eligible)
+        fit["training_last_observation"] = last_training_observation
+        fit["lookback_days"] = lookback_days
+        fit["min_training_days"] = min_training_days
+        evaluated = evaluated.copy()
+        evaluated["training_origins"] = len(eligible)
+        evaluated["training_last_observation"] = last_training_observation
+        origin_fits.append(fit); forecast_rows.append(evaluated)
+
+    if not origin_fits:
+        raise ValueError(f"No validation origins with at least {min_training_days} completed historical days were found.")
+    origins = pd.DataFrame(origin_fits).sort_values("origin").reset_index(drop=True)
+    hourly = pd.concat(forecast_rows, ignore_index=True)
+    return origins, hourly, missing_history
+
+
 def horizon_summary(hourly):
     """Aggregate empirical residual variance and nominal interval coverage at each 1..24h lead.
 
