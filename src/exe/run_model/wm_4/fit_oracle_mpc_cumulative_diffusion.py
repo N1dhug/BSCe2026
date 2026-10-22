@@ -282,11 +282,117 @@ def save_plot(origins, summary, output):
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
 
 
+
+QUINTILE_NAMES = ("Lowest", "Low", "Neutral", "High", "Highest")
+
+
+def day_error_quintiles(hourly, mode="midnight"):
+    """Rank days by MODEL-predicted 24h RMS std, never by observed RMSE.
+
+    midnight: one 24h oracle forecast issued at 00:00 for each calendar day;
+    all_origins: pool all 24h forecasts issued during each calendar day.
+    All fitted sigmas originate from that SAME day/origin's observed errors:
+    this is an in-sample association, not ex-ante forecast-skill validation.
+    """
+    if mode not in ("midnight", "all-origins"):
+        raise ValueError("day quintile mode must be 'midnight' or 'all-origins'.")
+    required = {"origin", "lead_hours", "oracle_error", "total_variance"}
+    missing = sorted(required.difference(hourly.columns))
+    if missing: raise ValueError(f"Hourly oracle predictions lack: {', '.join(missing)}")
+    df = hourly.copy()
+    df["origin"] = pd.to_datetime(df["origin"])
+    if df[["oracle_error", "total_variance"]].isna().any().any():
+        raise ValueError("Oracle residual and fitted variance must not contain missing values.")
+    if (df["total_variance"] < 0).any():
+        raise ValueError("Fitted marginal variance must be nonnegative.")
+    if mode == "midnight":
+        df = df.loc[df["origin"].dt.hour.eq(0) & df["origin"].dt.minute.eq(0)]
+    if df.empty: raise ValueError(f"No MPC origins available for day quintile mode '{mode}'.")
+
+    # Ensure all included trajectories are complete, exactly 24 hourly leads.
+    expected = list(range(1, DAY_HOURS + 1))
+    for origin, group in df.groupby("origin", sort=False):
+        if sorted(group["lead_hours"].astype(int).tolist()) != expected:
+            raise ValueError(f"MPC origin {origin} lacks a complete 24-hour trajectory.")
+
+    df["day"] = df["origin"].dt.normalize()
+    daily = df.groupby("day", sort=True).agg(
+        origins=("origin", "nunique"),
+        evaluated_hours=("lead_hours", "size"),
+        observed_mse=("oracle_error", lambda e: float(np.mean(e.to_numpy(dtype=float) ** 2))),
+        predicted_mean_variance=("total_variance", "mean"),
+    ).reset_index()
+    daily["predicted_24h_rms_std"] = np.sqrt(daily["predicted_mean_variance"])
+    daily["actual_24h_rmse"] = np.sqrt(daily["observed_mse"])
+    if len(daily) < 5:
+        raise ValueError("At least five distinct calendar days with complete 24-hour MPC forecasts are required.")
+
+    # Rank then partition by count: five well-defined quintiles even with ties.
+    daily = daily.sort_values(["predicted_24h_rms_std", "day"], kind="mergesort").reset_index(drop=True)
+    daily["quintile"] = (np.arange(len(daily), dtype=int) * 5 // len(daily)) + 1
+    daily["quintile_name"] = daily["quintile"].map(dict(enumerate(QUINTILE_NAMES, start=1)))
+    daily["predicted_to_actual_ratio"] = np.divide(
+        daily["predicted_24h_rms_std"], daily["actual_24h_rmse"],
+        out=np.full(len(daily), np.nan),
+        where=daily["actual_24h_rmse"].to_numpy(dtype=float) > 0.0,
+    )
+
+    rows = []
+    for idx, group in daily.groupby("quintile", sort=True):
+        predicted = group["predicted_24h_rms_std"].to_numpy(dtype=float)
+        actual = group["actual_24h_rmse"].to_numpy(dtype=float)
+        predicted_rms = float(np.sqrt(np.mean(predicted ** 2)))
+        actual_rms = float(np.sqrt(np.mean(actual ** 2)))
+        rows.append({
+            "quintile": int(idx), "quintile_name": QUINTILE_NAMES[int(idx) - 1],
+            "days": int(len(group)), "origins": int(group["origins"].sum()),
+            "min_predicted_day_rms_std": float(predicted.min()),
+            "max_predicted_day_rms_std": float(predicted.max()),
+            "predicted_24h_rms_std": predicted_rms,
+            "actual_24h_rmse": actual_rms,
+            "actual_minus_predicted": actual_rms - predicted_rms,
+            "actual_to_predicted_ratio": actual_rms / predicted_rms if predicted_rms > 0.0 else np.nan,
+        })
+    return daily, pd.DataFrame(rows)
+
+
+def save_day_error_quintiles(daily, quintiles, output, mode="midnight"):
+    """Compare mean expected vs realized 24h error by *predicted* difficulty quintile."""
+    fig, axes = plt.subplots(2, 1, figsize=(12, 10))
+    x = np.arange(5, dtype=float)
+    width = 0.38
+    label = [f"{name}\n(n={n})" for name, n in zip(quintiles["quintile_name"], quintiles["days"])]
+    axes[0].bar(x - width / 2, quintiles["predicted_24h_rms_std"], width,
+        label="Predicted 24h RMS std (total variance)")
+    axes[0].bar(x + width / 2, quintiles["actual_24h_rmse"], width,
+        label="Observed 24h oracle RMSE")
+    axes[0].set_xticks(x, label)
+    axes[0].set_ylabel("Normalized input")
+    axes[0].legend(); axes[0].grid(True, axis="y", alpha=0.25)
+
+    for i, group in daily.groupby("quintile", sort=True):
+        axes[1].scatter(group["predicted_24h_rms_std"], group["actual_24h_rmse"],
+            s=22, alpha=0.65, label=QUINTILE_NAMES[int(i) - 1])
+    extent = float(max(daily["predicted_24h_rms_std"].max(), daily["actual_24h_rmse"].max()))
+    axes[1].plot([0.0, extent], [0.0, extent], linestyle="--", label="Perfect 1:1 error calibration")
+    axes[1].set_xlim(left=0.0); axes[1].set_ylim(bottom=0.0)
+    axes[1].set_xlabel("Predicted daily 24h RMS std")
+    axes[1].set_ylabel("Actual daily 24h oracle RMSE")
+    axes[1].legend(ncol=2); axes[1].grid(True, alpha=0.25)
+
+    context = "midnight-origin 24h forecasts" if mode == "midnight" else "all hourly MPC origins pooled by origin day"
+    fig.suptitle(f"WM4 predicted-error quintiles vs observed error ({context}; in-sample)")
+    fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
+
+
 def main():
     parser = ArgumentParser(description="Fit observation sigma_0 and process sigma_p at each MPC origin to cumulative 24h squared oracle errors, using saved deterministic parameters and oracle states.")
     parser.add_argument("--input", default=str(INPUT), help="Saved oracle_24h_by_origin_and_lead.csv.")
     parser.add_argument("--start-day", default=None)
     parser.add_argument("--end-day", default=None)
+    parser.add_argument("--day-quintile-mode", choices=("midnight", "all-origins"), default="midnight",
+        help="Use only 00:00-origin 24h forecasts for actual calendar days (default), or all origins pooled by start day.")
     parser.add_argument("--output", default=str(OUTPUT))
     args = parser.parse_args()
     if args.start_day and args.end_day and day_start(args.end_day) < day_start(args.start_day):
@@ -303,6 +409,20 @@ def main():
     horizons.to_csv(output / "variance_coverage_by_horizon.csv", index=False)
     save_plot(origins, horizons, output / "cumulative_24h_diffusion.png")
     save_calibration_plot(horizons, output / "variance_coverage_by_horizon.png")
+    try:
+        daily, quintiles = day_error_quintiles(hourly, mode=args.day_quintile_mode)
+    except ValueError as exc:
+        print(f"Day error quintile plot skipped: {exc}")
+    else:
+        daily.to_csv(output / "day_error_quintile_assignments.csv", index=False)
+        quintiles.to_csv(output / "day_error_quintile_summary.csv", index=False)
+        save_day_error_quintiles(daily, quintiles, output / "day_error_quintiles.png",
+            mode=args.day_quintile_mode)
+        print("Daily predicted-error quintiles (sorted by predicted 24h RMS std):")
+        print(quintiles[["quintile_name", "days", "predicted_24h_rms_std",
+            "actual_24h_rmse", "actual_to_predicted_ratio"]].to_string(index=False))
+        print(f"Saved daily quintile diagnostics to {output / 'day_error_quintiles.png'}")
+
 
     print(f"origins={len(origins)}, fitted horizon={DAY_HOURS} hours")
     print(f"observation sigma_0 mean={origins['sigma_0'].mean():.9f}, median={origins['sigma_0'].median():.9f}")
