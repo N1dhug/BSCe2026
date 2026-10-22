@@ -11,7 +11,8 @@ import pandas as pd
 
 from src.exe.run_model.wm_4.fit_oracle_mpc_cumulative_diffusion import (
     NOMINAL_68_PCT, NOMINAL_95_PCT, fit_all_origins, fit_cumulative_origin,
-    fit_nonnegative_variances, day_error_quintiles, save_day_error_quintiles,
+    fit_nonnegative_variances, fit_historical_variances, fit_all_origins_historical,
+    day_error_quintiles, save_day_error_quintiles,
     horizon_summary, load_predictions, save_calibration_plot, save_plot,
 )
 
@@ -236,6 +237,58 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "complete 24-hour"):
             day_error_quintiles(partial, mode="midnight")
 
+
+    def test_walk_forward_uses_only_prior_completed_days(self):
+        rows = []
+        start = pd.Timestamp("2022-05-01 23:00")
+        for i in range(9):
+            origin = start + pd.Timedelta(days=i)
+            # Historical q values are constant, while validation days are deliberately extreme.
+            q0, qp = (0.002, 0.05) if i < 7 else (0.20, 0.80)
+            source = self.forecast(origin=origin, q0=q0, q=qp)
+            rows.append(source)
+        frames = pd.concat(rows, ignore_index=True)
+        fits, hourly, skipped = fit_all_origins_historical(
+            frames, lookback_days=7, min_training_days=5,
+            start_day="2022-05-08", end_day="2022-05-09",
+        )
+        self.assertEqual(len(fits), 2)
+        self.assertEqual(skipped, 0)
+        self.assertTrue(np.allclose(fits["q_0"], 0.002))
+        self.assertTrue(np.allclose(fits["q_p"], 0.05))
+        self.assertTrue(np.all(fits["training_last_observation"] <= fits["origin"]))
+        self.assertEqual(fits["fit_mode"].unique().tolist(), ["historical"])
+        self.assertTrue(np.all(hourly["fit_mode"].eq("historical")))
+        self.assertTrue(np.all(hourly["training_last_observation"] <= hourly["origin"]))
+        # The validation day's squared errors may be large, but MUST NOT change its q.
+        self.assertGreater(fits.iloc[-1]["observed_24h_rmse"],
+            fits.iloc[-1]["model_24h_rms_std"])
+
+    def test_walk_forward_rejects_target_error_leakage(self):
+        start = pd.Timestamp("2022-05-01 23:00")
+        past = [self.forecast(start + pd.Timedelta(days=i), q0=0.003, q=0.04)
+            for i in range(6)]
+        target = self.forecast(start + pd.Timedelta(days=6), q0=0.1, q=0.8)
+        frames = pd.concat(past + [target], ignore_index=True)
+        first, _, _ = fit_all_origins_historical(frames, lookback_days=6,
+            min_training_days=5, start_day="2022-05-07", end_day="2022-05-07")
+        modified = frames.copy()
+        mask = modified["origin"].eq(start + pd.Timedelta(days=6))
+        modified.loc[mask, "oracle_error"] *= 20
+        modified.loc[mask, "I_observed"] = modified.loc[mask, "I_oracle"] + modified.loc[mask, "oracle_error"]
+        second, _, _ = fit_all_origins_historical(modified, lookback_days=6,
+            min_training_days=5, start_day="2022-05-07", end_day="2022-05-07")
+        self.assertAlmostEqual(first.iloc[0]["q_0"], second.iloc[0]["q_0"])
+        self.assertAlmostEqual(first.iloc[0]["q_p"], second.iloc[0]["q_p"])
+        self.assertNotAlmostEqual(first.iloc[0]["observed_24h_rmse"],
+            second.iloc[0]["observed_24h_rmse"])
+
+    def test_historical_diffusion_pooled_QP_recovers_both_components(self):
+        histories = [self.forecast("2022-05-01 23:00", q0=0.005, q=0.04),
+            self.forecast("2022-05-02 23:00", q0=0.005, q=0.04)]
+        q0, qp = fit_historical_variances(histories)
+        self.assertAlmostEqual(q0, 0.005, places=10)
+        self.assertAlmostEqual(qp, 0.04, places=10)
 
     def test_missing_or_duplicate_horizon_is_rejected(self):
         frame = self.forecast()
