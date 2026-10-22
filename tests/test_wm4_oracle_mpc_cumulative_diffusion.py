@@ -175,7 +175,7 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         return pd.DataFrame(rows)
 
     def test_predicted_quintiles_rank_days_not_actual_errors(self):
-        daily, quintiles = day_error_quintiles(self.daily_quintile_forecasts())
+        daily, quintiles = day_error_quintiles(self.daily_quintile_forecasts(), mode="midnight")
         self.assertEqual(daily["quintile_name"].unique().tolist(),
             ["Lowest", "Low", "Neutral", "High", "Highest"])
         self.assertEqual(quintiles["days"].tolist(), [2] * 5)
@@ -200,7 +200,7 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
 
     def test_midnight_vs_all_origin_calendar_day_aggregation(self):
         hourly = self.daily_quintile_forecasts(include_noon=True)
-        midnight, _ = day_error_quintiles(hourly)
+        midnight, _ = day_error_quintiles(hourly, mode="midnight")
         all_origins, quintiles = day_error_quintiles(hourly, mode="all-origins")
         self.assertEqual(midnight["origins"].tolist(), [1] * 10)
         self.assertEqual(all_origins["origins"].tolist(), [2] * 10)
@@ -211,13 +211,30 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         )
         self.assertEqual(quintiles["days"].sum(), 10)
 
+    def test_calendar_day_uses_previous_day_23h_forecast(self):
+        rows = []
+        for i, day in enumerate(pd.date_range("2022-05-01", periods=10, freq="D")):
+            origin = day - pd.Timedelta(hours=1)
+            for h in range(1, 25):
+                rows.append({
+                    "origin": origin, "lead_hours": h,
+                    "oracle_error": (i + 1) * 0.01,
+                    "total_variance": ((10 - i) * 0.01) ** 2,
+                })
+        daily, quintiles = day_error_quintiles(pd.DataFrame(rows))
+        self.assertEqual(len(daily), 10)
+        self.assertEqual(daily["day"].dt.strftime("%Y-%m-%d").min(), "2022-05-01")
+        self.assertEqual(daily["day"].dt.strftime("%Y-%m-%d").max(), "2022-05-10")
+        self.assertEqual(daily["origins"].unique().tolist(), [1])
+        self.assertEqual(quintiles["days"].tolist(), [2] * 5)
+
     def test_day_quintiles_reject_too_few_days_and_partial_forecasts(self):
         hourly = self.daily_quintile_forecasts()
         with self.assertRaisesRegex(ValueError, "At least five"):
-            day_error_quintiles(hourly[hourly["origin"] < pd.Timestamp("2022-05-05")])
+            day_error_quintiles(hourly[hourly["origin"] < pd.Timestamp("2022-05-05")], mode="midnight")
         partial = hourly.drop(hourly.index[0])
         with self.assertRaisesRegex(ValueError, "complete 24-hour"):
-            day_error_quintiles(partial)
+            day_error_quintiles(partial, mode="midnight")
 
 
     def test_missing_or_duplicate_horizon_is_rejected(self):
