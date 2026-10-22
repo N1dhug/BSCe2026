@@ -43,6 +43,27 @@ def load_predictions(path, start_day=None, end_day=None):
     return frame.sort_values(["origin", "lead_hours"]).reset_index(drop=True)
 
 
+def fit_nonnegative_variances(target, process_cumulative):
+    """Exact nonnegative two-parameter least-squares solution for q_0, q_p."""
+    y, b = np.asarray(target, dtype=float), np.asarray(process_cumulative, dtype=float)
+    h = np.arange(1, y.size + 1, dtype=float)
+    if y.size != DAY_HOURS or b.shape != y.shape or not np.isfinite(y).all() or not np.isfinite(b).all():
+        raise ValueError("Expected 24 finite cumulative error and kernel samples.")
+    if np.any(b < 0.0) or np.all(b == 0.0): raise ValueError("WM4 process kernel is zero or invalid.")
+    A = np.column_stack((h, b))
+    if np.linalg.svd(A / np.linalg.norm(A, axis=0), compute_uv=False)[-1] < 1e-10:
+        raise ValueError("Observation and process variances cannot be separately identified on this kernel.")
+    candidates = [np.zeros(2)]
+    for j in (0, 1):
+        v = np.zeros(2)
+        v[j] = max(0.0, float(A[:, j] @ y) / float(A[:, j] @ A[:, j]))
+        candidates.append(v)
+    interior = np.linalg.lstsq(A, y, rcond=None)[0]
+    if np.all(interior >= -1e-12): candidates.append(np.maximum(interior, 0.0))
+    q = min(candidates, key=lambda v: float(np.sum((A @ v - y) ** 2)))
+    return float(q[0]), float(q[1])
+
+
 def fit_cumulative_origin(group):
     """Fit q >= 0 to the *cumulative squared-error* curve of one fixed oracle trajectory.
 
