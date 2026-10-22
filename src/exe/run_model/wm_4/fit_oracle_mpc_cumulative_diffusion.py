@@ -210,8 +210,8 @@ def fit_all_origins_historical(forecasts, lookback_days=24, min_training_days=5,
     start_day=None, end_day=None):
     """Use only prior fully observed same-clock-hour oracle horizons to fit sigma.
 
-    Training origin j must satisfy j+24h<=target origin k, so no target
-    residuals can affect its q0/qp. The target's already fitted oracle x0 is
+    Training origin j must finish strictly before the calendar prediction day,
+    so no target-day observations or residuals affect q0/qp. The target's already fitted oracle x0 is
     retained as an explicit retrospective exception.
     """
     lookback_days, min_training_days = int(lookback_days), int(min_training_days)
@@ -239,9 +239,14 @@ def fit_all_origins_historical(forecasts, lookback_days=24, min_training_days=5,
         # 00:00..23:00 validation trajectory when --start-day is set.
         if first is not None and target < first - pd.Timedelta(hours=1): continue
         if last is not None and target >= last: continue
+        prediction_day = (target + pd.Timedelta(hours=1)).normalize()
         lower = target - pd.Timedelta(days=lookback_days)
+        # Strictly before the prediction calendar day, not merely before this
+        # hour within that day. This also excludes a previous-day 24h path
+        # that contains observations from today's forecast window.
         eligible = [origin for origin in all_groups if
             lower <= origin <= target - pd.Timedelta(hours=DAY_HOURS) and
+            origin + pd.Timedelta(hours=DAY_HOURS) < prediction_day and
             (origin.hour, origin.minute, origin.second) ==
             (target.hour, target.minute, target.second)]
         if len(eligible) < min_training_days:
@@ -252,8 +257,11 @@ def fit_all_origins_historical(forecasts, lookback_days=24, min_training_days=5,
         fit, evaluated = fit_cumulative_origin(group, q_0=q0, q_p=qp)
         # The training window's last observed instant is <= target origin.
         last_training_observation = max(eligible) + pd.Timedelta(hours=DAY_HOURS)
+        if last_training_observation >= prediction_day:
+            raise AssertionError("Historical diffusion calibration used observations from the prediction day.")
         if last_training_observation > target:
             raise AssertionError("Historical diffusion calibration used future data.")
+        fit["prediction_day"] = prediction_day
         fit["training_origins"] = len(eligible)
         fit["training_first_origin"] = min(eligible)
         fit["training_last_origin"] = max(eligible)
@@ -261,6 +269,7 @@ def fit_all_origins_historical(forecasts, lookback_days=24, min_training_days=5,
         fit["lookback_days"] = lookback_days
         fit["min_training_days"] = min_training_days
         evaluated = evaluated.copy()
+        evaluated["prediction_day"] = prediction_day
         evaluated["training_origins"] = len(eligible)
         evaluated["training_last_observation"] = last_training_observation
         origin_fits.append(fit); forecast_rows.append(evaluated)
