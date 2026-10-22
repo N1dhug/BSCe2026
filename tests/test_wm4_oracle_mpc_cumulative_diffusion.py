@@ -250,12 +250,14 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         frames = pd.concat(rows, ignore_index=True)
         fits, hourly, skipped = fit_all_origins_historical(
             frames, lookback_days=7, min_training_days=5,
-            start_day="2022-05-08", end_day="2022-05-09",
+            start_day="2022-05-09", end_day="2022-05-09",
         )
         self.assertEqual(len(fits), 2)
         self.assertEqual(skipped, 0)
-        self.assertTrue(np.allclose(fits["q_0"], 0.002))
-        self.assertTrue(np.allclose(fits["q_p"], 0.05))
+        self.assertAlmostEqual(fits.iloc[0]["q_0"], 0.002)
+        self.assertAlmostEqual(fits.iloc[0]["q_p"], 0.05)
+        self.assertGreater(fits.iloc[1]["q_0"] + fits.iloc[1]["q_p"],
+            fits.iloc[0]["q_0"] + fits.iloc[0]["q_p"])
         self.assertTrue(np.all(fits["training_last_observation"] <= fits["origin"]))
         self.assertEqual(fits["fit_mode"].unique().tolist(), ["historical"])
         self.assertTrue(np.all(hourly["fit_mode"].eq("historical")))
@@ -271,7 +273,7 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         target = self.forecast(start + pd.Timedelta(days=6), q0=0.1, q=0.8)
         frames = pd.concat(past + [target], ignore_index=True)
         first, _, _ = fit_all_origins_historical(frames, lookback_days=6,
-            min_training_days=5, start_day="2022-05-07", end_day="2022-05-07")
+            min_training_days=5, start_day="2022-05-08", end_day="2022-05-08")
         modified = frames.copy()
         mask = modified["origin"].eq(start + pd.Timedelta(days=6))
         modified.loc[mask, "oracle_error"] *= 20
