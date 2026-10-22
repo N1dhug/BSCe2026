@@ -65,15 +65,14 @@ def fit_nonnegative_variances(target, process_cumulative):
 
 
 def fit_cumulative_origin(group):
-    """Fit q >= 0 to the *cumulative squared-error* curve of one fixed oracle trajectory.
+    """Fit q_0=sigma_0**2 and q_p=sigma_p**2 for each oracle 24-hour trajectory.
 
-    S_H = sum_{h<=H} error_h**2 and B_H = sum_{h<=H} K_h.
-    E[S_H] = q B_H for a zero-mean process-only oracle error (fixed x0, P0=0).
-    Fit the complete 24-hour cumulative curves with an exact 1D convex QP:
-        min_{q>=0} sum_{H=1}^{24} (S_H - q B_H)**2.
-
-    One realization does NOT identify empirical ensemble variance. S_H is a
-    realized second-moment proxy, not the sample variance across origins.
+    Observation errors epsilon_h iid N(0,1) enter I_h=O_h+R_h+sigma_0*epsilon_h.
+    Independent Wiener noise enters dR=drift*dt+sigma_p*dW.
+    With known oracle x0, Var(I_h)=q_0+q_p*K_h and expected cumulative
+    squared error at horizon H is H*q_0+q_p*sum(K[:H]).
+    Match realized cumulative squared errors with nonnegative two-variable QP.
+    This is an in-sample, one-path moment proxy, not empirical ensemble variance.
     """
     group = group.sort_values("lead_hours").copy()
     hours = group["lead_hours"].to_numpy(dtype=int)
@@ -90,35 +89,47 @@ def fit_cumulative_origin(group):
     if not np.isfinite(denominator) or denominator <= 0.0:
         raise ValueError("The cumulative WM4 process-variance kernel is zero or invalid.")
 
-    q = max(0.0, float(unit_cumulative @ observed_cumulative) / denominator)
-    sigma = float(np.sqrt(q))
-    fitted_cumulative = q * unit_cumulative
-    process_variance = q * K
-    process_std = np.sqrt(process_variance)
+    q_0, q_p = fit_nonnegative_variances(observed_cumulative, unit_cumulative)
+    sigma_0, sigma_p = float(np.sqrt(q_0)), float(np.sqrt(q_p))
+    observation_variance = np.full(DAY_HOURS, q_0)
+    process_variance = q_p * K
+    total_variance = observation_variance + process_variance
+    process_std = np.sqrt(np.maximum(process_variance, 0.0))
+    total_std = np.sqrt(np.maximum(total_variance, 0.0))
+    fitted_cumulative_process = q_p * unit_cumulative
+    fitted_cumulative_observation = q_0 * hours
+    fitted_cumulative = fitted_cumulative_observation + fitted_cumulative_process
     group["error_squared"] = error ** 2
     group["cumulative_error_squared"] = observed_cumulative
     group["cumulative_unit_variance"] = unit_cumulative
-    group["fitted_cumulative_process_variance"] = fitted_cumulative
+    group["fitted_cumulative_process_variance"] = fitted_cumulative_process
+    group["fitted_cumulative_observation_variance"] = fitted_cumulative_observation
+    group["fitted_cumulative_total_variance"] = fitted_cumulative
     group["cumulative_variance_residual"] = fitted_cumulative - observed_cumulative
     group["cumulative_error_mse"] = observed_cumulative / hours
     group["cumulative_error_rmse"] = np.sqrt(group["cumulative_error_mse"])
     group["cumulative_model_mean_variance"] = fitted_cumulative / hours
     group["cumulative_model_rms_std"] = np.sqrt(group["cumulative_model_mean_variance"])
+    group["observation_variance"] = observation_variance
     group["process_variance"] = process_variance
+    group["total_variance"] = total_variance
     group["process_std"] = process_std
-    group["lower_68"] = group["I_oracle"] - Z_68 * process_std
+    group["total_std"] = total_std
+    group["lower_68"] = group["I_oracle"] - Z_68 * total_std
     group["upper_68"] = group["I_oracle"] + Z_68 * process_std
     group["covered_68"] = np.abs(error) <= Z_68 * process_std
-    group["lower_95"] = group["I_oracle"] - Z_95 * process_std
-    group["upper_95"] = group["I_oracle"] + Z_95 * process_std
-    group["covered_95"] = np.abs(error) <= Z_95 * process_std
-    group["q"] = q
-    group["sigma"] = sigma
+    group["lower_95"] = group["I_oracle"] - Z_95 * total_std
+    group["upper_95"] = group["I_oracle"] + Z_95 * total_std
+    group["covered_95"] = np.abs(error) <= Z_95 * total_std
+    group["q_0"], group["q_p"] = q_0, q_p
+    group["sigma_0"], group["sigma_p"] = sigma_0, sigma_p
+    group["q"], group["sigma"] = q_p, sigma_p  # Backward-compatible process-only aliases
 
     fit = {
         "origin": group["origin"].iloc[0],
         "origin_day": group["origin"].iloc[0].normalize(),
-        "q": q, "sigma": sigma,
+        "q_0": q_0, "q_p": q_p, "sigma_0": sigma_0, "sigma_p": sigma_p,
+        "q": q_p, "sigma": sigma_p,
         "horizon_hours": DAY_HOURS,
         "cumulative_curve_mse": float(np.mean((fitted_cumulative - observed_cumulative) ** 2)),
         "observed_24h_error_squared_sum": float(observed_cumulative[-1]),
@@ -126,6 +137,8 @@ def fit_cumulative_origin(group):
         "observed_24h_rmse": float(np.sqrt(observed_cumulative[-1] / DAY_HOURS)),
         "model_24h_rms_std": float(np.sqrt(fitted_cumulative[-1] / DAY_HOURS)),
         "mean_oracle_residual": float(np.mean(error)),
+        "total_68_coverage_pct": 100.0 * float(np.mean(group["covered_68"])),
+        "total_95_coverage_pct": 100.0 * float(np.mean(group["covered_95"])),
         "process_68_coverage_pct": 100.0 * float(np.mean(group["covered_68"])),
         "process_95_coverage_pct": 100.0 * float(np.mean(group["covered_95"])),
     }
