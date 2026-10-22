@@ -257,32 +257,34 @@ def save_calibration_plot(summary, output):
 
 def save_plot(origins, summary, output):
     fig, axes = plt.subplots(3, 1, figsize=(15, 13))
-    axes[0].scatter(origins["origin"], origins["sigma"], s=7, alpha=0.75, label="Per-origin 24h cumulative-fit sigma")
-    axes[0].axhline(float(np.mean(origins["sigma"])), linestyle="--", label="Mean per-origin sigma")
-    axes[0].set_ylabel("Diffusion sigma")
+    axes[0].scatter(origins["origin"], origins["sigma_0"], s=7, alpha=0.75, label="Observation sigma_0")
+    axes[0].scatter(origins["origin"], origins["sigma_p"], s=7, alpha=0.75, label="Process sigma_p")
+    axes[0].axhline(float(np.mean(origins["sigma_0"])), linestyle=":", label="Mean sigma_0")
+    axes[0].axhline(float(np.mean(origins["sigma_p"])), linestyle="--", label="Mean sigma_p")
+    axes[0].set_ylabel("Uncertainty sigma")
     axes[0].legend(); axes[0].grid(True, alpha=0.25)
 
     h = summary["lead_hours"].to_numpy(dtype=int)
     axes[1].plot(h, summary["mean_cumulative_squared_error"], marker="o", label="Observed cumulative squared oracle error")
-    axes[1].plot(h, summary["mean_cumulative_model_variance"], marker="o", label="Fitted cumulative WM4 marginal variance")
+    axes[1].plot(h, summary["mean_cumulative_model_variance"], marker="o", label="Fitted cumulative observation + process variance")
     axes[1].set_ylabel("Cumulative squared error / variance")
     axes[1].legend(); axes[1].grid(True, alpha=0.25)
 
     axes[2].plot(h, summary["cumulative_error_rmse"], marker="o", label="Cumulative oracle RMSE")
-    axes[2].plot(h, summary["cumulative_model_rms_std"], marker="o", label="Cumulative model RMS std")
+    axes[2].plot(h, summary["cumulative_model_rms_std"], marker="o", label="Cumulative model total RMS std")
     axes[2].plot(h, summary["hourly_oracle_rmse"], linestyle=":", label="Exact-hour oracle RMSE")
     axes[2].set_xlabel("Hours since MPC origin")
     axes[2].set_ylabel("Normalized input")
     axes[2].legend(); axes[2].grid(True, alpha=0.25)
     for ax in axes[1:]: ax.set_xticks(np.arange(1, DAY_HOURS + 1, 2))
 
-    fig.suptitle("WM4 constant diffusion fitted per origin to cumulative 24h squared oracle errors")
+    fig.suptitle("WM4 observation + process uncertainty fitted to cumulative 24h squared oracle errors")
     fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
 
 
 def main():
-    parser = ArgumentParser(description="Fit a separate constant WM4 sigma at each MPC origin to 24h cumulative squared oracle errors using already-saved parameters, oracle states and kernels.")
+    parser = ArgumentParser(description="Fit observation sigma_0 and process sigma_p at each MPC origin to cumulative 24h squared oracle errors, using saved deterministic parameters and oracle states.")
     parser.add_argument("--input", default=str(INPUT), help="Saved oracle_24h_by_origin_and_lead.csv.")
     parser.add_argument("--start-day", default=None)
     parser.add_argument("--end-day", default=None)
@@ -304,22 +306,23 @@ def main():
     save_calibration_plot(horizons, output / "variance_coverage_by_horizon.png")
 
     print(f"origins={len(origins)}, fitted horizon={DAY_HOURS} hours")
-    print(f"sigma mean={origins['sigma'].mean():.9f}, median={origins['sigma'].median():.9f}")
+    print(f"observation sigma_0 mean={origins['sigma_0'].mean():.9f}, median={origins['sigma_0'].median():.9f}")
+    print(f"process sigma_p mean={origins['sigma_p'].mean():.9f}, median={origins['sigma_p'].median():.9f}")
     print(f"mean final observed RMSE={origins['observed_24h_rmse'].mean():.9f}")
     print(f"mean final predicted RMS std={origins['model_24h_rms_std'].mean():.9f}")
-    print("One nonnegative q=sigma^2 fitted per origin to the whole 1..24h cumulative squared-error curve.")
+    print("Nonnegative q_0=sigma_0^2 and q_p=sigma_p^2 jointly fitted per origin to 1..24h cumulative squared errors.")
     print("No WM4 drift coefficients, robust baseline or oracle initial states are refitted.")
     print("Cumulative squared errors are one-path proxies for expected variances, NOT empirical ensemble variances.")
     print("Empirical variance and Gaussian 68.27% / 95% interval coverage by lead:")
-    print(f"{'lead':>6} {'n':>6} {'var(obs)':>12} {'var(WM4)':>12} {'cov68':>10} {'cov95':>10} {'ratio68':>10} {'ratio95':>10}")
+    print(f"{'lead':>6} {'n':>6} {'var(obs)':>12} {'var(total)':>12} {'cov68':>10} {'cov95':>10} {'ratio68':>10} {'ratio95':>10}")
     for row in horizons.itertuples(index=False):
         print(f"{row.lead_hours:6d} {row.origins:6d} {row.empirical_oracle_variance:12.7f} "
-            f"{row.mean_predicted_process_variance:12.7f} {row.process_68_coverage_pct:9.2f}% "
+            f"{row.mean_predicted_total_variance:12.7f} {row.process_68_coverage_pct:9.2f}% "
             f"{row.process_95_coverage_pct:9.2f}% {row.coverage_68_ratio:10.3f} "
             f"{row.coverage_95_ratio:10.3f}")
     print("Coverage ratios are observed / nominal: 1.0 indicates ideal calibration.")
-    print("Intervals use the sigma fitted on the SAME origin residuals (in-sample diagnostic).")
-    print("Overlapping hourly origins are dependent; these coverages are not independent holdout estimates.")
+    print("Intervals use total_std=sqrt(sigma_0^2 + sigma_p^2*K_h), fitted on the SAME origin residuals.")
+    print("Overlapping hourly origins are dependent; these coverages are NOT independent holdout estimates.")
     print(f"output={output}")
 
 
