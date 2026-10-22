@@ -64,7 +64,7 @@ def fit_nonnegative_variances(target, process_cumulative):
     return float(q[0]), float(q[1])
 
 
-def fit_cumulative_origin(group):
+def fit_cumulative_origin(group, q_0=None, q_p=None):
     """Fit q_0=sigma_0**2 and q_p=sigma_p**2 for each oracle 24-hour trajectory.
 
     Observation errors epsilon_h iid N(0,1) enter I_h=O_h+R_h+sigma_0*epsilon_h.
@@ -89,7 +89,16 @@ def fit_cumulative_origin(group):
     if not np.isfinite(denominator) or denominator <= 0.0:
         raise ValueError("The cumulative WM4 process-variance kernel is zero or invalid.")
 
-    q_0, q_p = fit_nonnegative_variances(observed_cumulative, unit_cumulative)
+    if (q_0 is None) != (q_p is None):
+        raise ValueError("q_0 and q_p must both be supplied or both estimated.")
+    if q_0 is None:
+        q_0, q_p = fit_nonnegative_variances(observed_cumulative, unit_cumulative)
+        fit_mode = "in_sample_oracle"
+    else:
+        q_0, q_p = float(q_0), float(q_p)
+        if not np.isfinite(q_0) or not np.isfinite(q_p) or min(q_0, q_p) < 0.0:
+            raise ValueError("Historical q_0 and q_p must be finite and nonnegative.")
+        fit_mode = "historical"
     sigma_0, sigma_p = float(np.sqrt(q_0)), float(np.sqrt(q_p))
     observation_variance = np.full(DAY_HOURS, q_0)
     process_variance = q_p * K
@@ -121,6 +130,7 @@ def fit_cumulative_origin(group):
     group["lower_95"] = group["I_oracle"] - Z_95 * total_std
     group["upper_95"] = group["I_oracle"] + Z_95 * total_std
     group["covered_95"] = np.abs(error) <= Z_95 * total_std
+    group["fit_mode"] = fit_mode
     group["q_0"], group["q_p"] = q_0, q_p
     group["sigma_0"], group["sigma_p"] = sigma_0, sigma_p
     group["q"], group["sigma"] = q_p, sigma_p  # Backward-compatible process-only aliases
@@ -128,6 +138,7 @@ def fit_cumulative_origin(group):
     fit = {
         "origin": group["origin"].iloc[0],
         "origin_day": group["origin"].iloc[0].normalize(),
+        "fit_mode": fit_mode,
         "q_0": q_0, "q_p": q_p, "sigma_0": sigma_0, "sigma_p": sigma_p,
         "q": q_p, "sigma": sigma_p,
         "horizon_hours": DAY_HOURS,
