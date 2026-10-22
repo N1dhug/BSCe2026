@@ -1,0 +1,198 @@
+from argparse import ArgumentParser
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from src.exe.run_model.wm_4.fit_daily import DAY_HOURS, day_start
+from src.exe.run_model.wm_4.fit_oracle_mpc_diffusion import OUTPUT as ORACLE_OUTPUT, Z_95
+
+
+INPUT = ORACLE_OUTPUT / "oracle_24h_by_origin_and_lead.csv"
+OUTPUT = ORACLE_OUTPUT / "cumulative_24h"
+REQUIRED = {"origin", "lead_hours", "I_observed", "I_oracle", "oracle_error", "unit_process_variance"}
+
+
+def load_predictions(path, start_day=None, end_day=None):
+    """Read previously fitted oracle trajectories and fixed WM4 process kernels; fit nothing here."""
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Missing cached oracle trajectories: {path}\n"
+            "First run: python -m src.exe.run_model.wm_4.fit_oracle_mpc_diffusion"
+        )
+    frame = pd.read_csv(path, parse_dates=["origin"])
+    missing = sorted(REQUIRED.difference(frame.columns))
+    if missing: raise ValueError("Oracle prediction file is missing: " + ", ".join(missing))
+    if frame["origin"].isna().any(): raise ValueError("Oracle origin timestamps must be valid.")
+    if start_day is not None: frame = frame.loc[frame["origin"] >= day_start(start_day)]
+    if end_day is not None: frame = frame.loc[frame["origin"] < day_start(end_day) + pd.Timedelta(days=1)]
+    if frame.empty: raise ValueError("No oracle trajectories for the requested period.")
+    if frame.duplicated(["origin", "lead_hours"]).any(): raise ValueError("Duplicate oracle origin / lead-hour rows.")
+    if not np.isfinite(frame[["I_observed", "I_oracle", "oracle_error", "unit_process_variance"]].to_numpy(dtype=float)).all():
+        raise ValueError("Observed/oracle values, residuals and WM4 unit-variance kernels must be finite.")
+    if (frame["unit_process_variance"] < -1e-12).any(): raise ValueError("WM4 unit-process variance cannot be negative.")
+    if not np.allclose(frame["oracle_error"], frame["I_observed"] - frame["I_oracle"], atol=1e-8, rtol=1e-6):
+        raise ValueError("Saved oracle_error does not equal I_observed - I_oracle.")
+    frame = frame.copy()
+    frame["unit_process_variance"] = frame["unit_process_variance"].clip(lower=0.0)
+    return frame.sort_values(["origin", "lead_hours"]).reset_index(drop=True)
+
+
+def fit_cumulative_origin(group):
+    """Fit q >= 0 to the *cumulative squared-error* curve of one fixed oracle trajectory.
+
+    S_H = sum_{h<=H} error_h**2 and B_H = sum_{h<=H} K_h.
+    E[S_H] = q B_H for a zero-mean process-only oracle error (fixed x0, P0=0).
+    Fit the complete 24-hour cumulative curves with an exact 1D convex QP:
+        min_{q>=0} sum_{H=1}^{24} (S_H - q B_H)**2.
+
+    One realization does NOT identify empirical ensemble variance. S_H is a
+    realized second-moment proxy, not the sample variance across origins.
+    """
+    group = group.sort_values("lead_hours").copy()
+    hours = group["lead_hours"].to_numpy(dtype=int)
+    if len(hours) != DAY_HOURS or not np.array_equal(hours, np.arange(1, DAY_HOURS + 1)):
+        raise ValueError(f"Origin {group['origin'].iloc[0]} must have exactly the 24 leads 1..24.")
+
+    error = group["oracle_error"].to_numpy(dtype=float)
+    K = group["unit_process_variance"].to_numpy(dtype=float)
+    if not np.isfinite(error).all() or not np.isfinite(K).all() or np.any(K < 0.0):
+        raise ValueError("Oracle residuals / WM4 variance kernels must be finite and nonnegative.")
+    observed_cumulative = np.cumsum(error ** 2)
+    unit_cumulative = np.cumsum(K)
+    denominator = float(unit_cumulative @ unit_cumulative)
+    if not np.isfinite(denominator) or denominator <= 0.0:
+        raise ValueError("The cumulative WM4 process-variance kernel is zero or invalid.")
+
+    q = max(0.0, float(unit_cumulative @ observed_cumulative) / denominator)
+    sigma = float(np.sqrt(q))
+    fitted_cumulative = q * unit_cumulative
+    process_variance = q * K
+    process_std = np.sqrt(process_variance)
+    group["error_squared"] = error ** 2
+    group["cumulative_error_squared"] = observed_cumulative
+    group["cumulative_unit_variance"] = unit_cumulative
+    group["fitted_cumulative_process_variance"] = fitted_cumulative
+    group["cumulative_variance_residual"] = fitted_cumulative - observed_cumulative
+    group["cumulative_error_mse"] = observed_cumulative / hours
+    group["cumulative_error_rmse"] = np.sqrt(group["cumulative_error_mse"])
+    group["cumulative_model_mean_variance"] = fitted_cumulative / hours
+    group["cumulative_model_rms_std"] = np.sqrt(group["cumulative_model_mean_variance"])
+    group["process_variance"] = process_variance
+    group["process_std"] = process_std
+    group["lower_95"] = group["I_oracle"] - Z_95 * process_std
+    group["upper_95"] = group["I_oracle"] + Z_95 * process_std
+    group["covered_95"] = np.abs(error) <= Z_95 * process_std
+    group["q"] = q
+    group["sigma"] = sigma
+
+    fit = {
+        "origin": group["origin"].iloc[0],
+        "origin_day": group["origin"].iloc[0].normalize(),
+        "q": q, "sigma": sigma,
+        "horizon_hours": DAY_HOURS,
+        "cumulative_curve_mse": float(np.mean((fitted_cumulative - observed_cumulative) ** 2)),
+        "observed_24h_error_squared_sum": float(observed_cumulative[-1]),
+        "fitted_24h_variance_sum": float(fitted_cumulative[-1]),
+        "observed_24h_rmse": float(np.sqrt(observed_cumulative[-1] / DAY_HOURS)),
+        "model_24h_rms_std": float(np.sqrt(fitted_cumulative[-1] / DAY_HOURS)),
+        "mean_oracle_residual": float(np.mean(error)),
+        "process_95_coverage_pct": 100.0 * float(np.mean(group["covered_95"])),
+    }
+    for key in ("r_F", "r_U", "r_R", "F0_oracle", "R0_oracle"):
+        if key in group.columns: fit[key] = float(group[key].iloc[0])
+    return fit, group
+
+
+def fit_all_origins(forecasts):
+    """Fit an independent diffusion for each hourly MPC origin without refitting model parameters."""
+    fits, trajectories = [], []
+    for _, group in forecasts.groupby("origin", sort=True):
+        fit, result = fit_cumulative_origin(group)
+        fits.append(fit); trajectories.append(result)
+    if not fits: raise ValueError("No complete oracle MPC origins were provided.")
+    origins = pd.DataFrame(fits)
+    hourly = pd.concat(trajectories, ignore_index=True)
+    return origins, hourly
+
+
+def horizon_summary(hourly):
+    rows = []
+    for hour, group in hourly.groupby("lead_hours", sort=True):
+        residual = group["oracle_error"].to_numpy(dtype=float)
+        observed_cum = group["cumulative_error_squared"].to_numpy(dtype=float)
+        model_cum = group["fitted_cumulative_process_variance"].to_numpy(dtype=float)
+        rows.append({
+            "lead_hours": int(hour),
+            "origins": int(len(group)),
+            "hourly_oracle_rmse": float(np.sqrt(np.mean(residual ** 2))),
+            "mean_cumulative_squared_error": float(np.mean(observed_cum)),
+            "mean_cumulative_model_variance": float(np.mean(model_cum)),
+            "cumulative_error_rmse": float(np.sqrt(np.mean(observed_cum) / hour)),
+            "cumulative_model_rms_std": float(np.sqrt(np.mean(model_cum) / hour)),
+            "mean_cumulative_difference": float(np.mean(model_cum - observed_cum)),
+            "process_95_coverage_pct": 100.0 * float(group["covered_95"].mean()),
+        })
+    return pd.DataFrame(rows).sort_values("lead_hours").reset_index(drop=True)
+
+
+def save_plot(origins, summary, output):
+    fig, axes = plt.subplots(3, 1, figsize=(15, 13))
+    axes[0].scatter(origins["origin"], origins["sigma"], s=7, alpha=0.75, label="Per-origin 24h cumulative-fit sigma")
+    axes[0].axhline(float(np.mean(origins["sigma"])), linestyle="--", label="Mean per-origin sigma")
+    axes[0].set_ylabel("Diffusion sigma")
+    axes[0].legend(); axes[0].grid(True, alpha=0.25)
+
+    h = summary["lead_hours"].to_numpy(dtype=int)
+    axes[1].plot(h, summary["mean_cumulative_squared_error"], marker="o", label="Observed cumulative squared oracle error")
+    axes[1].plot(h, summary["mean_cumulative_model_variance"], marker="o", label="Fitted cumulative WM4 marginal variance")
+    axes[1].set_ylabel("Cumulative squared error / variance")
+    axes[1].legend(); axes[1].grid(True, alpha=0.25)
+
+    axes[2].plot(h, summary["cumulative_error_rmse"], marker="o", label="Cumulative oracle RMSE")
+    axes[2].plot(h, summary["cumulative_model_rms_std"], marker="o", label="Cumulative model RMS std")
+    axes[2].plot(h, summary["hourly_oracle_rmse"], linestyle=":", label="Exact-hour oracle RMSE")
+    axes[2].set_xlabel("Hours since MPC origin")
+    axes[2].set_ylabel("Normalized input")
+    axes[2].legend(); axes[2].grid(True, alpha=0.25)
+    for ax in axes[1:]: ax.set_xticks(np.arange(1, DAY_HOURS + 1, 2))
+
+    fig.suptitle("WM4 constant diffusion fitted per origin to cumulative 24h squared oracle errors")
+    fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
+
+
+def main():
+    parser = ArgumentParser(description="Fit a separate constant WM4 sigma at each MPC origin to 24h cumulative squared oracle errors using already-saved parameters, oracle states and kernels.")
+    parser.add_argument("--input", default=str(INPUT), help="Saved oracle_24h_by_origin_and_lead.csv.")
+    parser.add_argument("--start-day", default=None)
+    parser.add_argument("--end-day", default=None)
+    parser.add_argument("--output", default=str(OUTPUT))
+    args = parser.parse_args()
+    if args.start_day and args.end_day and day_start(args.end_day) < day_start(args.start_day):
+        parser.error("--end-day must be on/after --start-day.")
+
+    forecasts = load_predictions(args.input, args.start_day, args.end_day)
+    origins, hourly = fit_all_origins(forecasts)
+    horizons = horizon_summary(hourly)
+    output = Path(args.output); output.mkdir(parents=True, exist_ok=True)
+
+    origins.to_csv(output / "cumulative_diffusion_by_mpc_origin.csv", index=False)
+    hourly.to_csv(output / "cumulative_diffusion_by_origin_and_lead.csv", index=False)
+    horizons.to_csv(output / "cumulative_diffusion_by_horizon.csv", index=False)
+    save_plot(origins, horizons, output / "cumulative_24h_diffusion.png")
+
+    print(f"origins={len(origins)}, fitted horizon={DAY_HOURS} hours")
+    print(f"sigma mean={origins['sigma'].mean():.9f}, median={origins['sigma'].median():.9f}")
+    print(f"mean final observed RMSE={origins['observed_24h_rmse'].mean():.9f}")
+    print(f"mean final predicted RMS std={origins['model_24h_rms_std'].mean():.9f}")
+    print("One nonnegative q=sigma^2 fitted per origin to the whole 1..24h cumulative squared-error curve.")
+    print("No WM4 drift coefficients, robust baseline or oracle initial states are refitted.")
+    print("Cumulative squared errors are one-path proxies for expected variances, NOT empirical ensemble variances.")
+    print("This is in-sample oracle-conditioned fitting, not prospective MPC uncertainty calibration.")
+    print(f"output={output}")
+
+
+if __name__ == "__main__": main()
