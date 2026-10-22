@@ -227,6 +227,9 @@ def fit_all_origins_historical(forecasts, lookback_days=24, min_training_days=5,
             raise ValueError(f"Incomplete 24-hour oracle trajectory at {stamp}.")
         all_groups[stamp] = group.sort_values("lead_hours")
     if not all_groups: raise ValueError("No oracle trajectories were supplied.")
+    by_clock = {}
+    for stamp in all_groups:
+        by_clock.setdefault((stamp.hour, stamp.minute, stamp.second), []).append(stamp)
     first = day_start(start_day) if start_day is not None else None
     last = day_start(end_day) + pd.Timedelta(days=1) if end_day is not None else None
     if first is not None and last is not None and first >= last:
@@ -244,11 +247,10 @@ def fit_all_origins_historical(forecasts, lookback_days=24, min_training_days=5,
         # Strictly before the prediction calendar day, not merely before this
         # hour within that day. This also excludes a previous-day 24h path
         # that contains observations from today's forecast window.
-        eligible = [origin for origin in all_groups if
+        same_hour = by_clock.get((target.hour, target.minute, target.second), ())
+        eligible = [origin for origin in same_hour if
             lower <= origin <= target - pd.Timedelta(hours=DAY_HOURS) and
-            origin + pd.Timedelta(hours=DAY_HOURS) < prediction_day and
-            (origin.hour, origin.minute, origin.second) ==
-            (target.hour, target.minute, target.second)]
+            origin + pd.Timedelta(hours=DAY_HOURS) < prediction_day]
         if len(eligible) < min_training_days:
             missing_history += 1
             continue
