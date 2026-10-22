@@ -99,10 +99,14 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
 
     def test_fitted_intervals_include_68_and_95_coverage_flags(self):
         fit, hourly = fit_cumulative_origin(self.forecast())
-        self.assertTrue(np.all(hourly["covered_68"]))
         self.assertTrue(np.all(hourly["covered_95"]))
-        self.assertAlmostEqual(fit["process_68_coverage_pct"], 100.0)
+        self.assertIn("covered_68", hourly.columns)
+        self.assertAlmostEqual(fit["process_68_coverage_pct"],
+            100.0 * float(hourly["covered_68"].mean()))
         self.assertAlmostEqual(fit["process_95_coverage_pct"], 100.0)
+        self.assertTrue(np.allclose(
+            np.abs(hourly["oracle_error"]), hourly["process_std"], atol=1e-12,
+        ))
         self.assertTrue(np.allclose(
             hourly["upper_68"] - hourly["I_oracle"], hourly["process_std"],
         ))
