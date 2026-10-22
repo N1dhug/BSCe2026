@@ -10,7 +10,8 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.fit_oracle_mpc_cumulative_diffusion import (
-    fit_all_origins, fit_cumulative_origin, horizon_summary, load_predictions, save_plot,
+    NOMINAL_68_PCT, NOMINAL_95_PCT, fit_all_origins, fit_cumulative_origin,
+    horizon_summary, load_predictions, save_calibration_plot, save_plot,
 )
 
 
@@ -59,6 +60,54 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         self.assertTrue(np.allclose(
             summary["mean_cumulative_squared_error"],
             summary["mean_cumulative_model_variance"],
+        ))
+
+    def test_coverage_and_empirical_variance_are_aggregated_by_lead(self):
+        # Use four origins with known process variance (not re-estimated from
+        # their own errors) to test numerical calibration diagnostics directly.
+        errors = [0.0, 0.5, 1.5, 3.0]
+        chunks = []
+        for i, error in enumerate(errors):
+            origin = pd.Timestamp("2022-05-01") + pd.Timedelta(hours=i)
+            hours = np.arange(1, 25)
+            chunks.append(pd.DataFrame({
+                "origin": origin, "lead_hours": hours,
+                "oracle_error": np.full(24, error),
+                "cumulative_error_squared": hours * error ** 2,
+                "fitted_cumulative_process_variance": hours.astype(float),
+                "process_variance": np.ones(24),
+                "covered_68": np.full(24, abs(error) <= 1.0),
+                "covered_95": np.full(24, abs(error) <= 1.959963984540054),
+            }))
+        summary = horizon_summary(pd.concat(chunks, ignore_index=True))
+        self.assertEqual(len(summary), 24)
+        self.assertTrue(np.allclose(summary["empirical_oracle_variance"], np.var(errors, ddof=1)))
+        self.assertTrue(np.allclose(summary["mean_predicted_process_variance"], 1.0))
+        self.assertTrue(np.allclose(summary["process_68_coverage_pct"], 50.0))
+        self.assertTrue(np.allclose(summary["process_95_coverage_pct"], 75.0))
+        self.assertTrue(np.allclose(summary["coverage_68_ratio"], 50.0 / NOMINAL_68_PCT))
+        self.assertTrue(np.allclose(summary["coverage_95_ratio"], 75.0 / NOMINAL_95_PCT))
+        self.assertTrue(np.allclose(summary["coverage_68_error_pp"], 50.0 - NOMINAL_68_PCT))
+        self.assertTrue(np.allclose(summary["coverage_95_error_pp"], 75.0 - NOMINAL_95_PCT))
+        self.assertEqual(summary["covered_68_origins"].tolist(), [2] * 24)
+        self.assertEqual(summary["covered_95_origins"].tolist(), [3] * 24)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "variance_coverage.png"
+            save_calibration_plot(summary, path)
+            self.assertTrue(path.exists())
+            self.assertGreater(path.stat().st_size, 0)
+
+    def test_fitted_intervals_include_68_and_95_coverage_flags(self):
+        fit, hourly = fit_cumulative_origin(self.forecast())
+        self.assertTrue(np.all(hourly["covered_68"]))
+        self.assertTrue(np.all(hourly["covered_95"]))
+        self.assertAlmostEqual(fit["process_68_coverage_pct"], 100.0)
+        self.assertAlmostEqual(fit["process_95_coverage_pct"], 100.0)
+        self.assertTrue(np.allclose(
+            hourly["upper_68"] - hourly["I_oracle"], hourly["process_std"],
+        ))
+        self.assertTrue(np.all(
+            hourly["upper_95"] - hourly["I_oracle"] > hourly["upper_68"] - hourly["I_oracle"]
         ))
 
     def test_missing_or_duplicate_horizon_is_rejected(self):
