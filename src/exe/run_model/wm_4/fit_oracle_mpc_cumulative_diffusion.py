@@ -362,7 +362,8 @@ def save_calibration_plot(summary, output):
     axes[2].set_xticks(np.arange(1, DAY_HOURS + 1, 2))
     axes[2].set_xlim(1, DAY_HOURS)
 
-    fig.suptitle("WM4 observation + Wiener process variance and 68% / 95% coverage (in-sample)")
+    mode = "historical diffusion / oracle state" if "historical" in summary.columns else "in-sample"
+    fig.suptitle(f"WM4 observation + Wiener process variance and 68% / 95% coverage ({mode})")
     fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -406,8 +407,9 @@ def day_error_quintiles(hourly, mode="calendar-day"):
     1..24 target exactly 00:00..23:00 of the next calendar day.
     midnight: 00:00-origin forecast, leads 1..24 (01:00..next 00:00).
     all-origins: pool forecasts by their origin day, not target day.
-    All fitted sigmas originate from that SAME day/origin's observed errors:
-    this is an in-sample association, not ex-ante forecast-skill validation.
+    With historical fitting, sigma_0 and sigma_p are estimated from completed
+    preceding days only. The target day's oracle state nevertheless uses future
+    observations; hence this remains an oracle-conditioned retrospective test.
     """
     if mode not in ("calendar-day", "midnight", "all-origins"):
         raise ValueError("day quintile mode must be calendar-day, midnight or all-origins.")
@@ -439,6 +441,9 @@ def day_error_quintiles(hourly, mode="calendar-day"):
         observed_mse=("oracle_error", lambda e: float(np.mean(e.to_numpy(dtype=float) ** 2))),
         predicted_mean_variance=("total_variance", "mean"),
     ).reset_index()
+    if "fit_mode" in df.columns:
+        modes = df.groupby("day")["fit_mode"].first()
+        daily["fit_mode"] = daily["day"].map(modes)
     daily["predicted_24h_rms_std"] = np.sqrt(daily["predicted_mean_variance"])
     daily["actual_24h_rmse"] = np.sqrt(daily["observed_mse"])
     if len(daily) < 5:
@@ -499,7 +504,10 @@ def save_day_error_quintiles(daily, quintiles, output, mode="calendar-day"):
 
     context = ("calendar days (previous 23:00-origin forecast)" if mode == "calendar-day" else
         "midnight-origin 24h forecasts" if mode == "midnight" else "all MPC origins pooled by origin day")
-    fig.suptitle(f"WM4 predicted-error quintiles vs observed error ({context}; in-sample)")
+    protocol = ("historical diffusion, oracle state" if
+        "fit_mode" in daily.columns and daily["fit_mode"].eq("historical").all()
+        else "in-sample diffusion and oracle state")
+    fig.suptitle(f"WM4 predicted-error quintiles vs observed error ({context}; {protocol})")
     fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -509,6 +517,12 @@ def main():
     parser.add_argument("--input", default=str(INPUT), help="Saved oracle_24h_by_origin_and_lead.csv.")
     parser.add_argument("--start-day", default=None)
     parser.add_argument("--end-day", default=None)
+    parser.add_argument("--fit-mode", choices=("historical", "in-sample"), default="historical",
+        help="Default: fit observation and process variances using ONLY earlier completed days.")
+    parser.add_argument("--lookback-days", type=int, default=24,
+        help="Number of previous calendar days eligible for diffusion fitting (default 24).")
+    parser.add_argument("--min-training-days", type=int, default=5,
+        help="Minimum preceding completed same-hour 24h horizons to calibrate diffusion.")
     parser.add_argument("--day-quintile-mode", choices=("calendar-day", "midnight", "all-origins"),
         default="calendar-day", help="Default: exact 00-23 calendar-day targets via previous 23:00 MPC origin; or midnight-origin forecasts / all origins pooled by start day.")
     parser.add_argument("--output", default=str(OUTPUT))
@@ -516,8 +530,18 @@ def main():
     if args.start_day and args.end_day and day_start(args.end_day) < day_start(args.start_day):
         parser.error("--end-day must be on/after --start-day.")
 
-    forecasts = load_predictions(args.input, args.start_day, args.end_day)
-    origins, hourly = fit_all_origins(forecasts)
+    if args.fit_mode == "historical":
+        # Retain all prior data for calibration even if --start-day filters evaluation.
+        forecasts = load_predictions(args.input, end_day=args.end_day)
+        origins, hourly, skipped = fit_all_origins_historical(forecasts,
+            lookback_days=args.lookback_days, min_training_days=args.min_training_days,
+            start_day=args.start_day, end_day=args.end_day)
+        print(f"Historical calibration: {len(origins)} evaluated origins; "
+            f"{skipped} skipped for insufficient completed preceding horizons.")
+    else:
+        forecasts = load_predictions(args.input, args.start_day, args.end_day)
+        origins, hourly = fit_all_origins(forecasts)
+        print("WARNING: in-sample mode fits sigma_0/sigma_p to the evaluation origin's own errors.")
     horizons = horizon_summary(hourly)
     output = Path(args.output); output.mkdir(parents=True, exist_ok=True)
 
@@ -558,7 +582,12 @@ def main():
             f"{row.total_95_coverage_pct:9.2f}% {row.coverage_68_ratio:10.3f} "
             f"{row.coverage_95_ratio:10.3f}")
     print("Coverage ratios are observed / nominal: 1.0 indicates ideal calibration.")
-    print("Intervals use total_std=sqrt(sigma_0^2 + sigma_p^2*K_h), fitted on the SAME origin residuals.")
+    print("Intervals use sqrt(sigma_0^2 + sigma_p^2*K_h).")
+    if args.fit_mode == "historical":
+        print("Diffusion q_0/q_p for each validation origin uses only completed prior-day data.")
+        print("Only the oracle initial state on the validation day uses future target observations.")
+    else:
+        print("WARNING: diffusion estimates are in-sample, using the same evaluation errors.")
     print("Overlapping hourly origins are dependent; these coverages are NOT independent holdout estimates.")
     print(f"output={output}")
 
