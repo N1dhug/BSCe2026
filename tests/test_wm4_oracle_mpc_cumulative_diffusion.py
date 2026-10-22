@@ -46,6 +46,40 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         self.assertAlmostEqual(fit["r_F"], -2.0)
         self.assertAlmostEqual(fit["F0_oracle"], 0.1)
 
+    def test_separates_observation_and_wiener_diffusion(self):
+        fit, hourly = fit_cumulative_origin(self.forecast(q0=0.003, q=0.09))
+        self.assertAlmostEqual(fit["q_0"], 0.003, places=10)
+        self.assertAlmostEqual(fit["q_p"], 0.09, places=10)
+        self.assertAlmostEqual(fit["sigma_0"], np.sqrt(0.003), places=10)
+        self.assertAlmostEqual(fit["sigma_p"], 0.3, places=10)
+        self.assertTrue(np.allclose(
+            hourly["observation_variance"] + hourly["process_variance"],
+            hourly["total_variance"],
+        ))
+        self.assertTrue(np.allclose(hourly["total_std"] ** 2, hourly["total_variance"]))
+        self.assertTrue(np.allclose(
+            hourly["fitted_cumulative_total_variance"], hourly["cumulative_error_squared"],
+        ))
+        self.assertTrue(np.allclose(
+            hourly["upper_95"] - hourly["I_oracle"], 1.959963984540054 * hourly["total_std"],
+        ))
+        self.assertAlmostEqual(fit["cumulative_curve_mse"], 0.0, places=12)
+        self.assertAlmostEqual(fit["total_95_coverage_pct"], fit["process_95_coverage_pct"])
+
+    def test_QP_axis_optima(self):
+        frame = self.forecast()
+        cum_k = np.cumsum(frame["unit_process_variance"].to_numpy(dtype=float))
+        q0, qp = fit_nonnegative_variances(np.arange(1, 25) * 0.002, cum_k)
+        self.assertAlmostEqual(q0, 0.002, places=12)
+        self.assertAlmostEqual(qp, 0.0, places=12)
+        q0, qp = fit_nonnegative_variances(0.06 * cum_k, cum_k)
+        self.assertAlmostEqual(q0, 0.0, places=12)
+        self.assertAlmostEqual(qp, 0.06, places=12)
+
+    def test_unidentifiable_two_component_kernel_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "separately identified"):
+            fit_nonnegative_variances(np.arange(1, 25), np.arange(1, 25) * 0.04)
+
     def test_fit_is_per_origin_and_requires_no_cross_origin_sample_variance(self):
         combined = pd.concat([
             self.forecast("2022-05-01 14:00", q=0.04),
