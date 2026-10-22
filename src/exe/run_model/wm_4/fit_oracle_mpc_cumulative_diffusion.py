@@ -11,6 +11,9 @@ from src.exe.run_model.wm_4.fit_oracle_mpc_diffusion import OUTPUT as ORACLE_OUT
 
 INPUT = ORACLE_OUTPUT / "oracle_24h_by_origin_and_lead.csv"
 OUTPUT = ORACLE_OUTPUT / "cumulative_24h"
+Z_68 = 1.0
+NOMINAL_68_PCT = 68.26894921370859  # Two-sided Gaussian +/-1 sigma
+NOMINAL_95_PCT = 95.0
 REQUIRED = {"origin", "lead_hours", "I_observed", "I_oracle", "oracle_error", "unit_process_variance"}
 
 
@@ -82,6 +85,9 @@ def fit_cumulative_origin(group):
     group["cumulative_model_rms_std"] = np.sqrt(group["cumulative_model_mean_variance"])
     group["process_variance"] = process_variance
     group["process_std"] = process_std
+    group["lower_68"] = group["I_oracle"] - Z_68 * process_std
+    group["upper_68"] = group["I_oracle"] + Z_68 * process_std
+    group["covered_68"] = np.abs(error) <= Z_68 * process_std
     group["lower_95"] = group["I_oracle"] - Z_95 * process_std
     group["upper_95"] = group["I_oracle"] + Z_95 * process_std
     group["covered_95"] = np.abs(error) <= Z_95 * process_std
@@ -99,6 +105,7 @@ def fit_cumulative_origin(group):
         "observed_24h_rmse": float(np.sqrt(observed_cumulative[-1] / DAY_HOURS)),
         "model_24h_rms_std": float(np.sqrt(fitted_cumulative[-1] / DAY_HOURS)),
         "mean_oracle_residual": float(np.mean(error)),
+        "process_68_coverage_pct": 100.0 * float(np.mean(group["covered_68"])),
         "process_95_coverage_pct": 100.0 * float(np.mean(group["covered_95"])),
     }
     for key in ("r_F", "r_U", "r_R", "F0_oracle", "R0_oracle"):
@@ -119,23 +126,88 @@ def fit_all_origins(forecasts):
 
 
 def horizon_summary(hourly):
+    """Aggregate empirical residual variance and nominal interval coverage at each 1..24h lead.
+
+    Compare VARIANCE across origins with mean fitted process variance.
+    Coverage is the fraction of origin errors within their own fitted Gaussian
+    interval. Each per-origin sigma was fitted on these errors, so this is an
+    in-sample calibration diagnostic, not prospective forecast coverage.
+    """
     rows = []
     for hour, group in hourly.groupby("lead_hours", sort=True):
         residual = group["oracle_error"].to_numpy(dtype=float)
+        n = residual.size
         observed_cum = group["cumulative_error_squared"].to_numpy(dtype=float)
         model_cum = group["fitted_cumulative_process_variance"].to_numpy(dtype=float)
+        covered_68 = group["covered_68"].to_numpy(dtype=bool)
+        covered_95 = group["covered_95"].to_numpy(dtype=bool)
+        empirical_var = float(np.var(residual, ddof=1)) if n > 1 else np.nan
+        predicted_var = float(np.mean(group["process_variance"]))
+        coverage_68 = 100.0 * float(np.mean(covered_68))
+        coverage_95 = 100.0 * float(np.mean(covered_95))
         rows.append({
-            "lead_hours": int(hour),
-            "origins": int(len(group)),
+            "lead_hours": int(hour), "origins": int(n),
+            "hourly_oracle_bias": float(np.mean(residual)),
             "hourly_oracle_rmse": float(np.sqrt(np.mean(residual ** 2))),
+            "hourly_oracle_mse": float(np.mean(residual ** 2)),
+            "empirical_oracle_variance": empirical_var,
+            "empirical_oracle_std": float(np.sqrt(empirical_var)),
+            "mean_predicted_process_variance": predicted_var,
+            "mean_predicted_process_std": float(np.sqrt(predicted_var)),
+            "predicted_to_empirical_variance_ratio": (
+                predicted_var / empirical_var if empirical_var > 0.0 else np.nan
+            ),
             "mean_cumulative_squared_error": float(np.mean(observed_cum)),
             "mean_cumulative_model_variance": float(np.mean(model_cum)),
             "cumulative_error_rmse": float(np.sqrt(np.mean(observed_cum) / hour)),
             "cumulative_model_rms_std": float(np.sqrt(np.mean(model_cum) / hour)),
             "mean_cumulative_difference": float(np.mean(model_cum - observed_cum)),
-            "process_95_coverage_pct": 100.0 * float(group["covered_95"].mean()),
+            "covered_68_origins": int(np.count_nonzero(covered_68)),
+            "covered_95_origins": int(np.count_nonzero(covered_95)),
+            "nominal_68_coverage_pct": NOMINAL_68_PCT,
+            "nominal_95_coverage_pct": NOMINAL_95_PCT,
+            "process_68_coverage_pct": coverage_68,
+            "process_95_coverage_pct": coverage_95,
+            "coverage_68_error_pp": coverage_68 - NOMINAL_68_PCT,
+            "coverage_95_error_pp": coverage_95 - NOMINAL_95_PCT,
+            "coverage_68_ratio": coverage_68 / NOMINAL_68_PCT,
+            "coverage_95_ratio": coverage_95 / NOMINAL_95_PCT,
         })
     return pd.DataFrame(rows).sort_values("lead_hours").reset_index(drop=True)
+
+
+def save_calibration_plot(summary, output):
+    """Per-lead variance, 68%/95% interval coverage and 1:1 coverage ratios."""
+    h = summary["lead_hours"].to_numpy(dtype=int)
+    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+
+    axes[0].plot(h, summary["empirical_oracle_variance"], marker="o",
+        label="Empirical oracle-residual variance across MPC origins")
+    axes[0].plot(h, summary["mean_predicted_process_variance"], marker="o",
+        label="Mean WM4 fitted process variance")
+    axes[0].set_ylabel("Marginal variance")
+    axes[0].legend(); axes[0].grid(True, alpha=0.25)
+
+    axes[1].plot(h, summary["process_68_coverage_pct"], marker="o", label="Observed +/-1 sigma coverage")
+    axes[1].plot(h, summary["process_95_coverage_pct"], marker="o", label="Observed 95% coverage")
+    axes[1].axhline(NOMINAL_68_PCT, linestyle="--", label="Gaussian 68.27% nominal")
+    axes[1].axhline(NOMINAL_95_PCT, linestyle="--", label="95% nominal")
+    axes[1].set_ylabel("Empirical coverage (%)")
+    axes[1].set_ylim(0.0, 105.0)
+    axes[1].legend(ncol=2); axes[1].grid(True, alpha=0.25)
+
+    axes[2].plot(h, summary["coverage_68_ratio"], marker="o", label="68.27% empirical / nominal")
+    axes[2].plot(h, summary["coverage_95_ratio"], marker="o", label="95% empirical / nominal")
+    axes[2].axhline(1.0, linestyle="--", label="Perfect calibration (1:1)")
+    axes[2].set_ylabel("Coverage calibration ratio")
+    axes[2].set_xlabel("Hours since hourly MPC origin")
+    axes[2].legend(); axes[2].grid(True, alpha=0.25)
+    axes[2].set_xticks(np.arange(1, DAY_HOURS + 1, 2))
+    axes[2].set_xlim(1, DAY_HOURS)
+
+    fig.suptitle("WM4 oracle diffusion: marginal variance and 68% / 95% coverage by horizon (in-sample)")
+    fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
 
 
 def save_plot(origins, summary, output):
@@ -182,7 +254,9 @@ def main():
     origins.to_csv(output / "cumulative_diffusion_by_mpc_origin.csv", index=False)
     hourly.to_csv(output / "cumulative_diffusion_by_origin_and_lead.csv", index=False)
     horizons.to_csv(output / "cumulative_diffusion_by_horizon.csv", index=False)
+    horizons.to_csv(output / "variance_coverage_by_horizon.csv", index=False)
     save_plot(origins, horizons, output / "cumulative_24h_diffusion.png")
+    save_calibration_plot(horizons, output / "variance_coverage_by_horizon.png")
 
     print(f"origins={len(origins)}, fitted horizon={DAY_HOURS} hours")
     print(f"sigma mean={origins['sigma'].mean():.9f}, median={origins['sigma'].median():.9f}")
@@ -191,7 +265,16 @@ def main():
     print("One nonnegative q=sigma^2 fitted per origin to the whole 1..24h cumulative squared-error curve.")
     print("No WM4 drift coefficients, robust baseline or oracle initial states are refitted.")
     print("Cumulative squared errors are one-path proxies for expected variances, NOT empirical ensemble variances.")
-    print("This is in-sample oracle-conditioned fitting, not prospective MPC uncertainty calibration.")
+    print("Empirical variance and Gaussian 68.27% / 95% interval coverage by lead:")
+    print(f"{'lead':>6} {'n':>6} {'var(obs)':>12} {'var(WM4)':>12} {'cov68':>10} {'cov95':>10} {'ratio68':>10} {'ratio95':>10}")
+    for row in horizons.itertuples(index=False):
+        print(f"{row.lead_hours:6d} {row.origins:6d} {row.empirical_oracle_variance:12.7f} "
+            f"{row.mean_predicted_process_variance:12.7f} {row.process_68_coverage_pct:9.2f}% "
+            f"{row.process_95_coverage_pct:9.2f}% {row.coverage_68_ratio:10.3f} "
+            f"{row.coverage_95_ratio:10.3f}")
+    print("Coverage ratios are observed / nominal: 1.0 indicates ideal calibration.")
+    print("Intervals use the sigma fitted on the SAME origin residuals (in-sample diagnostic).")
+    print("Overlapping hourly origins are dependent; these coverages are not independent holdout estimates.")
     print(f"output={output}")
 
 
