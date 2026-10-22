@@ -259,6 +259,7 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         self.assertGreater(fits.iloc[1]["q_0"] + fits.iloc[1]["q_p"],
             fits.iloc[0]["q_0"] + fits.iloc[0]["q_p"])
         self.assertTrue(np.all(fits["training_last_observation"] <= fits["origin"]))
+        self.assertTrue(np.all(fits["training_last_observation"] < fits["prediction_day"]))
         self.assertEqual(fits["fit_mode"].unique().tolist(), ["historical"])
         self.assertTrue(np.all(hourly["fit_mode"].eq("historical")))
         self.assertTrue(np.all(hourly["training_last_observation"] <= hourly["origin"]))
@@ -284,6 +285,27 @@ class WM4OracleMPCCumulativeDiffusionTests(unittest.TestCase):
         self.assertAlmostEqual(first.iloc[0]["q_p"], second.iloc[0]["q_p"])
         self.assertNotAlmostEqual(first.iloc[0]["observed_24h_rmse"],
             second.iloc[0]["observed_24h_rmse"])
+
+    def test_midday_forecast_never_trains_on_prediction_day(self):
+        first = pd.Timestamp("2022-05-01 14:00")
+        frames = pd.concat([
+            self.forecast(first + pd.Timedelta(days=i),
+                q0=0.003 if i < 7 else 0.2, q=0.04 if i < 7 else 0.8)
+            for i in range(8)
+        ], ignore_index=True)
+        origins, _, skipped = fit_all_origins_historical(
+            frames, lookback_days=7, min_training_days=5,
+            start_day="2022-05-08", end_day="2022-05-08",
+        )
+        self.assertEqual(skipped, 0)
+        self.assertEqual(len(origins), 1)
+        self.assertAlmostEqual(origins.iloc[0]["q_0"], 0.003, places=10)
+        self.assertAlmostEqual(origins.iloc[0]["q_p"], 0.04, places=10)
+        self.assertEqual(origins.iloc[0]["prediction_day"], pd.Timestamp("2022-05-08"))
+        self.assertLess(origins.iloc[0]["training_last_observation"],
+            origins.iloc[0]["prediction_day"])
+        self.assertLess(origins.iloc[0]["training_last_origin"],
+            pd.Timestamp("2022-05-07 14:00"))
 
     def test_historical_diffusion_pooled_QP_recovers_both_components(self):
         histories = [self.forecast("2022-05-01 23:00", q0=0.005, q=0.04),
