@@ -139,8 +139,8 @@ def fit_cumulative_origin(group):
         "mean_oracle_residual": float(np.mean(error)),
         "total_68_coverage_pct": 100.0 * float(np.mean(group["covered_68"])),
         "total_95_coverage_pct": 100.0 * float(np.mean(group["covered_95"])),
-        "process_68_coverage_pct": 100.0 * float(np.mean(group["covered_68"])),
-        "process_95_coverage_pct": 100.0 * float(np.mean(group["covered_95"])),
+        "process_68_coverage_pct": 100.0 * float(np.mean(group["covered_68"])),  # Legacy name: total coverage
+        "process_95_coverage_pct": 100.0 * float(np.mean(group["covered_95"])),  # Legacy name: total coverage
     }
     for key in ("r_F", "r_U", "r_R", "F0_oracle", "R0_oracle"):
         if key in group.columns: fit[key] = float(group[key].iloc[0])
@@ -162,10 +162,9 @@ def fit_all_origins(forecasts):
 def horizon_summary(hourly):
     """Aggregate empirical residual variance and nominal interval coverage at each 1..24h lead.
 
-    Compare VARIANCE across origins with mean fitted process variance.
-    Coverage is the fraction of origin errors within their own fitted Gaussian
-    interval. Each per-origin sigma was fitted on these errors, so this is an
-    in-sample calibration diagnostic, not prospective forecast coverage.
+    Compare empirical residual variance across origins to the sum of mean
+    observation and Wiener process variance. Intervals use total variance.
+    Each origin fits both sigmas on these same errors (in-sample diagnostic).
     """
     rows = []
     for hour, group in hourly.groupby("lead_hours", sort=True):
@@ -233,8 +232,8 @@ def save_calibration_plot(summary, output):
     axes[0].set_ylabel("Marginal variance")
     axes[0].legend(ncol=2); axes[0].grid(True, alpha=0.25)
 
-    axes[1].plot(h, summary["process_68_coverage_pct"], marker="o", label="Observed +/-1 total sigma coverage")
-    axes[1].plot(h, summary["process_95_coverage_pct"], marker="o", label="Observed 95% total sigma coverage")
+    axes[1].plot(h, summary["total_68_coverage_pct"], marker="o", label="Observed +/-1 total sigma coverage")
+    axes[1].plot(h, summary["total_95_coverage_pct"], marker="o", label="Observed 95% total sigma coverage")
     axes[1].axhline(NOMINAL_68_PCT, linestyle="--", label="Gaussian 68.27% nominal")
     axes[1].axhline(NOMINAL_95_PCT, linestyle="--", label="95% nominal")
     axes[1].set_ylabel("Empirical coverage (%)")
@@ -317,8 +316,8 @@ def main():
     print(f"{'lead':>6} {'n':>6} {'var(obs)':>12} {'var(total)':>12} {'cov68':>10} {'cov95':>10} {'ratio68':>10} {'ratio95':>10}")
     for row in horizons.itertuples(index=False):
         print(f"{row.lead_hours:6d} {row.origins:6d} {row.empirical_oracle_variance:12.7f} "
-            f"{row.mean_predicted_total_variance:12.7f} {row.process_68_coverage_pct:9.2f}% "
-            f"{row.process_95_coverage_pct:9.2f}% {row.coverage_68_ratio:10.3f} "
+            f"{row.mean_predicted_total_variance:12.7f} {row.total_68_coverage_pct:9.2f}% "
+            f"{row.total_95_coverage_pct:9.2f}% {row.coverage_68_ratio:10.3f} "
             f"{row.coverage_95_ratio:10.3f}")
     print("Coverage ratios are observed / nominal: 1.0 indicates ideal calibration.")
     print("Intervals use total_std=sqrt(sigma_0^2 + sigma_p^2*K_h), fitted on the SAME origin residuals.")
