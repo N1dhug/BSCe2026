@@ -304,6 +304,7 @@ def horizon_summary(hourly):
         coverage_95 = 100.0 * float(np.mean(covered_95))
         rows.append({
             "lead_hours": int(hour), "origins": int(n),
+            "fit_mode": str(group["fit_mode"].iloc[0]) if "fit_mode" in group else "unknown",
             "hourly_oracle_bias": float(np.mean(residual)),
             "hourly_oracle_rmse": float(np.sqrt(np.mean(residual ** 2))),
             "hourly_oracle_mse": float(np.mean(residual ** 2)),
@@ -371,7 +372,8 @@ def save_calibration_plot(summary, output):
     axes[2].set_xticks(np.arange(1, DAY_HOURS + 1, 2))
     axes[2].set_xlim(1, DAY_HOURS)
 
-    mode = "historical diffusion / oracle state" if "historical" in summary.columns else "in-sample"
+    mode = ("historical diffusion / oracle state" if
+        "fit_mode" in summary and summary["fit_mode"].eq("historical").all() else "in-sample")
     fig.suptitle(f"WM4 observation + Wiener process variance and 68% / 95% coverage ({mode})")
     fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
@@ -400,7 +402,9 @@ def save_plot(origins, summary, output):
     axes[2].legend(); axes[2].grid(True, alpha=0.25)
     for ax in axes[1:]: ax.set_xticks(np.arange(1, DAY_HOURS + 1, 2))
 
-    fig.suptitle("WM4 observation + process uncertainty fitted to cumulative 24h squared oracle errors")
+    mode = ("historical" if "fit_mode" in origins and
+        origins["fit_mode"].eq("historical").all() else "in-sample")
+    fig.suptitle(f"WM4 observation + process uncertainty: 24h cumulative oracle errors ({mode})")
     fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -409,7 +413,7 @@ def save_plot(origins, summary, output):
 QUINTILE_NAMES = ("Lowest", "Low", "Neutral", "High", "Highest")
 
 
-def day_error_quintiles(hourly, mode="calendar-day"):
+def day_error_quintiles(hourly, mode="calendar-day", start_day=None, end_day=None):
     """Rank days by MODEL-predicted 24h RMS std, never by observed RMSE.
 
     calendar-day: select the 23:00 origin on the PREVIOUS day; its leads
@@ -444,6 +448,9 @@ def day_error_quintiles(hourly, mode="calendar-day"):
             raise ValueError(f"MPC origin {origin} lacks a complete 24-hour trajectory.")
 
     df["day"] = (df["origin"] + pd.Timedelta(hours=1)).dt.normalize() if mode == "calendar-day" else df["origin"].dt.normalize()
+    if start_day is not None: df = df.loc[df["day"] >= day_start(start_day)]
+    if end_day is not None: df = df.loc[df["day"] <= day_start(end_day)]
+    if df.empty: raise ValueError("No complete prediction calendar days remain in the requested date range.")
     daily = df.groupby("day", sort=True).agg(
         origins=("origin", "nunique"),
         evaluated_hours=("lead_hours", "size"),
@@ -561,7 +568,8 @@ def main():
     save_plot(origins, horizons, output / "cumulative_24h_diffusion.png")
     save_calibration_plot(horizons, output / "variance_coverage_by_horizon.png")
     try:
-        daily, quintiles = day_error_quintiles(hourly, mode=args.day_quintile_mode)
+        daily, quintiles = day_error_quintiles(hourly, mode=args.day_quintile_mode,
+            start_day=args.start_day, end_day=args.end_day)
     except ValueError as exc:
         print(f"Day error quintile plot skipped: {exc}")
     else:
