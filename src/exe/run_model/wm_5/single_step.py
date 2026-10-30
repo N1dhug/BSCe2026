@@ -17,38 +17,42 @@ def plot_single_step(example, output):
     effects = np.asarray(example["contributions"], dtype=float)
     f, g, h = example["responses"]
 
-    fig, axes = plt.subplots(5, 1, figsize=(11, 15),
-                             gridspec_kw={"height_ratios": (0.7, 1.1, 1.1, 1.4, 1.1)})
-    for ax in axes[1:4]: ax.sharex(axes[0])
+    fig, axes = plt.subplots(4, 1, figsize=(11, 13),
+                             gridspec_kw={"height_ratios": (1.4, 1.1, 1.4, 1.1)})
+    for ax in axes[1:3]: ax.sharex(axes[0])
 
-    axes[0].step(t, U, where="post", label="Normalized price U")
-    axes[0].set_ylabel("Price"); axes[0].legend(loc="best"); axes[0].grid(alpha=0.25)
+    axes[0].plot(t, demand, label="Predicted demand D = B + R")
+    axes[0].plot(t, baseline, ":", label="Statistical baseline B")
+    axes[0].fill_between(t, baseline, demand, alpha=0.12, label="Demand deviation R")
+    axes[0].set_ylabel("Demand"); axes[0].grid(alpha=0.25)
+    price_axis = axes[0].twinx()
+    price_axis.step(t, U, where="post", ls="--", color="0.35", label="Normalized price U")
+    price_axis.set_ylim(-1.1, 1.1); price_axis.set_yticks((-1.0, 0.0, 1.0))
+    price_axis.set_ylabel("Price U")
+    handles, labels = axes[0].get_legend_handles_labels()
+    price_handles, price_labels = price_axis.get_legend_handles_labels()
+    axes[0].legend(handles + price_handles, labels + price_labels, loc="best")
 
-    axes[1].plot(t, demand, label="Predicted demand D = B + R")
-    axes[1].plot(t, baseline, "--", label="Statistical baseline B")
-    axes[1].fill_between(t, baseline, demand, alpha=0.12, label="Demand deviation R")
-    axes[1].set_ylabel("Demand"); axes[1].legend(loc="best"); axes[1].grid(alpha=0.25)
-
-    axes[2].plot(t, F, label="Flexibility F")
-    axes[2].plot(t, R, label="Rate R = D - B")
-    axes[2].axhline(1.0, ls=":", alpha=0.5); axes[2].axhline(-1.0, ls=":", alpha=0.5)
-    axes[2].set_ylabel("States"); axes[2].legend(loc="best"); axes[2].grid(alpha=0.25)
+    axes[1].plot(t, F, label="Flexibility F")
+    axes[1].plot(t, R, label="Rate R = D - B")
+    axes[1].axhline(1.0, ls=":", alpha=0.5); axes[1].axhline(-1.0, ls=":", alpha=0.5)
+    axes[1].set_ylabel("States"); axes[1].legend(loc="best"); axes[1].grid(alpha=0.25)
 
     for col, label in enumerate(("Restoring θ_F F", "Damping θ_R g(R)", "Price θ_U h(U)")):
-        axes[3].plot(t, effects[:, col], label=label)
-    axes[3].plot(t, state["R_dot"], "--", label="Total dR/dt")
-    axes[3].set_ylabel("Rate contributions"); axes[3].set_xlabel("Time")
-    axes[3].legend(loc="best"); axes[3].grid(alpha=0.25)
+        axes[2].plot(t, effects[:, col], label=label)
+    axes[2].plot(t, state["R_dot"], "--", label="Total dR/dt")
+    axes[2].set_ylabel("Rate contributions"); axes[2].set_xlabel("Time")
+    axes[2].legend(loc="best"); axes[2].grid(alpha=0.25)
 
-    for ax in axes[:4]: ax.axvline(example["step_at"], color="gray", ls=":", alpha=0.55)
-    for ax in axes[:3]: ax.tick_params(labelbottom=False)
+    for ax in axes[:3]: ax.axvline(example["step_at"], color="gray", ls=":", alpha=0.55)
+    for ax in axes[:2]: ax.tick_params(labelbottom=False)
 
     x = np.linspace(-1.0, 1.0, 501)
     for func, label in ((f, "f(F) = F"), (g, "g(R)"), (h, "h(U)")):
-        axes[4].plot(x, [func(float(v)) for v in x], label=label)
-    axes[4].set_xlim(-1.0, 1.0)
-    axes[4].set_xlabel("Normalized input"); axes[4].set_ylabel("Normalized response")
-    axes[4].legend(loc="best"); axes[4].grid(alpha=0.25)
+        axes[3].plot(x, [func(float(v)) for v in x], label=label)
+    axes[3].set_xlim(-1.0, 1.0)
+    axes[3].set_xlabel("Normalized input"); axes[3].set_ylabel("Normalized response")
+    axes[3].legend(loc="best"); axes[3].grid(alpha=0.25)
 
     fig.suptitle(f'{example["model_name"]}: single price-step demand and flexibility response')
     fig.tight_layout(rect=(0, 0, 1, 0.975))
