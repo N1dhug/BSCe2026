@@ -126,6 +126,9 @@ class wm_5(wm):
         f = -2.0 * X.T @ y / scale
         return active_set.solve(H, f, A_ub=A_ub, b_ub=b_ub, lb=lb, ub=ub, tol=1e-9, max_iter=10000)
 
+    def fit_params_joint_qp(self, input_data, initial_conditions=None, **kwargs):
+        from src.params.wm_5 import joint_qp_params
+        return joint_qp_params(self).fit(input_data, initial_conditions, **kwargs)\n
     def fit_params_qp(self, input_data, initial_conditions=None, **kwargs):
         from src.params.wm_5 import qp_params
         return qp_params(self).fit(input_data, initial_conditions=initial_conditions, **kwargs)
