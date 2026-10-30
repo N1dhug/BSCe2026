@@ -45,6 +45,7 @@ class wm_5(wm):
 
     dF/dt=R, dR/dt=r_F*F + sum(a_i*phi_i(R)) + sum(b_j*psi_j(U)), I=O+R.
     The a_i and b_j are <=0, basis derivatives >=0, and g(0)=h(0)=0.
+    Increasing price bases h_j(U) with b_j<=0 give nonpositive price sensitivity.
     A known or reconstructed R0 lets the sequential fitter optimize F0 by QP.
     """
 
@@ -128,7 +129,7 @@ class wm_5(wm):
 
     def fit_params_joint_qp(self, input_data, initial_conditions=None, **kwargs):
         from src.params.wm_5 import joint_qp_params
-        return joint_qp_params(self).fit(input_data, initial_conditions, **kwargs)\n
+        return joint_qp_params(self).fit(input_data, initial_conditions, **kwargs)
     def fit_params_qp(self, input_data, initial_conditions=None, **kwargs):
         from src.params.wm_5 import qp_params
         return qp_params(self).fit(input_data, initial_conditions=initial_conditions, **kwargs)
