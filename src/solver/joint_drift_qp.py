@@ -31,11 +31,11 @@ class joint_drift_qp:
         rhs = [coefficient_b]
         if enforce_path:
             for c in C:
-                row_lo = np.zeros(p); row_lo[:2] = [-1.0, 1.0-c]
-                row_hi = np.zeros(p); row_hi[:2] = [1.0, c+1.0]
-                # (1-C)*beta_F <= beta_0 <= (-1-C)*beta_F
-                # lower: -beta_0 + (1-C)*beta_F <= 0
-                # upper: beta_0 + (1+C)*beta_F <= 0
+                row_lo = np.zeros(p); row_lo[:2] = [-1.0, upper-c]
+                row_hi = np.zeros(p); row_hi[:2] = [1.0, c-lower]
+                # (upper-C)*beta_F <= beta_0 <= (lower-C)*beta_F
+                # lower: -beta_0 + (upper-C)*beta_F <= 0
+                # upper: beta_0 + (C-lower)*beta_F <= 0
                 rows.append(np.stack((row_lo, row_hi)))
                 rhs.append(np.zeros(2))
         A = np.vstack(rows)
