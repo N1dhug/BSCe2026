@@ -143,3 +143,33 @@ class qp_params:
         state = self.model._solve_deterministic(best[1], data["U"], data["Time"], data["O"], p)
         return {"init_cond": best[1].copy(), "deterministic_state": state, "loss": best[0],
                 "observation_mask": obs.copy()}
+
+
+class joint_qp_params(qp_params):
+    """Single convex joint fit of [r_F*F0, r_F, a_1,...,b_1,...]."""
+
+    def fit(self, input_data, initial_conditions=None, *, stabilize=True, enforce_path=True,
+            f_bounds=(-1.0, 1.0), verbose=False):
+        from src.solver.joint_drift_qp import joint_drift_qp
+        started = perf_counter()
+        data = self._prepare_data(input_data)
+        obs = self._observed_state(data)
+        if initial_conditions is not None:
+            seed = wm_5_validation.initial_condition(initial_conditions)
+            if not np.isclose(seed[1], obs["R0"], atol=1e-8):
+                raise ValueError("Joint fit requires observed R0.")
+        constraints = wm_5_params_validation.constraints(
+            self.model.r_functions, self.model.u_functions, self.model.dt, stabilize=stabilize)
+        joint = joint_drift_qp.solve(
+            obs["R"], data["U"], self.model.dt, obs["rate_features"], obs["price_features"],
+            constraints, transition_mask=obs["mask"], f_bounds=f_bounds,
+            ridge=self.model._FIT_RIDGE, enforce_path=enforce_path)
+        p = self.model.coefficients(joint["coefficients"], stabilize=stabilize)
+        state = self.model._solve_deterministic(joint["init_cond"], data["U"], data["Time"], data["O"], p)
+        mask = data["observation_mask"]
+        result = {**joint, "coefficients": p.copy(), "coefficient_names": self.model.parameter_names,
+                  "deterministic_state": state, "observation_mask": mask.copy(),
+                  "fit_method": "wm5_joint_qp", "deterministic_loss": float(np.mean((state["I"][mask]-data["I"][mask])**2)),
+                  "fit_time": perf_counter()-started, "success": True}
+        if verbose: print(f"[wm5 joint] qp_loss={joint['qp_loss']:.8g}, F0={joint['init_cond'][0]:.6g}")
+        return result
