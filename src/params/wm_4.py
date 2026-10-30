@@ -618,3 +618,33 @@ class brute_force_params(qp_params):
         result["fit_method"] = "brute_force"
         result["fit_trajectories"] = 1
         return result
+
+
+class joint_qp_params(qp_params):
+    """Single convex joint fit of [r_F*F0, r_F, r_U, r_R]."""
+
+    def fit(self, input_data, initial_conditions=None, *, stabilize=True, enforce_path=True,
+            f_bounds=(-1.0, 1.0), verbose=False):
+        from src.solver.joint_drift_qp import joint_drift_qp
+        start = perf_counter()
+        data = self._prepare_data(input_data)
+        R = data["I"] - data["O"]
+        if initial_conditions is not None:
+            seed = wm_4_validation.initial_condition(initial_conditions)
+            if not np.isclose(seed[1], R[0], atol=1e-8):
+                raise ValueError("Joint fit requires R0=I[0]-O[0].")
+        A, b, lb, ub = self._qp_constraints(stabilize=stabilize)
+        joint = joint_drift_qp.solve(
+            R, data["U"], self.model.dt, data["U"][:-1, None], R[:-1, None],
+            (A, b, lb, ub), transition_mask=data["transition_mask"],
+            f_bounds=f_bounds, ridge=self.model._FIT_RIDGE, enforce_path=enforce_path)
+        r = wm_4_validation.r_coefficients(joint["coefficients"])
+        state = self.model._solve_deterministic(joint["init_cond"], data["U"], data["PE"],
+                                               data["Time"], data["O"], r)
+        mask = data["observation_mask"]
+        result = {**joint, "r": r.copy(), "deterministic_state": state,
+                  "observation_mask": mask.copy(), "fit_method": "wm4_joint_qp",
+                  "deterministic_loss": float(np.mean((state["I"][mask]-data["I"][mask])**2)),
+                  "fit_time": perf_counter()-start, "success": True}
+        if verbose: print(f"[wm4 joint] qp_loss={joint['qp_loss']:.8g}, F0={joint['init_cond'][0]:.6g}")
+        return result
