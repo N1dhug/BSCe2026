@@ -20,6 +20,7 @@ class wm_4(wm):
     process uncertainty is handled separately through the covariance kernel.
 
     F, U in [-1, 1], with F = U = 0 as the neutral point.
+    h(U)=U is increasing; r_U=theta_U<=0 makes higher prices reduce rate flow.
     """
 
     _FIT_EPS = 1e-8
@@ -161,7 +162,7 @@ class wm_4(wm):
 
     def fit_params_joint_qp(self, input_data, initial_conditions=None, **kwargs):
         from src.params.wm_4 import joint_qp_params
-        return joint_qp_params(self).fit(input_data, initial_conditions, **kwargs)\n
+        return joint_qp_params(self).fit(input_data, initial_conditions, **kwargs)
     def fit_params_qp(self, input_data, initial_conditions, **kwargs): return qp_params(self).fit(input_data, initial_conditions, **kwargs)
 
     def fit_params_numerical(self, input_data, initial_conditions=None, **kwargs):
