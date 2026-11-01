@@ -45,7 +45,7 @@ def reconstruct_hourly(daily, components, steps_per_hour, horizon=HORIZON):
     dt = 1.0/(24*sph)
     result = []
     for part in subset.itertuples(index=False):
-        prediction = float(part.prediction_at_F0_zero)+F0(daily)*float(part.sensitivity_F0)
+        prediction = float(part.prediction_at_F0_zero)+float(daily["oracle_F0"])*float(part.sensitivity_F0)
         if not np.isclose(R, prediction-float(part.baseline_value), atol=1e-7, rtol=1e-7):
             raise RuntimeError("Oracle-state reconstruction does not agree with saved WM4 prediction.")
         U = float(part.price)
@@ -66,8 +66,6 @@ def reconstruct_hourly(daily, components, steps_per_hour, horizon=HORIZON):
             F, R = F+dt*R, R+dt*(theta_F*F+theta_R*R+theta_U*U)
     return result
 
-
-def F0(row): return float(row["oracle_F0"])
 
 
 def consolidate(fit, score, components, states, steps_per_hour, horizon=HORIZON):
