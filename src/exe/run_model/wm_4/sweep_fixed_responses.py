@@ -18,8 +18,7 @@ from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekday
 from src.exe.run_model.wm_4.sweep_weekday_horizon import (
     BASELINE_NAMES, baseline_from_history, RANKING_METRIC,
 )
-from src.model.fixed_responses import fixed_responses, ordered_response_pairs
-from src.model.wm_5 import wm_5
+from src.model.wm_5 import wm_5, response_function
 from src.params.wm_5 import joint_qp_params
 from src.tools.impute_hourly import impute_hourly_days
 
@@ -28,6 +27,42 @@ ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT/"files"/"output"/"wm_4"/"fixed_response_sweep"
 VERSION = "fixed_g_h_joint_qp_oracle_v1"
 QUANTILES = (20, 40, 50, 60, 80)
+
+
+def fixed_responses():
+    k_exp, k_log = 2.0, 4.0
+    exp_den, log_den = np.expm1(k_exp), np.log1p(k_log)
+
+    exponential = response_function(
+        "exponential",
+        lambda x: np.sign(x)*np.expm1(k_exp*abs(x))/exp_den,
+        lambda x: k_exp*np.exp(k_exp*abs(x))/exp_den,
+        (float(k_exp/exp_den), float(k_exp*np.exp(k_exp)/exp_den)),
+    )
+    logarithmic = response_function(
+        "logarithmic",
+        lambda x: np.sign(x)*np.log1p(k_log*abs(x))/log_den,
+        lambda x: k_log/((1.0+k_log*abs(x))*log_den),
+        (float(k_log/((1.0+k_log)*log_den)), float(k_log/log_den)),
+    )
+    functions = [exponential, logarithmic]
+    for name, b in (("polynomial_steep", 0.15),
+                    ("polynomial_very_steep", 0.35),
+                    ("polynomial_extremely_steep", 0.49)):
+        a = 1.0+b
+        functions.append(response_function(
+            name,
+            lambda x, a=a, b=b: a*x-b*x**3,
+            lambda x, a=a, b=b: a-3.0*b*x*x,
+            (1.0-2.0*b, a),
+        ))
+    return {function.name: function for function in functions}
+
+
+def ordered_response_pairs():
+    functions = fixed_responses()
+    return [(g, h) for g in functions for h in functions if g != h]
+
 
 
 def prep(frame, day, n, baseline_name, steps_per_hour):
