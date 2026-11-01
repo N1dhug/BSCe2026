@@ -11,6 +11,7 @@ from src.exe.run_model.wm_4.moving_horizon_common import HOURS, group_frame, met
 from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays
 from src.params.wm_4 import joint_qp_params
 from src.tools.baseline import statistical_output, weekly_average, weekly_temperature
+from src.tools.impute_hourly import impute_hourly_days
 from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekday_horizon_validation as validation
 
 
@@ -66,9 +67,13 @@ def baseline_from_history(frame, history, name):
 def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, max_horizon,
                            baseline_name="weekly_average"):
     history = validation.history(day, historical_weekdays(day, n_weekdays))
-    profiles = validation.training_data(frame, history)
-    baseline = baseline_from_history(frame, history, baseline_name)
-    datasets = [window_data(frame, earlier, baseline, steps_per_hour)[1] for earlier in history]
+    # Only historical days may be filled; the target-day observations are never
+    # fabricated for scoring or oracle initial-state estimation.
+    training, imputation = impute_hourly_days(frame, days=history,
+                                               columns=("I", "U", "Temp"), require_days=True)
+    profiles = validation.training_data(training, history)
+    baseline = baseline_from_history(training, history, baseline_name)
+    datasets = [window_data(training, earlier, baseline, steps_per_hour)[1] for earlier in history]
     model, forecast, _, observed = window_data(frame, day, baseline, steps_per_hour)
 
     started = perf_counter()
@@ -76,7 +81,7 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
     runtime = perf_counter()-started
     theta = np.asarray(fit["r"], dtype=float)       # [theta_F, theta_U, theta_R]
     historical_origins = pd.DatetimeIndex(history)
-    historical_temps = frame.reindex(historical_origins)["Temp"].to_numpy(dtype=float)
+    historical_temps = training.reindex(historical_origins)["Temp"].to_numpy(dtype=float)
     history_R0 = profiles[:, 0]-baseline.predict(historical_origins, historical_temps)
     R0 = float(np.median(history_R0))              # strictly historical, never optimized
 
@@ -101,6 +106,11 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
         "baseline_beta_C": float(baseline.beta_C) if hasattr(baseline, "beta_C") else np.nan,
         "baseline_chill_center": float(baseline.chill_center) if hasattr(baseline, "chill_center") else np.nan,
         "baseline_samples": int(baseline.metadata["samples"]),
+        "imputed_training_hours": int(imputation["imputed_hourly_slots"]),
+        "imputed_training_I_hours": int(imputation["imputed_by_column"]["I"]),
+        "imputed_training_U_hours": int(imputation["imputed_by_column"]["U"]),
+        "imputed_training_Temp_hours": int(imputation["imputed_by_column"]["Temp"]),
+        "hourly_imputation_method": imputation["method"],
         **coeffs, "historical_R0": R0, "fit_qp_loss": float(fit["qp_loss"]),
         "fit_rmse": float(np.sqrt(fit["deterministic_loss"])), "fit_seconds": runtime,
         "design_rank": int(fit["design_rank"]), "design_columns": len(fit["beta"]),
@@ -114,7 +124,7 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
     states = [{"day": day, "baseline": baseline_name, "training_weekdays": n_weekdays, "historical_day": past,
                "historical_F0": float(state[0]), "historical_R0": float(state[1]),
                "baseline_hour_00": float(baseline.predict(pd.DatetimeIndex([past]),
-                                              np.array([frame.at[past, "Temp"]]))[0])}
+                                              np.array([training.at[past, "Temp"]]))[0])}
               for past, state in zip(history, fit["init_cond"])]
     components = [{"day": day, "baseline": baseline_name, "training_weekdays": n_weekdays, "hour": h,
                    "time": day+pd.Timedelta(hours=h), "observed": float(observed[h]),
