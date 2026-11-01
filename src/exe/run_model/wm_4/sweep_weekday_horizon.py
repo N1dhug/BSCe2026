@@ -118,7 +118,7 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
               for past, state in zip(history, fit["init_cond"])]
     components = [{"day": day, "baseline": baseline_name, "training_weekdays": n_weekdays, "hour": h,
                    "time": day+pd.Timedelta(hours=h), "observed": float(observed[h]),
-                   "baseline": float(baseline_hourly[h]), "price": float(forecast["U"][sample_idx[h]]),
+                   "baseline_value": float(baseline_hourly[h]), "price": float(forecast["U"][sample_idx[h]]),
                    "prediction_at_F0_zero": float(base[h]), "sensitivity_F0": float(sensitivity[h])}
                   for h in range(HOURS)]
 
@@ -410,25 +410,25 @@ def run(args):
     total = len(days)*len(weekdays)*len(baselines)
     for day in days:
         for n in weekdays:
-          for name in baselines:
-            key = (day, name, n)
-            if key in done: continue
-            try:
-                fit, score, component, state = evaluate_configuration(
-                    frame, day, n, args.steps_per_hour, args.min_horizon, args.max_horizon, name)
-                append_rows(output/COLUMNS["fit"], [fit])
-                append_rows(output/COLUMNS["score"], score)
-                append_rows(output/COLUMNS["component"], component)
-                append_rows(output/COLUMNS["state"], state)
-                successful += 1
-            except (RuntimeError, ValueError, np.linalg.LinAlgError) as exc:
-                if args.fail_fast: raise
-                append_rows(output/COLUMNS["fail"], [{"day": day, "baseline": name, "training_weekdays": n, "error": str(exc)}])
-                print(f"[skip] {day:%Y-%m-%d} B={name} N={n}: {exc}", flush=True)
-            attempted += 1
-            if attempted % args.progress_every == 0:
-                print(f"[WM4 sweep] computed {successful} new / {total} possible fits "
-                      f"(resumed {len(done)}) | {day:%Y-%m-%d} B={name} N={n}", flush=True)
+            for name in baselines:
+                key = (day, name, n)
+                if key in done: continue
+                try:
+                    fit, score, component, state = evaluate_configuration(
+                        frame, day, n, args.steps_per_hour, args.min_horizon, args.max_horizon, name)
+                    append_rows(output/COLUMNS["fit"], [fit])
+                    append_rows(output/COLUMNS["score"], score)
+                    append_rows(output/COLUMNS["component"], component)
+                    append_rows(output/COLUMNS["state"], state)
+                    successful += 1
+                except (RuntimeError, ValueError, np.linalg.LinAlgError) as exc:
+                    if args.fail_fast: raise
+                    append_rows(output/COLUMNS["fail"], [{"day": day, "baseline": name, "training_weekdays": n, "error": str(exc)}])
+                    print(f"[skip] {day:%Y-%m-%d} B={name} N={n}: {exc}", flush=True)
+                attempted += 1
+                if attempted % args.progress_every == 0:
+                    print(f"[WM4 sweep] computed {successful} new / {total} possible fits "
+                          f"(resumed {len(done)}) | {day:%Y-%m-%d} B={name} N={n}", flush=True)
     return report_only(output, weekdays, horizons, baselines)
 
 
