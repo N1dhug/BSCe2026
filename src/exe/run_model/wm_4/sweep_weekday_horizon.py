@@ -156,6 +156,7 @@ def read_table(path, subset):
     if frame.empty: return frame
     for col in ("day", "historical_day", "time"):
         if col in frame: frame[col] = pd.to_datetime(frame[col])
+    if "baseline" not in frame: frame["baseline"] = "corresponding_weekday"  # Legacy CSV compatibility.
     if subset: frame = frame.drop_duplicates(subset=subset, keep="last")
     return frame
 
@@ -348,14 +349,20 @@ def print_report(top, ranking, common, tables, basis, output):
     print("Ranking across different horizon lengths compares different forecasting tasks; best_by_horizon.csv compares N at fixed H.")
 
 
-def report_only(output, weekdays, horizons):
+def report_only(output, weekdays, horizons, baselines=None):
     output = Path(output)
     tables = load_tables(output)
     if tables["score"].empty: raise RuntimeError("No saved oracle_horizon_scores.csv available.")
-    ranking, top, common, basis = write_outputs(tables, output, weekdays, horizons)
+    if baselines is None: baselines = tuple(sorted(tables["score"]["baseline"].unique()))
+    ranking, top, common, basis = write_outputs(tables, output, weekdays, horizons, baselines)
     if not ranking.empty:
-        save_heatmap(ranking, top, output, "aggregate_rmse", "rmse_heatmap.png", "Pooled oracle-F0 RMSE")
-        save_heatmap(ranking, top, output, "baseline_improvement_pct", "baseline_skill_heatmap.png", "RMSE improvement over matching-weekday baseline (%)")
+        for name, group in ranking.groupby("baseline"):
+            chosen = top.loc[top["baseline"] == name]
+            suffix = "" if name == "corresponding_weekday" else f"_{name}"
+            save_heatmap(group, chosen, output, "aggregate_rmse",
+                         f"rmse_heatmap{suffix}.png", f"Pooled oracle-F0 RMSE — {name}")
+            save_heatmap(group, chosen, output, "baseline_improvement_pct",
+                         f"baseline_skill_heatmap{suffix}.png", f"Baseline improvement (%) — {name}")
         save_horizon_curves(ranking, output)
         save_top_three_plots(tables["score"], top, common, output)
     print_report(top, ranking, common, tables, basis, output)
@@ -367,12 +374,14 @@ def run(args):
     output = Path(args.output) if args.output else OUTPUT/args.group.lower()
     output.mkdir(parents=True, exist_ok=True)
     weekdays = tuple(range(args.min_weekdays, args.max_weekdays+1))
+    baselines = tuple(args.baselines)
     horizons = args.max_horizon-args.min_horizon+1
     metadata = {
         "group": args.group, "min_weekdays": args.min_weekdays,
         "max_weekdays": args.max_weekdays, "min_horizon": args.min_horizon,
         "max_horizon": args.max_horizon, "steps_per_hour": args.steps_per_hour,
         "start_day": args.start_day, "end_day": args.end_day,
+        "baselines": list(baselines), "version": "3_baseline_matched_training_v1",
     }
     info = output/"configuration.json"
     if args.resume:
@@ -383,7 +392,7 @@ def run(args):
         for file in list(COLUMNS.values()) + ["configuration.json"]:
             (output/file).unlink(missing_ok=True)
         info.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    if args.report_only: return report_only(output, weekdays, horizons)
+    if args.report_only: return report_only(output, weekdays, horizons, baselines)
 
     frame = group_frame(args.group)
     earliest = max(frame.index.min().normalize(), pd.Timestamp("2022-01-01"))
@@ -396,16 +405,17 @@ def run(args):
     days = pd.date_range(begin, last, freq="D")
     if args.max_days: days = days[:args.max_days]
     saved = load_tables(output) if args.resume else {name: pd.DataFrame() for name in COLUMNS}
-    done = completed_pairs(saved, weekdays, horizons) if args.resume else set()
+    done = completed_pairs(saved, weekdays, horizons, baselines) if args.resume else set()
     successful, attempted = 0, 0
-    total = len(days)*len(weekdays)
+    total = len(days)*len(weekdays)*len(baselines)
     for day in days:
         for n in weekdays:
-            key = (day, n)
+          for name in baselines:
+            key = (day, name, n)
             if key in done: continue
             try:
                 fit, score, component, state = evaluate_configuration(
-                    frame, day, n, args.steps_per_hour, args.min_horizon, args.max_horizon)
+                    frame, day, n, args.steps_per_hour, args.min_horizon, args.max_horizon, name)
                 append_rows(output/COLUMNS["fit"], [fit])
                 append_rows(output/COLUMNS["score"], score)
                 append_rows(output/COLUMNS["component"], component)
@@ -413,18 +423,20 @@ def run(args):
                 successful += 1
             except (RuntimeError, ValueError, np.linalg.LinAlgError) as exc:
                 if args.fail_fast: raise
-                append_rows(output/COLUMNS["fail"], [{"day": day, "training_weekdays": n, "error": str(exc)}])
-                print(f"[skip] {day:%Y-%m-%d} N={n}: {exc}", flush=True)
+                append_rows(output/COLUMNS["fail"], [{"day": day, "baseline": name, "training_weekdays": n, "error": str(exc)}])
+                print(f"[skip] {day:%Y-%m-%d} B={name} N={n}: {exc}", flush=True)
             attempted += 1
             if attempted % args.progress_every == 0:
                 print(f"[WM4 sweep] computed {successful} new / {total} possible fits "
-                      f"(resumed {len(done)}) | {day:%Y-%m-%d} N={n}", flush=True)
-    return report_only(output, weekdays, horizons)
+                      f"(resumed {len(done)}) | {day:%Y-%m-%d} B={name} N={n}", flush=True)
+    return report_only(output, weekdays, horizons, baselines)
 
 
 def main():
     parser = ArgumentParser(description="WM4 oracle F0 sweep over N=2..10 matching weekdays and H=6..24h.")
     parser.add_argument("--group", choices=("MED", "ALL"), default="MED")
+    parser.add_argument("--baselines", nargs="+", choices=BASELINE_NAMES, default=list(BASELINE_NAMES),
+                        help="Baseline methods; default all three: statistical_output weekly_average weekly_temperature.")
     parser.add_argument("--min-weekdays", type=int, default=2)
     parser.add_argument("--max-weekdays", type=int, default=10)
     parser.add_argument("--min-horizon", type=int, default=6)
@@ -443,7 +455,7 @@ def main():
         validation.arguments(args)
         output = Path(args.output) if args.output else OUTPUT/args.group.lower()
         return report_only(output, tuple(range(args.min_weekdays, args.max_weekdays+1)),
-                           args.max_horizon-args.min_horizon+1)
+                           args.max_horizon-args.min_horizon+1, tuple(args.baselines))
     return run(args)
 
 
