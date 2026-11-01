@@ -17,6 +17,41 @@ minimum seven-day training requirement is lowered **only for this sweep**
 using the new optional min_samples=48 constructor argument; the regular
 baseline implementations retain their former 168-sample default.
 
+## Hourly-gap imputation and full missing days
+
+All three native baselines now use the shared
+`src/tools/impute_hourly.py` historical-data preprocessing.
+For each *observed historical calendar day* the original hourly
+index is reconstructed and isolated missing hours are filled strictly
+within that day. Demand and temperature use time-linear interpolation
+(interior gaps) and the nearest available same-day endpoint (edge gaps).
+The price signal uses same-day forward fill and, at a missing first
+hour, same-day backward fill because hourly spot prices are stepwise.
+
+**Whole missing days are never synthesized.** If a selected historical
+corresponding weekday has no observations for even one required
+signal (I, U or Temp), the sweep skips that (forecast day, baseline, N)
+combination with a `Missing full day` error in `skipped_windows.csv`.
+No values are borrowed from preceding/following days or from
+future forecast dates. There is no carry-over of a baseline across
+an entirely missing historical day.
+
+Baseline fitting and historical WM4 parameter fitting use the *same
+hourly-imputed historical rows*. The target prediction day's observed
+demand is **never imputed** or treated as a ground-truth score when
+missing: if a target day is incomplete, that configuration is skipped.
+This avoids manufacturing a better oracle-F0 prediction score from
+fabricated future demand. Baseline metadata and
+`parameter_estimates.csv` record the count of imputed historical
+hourly slots and imputation counts separately for I, U and Temp.
+
+The imputation update changes the experiment. Its configuration
+version is now `3_baseline_matched_training_hourly_imputation_v2`.
+Do not combine these results with earlier, non-imputed CSVs.
+Start a fresh full run without `--resume`, or choose a new
+`--output` directory to preserve earlier results. After the updated
+run, `--report-only` can regenerate summary plots without refitting.
+
 For each forecast day, N = 2,...,10 and H = 6,...,24:
 
 - Fit the selected baseline on exactly N historical matching weekdays,
@@ -91,7 +126,8 @@ Default output directory:
 - parameter_estimates.csv: (forecast day, baseline, N), fitted theta,
   damping, fit loss, rank, runtime, exact N historical dates, fitted
   baseline coefficients and preprocessing metadata (JSON-valued CSV
-  fields), 24 target-day baseline values, and historical state moments.
+  fields), 24 target-day baseline values, historical state moments,
+  and numbers of hourly training samples imputed for each signal.
 - historical_initial_states.csv: every historical [F0,R0] per
   baseline/day/N.
 - oracle_horizon_scores.csv: (forecast day, baseline, N, H), oracle F0,
