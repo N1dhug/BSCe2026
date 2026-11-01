@@ -201,12 +201,13 @@ class joint_qp_params(qp_params):
 
         constraints = wm_5_params_validation.constraints(
             self.model.r_functions, self.model.u_functions, self.model.dt, stabilize=stabilize)
-        joint = joint_drift_qp.solve_many_features(
+        rate_features = [item["rate_features"] for item in observed]
+        price_features = [item["price_features"] for item in observed]
+        joint = joint_drift_qp.solve_many(
             [item["R"] for item in observed], [item["U"] for item in datasets],
-            self.model.dt,
-            [basis.value for basis in self.model.r_functions],
-            [basis.value for basis in self.model.u_functions],
-            constraints, masks=[item["mask"] for item in observed],
+            self.model.dt, constraints,
+            transition_masks=[item["mask"] for item in observed],
+            rate_features=rate_features, price_features=price_features,
             f_bounds=f_bounds, ridge=self.model._FIT_RIDGE, enforce_path=enforce_path)
         p = self.model.coefficients(joint["coefficients"], stabilize=stabilize)
         states = [self.model._solve_deterministic(init, data["U"], data["Time"], data["O"], p)
