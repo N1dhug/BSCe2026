@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 
+from src.tools.impute_hourly import impute_hourly_days
+
 
 class statistical_output:
     """Robust exogenous WM4 baseline O(time, weekday, temperature)."""
@@ -20,6 +22,7 @@ class statistical_output:
         self.feature_mean = None
         self.feature_scale = None
         self.metadata = None
+        self.imputation = None
 
     @staticmethod
     def _index(index):
@@ -82,7 +85,8 @@ class statistical_output:
         missing = [name for name in ("I", "Temp") if name not in frame.columns]
         if missing: raise ValueError("frame is missing required columns: " + ", ".join(missing) + ".")
         end = pd.Timestamp(end)
-        train = frame.loc[frame.index < end, ["I", "Temp"]].dropna().copy()
+        source = frame.loc[frame.index < end, ["I", "Temp"]]
+        train, self.imputation = impute_hourly_days(source, columns=("I", "Temp"))
         if len(train) < self.min_samples: raise ValueError(f"At least {self.min_samples} historical I/temperature observations are required to fit O.")
 
         X_raw = self._features(train.index, train["Temp"].to_numpy(dtype=float))
@@ -122,6 +126,7 @@ class statistical_output:
             "huber_delta": self.huber_delta, "base_temperature": self.base_temperature,
             "temperature_min": float(train["Temp"].min()), "temperature_max": float(train["Temp"].max()),
             "mse": float(np.mean(residual * residual)), "mae": float(np.mean(np.abs(residual))),
+            "imputation": dict(self.imputation),
         }
         return self
 
@@ -139,6 +144,7 @@ class weekly_average:
         self.coef = None
         self.metadata = None
         self.levels = None
+        self.imputation = None
         self.min_samples = int(min_samples)
         if self.min_samples < 2: raise ValueError("min_samples must be at least 2.")
         self.base_temperature = 18.0
@@ -179,7 +185,8 @@ class weekly_average:
         self._index(frame.index)
         end = pd.Timestamp(end)
         if pd.isna(end): raise ValueError("end must be a valid timestamp.")
-        train = frame.loc[frame.index < end, ["I", "Temp"]].dropna().copy()
+        source = frame.loc[frame.index < end, ["I", "Temp"]]
+        train, self.imputation = impute_hourly_days(source, columns=("I", "Temp"))
         if len(train) < self.min_samples: raise ValueError(f"At least {self.min_samples} historical I/temperature observations are required to fit O.")
         if not np.all(np.isfinite(train[["I", "Temp"]].to_numpy(dtype=float))): raise ValueError("Training data must be finite.")
         return train
@@ -194,6 +201,7 @@ class weekly_average:
             "base_temperature": self.base_temperature,
             "temperature_min": float(np.min(temp)), "temperature_max": float(np.max(temp)),
             "mse": float(np.mean(residual * residual)), "mae": float(np.mean(np.abs(residual))),
+            "imputation": dict(self.imputation),
         }
         return self
 
