@@ -163,7 +163,7 @@ def print_analysis(daily, hourly, skipped, start, end, output):
     print(pd.Series(np.percentile(daily["rmse"], QUINTILES), index=[f"Q{q}" for q in QUINTILES]).to_string())
     print("\nFitted theta distribution across forecast days (training windows only):")
     names = ["theta_F", "theta_R", "theta_U"]
-    stats = daily[names].describe(percentiles=[.2, .4, .6, .8]).T
+    stats = daily[names].describe(percentiles=[.2, .4, .5, .6, .8]).T
     print(stats[["count", "mean", "std", "min", "20%", "40%", "50%", "60%", "80%", "max"]].to_string(float_format=lambda v: f"{v:.8f}"))
     print("\nTheta correlations:")
     print(daily[names].corr().to_string(float_format=lambda v: f"{v:.4f}"))
