@@ -114,7 +114,7 @@ that the completed run actually produced.
 
 Tests:
 
-    python -m unittest tests.test_wm4_weekday_horizon_sweep
+    python -m unittest discover -s tests -p "test_wm4_weekday_horizon_sweep.py"
 
 To inspect an existing completed run without rerunning:
 
