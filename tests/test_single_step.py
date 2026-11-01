@@ -30,6 +30,15 @@ class test_single_step(unittest.TestCase):
                 self.assertLess(example["responses"][2](-1.0), example["responses"][2](1.0))
                 np.testing.assert_allclose(example["contributions"].sum(axis=1), state["R_dot"], atol=1e-12)
 
+    def test_wm5_interpretation_uses_normalized_cubic_response(self):
+        example = build("wm_5", duration=8.0, dt=0.04, step_at=1.0)
+        coefficients = example["coefficients"]
+        np.testing.assert_allclose(coefficients, [-0.25, -0.56, -0.24, -0.20])
+        for x in np.linspace(-1.0, 1.0, 101):
+            self.assertAlmostEqual(example["responses"][1](float(x)), 0.7*x + 0.3*x**3)
+        R = np.asarray(example["state"]["R"], dtype=float)
+        np.testing.assert_allclose(example["contributions"][:, 1], -0.8*(0.7*R+0.3*R**3), atol=1e-12)
+
     def test_negative_price_coefficient_required(self):
         with self.assertRaises(ValueError):
             wm_4_validation.r_coefficients([-0.25, 0.01, -0.8])
