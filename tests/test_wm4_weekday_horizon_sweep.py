@@ -1,0 +1,126 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import matplotlib
+matplotlib.use("Agg")
+import numpy as np
+import pandas as pd
+
+from src.exe.run_model.wm_4.sweep_weekday_horizon import (
+    corresponding_weekday_baseline, evaluate_configuration, historical_weekdays,
+    load_tables, matched_cohort, report_only, summarise,
+)
+from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekday_horizon_validation
+
+
+class fake_joint_fitter:
+    def __init__(self, model): self.model = model
+
+    def fit_many(self, datasets):
+        n = len(datasets)
+        return {
+            "r": np.array([-0.8, -0.15, -1.4]),
+            "init_cond": np.zeros((n, 2)),
+            "qp_loss": 0.01, "deterministic_loss": 0.02,
+            "design_rank": n+3, "beta": np.zeros(n+3),
+        }
+
+
+class test_wm4_weekday_horizon_sweep(unittest.TestCase):
+    @staticmethod
+    def sample_frame():
+        idx = pd.date_range("2022-01-01", periods=24*95, freq="h")
+        hours = idx.hour.to_numpy(dtype=float)
+        days = np.arange(len(idx), dtype=float)/24
+        demand = 0.5+0.08*np.cos(2*np.pi*hours/24)+0.03*np.cos(days/3)
+        price = 0.25*np.sin(2*np.pi*hours/24+days/2)
+        return pd.DataFrame({"I": demand, "U": price, "Temp": 5+5*np.cos(days/7)}, index=idx)
+
+    def test_corresponding_weekday_baseline_is_exact_historical_mean(self):
+        a = np.linspace(0.2, 0.6, 24)
+        b = np.linspace(0.6, 0.2, 24)
+        baseline = corresponding_weekday_baseline(np.vstack((a, b)))
+        timestamps = pd.to_datetime(["2022-04-04 00:00", "2022-04-04 00:30", "2022-04-04 23:30"])
+        expected = np.array([0.4, 0.4, 0.4])
+        np.testing.assert_allclose(baseline.predict(timestamps, np.zeros(3)), expected)
+        self.assertTrue(np.allclose(baseline.profile, 0.4))
+
+    def test_historical_profiles_are_strictly_prior_and_matched(self):
+        frame = self.sample_frame()
+        day = pd.Timestamp("2022-03-26")
+        dates = historical_weekdays(day, 10)
+        validation = sweep_weekday_horizon_validation()
+        self.assertEqual(len(dates), 10)
+        self.assertTrue(all(past < day and past.dayofweek == day.dayofweek for past in dates))
+        values = validation.training_data(frame, dates)
+        self.assertEqual(values.shape, (10, 24))
+        self.assertAlmostEqual(values[-1, 7], frame.loc[dates[-1]+pd.Timedelta(hours=7), "I"])
+
+    def test_single_joint_fit_reused_for_multiple_oracle_horizons(self):
+        frame = self.sample_frame()
+        day = pd.Timestamp("2022-03-12")
+        with patch("src.exe.run_model.wm_4.sweep_weekday_horizon.joint_qp_params", fake_joint_fitter):
+            fit, score, component, states = evaluate_configuration(frame, day, 3, 4, 6, 24)
+            changed = frame.copy()
+            changed.loc[day+pd.Timedelta(hours=20), "I"] += 0.3
+            _, changed_scores, _, _ = evaluate_configuration(changed, day, 3, 4, 6, 24)
+        self.assertEqual(len(score), 19)
+        self.assertEqual(len(states), 3)
+        self.assertEqual(len(component), 24)
+        self.assertAlmostEqual(fit["theta_U"], -0.15)
+        self.assertAlmostEqual(fit["theta_R"], -1.4)
+        self.assertAlmostEqual(score[0]["oracle_F0"], changed_scores[0]["oracle_F0"])
+        self.assertAlmostEqual(score[0]["rmse"], changed_scores[0]["rmse"])
+        self.assertNotAlmostEqual(score[-1]["rmse"], changed_scores[-1]["rmse"])
+        first = score[0]
+        forecast = np.array([row["prediction_at_F0_zero"]+
+                             first["oracle_F0"]*row["sensitivity_F0"] for row in component[:6]])
+        truth = np.array([row["observed"] for row in component[:6]])
+        self.assertAlmostEqual(np.sqrt(np.mean((forecast-truth)**2)), first["rmse"])
+
+    def test_pooled_ranking_uses_mse_and_requires_matched_days(self):
+        days = pd.to_datetime(["2022-03-12", "2022-03-13", "2022-03-14"])
+        fits = pd.DataFrame([{"day": day, "training_weekdays": n}
+                             for day in days[:2] for n in (2, 3)])
+        scores = pd.DataFrame([{"day": day, "training_weekdays": n, "horizon_hours": h,
+                                "rmse": float(i+1), "mse": float((i+1)**2),
+                                "baseline_rmse": 3.0, "baseline_mse": 9.0, "bias": 0.0}
+                               for i, day in enumerate(days[:2]) for n in (2, 3) for h in (6, 7)])
+        tables = {"fit": fits, "score": scores}
+        cohort = matched_cohort(tables, (2, 3), 2)
+        self.assertEqual(list(cohort), list(days[:2]))
+        ranking = summarise(scores)
+        self.assertAlmostEqual(ranking.iloc[0]["aggregate_rmse"], np.sqrt(2.5))
+        missing = scores.drop(scores[(scores["day"] == days[0]) &
+                                     (scores["training_weekdays"] == 3) &
+                                     (scores["horizon_hours"] == 7)].index)
+        self.assertEqual(list(matched_cohort({"fit": fits, "score": missing}, (2, 3), 2)), [days[1]])
+
+    def test_saved_reporting_produces_top_three_and_figures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)
+            days = pd.date_range("2022-03-12", periods=3, freq="D")
+            fits = [{"day": day, "training_weekdays": n,
+                     "theta_F": -0.7, "theta_R": -1.5, "theta_U": -0.2,
+                     "fit_qp_loss": .01, "fit_seconds": .02} for day in days for n in (2, 3)]
+            scores = [{"day": day, "training_weekdays": n, "horizon_hours": h,
+                       "rmse": .05+.01*n+.001*h, "mse": (.05+.01*n+.001*h)**2,
+                       "baseline_rmse": .12, "baseline_mse": .12**2,
+                       "bias": 0.0} for day in days for n in (2, 3) for h in (6, 7)]
+            pd.DataFrame(fits).to_csv(output/"parameter_estimates.csv", index=False)
+            pd.DataFrame(scores).to_csv(output/"oracle_horizon_scores.csv", index=False)
+            ranking, top = report_only(output, (2, 3), 2)
+            self.assertEqual(len(top), 3)
+            self.assertEqual(len(ranking), 4)
+            self.assertEqual(top.iloc[0]["training_weekdays"], 2)
+            self.assertEqual(top.iloc[0]["horizon_hours"], 6)
+            self.assertTrue((output/"top_three.csv").is_file())
+            self.assertTrue((output/"rmse_heatmap.png").is_file())
+            self.assertTrue((output/"top_three_rmse_distribution.png").is_file())
+            tables = load_tables(output)
+            self.assertEqual(len(tables["fit"]), 6)
+
+
+if __name__ == "__main__": unittest.main()
