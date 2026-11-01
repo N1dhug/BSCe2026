@@ -10,7 +10,7 @@ import pandas as pd
 
 from src.exe.run_model.wm_4.sweep_weekday_horizon import (
     corresponding_weekday_baseline, evaluate_configuration, historical_weekdays,
-    load_tables, matched_cohort, report_only, summarise,
+    load_tables, matched_cohort, report_only, save_top_three_plots, summarise,
 )
 from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekday_horizon_validation
 
@@ -97,6 +97,19 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
                                      (scores["training_weekdays"] == 3) &
                                      (scores["horizon_hours"] == 7)].index)
         self.assertEqual(list(matched_cohort({"fit": fits, "score": missing}, (2, 3), 2)), [days[1]])
+
+    def test_top_three_boxplot_does_not_pass_version_specific_label_keyword(self):
+        day = pd.Timestamp("2022-03-12")
+        score = pd.DataFrame([{"day": day+pd.Timedelta(days=i), "training_weekdays": 2,
+                               "horizon_hours": 6, "rmse": .1+i*.01} for i in range(3)])
+        top = pd.DataFrame([{"rank": 1, "training_weekdays": 2, "horizon_hours": 6}])
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("matplotlib.axes.Axes.boxplot") as boxplot:
+                save_top_three_plots(score, top, pd.DatetimeIndex(score["day"]), Path(tmp))
+                self.assertTrue(boxplot.called)
+                self.assertNotIn("labels", boxplot.call_args.kwargs)
+                self.assertNotIn("tick_labels", boxplot.call_args.kwargs)
+            self.assertTrue((Path(tmp)/"top_three_rmse_distribution.png").is_file())
 
     def test_saved_reporting_produces_top_three_and_figures(self):
         with tempfile.TemporaryDirectory() as tmp:
