@@ -329,7 +329,8 @@ def print_report(top, ranking, common, tables, basis, output):
     fits, scores = tables["fit"], tables["score"]
     print("\nWM4 oracle-F0 historical-weekday / prediction-horizon sweep")
     print(f"completed parameter fits: {len(fits)} | horizon scores: {len(scores)} | failed/skipped: {len(tables['fail'])}")
-    print(f"matched forecast days across ALL weekday counts: {len(common)}")
+    print(f"matched forecast days across ALL baseline methods and weekday counts: {len(common)}")
+    print(f"evaluated baselines: {', '.join(sorted(fits['baseline'].unique()))}")
     if basis != "matched":
         print("WARNING: no fully matched cohort; ranking uses differing available dates per combination.")
     print("\nTHREE BEST COMBINATIONS (ranked by LOWEST ABSOLUTE aggregate oracle-F0 RMSE):")
@@ -337,6 +338,12 @@ def print_report(top, ranking, common, tables, basis, output):
     fields = ["rank", "baseline", "training_weekdays", "horizon_hours", "days", "aggregate_rmse",
               "baseline_rmse", "rmse_q20", "median_daily_rmse", "rmse_q80"]
     print(top[fields].to_string(index=False, float_format=lambda x: f"{x:.6f}"))
+    print("\nBest absolute RMSE within each baseline method:")
+    for name, subset in ranking.groupby("baseline"):
+        best = subset.sort_values(RANKING_METRIC).iloc[0]
+        print(f"  {name:<20} N={int(best['training_weekdays']):2d}, "
+              f"H={int(best['horizon_hours']):2d}h | pooled RMSE={best[RANKING_METRIC]:.8f} "
+              f"| days={int(best['days'])}")
     print("\nTop configurations: historical coefficient distribution on the ranked cohort")
     for row in top.itertuples():
         subset = fits.loc[(fits["baseline"] == row.baseline) & (fits["training_weekdays"] == row.training_weekdays) & fits["day"].isin(common)]
