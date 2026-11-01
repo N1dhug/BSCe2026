@@ -111,6 +111,22 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
                 self.assertNotIn("tick_labels", boxplot.call_args.kwargs)
             self.assertTrue((Path(tmp)/"top_three_rmse_distribution.png").is_file())
 
+    def test_absolute_aggregate_error_wins_over_relative_baseline_improvement(self):
+        # N=2 predicts better in absolute terms, even though N=3 has more baseline skill.
+        data = pd.DataFrame([
+            {"day": pd.Timestamp("2022-03-12"), "training_weekdays": 2, "horizon_hours": 6,
+             "rmse": .10, "mse": .01, "baseline_rmse": .11,
+             "baseline_mse": .11**2, "bias": 0.0},
+            {"day": pd.Timestamp("2022-03-12"), "training_weekdays": 3, "horizon_hours": 6,
+             "rmse": .15, "mse": .15**2, "baseline_rmse": .30,
+             "baseline_mse": .30**2, "bias": 0.0},
+        ])
+        ranking = summarise(data)
+        self.assertEqual(int(ranking.iloc[0]["training_weekdays"]), 2)
+        self.assertLess(float(ranking.iloc[0]["aggregate_rmse"]), float(ranking.iloc[1]["aggregate_rmse"]))
+        self.assertLess(float(ranking.iloc[0]["baseline_improvement_pct"]),
+                        float(ranking.iloc[1]["baseline_improvement_pct"]))
+
     def test_saved_reporting_produces_top_three_and_figures(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp)
