@@ -286,6 +286,35 @@ def plot_parameters(daily, stats, output):
     save_figure(fig, output, "theta_quintiles.png")
 
 
+def plot_state_quantiles(daily, hourly, output):
+    days = daily.sort_values("day")
+    fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+    for ax, variable in zip(axes, ("oracle_F0", "historical_R0", "damping_ratio")):
+        if variable not in days: continue
+        y = days[variable].to_numpy(dtype=float)
+        ax.plot(days["day"], y, label=variable, lw=1)
+        for q in (20, 50, 80):
+            ax.axhline(np.percentile(y, q), ls="--", lw=1, label=f"Q{q}")
+        ax.set_ylabel(variable); ax.legend(ncol=4, fontsize=8); ax.grid(alpha=.2)
+    axes[-1].set_xlabel("Prediction day")
+    fig.suptitle("Forecast initial states and damping ratio: empirical quantiles")
+    save_figure(fig, output, "initial_states_and_damping_quintiles.png")
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    hours = np.arange(HORIZON)
+    for variable in ("observed", "predicted", "baseline_prediction"):
+        group = hourly.groupby("hour")[variable]
+        median = group.median().reindex(hours).to_numpy(dtype=float)
+        lower = group.quantile(.2).reindex(hours).to_numpy(dtype=float)
+        upper = group.quantile(.8).reindex(hours).to_numpy(dtype=float)
+        ax.plot(hours+1, median, label=f"{variable} median", marker="o")
+        ax.fill_between(hours+1, lower, upper, alpha=.12)
+    ax.set_xlabel("Forecast lead hour (1–7)"); ax.set_ylabel("Normalized demand")
+    ax.set_title("Oracle prediction versus observed demand: cross-day 20–80% bands")
+    ax.legend(); ax.grid(alpha=.2)
+    save_figure(fig, output, "prediction_demand_quintiles.png")
+
+
 def plot_contributions(daily, hourly, output):
     days = daily.sort_values("day")
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
@@ -391,6 +420,7 @@ def analyze(output):
     weekdays.to_csv(output/"weekday_kruskal_tests.csv", index=False)
     plot_quantiles(q, cumulative, daily, output)
     plot_parameters(daily, stats, output)
+    plot_state_quantiles(daily, hourly, output)
     plot_contributions(daily, hourly, output)
     plot_residuals(hourly, output)
     print_report(daily, hourly, stats, corr, weekdays, output)
