@@ -12,6 +12,7 @@ from src.exe.run_model.wm_4.sweep_weekday_horizon import (
     BASELINE_NAMES, baseline_from_history, corresponding_weekday_baseline, evaluate_configuration,
     historical_weekdays, load_tables, matched_cohort, report_only, save_top_three_plots, summarise,
 )
+from src.tools.impute_hourly import impute_hourly_days
 from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekday_horizon_validation
 
 
@@ -126,6 +127,67 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         self.assertLess(float(ranking.iloc[0]["aggregate_rmse"]), float(ranking.iloc[1]["aggregate_rmse"]))
         self.assertLess(float(ranking.iloc[0]["baseline_improvement_pct"]),
                         float(ranking.iloc[1]["baseline_improvement_pct"]))
+
+    def test_hourly_imputer_fills_short_gaps_without_making_full_days(self):
+        dates = pd.date_range("2022-03-01", periods=4*24, freq="h")
+        data = pd.DataFrame({"I": np.r_[np.arange(24)*.01, np.arange(24)*0+.9,
+                                       np.arange(24)*0+.7, np.arange(24)*.01+.2],
+                             "U": np.r_[np.arange(24)*.02, np.arange(24)*0+.4,
+                                       np.arange(24)*0+.6, np.arange(24)*.02],
+                             "Temp": np.arange(96, dtype=float)}, index=dates)
+        missing_day = pd.Timestamp("2022-03-02")
+        data = data.loc[~(data.index.normalize() == missing_day)].copy()
+        data = data.drop(pd.Timestamp("2022-03-01 06:00"))
+        data.loc[pd.Timestamp("2022-03-03 07:00"), "I"] = np.nan
+        data.loc[pd.Timestamp("2022-03-03 09:00"), "U"] = np.nan
+        data.loc[pd.Timestamp("2022-03-03 10:00"), "Temp"] = np.nan
+        filled, report = impute_hourly_days(
+            data, days=pd.date_range("2022-03-01", "2022-03-04", freq="D"),
+            columns=("I", "U", "Temp"))
+        self.assertEqual(len(filled), 72)
+        self.assertNotIn(missing_day, filled.index.normalize())
+        self.assertEqual(report["missing_days"], ["2022-03-02"])
+        self.assertEqual(report["imputed_hourly_slots"], 4)
+        self.assertAlmostEqual(filled.at[pd.Timestamp("2022-03-01 06:00"), "I"], .06)
+        self.assertAlmostEqual(filled.at[pd.Timestamp("2022-03-03 09:00"), "U"], .6)
+        self.assertAlmostEqual(filled.at[pd.Timestamp("2022-03-03 10:00"), "Temp"], 58.0)
+        with self.assertRaisesRegex(ValueError, "Missing full day"):
+            impute_hourly_days(data, days=pd.date_range("2022-03-01", "2022-03-04", freq="D"),
+                               columns=("I", "U", "Temp"), require_days=True)
+
+    def test_baseline_fits_impute_hours_and_never_fill_whole_days(self):
+        frame = self.sample_frame()
+        origin = pd.Timestamp("2022-03-12")
+        history = historical_weekdays(origin, 2)
+        fragment = pd.concat([frame.reindex(pd.date_range(day, periods=24, freq="h"))
+                              for day in history]).sort_index()
+        fragment = fragment.drop(history[0]+pd.Timedelta(hours=6))
+        fragment.loc[history[1]+pd.Timedelta(hours=10), "Temp"] = np.nan
+        for name in BASELINE_NAMES:
+            model = baseline_from_history(fragment, history, name)
+            self.assertEqual(model.metadata["samples"], 48)
+            self.assertEqual(model.metadata["imputation"]["imputed_hourly_slots"], 2)
+        incomplete = fragment.loc[fragment.index.normalize() != history[0]]
+        with self.assertRaisesRegex(ValueError, "Missing full day"):
+            impute_hourly_days(incomplete, days=history, columns=("I", "U", "Temp"),
+                               require_days=True)
+
+    def test_sweep_imputes_historical_hours_but_never_target_labels(self):
+        original = self.sample_frame()
+        day = pd.Timestamp("2022-03-12")
+        history = historical_weekdays(day, 2)
+        altered = original.drop(history[0]+pd.Timedelta(hours=8)).copy()
+        altered.loc[history[1]+pd.Timedelta(hours=11), "I"] = np.nan
+        with patch("src.exe.run_model.wm_4.sweep_weekday_horizon.joint_qp_params", fake_joint_fitter):
+            fit, scores, components, states = evaluate_configuration(
+                altered, day, 2, 2, 6, 8, "weekly_average")
+            self.assertEqual(fit["imputed_training_hours"], 2)
+            self.assertEqual(len(scores), 3)
+            self.assertEqual(len(states), 2)
+            # Never fabricate forecast labels to create optimistic oracle scores.
+            altered.loc[day+pd.Timedelta(hours=7), "I"] = np.nan
+            with self.assertRaisesRegex(ValueError, "Missing consumption"):
+                evaluate_configuration(altered, day, 2, 2, 6, 8, "weekly_average")
 
     def test_all_three_baselines_use_exactly_corresponding_weekday_data(self):
         frame = self.sample_frame()
