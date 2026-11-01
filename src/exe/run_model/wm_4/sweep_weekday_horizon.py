@@ -10,11 +10,15 @@ import pandas as pd
 from src.exe.run_model.wm_4.moving_horizon_common import HOURS, group_frame, metrics, window_data
 from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays
 from src.params.wm_4 import joint_qp_params
+from src.tools.baseline import statistical_output, weekly_average, weekly_temperature
 from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekday_horizon_validation as validation
 
 
 ROOT = Path(__file__).resolve().parents[4]
-OUTPUT = ROOT / "files" / "output" / "wm_4" / "weekday_horizon_sweep"
+OUTPUT = ROOT / "files" / "output" / "wm_4" / "weekday_horizon_sweep_three_baselines"
+BASELINES = {"statistical_output": statistical_output, "weekly_average": weekly_average,
+             "weekly_temperature": weekly_temperature}
+BASELINE_NAMES = tuple(BASELINES)
 PERCENTILES = (20, 40, 50, 60, 80)
 RANKING_METRIC = "aggregate_rmse"  # Absolute pooled prediction error; never baseline-relative improvement.
 COLUMNS = {
@@ -45,10 +49,25 @@ class corresponding_weekday_baseline:
         return np.interp(h, np.arange(HOURS+1), np.r_[self.profile, self.profile[0]])
 
 
-def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, max_horizon):
+def baseline_from_history(frame, history, name):
+    if name not in BASELINES: raise ValueError(f"Unknown baseline: {name}.")
+    samples = [frame.reindex(pd.date_range(past, periods=HOURS, freq="h"))[["I", "Temp"]]
+               for past in history]
+    train = pd.concat(samples).sort_index()
+    if train[["I", "Temp"]].isna().any().any():
+        raise ValueError("All matched-weekday baseline training samples must be complete.")
+    # The standard baseline estimators require seven historical days by default.
+    # This comparative study deliberately fits each one to EXACTLY N same weekdays.
+    # Explicit min_samples=48 enables N=2 without leaking other calendar days.
+    baseline = BASELINES[name](min_samples=48).fit(train, max(history)+pd.Timedelta(days=1))
+    return baseline
+
+
+def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, max_horizon,
+                           baseline_name="weekly_average"):
     history = validation.history(day, historical_weekdays(day, n_weekdays))
     profiles = validation.training_data(frame, history)
-    baseline = corresponding_weekday_baseline(profiles)
+    baseline = baseline_from_history(frame, history, baseline_name)
     datasets = [window_data(frame, earlier, baseline, steps_per_hour)[1] for earlier in history]
     model, forecast, _, observed = window_data(frame, day, baseline, steps_per_hour)
 
@@ -56,7 +75,9 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
     fit = joint_qp_params(model).fit_many(datasets)
     runtime = perf_counter()-started
     theta = np.asarray(fit["r"], dtype=float)       # [theta_F, theta_U, theta_R]
-    history_R0 = profiles[:, 0]-baseline.profile[0]
+    historical_origins = pd.DatetimeIndex(history)
+    historical_temps = frame.reindex(historical_origins)["Temp"].to_numpy(dtype=float)
+    history_R0 = profiles[:, 0]-baseline.predict(historical_origins, historical_temps)
     R0 = float(np.median(history_R0))              # strictly historical, never optimized
 
     state0 = model._solve_deterministic([0.0, R0], forecast["U"], forecast["PE"],
@@ -69,8 +90,17 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
 
     coeffs = {"theta_F": float(theta[0]), "theta_R": float(theta[2]), "theta_U": float(theta[1])}
     fit_row = {
-        "day": day, "weekday": day.day_name(), "training_weekdays": n_weekdays,
+        "day": day, "weekday": day.day_name(), "baseline": baseline_name, "training_weekdays": n_weekdays,
         "training_days": ";".join(f"{d:%Y-%m-%d}" for d in history),
+        "baseline_coefficients": json.dumps(np.asarray(baseline.coef, dtype=float).tolist()),
+        "baseline_metadata": json.dumps(baseline.metadata, default=str),
+        "baseline_feature_mean": json.dumps(None if baseline.feature_mean is None else baseline.feature_mean.tolist())
+            if hasattr(baseline, "feature_mean") else "null",
+        "baseline_feature_scale": json.dumps(None if baseline.feature_scale is None else baseline.feature_scale.tolist())
+            if hasattr(baseline, "feature_scale") else "null",
+        "baseline_beta_C": float(baseline.beta_C) if hasattr(baseline, "beta_C") else np.nan,
+        "baseline_chill_center": float(baseline.chill_center) if hasattr(baseline, "chill_center") else np.nan,
+        "baseline_samples": int(baseline.metadata["samples"]),
         **coeffs, "historical_R0": R0, "fit_qp_loss": float(fit["qp_loss"]),
         "fit_rmse": float(np.sqrt(fit["deterministic_loss"])), "fit_seconds": runtime,
         "design_rank": int(fit["design_rank"]), "design_columns": len(fit["beta"]),
@@ -78,14 +108,15 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
         "training_F0_mean": float(np.mean(fit["init_cond"][:, 0])),
         "training_F0_std": float(np.std(fit["init_cond"][:, 0])),
     }
-    for hour, value in enumerate(baseline.profile):
+    for hour, value in enumerate(baseline_hourly):
         fit_row[f"baseline_hour_{hour:02d}"] = float(value)
 
-    states = [{"day": day, "training_weekdays": n_weekdays, "historical_day": past,
+    states = [{"day": day, "baseline": baseline_name, "training_weekdays": n_weekdays, "historical_day": past,
                "historical_F0": float(state[0]), "historical_R0": float(state[1]),
-               "baseline_hour_00": float(baseline.profile[0])}
+               "baseline_hour_00": float(baseline.predict(pd.DatetimeIndex([past]),
+                                              np.array([frame.at[past, "Temp"]]))[0])}
               for past, state in zip(history, fit["init_cond"])]
-    components = [{"day": day, "training_weekdays": n_weekdays, "hour": h,
+    components = [{"day": day, "baseline": baseline_name, "training_weekdays": n_weekdays, "hour": h,
                    "time": day+pd.Timedelta(hours=h), "observed": float(observed[h]),
                    "baseline": float(baseline_hourly[h]), "price": float(forecast["U"][sample_idx[h]]),
                    "prediction_at_F0_zero": float(base[h]), "sensitivity_F0": float(sensitivity[h])}
@@ -103,7 +134,7 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
         score = metrics(observed[:horizon], predicted)
         bscore = metrics(observed[:horizon], baseline_hourly[:horizon])
         scores.append({
-            "day": day, "training_weekdays": n_weekdays, "horizon_hours": horizon,
+            "day": day, "baseline": baseline_name, "training_weekdays": n_weekdays, "horizon_hours": horizon,
             **coeffs, "oracle_F0": oracle, "historical_R0": R0,
             "oracle_sensitivity_norm": float(np.sqrt(den)),
             "rmse": score["rmse"], "mse": score["mse"], "mae": score["mae"], "bias": score["bias"],
