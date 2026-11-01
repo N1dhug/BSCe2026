@@ -226,7 +226,7 @@ def run(args):
     return daily, hourly, horizon
 
 
- 
+
 def report_saved(output):
     """Reprint analysis from completed CSVs without repeating historical QP fits."""
     output = Path(output)
