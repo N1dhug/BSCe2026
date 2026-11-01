@@ -26,3 +26,31 @@ class joint_drift_qp_validation:
             raise ValueError("ridge must be nonnegative and eps positive.")
         C = np.r_[0.0, np.cumsum(dt*R[:-1])]
         return R, U, C, G, H, mask, lo, hi
+
+
+    @staticmethod
+    def many(rates, prices, dt, masks, f_bounds, ridge, eps):
+        if not isinstance(rates, (list, tuple)) or not isinstance(prices, (list, tuple)):
+            raise TypeError("rates and prices must be lists of trajectories.")
+        if len(rates) < 1 or len(rates) != len(prices):
+            raise ValueError("Rates and prices need equal nonzero trajectory counts.")
+        if masks is None: masks = [None] * len(rates)
+        if len(masks) != len(rates): raise ValueError("Transition masks must match trajectories.")
+        prepared = []
+        for R, U, mask in zip(rates, prices, masks):
+            R = np.asarray(R, dtype=float).reshape(-1)
+            U = np.asarray(U, dtype=float).reshape(-1)
+            if R.size < 2 or U.shape != R.shape or not np.isfinite(np.r_[R, U]).all():
+                raise ValueError("Every rate and price trajectory must have finite matching samples.")
+            if np.any(U < -1.0) or np.any(U > 1.0):
+                raise ValueError("Prices must be normalized to [-1,1].")
+            if mask is None: mask = np.ones(R.size - 1, dtype=bool)
+            mask = np.asarray(mask, dtype=bool).reshape(-1)
+            if mask.shape != (R.size - 1,) or not mask.any():
+                raise ValueError("Every fitting trajectory needs at least one valid transition.")
+            prepared.append((R, U, mask))
+        dt, ridge, eps = float(dt), float(ridge), float(eps)
+        lo, hi = map(float, f_bounds)
+        if not np.isfinite([dt, ridge, eps, lo, hi]).all() or dt <= 0 or ridge < 0 or eps <= 0 or not -1.0 <= lo < hi <= 1.0:
+            raise ValueError("Invalid dt, ridge, eps or preferred flexibility limits.")
+        return prepared, lo, hi, dt, ridge, eps
