@@ -59,7 +59,8 @@ for updated coverage, do a fresh fit.
 - Quantiles of individual forecast-hour absolute errors and daily
   cumulative seven-hour RMSE (20/40/50/60/80 percentiles).
 - Daily error quantiles, parameter distributions and trends for
-  theta_F, theta_R, theta_U.
+  theta_F, theta_R, theta_U and the fitted baseline heating coefficient
+  (beta_C for weekly_temperature).
 - Oracle F0, historical R0 and damping ratio empirical quintiles.
 - Exploratory Bartlett HAC tests of nonzero mean parameters,
   Spearman rank tests of coefficient/error association, and
@@ -93,6 +94,7 @@ hourly_error_quintiles.csv, cumulative_rmse_quintiles.csv.
 Figures: forecast_error_quintiles.png, daily_rmse_quintiles.png,
 rmse_distribution.png, theta_time_quantiles.png,
 theta_distributions.png, theta_quintiles.png,
+baseline_heating_coefficient_quintiles.png,
 initial_states_and_damping_quintiles.png,
 prediction_demand_quintiles.png, contribution_rms_quintiles.png,
 contribution_hourly_quantiles.png, contribution_rms_time.png,
