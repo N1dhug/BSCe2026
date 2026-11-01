@@ -162,38 +162,39 @@ def read_table(path, subset):
 def load_tables(output):
     return {
         name: read_table(output/filename, {
-            "fit": ["day", "training_weekdays"],
-            "score": ["day", "training_weekdays", "horizon_hours"],
-            "component": ["day", "training_weekdays", "hour"],
-            "state": ["day", "training_weekdays", "historical_day"],
-            "fail": ["day", "training_weekdays", "error"],
+            "fit": ["day", "baseline", "training_weekdays"],
+            "score": ["day", "baseline", "training_weekdays", "horizon_hours"],
+            "component": ["day", "baseline", "training_weekdays", "hour"],
+            "state": ["day", "baseline", "training_weekdays", "historical_day"],
+            "fail": ["day", "baseline", "training_weekdays", "error"],
         }[name])
         for name, filename in COLUMNS.items()
     }
 
 
-def completed_pairs(tables, counts, horizons):
+def completed_pairs(tables, counts, horizons, baselines=BASELINE_NAMES):
     if any(tables[key].empty for key in ("fit", "score", "component", "state")): return set()
-    key = ["day", "training_weekdays"]
+    key = ["day", "baseline", "training_weekdays"]
     fit_counts = tables["fit"].groupby(key).size()
     scores = tables["score"].groupby(key)["horizon_hours"].nunique()
     components = tables["component"].groupby(key)["hour"].nunique()
     states = tables["state"].groupby(key)["historical_day"].nunique()
-    return {(day, int(n)) for (day, n), size in fit_counts.items()
-            if size >= 1 and scores.get((day, n), 0) == horizons
-            and components.get((day, n), 0) == HOURS
-            and states.get((day, n), 0) == n and n in counts}
+    return {(day, name, int(n)) for (day, name, n), size in fit_counts.items()
+            if size >= 1 and scores.get((day, name, n), 0) == horizons
+            and components.get((day, name, n), 0) == HOURS
+            and states.get((day, name, n), 0) == n and n in counts and name in baselines}
 
 
 def summarise(scores):
     if scores.empty: return pd.DataFrame()
     rows = []
-    for (n, horizon), data in scores.groupby(["training_weekdays", "horizon_hours"]):
+    if "baseline" not in scores: scores = scores.assign(baseline="corresponding_weekday")
+    for (name, n, horizon), data in scores.groupby(["baseline", "training_weekdays", "horizon_hours"]):
         pooled = float(np.sqrt(np.mean(data["mse"])))
         base = float(np.sqrt(np.mean(data["baseline_mse"])))
         rmse = data["rmse"].to_numpy(dtype=float)
         row = {
-            "training_weekdays": int(n), "horizon_hours": int(horizon), "days": len(data),
+            "baseline": name, "training_weekdays": int(n), "horizon_hours": int(horizon), "days": len(data),
             "aggregate_rmse": pooled, "baseline_rmse": base, "mean_daily_rmse": float(np.mean(rmse)),
             "median_daily_rmse": float(np.median(rmse)), "mean_bias": float(data["bias"].mean()),
             "baseline_gain": base-pooled, "baseline_improvement_pct": 100*(base-pooled)/base if base > 0 else np.nan,
@@ -202,40 +203,45 @@ def summarise(scores):
         for percentile in PERCENTILES:
             row[f"rmse_q{percentile}"] = float(np.percentile(rmse, percentile))
         rows.append(row)
-    return pd.DataFrame(rows).sort_values([RANKING_METRIC, "training_weekdays", "horizon_hours"]).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values([RANKING_METRIC, "baseline", "training_weekdays", "horizon_hours"]).reset_index(drop=True)
 
 
-def matched_cohort(tables, weekdays, horizons):
+def matched_cohort(tables, weekdays, horizons, baselines=None):
     fits, scores = tables["fit"], tables["score"]
     if fits.empty or scores.empty: return pd.DatetimeIndex([])
-    counts = scores.groupby(["day", "training_weekdays"])["horizon_hours"].nunique()
-    complete = {(day, int(n)) for (day, n), size in counts.items() if size == horizons}
-    eligible = fits.loc[fits.apply(lambda row: (row["day"], int(row["training_weekdays"])) in complete, axis=1)]
-    by_day = eligible.groupby("day")["training_weekdays"].nunique()
-    return pd.DatetimeIndex(by_day.index[by_day == len(weekdays)]).sort_values()
+    if "baseline" not in fits: fits = fits.assign(baseline="corresponding_weekday")
+    if "baseline" not in scores: scores = scores.assign(baseline="corresponding_weekday")
+    if baselines is None: baselines = tuple(fits["baseline"].unique())
+    counts = scores.groupby(["day", "baseline", "training_weekdays"])["horizon_hours"].nunique()
+    complete = {(day, name, int(n)) for (day, name, n), size in counts.items() if size == horizons}
+    eligible = fits.loc[fits.apply(lambda r: (r["day"], r["baseline"], int(r["training_weekdays"])) in complete
+                             and r["baseline"] in baselines and int(r["training_weekdays"]) in weekdays, axis=1)]
+    by_day = eligible.groupby("day").apply(lambda group:
+        len(set(zip(group["baseline"], group["training_weekdays"]))))
+    return pd.DatetimeIndex(by_day.index[by_day == len(weekdays)*len(baselines)]).sort_values()
 
 
-def write_outputs(tables, output, weekdays, horizons):
+def write_outputs(tables, output, weekdays, horizons, baselines=BASELINE_NAMES):
     # Deduplicate possibly partially written windows after an interrupted --resume.
     for name in ("fit", "score", "component", "state", "fail"):
         tables[name].to_csv(output/COLUMNS[name], index=False)
     summary_all = summarise(tables["score"])
     summary_all.to_csv(output/"ranking_all_available.csv", index=False)
-    common = matched_cohort(tables, weekdays, horizons)
+    common = matched_cohort(tables, weekdays, horizons, baselines)
     matched = tables["score"].loc[tables["score"]["day"].isin(common)].copy()
     summary_matched = summarise(matched)
     summary_matched.to_csv(output/"ranking_matched.csv", index=False)
     ranking = summary_matched if not summary_matched.empty else summary_all
     basis = "matched" if not summary_matched.empty else "unmatched_fallback"
     # Rank ONLY by absolute pooled oracle-state prediction RMSE, not baseline skill.
-    ranking = ranking.sort_values([RANKING_METRIC, "training_weekdays", "horizon_hours"]).reset_index(drop=True)
+    ranking = ranking.sort_values([RANKING_METRIC, "baseline", "training_weekdays", "horizon_hours"]).reset_index(drop=True)
     top = ranking.head(3).copy()
     top.insert(0, "rank", np.arange(1, len(top)+1))
     top.insert(1, "ranking_basis", basis)
     top.to_csv(output/"top_three.csv", index=False)
-    best_by_horizon = ranking.sort_values([RANKING_METRIC, "training_weekdays"]).drop_duplicates("horizon_hours").sort_values("horizon_hours")
+    best_by_horizon = ranking.sort_values([RANKING_METRIC, "baseline", "training_weekdays"]).drop_duplicates("horizon_hours").sort_values("horizon_hours")
     best_by_horizon.to_csv(output/"best_by_horizon.csv", index=False)
-    parameters = tables["fit"].groupby("training_weekdays")[
+    parameters = tables["fit"].groupby(["baseline", "training_weekdays"])[
         ["theta_F", "theta_R", "theta_U", "fit_qp_loss", "fit_seconds"]
     ].agg(["mean", "std", "median", "min", "max"])
     parameters.columns = ["_".join(column) for column in parameters.columns]
