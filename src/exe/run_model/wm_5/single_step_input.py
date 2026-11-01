@@ -24,12 +24,12 @@ def build(model_name="wm_5", *, duration=24.0, dt=0.02, step_at=2.0, price_befor
     elif model_name == "wm_5":
         library = response_library()
         model = wm_5(T, steps, baseline, [library["linear"], library["cubic"]], [library["linear"]])
-        coeff = np.array([-0.25, -0.70, -0.10, -0.20])
+        coeff = np.array([-0.25, -0.56, -0.24, -0.20])
         state = model.deterministic_solver([0.0, 0.0], {
             "coefficients": coeff, "U": price, "Time": times})
         contributions = np.column_stack((
             coeff[0]*state["F"], coeff[1]*state["R"]+coeff[2]*state["R"]**3, coeff[3]*state["U"]))
-        responses = (lambda x: x, lambda x: (0.7*x+0.1*x**3)/0.8, lambda x: x)
+        responses = (lambda x: x, lambda x: 0.7*x+0.3*x**3, lambda x: x)
     else: raise ValueError("model_name must be wm_4 or wm_5.")
     # The response h(U)=U is increasing, while theta_U<=0 makes higher prices reduce demand.
     theta_U = float(coeff[1] if model_name == "wm_4" else coeff[-1])
