@@ -111,37 +111,47 @@ class joint_drift_qp:
     @staticmethod
     def solve_many_features(rates, prices, dt, g, h, constraints, masks=None,
                             f_bounds=(-1.0, 1.0), ridge=1e-10, enforce_path=True):
-        """Shared 3 coefficient nonlinear-response QP with one independent F0 per day.
+        """Joint convex QP for any fixed response bases, with one F0 per day.
 
-        beta=[theta_F F01,...,theta_F F0N,theta_F,theta_R,theta_U].
-        g and h are FIXED functions; therefore the joint objective and
-        all parameter/path restrictions remain convex quadratic/linear.
+        beta=[theta_F*F0_1,...,theta_F*F0_N,theta_F,a_1,...,a_nr,b_1,...,b_nu].
+        Accepts a callable or a sequence of callables for each of g and h.
+        The solver manages only linear algebra; model constraints belong to params.
         """
         prepared, lower, upper, dt, ridge, eps = joint_drift_qp_validation.many(
             rates, prices, dt, masks, f_bounds, ridge, 1e-8)
+        gs = (g,) if callable(g) else tuple(g)
+        hs = (h,) if callable(h) else tuple(h)
+        if not gs or not hs or not all(callable(fn) for fn in (*gs, *hs)):
+            raise ValueError("Fixed rate/price response features must be nonempty callable sequences.")
+        n, m = len(prepared), 1+len(gs)+len(hs)
         A0, b0, lb0, ub0 = (np.asarray(x, dtype=float) for x in constraints)
-        n = len(prepared)
-        if A0.ndim != 2 or A0.shape[1] != 3 or b0.shape != (len(A0),):
-            raise ValueError("Response-model structural inequalities need 3 coefficients.")
-        if lb0.shape != (3,) or ub0.shape != (3,):
-            raise ValueError("Response-model structural bounds need 3 coefficients.")
+        if A0.ndim != 2 or A0.shape[1] != m or b0.shape != (len(A0),):
+            raise ValueError(f"Response-model structural inequalities need {m} coefficient columns.")
+        if lb0.shape != (m,) or ub0.shape != (m,):
+            raise ValueError(f"Response-model structural bounds need {m} coefficients.")
         Xparts, yparts, Cpaths = [], [], []
         rows, limits = [np.column_stack((np.zeros((len(A0), n)), A0))], [b0]
+
+        def response(fn, values):
+            return np.fromiter((float(fn(float(x))) for x in values), dtype=float, count=len(values))
+
         for i, (R, U, mask) in enumerate(prepared):
             C = np.r_[0.0, np.cumsum(dt*R[:-1])]
-            X = np.zeros((len(R)-1, n+3), dtype=float)
+            X = np.zeros((len(R)-1, n+m), dtype=float)
             X[:, i] = 1.0
-            X[:, n:] = np.column_stack((C[:-1], g(R[:-1]), h(U[:-1])))
+            X[:, n:] = np.column_stack((
+                C[:-1], *(response(fn, R[:-1]) for fn in gs),
+                *(response(fn, U[:-1]) for fn in hs)))
             features = X[mask]
             if not np.isfinite(features).all():
-                raise ValueError("Response functions must be finite at every historical point.")
+                raise ValueError("Response functions must be finite at historical observations.")
             Xparts.append(features)
             yparts.append((np.diff(R)/dt)[mask])
             Cpaths.append(C)
             if enforce_path:
-                # theta_F is negative, so dividing by theta_F reverses bounds:
-                # (upper-max(C))*theta_F <= beta_i <= (lower-min(C))*theta_F.
-                low, high = np.zeros(n+3), np.zeros(n+3)
+                # theta_F < 0. The following inequalities bound all reconstructed
+                # historical F_k=beta_i/theta_F+C_k inside [lower,upper].
+                low, high = np.zeros(n+m), np.zeros(n+m)
                 low[i], low[n] = -1.0, upper-float(np.max(C))
                 high[i], high[n] = 1.0, float(np.min(C))-lower
                 rows.append(np.vstack((low, high)))
@@ -150,18 +160,18 @@ class joint_drift_qp:
         A, b = np.vstack(rows), np.concatenate(limits)
         lb, ub = np.r_[np.full(n, -np.inf), lb0], np.r_[np.full(n, np.inf), ub0]
         scale = max(1, len(y))
-        H = 2.0*X.T@X/scale+ridge*np.eye(n+3)
+        H = 2.0*X.T@X/scale+ridge*np.eye(n+m)
         f = -2.0*X.T@y/scale
         beta = np.asarray(active_set.solve(H, f, A_ub=A, b_ub=b, lb=lb, ub=ub,
                                            tol=1e-9, max_iter=10000), dtype=float)
         coefficients = beta[n:]
         if coefficients[0] >= -eps or np.any(A@beta > b+1e-6):
-            raise RuntimeError("Joint nonlinear-response QP returned inadmissible coefficients.")
+            raise RuntimeError("Joint fixed-response QP returned inadmissible coefficients.")
         F0 = beta[:n]/coefficients[0]
         if enforce_path and any(np.min(f0+C)<lower-1e-6 or np.max(f0+C)>upper+1e-6
                                 for f0, C in zip(F0, Cpaths)):
-            raise RuntimeError("Joint nonlinear-response fit violated reconstructed F bounds.")
-        return {"coefficients": coefficients, "beta": beta, "F0": F0,
+            raise RuntimeError("Joint fixed-response fit violated reconstructed F bounds.")
+        return {"coefficients": coefficients.copy(), "beta": beta.copy(), "F0": F0.copy(),
                 "init_conds": np.column_stack((F0, [R[0] for R, _, _ in prepared])),
                 "qp_loss": float(np.mean((X@beta-y)**2)),
                 "design_rank": int(np.linalg.matrix_rank(X)),
