@@ -7,6 +7,10 @@ class sweep_weekday_horizon_validation:
     def arguments(args):
         if args.group not in ("MED", "ALL"):
             raise ValueError("group must be MED or ALL.")
+        names = getattr(args, "baselines", ("statistical_output", "weekly_average", "weekly_temperature"))
+        choices = {"statistical_output", "weekly_average", "weekly_temperature"}
+        if not names or len(set(names)) != len(names) or not set(names) <= choices:
+            raise ValueError("Baselines must be unique and selected from the three supported methods.")
         if not 2 <= args.min_weekdays <= args.max_weekdays <= 10:
             raise ValueError("Weekday training counts must satisfy 2 <= min <= max <= 10.")
         if not 6 <= args.min_horizon <= args.max_horizon <= 24:
