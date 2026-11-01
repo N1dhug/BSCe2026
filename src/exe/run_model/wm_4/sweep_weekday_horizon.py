@@ -173,21 +173,23 @@ def summarise(scores):
     return pd.DataFrame(rows).sort_values(["aggregate_rmse", "training_weekdays", "horizon_hours"]).reset_index(drop=True)
 
 
-def matched_cohort(tables, weekdays):
-    fits = tables["fit"]
-    if fits.empty: return pd.DatetimeIndex([])
-    counts = fits.groupby("day")["training_weekdays"].nunique()
-    complete = counts.index[counts == len(weekdays)]
-    return pd.DatetimeIndex(complete).sort_values()
+def matched_cohort(tables, weekdays, horizons):
+    fits, scores = tables["fit"], tables["score"]
+    if fits.empty or scores.empty: return pd.DatetimeIndex([])
+    counts = scores.groupby(["day", "training_weekdays"])["horizon_hours"].nunique()
+    complete = {(day, int(n)) for (day, n), size in counts.items() if size == horizons}
+    eligible = fits.loc[fits.apply(lambda row: (row["day"], int(row["training_weekdays"])) in complete, axis=1)]
+    by_day = eligible.groupby("day")["training_weekdays"].nunique()
+    return pd.DatetimeIndex(by_day.index[by_day == len(weekdays)]).sort_values()
 
 
-def write_outputs(tables, output, weekdays):
+def write_outputs(tables, output, weekdays, horizons):
     # Deduplicate possibly partially written windows after an interrupted --resume.
     for name in ("fit", "score", "component", "state", "fail"):
         tables[name].to_csv(output/COLUMNS[name], index=False)
     summary_all = summarise(tables["score"])
     summary_all.to_csv(output/"ranking_all_available.csv", index=False)
-    common = matched_cohort(tables, weekdays)
+    common = matched_cohort(tables, weekdays, horizons)
     matched = tables["score"].loc[tables["score"]["day"].isin(common)].copy()
     summary_matched = summarise(matched)
     summary_matched.to_csv(output/"ranking_matched.csv", index=False)
@@ -257,7 +259,7 @@ def save_top_three_plots(scores, top, common, output):
     fig.tight_layout(); fig.savefig(output/"top_three_daily_rmse.png", dpi=190, bbox_inches="tight"); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.boxplot(samples, tick_labels=labels, showmeans=True)
+    ax.boxplot(samples, labels=labels, showmeans=True)
     ax.set_title("Best three configurations — across-day RMSE distributions")
     ax.set_ylabel("Per-day oracle-state RMSE"); ax.grid(alpha=0.25, axis="y")
     fig.tight_layout(); fig.savefig(output/"top_three_rmse_distribution.png", dpi=190, bbox_inches="tight"); plt.close(fig)
@@ -286,11 +288,11 @@ def print_report(top, ranking, common, tables, basis, output):
     print("Ranking across different horizon lengths compares different forecasting tasks; best_by_horizon.csv compares N at fixed H.")
 
 
-def report_only(output, weekdays):
+def report_only(output, weekdays, horizons):
     output = Path(output)
     tables = load_tables(output)
     if tables["score"].empty: raise RuntimeError("No saved oracle_horizon_scores.csv available.")
-    ranking, top, common, basis = write_outputs(tables, output, weekdays)
+    ranking, top, common, basis = write_outputs(tables, output, weekdays, horizons)
     if not ranking.empty:
         save_heatmap(ranking, top, output, "aggregate_rmse", "rmse_heatmap.png", "Pooled oracle-F0 RMSE")
         save_heatmap(ranking, top, output, "baseline_improvement_pct", "baseline_skill_heatmap.png", "RMSE improvement over matching-weekday baseline (%)")
@@ -321,7 +323,7 @@ def run(args):
         for file in list(COLUMNS.values()) + ["configuration.json"]:
             (output/file).unlink(missing_ok=True)
         info.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    if args.report_only: return report_only(output, weekdays)
+    if args.report_only: return report_only(output, weekdays, horizons)
 
     frame = group_frame(args.group)
     earliest = max(frame.index.min().normalize(), pd.Timestamp("2022-01-01"))
@@ -332,9 +334,10 @@ def run(args):
     if args.end_day: last = min(last, pd.Timestamp(args.end_day))
     if begin > last: raise ValueError("No prediction dates remain after matching-weekday warm-up.")
     days = pd.date_range(begin, last, freq="D")
+    if args.max_days: days = days[:args.max_days]
     saved = load_tables(output) if args.resume else {name: pd.DataFrame() for name in COLUMNS}
     done = completed_pairs(saved, weekdays, horizons) if args.resume else set()
-    successful = 0
+    successful, attempted = 0, 0
     total = len(days)*len(weekdays)
     for day in days:
         for n in weekdays:
@@ -352,13 +355,11 @@ def run(args):
                 if args.fail_fast: raise
                 append_rows(output/COLUMNS["fail"], [{"day": day, "training_weekdays": n, "error": str(exc)}])
                 print(f"[skip] {day:%Y-%m-%d} N={n}: {exc}", flush=True)
-            if successful and successful % args.progress_every == 0:
+            attempted += 1
+            if attempted % args.progress_every == 0:
                 print(f"[WM4 sweep] computed {successful} new / {total} possible fits "
                       f"(resumed {len(done)}) | {day:%Y-%m-%d} N={n}", flush=True)
-            if args.max_days and successful >= args.max_days*len(weekdays):
-                break
-        if args.max_days and successful >= args.max_days*len(weekdays): break
-    return report_only(output, weekdays)
+    return report_only(output, weekdays, horizons)
 
 
 def main():
@@ -371,7 +372,7 @@ def main():
     parser.add_argument("--steps-per-hour", type=int, default=4)
     parser.add_argument("--start-day", default=None)
     parser.add_argument("--end-day", default=None)
-    parser.add_argument("--max-days", type=int, default=0, help="At most this many new fully evaluated calendar days (0=all).")
+    parser.add_argument("--max-days", type=int, default=0, help="Limit the calendar days evaluated (0=all).")
     parser.add_argument("--progress-every", type=int, default=10)
     parser.add_argument("--output", default=None)
     parser.add_argument("--resume", action="store_true", help="Resume from saved CSVs and matched configuration.json.")
@@ -381,7 +382,8 @@ def main():
     if args.report_only:
         validation.arguments(args)
         output = Path(args.output) if args.output else OUTPUT/args.group.lower()
-        return report_only(output, tuple(range(args.min_weekdays, args.max_weekdays+1)))
+        return report_only(output, tuple(range(args.min_weekdays, args.max_weekdays+1)),
+                           args.max_horizon-args.min_horizon+1)
     return run(args)
 
 
