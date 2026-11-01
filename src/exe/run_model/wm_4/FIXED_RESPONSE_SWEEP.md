@@ -41,9 +41,14 @@ Defaults:
 - N=2,...,10 preceding occurrences of the same weekday for **both**
   baseline estimation and shared model parameter estimation.
 - H=6,...,24 future hourly observations from the same target date.
-- A distinct joint convex historical QP for each (day,N,g,h).
+- A distinct joint convex historical QP for each (day,N,g,h),
+  called through **src.params.wm_5.joint_qp_params.fit_many**.
   The QP optimizes [theta_F*F0_day1, ..., theta_F*F0_dayN,
   theta_F,theta_R,theta_U] with one historical F0 per day.
+  The WM5 parameter layer validates and fits the fixed nonlinear
+  responses and produces all historical deterministic states.
+  The shared src.solver.joint_drift_qp.solve_many_features solver
+  only assembles and solves the underlying generic convex QP.
   All derivative-response features g(R),h(U) are fixed, and the
   structural, equilibrium, Euler stability, and reconstructed
   historical F-path constraints are linear. The QP remains convex.
