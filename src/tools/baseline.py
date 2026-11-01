@@ -87,6 +87,7 @@ class statistical_output:
         end = pd.Timestamp(end)
         source = frame.loc[frame.index < end, ["I", "Temp"]]
         train, self.imputation = impute_hourly_days(source, columns=("I", "Temp"))
+        train = train.loc[train.index < end].copy()  # Never create training samples after the cutoff.
         if len(train) < self.min_samples: raise ValueError(f"At least {self.min_samples} historical I/temperature observations are required to fit O.")
 
         X_raw = self._features(train.index, train["Temp"].to_numpy(dtype=float))
@@ -187,6 +188,7 @@ class weekly_average:
         if pd.isna(end): raise ValueError("end must be a valid timestamp.")
         source = frame.loc[frame.index < end, ["I", "Temp"]]
         train, self.imputation = impute_hourly_days(source, columns=("I", "Temp"))
+        train = train.loc[train.index < end].copy()  # Never create training samples after the cutoff.
         if len(train) < self.min_samples: raise ValueError(f"At least {self.min_samples} historical I/temperature observations are required to fit O.")
         if not np.all(np.isfinite(train[["I", "Temp"]].to_numpy(dtype=float))): raise ValueError("Training data must be finite.")
         return train
