@@ -16,6 +16,7 @@ from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekda
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "weekday_horizon_sweep"
 PERCENTILES = (20, 40, 50, 60, 80)
+RANKING_METRIC = "aggregate_rmse"  # Absolute pooled prediction error; never baseline-relative improvement.
 COLUMNS = {
     "fit": "parameter_estimates.csv",
     "score": "oracle_horizon_scores.csv",
@@ -170,7 +171,7 @@ def summarise(scores):
         for percentile in PERCENTILES:
             row[f"rmse_q{percentile}"] = float(np.percentile(rmse, percentile))
         rows.append(row)
-    return pd.DataFrame(rows).sort_values(["aggregate_rmse", "training_weekdays", "horizon_hours"]).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values([RANKING_METRIC, "training_weekdays", "horizon_hours"]).reset_index(drop=True)
 
 
 def matched_cohort(tables, weekdays, horizons):
@@ -195,11 +196,13 @@ def write_outputs(tables, output, weekdays, horizons):
     summary_matched.to_csv(output/"ranking_matched.csv", index=False)
     ranking = summary_matched if not summary_matched.empty else summary_all
     basis = "matched" if not summary_matched.empty else "unmatched_fallback"
+    # Rank ONLY by absolute pooled oracle-state prediction RMSE, not baseline skill.
+    ranking = ranking.sort_values([RANKING_METRIC, "training_weekdays", "horizon_hours"]).reset_index(drop=True)
     top = ranking.head(3).copy()
     top.insert(0, "rank", np.arange(1, len(top)+1))
     top.insert(1, "ranking_basis", basis)
     top.to_csv(output/"top_three.csv", index=False)
-    best_by_horizon = ranking.sort_values("aggregate_rmse").drop_duplicates("horizon_hours").sort_values("horizon_hours")
+    best_by_horizon = ranking.sort_values([RANKING_METRIC, "training_weekdays"]).drop_duplicates("horizon_hours").sort_values("horizon_hours")
     best_by_horizon.to_csv(output/"best_by_horizon.csv", index=False)
     parameters = tables["fit"].groupby("training_weekdays")[
         ["theta_F", "theta_R", "theta_U", "fit_qp_loss", "fit_seconds"]
@@ -274,9 +277,10 @@ def print_report(top, ranking, common, tables, basis, output):
     print(f"matched forecast days across ALL weekday counts: {len(common)}")
     if basis != "matched":
         print("WARNING: no fully matched cohort; ranking uses differing available dates per combination.")
-    print("\nTHREE BEST COMBINATIONS (ranked by pooled oracle-F0 RMSE):")
+    print("\nTHREE BEST COMBINATIONS (ranked by LOWEST ABSOLUTE aggregate oracle-F0 RMSE):")
+    print("Baseline improvement is reported separately and NEVER used to determine ranking.")
     fields = ["rank", "training_weekdays", "horizon_hours", "days", "aggregate_rmse",
-              "baseline_rmse", "baseline_improvement_pct", "rmse_q20", "median_daily_rmse", "rmse_q80"]
+              "baseline_rmse", "rmse_q20", "median_daily_rmse", "rmse_q80"]
     print(top[fields].to_string(index=False, float_format=lambda x: f"{x:.6f}"))
     print("\nTop configurations: historical coefficient distribution on the ranked cohort")
     for row in top.itertuples():
