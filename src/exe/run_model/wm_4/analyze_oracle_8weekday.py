@@ -15,7 +15,7 @@ from scipy.stats import kruskal, norm, spearmanr
 
 from src.exe.run_model.wm_4.moving_horizon_common import group_frame
 from src.exe.run_model.wm_4.sweep_weekday_horizon import (
-    BASELINE_NAMES, OUTPUT as SWEEP_OUTPUT, evaluate_configuration,
+    BASELINE_NAMES, evaluate_configuration,
 )
 
 
@@ -67,8 +67,7 @@ def reconstruct_hourly(daily, components, steps_per_hour, horizon=HORIZON):
     return result
 
 
-def F0(row):
-    return float(row["oracle_F0"])
+def F0(row): return float(row["oracle_F0"])
 
 
 def consolidate(fit, score, components, states, steps_per_hour, horizon=HORIZON):
@@ -326,7 +325,7 @@ def plot_contributions(daily, hourly, output):
 def plot_residuals(hourly, output):
     fig, axes = plt.subplots(2, 1, figsize=(11, 9), sharex=True)
     for effect, label in (("predicted", "WM4 oracle"), ("observed", "Observed"),
-                          ("baseline_prediction", "Weekly-temperature baseline")):
+                          ("baseline_prediction", "Statistical baseline")):
         groups = hourly.groupby("hour")[effect]
         x = np.arange(HORIZON)+1
         axes[0].plot(x, groups.mean().reindex(np.arange(HORIZON)), label=label, marker=".")
@@ -411,6 +410,13 @@ def load_from_sweep(folder, baseline, output, steps_per_hour):
     files = {"fit": "parameter_estimates.csv", "score": "oracle_horizon_scores.csv",
              "component": "forecast_components.csv", "states": "historical_initial_states.csv"}
     tables = {}
+    provenance = folder/"configuration.json"
+    if provenance.is_file():
+        source_config = json.loads(provenance.read_text(encoding="utf-8"))
+        if int(source_config.get("steps_per_hour", steps_per_hour)) != steps_per_hour:
+            raise ValueError("Sweep numerical resolution differs. Pass --steps-per-hour "
+                             "matching the saved sweep configuration.")
+    else: source_config = {"warning": "Sweep configuration.json was unavailable."}
     for name, filename in files.items():
         path = folder/filename
         if not path.exists(): raise FileNotFoundError(f"Missing source sweep data: {path}")
@@ -437,6 +443,10 @@ def load_from_sweep(folder, baseline, output, steps_per_hour):
             skipped.append({"day": day, "reason": str(exc)})
     if not daily_rows: raise RuntimeError("No complete eight-weekday/seven-hour configurations found in sweep.")
     write_results(output, daily_rows, hourly_rows, history, skipped)
+    (output/"configuration.json").write_text(json.dumps({
+        "mode": "from_sweep", "source": str(folder), "source_config": source_config,
+        "baseline": baseline, "N": N_WEEKDAYS, "H": HORIZON,
+        "steps_per_hour": steps_per_hour}, indent=2, default=str), encoding="utf-8")
     return len(daily_rows)
 
 
@@ -500,7 +510,7 @@ def main():
     parser.add_argument("--end-day", default=None)
     parser.add_argument("--max-days", type=int, default=0)
     parser.add_argument("--progress-every", type=int, default=10)
-    parser.add_argument("--output", default=str(OUTPUT/"med"/"weekly_temperature"))
+    parser.add_argument("--output", default=None)
     parser.add_argument("--from-sweep", default=None,
                         help="Analyze cached three-baseline sweep CSVs instead of refitting.")
     parser.add_argument("--report-only", action="store_true",
@@ -510,6 +520,7 @@ def main():
     args = parser.parse_args()
     if args.steps_per_hour < 2 or args.max_days < 0 or args.progress_every < 1:
         parser.error("steps-per-hour >= 2, max-days >= 0 and progress-every >= 1 are required.")
+    if args.output is None: args.output = str(OUTPUT/args.group.lower()/args.baseline)
     if args.report_only:
         analyze(args.output); return
     if args.from_sweep:
