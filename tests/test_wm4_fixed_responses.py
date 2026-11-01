@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -7,6 +8,7 @@ from src.exe.run_model.wm_4.sweep_fixed_responses import fixed_responses, ordere
 from src.model.wm_5 import wm_5
 from src.params.wm_5 import joint_qp_params
 from src.solver.joint_drift_qp import joint_drift_qp
+from src.solver.active_set import active_set
 from src.validation.params.wm_5 import wm_5_params_validation
 from src.exe.run_model.wm_4.sweep_fixed_responses import (
     simulate_batch, oracle_horizons, aggregate, rank,
@@ -100,7 +102,9 @@ class test_wm4_fixed_responses(unittest.TestCase):
             datasets.append({"I":R+.5,"U":U,"Time":np.arange(n,dtype=float)/sph,
                              "O":np.full(n,.5),"observation_mask":obs,
                              "transition_mask":np.ones(n-1,dtype=bool)})
-        fitted=joint_qp_params(model).fit_many(datasets)
+        with patch("src.solver.joint_drift_qp.active_set.solve", wraps=active_set.solve) as solve:
+            fitted=joint_qp_params(model).fit_many(datasets)
+            self.assertEqual(solve.call_count,1)  # Existing active-set optimizer.
         self.assertEqual(fitted["fit_method"],"wm5_joint_qp_many")
         self.assertEqual(fitted["fit_trajectories"],3)
         self.assertEqual(fitted["init_cond"].shape,(3,2))
