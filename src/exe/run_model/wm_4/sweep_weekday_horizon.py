@@ -151,7 +151,8 @@ def append_rows(path, records):
 
 def read_table(path, subset):
     if not path.is_file() or path.stat().st_size == 0: return pd.DataFrame()
-    frame = pd.read_csv(path)
+    try: frame = pd.read_csv(path)
+    except pd.errors.EmptyDataError: return pd.DataFrame()
     if frame.empty: return frame
     for col in ("day", "historical_day", "time"):
         if col in frame: frame[col] = pd.to_datetime(frame[col])
@@ -261,6 +262,7 @@ def save_heatmap(ranking, top, output, metric, filename, title):
     ax.set_ylabel("Number of preceding corresponding weekdays")
     ax.set_title(title)
     for row in top.itertuples():
+        if row.baseline not in set(ranking["baseline"]) or row.baseline != ranking["baseline"].iloc[0]: continue
         x = pivot.columns.get_loc(row.horizon_hours)
         y = pivot.index.get_loc(row.training_weekdays)
         ax.scatter(x, y, marker="*", s=240, edgecolor="black", linewidths=0.7, zorder=5)
@@ -270,13 +272,26 @@ def save_heatmap(ranking, top, output, metric, filename, title):
 
 def save_horizon_curves(ranking, output):
     if ranking.empty: return
-    fig, ax = plt.subplots(figsize=(12, 7))
-    for n, subset in ranking.groupby("training_weekdays"):
-        ax.plot(subset["horizon_hours"], subset["aggregate_rmse"], label=f"{n} weekdays")
-    ax.set_xlabel("Prediction horizon (hours)"); ax.set_ylabel("Pooled oracle-F0 RMSE")
-    ax.set_title("WM4 oracle-state prediction quality: historical weekdays vs horizon")
-    ax.grid(alpha=0.25); ax.legend(ncol=3)
+    baselines = list(ranking["baseline"].unique())
+    fig, axes = plt.subplots(len(baselines), 1, figsize=(13, 5*len(baselines)), sharex=True, squeeze=False)
+    for ax, name in zip(axes[:, 0], baselines):
+        data = ranking.loc[ranking["baseline"] == name].sort_values("horizon_hours")
+        for n, subset in data.groupby("training_weekdays"):
+            ax.plot(subset["horizon_hours"], subset["aggregate_rmse"], label=f"{n} weekdays")
+        ax.set_ylabel("Pooled oracle-F0 RMSE"); ax.set_title(name)
+        ax.grid(alpha=0.25); ax.legend(ncol=5, fontsize=8)
+    axes[-1, 0].set_xlabel("Prediction horizon (hours)")
+    fig.suptitle("WM4 oracle prediction quality by historical weekdays and baseline")
     fig.tight_layout(); fig.savefig(output/"rmse_by_horizon.png", dpi=190, bbox_inches="tight"); plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    for name, group in ranking.groupby("baseline"):
+        best = group.sort_values(RANKING_METRIC).drop_duplicates("horizon_hours").sort_values("horizon_hours")
+        ax.plot(best["horizon_hours"], best[RANKING_METRIC], label=f"{name} (optimal N per horizon)")
+    ax.set_xlabel("Prediction horizon (hours)"); ax.set_ylabel("Lowest pooled RMSE over N")
+    ax.set_title("Best corresponding-weekday count at every horizon, by baseline")
+    ax.grid(alpha=0.25); ax.legend()
+    fig.tight_layout(); fig.savefig(output/"best_baseline_by_horizon.png", dpi=190, bbox_inches="tight"); plt.close(fig)
 
 
 def save_top_three_plots(scores, top, common, output):
@@ -285,12 +300,14 @@ def save_top_three_plots(scores, top, common, output):
     samples = []
     labels = []
     for row in top.itertuples():
-        subset = scores.loc[(scores["training_weekdays"] == row.training_weekdays) &
+        subset = scores.loc[(scores["baseline"] == row.baseline) &
+                            (scores["training_weekdays"] == row.training_weekdays) &
                             (scores["horizon_hours"] == row.horizon_hours) &
                             scores["day"].isin(common)].sort_values("day")
-        if subset.empty: subset = scores.loc[(scores["training_weekdays"] == row.training_weekdays) &
+        if subset.empty: subset = scores.loc[(scores["baseline"] == row.baseline) &
+                                              (scores["training_weekdays"] == row.training_weekdays) &
                                               (scores["horizon_hours"] == row.horizon_hours)].sort_values("day")
-        label = f"#{row.rank}: N={row.training_weekdays}, H={row.horizon_hours}h"
+        label = f"#{row.rank}: {row.baseline}, N={row.training_weekdays}, H={row.horizon_hours}h"
         ax.plot(subset["day"], subset["rmse"], lw=0.8, alpha=0.75, label=label)
         samples.append(subset["rmse"].to_numpy(dtype=float)); labels.append(label)
     ax.set_title("Best three weekday/horizon configurations — daily oracle-state RMSE")
@@ -316,14 +333,14 @@ def print_report(top, ranking, common, tables, basis, output):
         print("WARNING: no fully matched cohort; ranking uses differing available dates per combination.")
     print("\nTHREE BEST COMBINATIONS (ranked by LOWEST ABSOLUTE aggregate oracle-F0 RMSE):")
     print("Baseline improvement is reported separately and NEVER used to determine ranking.")
-    fields = ["rank", "training_weekdays", "horizon_hours", "days", "aggregate_rmse",
+    fields = ["rank", "baseline", "training_weekdays", "horizon_hours", "days", "aggregate_rmse",
               "baseline_rmse", "rmse_q20", "median_daily_rmse", "rmse_q80"]
     print(top[fields].to_string(index=False, float_format=lambda x: f"{x:.6f}"))
     print("\nTop configurations: historical coefficient distribution on the ranked cohort")
     for row in top.itertuples():
-        subset = fits.loc[(fits["training_weekdays"] == row.training_weekdays) & fits["day"].isin(common)]
-        if subset.empty: subset = fits.loc[fits["training_weekdays"] == row.training_weekdays]
-        print(f"#{row.rank} N={row.training_weekdays}, H={row.horizon_hours}h — theta means "
+        subset = fits.loc[(fits["baseline"] == row.baseline) & (fits["training_weekdays"] == row.training_weekdays) & fits["day"].isin(common)]
+        if subset.empty: subset = fits.loc[(fits["baseline"] == row.baseline) & (fits["training_weekdays"] == row.training_weekdays)]
+        print(f"#{row.rank} B={row.baseline}, N={row.training_weekdays}, H={row.horizon_hours}h — theta means "
               f"[F={subset['theta_F'].mean():.6f}, R={subset['theta_R'].mean():.6f}, U={subset['theta_U'].mean():.6f}] "
               f"(std [{subset['theta_F'].std():.6f}, {subset['theta_R'].std():.6f}, {subset['theta_U'].std():.6f}])")
     print(f"\nSaved results and plots: {output}")
