@@ -170,12 +170,17 @@ def hac_test(values, lag=7):
 def parameter_tests(daily, lag):
     frame = daily.sort_values("day")
     rows, correlations = [], []
-    tested = [*PARAMETERS, "oracle_F0", "historical_R0", "restoring_rms",
-              "damping_rms", "price_rms"]
+    tested = [*PARAMETERS, "baseline_beta_C", "oracle_F0", "historical_R0",
+              "restoring_rms", "damping_rms", "price_rms"]
     for variable in tested:
         if variable not in frame: continue
         values = frame[variable].to_numpy(dtype=float)
         record = {"variable": variable, **hac_test(values, lag)}
+        if variable.endswith("_rms"):
+            # A nonnegative RMS is not a signed effect: a zero-mean significance
+            # test is uninformative. Keep these as descriptive distributions.
+            for name in ("z", "p_value", "ci95_lower", "ci95_upper", "hac_se"):
+                record[name] = np.nan
         record["std"] = float(np.std(values, ddof=1)) if len(values)>1 else np.nan
         record["min"], record["max"] = float(np.min(values)), float(np.max(values))
         for q in QUANTILES: record[f"q{q:02d}"] = float(np.percentile(values, q))
@@ -274,6 +279,17 @@ def plot_parameters(daily, stats, output):
         ax.set_title(f"Median={np.median(values):.4f}")
     fig.suptitle("Parameter distributions (different regressor scales; compare contributions separately)")
     save_figure(fig, output, "theta_distributions.png")
+
+    if "baseline_beta_C" in daily and daily["baseline_beta_C"].notna().all():
+        fig, ax = plt.subplots(figsize=(12, 5))
+        values = chronological["baseline_beta_C"].to_numpy(dtype=float)
+        ax.plot(chronological["day"], values, lw=1, label="Baseline heating coefficient")
+        for q in (20, 50, 80):
+            ax.axhline(np.percentile(values, q), ls="--", lw=1, label=f"Q{q}")
+        ax.set_ylabel("Baseline heating coefficient"); ax.set_xlabel("Prediction day")
+        ax.set_title("Eight-weekday fitted baseline temperature-response quintiles")
+        ax.grid(alpha=.2); ax.legend()
+        save_figure(fig, output, "baseline_heating_coefficient_quintiles.png")
 
     fig, ax = plt.subplots(figsize=(11, 6))
     x = np.arange(len(PARAMETERS))
@@ -379,9 +395,9 @@ def print_report(daily, hourly, stats, tests, weekday_tests, output):
     print(f"Forecast error bias: {np.mean(errors):.8f}")
     print("\nDaily 7-hour RMSE distribution:")
     print(daily["rmse"].describe(percentiles=[.2,.4,.5,.6,.8]).to_string(float_format=lambda x: f"{x:.8f}"))
-    print("\nTheta and state parameters: empirical distributions and exploratory HAC mean tests:")
+    print("\nTheta, baseline heating coefficient, and state parameters (exploratory HAC mean tests):")
     columns = ["variable", "mean", "std", "q20", "q50", "q80", "hac_se", "p_value"]
-    print(stats.loc[stats["variable"].isin(PARAMETERS+("oracle_F0", "historical_R0")), columns]
+    print(stats.loc[stats["variable"].isin(PARAMETERS+("baseline_beta_C", "oracle_F0", "historical_R0")), columns]
           .to_string(index=False, float_format=lambda x: f"{x:.7f}"))
     print("\nRMS magnitude of actual restoring, damping and price contributions:")
     print(stats.loc[stats["variable"].isin(("restoring_rms", "damping_rms", "price_rms")), columns]
@@ -402,6 +418,7 @@ def print_report(daily, hourly, stats, tests, weekday_tests, output):
     print("NOTE: Forecast F0 is optimized using the seven future hourly observations.")
     print("HAC and weekday test p-values are exploratory: overlapping fitting windows and "
           "the oracle can invalidate naive independent-sample interpretations.")
+    print("RMS contributions are descriptive nonnegative magnitudes: no zero-mean tests are reported for them.")
 
 
 def analyze(output):
