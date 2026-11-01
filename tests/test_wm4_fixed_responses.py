@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.model.fixed_responses import fixed_responses, ordered_response_pairs
+from src.exe.run_model.wm_4.sweep_fixed_responses import fixed_responses, ordered_response_pairs
 from src.model.wm_5 import wm_5
 from src.params.wm_5 import joint_qp_params
 from src.solver.joint_drift_qp import joint_drift_qp
@@ -82,8 +82,11 @@ class test_wm4_fixed_responses(unittest.TestCase):
             prices.append(U)
             masks.append(np.ones(n-1,dtype=bool))
         constraints=wm_5_params_validation.constraints((g,),(h,),dt)
-        result=joint_drift_qp.solve_many_features(rates,prices,dt,g.value,h.value,
-                                                   constraints,masks=masks)
+        G=[np.asarray(g.value(R[:-1]),dtype=float)[:,None] for R in rates]
+        H=[np.asarray(h.value(U[:-1]),dtype=float)[:,None] for U in prices]
+        result=joint_drift_qp.solve_many(
+            rates,prices,dt,constraints,transition_masks=masks,
+            rate_features=G,price_features=H)
         self.assertEqual(result["design_columns"],6)
         np.testing.assert_allclose(result["coefficients"],theta,atol=1e-3)
         self.assertLess(result["qp_loss"],1e-8)
