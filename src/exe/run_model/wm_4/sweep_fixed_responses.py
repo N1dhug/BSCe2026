@@ -19,9 +19,9 @@ from src.exe.run_model.wm_4.sweep_weekday_horizon import (
     BASELINE_NAMES, baseline_from_history, RANKING_METRIC,
 )
 from src.model.fixed_responses import fixed_responses, ordered_response_pairs
-from src.solver.joint_drift_qp import joint_drift_qp
+from src.model.wm_5 import wm_5
+from src.params.wm_5 import joint_qp_params
 from src.tools.impute_hourly import impute_hourly_days
-from src.validation.params.wm_5 import wm_5_params_validation
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -116,16 +116,12 @@ def oracle_horizons(observed, prepared, p, g, h, first_horizon, last_horizon, gr
 
 
 def evaluate(prepared, day, n, g, h, first_horizon, last_horizon, grid_points=17):
-    hist = prepared["historical"]
-    dt = 1.0/(HOURS*prepared["steps_per_hour"])
-    rates = [data["I"]-data["O"] for data in hist]
-    prices = [data["U"] for data in hist]
-    masks = [data["transition_mask"] for data in hist]
-    constraints = wm_5_params_validation.constraints((g,), (h,), dt, stabilize=True)
+    hist, future = prepared["historical"], prepared["future"]
+    baseline = lambda hour: float(np.interp(hour, future["Time"], future["O"]))
+    model = wm_5((0.0, 1.0), len(future["U"]), baseline, (g,), (h,))
     started = perf_counter()
-    result = joint_drift_qp.solve_many_features(
-        rates, prices, dt, g.value, h.value, constraints,
-        masks=masks, f_bounds=(-1.0, 1.0), ridge=1e-10, enforce_path=True)
+    result = joint_qp_params(model).fit_many(
+        hist, f_bounds=(-1.0, 1.0), stabilize=True, enforce_path=True)
     p = result["coefficients"]                # [theta_F, theta_R, theta_U]
     # The oracle is nonlinear in F0, even though the joint historical QP is convex.
     horizons = oracle_horizons(prepared["observed"], prepared, p, g, h,
@@ -155,7 +151,8 @@ def evaluate(prepared, day, n, g, h, first_horizon, last_horizon, grid_points=17
     states = [{"day": day, "baseline": prepared["baseline_name"], "training_weekdays": n,
                "g_name": g.name, "h_name": h.name, "historical_day": past,
                "historical_F0": float(f0), "historical_R0": float(R[0])}
-              for past, f0, R in zip(prepared["history"], result["F0"], rates)]
+              for past, f0, data in zip(prepared["history"], result["F0"], hist)
+              for R in [data["I"]-data["O"]]]
     return fit_row, scores, states
 
 
