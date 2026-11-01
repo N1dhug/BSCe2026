@@ -173,3 +173,56 @@ class joint_qp_params(qp_params):
                   "fit_time": perf_counter()-started, "success": True}
         if verbose: print(f"[wm5 joint] qp_loss={joint['qp_loss']:.8g}, F0={joint['init_cond'][0]:.6g}")
         return result
+
+
+    def fit_many(self, input_data, initial_conditions=None, *, stabilize=True, enforce_path=True,
+                 f_bounds=(-1.0, 1.0), verbose=False):
+        """Shared nonlinear-response coefficients and one fitted F0 per historical day.
+
+        Fixed response functions g(R), h(U) are evaluated on the observed
+        historical rate and price trajectories, leaving a joint convex QP.
+        Parameter constraints and simulation stay in the WM5 model/params
+        layer; the generic solver only constructs and solves the QP.
+        """
+        from src.solver.joint_drift_qp import joint_drift_qp
+        if not isinstance(input_data, (list, tuple)) or not input_data:
+            raise TypeError("WM5 joint multi-day fitting requires a nonempty list of day inputs.")
+        started = perf_counter()
+        datasets = [self._prepare_data(item) for item in input_data]
+        observed = [self._observed_state(data) for data in datasets]
+        if initial_conditions is not None:
+            raw = np.asarray(initial_conditions, dtype=float)
+            if raw.shape != (len(observed), 2):
+                raise ValueError("WM5 multi-day initial_conditions requires one [F0,R0] per day.")
+            for seed, obs in zip(raw, observed):
+                state = wm_5_validation.initial_condition(seed)
+                if not np.isclose(state[1], obs["R0"], atol=1e-8):
+                    raise ValueError("WM5 multi-day fit requires observed R0=I[0]-O[0].")
+
+        constraints = wm_5_params_validation.constraints(
+            self.model.r_functions, self.model.u_functions, self.model.dt, stabilize=stabilize)
+        joint = joint_drift_qp.solve_many_features(
+            [item["R"] for item in observed], [item["U"] for item in datasets],
+            self.model.dt,
+            [basis.value for basis in self.model.r_functions],
+            [basis.value for basis in self.model.u_functions],
+            constraints, masks=[item["mask"] for item in observed],
+            f_bounds=f_bounds, ridge=self.model._FIT_RIDGE, enforce_path=enforce_path)
+        p = self.model.coefficients(joint["coefficients"], stabilize=stabilize)
+        states = [self.model._solve_deterministic(init, data["U"], data["Time"], data["O"], p)
+                  for init, data in zip(joint["init_conds"], datasets)]
+        errors = np.concatenate([
+            (state["I"]-data["I"])[data["observation_mask"]]
+            for state, data in zip(states, datasets)
+        ])
+        result = {**joint, "coefficients": p.copy(),
+                  "coefficient_names": self.model.parameter_names,
+                  "init_cond": joint["init_conds"].copy(),
+                  "deterministic_states": states,
+                  "fit_trajectories": len(datasets), "fit_method": "wm5_joint_qp_many",
+                  "deterministic_loss": float(np.mean(errors**2)),
+                  "fit_time": perf_counter()-started, "success": True}
+        if verbose:
+            print(f"[wm5 joint many] days={len(datasets)} qp_loss={joint['qp_loss']:.8g} "
+                  f"rank={joint['design_rank']}/{joint['design_columns']}")
+        return result
