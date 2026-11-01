@@ -106,3 +106,63 @@ class joint_drift_qp:
                 "qp_loss": float(np.mean((X @ solution-y)**2)),
                 "transition_count": len(y), "design_rank": int(np.linalg.matrix_rank(X)),
                 "reconstructed_F": [f0+C for f0, C in zip(F0, integrations)]}
+
+
+    @staticmethod
+    def solve_many_features(rates, prices, dt, g, h, constraints, masks=None,
+                            f_bounds=(-1.0, 1.0), ridge=1e-10, enforce_path=True):
+        """Shared 3 coefficient nonlinear-response QP with one independent F0 per day.
+
+        beta=[theta_F F01,...,theta_F F0N,theta_F,theta_R,theta_U].
+        g and h are FIXED functions; therefore the joint objective and
+        all parameter/path restrictions remain convex quadratic/linear.
+        """
+        prepared, lower, upper, dt, ridge, eps = joint_drift_qp_validation.many(
+            rates, prices, dt, masks, f_bounds, ridge, 1e-8)
+        A0, b0, lb0, ub0 = (np.asarray(x, dtype=float) for x in constraints)
+        n = len(prepared)
+        if A0.ndim != 2 or A0.shape[1] != 3 or b0.shape != (len(A0),):
+            raise ValueError("Response-model structural inequalities need 3 coefficients.")
+        if lb0.shape != (3,) or ub0.shape != (3,):
+            raise ValueError("Response-model structural bounds need 3 coefficients.")
+        Xparts, yparts, Cpaths = [], [], []
+        rows, limits = [np.column_stack((np.zeros((len(A0), n)), A0))], [b0]
+        for i, (R, U, mask) in enumerate(prepared):
+            C = np.r_[0.0, np.cumsum(dt*R[:-1])]
+            X = np.zeros((len(R)-1, n+3), dtype=float)
+            X[:, i] = 1.0
+            X[:, n:] = np.column_stack((C[:-1], g(R[:-1]), h(U[:-1])))
+            features = X[mask]
+            if not np.isfinite(features).all():
+                raise ValueError("Response functions must be finite at every historical point.")
+            Xparts.append(features)
+            yparts.append((np.diff(R)/dt)[mask])
+            Cpaths.append(C)
+            if enforce_path:
+                # theta_F is negative, so dividing by theta_F reverses bounds:
+                # (upper-max(C))*theta_F <= beta_i <= (lower-min(C))*theta_F.
+                low, high = np.zeros(n+3), np.zeros(n+3)
+                low[i], low[n] = -1.0, upper-float(np.max(C))
+                high[i], high[n] = 1.0, float(np.min(C))-lower
+                rows.append(np.vstack((low, high)))
+                limits.append(np.zeros(2))
+        X, y = np.vstack(Xparts), np.concatenate(yparts)
+        A, b = np.vstack(rows), np.concatenate(limits)
+        lb, ub = np.r_[np.full(n, -np.inf), lb0], np.r_[np.full(n, np.inf), ub0]
+        scale = max(1, len(y))
+        H = 2.0*X.T@X/scale+ridge*np.eye(n+3)
+        f = -2.0*X.T@y/scale
+        beta = np.asarray(active_set.solve(H, f, A_ub=A, b_ub=b, lb=lb, ub=ub,
+                                           tol=1e-9, max_iter=10000), dtype=float)
+        coefficients = beta[n:]
+        if coefficients[0] >= -eps or np.any(A@beta > b+1e-6):
+            raise RuntimeError("Joint nonlinear-response QP returned inadmissible coefficients.")
+        F0 = beta[:n]/coefficients[0]
+        if enforce_path and any(np.min(f0+C)<lower-1e-6 or np.max(f0+C)>upper+1e-6
+                                for f0, C in zip(F0, Cpaths)):
+            raise RuntimeError("Joint nonlinear-response fit violated reconstructed F bounds.")
+        return {"coefficients": coefficients, "beta": beta, "F0": F0,
+                "init_conds": np.column_stack((F0, [R[0] for R, _, _ in prepared])),
+                "qp_loss": float(np.mean((X@beta-y)**2)),
+                "design_rank": int(np.linalg.matrix_rank(X)),
+                "design_columns": X.shape[1], "transition_count": len(y)}
