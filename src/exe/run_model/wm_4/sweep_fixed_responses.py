@@ -241,17 +241,22 @@ def save_plots(all_splits, winners, output):
     fig.tight_layout(); fig.savefig(output/"top_five_horizon_curves.png", dpi=180, bbox_inches="tight"); plt.close(fig)
 
     fig, axes = plt.subplots(4, 5, figsize=(19, 13), sharex=True, sharey=True)
+    shared_min = float(all_splits["aggregate_rmse"].min())
+    shared_max = float(all_splits["aggregate_rmse"].max())
+    color_image = None
     for ax, (g, h) in zip(axes.flat, ordered_response_pairs()):
         group = all_splits.loc[(all_splits["g_name"] == g) & (all_splits["h_name"] == h)]
         table = group.pivot(index="training_weekdays", columns="horizon_hours", values="aggregate_rmse")
         if not table.empty:
-            ax.imshow(table, aspect="auto", origin="lower",
+            color_image = ax.imshow(table, aspect="auto", origin="lower",
+                      vmin=shared_min, vmax=shared_max, interpolation="nearest",
                       extent=[min(table.columns)-.5, max(table.columns)+.5,
                               min(table.index)-.5, max(table.index)+.5])
         ax.set_title(f"g={g}\nh={h}", fontsize=8)
+    if color_image is not None: fig.colorbar(color_image, ax=axes.ravel().tolist(), label="Pooled RMSE", shrink=.8)
     fig.supxlabel("Prediction horizon H"); fig.supylabel("Historical corresponding weekdays N")
     fig.suptitle("Aggregate oracle RMSE by N, H and ordered response pair")
-    fig.tight_layout(); fig.savefig(output/"twenty_response_heatmaps.png", dpi=180, bbox_inches="tight"); plt.close(fig)
+    fig.savefig(output/"twenty_response_heatmaps.png", dpi=180, bbox_inches="tight"); plt.close(fig)
 
 
 def report(output, args):
@@ -297,6 +302,23 @@ def run(args):
               "steps_per_hour": args.steps_per_hour, "grid_points": args.grid_points,
               "start_day": args.start_day, "end_day": args.end_day}
     file = output/"configuration.json"
+    funcs = fixed_responses()
+    specifications = {
+        "exponential": "sign(x)*expm1(2*abs(x))/expm1(2)",
+        "logarithmic": "sign(x)*log1p(4*abs(x))/log1p(4)",
+        "polynomial_steep": "1.15*x-0.15*x^3",
+        "polynomial_very_steep": "1.35*x-0.35*x^3",
+        "polynomial_extremely_steep": "1.49*x-0.49*x^3",
+    }
+    pd.DataFrame([{"name": name, "formula": specifications[name],
+                   "derivative_min": func.derivative_bounds[0],
+                   "derivative_max": func.derivative_bounds[1],
+                   "center_slope": float(func.derivative(0.0)),
+                   "value_at_minus_one": float(func.value(-1.0)),
+                   "value_at_zero": float(func.value(0.0)),
+                   "value_at_plus_one": float(func.value(1.0))}
+                  for name, func in funcs.items()]).to_csv(
+                      output/"response_library.csv", index=False)
     if args.report_only:
         if not file.is_file() or json.loads(file.read_text(encoding="utf-8")) != config:
             raise ValueError("Report settings do not match saved experiment configuration.")
@@ -305,8 +327,13 @@ def run(args):
         if not file.is_file() or json.loads(file.read_text(encoding="utf-8")) != config:
             raise ValueError("Cannot resume with differing saved settings.")
         existing = load_csv(output/"parameter_fits.csv")
-        done = set(zip(existing["day"], existing["g_name"], existing["h_name"],
-                       existing["training_weekdays"])) if not existing.empty else set()
+        previous_scores = load_csv(output/"horizon_scores.csv")
+        if existing.empty or previous_scores.empty: done = set()
+        else:
+            counts = previous_scores.groupby(["day","g_name","h_name","training_weekdays"])["horizon_hours"].nunique()
+            done = {(d,g,h,int(n)) for d,g,h,n in
+                    zip(existing["day"],existing["g_name"],existing["h_name"],existing["training_weekdays"])
+                    if counts.get((d,g,h,n),0) == args.max_horizon-args.min_horizon+1}
     else:
         for filename in ("parameter_fits.csv", "horizon_scores.csv",
                          "historical_states.csv", "skipped_fits.csv"):
