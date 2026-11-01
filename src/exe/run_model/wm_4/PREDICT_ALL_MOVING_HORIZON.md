@@ -16,6 +16,13 @@ Quick smoke test:
 Use --start-day 2022-04-01 --end-day 2022-05-31 to restrict the calendar,
 or --steps-per-hour 60 for minute-resolution Euler integration.
 
+If the evaluation already produced daily_metrics.csv and hourly_predictions.csv,
+reprint the theta/RMSE terminal report **without rerunning any fits** using:
+
+    python -m src.exe.run_model.wm_4.predict_all_moving_horizon --report-only
+
+The same --output directory is used when reading saved results.
+
 ## Protocol
 
 Each prediction date requires **exactly five complete preceding matching
