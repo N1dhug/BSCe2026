@@ -1,127 +1,121 @@
-# WM4 corresponding-weekday × forecast-horizon oracle sweep
+# WM4 three-baseline × historical-weekdays × horizon sweep
 
-Run from the repository root on thomas_main:
+Run from repository root on branch thomas_main:
 
     python -m src.exe.run_model.wm_4.sweep_weekday_horizon
 
-This evaluates all 171 combinations of:
+**Default comparison: all three established WM4 baselines** from
+src/tools/baseline.py:
 
-- N = 2,...,10 previous corresponding weekdays (nine selections);
-- H = 6,...,24 hourly target observations (19 forecast horizons).
+1. statistical_output — Huber-ridge Fourier/weekday/season/temperature baseline.
+2. weekly_average — weekday-and-hour historical mean.
+3. weekly_temperature — weekday-and-hour mean with fitted heating response.
 
-Defaults: MED group, January–October 2022 source data, hourly origins at
-midnight, 4 deterministic Euler substeps/hour. For the full N=10 comparison
-the first valid date is 2022-03-12 (70 days of warm-up); **the identical
-calendar forecast cohort is used for all N**. The historical matching days
-are exactly 7,14,...,7N days before each forecast origin.
+Every baseline is fitted to exactly the same N preceding **corresponding
+weekdays**, not all earlier days. To allow N=2,...,10, their pre-existing
+minimum seven-day training requirement is lowered **only for this sweep**
+using the new optional min_samples=48 constructor argument; the regular
+baseline implementations retain their former 168-sample default.
 
-Run a small empirical smoke test in its own output directory:
+For each forecast day, N = 2,...,10 and H = 6,...,24:
 
-    python -m src.exe.run_model.wm_4.sweep_weekday_horizon --max-days 3 --output files/output/wm_4/weekday_horizon_smoke
+- Fit the selected baseline on exactly N historical matching weekdays,
+  using both historical demand and temperatures where supported.
+- Fit shared WM4 [theta_F,theta_U,theta_R] through its joint convex QP
+  on the same N historical 24-hour trajectories, separately fitting
+  each historical F0 (bounded preferred domain).
+- Choose forecast R0 as the median of N historical midnight deviations
+  I(00:00)-B(00:00) using that baseline; never target-day demand.
+- For each H, compute oracle F0 in [-1,1] using only the first H future
+  target demand observations, holding baseline, theta and R0 fixed.
+  H-specific F0 is solved by analytic linear sensitivity, not by an
+  additional parameter QP.
+- Evaluate WM4 absolute prediction RMSE against the same baseline's
+  RMSE. Baseline-relative skill is diagnostic, NEVER a ranking criterion.
 
-Use --group ALL for the aggregate of all consumers, or --steps-per-hour 60
-for one-minute deterministic numerical steps. Running N=2,...,10 across
-all eligible dates may require many constrained QP solves: one shared
-coefficient fit per (day,N), not a separate fit for every horizon H.
+There are **3 * 9 * 19 = 513** distinct baseline/N/H configurations per
+forecast date. A single QP parameter fit is reused for all 19 H choices,
+so each date needs 27 fits rather than 513 fits.
 
-The run continuously appends completed per-day/per-N results. After an
-interruption, use the identical arguments plus --resume to skip complete
-pairs; duplicate rows from an interrupted write are deduplicated in the
-final CSV export. Configuration mismatches are rejected. After all fits
-(or after a partial run), use --report-only to reconstruct rankings and
-plots directly from saved CSVs without rerunning parameter estimation.
+The same available forecast days are used for the ranking across all
+methods and N counts (earliest day for N=10 is 2022-03-12).
+All target observations are retrospective: **oracle F0 is not a deployable
+forecast estimate**, and temperature and price use observed target-day
+series. The normalization is fitted to the historical full-year range.
 
-## Empirical baseline (same N for baseline and WM4)
+Ranking uses the **LOWEST ABSOLUTE pooled oracle WM4 prediction RMSE**:
 
-For each target weekday, the statistical baseline B(h) is the **hour-by-hour
-arithmetic mean** of the N immediately preceding matching weekdays' actual
-demand. Its 24 values are linearly interpolated on the fine simulation
-grid, with wrap-around from hour 23 to hour 0. The *same baseline* is
-applied to the N historical trajectories used for parameter estimation
-and to the target prediction. No target-day demand enters baseline
-construction; temperature is not additionally regressed in this
-specific empirical comparison. Thus, both baseline and WM4 use the
-same N corresponding weekdays.
+    RMSE(B,N,H) = sqrt(mean_over_matched_days(MSE(day,B,N,H)))
 
-WM4 fits the **updated joint convex QP** over the full N historical
-24-hour trajectories, with one shared [theta_F,theta_U,theta_R] and one
-fitted F0 for each historical weekday. The rate at the start of each
-historical day is the observed I(0)-B(0). All coefficients obey the
-existing WM4 restoring, damping, price-response and Euler-stability
-conditions, and the reconstructed historical F trajectories remain
-in their preferred [-1,1] domain.
+The top three rank across all three baselines and all N/H settings.
+Tie-breaking is by baseline name, then N, then H. The matched cohort
+requires every baseline/N combination to have all requested H results
+on each included day. If none is available, the program explicitly
+warns and uses unmatched data as a fallback. Compare N *at fixed H* in
+best_by_horizon.csv because differing H are different prediction tasks.
 
-The forecast R0 is the median of the N historical initial demand
-deviations I(0)-B(0); it uses no target-day observation.
+## Commands
 
-## Oracle F0 versus horizon
+Full 3-baseline MED study:
 
-Once theta is fixed from historical data, the demand trajectory is
-affine in the forecast F0. For every candidate horizon H, its oracle F0
-is optimized on *only the first H hourly target observations* and
-clipped to [-1,1]. Therefore F0 is reoptimized separately for
-H=6,...,24, but theta, the baseline and R0 are the same for every H
-with the same (day,N). A linear sensitivity calculation and cumulative
-dot-products recover every H-specific optimum without repeated dynamic
-optimization.
+    python -m src.exe.run_model.wm_4.sweep_weekday_horizon
 
-**The oracle uses the future H observations, so these are retrospective
-best-state reconstruction scores, not deployable predictions.**
-Price and temperature are retrospectively observed exogenous signals,
-and the full-year 2022 data normalization is likewise retrospective.
+Quick smoke test in a separate output folder:
 
-## Ranking and saved results
+    python -m src.exe.run_model.wm_4.sweep_weekday_horizon --max-days 3 --output files/output/wm_4/weekday_horizon_3baseline_smoke
 
-The main ranking uses **only the LOWEST ABSOLUTE pooled WM4 prediction RMSE**:
-sqrt(mean(per-day WM4 MSE)) across a strictly matched set of forecast days
-for which *every requested N* has all H scores. All combinations for
-the same H use exactly the same dates. If there is no such cohort, the
-tool warns and temporarily ranks the available data on unmatched dates
-as a fallback. Saved all-available and matched rankings remain separate.
+All-consumer dataset:
 
-Across *different H*, the objective includes different numbers of
-forecast hours. A six-hour optimum need not be better over 24 hours.
-Consult **best_by_horizon.csv** to compare weekday counts at *fixed H*.
-Also inspect the signed comparison to the N-specific baseline.
-The baseline RMSE, relative improvement percentage and baseline-skill
-heatmap are **secondary diagnostics only**; they do not affect top-three
-rankings, best-by-horizon selection or tie-breaking.
+    python -m src.exe.run_model.wm_4.sweep_weekday_horizon --group ALL
 
-Saved under files/output/wm_4/weekday_horizon_sweep/med/ by default:
+Resume interrupted run with identical settings:
 
-- parameter_estimates.csv: day,N,all three fitted theta, damping ratio,
-  fit loss/runtime/rank, training dates and all 24 **exact empirical
-  baseline values** for that day,N.
-- historical_initial_states.csv: **every training-day F0 and R0**.
-- oracle_horizon_scores.csv: day,N,H,**all three theta**, optimal
-  H-specific F0, fixed historical R0, RMSE/MSE/MAE/bias, baseline
-  metrics and sensitivity-identifiability diagnostic.
-- forecast_components.csv: day,N,hour,observed demand, baseline,
-  price, prediction with F0=0, and sensitivity to F0.
-  Any full H-specific predicted hourly demand can be reconstructed as
-  prediction_at_F0_zero + oracle_F0 * sensitivity_F0.
-- skipped_windows.csv: any unsuccessful historical QP window.
-- ranking_all_available.csv, ranking_matched.csv, top_three.csv,
-  best_by_horizon.csv, parameter_summary.csv.
-- rmse_heatmap.png (all N versus H; best three highlighted).
-- baseline_skill_heatmap.png (percentage gain over the N-day baseline).
-- rmse_by_horizon.png (one curve per N).
-- top_three_daily_rmse.png, top_three_rmse_distribution.png.
-- configuration.json: the full experimental configuration.
+    python -m src.exe.run_model.wm_4.sweep_weekday_horizon --resume
 
-The terminal prints **the three best N/H combinations**, their
-aggregate oracle RMSE, corresponding baseline RMSE, improvement
-percentages, daily RMSE quantiles and mean/SD fitted theta.
-No results are invented: the ranking is computed from the CSV data
-that the completed run actually produced.
-
-Tests:
-
-    python -m unittest discover -s tests -p "test_wm4_weekday_horizon_sweep.py"
-
-To inspect an existing completed run without rerunning:
+Rebuild report and figures after successful data CSV saving:
 
     python -m src.exe.run_model.wm_4.sweep_weekday_horizon --report-only
 
-For a run with non-default min/max counts/horizons, pass those same
-limits to --report-only so that the cohort is interpreted correctly.
+Optionally use --baselines weekly_average weekly_temperature to run
+only those two methods. Specify the same --baselines in a resumed or
+report-only run. Other controls: --steps-per-hour (default 4),
+--min-weekdays / --max-weekdays, --min-horizon / --max-horizon,
+--start-day / --end-day and --progress-every.
+
+## Output
+
+Default output directory:
+
+    files/output/wm_4/weekday_horizon_sweep_three_baselines/med/
+
+- parameter_estimates.csv: (forecast day, baseline, N), fitted theta,
+  damping, fit loss, rank, runtime, exact N historical dates, fitted
+  baseline coefficients and preprocessing metadata (JSON-valued CSV
+  fields), 24 target-day baseline values, and historical state moments.
+- historical_initial_states.csv: every historical [F0,R0] per
+  baseline/day/N.
+- oracle_horizon_scores.csv: (forecast day, baseline, N, H), oracle F0,
+  absolute RMSE/MSE/MAE/bias and baseline comparison.
+- forecast_components.csv: exact hourly observed demand, baseline,
+  price, neutral-F0 forecast and sensitivity per baseline/day/N.
+  Reconstruct an H-specific prediction by adding oracle F0 times
+  the sensitivity.
+- skipped_windows.csv: failed fit with the baseline and N.
+- ranking_all_available.csv, ranking_matched.csv, top_three.csv,
+  best_by_horizon.csv, parameter_summary.csv.
+- rmse_heatmap_<baseline>.png, baseline_skill_heatmap_<baseline>.png
+  (separate figures for all three methods).
+- rmse_by_horizon.png (three method panels with 9 N curves each).
+- best_baseline_by_horizon.png (best N within each baseline for each H).
+- top_three_daily_rmse.png and top_three_rmse_distribution.png
+  (top three across ALL methods).
+- configuration.json: settings used for checkpoint compatibility.
+
+Unlike the old single-average-baseline sweep, this comparison fits the
+three **existing** baseline families on the same N histories. It writes
+to a different output directory to preserve historical one-baseline
+results.
+
+Synthetic/regression checks:
+
+    python -m unittest discover -s tests -p "test_wm4_weekday_horizon_sweep.py"
