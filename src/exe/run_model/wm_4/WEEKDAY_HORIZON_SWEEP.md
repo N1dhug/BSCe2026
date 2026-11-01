@@ -72,8 +72,8 @@ and the full-year 2022 data normalization is likewise retrospective.
 
 ## Ranking and saved results
 
-The main ranking uses **pooled RMSE**:
-sqrt(mean(per-day MSE)) across a strictly matched set of forecast days
+The main ranking uses **only the LOWEST ABSOLUTE pooled WM4 prediction RMSE**:
+sqrt(mean(per-day WM4 MSE)) across a strictly matched set of forecast days
 for which *every requested N* has all H scores. All combinations for
 the same H use exactly the same dates. If there is no such cohort, the
 tool warns and temporarily ranks the available data on unmatched dates
@@ -83,6 +83,9 @@ Across *different H*, the objective includes different numbers of
 forecast hours. A six-hour optimum need not be better over 24 hours.
 Consult **best_by_horizon.csv** to compare weekday counts at *fixed H*.
 Also inspect the signed comparison to the N-specific baseline.
+The baseline RMSE, relative improvement percentage and baseline-skill
+heatmap are **secondary diagnostics only**; they do not affect top-three
+rankings, best-by-horizon selection or tie-breaking.
 
 Saved under files/output/wm_4/weekday_horizon_sweep/med/ by default:
 
