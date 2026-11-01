@@ -48,7 +48,8 @@ def plot_single_step(example, output):
     for ax in axes[:2]: ax.tick_params(labelbottom=False)
 
     x = np.linspace(-1.0, 1.0, 501)
-    for func, label in ((f, "f(F) = F"), (g, "g(R)"), (h, "h(U)")):
+    g_label = r"$g(R)=0.7R+0.3R^3$" if example["model_name"] == "wm_5" else "g(R) = R"
+    for func, label in ((f, "f(F) = F"), (g, g_label), (h, "h(U) = U")):
         axes[3].plot(x, [func(float(v)) for v in x], label=label)
     axes[3].set_xlim(-1.0, 1.0)
     axes[3].set_xlabel("Normalized input"); axes[3].set_ylabel("Normalized response")
