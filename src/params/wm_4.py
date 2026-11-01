@@ -648,3 +648,40 @@ class joint_qp_params(qp_params):
                   "fit_time": perf_counter()-start, "success": True}
         if verbose: print(f"[wm4 joint] qp_loss={joint['qp_loss']:.8g}, F0={joint['init_cond'][0]:.6g}")
         return result
+
+
+    def fit_many(self, input_data, initial_conditions=None, *, stabilize=True, enforce_path=True,
+                 f_bounds=(-1.0, 1.0), verbose=False):
+        """Joint convex fit with shared [theta_F,theta_U,theta_R] and individual F0."""
+        from src.solver.joint_drift_qp import joint_drift_qp
+        if not isinstance(input_data, (list, tuple)) or not input_data:
+            raise TypeError("WM4 joint QP requires a nonempty list of fitting days.")
+        started = perf_counter()
+        data = [self._prepare_data(item) for item in input_data]
+        rates = [item["I"]-item["O"] for item in data]
+        if initial_conditions is not None:
+            init = np.asarray(initial_conditions, dtype=float)
+            if init.shape != (len(data), 2):
+                raise ValueError("Optional initial conditions require one [F0,R0] per day.")
+            if any(not np.isclose(seed[1], R[0], atol=1e-8) for seed, R in zip(init, rates)):
+                raise ValueError("Observed initial rates must match I[0]-O[0].")
+        constraints = self._qp_constraints(stabilize=stabilize)
+        joint = joint_drift_qp.solve_many(
+            rates, [item["U"] for item in data], self.model.dt, constraints,
+            transition_masks=[item["transition_mask"] for item in data],
+            f_bounds=f_bounds, ridge=self.model._FIT_RIDGE, enforce_path=enforce_path)
+        theta = wm_4_validation.r_coefficients(joint["coefficients"])
+        states = [self.model._solve_deterministic(initial, item["U"], item["PE"],
+                  item["Time"], item["O"], theta)
+                  for initial, item in zip(joint["init_conds"], data)]
+        errors = np.concatenate([(state["I"]-item["I"])[item["observation_mask"]]
+                                 for state, item in zip(states, data)])
+        result = {**joint, "r": theta.copy(), "init_cond": joint["init_conds"].copy(),
+                  "deterministic_states": states, "fit_trajectories": len(data),
+                  "fit_method": "wm4_joint_qp_many",
+                  "deterministic_loss": float(np.mean(errors**2)),
+                  "fit_time": perf_counter()-started, "success": True}
+        if verbose:
+            print(f"[wm4 joint many] days={len(data)} qp_loss={joint['qp_loss']:.8g} "
+                  f"rank={joint['design_rank']}/{len(joint['beta'])}")
+        return result
