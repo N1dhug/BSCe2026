@@ -22,6 +22,7 @@ BASELINES = {"statistical_output": statistical_output, "weekly_average": weekly_
 BASELINE_NAMES = tuple(BASELINES)
 PERCENTILES = (20, 40, 50, 60, 80)
 RANKING_METRIC = "aggregate_rmse"  # Absolute pooled prediction error; never baseline-relative improvement.
+EXPERIMENT_VERSION = "3_baseline_matched_training_hourly_imputation_v2"
 COLUMNS = {
     "fit": "parameter_estimates.csv",
     "score": "oracle_horizon_scores.csv",
@@ -401,7 +402,7 @@ def run(args):
         "max_weekdays": args.max_weekdays, "min_horizon": args.min_horizon,
         "max_horizon": args.max_horizon, "steps_per_hour": args.steps_per_hour,
         "start_day": args.start_day, "end_day": args.end_day,
-        "baselines": list(baselines), "version": "3_baseline_matched_training_hourly_imputation_v2",
+        "baselines": list(baselines), "version": EXPERIMENT_VERSION,
     }
     info = output/"configuration.json"
     if args.resume:
@@ -474,6 +475,12 @@ def main():
     if args.report_only:
         validation.arguments(args)
         output = Path(args.output) if args.output else OUTPUT/args.group.lower()
+        metadata_file = output/"configuration.json"
+        if metadata_file.is_file():
+            settings = json.loads(metadata_file.read_text(encoding="utf-8"))
+            if settings.get("version") != EXPERIMENT_VERSION:
+                raise ValueError("Existing saved results predate missing-hour imputation. "
+                                 "Rerun the experiment without --report-only or use the old code to inspect old CSVs.")
         return report_only(output, tuple(range(args.min_weekdays, args.max_weekdays+1)),
                            args.max_horizon-args.min_horizon+1, tuple(args.baselines))
     return run(args)
