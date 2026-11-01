@@ -60,12 +60,12 @@ def evaluate_day(frame, day, baseline, steps_per_hour):
     reference = np.asarray(forecast["O"], dtype=float)[idx]
     score, baseline_score = metrics(observed, predicted), metrics(observed, reference)
     rate = np.asarray(state["R"], dtype=float)[idx]
-    restoring, damping, price = map(float, theta)
+    restoring, price, damping = map(float, theta)  # WM4 stores [theta_F, theta_U, theta_R].
     zeta = float(-damping/(2.0*np.sqrt(-restoring)))
     row = {
         "day": pd.Timestamp(day), "weekday": pd.Timestamp(day).day_name(),
         "training_days": ",".join(f"{d:%Y-%m-%d}" for d in history),
-        "theta_F": restoring, "theta_U": damping, "theta_R": price,
+        "theta_F": restoring, "theta_U": price, "theta_R": damping,
         "damping_ratio": zeta, "damping_branch": "under" if zeta < 1.0 else "over" if zeta > 1.0 else "critical",
         "oracle_F0": f0, "historical_R0": historical_r0,
         "training_F0_mean": float(np.mean(fit["init_cond"][:, 0])),
