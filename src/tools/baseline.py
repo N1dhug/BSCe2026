@@ -5,13 +5,15 @@ import pandas as pd
 class statistical_output:
     """Robust exogenous WM4 baseline O(time, weekday, temperature)."""
 
-    def __init__(self, base_temperature=18.0, hour_harmonics=4, season_harmonics=2, ridge=1e-3, huber_delta=1.5, max_iter=50):
+    def __init__(self, base_temperature=18.0, hour_harmonics=4, season_harmonics=2, ridge=1e-3, huber_delta=1.5, max_iter=50, min_samples=168):
         self.base_temperature = float(base_temperature)
         self.hour_harmonics = int(hour_harmonics)
         self.season_harmonics = int(season_harmonics)
         self.ridge = float(ridge)
         self.huber_delta = float(huber_delta)
         self.max_iter = int(max_iter)
+        self.min_samples = int(min_samples)
+        if self.min_samples < 2: raise ValueError("min_samples must be at least 2.")
         if self.hour_harmonics < 1 or self.season_harmonics < 0: raise ValueError("Invalid statistical_output harmonic count.")
         if self.ridge < 0.0 or self.huber_delta <= 0.0 or self.max_iter < 1: raise ValueError("Invalid statistical_output fit settings.")
         self.coef = None
@@ -81,7 +83,7 @@ class statistical_output:
         if missing: raise ValueError("frame is missing required columns: " + ", ".join(missing) + ".")
         end = pd.Timestamp(end)
         train = frame.loc[frame.index < end, ["I", "Temp"]].dropna().copy()
-        if len(train) < 7 * 24: raise ValueError("At least seven days of historical I/temperature observations are required to fit O.")
+        if len(train) < self.min_samples: raise ValueError(f"At least {self.min_samples} historical I/temperature observations are required to fit O.")
 
         X_raw = self._features(train.index, train["Temp"].to_numpy(dtype=float))
         X = self._standardize_fit(X_raw)
@@ -133,10 +135,12 @@ class statistical_output:
 class weekly_average:
     """Historical weekday/hour means O(t)=L(weekday, hour)."""
 
-    def __init__(self):
+    def __init__(self, min_samples=168):
         self.coef = None
         self.metadata = None
         self.levels = None
+        self.min_samples = int(min_samples)
+        if self.min_samples < 2: raise ValueError("min_samples must be at least 2.")
         self.base_temperature = 18.0
         self.beta_C = 0.0
         self.chill_center = 0.0
@@ -176,7 +180,7 @@ class weekly_average:
         end = pd.Timestamp(end)
         if pd.isna(end): raise ValueError("end must be a valid timestamp.")
         train = frame.loc[frame.index < end, ["I", "Temp"]].dropna().copy()
-        if len(train) < 7 * 24: raise ValueError("At least seven days of historical I/temperature observations are required to fit O.")
+        if len(train) < self.min_samples: raise ValueError(f"At least {self.min_samples} historical I/temperature observations are required to fit O.")
         if not np.all(np.isfinite(train[["I", "Temp"]].to_numpy(dtype=float))): raise ValueError("Training data must be finite.")
         return train
 
@@ -212,8 +216,8 @@ class weekly_average:
 class weekly_temperature(weekly_average):
     """Weekday/hour fixed effects and one global linear heating-degree response."""
 
-    def __init__(self, base_temperature=18.0):
-        super().__init__()
+    def __init__(self, base_temperature=18.0, min_samples=168):
+        super().__init__(min_samples=min_samples)
         self.base_temperature = float(base_temperature)
         if not np.isfinite(self.base_temperature): raise ValueError("base_temperature must be finite.")
 
