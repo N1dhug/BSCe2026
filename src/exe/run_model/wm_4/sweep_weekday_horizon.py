@@ -341,6 +341,9 @@ def print_report(top, ranking, common, tables, basis, output):
     print(f"completed parameter fits: {len(fits)} | horizon scores: {len(scores)} | failed/skipped: {len(tables['fail'])}")
     print(f"matched forecast days across ALL baseline methods and weekday counts: {len(common)}")
     print(f"evaluated baselines: {', '.join(sorted(fits['baseline'].unique()))}")
+    if "imputed_training_hours" in fits:
+        print(f"historical missing-hour imputations: {int(fits['imputed_training_hours'].sum())} "
+              "(summed across overlapping training windows; whole missing days remain excluded)")
     if basis != "matched":
         print("WARNING: no fully matched cohort; ranking uses differing available dates per combination.")
     print("\nTHREE BEST COMBINATIONS (ranked by LOWEST ABSOLUTE aggregate oracle-F0 RMSE):")
@@ -398,7 +401,7 @@ def run(args):
         "max_weekdays": args.max_weekdays, "min_horizon": args.min_horizon,
         "max_horizon": args.max_horizon, "steps_per_hour": args.steps_per_hour,
         "start_day": args.start_day, "end_day": args.end_day,
-        "baselines": list(baselines), "version": "3_baseline_matched_training_v1",
+        "baselines": list(baselines), "version": "3_baseline_matched_training_hourly_imputation_v2",
     }
     info = output/"configuration.json"
     if args.resume:
