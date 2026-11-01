@@ -259,7 +259,9 @@ def save_top_three_plots(scores, top, common, output):
     fig.tight_layout(); fig.savefig(output/"top_three_daily_rmse.png", dpi=190, bbox_inches="tight"); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    ax.boxplot(samples, labels=labels, showmeans=True)
+    ax.boxplot(samples, showmeans=True)
+    ax.set_xticks(np.arange(1, len(labels)+1))
+    ax.set_xticklabels(labels)
     ax.set_title("Best three configurations — across-day RMSE distributions")
     ax.set_ylabel("Per-day oracle-state RMSE"); ax.grid(alpha=0.25, axis="y")
     fig.tight_layout(); fig.savefig(output/"top_three_rmse_distribution.png", dpi=190, bbox_inches="tight"); plt.close(fig)
