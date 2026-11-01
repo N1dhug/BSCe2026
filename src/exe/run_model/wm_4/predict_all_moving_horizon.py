@@ -226,6 +226,20 @@ def run(args):
     return daily, hourly, horizon
 
 
+ 
+def report_saved(output):
+    """Reprint analysis from completed CSVs without repeating historical QP fits."""
+    output = Path(output)
+    daily = pd.read_csv(output / "daily_metrics.csv", parse_dates=["day"])
+    hourly = pd.read_csv(output / "hourly_predictions.csv")
+    skipped = pd.read_csv(output / "skipped_days.csv")
+    if daily.empty: raise ValueError("Saved daily_metrics.csv has no completed predictions.")
+    dates = pd.to_datetime(pd.concat((daily["day"], skipped["day"]), ignore_index=True))
+    print_analysis(daily, hourly, skipped.to_dict("records"), dates.min(), dates.max(), output)
+    return daily
+
+
+
 def main():
     parser = ArgumentParser(description="Complete Jan-End WM4 five-corresponding-weekday 24h moving-horizon oracle-F0 analysis.")
     parser.add_argument("--group", choices=("MED", "ALL"), default="MED")
@@ -237,7 +251,10 @@ def main():
     parser.add_argument("--progress-every", type=int, default=10)
     parser.add_argument("--output", default=str(OUTPUT))
     parser.add_argument("--fail-fast", action="store_true")
-    run(parser.parse_args())
+    parser.add_argument("--report-only", action="store_true", help="Print summary from saved CSVs without repeating the full dataset fit.")
+    args = parser.parse_args()
+    if args.report_only: report_saved(args.output)
+    else: run(args)
 
 
 if __name__ == "__main__": main()
