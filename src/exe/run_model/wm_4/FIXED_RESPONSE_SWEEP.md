@@ -12,8 +12,10 @@ using the existing WM5 basis and admissibility machinery:
     D = B + R
 
 Here theta_F < 0, theta_R < 0 and theta_U <= 0. g/h are not fitted:
-they are selected from a **fixed catalog** of strictly increasing odd
-functions with g(0)=h(0)=0 and g(-1)=h(-1)=-1, g(1)=h(1)=1:
+they are selected from an experimental **fixed catalog defined directly
+in src/exe/run_model/wm_4/sweep_fixed_responses.py**, not a new model
+module. All functions are strictly increasing odd functions with
+g(0)=h(0)=0 and g(-1)=h(-1)=-1, g(1)=h(1)=1:
 
     exponential:       sign(x)*expm1(2*abs(x))/expm1(2)
     logarithmic:       sign(x)*log1p(4*abs(x))/log1p(4)
@@ -47,8 +49,10 @@ Defaults:
   theta_F,theta_R,theta_U] with one historical F0 per day.
   The WM5 parameter layer validates and fits the fixed nonlinear
   responses and produces all historical deterministic states.
-  The shared src.solver.joint_drift_qp.solve_many_features solver
-  only assembles and solves the underlying generic convex QP.
+  The pre-existing src.solver.joint_drift_qp.solve_many assembles
+  the multi-day QP with optional precomputed nonlinear feature
+  matrices, and calls the existing src.solver.active_set.active_set.solve
+  numerical optimizer. No additional QP solver is introduced.
   All derivative-response features g(R),h(U) are fixed, and the
   structural, equilibrium, Euler stability, and reconstructed
   historical F-path constraints are linear. The QP remains convex.
