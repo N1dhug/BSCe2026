@@ -109,7 +109,8 @@ class test_wm4_oracle_8weekday(unittest.TestCase):
             daily, hourly, parameters = analyze(output)
             self.assertEqual(len(daily), 1)
             self.assertEqual(len(hourly), 7)
-            self.assertEqual(len(parameters), 8)
+            self.assertEqual(len(parameters), 9)
+            self.assertIn("baseline_beta_C", set(parameters["variable"]))
             for name in ("forecast_error_quintiles.png", "theta_time_quantiles.png",
                          "contribution_hourly_quantiles.png", "prediction_demand_quintiles.png",
                          "daily_rmse_quintiles.png", "parameter_distribution_and_hac_tests.csv",
