@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.sweep_weekday_horizon import (
-    corresponding_weekday_baseline, evaluate_configuration, historical_weekdays,
-    load_tables, matched_cohort, report_only, save_top_three_plots, summarise,
+    BASELINE_NAMES, baseline_from_history, corresponding_weekday_baseline, evaluate_configuration,
+    historical_weekdays, load_tables, matched_cohort, report_only, save_top_three_plots, summarise,
 )
 from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekday_horizon_validation
 
@@ -100,9 +100,9 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
 
     def test_top_three_boxplot_does_not_pass_version_specific_label_keyword(self):
         day = pd.Timestamp("2022-03-12")
-        score = pd.DataFrame([{"day": day+pd.Timedelta(days=i), "training_weekdays": 2,
+        score = pd.DataFrame([{"day": day+pd.Timedelta(days=i), "baseline": "weekly_average", "training_weekdays": 2,
                                "horizon_hours": 6, "rmse": .1+i*.01} for i in range(3)])
-        top = pd.DataFrame([{"rank": 1, "training_weekdays": 2, "horizon_hours": 6}])
+        top = pd.DataFrame([{"rank": 1, "baseline": "weekly_average", "training_weekdays": 2, "horizon_hours": 6}])
         with tempfile.TemporaryDirectory() as tmp:
             with patch("matplotlib.axes.Axes.boxplot") as boxplot:
                 save_top_three_plots(score, top, pd.DatetimeIndex(score["day"]), Path(tmp))
@@ -126,6 +126,67 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         self.assertLess(float(ranking.iloc[0]["aggregate_rmse"]), float(ranking.iloc[1]["aggregate_rmse"]))
         self.assertLess(float(ranking.iloc[0]["baseline_improvement_pct"]),
                         float(ranking.iloc[1]["baseline_improvement_pct"]))
+
+    def test_all_three_baselines_use_exactly_corresponding_weekday_data(self):
+        frame = self.sample_frame()
+        day = pd.Timestamp("2022-03-12")
+        history = historical_weekdays(day, 2)
+        self.assertEqual(set(BASELINE_NAMES),
+                         {"statistical_output", "weekly_average", "weekly_temperature"})
+        selected = pd.concat([frame.reindex(pd.date_range(past, periods=24, freq="h"))
+                              for past in history])
+        for name in BASELINE_NAMES:
+            baseline = baseline_from_history(frame, history, name)
+            self.assertEqual(baseline.metadata["samples"], 48)
+            self.assertEqual(baseline.metadata["fit_end"], selected.index.max())
+            reference = baseline.predict(pd.date_range(day, periods=24, freq="h"),
+                                         frame.loc[day:day+pd.Timedelta(hours=23), "Temp"].to_numpy())
+            self.assertEqual(reference.shape, (24,))
+            self.assertTrue(np.isfinite(reference).all())
+            corrupted = frame.copy()
+            corrupted.loc[day:day+pd.Timedelta(hours=23), "I"] += 0.2
+            other = baseline_from_history(corrupted, history, name)
+            np.testing.assert_allclose(other.coef, baseline.coef)
+        self.assertEqual(len(history), 2)
+
+    def test_three_baseline_rank_uses_absolute_error_on_matched_days(self):
+        day = pd.Timestamp("2022-03-12")
+        baselines = BASELINE_NAMES
+        ns = (2, 3)
+        fit = pd.DataFrame([{"day": day, "baseline": b, "training_weekdays": n}
+                            for b in baselines for n in ns])
+        rows = []
+        for b in baselines:
+            for n in ns:
+                for h in (6, 7):
+                    error = .1 if b == "weekly_average" else .2 if b == "weekly_temperature" else .3
+                    rows.append({"day": day, "baseline": b, "training_weekdays": n,
+                                 "horizon_hours": h, "rmse": error, "mse": error**2,
+                                 "baseline_rmse": error+.1, "baseline_mse": (error+.1)**2,
+                                 "bias": 0.0})
+        scores = pd.DataFrame(rows)
+        self.assertEqual(list(matched_cohort({"fit": fit, "score": scores}, ns, 2, baselines)), [day])
+        ranking = summarise(scores)
+        self.assertEqual(ranking.iloc[0]["baseline"], "weekly_average")
+        self.assertEqual(ranking.iloc[0]["aggregate_rmse"], .1)
+        missing = scores.loc[~((scores["baseline"] == "statistical_output") &
+                               (scores["training_weekdays"] == 3) &
+                               (scores["horizon_hours"] == 7))]
+        self.assertTrue(matched_cohort({"fit": fit, "score": missing}, ns, 2, baselines).empty)
+
+    def test_all_three_baselines_expose_own_parameters_in_configurations(self):
+        frame = self.sample_frame()
+        day = pd.Timestamp("2022-03-12")
+        with patch("src.exe.run_model.wm_4.sweep_weekday_horizon.joint_qp_params", fake_joint_fitter):
+            for name in BASELINE_NAMES:
+                fit, scores, components, states = evaluate_configuration(frame, day, 2, 2, 6, 8, name)
+                self.assertEqual(fit["baseline"], name)
+                self.assertEqual(fit["baseline_samples"], 48)
+                self.assertEqual(len(scores), 3)
+                self.assertTrue(all(item["baseline"] == name for item in scores))
+                self.assertTrue(all(item["baseline"] == name and "baseline_value" in item
+                                    for item in components))
+                self.assertEqual(len(states), 2)
 
     def test_saved_reporting_produces_top_three_and_figures(self):
         with tempfile.TemporaryDirectory() as tmp:
