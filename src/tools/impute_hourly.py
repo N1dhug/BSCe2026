@@ -32,7 +32,12 @@ def impute_hourly_days(frame, days=None, columns=("I", "Temp"), require_days=Fal
             unavailable.append(day.strftime("%Y-%m-%d"))
             continue
         missing = original.isna()
-        block = original.interpolate(method="time", limit_direction="both")
+        block = original.copy()
+        for name in columns:
+            # Demand and temperature are interpolated; spot price is a
+            # piecewise-constant hourly signal, so preserve that structure.
+            if name == "U": block[name] = original[name].ffill().bfill()
+            else: block[name] = original[name].interpolate(method="time", limit_direction="both")
         if block.isna().any().any(): raise RuntimeError(f"Hourly interpolation failed for {day:%Y-%m-%d}.")
         for name in columns: per_column[name] += int(missing[name].sum())
         changed_slots += int(missing.any(axis=1).sum())
@@ -47,6 +52,6 @@ def impute_hourly_days(frame, days=None, columns=("I", "Temp"), require_days=Fal
         "imputed_by_column": per_column,
         "included_days": len(blocks),
         "missing_days": unavailable,
-        "method": "linear_within_day_nearest_edge",
+        "method": "linear_I_Temp_within_day;stepwise_ffill_U;nearest_edge",
     }
     return filled, details
