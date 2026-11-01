@@ -1,9 +1,13 @@
+import io
+import tempfile
 import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays, horizon_analysis, oracle_f0
+from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays, horizon_analysis, oracle_f0, report_saved
 from src.model.wm_4 import wm_4
 from src.params.wm_4 import joint_qp_params
 
@@ -59,6 +63,25 @@ class test_wm4_joint_moving_horizon(unittest.TestCase):
         recovered, predicted = oracle_f0(model, forecast, observed, theta, r0, sph)
         self.assertAlmostEqual(recovered, f0, places=7)
         np.testing.assert_allclose(predicted["I"][np.arange(24)*sph], observed, atol=1e-9)
+
+    def test_report_only_from_saved_files_includes_median_theta(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)
+            daily = pd.DataFrame([
+                {"day": f"2022-03-0{i+1}", "weekday": "Monday", "rmse": 0.01*i,
+                 "theta_F": -0.4-i/10, "theta_R": -0.8-i/10, "theta_U": -0.1-i/20,
+                 "design_rank": 8, "design_columns": 8, "damping_branch": "under",
+                 "damping_ratio": 0.5, "fit_qp_loss": 0.01, "fit_seconds": 0.1,
+                 "mse": 0.01, "bias": 0.0} for i in (0, 1)])
+            hourly = pd.DataFrame({"error": [0.1, -0.1], "baseline_error": [0.2, -0.2]})
+            daily.to_csv(output / "daily_metrics.csv", index=False)
+            hourly.to_csv(output / "hourly_predictions.csv", index=False)
+            pd.DataFrame(columns=["day", "reason"]).to_csv(output / "skipped_days.csv", index=False)
+            buffer = io.StringIO()
+            with redirect_stdout(buffer): result = report_saved(output)
+            self.assertEqual(len(result), 2)
+            self.assertIn("50%", buffer.getvalue())
+            self.assertIn("Theta correlations:", buffer.getvalue())
 
     def test_aggregate_rmse_and_cumulative_quintiles(self):
         days = pd.to_datetime(["2022-03-01", "2022-03-02"])
