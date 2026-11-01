@@ -5,6 +5,7 @@ import pandas as pd
 
 from src.model.fixed_responses import fixed_responses, ordered_response_pairs
 from src.model.wm_5 import wm_5
+from src.params.wm_5 import joint_qp_params
 from src.solver.joint_drift_qp import joint_drift_qp
 from src.validation.params.wm_5 import wm_5_params_validation
 from src.exe.run_model.wm_4.sweep_fixed_responses import (
@@ -87,6 +88,22 @@ class test_wm4_fixed_responses(unittest.TestCase):
         np.testing.assert_allclose(result["coefficients"],theta,atol=1e-3)
         self.assertLess(result["qp_loss"],1e-8)
         self.assertTrue(np.isfinite(result["F0"]).all())
+        # The executable must use the canonical WM5 params API rather than
+        # construct a parallel joint QP directly inside the sweep.
+        model=wm_5((0.0,1.0),n,lambda time:.5,(g,),(h,))
+        datasets=[]
+        for R,U in zip(rates,prices):
+            obs=np.zeros(n,dtype=bool); obs[::sph]=True
+            datasets.append({"I":R+.5,"U":U,"Time":np.arange(n,dtype=float)/sph,
+                             "O":np.full(n,.5),"observation_mask":obs,
+                             "transition_mask":np.ones(n-1,dtype=bool)})
+        fitted=joint_qp_params(model).fit_many(datasets)
+        self.assertEqual(fitted["fit_method"],"wm5_joint_qp_many")
+        self.assertEqual(fitted["fit_trajectories"],3)
+        self.assertEqual(fitted["init_cond"].shape,(3,2))
+        self.assertEqual(len(fitted["deterministic_states"]),3)
+        np.testing.assert_allclose(fitted["coefficients"],result["coefficients"],atol=1e-5)
+        self.assertLess(fitted["deterministic_loss"],1e-8)
 
     def test_horizon_specific_oracle_never_worse_than_coarse_grid(self):
         functions=fixed_responses()
