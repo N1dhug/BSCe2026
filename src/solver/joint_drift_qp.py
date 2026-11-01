@@ -57,122 +57,84 @@ class joint_drift_qp:
 
     @staticmethod
     def solve_many(rates, prices, dt, coefficient_constraints, *, transition_masks=None,
-                   f_bounds=(-1.0, 1.0), ridge=1e-10, enforce_path=True, eps=1e-8):
-        """One convex QP: a separate beta_0=theta_F*F0 for every day, shared theta."""
+                   f_bounds=(-1.0, 1.0), ridge=1e-10, enforce_path=True, eps=1e-8,
+                   rate_features=None, price_features=None):
+        """One convex multi-day QP with shared coefficients and independent F0.
+
+        The existing WM4 case uses default columns [C,U,R], maintaining
+        its coefficient ordering [theta_F,theta_U,theta_R]. For fixed
+        nonlinear WM5 responses, pass per-day rate_features and
+        price_features matrices to use columns [C,g(R),h(U)] instead.
+
+        The numerical QP is ALWAYS solved by the existing active_set.
+        """
         prepared, lower, upper, dt, ridge, eps = joint_drift_qp_validation.many(
             rates, prices, dt, transition_masks, f_bounds, ridge, eps)
         n = len(prepared)
+        if (rate_features is None) != (price_features is None):
+            raise ValueError("Rate and price features must either both be supplied or both omitted.")
+        custom = rate_features is not None
+        if custom and (len(rate_features) != n or len(price_features) != n):
+            raise ValueError("Feature trajectories must match the number of historical days.")
         A0, b0, lb0, ub0 = (np.asarray(v, dtype=float) for v in coefficient_constraints)
-        if A0.ndim != 2 or A0.shape[1] != 3 or b0.shape != (A0.shape[0],):
-            raise ValueError("Shared WM4 coefficient constraints must have three columns.")
-        if lb0.shape != (3,) or ub0.shape != (3,):
-            raise ValueError("Invalid shared WM4 coefficient bounds.")
+        if A0.ndim != 2 or b0.shape != (len(A0),):
+            raise ValueError("Coefficient constraints require a two-dimensional matrix and matching bounds.")
+        m = A0.shape[1]
+        if lb0.shape != (m,) or ub0.shape != (m,):
+            raise ValueError("Structural coefficient bounds must match coefficient constraints.")
+        if not custom and m != 3:
+            raise ValueError("Standard WM4 multi-day fit requires three coefficients.")
+
         designs, targets, constraints, limits, integrations = [], [], [], [], []
         constraints.append(np.column_stack((np.zeros((len(b0), n)), A0)))
         limits.append(b0)
         for i, (R, U, mask) in enumerate(prepared):
-            C = np.r_[0.0, np.cumsum(dt * R[:-1])]
+            C = np.r_[0.0, np.cumsum(dt*R[:-1])]
             integrations.append(C)
-            X = np.zeros((len(R)-1, n+3), dtype=float)
+            if custom:
+                G, P = np.asarray(rate_features[i], dtype=float), np.asarray(price_features[i], dtype=float)
+                if G.ndim != 2 or P.ndim != 2 or G.shape[0] != len(R)-1 or P.shape[0] != len(R)-1:
+                    raise ValueError("Fixed-response matrices require one row per historical transition.")
+                if G.shape[1] < 1 or P.shape[1] < 1 or 1+G.shape[1]+P.shape[1] != m:
+                    raise ValueError("Response feature dimensions do not match the structural coefficients.")
+                if not np.isfinite(G).all() or not np.isfinite(P).all():
+                    raise ValueError("Fixed-response features must be finite.")
+                coeffs = np.column_stack((C[:-1], G, P))
+            else:
+                coeffs = np.column_stack((C[:-1], U[:-1], R[:-1]))
+
+            X = np.zeros((len(R)-1, n+m), dtype=float)
             X[:, i] = 1.0
-            X[:, n:] = np.column_stack((C[:-1], U[:-1], R[:-1]))
+            X[:, n:] = coeffs
             designs.append(X[mask])
             targets.append((np.diff(R)/dt)[mask])
             if enforce_path:
-                # theta_F < 0; F0=beta0/theta_F, F_k=F0+C_k.
-                # Extrema suffice to constrain the entire reconstructed path.
-                lo_row, hi_row = np.zeros(n+3), np.zeros(n+3)
-                lo_row[i], lo_row[n] = -1.0, upper - float(np.max(C))
-                hi_row[i], hi_row[n] = 1.0, float(np.min(C)) - lower
+                # theta_F < 0 and F_k=beta_i/theta_F+C_k.
+                # Bounding extrema constrains the entire reconstructed path.
+                lo_row, hi_row = np.zeros(n+m), np.zeros(n+m)
+                lo_row[i], lo_row[n] = -1.0, upper-float(np.max(C))
+                hi_row[i], hi_row[n] = 1.0, float(np.min(C))-lower
                 constraints.append(np.vstack((lo_row, hi_row)))
                 limits.append(np.zeros(2))
         X, y = np.vstack(designs), np.concatenate(targets)
         A, b = np.vstack(constraints), np.concatenate(limits)
         lb, ub = np.r_[np.full(n, -np.inf), lb0], np.r_[np.full(n, np.inf), ub0]
         scale = max(1, len(y))
-        H = 2.0 * X.T @ X / scale + ridge * np.eye(n+3)
-        f = -2.0 * X.T @ y / scale
-        solution = np.asarray(active_set.solve(H, f, A_ub=A, b_ub=b, lb=lb, ub=ub,
-                                                tol=1e-9, max_iter=10000), dtype=float)
-        theta = solution[n:]
-        if theta[0] >= -eps:
-            raise RuntimeError("Joint multi-day QP failed to recover theta_F<0.")
-        F0 = solution[:n] / theta[0]
-        if enforce_path and any(np.min(f0+C) < lower-1e-6 or np.max(f0+C) > upper+1e-6
-                                for f0, C in zip(F0, integrations)):
-            raise RuntimeError("Multi-day QP violated reconstructed flexibility bounds.")
-        states = np.column_stack((F0, [R[0] for R, _, _ in prepared]))
-        return {"coefficients": theta.copy(), "beta": solution.copy(), "init_conds": states,
-                "qp_loss": float(np.mean((X @ solution-y)**2)),
-                "transition_count": len(y), "design_rank": int(np.linalg.matrix_rank(X)),
-                "reconstructed_F": [f0+C for f0, C in zip(F0, integrations)]}
-
-
-    @staticmethod
-    def solve_many_features(rates, prices, dt, g, h, constraints, masks=None,
-                            f_bounds=(-1.0, 1.0), ridge=1e-10, enforce_path=True):
-        """Joint convex QP for any fixed response bases, with one F0 per day.
-
-        beta=[theta_F*F0_1,...,theta_F*F0_N,theta_F,a_1,...,a_nr,b_1,...,b_nu].
-        Accepts a callable or a sequence of callables for each of g and h.
-        The solver manages only linear algebra; model constraints belong to params.
-        """
-        prepared, lower, upper, dt, ridge, eps = joint_drift_qp_validation.many(
-            rates, prices, dt, masks, f_bounds, ridge, 1e-8)
-        gs = (g,) if callable(g) else tuple(g)
-        hs = (h,) if callable(h) else tuple(h)
-        if not gs or not hs or not all(callable(fn) for fn in (*gs, *hs)):
-            raise ValueError("Fixed rate/price response features must be nonempty callable sequences.")
-        n, m = len(prepared), 1+len(gs)+len(hs)
-        A0, b0, lb0, ub0 = (np.asarray(x, dtype=float) for x in constraints)
-        if A0.ndim != 2 or A0.shape[1] != m or b0.shape != (len(A0),):
-            raise ValueError(f"Response-model structural inequalities need {m} coefficient columns.")
-        if lb0.shape != (m,) or ub0.shape != (m,):
-            raise ValueError(f"Response-model structural bounds need {m} coefficients.")
-        Xparts, yparts, Cpaths = [], [], []
-        rows, limits = [np.column_stack((np.zeros((len(A0), n)), A0))], [b0]
-
-        def response(fn, values):
-            return np.fromiter((float(fn(float(x))) for x in values), dtype=float, count=len(values))
-
-        for i, (R, U, mask) in enumerate(prepared):
-            C = np.r_[0.0, np.cumsum(dt*R[:-1])]
-            X = np.zeros((len(R)-1, n+m), dtype=float)
-            X[:, i] = 1.0
-            X[:, n:] = np.column_stack((
-                C[:-1], *(response(fn, R[:-1]) for fn in gs),
-                *(response(fn, U[:-1]) for fn in hs)))
-            features = X[mask]
-            if not np.isfinite(features).all():
-                raise ValueError("Response functions must be finite at historical observations.")
-            Xparts.append(features)
-            yparts.append((np.diff(R)/dt)[mask])
-            Cpaths.append(C)
-            if enforce_path:
-                # theta_F < 0. The following inequalities bound all reconstructed
-                # historical F_k=beta_i/theta_F+C_k inside [lower,upper].
-                low, high = np.zeros(n+m), np.zeros(n+m)
-                low[i], low[n] = -1.0, upper-float(np.max(C))
-                high[i], high[n] = 1.0, float(np.min(C))-lower
-                rows.append(np.vstack((low, high)))
-                limits.append(np.zeros(2))
-        X, y = np.vstack(Xparts), np.concatenate(yparts)
-        A, b = np.vstack(rows), np.concatenate(limits)
-        lb, ub = np.r_[np.full(n, -np.inf), lb0], np.r_[np.full(n, np.inf), ub0]
-        scale = max(1, len(y))
         H = 2.0*X.T@X/scale+ridge*np.eye(n+m)
         f = -2.0*X.T@y/scale
-        beta = np.asarray(active_set.solve(H, f, A_ub=A, b_ub=b, lb=lb, ub=ub,
-                                           tol=1e-9, max_iter=10000), dtype=float)
-        coefficients = beta[n:]
-        if coefficients[0] >= -eps or np.any(A@beta > b+1e-6):
-            raise RuntimeError("Joint fixed-response QP returned inadmissible coefficients.")
-        F0 = beta[:n]/coefficients[0]
+        solution = np.asarray(active_set.solve(H, f, A_ub=A, b_ub=b, lb=lb, ub=ub,
+                                               tol=1e-9, max_iter=10000), dtype=float)
+        theta = solution[n:]
+        if theta[0] >= -eps or np.any(A@solution > b+1e-6):
+            raise RuntimeError("Joint multi-day QP returned coefficients violating structural constraints.")
+        F0 = solution[:n]/theta[0]
         if enforce_path and any(np.min(f0+C)<lower-1e-6 or np.max(f0+C)>upper+1e-6
-                                for f0, C in zip(F0, Cpaths)):
-            raise RuntimeError("Joint fixed-response fit violated reconstructed F bounds.")
-        return {"coefficients": coefficients.copy(), "beta": beta.copy(), "F0": F0.copy(),
-                "init_conds": np.column_stack((F0, [R[0] for R, _, _ in prepared])),
-                "qp_loss": float(np.mean((X@beta-y)**2)),
-                "design_rank": int(np.linalg.matrix_rank(X)),
-                "design_columns": X.shape[1], "transition_count": len(y)}
+                                for f0, C in zip(F0, integrations)):
+            raise RuntimeError("Joint multi-day QP violated preferred flexibility bounds.")
+        states = np.column_stack((F0, [R[0] for R, _, _ in prepared]))
+        return {"coefficients": theta.copy(), "beta": solution.copy(),
+                "F0": F0.copy(), "init_conds": states,
+                "qp_loss": float(np.mean((X@solution-y)**2)),
+                "transition_count": len(y), "design_rank": int(np.linalg.matrix_rank(X)),
+                "design_columns": X.shape[1],
+                "reconstructed_F": [f0+C for f0, C in zip(F0, integrations)]}
