@@ -12,7 +12,7 @@ src/tools/baseline.py:
 3. weekly_temperature — weekday-and-hour mean with fitted heating response.
 
 Every baseline is fitted to exactly the same N preceding **corresponding
-weekdays**, not all earlier days. To allow N=2,...,10, their pre-existing
+weekdays**, not all earlier days. The sweep examines N=2,...,14; the pre-existing
 minimum seven-day training requirement is lowered **only for this sweep**
 using the new optional min_samples=48 constructor argument; the regular
 baseline implementations retain their former 168-sample default.
@@ -46,13 +46,13 @@ fabricated future demand. Baseline metadata and
 hourly slots and imputation counts separately for I, U and Temp.
 
 The imputation update changes the experiment. Its configuration
-version is now `3_baseline_matched_training_hourly_imputation_full_oracle_v3`.
+version is now `3_baseline_matched_training_hourly_imputation_full_oracle_v4_N14_H1`.
 Do not combine these results with earlier, non-imputed CSVs.
 Start a fresh full run without `--resume`, or choose a new
 `--output` directory to preserve earlier results. After the updated
 run, `--report-only` can regenerate summary plots without refitting.
 
-For each forecast day, N = 2,...,10 and H = 6,...,24:
+For each forecast day, N = 2,...,14 and H = 1,...,24:
 
 - Fit the selected baseline on exactly N historical matching weekdays,
   using both historical demand and temperatures where supported.
@@ -70,12 +70,14 @@ For each forecast day, N = 2,...,10 and H = 6,...,24:
 - Evaluate WM4 absolute prediction RMSE against the same baseline's
   RMSE. Baseline-relative skill is diagnostic, NEVER a ranking criterion.
 
-There are **3 * 9 * 19 = 513** distinct baseline/N/H configurations per
-forecast date. A single QP parameter fit is reused for all 19 H choices,
-so each date needs 27 fits rather than 513 fits.
+There are **3 * 13 * 24 = 936** distinct baseline/N/H configurations per
+forecast date. A single historical QP parameter fit is reused for all 24 H choices,
+so each date requires up to 39 historical QP fits (one per baseline and N),
+plus horizon-specific initial-state QPs.
 
 The same available forecast days are used for the ranking across all
-methods and N counts (earliest day for N=10 is 2022-03-12).
+methods and N counts (the N=14 warm-up is 14 weeks = 98 calendar days;
+starting from 2022-01-01, the earliest possible target is 2022-04-09).
 All target observations are retrospective: **oracle [F0,R0] is not a deployable
 forecast initial-state estimate**, and temperature and price use observed target-day
 series. The normalization is fitted to the historical full-year range.
@@ -85,7 +87,23 @@ Ranking uses the **LOWEST ABSOLUTE pooled oracle WM4 prediction RMSE**:
     RMSE(B,N,H) = sqrt(mean_over_matched_days(MSE(day,B,N,H)))
 
 The top three rank across all three baselines and all N/H settings.
-Tie-breaking is by baseline name, then N, then H. The matched cohort
+Tie-breaking is by baseline name, then N, then H.
+
+**Important H=1–2 caveat:** The same target observations are used to
+optimize BOTH oracle initial states. At H=1, only R0 influences the
+initial demand sample: the oracle can normally match this first
+observation exactly by choosing R0=observed demand minus baseline.
+F0 is not identified from that single sample. At H=2, two states
+can often match the two target observations nearly exactly.
+Consequently, a near-zero H=1 or H=2 retrospective RMSE is
+essentially a fitted-state interpolation result, NOT evidence
+of superior predictive performance. Cross-horizon absolute RMSE
+ranking now tends to favor these trivial short horizons. Interpret
+N and baseline differences **at a fixed substantive H** instead,
+and separately evaluate forecasts with strictly historical initial
+states. The CSV records each horizon's initial-state design rank.
+
+The matched cohort
 requires every baseline/N combination to have all requested H results
 on each included day. If none is available, the program explicitly
 warns and uses unmatched data as a fallback. Compare N *at fixed H* in
@@ -100,6 +118,10 @@ Full 3-baseline MED study:
 Quick smoke test in a separate output folder:
 
     python -m src.exe.run_model.wm_4.sweep_weekday_horizon --max-days 3 --output files/output/wm_4/weekday_horizon_3baseline_smoke
+
+Compare the previously studied horizon range while retaining 14-day backlog:
+
+    python -m src.exe.run_model.wm_4.sweep_weekday_horizon --min-horizon 6 --max-horizon 24 --output files/output/wm_4/weekday_horizon_sweep_h6_24
 
 All-consumer dataset:
 
@@ -133,11 +155,11 @@ Default output directory:
 - historical_initial_states.csv: every historical [F0,R0] per
   baseline/day/N.
 - oracle_horizon_scores.csv: (forecast day, baseline, N, H), BOTH oracle F0 and R0,
-  absolute RMSE/MSE/MAE/bias and baseline comparison.
+  absolute RMSE/MSE/MAE/bias, baseline comparison, and initial-state design rank.
 - forecast_components.csv: exact hourly observed demand, baseline,
   price, zero-initial-state forecast and F0/R0 sensitivities per baseline/day/N.
-  Reconstruct each prediction from the zero-initial-state trajectory by adding oracle F0 and R0 times their respective sensitivities
-  the sensitivity.
+  Reconstruct each prediction from the zero-initial-state trajectory by adding
+  oracle F0 and R0 times their respective sensitivities.
 - skipped_windows.csv: failed fit with the baseline and N.
 - ranking_all_available.csv, ranking_matched.csv, top_three.csv,
   best_by_horizon.csv, parameter_summary.csv.
