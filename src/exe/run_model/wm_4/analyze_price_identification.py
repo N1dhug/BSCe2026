@@ -107,7 +107,7 @@ def price_summary(daily, hourly, frame, threshold=1e-6):
     return table
 
 
-def block_bootstrap_spearman(x, y, *, block_size=7, draws=1000, seed=271828):
+def block_bootstrap_spearman(x, y, *, block_size=28, draws=1000, seed=271828):
     """Spearman rank correlation with calendar-ordered moving-block bootstrap.
 
     Bootstrap samples aligned (x,y) row pairs. Standard error and normal
@@ -155,7 +155,7 @@ def benjamini_hochberg(pvalues):
     return q
 
 
-def association_tests(table, *, block_size=7, draws=1000, seed=271828):
+def association_tests(table, *, block_size=28, draws=1000, seed=271828):
     results = []
     # Predeclared: only historical fitting-window prices, NOT forecast prices.
     for outcome in RESPONSE_OUTCOMES:
@@ -281,7 +281,7 @@ def plot_price_analysis(table, stats, volatility, level, errors, output):
 
 
 def analyze(input_dir, output_dir, group="MED", threshold=1e-6,
-            block_size=7, draws=1000, seed=271828):
+            block_size=28, draws=1000, seed=271828):
     input_dir, output_dir = Path(input_dir), Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     daily = pd.read_csv(input_dir/"daily_metrics.csv",parse_dates=["day"])
@@ -318,6 +318,8 @@ def analyze(input_dir, output_dir, group="MED", threshold=1e-6,
     print("\nInterpretation: θU is trained ONLY on historical days; target price and oracle RMSE are context.")
     print("Neither nonzero θU nor its price correlation alone proves an observed causal demand response.")
     print("Eight-week training windows overlap; block-bootstrap CI/p-values and BH q-values are exploratory.")
+    print(f"Block size is {block_size} successive eligible forecast dates, not exact calendar days. "
+          "Repeat with --block-size 7 and 56 for sensitivity.")
     print(f"\nSaved tables and plots: {output_dir}")
     return result, associations
 
@@ -328,7 +330,7 @@ def main():
     parser.add_argument("--input",default=None,help="Existing N8/H7 oracle output folder.")
     parser.add_argument("--output",default=None,help="Price-identification results folder.")
     parser.add_argument("--threshold",type=float,default=1e-6)
-    parser.add_argument("--block-size",type=int,default=7)
+    parser.add_argument("--block-size",type=int,default=28)
     parser.add_argument("--bootstrap-draws",type=int,default=1000)
     parser.add_argument("--seed",type=int,default=271828)
     args=parser.parse_args()
