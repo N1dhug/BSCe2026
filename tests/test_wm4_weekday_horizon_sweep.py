@@ -320,6 +320,8 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
             self.assertEqual(top.iloc[0]["training_weekdays"], 2)
             self.assertEqual(top.iloc[0]["horizon_hours"], 6)
             self.assertTrue((output/"top_three.csv").is_file())
+            self.assertTrue((output/"top_three_h6plus.csv").is_file())
+            self.assertTrue((pd.read_csv(output/"top_three_h6plus.csv")["horizon_hours"]>=6).all())
             self.assertTrue((output/"rmse_heatmap.png").is_file())
             self.assertTrue((output/"top_three_rmse_distribution.png").is_file())
             tables = load_tables(output)
