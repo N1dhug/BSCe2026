@@ -185,6 +185,92 @@ def summarize(daily, hourly):
         ["origin_hour","lead_hour"])
 
 
+def cumulative_rmse_by_origin(hourly):
+    """Pooled prefix RMSE after 1..7 forecast hours for each of 18 origins.
+
+    Each prefix is evaluated on the SAME historical cohort of target days
+    and the SAME seven-hour oracle F0 as the entire seven-hour interval.
+    F0 is not reoptimized at each prefix, to preserve the interpretation
+    as accumulation of a single seven-hour forecast.
+    """
+    if hourly.empty: raise ValueError("No hourly origin predictions for cumulative RMSE.")
+    required={"day","origin_hour","lead_hour","error","baseline_error"}
+    if not required.issubset(hourly.columns):
+        raise ValueError(f"Missing hourly data columns: {sorted(required-set(hourly.columns))}.")
+    h=hourly.copy()
+    if h.duplicated(["day","origin_hour","lead_hour"]).any():
+        raise ValueError("Duplicate origin/lead observations in cumulative RMSE inputs.")
+    if not np.isfinite(h[["error","baseline_error"]].to_numpy(dtype=float)).all():
+        raise ValueError("Nonfinite errors in cumulative RMSE input.")
+    days=set(pd.to_datetime(h["day"]))
+    rows=[]
+    for origin in ORIGINS:
+        part=h.loc[h["origin_hour"]==origin].copy()
+        if not part.empty and set(pd.to_datetime(part["day"]))!=days:
+            raise ValueError(f"Unmatched daily cohort at origin {origin}.")
+        if len(part)!=len(days)*HORIZON:
+            raise ValueError(f"Missing hourly predictions for origin {origin}.")
+        wm=part.pivot(index="day",columns="lead_hour",values="error").reindex(columns=range(HORIZON))
+        base=part.pivot(index="day",columns="lead_hour",values="baseline_error").reindex(columns=range(HORIZON))
+        if wm.isna().any().any() or base.isna().any().any():
+            raise ValueError(f"Incomplete forecast-lead trajectory for origin {origin}.")
+        squared=wm.to_numpy(dtype=float)**2
+        baseline_squared=base.to_numpy(dtype=float)**2
+        # Numerator sums squared errors across both days and elapsed lead hours.
+        wm_cumulative=np.sqrt(np.cumsum(np.sum(squared,axis=0))/(len(days)*np.arange(1,HORIZON+1)))
+        baseline_cumulative=np.sqrt(np.cumsum(np.sum(baseline_squared,axis=0))/(len(days)*np.arange(1,HORIZON+1)))
+        for lead,(value,reference) in enumerate(zip(wm_cumulative,baseline_cumulative),start=1):
+            rows.append({"origin_hour":origin,"elapsed_hours":lead,
+                         "interval_start_hour":origin,"interval_end_hour":origin+HORIZON,
+                         "hour_end":origin+lead,"days":len(days),"samples":len(days)*lead,
+                         "cumulative_rmse":float(value),
+                         "baseline_cumulative_rmse":float(reference)})
+    return pd.DataFrame(rows)
+
+
+def plot_cumulative_rmse_panels(cumulative,output):
+    """18 same-scale panels on a common 0..24 clock, shade exactly 7-hour windows."""
+    if len(cumulative)!=len(ORIGINS)*HORIZON:
+        raise ValueError("Expected all 18 origins with seven cumulative observations each.")
+    values=cumulative[["cumulative_rmse","baseline_cumulative_rmse"]].to_numpy(dtype=float)
+    if not np.isfinite(values).all() or np.any(values<0):
+        raise ValueError("Cumulative RMSE values must be finite and nonnegative.")
+    ymax=max(float(values.max())*1.1,1e-6)
+    fig,axes=plt.subplots(6,3,figsize=(19,22),sharex=True,sharey=True)
+    for ax,origin in zip(axes.flat,ORIGINS):
+        rows=cumulative.loc[cumulative["origin_hour"]==origin].sort_values("elapsed_hours")
+        if not np.array_equal(rows["elapsed_hours"].to_numpy(dtype=int),np.arange(1,HORIZON+1)):
+            raise ValueError(f"Missing cumulative prefix for origin {origin}.")
+        x=np.arange(origin,origin+HORIZON+1,dtype=float)
+        wm=rows["cumulative_rmse"].to_numpy(dtype=float)
+        baseline=rows["baseline_cumulative_rmse"].to_numpy(dtype=float)
+        # Each step occupies the actual forecast hour [origin+j, origin+j+1).
+        # At the right edge its height is RMSE after 1..j+1 observations.
+        wm_bins=np.r_[wm[0],wm]
+        baseline_bins=np.r_[baseline[0],baseline]
+        ax.axvspan(origin,origin+HORIZON,alpha=.08,color="grey")
+        ax.fill_between(x,0,wm_bins,step="pre",alpha=.25,color="tab:blue")
+        ax.step(x,wm_bins,where="pre",lw=1.8,color="tab:blue",label="WM4 cumulative RMSE")
+        ax.step(x,baseline_bins,where="pre",lw=1.2,ls="--",color="tab:orange",
+                label="Baseline cumulative RMSE")
+        ax.scatter(x[1:],wm,s=13,color="tab:blue",zorder=3)
+        ax.set_xlim(0,HOURS);ax.set_ylim(0,ymax)
+        ax.set_xticks(np.arange(0,HOURS+1,4))
+        ax.grid(alpha=.15)
+        ax.set_title(f"Origin {origin:02d}:00 | interval {origin:02d}–{origin+HORIZON:02d}:00",
+                     fontsize=10)
+        ax.tick_params(labelbottom=True,labelleft=True,labelsize=8)
+    handles,labels=axes.flat[0].get_legend_handles_labels()
+    fig.legend(handles,labels,loc="upper center",ncol=2,bbox_to_anchor=(.5,.972))
+    fig.suptitle("WM4 N=8 / H=7: pooled cumulative prediction RMSE within each origin",
+                 y=.993,fontsize=15)
+    fig.supxlabel("Hour of day (all panels 00–24)")
+    fig.supylabel("Cumulative pooled RMSE (normalized demand)")
+    fig.tight_layout(rect=(.025,.035,.99,.958))
+    fig.savefig(Path(output)/"origin_cumulative_rmse_panels.png",dpi=190,bbox_inches="tight")
+    plt.close(fig)
+
+
 def plot_results(aggregate,leads,output):
     fig,ax=plt.subplots(figsize=(13,6))
     ax.plot(aggregate["origin_hour"],aggregate["aggregate_rmse"],marker="o",lw=2.2,
@@ -226,9 +312,18 @@ def report(output):
     daily=pd.read_csv(output/FILES["daily"],parse_dates=["day"])
     hourly=pd.read_csv(output/FILES["hourly"],parse_dates=["day","timestamp"])
     aggregate,leads=summarize(daily,hourly)
+    cumulative=cumulative_rmse_by_origin(hourly)
+    for row in aggregate.itertuples(index=False):
+        terminal=cumulative.loc[(cumulative["origin_hour"]==row.origin_hour) &
+                                 (cumulative["elapsed_hours"]==HORIZON)].iloc[0]
+        if (not np.isclose(terminal["cumulative_rmse"],row.aggregate_rmse,atol=1e-12)
+                or not np.isclose(terminal["baseline_cumulative_rmse"],row.baseline_rmse,atol=1e-12)):
+            raise RuntimeError(f"Cumulative RMSE does not match total at origin {row.origin_hour}.")
     aggregate.to_csv(output/"origin_aggregate_rmse.csv",index=False)
     leads.to_csv(output/"origin_lead_rmse.csv",index=False)
+    cumulative.to_csv(output/"origin_cumulative_rmse.csv",index=False)
     plot_results(aggregate,leads,output)
+    plot_cumulative_rmse_panels(cumulative,output)
     print(f"\nWM4: eight preceding corresponding weekdays, seven-hour oracle F0; "
           f"{daily['day'].nunique()} matched days.")
     print("Each origin 00–17 predicts origin,...,origin+6; 18 origins per day.")
@@ -237,7 +332,7 @@ def report(output):
           .to_string(index=False,float_format=lambda x:f"{x:.8f}"))
     print(f"\nBest origin by pooled oracle RMSE: "
           f"{int(aggregate.loc[aggregate['aggregate_rmse'].idxmin(),'origin_hour']):02d}:00")
-    print(f"Saved daily/origin/lead CSVs and three plots: {output}")
+    print(f"Saved individual forecasts, 18-origin cumulative RMSE table, and four plots: {output}")
     print("WARNING: Each 7-hour F0 oracle uses all seven target observations; "
           "these are NOT out-of-sample operational forecasts.")
     return aggregate
