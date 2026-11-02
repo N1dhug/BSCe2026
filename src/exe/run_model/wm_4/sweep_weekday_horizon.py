@@ -278,7 +278,7 @@ def write_outputs(tables, output, weekdays, horizons, baselines=BASELINE_NAMES):
     return ranking, top, common, basis
 
 
-def save_heatmap(ranking, top, output, metric, filename, title):
+def save_heatmap(ranking, top, output, metric, filename, title, weekdays=None, horizons=None):
     if ranking.empty: return
     pivot = ranking.pivot(index="training_weekdays", columns="horizon_hours", values=metric)
     pivot = pivot.reindex(index=range(2, 15), columns=range(1, 25))
