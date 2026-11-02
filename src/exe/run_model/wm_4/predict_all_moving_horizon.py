@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.moving_horizon_common import HOURS, baseline_before, group_frame, metrics, window_data
-from src.params.wm_4 import joint_qp_params
+from src.params.wm_4 import joint_qp_params, optimized_qp_params
 from src.validation.exe.run_model.wm_4.predict_all_moving_horizon import predict_all_moving_horizon_validation as validation
 
 
@@ -21,20 +21,11 @@ def historical_weekdays(day, count=TRAINING_WEEKDAYS):
     return [pd.Timestamp(day) - pd.Timedelta(weeks=k) for k in range(count, 0, -1)]
 
 
-def oracle_f0(model, forecast, observed, theta, historical_r0, steps_per_hour):
-    """Optimize only F0 using the target day's observations; R0 is historical."""
-    idx = np.arange(HOURS, dtype=int) * steps_per_hour
-    zero = model._solve_deterministic(
-        [0.0, historical_r0], forecast["U"], forecast["PE"],
-        forecast["Time"], forecast["O"], theta)
-    sensitivity = model.sensitivity({"r": theta})["input"][idx, 0]
-    observed, base, sensitivity = validation.oracle(
-        observed, np.asarray(zero["I"])[idx], sensitivity, historical_r0)
-    f0 = float(np.clip(sensitivity @ (observed-base) / (sensitivity @ sensitivity), -1.0, 1.0))
-    state = model._solve_deterministic(
-        [f0, historical_r0], forecast["U"], forecast["PE"],
-        forecast["Time"], forecast["O"], theta)
-    return f0, state
+def oracle_initial_state(model, forecast, theta, steps_per_hour):
+    """Full two-component retrospective oracle, jointly optimized by convex QP."""
+    result=optimized_qp_params(model).optimize_prediction_initial_state(
+        forecast,theta,f_bounds=(-1.0,1.0),r_bounds=(-1.0,1.0))
+    return np.asarray(result["init_cond"],dtype=float),result["deterministic_state"]
 
 
 def evaluate_day(frame, day, baseline, steps_per_hour):
@@ -54,7 +45,7 @@ def evaluate_day(frame, day, baseline, steps_per_hour):
     historical_r0 = float(previous_data["I"].iloc[0] - prev_B)
 
     theta = np.asarray(fit["r"], dtype=float)
-    f0, state = oracle_f0(model, forecast, observed, theta, historical_r0, steps_per_hour)
+    initial, state = oracle_initial_state(model, forecast, theta, steps_per_hour)
     idx = np.arange(HOURS, dtype=int) * steps_per_hour
     predicted = np.asarray(state["I"], dtype=float)[idx]
     reference = np.asarray(forecast["O"], dtype=float)[idx]
@@ -67,7 +58,8 @@ def evaluate_day(frame, day, baseline, steps_per_hour):
         "training_days": ",".join(f"{d:%Y-%m-%d}" for d in history),
         "theta_F": restoring, "theta_U": price, "theta_R": damping,
         "damping_ratio": zeta, "damping_branch": "under" if zeta < 1.0 else "over" if zeta > 1.0 else "critical",
-        "oracle_F0": f0, "historical_R0": historical_r0,
+        "oracle_F0": float(initial[0]), "oracle_R0": float(initial[1]),
+        "historical_R0": historical_r0,
         "training_F0_mean": float(np.mean(fit["init_cond"][:, 0])),
         "training_F0_std": float(np.std(fit["init_cond"][:, 0])),
         "fit_qp_loss": float(fit["qp_loss"]),
@@ -142,7 +134,7 @@ def save_daily_rmse_plot(daily, output):
     for q in (20, 40, 60, 80):
         value = float(np.percentile(values, q))
         ax.axvline(value, ls="--", lw=1.3, label=f"Q{q} = {value:.4f}")
-    ax.set_title("Distribution of 24-hour WM4 oracle-F0 forecast RMSE")
+    ax.set_title("Distribution of 24-hour WM4 full-state oracle [F0,R0] forecast RMSE")
     ax.set_xlabel("Per-day RMSE (normalized demand)"); ax.set_ylabel("Days")
     ax.grid(alpha=0.2); ax.legend()
     fig.tight_layout()
@@ -182,8 +174,8 @@ def print_analysis(daily, hourly, skipped, start, end, output):
     by_weekday["rmse"] = np.sqrt(by_weekday.pop("aggregate_mse"))
     print(by_weekday.to_string(float_format=lambda v: f"{v:.6f}"))
     print(f"\noutputs: {output}")
-    print("NOTE: F0 is an ORACLE optimized from the 24 target observations; this is not deployable forecast performance.")
-    print("R0 uses the last pre-forecast observed deviation; the 2022 full-period normalization is retrospective.")
+    print("NOTE: BOTH F0 and R0 are retrospectively optimized using all 24 target observations; not deployable.")
+    print("Historical R0 is recorded only as a comparison diagnostic; it is NOT fixed during the oracle.")
 
 
 def run(args):
@@ -234,6 +226,8 @@ def report_saved(output):
     hourly = pd.read_csv(output / "hourly_predictions.csv")
     skipped = pd.read_csv(output / "skipped_days.csv")
     if daily.empty: raise ValueError("Saved daily_metrics.csv has no completed predictions.")
+    if "oracle_R0" not in daily:
+        raise ValueError("Saved results used an obsolete F0-only oracle. Run without --report-only.")
     dates = pd.to_datetime(pd.concat((daily["day"], skipped["day"]), ignore_index=True))
     print_analysis(daily, hourly, skipped.to_dict("records"), dates.min(), dates.max(), output)
     return daily
