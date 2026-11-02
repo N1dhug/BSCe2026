@@ -22,7 +22,7 @@ BASELINES = {"statistical_output": statistical_output, "weekly_average": weekly_
 BASELINE_NAMES = tuple(BASELINES)
 PERCENTILES = (20, 40, 50, 60, 80)
 RANKING_METRIC = "aggregate_rmse"  # Absolute pooled prediction error; never baseline-relative improvement.
-EXPERIMENT_VERSION = "3_baseline_matched_training_hourly_imputation_v2"
+EXPERIMENT_VERSION = "3_baseline_matched_training_hourly_imputation_full_oracle_v3"
 COLUMNS = {
     "fit": "parameter_estimates.csv",
     "score": "oracle_horizon_scores.csv",
@@ -86,11 +86,15 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
     history_R0 = profiles[:, 0]-baseline.predict(historical_origins, historical_temps)
     R0 = float(np.median(history_R0))              # strictly historical, never optimized
 
-    state0 = model._solve_deterministic([0.0, R0], forecast["U"], forecast["PE"],
+    # The historical median R0 is diagnostic only. For every horizon,
+    # BOTH oracle initial-state components are fitted jointly over
+    # that horizon's target observations, using the existing active-set QP.
+    state0 = model._solve_deterministic([0.0, 0.0], forecast["U"], forecast["PE"],
                                         forecast["Time"], forecast["O"], theta)
     sample_idx = np.arange(HOURS, dtype=int)*steps_per_hour
     base = np.asarray(state0["I"], dtype=float)[sample_idx]
-    sensitivity = np.asarray(model.sensitivity({"r": theta})["input"], dtype=float)[sample_idx, 0]
+    S = np.asarray(model.sensitivity({"r": theta})["input"], dtype=float)[sample_idx, :]
+    sensitivity = S[:, 0]
     observed, base, sensitivity = validation.oracle(observed, base, sensitivity, min_horizon, max_horizon)
     baseline_hourly = np.asarray(forecast["O"], dtype=float)[sample_idx]
 
@@ -130,27 +134,31 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
     components = [{"day": day, "baseline": baseline_name, "training_weekdays": n_weekdays, "hour": h,
                    "time": day+pd.Timedelta(hours=h), "observed": float(observed[h]),
                    "baseline_value": float(baseline_hourly[h]), "price": float(forecast["U"][sample_idx[h]]),
-                   "prediction_at_F0_zero": float(base[h]), "sensitivity_F0": float(sensitivity[h])}
+                   "prediction_at_F0_zero": float(base[h]), "sensitivity_F0": float(sensitivity[h]),
+                   "prediction_at_initial_zero": float(base[h]), "sensitivity_R0": float(S[h, 1])}
                   for h in range(HOURS)]
 
-    # The model is affine in F0 for fixed R0/theta; solve each truncated oracle
-    # exactly via prefix sums, rather than refitting theta for each horizon.
-    numerator = np.cumsum(sensitivity*(observed-base))
-    denominator = np.cumsum(sensitivity**2)
-    scores = []
-    for horizon in range(min_horizon, max_horizon+1):
-        den = float(denominator[horizon-1])
-        oracle = float(np.clip(numerator[horizon-1]/den, -1.0, 1.0)) if den > 1e-28 else 0.0
-        predicted = base[:horizon]+oracle*sensitivity[:horizon]
-        score = metrics(observed[:horizon], predicted)
-        bscore = metrics(observed[:horizon], baseline_hourly[:horizon])
+    # For fixed theta the complete trajectory is affine in [F0,R0],
+    # hence each horizon-specific target-day oracle is a globally solved
+    # box-constrained two-variable convex QP.
+    scores=[]
+    for horizon in range(min_horizon,max_horizon+1):
+        desired=observed[:horizon]-base[:horizon]
+        initial=np.asarray(model._least_squares_qp(
+            S[:horizon],desired,lb=np.array([-1.,-1.]),ub=np.array([1.,1.]),
+            ridge=model._FIT_RIDGE),dtype=float)
+        predicted=base[:horizon]+S[:horizon]@initial
+        score=metrics(observed[:horizon],predicted)
+        bscore=metrics(observed[:horizon],baseline_hourly[:horizon])
         scores.append({
-            "day": day, "baseline": baseline_name, "training_weekdays": n_weekdays, "horizon_hours": horizon,
-            **coeffs, "oracle_F0": oracle, "historical_R0": R0,
-            "oracle_sensitivity_norm": float(np.sqrt(den)),
-            "rmse": score["rmse"], "mse": score["mse"], "mae": score["mae"], "bias": score["bias"],
-            "baseline_rmse": bscore["rmse"], "baseline_mse": bscore["mse"],
-            "rmse_gain": bscore["rmse"]-score["rmse"],
+            "day":day,"baseline":baseline_name,"training_weekdays":n_weekdays,
+            "horizon_hours":horizon,**coeffs,
+            "oracle_F0":float(initial[0]),"oracle_R0":float(initial[1]),
+            "historical_R0":R0,
+            "oracle_sensitivity_norm":float(np.linalg.norm(S[:horizon])),
+            "rmse":score["rmse"],"mse":score["mse"],"mae":score["mae"],"bias":score["bias"],
+            "baseline_rmse":bscore["rmse"],"baseline_mse":bscore["mse"],
+            "rmse_gain":bscore["rmse"]-score["rmse"],
         })
     return fit_row, scores, components, states
 
@@ -290,7 +298,7 @@ def save_horizon_curves(ranking, output):
         data = ranking.loc[ranking["baseline"] == name].sort_values("horizon_hours")
         for n, subset in data.groupby("training_weekdays"):
             ax.plot(subset["horizon_hours"], subset["aggregate_rmse"], label=f"{n} weekdays")
-        ax.set_ylabel("Pooled oracle-F0 RMSE"); ax.set_title(name)
+        ax.set_ylabel("Pooled full-state oracle RMSE"); ax.set_title(name)
         ax.grid(alpha=0.25); ax.legend(ncol=5, fontsize=8)
     axes[-1, 0].set_xlabel("Prediction horizon (hours)")
     fig.suptitle("WM4 oracle prediction quality by historical weekdays and baseline")
@@ -366,7 +374,7 @@ def print_report(top, ranking, common, tables, basis, output):
               f"[F={subset['theta_F'].mean():.6f}, R={subset['theta_R'].mean():.6f}, U={subset['theta_U'].mean():.6f}] "
               f"(std [{subset['theta_F'].std():.6f}, {subset['theta_R'].std():.6f}, {subset['theta_U'].std():.6f}])")
     print(f"\nSaved results and plots: {output}")
-    print("WARNING: prediction F0 uses the target horizon's future observations: retrospective oracle, not live forecasting.")
+    print("WARNING: prediction [F0,R0] uses the target horizon's future observations: retrospective oracle, not live forecasting.")
     print("Ranking across different horizon lengths compares different forecasting tasks; best_by_horizon.csv compares N at fixed H.")
 
 
@@ -454,7 +462,7 @@ def run(args):
 
 
 def main():
-    parser = ArgumentParser(description="WM4 oracle F0 sweep over N=2..10 matching weekdays and H=6..24h.")
+    parser = ArgumentParser(description="WM4 full-state oracle sweep over N=2..10 matching weekdays and H=6..24h.")
     parser.add_argument("--group", choices=("MED", "ALL"), default="MED")
     parser.add_argument("--baselines", nargs="+", choices=BASELINE_NAMES, default=list(BASELINE_NAMES),
                         help="Baseline methods; default all three: statistical_output weekly_average weekly_temperature.")
