@@ -214,8 +214,8 @@ def cumulative_rmse_by_origin(hourly):
     """Pooled prefix RMSE after 1..7 forecast hours for each of 18 origins.
 
     Each prefix is evaluated on the SAME historical cohort of target days
-    and the SAME seven-hour oracle F0 as the entire seven-hour interval.
-    F0 is not reoptimized at each prefix, to preserve the interpretation
+    and the SAME jointly optimized seven-hour [F0,R0] state as the entire interval.
+    The initial state is not reoptimized at each prefix, preserving the interpretation
     as accumulation of a single seven-hour forecast.
     """
     if hourly.empty: raise ValueError("No hourly origin predictions for cumulative RMSE.")
