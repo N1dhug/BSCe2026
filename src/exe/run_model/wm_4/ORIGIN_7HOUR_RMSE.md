@@ -22,6 +22,36 @@ and all seven hours:
 This is NOT the mean of the daily RMSE values. The mean and median
 daily RMSE are also recorded separately.
 
+## Cumulative seven-hour evolution in 18 full-day-aligned panels
+
+There are **18**, rather than 17, distinct integer starting origins
+0,...,17 inclusive. Each has seven observations at hours o,...,o+6,
+so the physical prediction interval is [o,o+7), with the last
+interval [17,24). The single 6-by-3 figure
+origin_cumulative_rmse_panels.png shows **one panel per origin**.
+
+For origin o and elapsed observation count h=1,...,7:
+
+    cumulative_RMSE(o,h) =
+        sqrt(sum_{days d} sum_{j=0}^{h-1}
+             (prediction[d,o+j] - observed[d,o+j])^2 / (N*h))
+
+This uses the SAME seven-hour oracle F0 for all seven cumulative
+prefixes of a given (day, origin); it does not refit F0 at
+h=1,2,...,7. Otherwise, each point would represent a different
+optimized forecast rather than accumulated errors from one forecast.
+The final h=7 point equals the original aggregate RMSE for origin o.
+
+Each panel displays the full 00–24 clock, highlights and fills
+the corresponding seven-hour interval from start o to end o+7,
+and uses the SAME global y-axis limits, computed from all WM4
+and baseline cumulative RMSE values across all origins.
+
+Within each one-hour bin the step height is the pooled cumulative
+RMSE after the corresponding observed hour; the final step ends
+at o+7. Because this is an average of squared errors, the
+cumulative RMSE need not increase monotonically with h.
+
 ## Parameter fitting and initial states
 
 For each prediction day:
@@ -86,15 +116,21 @@ By default:
 - origin_aggregate_rmse.csv: the requested **18-point aggregate RMSE
   series**, baseline RMSE, gain, bias, and daily RMSE quantiles.
 - origin_lead_rmse.csv: pooled lead-hour RMSE by origin, an 18 x 7 grid.
+- origin_cumulative_rmse.csv: exact 18 x 7 pooled cumulative RMSE
+  trajectories after 1,...,7 observed hours, baseline included,
+  with each point mapped to its absolute end-of-hour clock time.
 - origin_aggregate_rmse.png: principal WM4-versus-baseline RMSE plot,
   x-axis origin hours 00–17.
 - origin_rmse_quantiles.png: aggregate RMSE and cross-day 20–80% spread.
 - origin_lead_rmse_heatmap.png: pooled RMSE for each origin/lead-hour pair.
+- origin_cumulative_rmse_panels.png: 18 panels across a common 24-hour
+  x-axis, with the respective seven-hour interval shaded under
+  the cumulative RMSE curve and identical y-axis limits.
 - skipped_days.csv: dates excluded for incomplete target or historical
   input, infeasible fitting, or failed consistency checks.
 - configuration.json: settings used for resume verification.
 
-All plotted origins share the same set of complete evaluation dates;
+All plotted origins and their seven cumulative steps share the same set of complete evaluation dates;
 incomplete target days are excluded as a whole. For additional confidence,
 use --from-oracle: origin 00 must reproduce the original 91-day
 seven-hour RMSE (approximately 0.07896767) if the source input files
