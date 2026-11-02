@@ -84,6 +84,54 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         truth = np.array([row["observed"] for row in component[:6]])
         self.assertAlmostEqual(np.sqrt(np.mean((forecast-truth)**2)), first["rmse"])
 
+    def test_expanded_fourteen_weekdays_and_one_to_twentyfour_hours(self):
+        frame=self.sample_frame()
+        # Need 14 complete weekly lookbacks, equivalent to 98 days.
+        extended=pd.date_range("2022-01-01",periods=24*150,freq="h")
+        hours=extended.hour.to_numpy(dtype=float)
+        days=np.arange(len(extended),dtype=float)/24
+        frame=pd.DataFrame({
+            "I":.5+.08*np.cos(2*np.pi*hours/24)+.03*np.cos(days/3),
+            "U":.25*np.sin(2*np.pi*hours/24+days/2),
+            "Temp":5+5*np.cos(days/7),
+        },index=extended)
+        day=pd.Timestamp("2022-05-21")
+        history=historical_weekdays(day,14)
+        self.assertEqual(len(history),14)
+        self.assertEqual(history[0],day-pd.Timedelta(weeks=14))
+        validation=sweep_weekday_horizon_validation()
+        self.assertEqual(validation.training_data(frame,history).shape,(14,24))
+        with patch("src.exe.run_model.wm_4.sweep_weekday_horizon.joint_qp_params",fake_joint_fitter):
+            fit,scores,components,states=evaluate_configuration(
+                frame,day,14,4,1,24,"weekly_average")
+        self.assertEqual(len(scores),24)
+        self.assertEqual(len(components),24)
+        self.assertEqual(len(states),14)
+        self.assertEqual(scores[0]["horizon_hours"],1)
+        self.assertEqual(scores[-1]["horizon_hours"],24)
+        self.assertEqual(scores[0]["oracle_state_design_rank"],1)
+        self.assertEqual(scores[0]["oracle_state_observations"],1)
+        self.assertAlmostEqual(scores[0]["rmse"],0.0,delta=2e-5)
+        self.assertTrue(all(-1<=row["oracle_F0"]<=1 and -1<=row["oracle_R0"]<=1
+                            for row in scores))
+        self.assertTrue(all(np.isfinite(row["rmse"]) for row in scores))
+        self.assertEqual(fit["baseline_samples"],14*24)
+
+    def test_expanded_range_validation_rejects_out_of_bounds(self):
+        from types import SimpleNamespace
+        good=SimpleNamespace(group="MED",baselines=list(BASELINE_NAMES),
+                             min_weekdays=2,max_weekdays=14,
+                             min_horizon=1,max_horizon=24,
+                             steps_per_hour=4,max_days=0,progress_every=1,
+                             start_day=None,end_day=None)
+        sweep_weekday_horizon_validation.arguments(good)
+        for name,value in (("min_weekdays",1),("max_weekdays",15),
+                           ("min_horizon",0),("max_horizon",25)):
+            data=vars(good).copy()
+            data[name]=value
+            with self.subTest(name=name),self.assertRaises(ValueError):
+                sweep_weekday_horizon_validation.arguments(SimpleNamespace(**data))
+
     def test_pooled_ranking_uses_mse_and_requires_matched_days(self):
         days = pd.to_datetime(["2022-03-12", "2022-03-13", "2022-03-14"])
         fits = pd.DataFrame([{"day": day, "training_weekdays": n}
