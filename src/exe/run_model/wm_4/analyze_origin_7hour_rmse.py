@@ -144,6 +144,8 @@ def check_scores(daily, hourly):
         raise ValueError("Invalid lead hours.")
     if not np.isfinite(d[["rmse","mse","baseline_mse"]].to_numpy(dtype=float)).all():
         raise ValueError("Nonfinite saved performance.")
+    if not np.isfinite(h[["error","baseline_error"]].to_numpy(dtype=float)).all():
+        raise ValueError("Nonfinite hourly residuals.")
     for (day,origin),grp in h.groupby(["day","origin_hour"]):
         mse = float(np.mean(grp["error"].to_numpy(dtype=float)**2))
         ref = d.loc[(d["day"]==day)&(d["origin_hour"]==origin),"mse"].iloc[0]
@@ -243,8 +245,8 @@ def report(output):
 
 def save_rows(output,daily,hourly,skipped):
     output=Path(output);output.mkdir(parents=True,exist_ok=True)
-    pd.DataFrame(daily).to_csv(output/FILES["daily"],index=False)
-    pd.DataFrame(hourly).to_csv(output/FILES["hourly"],index=False)
+    if daily: pd.DataFrame(daily).to_csv(output/FILES["daily"],index=False)
+    if hourly: pd.DataFrame(hourly).to_csv(output/FILES["hourly"],index=False)
     pd.DataFrame(skipped,columns=["day","reason"]).to_csv(output/FILES["fail"],index=False)
 
 
@@ -278,9 +280,11 @@ def run(args):
             raise ValueError("Resume configuration differs from saved settings.")
         dpath,hpath=output/FILES["daily"],output/FILES["hourly"]
         if dpath.is_file() and hpath.is_file():
-            daily=pd.read_csv(dpath,parse_dates=["day"]).to_dict("records")
-            hourly=pd.read_csv(hpath,parse_dates=["day","timestamp"]).to_dict("records")
-            done=set(pd.Timestamp(row["day"]) for row in daily)
+            previous=pd.read_csv(dpath,parse_dates=["day"])
+            previous_hourly=pd.read_csv(hpath,parse_dates=["day","timestamp"])
+            check_scores(previous,previous_hourly)
+            daily, hourly=previous.to_dict("records"),previous_hourly.to_dict("records")
+            done=set(previous["day"])
         else: daily,hourly,done=[],[],set()
         skipped=pd.read_csv(output/FILES["fail"],parse_dates=["day"]).to_dict("records") if (output/FILES["fail"]).is_file() else []
     else:
