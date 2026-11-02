@@ -15,7 +15,7 @@ hourly_predictions.csv from the default study location:
     files/output/wm_4/oracle_8weekday_7hour/med/weekly_temperature/
 
 The study also reads historical normalized hourly prices through
-group_frame("MED"). It outputs five figures and four CSV tables to
+group_frame("MED"). It outputs five figures and five CSV tables to
 the price_identification subfolder. Alternative source and output
 directories are available with --input and --output; choose --group ALL
 when analyzing the ALL consumer group.
@@ -41,7 +41,9 @@ mechanical and is not evidence of a price response.
 
 ## Tests and outputs
 
-A detectable nonzero coefficient is defined as theta_U < -1e-6.
+A detectable nonzero coefficient is defined as theta_U < -1e-6. The
+analysis separately plots detection rate by empirical historical
+normalized-price level quartiles and volatility quartiles.
 Near-zero solutions (|theta_U| <= 1e-6) are explicitly distinguished
 from positive coefficients beyond numerical tolerance.
 
@@ -63,6 +65,7 @@ Saved tables:
 - daily_price_identification.csv
 - historical_price_associations.csv
 - price_volatility_quartiles.csv
+- price_level_quartiles.csv
 - error_quartiles_price_activity.csv
 
 Saved plots:
