@@ -1,12 +1,12 @@
-"""WM4 N=8 matching weekdays / H=7h: pooled oracle RMSE by origin hour 0..17.
+"""WM4 N=8 matching weekdays / H=7h: fully optimized oracle RMSE by origin.
 
-Each forecast origin o uses observed evaluation hours o,...,o+6.
 The historical joint QP fits ONCE per day using eight earlier matching
-weekdays, regardless of origin. At each origin, R0 is the median of the
-eight historical residuals at that hour; oracle F0 is optimized afresh
-using only the seven target-hour observations in that origin's window.
+weekdays, regardless of origin. At every origin 00..17, BOTH F0 and R0
+are jointly optimized by the existing convex initial-state QP over the
+same seven target-hour observations. Historical median R0 is retained
+solely as a diagnostic, never fixed in the oracle.
 
-This is a retrospective oracle comparison, NOT a deployable forecast.
+This is a retrospective full-state oracle, NOT a deployable forecast.
 """
 from argparse import ArgumentParser
 from pathlib import Path
@@ -20,7 +20,7 @@ from src.exe.run_model.wm_4.moving_horizon_common import HOURS, group_frame, win
 from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays
 from src.exe.run_model.wm_4.sweep_weekday_horizon import BASELINE_NAMES, baseline_from_history
 from src.model.wm_4 import wm_4
-from src.params.wm_4 import joint_qp_params
+from src.params.wm_4 import joint_qp_params, optimized_qp_params
 from src.tools.impute_hourly import impute_hourly_days
 
 
@@ -32,20 +32,38 @@ FILES = {"daily": "origin_daily_metrics.csv", "hourly": "origin_hourly_predictio
          "fail": "skipped_days.csv"}
 
 
-def oracle_prediction(model, data, observed, theta, historical_r0, steps_per_hour):
-    """Exactly minimize the seven-observation SSE over F0 in [-1,1]."""
-    sph = int(steps_per_hour)
-    positions = np.arange(HORIZON, dtype=int)*sph
-    zero = model._solve_deterministic(
-        [0.0, historical_r0], data["U"], data["PE"], data["Time"], data["O"], theta)
-    base = np.asarray(zero["I"], dtype=float)[positions]
-    sensitivity = np.asarray(model.sensitivity({"r":theta})["input"], dtype=float)[positions, 0]
-    observed = np.asarray(observed, dtype=float)
-    if observed.shape != (HORIZON,) or not np.isfinite(np.r_[observed,base,sensitivity]).all():
-        raise ValueError("Seven-hour oracle requires seven finite observed and modeled demand values.")
-    denominator = float(sensitivity@sensitivity)
-    f0 = float(np.clip((sensitivity@(observed-base))/denominator,-1.0,1.0)) if denominator>1e-28 else 0.0
-    return f0, base+f0*sensitivity, np.asarray(data["O"])[positions], denominator
+def oracle_prediction(model, data, observed, theta, steps_per_hour):
+    """Joint globally optimal box-constrained [F0,R0] seven-hour oracle.
+
+    For fixed theta, the entire WM4 trajectory is affine in its initial
+    state. The existing optimized_qp_params class solves the resulting
+    convex two-parameter LS QP using the generic active-set optimizer.
+    """
+    sph=int(steps_per_hour)
+    positions=np.arange(HORIZON,dtype=int)*sph
+    observed=np.asarray(observed,dtype=float)
+    if observed.shape!=(HORIZON,) or not np.isfinite(observed).all():
+        raise ValueError("Seven-hour oracle requires seven finite target observations.")
+    input_data={name:np.asarray(data[name],dtype=float).copy()
+                for name in ("I","U","PE","Time","O")}
+    if any(value.shape!=(model.t_steps,) for value in input_data.values()):
+        raise ValueError("Origin oracle input trajectory does not match WM4 model resolution.")
+    # The seven hourly observations define the complete fitting objective;
+    # fine-grid interpolated I data must not count as extra observations.
+    mask=np.zeros(model.t_steps,dtype=bool)
+    mask[positions]=True
+    input_data["observation_mask"]=mask
+    input_data["transition_mask"]=np.ones(model.t_steps-1,dtype=bool)
+    if not np.allclose(input_data["I"][positions],observed,atol=1e-10,rtol=1e-10):
+        raise ValueError("Forecast observation labels disagree with the fine-grid target inputs.")
+    fit=optimized_qp_params(model).optimize_prediction_initial_state(
+        input_data,theta,f_bounds=(-1.0,1.0),r_bounds=(-1.0,1.0))
+    initial=np.asarray(fit["init_cond"],dtype=float)
+    predicted=np.asarray(fit["deterministic_state"]["I"],dtype=float)[positions]
+    baseline=np.asarray(input_data["O"],dtype=float)[positions]
+    if not np.allclose(np.mean((predicted-observed)**2),fit["loss"],atol=1e-12,rtol=1e-9):
+        raise RuntimeError("Full-state oracle score does not agree with optimized deterministic trajectory.")
+    return initial,predicted,baseline
 
 
 def evaluate_day(frame, day, steps_per_hour=4, baseline_name="weekly_temperature",
@@ -85,15 +103,17 @@ def evaluate_day(frame, day, steps_per_hour=4, baseline_name="weekly_temperature
         if any(len(value) != HORIZON*sph+1 for value in segment.values()):
             raise RuntimeError(f"Incomplete subday inputs at origin {origin}.")
         labels = np.asarray(observed[origin:origin+HORIZON],dtype=float)
-        f0, pred, baseline_pred, sensitivity_sq = oracle_prediction(
-            origin_model,segment,labels,theta,historic_r0,sph)
+        initial, pred, baseline_pred = oracle_prediction(
+            origin_model,segment,labels,theta,sph)
+        f0,r0=map(float,initial)
         score, bscore = metrics(labels,pred), metrics(labels,baseline_pred)
         record = {
             "day":day, "weekday":day.day_name(), "origin_hour":origin,
             "training_weekdays":TRAINING_WEEKDAYS, "horizon_hours":HORIZON,
             "baseline":baseline_name, "training_days":";".join(f"{d:%Y-%m-%d}" for d in history),
             "theta_F":float(theta[0]), "theta_U":float(theta[1]), "theta_R":float(theta[2]),
-            "historical_R0":historic_r0, "oracle_F0":f0, "oracle_sensitivity_norm":float(np.sqrt(sensitivity_sq)),
+            "historical_R0":historic_r0, "oracle_F0":f0, "oracle_R0":r0,
+            "oracle_R0_adjustment":r0-historic_r0,
             "rmse":score["rmse"],"mse":score["mse"],"mae":score["mae"],"bias":score["bias"],
             "baseline_rmse":bscore["rmse"],"baseline_mse":bscore["mse"],
             "rmse_gain":bscore["rmse"]-score["rmse"],"fit_qp_loss":fit_loss,
@@ -109,21 +129,26 @@ def evaluate_day(frame, day, steps_per_hour=4, baseline_name="weekly_temperature
                 "baseline_prediction":float(baseline_pred[lead]),
                 "error":float(pred[lead]-labels[lead]),
                 "baseline_error":float(baseline_pred[lead]-labels[lead]),
-                "oracle_F0":f0,"historical_R0":historic_r0,
+                "oracle_F0":f0,"oracle_R0":r0,"historical_R0":historic_r0,
             })
     if len(rows)!=len(ORIGINS) or len(hourly)!=len(ORIGINS)*HORIZON:
         raise RuntimeError("Origin evaluation did not return every required forecast window.")
     if reference is not None:
-        origin0 = rows[0]
-        if not np.isclose(origin0["rmse"],float(reference["rmse"]),atol=2e-7,rtol=1e-7):
-            raise RuntimeError("Origin 00 RMSE differs from saved seven-hour oracle: "
-                               f"{origin0['rmse']:.8f} vs {float(reference['rmse']):.8f}.")
+        # Saved N8/H7 benchmark optimizes ONLY F0 with R0 held at the
+        # historical median. The FULL initial-state oracle need not equal
+        # that result; it must perform at least as well when the historical
+        # median is admissible under the same [-1,1] box constraints.
+        origin0=rows[0]
+        prior_r0=float(reference["historical_R0"])
+        if (-1.0<=prior_r0<=1.0 and origin0["mse"]>float(reference["mse"])+2e-6):
+            raise RuntimeError("Full-state origin 00 oracle is worse than the old F0-only "
+                               f"oracle: {origin0['rmse']:.8f} vs {float(reference['rmse']):.8f}.")
     return rows,hourly
 
 
 def check_scores(daily, hourly):
     d,h = daily.copy(),hourly.copy()
-    required_d = {"day","origin_hour","rmse","mse","baseline_mse","oracle_F0","historical_R0"}
+    required_d = {"day","origin_hour","rmse","mse","baseline_mse","oracle_F0","oracle_R0","historical_R0"}
     required_h = {"day","origin_hour","lead_hour","error","baseline_error"}
     if not required_d.issubset(d) or not required_h.issubset(h):
         raise ValueError(f"Missing daily columns {sorted(required_d-set(d))} "
@@ -142,7 +167,7 @@ def check_scores(daily, hourly):
     if any(set(group["lead_hour"].astype(int))!=expected_h
            for _,group in h.groupby(["day","origin_hour"])):
         raise ValueError("Invalid lead hours.")
-    if not np.isfinite(d[["rmse","mse","baseline_mse"]].to_numpy(dtype=float)).all():
+    if not np.isfinite(d[["rmse","mse","baseline_mse","oracle_F0","oracle_R0"]].to_numpy(dtype=float)).all():
         raise ValueError("Nonfinite saved performance.")
     if not np.isfinite(h[["error","baseline_error"]].to_numpy(dtype=float)).all():
         raise ValueError("Nonfinite hourly residuals.")
@@ -324,7 +349,7 @@ def report(output):
     cumulative.to_csv(output/"origin_cumulative_rmse.csv",index=False)
     plot_results(aggregate,leads,output)
     plot_cumulative_rmse_panels(cumulative,output)
-    print(f"\nWM4: eight preceding corresponding weekdays, seven-hour oracle F0; "
+    print(f"\nWM4: eight preceding corresponding weekdays, seven-hour FULL-STATE oracle [F0,R0]; "
           f"{daily['day'].nunique()} matched days.")
     print("Each origin 00–17 predicts origin,...,origin+6; 18 origins per day.")
     print(aggregate[["origin_hour","last_prediction_hour","days","samples",
@@ -333,7 +358,7 @@ def report(output):
     print(f"\nBest origin by pooled oracle RMSE: "
           f"{int(aggregate.loc[aggregate['aggregate_rmse'].idxmin(),'origin_hour']):02d}:00")
     print(f"Saved individual forecasts, 18-origin cumulative RMSE table, and four plots: {output}")
-    print("WARNING: Each 7-hour F0 oracle uses all seven target observations; "
+    print("WARNING: Each 7-hour [F0,R0] oracle uses all seven target observations; "
           "these are NOT out-of-sample operational forecasts.")
     return aggregate
 
@@ -418,12 +443,12 @@ def run(args):
 
 
 def main():
-    parser=ArgumentParser(description="WM4 N8/H7: aggregate seven-hour oracle RMSE by origin 0..17.")
+    parser=ArgumentParser(description="WM4 N8/H7: aggregate seven-hour FULL initial-state oracle RMSE by origin 0..17.")
     parser.add_argument("--group",choices=("MED","ALL"),default="MED")
     parser.add_argument("--baseline",choices=BASELINE_NAMES,default="weekly_temperature")
     parser.add_argument("--steps-per-hour",type=int,default=4)
     parser.add_argument("--from-oracle",default=None,
-                        help="Optional saved N8/H7 oracle folder or daily_metrics.csv; reuse fitted theta/day cohort.")
+                        help="Optional saved legacy F0-only N8/H7 folder or daily_metrics.csv; reuse theta/day cohort, refit BOTH oracle initial states.")
     parser.add_argument("--start-day",default=None)
     parser.add_argument("--end-day",default=None)
     parser.add_argument("--max-days",type=int,default=0)
