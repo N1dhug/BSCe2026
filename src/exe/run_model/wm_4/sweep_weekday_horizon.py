@@ -502,17 +502,6 @@ def main():
     parser.add_argument("--report-only", action="store_true", help="Rebuild rankings/plots from existing saved results.")
     parser.add_argument("--fail-fast", action="store_true")
     args = parser.parse_args()
-    if args.report_only:
-        validation.arguments(args)
-        output = Path(args.output) if args.output else OUTPUT/args.group.lower()
-        metadata_file = output/"configuration.json"
-        if metadata_file.is_file():
-            settings = json.loads(metadata_file.read_text(encoding="utf-8"))
-            if settings.get("version") != EXPERIMENT_VERSION:
-                raise ValueError("Existing saved results predate missing-hour imputation. "
-                                 "Rerun the experiment without --report-only or use the old code to inspect old CSVs.")
-        return report_only(output, tuple(range(args.min_weekdays, args.max_weekdays+1)),
-                           args.max_horizon-args.min_horizon+1, tuple(args.baselines))
     return run(args)
 
 
