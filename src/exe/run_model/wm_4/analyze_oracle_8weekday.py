@@ -1,8 +1,8 @@
-"""WM4 oracle F0 diagnostics for N=8 corresponding weekdays and H=7 hours.
+"""WM4 full-state oracle [F0,R0] diagnostics, N=8 matching weekdays / H=7.
 
-One historical joint QP fit per prediction day; never optimize theta on the
-target day. F0 is an explicitly retrospective oracle fitted to H target hours.
-Supports fresh fits, loading an existing sweep, and replotting cached results.
+Historical theta is fitted only on preceding matching weekdays. Both F0/R0
+are optimized jointly on the seven TARGET observations using a convex QP.
+This is retrospective and must never be presented as an operational forecast.
 """
 from argparse import ArgumentParser
 from pathlib import Path
@@ -41,13 +41,14 @@ def reconstruct_hourly(daily, components, steps_per_hour, horizon=HORIZON):
     if len(subset) != horizon or not np.array_equal(subset["hour"].to_numpy(dtype=int), np.arange(horizon)):
         raise ValueError("Missing hourly forecast components.")
     theta_F, theta_R, theta_U = (float(daily[name]) for name in PARAMETERS)
-    F, R = float(daily["oracle_F0"]), float(daily["historical_R0"])
+    F, R = float(daily["oracle_F0"]), float(daily["oracle_R0"])
     dt = 1.0/(24*sph)
     result = []
     for part in subset.itertuples(index=False):
-        prediction = float(part.prediction_at_F0_zero)+float(daily["oracle_F0"])*float(part.sensitivity_F0)
+        prediction = (float(part.prediction_at_initial_zero)
+                      +F*float(part.sensitivity_F0)+R*float(part.sensitivity_R0))
         if not np.isclose(R, prediction-float(part.baseline_value), atol=1e-7, rtol=1e-7):
-            raise RuntimeError("Oracle-state reconstruction does not agree with saved WM4 prediction.")
+            raise RuntimeError("Full-state oracle trajectory does not agree with saved WM4 prediction.")
         U = float(part.price)
         cF, cR, cU = theta_F*F, theta_R*R, theta_U*U
         observed = float(part.observed)
@@ -93,7 +94,7 @@ def check_tables(daily, hourly):
     d = daily.copy()
     h = hourly.copy()
     required_daily = {"day", "baseline", "training_weekdays", "horizon_hours",
-                      "oracle_F0", "historical_R0", "rmse", "mse", "baseline_mse", *PARAMETERS}
+                      "oracle_F0", "oracle_R0", "historical_R0", "rmse", "mse", "baseline_mse", *PARAMETERS}
     required_hourly = {"day", "hour", "observed", "predicted", "baseline_prediction",
                        "error", "absolute_error", *CONTRIBUTIONS}
     if missing := required_daily-set(d.columns): raise ValueError(f"Missing daily columns: {sorted(missing)}")
@@ -168,7 +169,7 @@ def hac_test(values, lag=7):
 def parameter_tests(daily, lag):
     frame = daily.sort_values("day")
     rows, correlations = [], []
-    tested = [*PARAMETERS, "baseline_beta_C", "oracle_F0", "historical_R0",
+    tested = [*PARAMETERS, "baseline_beta_C", "oracle_F0", "oracle_R0", "historical_R0",
               "restoring_rms", "damping_rms", "price_rms"]
     for variable in tested:
         if variable not in frame: continue
@@ -240,7 +241,7 @@ def plot_quantiles(hour, cumulative, daily, output):
         ax.axhline(np.percentile(order["rmse"], q), linestyle="--", lw=1,
                    label=f"Q{q} = {np.percentile(order['rmse'], q):.4f}")
     ax.set_ylabel("Daily oracle RMSE"); ax.set_xlabel("Prediction date")
-    ax.set_title("Seven-hour oracle-F0 RMSE over the evaluation period")
+    ax.set_title("Seven-hour full-state oracle RMSE over the evaluation period")
     ax.legend(ncol=2, fontsize=8); ax.grid(alpha=.2)
     save_figure(fig, output, "daily_rmse_quintiles.png")
 
@@ -303,7 +304,7 @@ def plot_parameters(daily, stats, output):
 def plot_state_quantiles(daily, hourly, output):
     days = daily.sort_values("day")
     fig, axes = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
-    for ax, variable in zip(axes, ("oracle_F0", "historical_R0", "damping_ratio")):
+    for ax, variable in zip(axes, ("oracle_F0", "oracle_R0", "historical_R0")):
         if variable not in days: continue
         y = days[variable].to_numpy(dtype=float)
         ax.plot(days["day"], y, label=variable, lw=1)
@@ -311,7 +312,7 @@ def plot_state_quantiles(daily, hourly, output):
             ax.axhline(np.percentile(y, q), ls="--", lw=1, label=f"Q{q}")
         ax.set_ylabel(variable); ax.legend(ncol=4, fontsize=8); ax.grid(alpha=.2)
     axes[-1].set_xlabel("Prediction day")
-    fig.suptitle("Forecast initial states and damping ratio: empirical quantiles")
+    fig.suptitle("Forecast oracle F0/R0 versus historical median R0: empirical quantiles")
     save_figure(fig, output, "initial_states_and_damping_quintiles.png")
 
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -386,7 +387,7 @@ def plot_residuals(hourly, output):
 def print_report(daily, hourly, stats, tests, weekday_tests, output):
     errors = hourly["error"].to_numpy(dtype=float)
     baseline = hourly["baseline_error"].to_numpy(dtype=float)
-    print("\nWM4 fixed configuration: eight preceding corresponding weekdays; seven-hour oracle F0.")
+    print("\nWM4 fixed configuration: eight preceding corresponding weekdays; seven-hour FULL-STATE oracle [F0,R0].")
     print(f"Baseline: {daily['baseline'].iloc[0]} | evaluated days: {len(daily)} | samples: {len(errors)}")
     print(f"Aggregate oracle RMSE: {np.sqrt(np.mean(errors**2)):.8f} | "
           f"baseline RMSE: {np.sqrt(np.mean(baseline**2)):.8f}")
@@ -395,7 +396,7 @@ def print_report(daily, hourly, stats, tests, weekday_tests, output):
     print(daily["rmse"].describe(percentiles=[.2,.4,.5,.6,.8]).to_string(float_format=lambda x: f"{x:.8f}"))
     print("\nTheta, baseline heating coefficient, and state parameters (exploratory HAC mean tests):")
     columns = ["variable", "mean", "std", "q20", "q50", "q80", "hac_se", "p_value"]
-    print(stats.loc[stats["variable"].isin(PARAMETERS+("baseline_beta_C", "oracle_F0", "historical_R0")), columns]
+    print(stats.loc[stats["variable"].isin(PARAMETERS+("baseline_beta_C", "oracle_F0", "oracle_R0", "historical_R0")), columns]
           .to_string(index=False, float_format=lambda x: f"{x:.7f}"))
     print("\nRMS magnitude of actual restoring, damping and price contributions:")
     print(stats.loc[stats["variable"].isin(("restoring_rms", "damping_rms", "price_rms")), columns]
@@ -413,7 +414,7 @@ def print_report(daily, hourly, stats, tests, weekday_tests, output):
         print(f"Training missing-hour imputations across overlapping 8-week windows: "
               f"{int(daily['imputed_training_hours'].sum())}")
     print(f"\nSaved CSVs and figures: {output}")
-    print("NOTE: Forecast F0 is optimized using the seven future hourly observations.")
+    print("NOTE: Forecast F0 AND R0 are jointly optimized using seven future hourly observations.")
     print("HAC and weekday test p-values are exploratory: overlapping fitting windows and "
           "the oracle can invalidate naive independent-sample interpretations.")
     print("RMS contributions are descriptive nonnegative magnitudes: no zero-mean tests are reported for them.")
@@ -422,6 +423,9 @@ def print_report(daily, hourly, stats, tests, weekday_tests, output):
 def analyze(output):
     output = Path(output); output.mkdir(parents=True, exist_ok=True)
     daily = pd.read_csv(output/SAVED["daily"], parse_dates=["day"])
+    if "oracle_R0" not in daily:
+        raise ValueError("Cached report uses the old F0-only oracle. Re-run this executable "
+                         "or load a NEW full-state horizon sweep with --from-sweep.")
     hourly = pd.read_csv(output/SAVED["hourly"], parse_dates=["day", "time"])
     daily, hourly = check_tables(daily, hourly)
     q = quantile_table(daily, hourly)
@@ -469,6 +473,9 @@ def load_from_sweep(folder, baseline, output, steps_per_hour):
         if "baseline" not in tables[name]: raise ValueError(f"Sweep {filename} lacks baseline method identifiers.")
         tables[name] = tables[name].loc[(tables[name]["baseline"] == baseline) &
                                          (tables[name]["training_weekdays"] == N_WEEKDAYS)].copy()
+    if "oracle_R0" not in tables["score"] or "sensitivity_R0" not in tables["component"]:
+        raise ValueError("Saved sweep uses an obsolete F0-only oracle. Rerun the weekday-horizon "
+                         "sweep using the full-state [F0,R0] implementation.")
     scores = tables["score"].loc[tables["score"]["horizon_hours"] == HORIZON]
     fits = tables["fit"].drop_duplicates(["day"], keep="last").set_index("day")
     components = tables["component"].sort_values("hour").groupby("day")
