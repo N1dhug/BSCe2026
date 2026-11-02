@@ -46,7 +46,8 @@ def reconstruct_hourly(daily, components, steps_per_hour, horizon=HORIZON):
     result = []
     for part in subset.itertuples(index=False):
         prediction = (float(part.prediction_at_initial_zero)
-                      +F*float(part.sensitivity_F0)+R*float(part.sensitivity_R0))
+                      +float(daily["oracle_F0"])*float(part.sensitivity_F0)
+                      +float(daily["oracle_R0"])*float(part.sensitivity_R0))
         if not np.isclose(R, prediction-float(part.baseline_value), atol=1e-7, rtol=1e-7):
             raise RuntimeError("Full-state oracle trajectory does not agree with saved WM4 prediction.")
         U = float(part.price)
