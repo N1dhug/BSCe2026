@@ -1,7 +1,8 @@
 """Compare the 20 ordered fixed g(R)/h(U) pairs over 2-10 weekdays, 6-24h.
 
-Fixed bases preserve a convex joint rate-derivative QP. The oracle F0
-problem is nonlinear and is solved separately for every forecast horizon.
+Fixed bases preserve a convex historical rate-derivative QP. The full-state
+oracle [F0,R0] is nonconvex for nonlinear g(R), so a 2D grid/multi-start
+bounded numerical refinement is used per horizon (global not guaranteed).
 """
 from argparse import ArgumentParser
 from pathlib import Path
@@ -11,7 +12,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize_scalar
+from scipy.optimize import minimize
 
 from src.exe.run_model.wm_4.moving_horizon_common import HOURS, group_frame, window_data
 from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays
@@ -25,7 +26,7 @@ from src.tools.impute_hourly import impute_hourly_days
 
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT/"files"/"output"/"wm_4"/"fixed_response_sweep"
-VERSION = "fixed_g_h_joint_qp_oracle_v1"
+VERSION = "fixed_g_h_joint_qp_full_state_oracle_v2"
 QUANTILES = (20, 40, 50, 60, 80)
 
 
@@ -88,9 +89,12 @@ def prep(frame, day, n, baseline_name, steps_per_hour):
 
 
 def simulate_batch(f0_grid, r0, p, g, h, price, baseline, steps_per_hour):
-    """Exactly reproduce WM5/WM4 explicit Euler, batched over candidate F0."""
+    """Exactly reproduce WM5 explicit Euler for batched candidate [F0,R0]."""
     seeds = np.asarray(f0_grid, dtype=float).reshape(-1)
-    F, R = seeds.copy(), np.full(seeds.shape, float(r0), dtype=float)
+    starts_r=np.asarray(r0,dtype=float)
+    if starts_r.ndim>1 or (starts_r.ndim==1 and starts_r.size!=seeds.size):
+        raise ValueError("R0 seeds must be scalar or one value per F0 seed.")
+    F,R=seeds.copy(),np.broadcast_to(starts_r,seeds.shape).copy()
     dt = 1.0/(HOURS*steps_per_hour)
     n = len(price)
     if n != HOURS*steps_per_hour+1 or len(baseline) != n:
@@ -109,46 +113,56 @@ def simulate_batch(f0_grid, r0, p, g, h, price, baseline, steps_per_hour):
 
 
 def oracle_horizons(observed, prepared, p, g, h, first_horizon, last_horizon, grid_points=17):
-    """Bounded scalar oracle: global grid bracket + local bounded minimization.
+    """Jointly fit bounded oracle [F0,R0] for every H.
 
-    Unlike the linear WM4 model, nonlinear g makes I(F0) nonlinear.
-    No global minimizer is claimed; record coarse-grid and refined cost.
+    Nonlinear g(R) makes the two-state objective nonconvex, unlike linear
+    WM4. Global coarse 2D grid plus local L-BFGS-B refinement is a
+    numerical HEURISTIC, not a proof of the global minimizer.
     """
-    seeds = np.linspace(-1.0, 1.0, grid_points)
-    future, sph = prepared["future"], prepared["steps_per_hour"]
-    candidates = simulate_batch(seeds, prepared["R0"], p, g.value, h.value,
-                                future["U"], future["O"], sph)
-    costs = np.cumsum((candidates-np.asarray(observed)[None, :])**2, axis=1)
-    results = []
-    for horizon in range(first_horizon, last_horizon+1):
-        i = int(np.argmin(costs[:, horizon-1]))
-        lower, upper = seeds[max(0, i-1)], seeds[min(grid_points-1, i+1)]
-        best_f0, best_pred = float(seeds[i]), candidates[i, :horizon]
-        best_sse = float(costs[i, horizon-1])
-        def objective(f0):
-            predicted = simulate_batch([f0], prepared["R0"], p, g.value, h.value,
-                                       future["U"], future["O"], sph)[0, :horizon]
-            return float(np.sum((predicted-observed[:horizon])**2))
-        if lower < upper:
-            opt = minimize_scalar(objective, bounds=(float(lower), float(upper)),
-                                  method="bounded", options={"xatol": 2e-5, "maxiter": 45})
-            if opt.success and opt.fun < best_sse:
-                best_f0, best_sse = float(opt.x), float(opt.fun)
-        predictions = simulate_batch([best_f0], prepared["R0"], p, g.value, h.value,
-                                     future["U"], future["O"], sph)[0, :horizon]
-        residual = predictions-observed[:horizon]
-        baseline_error = prepared["base_hourly"][:horizon]-observed[:horizon]
+    n=int(grid_points)
+    if n<3: raise ValueError("At least three grid points per initial state are required.")
+    nodes=np.linspace(-1.0,1.0,n)
+    F0,R0=np.meshgrid(nodes,nodes,indexing="ij")
+    starts=np.column_stack((F0.ravel(),R0.ravel()))
+    future,sph=prepared["future"],prepared["steps_per_hour"]
+    observed=np.asarray(observed,dtype=float)
+    candidates=simulate_batch(starts[:,0],starts[:,1],p,g.value,h.value,
+                              future["U"],future["O"],sph)
+    costs=np.cumsum((candidates-observed[None,:])**2,axis=1)
+    results=[]
+    for horizon in range(first_horizon,last_horizon+1):
+        idx=int(np.argmin(costs[:,horizon-1]))
+        best=starts[idx].copy()
+        best_sse=float(costs[idx,horizon-1])
+        def objective(x):
+            pred=simulate_batch([x[0]],[x[1]],p,g.value,h.value,
+                                future["U"],future["O"],sph)[0,:horizon]
+            return float(np.sum((pred-observed[:horizon])**2))
+        # The best global-grid candidate is a guaranteed upper bound on the
+        # returned SSE; other local starts help detect nonconvex local minima.
+        initial_guesses=(best,np.array([0.,prepared["R0"]]),
+                         np.array([0.,0.]))
+        for start in initial_guesses:
+            opt=minimize(objective,start,method="L-BFGS-B",
+                         bounds=[(-1.,1.),(-1.,1.)],
+                         options={"maxiter":65,"ftol":1e-11})
+            if np.isfinite(opt.fun) and opt.fun<best_sse:
+                best,best_sse=np.asarray(opt.x,dtype=float),float(opt.fun)
+        predictions=simulate_batch([best[0]],[best[1]],p,g.value,h.value,
+                                   future["U"],future["O"],sph)[0,:horizon]
+        residual=predictions-observed[:horizon]
+        baseline_error=prepared["base_hourly"][:horizon]-observed[:horizon]
         results.append({
-            "horizon_hours": horizon, "oracle_F0": best_f0,
-            "mse": float(np.mean(residual**2)), "rmse": float(np.sqrt(np.mean(residual**2))),
-            "mae": float(np.mean(np.abs(residual))), "bias": float(np.mean(residual)),
-            "baseline_mse": float(np.mean(baseline_error**2)),
-            "baseline_rmse": float(np.sqrt(np.mean(baseline_error**2))),
-            "coarse_grid_sse": float(costs[i, horizon-1]),
-            "oracle_solver": f"bounded_grid_{grid_points}_plus_local",
+            "horizon_hours":horizon,"oracle_F0":float(best[0]),"oracle_R0":float(best[1]),
+            "mse":float(np.mean(residual**2)),"rmse":float(np.sqrt(np.mean(residual**2))),
+            "mae":float(np.mean(np.abs(residual))),"bias":float(np.mean(residual)),
+            "baseline_mse":float(np.mean(baseline_error**2)),
+            "baseline_rmse":float(np.sqrt(np.mean(baseline_error**2))),
+            "coarse_grid_sse":float(costs[idx,horizon-1]),
+            "oracle_solver":f"full_state_grid_{n}x{n}_plus_multistart_LBFGSB",
+            "global_optimum_certified":False,
         })
     return results
-
 
 def evaluate(prepared, day, n, g, h, first_horizon, last_horizon, grid_points=17):
     hist, future = prepared["historical"], prepared["future"]
@@ -158,7 +172,7 @@ def evaluate(prepared, day, n, g, h, first_horizon, last_horizon, grid_points=17
     result = joint_qp_params(model).fit_many(
         hist, f_bounds=(-1.0, 1.0), stabilize=True, enforce_path=True)
     p = result["coefficients"]                # [theta_F, theta_R, theta_U]
-    # The oracle is nonlinear in F0, even though the joint historical QP is convex.
+    # The joint historical QP is convex; the FULL [F0,R0] nonlinear-state oracle is not.
     horizons = oracle_horizons(prepared["observed"], prepared, p, g, h,
                               first_horizon, last_horizon, grid_points)
     timing = perf_counter()-started
@@ -295,6 +309,8 @@ def report(output, args):
     scores = load_csv(output/"horizon_scores.csv")
     fits = load_csv(output/"parameter_fits.csv")
     if scores.empty: raise RuntimeError("No successful fits or scores saved.")
+    if "oracle_R0" not in scores:
+        raise ValueError("Saved sweep used the obsolete F0-only oracle. Re-run with the full-state version.")
     scores = scores.drop_duplicates(["day","g_name","h_name","training_weekdays","horizon_hours"], keep="last")
     fits = fits.drop_duplicates(["day","g_name","h_name","training_weekdays"], keep="last")
     scores.to_csv(output/"horizon_scores.csv", index=False)
@@ -317,7 +333,7 @@ def report(output, args):
                    "days","aggregate_rmse","baseline_rmse","median_daily_rmse"]]
           .to_string(index=False, float_format=lambda x: f"{x:.6f}"))
     print(f"\nSaved full parameterizations, horizons, fit states and plots: {output}")
-    print("NOTE: H-specific oracle F0 uses target-day demand and is NOT a deployable forecast.")
+    print("NOTE: BOTH oracle F0/R0 use target-day demand; nonlinear optimization is NOT globally certified.")
     return winners
 
 
