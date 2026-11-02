@@ -352,9 +352,21 @@ def report(output):
     print(f"\nWM4: eight preceding corresponding weekdays, seven-hour FULL-STATE oracle [F0,R0]; "
           f"{daily['day'].nunique()} matched days.")
     print("Each origin 00–17 predicts origin,...,origin+6; 18 origins per day.")
+    print("Historical median R0 is a diagnostic only; BOTH oracle F0 and R0 are globally optimized.")
     print(aggregate[["origin_hour","last_prediction_hour","days","samples",
                      "aggregate_rmse","baseline_rmse","rmse_gain","median_daily_rmse"]]
           .to_string(index=False,float_format=lambda x:f"{x:.8f}"))
+    origin_state=daily.groupby("origin_hour").agg(
+        median_oracle_F0=("oracle_F0","median"),
+        median_oracle_R0=("oracle_R0","median"),
+        median_historical_R0=("historical_R0","median"),
+        mean_abs_R0_adjustment=("oracle_R0_adjustment",lambda x: float(np.mean(np.abs(x))))
+    ).reset_index()
+    origin_state.to_csv(output/"origin_initial_state_summary.csv",index=False)
+    print("\nOracle R0 versus historical R0 across origins:")
+    print(origin_state[["origin_hour","median_oracle_R0","median_historical_R0",
+                        "mean_abs_R0_adjustment"]]
+          .to_string(index=False,float_format=lambda x:f"{x:.6f}"))
     print(f"\nBest origin by pooled oracle RMSE: "
           f"{int(aggregate.loc[aggregate['aggregate_rmse'].idxmin(),'origin_hour']):02d}:00")
     print(f"Saved individual forecasts, 18-origin cumulative RMSE table, and four plots: {output}")
@@ -377,7 +389,7 @@ def run(args):
     if args.report_only: return report(output)
     config={"group":args.group,"baseline":args.baseline,"steps_per_hour":args.steps_per_hour,
             "N":TRAINING_WEEKDAYS,"H":HORIZON,"min_origin":ORIGINS[0],"max_origin":ORIGINS[-1],
-            "start_day":args.start_day,"end_day":args.end_day,
+            "oracle_initial_state":"joint_F0_R0", "start_day":args.start_day,"end_day":args.end_day,
             "from_oracle":str(args.from_oracle) if args.from_oracle else None}
     output.mkdir(parents=True,exist_ok=True)
     configuration=output/"configuration.json"
