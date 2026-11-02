@@ -104,7 +104,8 @@ class test_wm4_price_identification(unittest.TestCase):
             self.assertEqual(len(associations),2*len(PRICE_FEATURES))
             self.assertEqual(associations["period"].nunique(),1)
             for name in ("daily_price_identification.csv","historical_price_associations.csv",
-                         "price_volatility_quartiles.csv","error_quartiles_price_activity.csv",
+                         "price_volatility_quartiles.csv","price_level_quartiles.csv",
+                         "error_quartiles_price_activity.csv",
                          "historical_price_vs_coefficient.png","price_activation_by_quantiles.png",
                          "historical_vs_forecast_price_volatility.png",
                          "price_identification_and_error.png","price_activity_association_intervals.png"):
