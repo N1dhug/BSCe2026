@@ -36,8 +36,8 @@ For origin o and elapsed observation count h=1,...,7:
         sqrt(sum_{days d} sum_{j=0}^{h-1}
              (prediction[d,o+j] - observed[d,o+j])^2 / (N*h))
 
-This uses the SAME seven-hour oracle F0 for all seven cumulative
-prefixes of a given (day, origin); it does not refit F0 at
+This uses the SAME optimized seven-hour oracle [F0,R0] for all seven cumulative
+prefixes of a given (day, origin); it does not refit either state at
 h=1,2,...,7. Otherwise, each point would represent a different
 optimized forecast rather than accumulated errors from one forecast.
 The final h=7 point equals the original aggregate RMSE for origin o.
@@ -101,7 +101,7 @@ From repository root:
     python -m src.exe.run_model.wm_4.analyze_origin_7hour_rmse
 
 Reuse historical theta values from the already completed N8/H7
-91-day **F0-only oracle** experiment, preserving the same dates but
+91-day historical parameter-analysis experiment, preserving the same dates but
 **refitting both F0 and R0 at every origin**. Origin 00 can have
 lower RMSE than the old 0.07896767 fixed-R0 result; the two oracles
 are not directly identical:
