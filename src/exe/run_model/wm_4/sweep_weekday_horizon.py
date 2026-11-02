@@ -22,7 +22,7 @@ BASELINES = {"statistical_output": statistical_output, "weekly_average": weekly_
 BASELINE_NAMES = tuple(BASELINES)
 PERCENTILES = (20, 40, 50, 60, 80)
 RANKING_METRIC = "aggregate_rmse"  # Absolute pooled prediction error; never baseline-relative improvement.
-EXPERIMENT_VERSION = "3_baseline_matched_training_hourly_imputation_full_oracle_v3"
+EXPERIMENT_VERSION = "3_baseline_matched_training_hourly_imputation_full_oracle_v4_N14_H1"
 COLUMNS = {
     "fit": "parameter_estimates.csv",
     "score": "oracle_horizon_scores.csv",
@@ -37,8 +37,8 @@ class corresponding_weekday_baseline:
 
     def __init__(self, profiles):
         values = np.asarray(profiles, dtype=float)
-        if values.ndim != 2 or values.shape[1] != HOURS or not 2 <= len(values) <= 10:
-            raise ValueError("Baseline requires 2-10 complete corresponding weekday profiles.")
+        if values.ndim != 2 or values.shape[1] != HOURS or not 2 <= len(values) <= 14:
+            raise ValueError("Baseline requires 2-14 complete corresponding weekday profiles.")
         if not np.isfinite(values).all(): raise ValueError("Baseline training demand must be finite.")
         self.profile = np.mean(values, axis=0)
 
@@ -156,6 +156,8 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
             "oracle_F0":float(initial[0]),"oracle_R0":float(initial[1]),
             "historical_R0":R0,
             "oracle_sensitivity_norm":float(np.linalg.norm(S[:horizon])),
+            "oracle_state_design_rank":int(np.linalg.matrix_rank(S[:horizon])),
+            "oracle_state_observations":int(horizon),
             "rmse":score["rmse"],"mse":score["mse"],"mae":score["mae"],"bias":score["bias"],
             "baseline_rmse":bscore["rmse"],"baseline_mse":bscore["mse"],
             "rmse_gain":bscore["rmse"]-score["rmse"],
@@ -346,7 +348,7 @@ def save_top_three_plots(scores, top, common, output):
 
 def print_report(top, ranking, common, tables, basis, output):
     fits, scores = tables["fit"], tables["score"]
-    print("\nWM4 oracle-F0 historical-weekday / prediction-horizon sweep")
+    print("\nWM4 full-state [F0,R0] oracle historical-weekday / prediction-horizon sweep")
     print(f"completed parameter fits: {len(fits)} | horizon scores: {len(scores)} | failed/skipped: {len(tables['fail'])}")
     print(f"matched forecast days across ALL baseline methods and weekday counts: {len(common)}")
     print(f"evaluated baselines: {', '.join(sorted(fits['baseline'].unique()))}")
@@ -355,7 +357,7 @@ def print_report(top, ranking, common, tables, basis, output):
               "(summed across overlapping training windows; whole missing days remain excluded)")
     if basis != "matched":
         print("WARNING: no fully matched cohort; ranking uses differing available dates per combination.")
-    print("\nTHREE BEST COMBINATIONS (ranked by LOWEST ABSOLUTE aggregate oracle-F0 RMSE):")
+    print("\nTHREE BEST COMBINATIONS (ranked by LOWEST ABSOLUTE aggregate full-state oracle RMSE):")
     print("Baseline improvement is reported separately and NEVER used to determine ranking.")
     fields = ["rank", "baseline", "training_weekdays", "horizon_hours", "days", "aggregate_rmse",
               "baseline_rmse", "rmse_q20", "median_daily_rmse", "rmse_q80"]
@@ -376,6 +378,10 @@ def print_report(top, ranking, common, tables, basis, output):
     print(f"\nSaved results and plots: {output}")
     print("WARNING: prediction [F0,R0] uses the target horizon's future observations: retrospective oracle, not live forecasting.")
     print("Ranking across different horizon lengths compares different forecasting tasks; best_by_horizon.csv compares N at fixed H.")
+    print("CAUTION: H=1 uses only one target observation to fit TWO oracle initial states;")
+    print("its initial R0 can generally reproduce that observation exactly, so H=1 RMSE")
+    print("cannot measure model predictive skill. H=2 is also highly underdetermined/optimistic.")
+    print("Assess parameter backlog N at a FIXED meaningful H, preferably on held-out observations.")
 
 
 def report_only(output, weekdays, horizons, baselines=None):
@@ -466,13 +472,13 @@ def run(args):
 
 
 def main():
-    parser = ArgumentParser(description="WM4 full-state oracle sweep over N=2..10 matching weekdays and H=6..24h.")
+    parser = ArgumentParser(description="WM4 full-state oracle sweep over N=2..14 matching weekdays and H=1..24h.")
     parser.add_argument("--group", choices=("MED", "ALL"), default="MED")
     parser.add_argument("--baselines", nargs="+", choices=BASELINE_NAMES, default=list(BASELINE_NAMES),
                         help="Baseline methods; default all three: statistical_output weekly_average weekly_temperature.")
     parser.add_argument("--min-weekdays", type=int, default=2)
-    parser.add_argument("--max-weekdays", type=int, default=10)
-    parser.add_argument("--min-horizon", type=int, default=6)
+    parser.add_argument("--max-weekdays", type=int, default=14)
+    parser.add_argument("--min-horizon", type=int, default=1)
     parser.add_argument("--max-horizon", type=int, default=24)
     parser.add_argument("--steps-per-hour", type=int, default=4)
     parser.add_argument("--start-day", default=None)
