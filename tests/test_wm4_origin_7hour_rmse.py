@@ -33,23 +33,33 @@ class test_wm4_origin_7hour_rmse(unittest.TestCase):
         frame=pd.DataFrame(points,columns=["time","I","U","Temp"]).set_index("time").sort_index()
         return frame,day
 
-    def test_exact_oracle_f0_projection_and_no_origin_zero_sensitivity(self):
+    def test_exact_oracle_jointly_optimizes_f0_r0(self):
         sph=4
         model=wm_4((0.0,7/24),7*sph+1,lambda t:0.)
         times=np.arange(7*sph+1)/sph
         U=np.full(7*sph+1,0.13)
         O=np.full(7*sph+1,0.5)
         theta=np.array([-3.,-.2,-5.])
-        r0=-.02
-        f0_true=.18
-        actual=model._solve_deterministic([f0_true,r0],U,U,times,O,theta)
+        f0_true,r0_true=.18,-.02
+        actual=model._solve_deterministic([f0_true,r0_true],U,U,times,O,theta)
         observed=actual["I"][::sph][:HORIZON]
-        guess,pred,baseline,sensitivity=oracle_prediction(
-            model,{"U":U,"PE":U,"Time":times,"O":O},observed,theta,r0,sph)
-        self.assertGreater(sensitivity,0)
-        self.assertAlmostEqual(guess,f0_true,places=8)
-        np.testing.assert_allclose(pred,observed,atol=1e-12)
+        initial,pred,baseline=oracle_prediction(
+            model,{"I":actual["I"],"U":U,"PE":U,"Time":times,"O":O},
+            observed,theta,sph)
+        np.testing.assert_allclose(initial,[f0_true,r0_true],atol=1e-7)
+        np.testing.assert_allclose(pred,observed,atol=1e-9)
         np.testing.assert_allclose(baseline,np.full(HORIZON,.5))
+        # The previous F0-only oracle at an incorrect historical R0
+        # could not reproduce the first target hour. Optimizing R0 can.
+        wrong_r0=r0_true+.13
+        zero=model._solve_deterministic([0.0,wrong_r0],U,U,times,O,theta)
+        baseline_wrong=np.asarray(zero["I"])[::sph][:HORIZON]
+        sensitivity=model.sensitivity({"r":theta})["input"][::sph,0][:HORIZON]
+        fitted_f0=np.clip(sensitivity@(observed-baseline_wrong)/
+                          (sensitivity@sensitivity),-1.,1.)
+        previous=baseline_wrong+fitted_f0*sensitivity
+        self.assertGreater(np.mean((previous-observed)**2),1e-4)
+        self.assertLess(np.mean((pred-observed)**2),1e-15)
 
     def test_eighteen_independent_origin_oracles_with_one_daily_fit(self):
         frame,day=self.frame_and_day()
@@ -69,6 +79,11 @@ class test_wm4_origin_7hour_rmse(unittest.TestCase):
             fitted.return_value.fit_many.assert_called_once()
         self.assertEqual(len(daily),18)
         self.assertEqual(len(hourly),18*HORIZON)
+        self.assertTrue(all("oracle_R0" in row for row in daily))
+        self.assertTrue(all("oracle_R0" in row for row in hourly))
+        self.assertAlmostEqual(daily[0]["oracle_R0"],float(frame.at[day,"I"]-.5),
+                               delta=1e-7)
+        self.assertGreater(abs(daily[0]["oracle_R0"]-daily[0]["historical_R0"]),0)
         self.assertEqual(set(row["origin_hour"] for row in daily),set(ORIGINS))
         self.assertEqual(set(row["absolute_hour"] for row in hourly if row["origin_hour"]==17),
                          set(range(17,24)))
