@@ -498,6 +498,8 @@ def load_from_sweep(folder, baseline, output, steps_per_hour):
     write_results(output, daily_rows, hourly_rows, history, skipped)
     (output/"configuration.json").write_text(json.dumps({
         "mode": "from_sweep", "source": str(folder), "source_config": source_config,
+        "version": "wm4_n8_h7_full_state_oracle_v2",
+        "oracle_initial_state": "joint_F0_R0",
         "baseline": baseline, "N": N_WEEKDAYS, "H": HORIZON,
         "steps_per_hour": steps_per_hour}, indent=2, default=str), encoding="utf-8")
     return len(daily_rows)
@@ -505,7 +507,9 @@ def load_from_sweep(folder, baseline, output, steps_per_hour):
 
 def fit_all(args):
     output = Path(args.output)
-    config = {"baseline": args.baseline, "group": args.group, "N": N_WEEKDAYS,
+    config = {"version": "wm4_n8_h7_full_state_oracle_v2",
+              "oracle_initial_state": "joint_F0_R0",
+              "baseline": args.baseline, "group": args.group, "N": N_WEEKDAYS,
               "H": HORIZON, "steps_per_hour": args.steps_per_hour,
               "start_day": args.start_day, "end_day": args.end_day}
     settings = output/"configuration.json"
