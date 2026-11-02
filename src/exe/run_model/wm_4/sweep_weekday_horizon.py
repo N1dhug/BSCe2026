@@ -281,6 +281,7 @@ def write_outputs(tables, output, weekdays, horizons, baselines=BASELINE_NAMES):
 def save_heatmap(ranking, top, output, metric, filename, title):
     if ranking.empty: return
     pivot = ranking.pivot(index="training_weekdays", columns="horizon_hours", values=metric)
+    pivot = pivot.reindex(index=range(2, 15), columns=range(1, 25))
     fig, ax = plt.subplots(figsize=(16, 7))
     img = ax.imshow(pivot.to_numpy(dtype=float), origin="lower", aspect="auto", interpolation="nearest")
     fig.colorbar(img, ax=ax, label=metric.replace("_", " "))
