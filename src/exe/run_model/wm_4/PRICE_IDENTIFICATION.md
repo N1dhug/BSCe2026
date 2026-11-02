@@ -55,8 +55,10 @@ Overlapping eight-week historical fitting windows create serial
 dependence. Results include paired moving-block bootstrap 95%
 confidence intervals, approximate bootstrap-standard-error
 p-values, and Benjamini-Hochberg adjusted q-values across the
-10 tests. Default block size is 7 successive eligible evaluation
-records with 1000 bootstrap draws. Since evaluation dates can
+10 tests. Default block size is 28 successive eligible evaluation
+records with 1000 bootstrap draws (a compromise for overlapping
+historical windows, not a proof of valid coverage). Compare sensitivity
+with --block-size 7 and --block-size 56. Since evaluation dates can
 have gaps and price dynamics can be nonstationary, these
 intervals and p/q-values are exploratory approximations, not
 definitive hypothesis tests.
