@@ -76,8 +76,11 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         self.assertAlmostEqual(score[0]["rmse"], changed_scores[0]["rmse"])
         self.assertNotAlmostEqual(score[-1]["rmse"], changed_scores[-1]["rmse"])
         first = score[0]
-        forecast = np.array([row["prediction_at_F0_zero"]+
-                             first["oracle_F0"]*row["sensitivity_F0"] for row in component[:6]])
+        self.assertIn("oracle_R0",first)
+        self.assertAlmostEqual(score[0]["oracle_R0"],changed_scores[0]["oracle_R0"])
+        forecast = np.array([row["prediction_at_initial_zero"]+
+                             first["oracle_F0"]*row["sensitivity_F0"]+
+                             first["oracle_R0"]*row["sensitivity_R0"] for row in component[:6]])
         truth = np.array([row["observed"] for row in component[:6]])
         self.assertAlmostEqual(np.sqrt(np.mean((forecast-truth)**2)), first["rmse"])
 
