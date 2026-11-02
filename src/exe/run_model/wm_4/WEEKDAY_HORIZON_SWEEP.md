@@ -40,13 +40,13 @@ Baseline fitting and historical WM4 parameter fitting use the *same
 hourly-imputed historical rows*. The target prediction day's observed
 demand is **never imputed** or treated as a ground-truth score when
 missing: if a target day is incomplete, that configuration is skipped.
-This avoids manufacturing a better oracle-F0 prediction score from
+This avoids manufacturing a better full-state oracle prediction score from
 fabricated future demand. Baseline metadata and
 `parameter_estimates.csv` record the count of imputed historical
 hourly slots and imputation counts separately for I, U and Temp.
 
 The imputation update changes the experiment. Its configuration
-version is now `3_baseline_matched_training_hourly_imputation_v2`.
+version is now `3_baseline_matched_training_hourly_imputation_full_oracle_v3`.
 Do not combine these results with earlier, non-imputed CSVs.
 Start a fresh full run without `--resume`, or choose a new
 `--output` directory to preserve earlier results. After the updated
@@ -59,12 +59,14 @@ For each forecast day, N = 2,...,10 and H = 6,...,24:
 - Fit shared WM4 [theta_F,theta_U,theta_R] through its joint convex QP
   on the same N historical 24-hour trajectories, separately fitting
   each historical F0 (bounded preferred domain).
-- Choose forecast R0 as the median of N historical midnight deviations
-  I(00:00)-B(00:00) using that baseline; never target-day demand.
-- For each H, compute oracle F0 in [-1,1] using only the first H future
-  target demand observations, holding baseline, theta and R0 fixed.
-  H-specific F0 is solved by analytic linear sensitivity, not by an
-  additional parameter QP.
+- Compute the historical median R0 from the N preceding weekday midnight
+  residuals ONLY as a comparison diagnostic; do not fix it in the oracle.
+- For every forecast horizon H, jointly optimize BOTH oracle F0 and R0
+  over [-1,1]^2 against its H target demand observations. The trajectory
+  is affine in these initial states for fixed theta, so this separate
+  two-variable fit is a globally solvable convex QP using the existing
+  model._least_squares_qp/active_set solver. The historical theta fit
+  is unchanged and reused across all H.
 - Evaluate WM4 absolute prediction RMSE against the same baseline's
   RMSE. Baseline-relative skill is diagnostic, NEVER a ranking criterion.
 
@@ -74,8 +76,8 @@ so each date needs 27 fits rather than 513 fits.
 
 The same available forecast days are used for the ranking across all
 methods and N counts (earliest day for N=10 is 2022-03-12).
-All target observations are retrospective: **oracle F0 is not a deployable
-forecast estimate**, and temperature and price use observed target-day
+All target observations are retrospective: **oracle [F0,R0] is not a deployable
+forecast initial-state estimate**, and temperature and price use observed target-day
 series. The normalization is fitted to the historical full-year range.
 
 Ranking uses the **LOWEST ABSOLUTE pooled oracle WM4 prediction RMSE**:
@@ -130,11 +132,11 @@ Default output directory:
   and numbers of hourly training samples imputed for each signal.
 - historical_initial_states.csv: every historical [F0,R0] per
   baseline/day/N.
-- oracle_horizon_scores.csv: (forecast day, baseline, N, H), oracle F0,
+- oracle_horizon_scores.csv: (forecast day, baseline, N, H), BOTH oracle F0 and R0,
   absolute RMSE/MSE/MAE/bias and baseline comparison.
 - forecast_components.csv: exact hourly observed demand, baseline,
-  price, neutral-F0 forecast and sensitivity per baseline/day/N.
-  Reconstruct an H-specific prediction by adding oracle F0 times
+  price, zero-initial-state forecast and F0/R0 sensitivities per baseline/day/N.
+  Reconstruct each prediction from the zero-initial-state trajectory by adding oracle F0 and R0 times their respective sensitivities
   the sensitivity.
 - skipped_windows.csv: failed fit with the baseline and N.
 - ranking_all_available.csv, ranking_matched.csv, top_three.csv,
