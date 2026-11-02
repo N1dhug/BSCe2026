@@ -56,14 +56,17 @@ Defaults:
   All derivative-response features g(R),h(U) are fixed, and the
   structural, equilibrium, Euler stability, and reconstructed
   historical F-path constraints are linear. The QP remains convex.
-- Forecast R0 is the median of historical initial deviations.
-- Forecast F0 is optimized *separately for every H*, using the
-  first H target observations. Because nonlinear g makes the
-  prediction nonlinear in F0, its oracle objective is not generally
-  convex. We use an evenly spaced grid over F0 in [-1,1] to select
-  the best basin, followed by bounded scalar refinement around
-  the best grid candidate. The final prediction is never worse than
-  the best grid candidate; this is not a proof of a global optimum.
+- Historical median R0 is retained ONLY as a diagnostic,
+  never fixed during an oracle prediction.
+- Both forecast F0 AND R0 are optimized *jointly for every H* against
+  the first H target observations. Nonlinear g makes the nonlinear
+  initial-state problem potentially nonconvex, even though the
+  historical theta fit remains a convex QP.
+  The numerical oracle evaluates a 2D grid in [-1,1]^2, then performs
+  bounded multi-start L-BFGS-B refinement from the best grid state,
+  the historical-median seed, and the neutral seed. The final result
+  is never worse than the best grid candidate, but GLOBAL OPTIMALITY
+  IS NOT CERTIFIED. The output stores both oracle_F0 and oracle_R0.
 - Baseline/parameter fitting imputes only missing historical hours
   within existing days; fully missing historical days and missing
   target observation hours remain excluded.
@@ -98,7 +101,7 @@ head-to-head comparison.
 
 Across different forecast horizons the prediction tasks differ:
 a seven-hour oracle result should not be called a 24-hour forecast.
-Also, the forecast F0 oracle uses future target observations and
+Also, the forecast full [F0,R0] oracle uses future target observations and
 cannot be deployed as a real-time initial-state estimator.
 
 ## Commands
@@ -114,6 +117,9 @@ Smoke test, two dates and only N=8, with a separate output directory:
 Try a different baseline:
 
     python -m src.exe.run_model.wm_4.sweep_fixed_responses --baseline weekly_average
+
+Old F0-only sweep output is NOT compatible with the full-state
+version. Regenerate the sweep or write to a new output directory.
 
 Resume an interrupted run using identical settings:
 
@@ -139,7 +145,7 @@ By default all results are stored under:
   fitted historical F0 moments and imputation counts.
 - historical_states.csv — all per-training-day F0 and R0 estimates.
 - horizon_scores.csv — daily absolute scores, baseline comparison,
-  chosen oracle F0 and error metrics for every (g,h,N,H).
+  chosen oracle F0/R0, optimizer method, and error metrics for every (g,h,N,H).
 - skipped_fits.csv — unavailable days or other errors, with cause.
 - all_weekday_horizon_splits.csv — absolute aggregate RMSE and
   per-day RMSE quintiles for all 3420 configurations.
