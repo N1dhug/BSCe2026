@@ -16,7 +16,7 @@ from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekda
 
 
 ROOT = Path(__file__).resolve().parents[4]
-OUTPUT = ROOT / "files" / "output" / "wm_4" / "weekday_horizon_sweep_three_baselines"
+OUTPUT = ROOT / "files" / "output" / "wm_4" / "weekday_horizon_sweep_expanded"
 BASELINES = {"statistical_output": statistical_output, "weekly_average": weekly_average,
              "weekly_temperature": weekly_temperature}
 BASELINE_NAMES = tuple(BASELINES)
