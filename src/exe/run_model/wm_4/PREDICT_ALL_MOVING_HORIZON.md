@@ -1,4 +1,4 @@
-# WM4 Jan–End moving-horizon oracle-F0 study
+# WM4 Jan–End moving-horizon full-state oracle [F0,R0] study
 
 Run from the repository root:
 
@@ -45,15 +45,23 @@ the retrospectively observed exogenous series. Note that the 2022
 min/max input-price normalization uses the full period:
 this is a *retrospective* experiment.
 
-The forecast initial **R0 is not optimized**. It is approximated
-from the last pre-forecast observed residual: previous-day
-23:00 consumption minus the baseline at that timestamp.
+The observed residual from the last pre-forecast hour is recorded
+only as the historical **R0 comparison diagnostic**.
 
-The forecast initial **F0 is an oracle**: with historically
-estimated theta and fixed R0, F0 within [-1,1] minimizes all
-24 future hourly prediction errors using the exact linear
-initial-state sensitivity of the deterministic WM4 model.
-**It uses target observations and is not a deployable forecast.**
+For fixed historical theta, prediction demand is affine in **both**
+forecast initial-state components [F0,R0]. The full target-day
+retrospective oracle fits both components in [-1,1]^2 jointly
+using the existing globally solvable convex two-variable QP
+(src.params.wm_4.optimized_qp_params.optimize_prediction_initial_state).
+The historical theta QP remains unchanged, and no nonlinear
+optimization solver is introduced.
+
+The oracle uses all 24 target observations and is NOT a deployable
+forecast. The first-hour target observation can directly determine
+the fitted R0, which will lower the apparent first-hour error.
+
+Previously cached CSVs from F0-only evaluations must be recomputed;
+--report-only rejects stale output lacking oracle_R0.
 
 The earliest 35 calendar days cannot satisfy the five-prior-weekday
 restriction and appear as warm-up skips in skipped_days.csv.
@@ -64,7 +72,7 @@ Missing or incomplete later days have explicit skip reasons.
 Under files/output/wm_4/predict_all_moving_horizon/:
 
 - daily_metrics.csv: daily scores, baseline comparison, theta,
-  damping ratios, oracle F0, historical R0, training dates, rank and runtime.
+  damping ratios, oracle F0/R0, historical R0, training dates, rank and runtime.
 - hourly_predictions.csv: 24-hour prediction, baseline, observations,
   errors, model states and prices for each eligible day.
 - horizon_rmse_quintiles.csv: pooled per-hour RMSE, pooled cumulative
