@@ -389,7 +389,7 @@ def report_only(output, weekdays, horizons, baselines=None):
             chosen = top.loc[top["baseline"] == name]
             suffix = "" if name == "corresponding_weekday" else f"_{name}"
             save_heatmap(group, chosen, output, "aggregate_rmse",
-                         f"rmse_heatmap{suffix}.png", f"Pooled oracle-F0 RMSE — {name}")
+                         f"rmse_heatmap{suffix}.png", f"Pooled full-state oracle RMSE — {name}")
             save_heatmap(group, chosen, output, "baseline_improvement_pct",
                          f"baseline_skill_heatmap{suffix}.png", f"Baseline improvement (%) — {name}")
         save_horizon_curves(ranking, output)
@@ -413,6 +413,11 @@ def run(args):
         "baselines": list(baselines), "version": EXPERIMENT_VERSION,
     }
     info = output/"configuration.json"
+    if args.report_only:
+        if not info.is_file() or json.loads(info.read_text(encoding="utf-8")) != metadata:
+            raise ValueError("Cannot report: saved configuration is absent, obsolete or differs "
+                             "from the current full [F0,R0] oracle settings.")
+        return report_only(output, weekdays, horizons, baselines)
     if args.resume:
         if not info.exists(): raise ValueError("Cannot resume: configuration.json is missing.")
         if json.loads(info.read_text(encoding="utf-8")) != metadata:
@@ -421,7 +426,6 @@ def run(args):
         for file in list(COLUMNS.values()) + ["configuration.json"]:
             (output/file).unlink(missing_ok=True)
         info.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    if args.report_only: return report_only(output, weekdays, horizons, baselines)
 
     frame = group_frame(args.group)
     earliest = max(frame.index.min().normalize(), pd.Timestamp("2022-01-01"))
