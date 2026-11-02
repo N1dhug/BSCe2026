@@ -50,6 +50,7 @@ class test_wm4_oracle_8weekday(unittest.TestCase):
         fit, score, component, states = self.sample()
         daily, hourly, history = consolidate(fit, score, component, states, 4)
         self.assertEqual(len(hourly), 7)
+        self.assertIn("oracle_R0",daily)
         self.assertEqual(len(history), 8)
         self.assertAlmostEqual(np.sqrt(np.mean([h["error"]**2 for h in hourly])), daily["rmse"])
         for hour in hourly:
@@ -109,8 +110,9 @@ class test_wm4_oracle_8weekday(unittest.TestCase):
             daily, hourly, parameters = analyze(output)
             self.assertEqual(len(daily), 1)
             self.assertEqual(len(hourly), 7)
-            self.assertEqual(len(parameters), 9)
+            self.assertEqual(len(parameters), 10)
             self.assertIn("baseline_beta_C", set(parameters["variable"]))
+            self.assertIn("oracle_R0",set(parameters["variable"]))
             for name in ("forecast_error_quintiles.png", "theta_time_quantiles.png",
                          "contribution_hourly_quantiles.png", "prediction_demand_quintiles.png",
                          "daily_rmse_quintiles.png", "parameter_distribution_and_hac_tests.csv",
