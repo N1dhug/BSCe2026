@@ -48,8 +48,10 @@ hourly slots and imputation counts separately for I, U and Temp.
 The imputation update changes the experiment. Its configuration
 version is now `3_baseline_matched_training_hourly_imputation_full_oracle_v4_N14_H1`.
 Do not combine these results with earlier, non-imputed CSVs.
-Start a fresh full run without `--resume`, or choose a new
-`--output` directory to preserve earlier results. After the updated
+By default, the expanded sweep writes to the separate
+`weekday_horizon_sweep_expanded` output directory, preserving previous
+2–10 weekday / 6–24 hour outputs. Choose an explicit `--output`
+path for further experimental variants. After the updated
 run, `--report-only` can regenerate summary plots without refitting.
 
 For each forecast day, N = 2,...,14 and H = 1,...,24:
@@ -145,7 +147,7 @@ report-only run. Other controls: --steps-per-hour (default 4),
 
 Default output directory:
 
-    files/output/wm_4/weekday_horizon_sweep_three_baselines/med/
+    files/output/wm_4/weekday_horizon_sweep_expanded/med/
 
 - parameter_estimates.csv: (forecast day, baseline, N), fitted theta,
   damping, fit loss, rank, runtime, exact N historical dates, fitted
@@ -162,7 +164,8 @@ Default output directory:
   oracle F0 and R0 times their respective sensitivities.
 - skipped_windows.csv: failed fit with the baseline and N.
 - ranking_all_available.csv, ranking_matched.csv, top_three.csv,
-  best_by_horizon.csv, parameter_summary.csv.
+  top_three_h6plus.csv (excludes H=1–5), best_by_horizon.csv,
+  parameter_summary.csv.
 - rmse_heatmap_<baseline>.png, baseline_skill_heatmap_<baseline>.png
   (separate figures for all three methods).
 - rmse_by_horizon.png (three method panels with 9 N curves each).
