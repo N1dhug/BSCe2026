@@ -12,11 +12,12 @@ The full eligible January–October 2022 prediction period is used.
 Each day fits its own baseline to the N=8 preceding corresponding
 weekday 24-hour records, uses a single shared convex WM4 joint QP
 with separately estimated historical F0 values, and holds these theta
-coefficients fixed during the forecast. The forecast R0 is the median
-of historical midnight deviations. The forecast oracle F0 is computed
-using ONLY the seven target observations in the chosen horizon.
-Because F0 uses future demand, this is a retrospective oracle
-diagnostic, not an operational prediction.
+coefficients fixed during the forecast. Historical median R0 is
+retained only as a diagnostic. BOTH prediction F0 AND R0 are jointly
+optimized over [-1,1]^2 using the seven target observations in a
+separate globally solved convex two-variable QP (fixed theta).
+Because both initial states use future demand, this is a
+retrospective full-state oracle, not an operational prediction.
 
 Historical missing hours are imputed within observed calendar days;
 whole missing days are NEVER imputed and missing target-day demand
@@ -50,8 +51,8 @@ Optionally choose --group ALL, --baseline weekly_average or
 --baseline statistical_output. Output paths automatically separate
 groups and baselines. With --from-sweep, resolution must match the
 original source --steps-per-hour; the source configuration is saved
-to the output directory. Old sweep data may predate hourly imputation:
-for updated coverage, do a fresh fit.
+to the output directory. Old sweep data is INCOMPATIBLE when it has only an F0 oracle;
+rerun the weekday/horizon sweep with the full-state implementation.
 
 ## What gets tested
 
@@ -61,7 +62,7 @@ for updated coverage, do a fresh fit.
 - Daily error quantiles, parameter distributions and trends for
   theta_F, theta_R, theta_U and the fitted baseline heating coefficient
   (beta_C for weekly_temperature).
-- Oracle F0, historical R0 and damping ratio empirical quintiles.
+- Oracle F0, oracle R0, and historical R0 empirical quintiles.
 - Exploratory Bartlett HAC tests of nonzero mean parameters,
   Spearman rank tests of coefficient/error association, and
   Kruskal–Wallis weekday comparisons. These are descriptive checks,
@@ -75,7 +76,7 @@ for updated coverage, do a fresh fit.
 
 The contribution trajectories are reconstructed using the exact
 deterministic WM4 Euler recurrence and the recorded horizon-specific
-oracle F0. Reconstructed RMSE is checked against the original
+oracle [F0,R0]. Reconstructed RMSE is checked against the original
 fitted prediction score; mismatches cause an explicit error.
 
 ## Saved results
