@@ -170,16 +170,16 @@ def association_tests(table, *, block_size=7, draws=1000, seed=271828):
     return result
 
 
-def quartile_summary(table):
-    # Percentiles use the empirical distribution across observation days.
-    ranks = table["historical_price_std"].rank(method="average")
+def quartile_summary(table, feature="historical_price_std"):
+    # Quantile 1 has the lowest historical price level/volatility.
+    ranks = table[feature].rank(method="first")
     bins = pd.qcut(ranks, q=min(4,len(table)), labels=False, duplicates="drop")
-    grouped = table.assign(volatility_quantile=bins+1).groupby("volatility_quantile")
+    grouped = table.assign(price_quantile=bins+1).groupby("price_quantile")
     records = []
     for quantile, group in grouped:
         records.append({
-            "volatility_quantile": int(quantile), "days": len(group),
-            "historical_price_std_mean": float(group["historical_price_std"].mean()),
+            "price_quantile": int(quantile), "feature": feature, "days": len(group),
+            "feature_mean": float(group[feature].mean()),
             "price_active_fraction": float(group["price_active"].mean()),
             "theta_U_median": float(group["theta_U"].median()),
             "coefficient_strength_mean": float(group["price_coefficient_magnitude"].mean()),
@@ -199,40 +199,41 @@ def error_quartiles(table):
     ).reset_index()
 
 
-def plot_price_analysis(table, stats, volatility, errors, output):
+def plot_price_analysis(table, stats, volatility, level, errors, output):
     output = Path(output)
-    # 1. Response coefficient strength against training-price variation.
-    fig, axes = plt.subplots(1, 3, figsize=(16,5))
-    for ax, x, xlabel in zip(axes,
-                             ("historical_price_std", "historical_price_mean_abs",
-                              "historical_within_day_abs_change"),
-                             ("Historical U standard deviation", "Historical mean |U|",
+    # 1. Coefficient magnitude versus historical price level and variation.
+    fig, axes = plt.subplots(2, 2, figsize=(14,10))
+    for ax, x, xlabel in zip(axes.flat,
+                             ("historical_price_mean", "historical_price_std",
+                              "historical_price_mean_abs", "historical_within_day_abs_change"),
+                             ("Historical mean U (signed price level)",
+                              "Historical U standard deviation", "Historical mean |U|",
                               "Historical within-day mean |ΔU|")):
         for active, group in table.groupby("price_active"):
             ax.scatter(group[x], group["price_coefficient_magnitude"], alpha=.7, s=24,
                        label="θU negative" if active else "θU at boundary")
         ax.set_xlabel(xlabel); ax.set_ylabel("Fitted response magnitude −θU")
         ax.grid(alpha=.2)
-    axes[0].legend(fontsize=8)
-    fig.suptitle("Is historical normalized price variation associated with identifiable price response?")
+    axes.flat[0].legend(fontsize=8)
+    fig.suptitle("Historical price levels/variation versus fitted price-response magnitude")
     save_figure(fig, output, "historical_price_vs_coefficient.png")
 
     # 2. Training-price variation versus activity rate.
-    fig, axes = plt.subplots(1, 2, figsize=(12,5))
-    axes[0].plot(volatility["historical_price_std_mean"],volatility["price_active_fraction"],
-                 marker="o", label="Price response detected")
-    for row in volatility.itertuples(index=False):
-        axes[0].annotate(f"Q{row.volatility_quantile} (n={row.days})",
-                         (row.historical_price_std_mean,row.price_active_fraction),
-                         xytext=(4,5),textcoords="offset points", fontsize=8)
-    axes[0].set_xlabel("Mean historical price volatility, std(U)")
-    axes[0].set_ylabel("Fraction with θU < −1e−6")
-    axes[0].set_ylim(-.05,1.05); axes[0].grid(alpha=.2)
-    axes[1].bar(errors["error_quantile"],errors["price_active_fraction"])
-    axes[1].set_xlabel("Seven-hour oracle RMSE quartile (1 = lowest error)")
-    axes[1].set_ylabel("Fraction with θU < −1e−6")
-    axes[1].set_ylim(0,1);axes[1].grid(alpha=.2,axis="y")
-    fig.suptitle("Active price-response estimates by historical volatility and prediction error")
+    fig, axes = plt.subplots(1, 3, figsize=(18,5))
+    for ax, group, xlabel in ((axes[0],volatility,"Historical std(U)"),
+                              (axes[1],level,"Historical mean U (signed)")):
+        ax.plot(group["feature_mean"],group["price_active_fraction"],marker="o")
+        for row in group.itertuples(index=False):
+            ax.annotate(f"Q{row.price_quantile} (n={row.days})",
+                        (row.feature_mean,row.price_active_fraction),
+                        xytext=(4,5),textcoords="offset points", fontsize=8)
+        ax.set_xlabel(xlabel); ax.set_ylabel("Fraction with θU < −1e−6")
+        ax.set_ylim(-.05,1.05); ax.grid(alpha=.2)
+    axes[2].bar(errors["error_quantile"],errors["price_active_fraction"])
+    axes[2].set_xlabel("Seven-hour oracle RMSE quartile (1 = lowest error)")
+    axes[2].set_ylabel("Fraction with θU < −1e−6")
+    axes[2].set_ylim(0,1);axes[2].grid(alpha=.2,axis="y")
+    fig.suptitle("Active price-response estimates by historical variation, level, and oracle error")
     save_figure(fig,output,"price_activation_by_quantiles.png")
 
     # 3. Distinguish price variation in FITTING window from target horizon.
@@ -288,13 +289,15 @@ def analyze(input_dir, output_dir, group="MED", threshold=1e-6,
     frame = group_frame(group)
     result = price_summary(daily,hourly,frame,threshold)
     associations = association_tests(result,block_size=block_size,draws=draws,seed=seed)
-    volatility = quartile_summary(result)
+    volatility = quartile_summary(result, "historical_price_std")
+    level = quartile_summary(result, "historical_price_mean")
     errors = error_quartiles(result)
     result.to_csv(output_dir/"daily_price_identification.csv",index=False)
     associations.to_csv(output_dir/"historical_price_associations.csv",index=False)
     volatility.to_csv(output_dir/"price_volatility_quartiles.csv",index=False)
+    level.to_csv(output_dir/"price_level_quartiles.csv",index=False)
     errors.to_csv(output_dir/"error_quartiles_price_activity.csv",index=False)
-    plot_price_analysis(result,associations,volatility,errors,output_dir)
+    plot_price_analysis(result,associations,volatility,level,errors,output_dir)
     active=int(result["price_active"].sum())
     boundary=int(result["price_boundary"].sum())
     violation=int(result["price_positive_above_tolerance"].sum())
@@ -308,6 +311,8 @@ def analyze(input_dir, output_dir, group="MED", threshold=1e-6,
           .to_string(index=False,float_format=lambda x:f"{x:.5f}"))
     print("\nPrice effect detection by historical price-volatility quartile:")
     print(volatility.to_string(index=False,float_format=lambda x:f"{x:.5f}"))
+    print("\nPrice effect detection by historical mean normalized price quartile:")
+    print(level.to_string(index=False,float_format=lambda x:f"{x:.5f}"))
     print("\nPrice effect detection by seven-hour oracle-error quartile:")
     print(errors.to_string(index=False,float_format=lambda x:f"{x:.5f}"))
     print("\nInterpretation: θU is trained ONLY on historical days; target price and oracle RMSE are context.")
