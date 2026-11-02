@@ -112,6 +112,11 @@ A two-day smoke experiment (fresh QP fits):
 
     python -m src.exe.run_model.wm_4.analyze_origin_7hour_rmse --max-days 2 --output files/output/wm_4/origin_7hour_smoke
 
+Because previous executions stored only F0 oracles, existing
+origin-forecast CSV results MUST be regenerated; using --report-only
+on old output does NOT produce a full-state oracle. Use --from-oracle
+to reuse original theta while regenerating the forecast initial states.
+
 Resume an interrupted run with identical settings:
 
     python -m src.exe.run_model.wm_4.analyze_origin_7hour_rmse --resume
@@ -135,6 +140,8 @@ By default:
 - origin_aggregate_rmse.csv: the requested **18-point aggregate RMSE
   series**, baseline RMSE, gain, bias, and daily RMSE quantiles.
 - origin_lead_rmse.csv: pooled lead-hour RMSE by origin, an 18 x 7 grid.
+- origin_initial_state_summary.csv: median optimized F0/R0, historical
+  median R0, and mean absolute R0 correction for each of 18 origins.
 - origin_cumulative_rmse.csv: exact 18 x 7 pooled cumulative RMSE
   trajectories after 1,...,7 observed hours, baseline included,
   with each point mapped to its absolute end-of-hour clock time.
