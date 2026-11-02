@@ -30,7 +30,7 @@ class test_wm4_price_identification(unittest.TestCase):
                 "day": day, "baseline": "weekly_temperature",
                 "training_weekdays": 8, "horizon_hours": 7,
                 "training_days": ";".join(f"{date:%Y-%m-%d}" for date in history),
-                "oracle_F0": .1, "historical_R0": -.01,
+                "oracle_F0": .1, "oracle_R0": -.015, "historical_R0": -.01,
                 "rmse": .04+k*.002, "mse": (.04+k*.002)**2, "baseline_mse": .01,
                 "theta_F": -7.0, "theta_R": -7.0,
                 "theta_U": -strength if k%3 else 1e-9,
