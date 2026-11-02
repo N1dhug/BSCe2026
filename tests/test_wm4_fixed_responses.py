@@ -116,17 +116,33 @@ class test_wm4_fixed_responses(unittest.TestCase):
         functions=fixed_responses()
         g,h=functions["logarithmic"],functions["exponential"]
         F,R,U,O,theta,dt=self.generated(g,h)
-        observed=simulate_batch([.27],.02,theta,g.value,h.value,U,O,4)[0]
+        observed=simulate_batch([.27],[.19],theta,g.value,h.value,U,O,4)[0]
         prepared={"future":{"U":U,"O":O},"R0":.02,"steps_per_hour":4,
                   "base_hourly":np.full(24,.5)}
-        rows=oracle_horizons(observed,prepared,theta,g,h,6,24,grid_points=17)
+        rows=oracle_horizons(observed,prepared,theta,g,h,6,24,grid_points=7)
         self.assertEqual(len(rows),19)
         for row in rows:
             self.assertGreaterEqual(row["oracle_F0"],-1.0)
             self.assertLessEqual(row["oracle_F0"],1.0)
+            self.assertGreaterEqual(row["oracle_R0"],-1.0)
+            self.assertLessEqual(row["oracle_R0"],1.0)
+            self.assertFalse(row["global_optimum_certified"])
             self.assertLessEqual(row["mse"]*row["horizon_hours"],
                                  row["coarse_grid_sse"]+1e-9)
             self.assertLess(row["rmse"],1e-4)
+
+    def test_full_state_optimization_improves_fixed_wrong_r0(self):
+        functions=fixed_responses()
+        g,h=functions["polynomial_steep"],functions["exponential"]
+        F,R,U,O,theta,dt=self.generated(g,h)
+        observed=simulate_batch([.31],[-.15],theta,g.value,h.value,U,O,4)[0]
+        prepared={"future":{"U":U,"O":O},"R0":.3,
+                  "steps_per_hour":4,"base_hourly":np.full(24,.5)}
+        rows=oracle_horizons(observed,prepared,theta,g,h,7,7,grid_points=5)
+        self.assertEqual(len(rows),1)
+        self.assertAlmostEqual(rows[0]["oracle_R0"],-.15,delta=5e-3)
+        self.assertAlmostEqual(rows[0]["oracle_F0"],.31,delta=5e-3)
+        self.assertLess(rows[0]["mse"],1e-8)
 
     def test_rank_uses_lowest_absolute_error_and_best_split_per_pair(self):
         pairs=ordered_response_pairs()
