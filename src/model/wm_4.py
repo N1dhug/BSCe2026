@@ -1,7 +1,7 @@
 import numpy as np
 
 from src.model.base.wm import wm
-from src.params.wm_4 import brute_force_params, optimized_qp_params, qp_params
+from src.params.wm_4 import brute_force_params, numerical_params, optimized_qp_params, qp_params
 from src.solver.active_set import active_set
 from src.validation.model.wm_4 import wm_4_validation
 
@@ -166,7 +166,6 @@ class wm_4(wm):
     def fit_params_qp(self, input_data, initial_conditions, **kwargs): return qp_params(self).fit(input_data, initial_conditions, **kwargs)
 
     def fit_params_numerical(self, input_data, initial_conditions=None, **kwargs):
-        from src.params.fit_params_numerical import numerical_params
         return numerical_params(self).fit(input_data, initial_conditions, **kwargs)
 
     def fit_params_optimized_qp(self, input_data, initial_conditions, **kwargs): return optimized_qp_params(self).fit(input_data, initial_conditions, **kwargs)
