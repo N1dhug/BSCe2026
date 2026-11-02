@@ -145,6 +145,7 @@ class test_wm4_origin_7hour_rmse(unittest.TestCase):
             reported=report(output)
             self.assertEqual(len(reported),18)
             for name in ("origin_aggregate_rmse.csv","origin_lead_rmse.csv",
+                         "origin_initial_state_summary.csv",
                          "origin_cumulative_rmse.csv","origin_aggregate_rmse.png",
                          "origin_rmse_quantiles.png","origin_lead_rmse_heatmap.png",
                          "origin_cumulative_rmse_panels.png"):
