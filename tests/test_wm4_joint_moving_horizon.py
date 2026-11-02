@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays, horizon_analysis, oracle_f0, report_saved
+from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays, horizon_analysis, oracle_initial_state, report_saved
 from src.model.wm_4 import wm_4
 from src.params.wm_4 import joint_qp_params
 
@@ -49,7 +49,7 @@ class test_wm4_joint_moving_horizon(unittest.TestCase):
             self.assertGreaterEqual(np.min(reconstructed), -1.0-1e-6)
             self.assertLessEqual(np.max(reconstructed), 1.0+1e-6)
 
-    def test_oracle_f0_only_reconstructs_known_state(self):
+    def test_full_oracle_recovers_both_initial_state_components(self):
         sph, n = 3, 24*3+1
         tau = np.linspace(0, 1, n)
         U = 0.5*np.cos(4*np.pi*tau)
@@ -58,10 +58,13 @@ class test_wm4_joint_moving_horizon(unittest.TestCase):
         model = wm_4((0.0, 1.0), n, lambda t: 0.45)
         f0, r0 = 0.35, 0.07
         truth = model._solve_deterministic([f0, r0], U, U, tau*24, O, theta)
-        forecast = {"U": U, "PE": U, "Time": tau*24, "O": O}
-        observed = truth["I"][np.arange(24)*sph]
-        recovered, predicted = oracle_f0(model, forecast, observed, theta, r0, sph)
-        self.assertAlmostEqual(recovered, f0, places=7)
+        mask=np.zeros(n,dtype=bool)
+        mask[np.arange(24)*sph]=True
+        forecast={"I":truth["I"],"U":U,"PE":U,"Time":tau*24,"O":O,
+                  "observation_mask":mask}
+        observed=truth["I"][np.arange(24)*sph]
+        recovered,predicted=oracle_initial_state(model,forecast,theta,sph)
+        np.testing.assert_allclose(recovered,[f0,r0],atol=1e-7)
         np.testing.assert_allclose(predicted["I"][np.arange(24)*sph], observed, atol=1e-9)
 
     def test_report_only_from_saved_files_includes_median_theta(self):
@@ -72,7 +75,7 @@ class test_wm4_joint_moving_horizon(unittest.TestCase):
                  "theta_F": -0.4-i/10, "theta_R": -0.8-i/10, "theta_U": -0.1-i/20,
                  "design_rank": 8, "design_columns": 8, "damping_branch": "under",
                  "damping_ratio": 0.5, "fit_qp_loss": 0.01, "fit_seconds": 0.1,
-                 "mse": 0.01, "bias": 0.0} for i in (0, 1)])
+                 "mse": 0.01, "bias": 0.0,"oracle_F0":.02,"oracle_R0":-.01} for i in (0, 1)])
             hourly = pd.DataFrame({"error": [0.1, -0.1], "baseline_error": [0.2, -0.2]})
             daily.to_csv(output / "daily_metrics.csv", index=False)
             hourly.to_csv(output / "hourly_predictions.csv", index=False)
