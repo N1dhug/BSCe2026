@@ -262,6 +262,12 @@ def write_outputs(tables, output, weekdays, horizons, baselines=BASELINE_NAMES):
     top.insert(0, "rank", np.arange(1, len(top)+1))
     top.insert(1, "ranking_basis", basis)
     top.to_csv(output/"top_three.csv", index=False)
+    # Keep the full requested 1-24h ranking unchanged, but also report
+    # comparisons at H>=6 where a two-state oracle has more target
+    # observations than optimized degrees of freedom.
+    meaningful=ranking.loc[ranking["horizon_hours"]>=6].head(3).copy()
+    meaningful.insert(0,"rank",np.arange(1,len(meaningful)+1))
+    meaningful.to_csv(output/"top_three_h6plus.csv",index=False)
     best_by_horizon = ranking.sort_values([RANKING_METRIC, "baseline", "training_weekdays"]).drop_duplicates("horizon_hours").sort_values("horizon_hours")
     best_by_horizon.to_csv(output/"best_by_horizon.csv", index=False)
     parameters = tables["fit"].groupby(["baseline", "training_weekdays"])[
@@ -362,6 +368,11 @@ def print_report(top, ranking, common, tables, basis, output):
     fields = ["rank", "baseline", "training_weekdays", "horizon_hours", "days", "aggregate_rmse",
               "baseline_rmse", "rmse_q20", "median_daily_rmse", "rmse_q80"]
     print(top[fields].to_string(index=False, float_format=lambda x: f"{x:.6f}"))
+    nontrivial=ranking.loc[ranking["horizon_hours"]>=6].head(3).copy()
+    if len(nontrivial):
+        nontrivial.insert(0,"rank",np.arange(1,len(nontrivial)+1))
+        print("\nTOP THREE WITH H >= 6h (for comparison with the previous experiment):")
+        print(nontrivial[fields].to_string(index=False,float_format=lambda x:f"{x:.6f}"))
     print("\nBest absolute RMSE within each baseline method:")
     for name, subset in ranking.groupby("baseline"):
         best = subset.sort_values(RANKING_METRIC).iloc[0]
