@@ -11,10 +11,10 @@ class sweep_weekday_horizon_validation:
         choices = {"statistical_output", "weekly_average", "weekly_temperature"}
         if not names or len(set(names)) != len(names) or not set(names) <= choices:
             raise ValueError("Baselines must be unique and selected from the three supported methods.")
-        if not 2 <= args.min_weekdays <= args.max_weekdays <= 10:
-            raise ValueError("Weekday training counts must satisfy 2 <= min <= max <= 10.")
-        if not 6 <= args.min_horizon <= args.max_horizon <= 24:
-            raise ValueError("Forecast horizons must satisfy 6 <= min <= max <= 24.")
+        if not 2 <= args.min_weekdays <= args.max_weekdays <= 14:
+            raise ValueError("Weekday training counts must satisfy 2 <= min <= max <= 14.")
+        if not 1 <= args.min_horizon <= args.max_horizon <= 24:
+            raise ValueError("Forecast horizons must satisfy 1 <= min <= max <= 24.")
         if args.steps_per_hour < 2 or args.max_days < 0 or args.progress_every < 1:
             raise ValueError("steps_per_hour >=2, max_days >=0 and progress_every >=1 are required.")
         for label in ("start_day", "end_day"):
@@ -30,8 +30,8 @@ class sweep_weekday_horizon_validation:
     def training_data(frame, days):
         if not isinstance(frame, pd.DataFrame) or not {"I", "U", "Temp"} <= set(frame.columns):
             raise ValueError("Input frame needs I, U and Temp columns.")
-        if not isinstance(days, (list, tuple)) or not 2 <= len(days) <= 10:
-            raise ValueError("Training requires between 2 and 10 preceding matching weekdays.")
+        if not isinstance(days, (list, tuple)) or not 2 <= len(days) <= 14:
+            raise ValueError("Training requires between 2 and 14 preceding matching weekdays.")
         if len(set(pd.Timestamp(x) for x in days)) != len(days):
             raise ValueError("Training dates must be distinct.")
         blocks = []
@@ -58,14 +58,14 @@ class sweep_weekday_horizon_validation:
             raise ValueError("Oracle requires 24 hourly observations and matching predictions/sensitivities.")
         if not np.isfinite(np.r_[observed, base, sensitivity]).all():
             raise ValueError("Oracle inputs must be finite.")
-        if not 6 <= int(min_horizon) <= int(max_horizon) <= 24:
-            raise ValueError("Oracle horizons must lie between 6 and 24 hours.")
+        if not 1 <= int(min_horizon) <= int(max_horizon) <= 24:
+            raise ValueError("Oracle horizons must lie between 1 and 24 hours.")
         return observed, base, sensitivity
 
     @staticmethod
     def history(day, days):
         day = pd.Timestamp(day)
-        if len(days) < 2 or len(days) > 10 or any(pd.Timestamp(d) >= day for d in days):
+        if len(days) < 2 or len(days) > 14 or any(pd.Timestamp(d) >= day for d in days):
             raise ValueError("All training weekdays must precede the forecast origin.")
         if any(pd.Timestamp(d).dayofweek != day.dayofweek for d in days):
             raise ValueError("Historical training dates must match the forecast weekday.")
