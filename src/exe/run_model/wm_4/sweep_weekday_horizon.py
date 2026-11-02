@@ -283,7 +283,7 @@ def save_heatmap(ranking, top, output, metric, filename, title):
     pivot = ranking.pivot(index="training_weekdays", columns="horizon_hours", values=metric)
     pivot = pivot.reindex(index=range(2, 15), columns=range(1, 25))
     fig, ax = plt.subplots(figsize=(16, 7))
-    img = ax.imshow(pivot.to_numpy(dtype=float), origin="lower", aspect="auto", interpolation="nearest")
+    img = ax.imshow(np.ma.masked_invalid(pivot.to_numpy(dtype=float)), origin="lower", aspect="auto", interpolation="nearest")
     fig.colorbar(img, ax=ax, label=metric.replace("_", " "))
     ax.set_xticks(np.arange(len(pivot.columns)), pivot.columns)
     ax.set_yticks(np.arange(len(pivot.index)), pivot.index)
