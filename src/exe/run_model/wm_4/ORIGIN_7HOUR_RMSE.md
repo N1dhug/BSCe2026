@@ -63,20 +63,36 @@ For each prediction day:
    existing joint_qp_params.fit_many() and active_set solver.
    This joint parameter fit is performed **once per prediction day**,
    not once per origin hour.
-3. At each target origin hour, set R0 to the historical median of
-   I(origin_hour) - O(origin_hour) across those eight historical days.
-   This is origin-specific, but not fitted to target-day observations.
-4. Optimize that origin's F0 over [-1,1] analytically using its
-   seven target-hour observations (retrospective seven-hour oracle).
-5. Integrate the WM4 Euler dynamics from the new origin and score the
-   resulting seven-hour prediction, alongside the statistical baseline.
+3. At each target origin hour, calculate the median historical R0
+   from the eight historical days only as a **comparison diagnostic**.
+4. Jointly optimize BOTH the target origin's F0 and R0 in [-1,1]
+   against the same seven target-hour observations. This uses the
+   EXISTING src.params.wm_4.optimized_qp_params.optimize_prediction_initial_state
+   method, which constructs a globally solvable convex two-variable QP
+   for fixed theta and calls the existing active_set solver.
+5. Integrate the WM4 Euler dynamics from the fully optimized initial
+   state and score the seven-hour prediction, alongside the baseline.
+
+For fixed theta, forecast demand is affine in both initial-state
+components. Writing forecast = base + S_F*F0 + S_R*R0, the full oracle is
+
+    min_{-1<=F0,R0<=1} ||base+S_F*F0+S_R*R0-observed||^2
+
+This is a CONVEX QP and its globally optimal solution does NOT require
+refitting theta or changing the historical parameter QP.
 
 The experimental Euler time step is exactly the same as the original
 24-hour evaluation: dt=1/(24 * steps_per_hour) normalized days.
+The optimized oracle R0 is saved explicitly as oracle_R0, alongside
+the historical median R0 and oracle_R0_adjustment.
 
-Using the target's seven hours for the oracle F0 means the evaluated
-numbers are a **retrospective representational fit**, not a deployable
-out-of-sample forecasting score.
+At the first observation, I_hat=O+oracle_R0. Consequently, fitting
+oracle_R0 can remove the entire first-hour error if it lies inside
+[-1,1]. This is precisely why the old fixed-R0 plots were misleading.
+
+Using the target's seven hours for the oracle [F0,R0] means the
+evaluated numbers are a **retrospective representational fit**, not a
+deployable out-of-sample forecasting score.
 
 ## Run
 
@@ -84,10 +100,11 @@ From repository root:
 
     python -m src.exe.run_model.wm_4.analyze_origin_7hour_rmse
 
-Reuse historical parameter estimates from the already completed N8/H7
-91-day oracle experiment, preserving precisely the same days and
-theta values and checking that the new origin 00 result matches the
-saved seven-hour RMSE:
+Reuse historical theta values from the already completed N8/H7
+91-day **F0-only oracle** experiment, preserving the same dates but
+**refitting both F0 and R0 at every origin**. Origin 00 can have
+lower RMSE than the old 0.07896767 fixed-R0 result; the two oracles
+are not directly identical:
 
     python -m src.exe.run_model.wm_4.analyze_origin_7hour_rmse --from-oracle files/output/wm_4/oracle_8weekday_7hour/med/weekly_temperature
 
@@ -110,9 +127,11 @@ By default:
     files/output/wm_4/origin_7hour_rmse/med/weekly_temperature/
 
 - origin_daily_metrics.csv: 18 origin-specific score rows per
-  evaluation day, fitted parameters, historical R0 and oracle F0.
+  evaluation day, fitted parameters, historical R0, optimized oracle F0,
+  optimized oracle R0, and R0 adjustment.
 - origin_hourly_predictions.csv: individual prediction, observation,
-  baseline, and residual at every (day, origin, lead hour).
+  baseline, residual, optimized oracle F0 and optimized oracle R0
+  at every (day, origin, lead hour).
 - origin_aggregate_rmse.csv: the requested **18-point aggregate RMSE
   series**, baseline RMSE, gain, bias, and daily RMSE quantiles.
 - origin_lead_rmse.csv: pooled lead-hour RMSE by origin, an 18 x 7 grid.
@@ -132,9 +151,10 @@ By default:
 
 All plotted origins and their seven cumulative steps share the same set of complete evaluation dates;
 incomplete target days are excluded as a whole. For additional confidence,
-use --from-oracle: origin 00 must reproduce the original 91-day
-seven-hour RMSE (approximately 0.07896767) if the source input files
-are unchanged.
+use --from-oracle: origin 00 must not have WORSE oracle MSE than
+the original F0-only 91-day benchmark (approximately 0.07896767
+pooled RMSE) when the old historical R0 was inside [-1,1].
+The full-state oracle has a larger feasible set and may improve the score.
 
 Tests:
 
