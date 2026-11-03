@@ -50,15 +50,26 @@ not true out-of-sample performance.
 The executable saves exactly **one** PNG containing M prediction-only panels;
 the historical parameter-fitting days are never plotted.
 
-Every panel uses the previous single-interval plotter's display layout:
-a 24- or 25-hour demand context (black), historical baseline (orange dashed),
-and WM4 oracle prediction (red). The baseline and red model line are drawn
-**only** inside the k-hour prediction interval. The hour-of-day x-axis uses
-actual clock hours, wrapping to 00 at midnight. All panels share a y-axis
-scale, but each uses its origin's correct clock labels.
+Every panel now uses **the exact same x-axis limits, tick positions,
+tick labels, y-axis limits, and observed-demand background**. The shared
+timeline spans the union of the individual prediction contexts, including
+the earliest left margin and the latest right margin. On that common axis:
 
-For a k=12 prediction, the context includes 6 hours before and 6 hours
-after. For k=7, it includes 9 hours before and 9 hours after.
+- Black: the *same* observed-demand series, from the shared timeline.
+- Orange dashed: the baseline independently fitted at this origin, only
+  within its k-hour prediction interval.
+- Red: the WM4 oracle prediction, only within that same interval.
+- Light red: the current interval, shifted one hour right per panel.
+
+This makes the motion of the prediction origin and the re-estimated
+parameters visible without any axis recentering. Clock hours still use
+00–23 labels, with the calendar date printed at midnight so a timeline
+crossing days remains unambiguous.
+
+The union extends the individual plot windows that normally have six
+hours on each side for k=12, or nine hours on each side for k=7. For
+example, k=12 with nine hourly origins from 06:00 through 14:00 uses
+the same 00:00–08:00 (next day) axis in *every* panel.
 
 ## Outputs
 
