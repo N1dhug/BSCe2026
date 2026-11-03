@@ -71,6 +71,27 @@ does not demonstrate that either input improves out-of-sample
 prediction. Baseline performance comparisons are intentionally
 outside the scope of this script.
 
+## Terminal summaries
+
+Each run now prints the 24-hour and 168-hour raw and adjusted
+autocorrelations, matched-sample historical RMSE for each weekly lag,
+and the goodness-of-fit of **all three nested descriptive regressions**:
+
+- Weekday/hour fixed effects only.
+- Weekday/hour fixed effects plus heating-degree factor.
+- Weekday/hour fixed effects plus heating-degree factor and price.
+
+For each fit it reports the sample count, MSE, RMSE, MAE and R²
+relative to the unconditional demand mean. It also prints the
+temperature coefficient (with and without price adjustment),
+the conditional price coefficient, approximate HAC p-values and
+incremental in-sample MSE improvements.
+
+The same regression fit metrics are written to
+`dependence.json` and `summary.json` under `regression.fit_quality`.
+These are **in-sample explanatory fits**, not operational forecasts
+or out-of-sample prediction quality.
+
 ## Outputs
 
 Default directory:
