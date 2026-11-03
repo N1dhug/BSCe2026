@@ -66,84 +66,56 @@ class test_baseline_diagnostics(unittest.TestCase):
         self.assertTrue(len(daily)>100)
         self.assertTrue(np.isfinite(resid.to_numpy()).all())
 
-    def test_rolling_baselines_never_fit_target_observations(self):
+    def test_named_datetime_index_does_not_collide_with_groupby_columns(self):
         frame=self.frame()
-        period=frame.copy()
-        actual_fit=mod._fit_sparse_baseline
-        training_sets=[]
+        frame.index.name="Datetime"
+        profile=mod.weekday_profile(frame)
+        self.assertEqual(profile.columns.tolist(),
+                         ["weekday","hour","mean","std","count","weekday_name"])
+        self.assertEqual(len(profile),168)
+        self.assertEqual(profile["count"].sum(),len(frame))
+        self.assertEqual(profile[["weekday","hour"]].drop_duplicates().shape[0],168)
 
-        def checked_fit(training,B):
-            training_sets.append((training.copy(),B))
-            return actual_fit(training,B)
-
-        with patch.object(mod,"_fit_sparse_baseline",side_effect=checked_fit):
-            scores,rows,coverage=mod.rolling_baselines(
-                frame,period,backlogs=(2,),horizons=(6,),
-                stride=24,max_origins=4)
-
-        self.assertEqual(coverage["candidate_origins"],4)
-        self.assertEqual(len(scores),4*len(mod.BASELINES))
-        self.assertEqual(len(rows),4*len(mod.BASELINES)*6)
-        self.assertEqual(len(training_sets),4*len(mod.BASELINES))
-        self.assertTrue((scores["train_samples"]==2*6).all())
-        for training,_ in training_sets:
-            self.assertEqual(len(training),12)
-            self.assertEqual(len(training.index.unique()),12)
-            self.assertEqual(training.index.hour.nunique(),6)
-            self.assertTrue(np.isfinite(training.to_numpy(dtype=float)).all())
-        for i,origin in enumerate(pd.DatetimeIndex(scores["origin"].unique())):
-            expected=pd.DatetimeIndex(np.concatenate([
-                pd.date_range(origin-pd.Timedelta(weeks=n),periods=6,freq="h").to_numpy()
-                for n in (2,1)]))
-            for training,_ in training_sets[i*len(mod.BASELINES):(i+1)*len(mod.BASELINES)]:
-                self.assertTrue(training.index.equals(expected))
-                self.assertLess(training.index.max(),origin)
-        aggregates=mod.summarize_baselines(scores,rows)
-        self.assertEqual(set(aggregates["baseline"]),set(mod.BASELINES))
-        self.assertTrue((aggregates["origins"]==4).all())
-
-    def test_missing_targets_are_skipped_and_exogenous_is_retrospective(self):
-        frame=self.frame()
-        period=frame.copy()
-        # Only target-score missing samples, never fill labels.
-        start=period.index.min()+pd.Timedelta(weeks=2)
-        period.loc[start,"I"]=np.nan
-        scores,rows,coverage=mod.rolling_baselines(
-            frame,period,backlogs=(2,),horizons=(6,),
-            stride=24,max_origins=4)
-        self.assertGreaterEqual(coverage["skipped_windows"]["missing_target"],1)
-        self.assertLess(len(scores),4*len(mod.BASELINES))
-        self.assertTrue((rows["timestamp"]>=rows["origin"]).all())
+    def test_statistical_diagnostics_handle_gaps_without_imputing_observations(self):
+        frame=self.frame().copy()
+        frame.index.name="Datetime"
+        frame.iloc[1:3,0]=np.nan
+        frame.iloc[20,1]=np.nan
+        frame.iloc[25,2]=np.nan
+        profile=mod.weekday_profile(frame)
+        self.assertEqual(profile["count"].sum(),len(frame)-2)
+        dep,errors,daily=mod.dependence(frame)
+        self.assertEqual(dep["samples"],len(frame)-4)
+        self.assertEqual(len(errors),len(frame)-4)
+        self.assertTrue((daily["hour_count"]>=18).all())
 
     def test_full_executable_saves_csv_json_and_png_without_real_data(self):
         frame=self.frame()
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(mod,"group_frame",return_value=frame):
-                results=mod.run(groups=("MED",),backlogs=(2,),horizons=(6,),
+                frame.index.name="Datetime"
+                results=mod.run(groups=("MED",),
                                 max_weeks=3,max_acf_lag=168,hac_lags=12,
-                                stride_hours=24,max_origins=4,output=tmp)
+                                output=tmp)
             self.assertEqual(set(results),{"MED"})
             directory=Path(tmp)/"med"
             for name in ("weekday_hour_profile.csv","consumption_acf.csv",
                          "corresponding_similarity.csv","adjusted_residuals.csv",
-                         "dependence.json","baseline_origin_scores.csv",
-                         "baseline_hourly_predictions.csv","baseline_summary.csv",
-                         "summary.json","weekday_profiles.png","consumption_acf.png",
+                         "dependence.json","summary.json","weekday_profiles.png",
+                         "daily_temperature.csv","consumption_acf.png",
                          "corresponding_similarity.png","daily_temperature.png",
                          "temperature_partial.png","price_partial.png",
-                         "adjusted_residual_acf.png","baseline_rmse.png",
-                         "baseline_bias.png"):
+                         "adjusted_residual_acf.png",
+                         "residual_time_acf.csv","residual_temperature_acf.csv",
+                         "residual_temperature_price_acf.csv"):
                 with self.subTest(file=name):
                     self.assertTrue((directory/name).is_file(),name)
-            self.assertEqual(len(results["MED"]["baseline_summary"]),3)
-            self.assertEqual(len(results["MED"]["origin_scores"]),12)
+            self.assertEqual(results["MED"]["dependence"]["samples"],len(frame))
+            self.assertFalse((directory/"baseline_summary.csv").exists())
+            self.assertFalse((directory/"baseline_rmse.png").exists())
 
     def test_invalid_settings(self):
         frame=self.frame()
-        with self.assertRaises(ValueError):
-            mod.rolling_baselines(frame,frame,backlogs=(0,),horizons=(12,))
-        with self.assertRaises(ValueError):
-            mod.rolling_baselines(frame,frame,backlogs=(4,),horizons=(25,))
         with self.assertRaises(ValueError):
             mod.acf(frame["I"],max_lag=0)
         with self.assertRaises(ValueError):
