@@ -104,14 +104,28 @@ class test_wm4_corresponding_interval_fit(unittest.TestCase):
                        return_value=frame),patch(
                        "src.exe.run_model.wm_4.plot_corresponding_interval_fit.joint_qp_params"
                        ) as joint,patch(
+                       "src.exe.run_model.wm_4.plot_corresponding_interval_fit.optimized_qp_params"
+                       ) as oracle_qp,patch(
                        "src.exe.run_model.wm_4.plot_corresponding_interval_fit.plt.close"
                        ) as close_plot:
                 joint.return_value.fit_many.side_effect=example_result
+                def predict_oracle(data,theta):
+                    np.testing.assert_array_equal(theta,np.array([-1.0,-.1,-2.0]))
+                    self.assertEqual(len(data["I"]),7*4+1)
+                    self.assertEqual(data["observation_mask"].sum(),7)
+                    self.assertEqual(float(data["I"][0]),float(frame.at[pd.Timestamp("2022-06-20 08:00"),"I"]))
+                    return {"init_cond":np.array([.12,-.03]),
+                            "deterministic_state":{"I":data["I"]+.002},
+                            "loss":.000004}
+                oracle_qp.return_value.optimize_prediction_initial_state.side_effect=predict_oracle
                 outcome=run(day="2022-06-20",hour=8,k=7,N=4,
                             B="weekly_temperature",group="MED",output=output)
                 joint.return_value.fit_many.assert_called_once()
-                figure=close_plot.call_args.args[0]
-                for ax in figure.axes:
+                oracle_qp.return_value.optimize_prediction_initial_state.assert_called_once()
+                self.assertEqual(close_plot.call_count,2)
+                grid=close_plot.call_args_list[0].args[0]
+                prediction=close_plot.call_args_list[1].args[0]
+                for ax in grid.axes:
                     fit_line=next(line for line in ax.get_lines()
                                   if line.get_label()=="WM4 fit (fitting interval)")
                     baseline_line=next(line for line in ax.get_lines()
@@ -123,13 +137,30 @@ class test_wm4_corresponding_interval_fit(unittest.TestCase):
                     self.assertAlmostEqual(float(baseline_line.get_xdata()[0]),8)
                     self.assertAlmostEqual(float(demand_line.get_xdata()[0]),-1)
                     self.assertEqual(ax.get_xticklabels()[list(ax.get_xticks()).index(8)].get_text(),"08")
+                self.assertEqual(len(prediction.axes),1)
+                ax=prediction.axes[0]
+                oracle_line=next(line for line in ax.get_lines()
+                                 if line.get_label()=="WM4 oracle prediction (prediction interval)")
+                self.assertEqual(oracle_line.get_color(),"red")
+                self.assertAlmostEqual(float(oracle_line.get_xdata()[0]),8)
+                self.assertAlmostEqual(float(oracle_line.get_xdata()[-1]),15)
+                self.assertEqual(len(oracle_line.get_xdata()),7*4+1)
+                self.assertAlmostEqual(outcome["oracle"]["oracle_F0"],.12)
+                self.assertAlmostEqual(outcome["oracle"]["oracle_R0"],-.03)
+                self.assertAlmostEqual(outcome["oracle"]["oracle_rmse"],.002)
+                self.assertEqual(ax.get_xticklabels()[list(ax.get_xticks()).index(8)].get_text(),"08")
                 import matplotlib.pyplot as plt
-                plt.close(figure)
+                plt.close(grid)
+                plt.close(prediction)
             self.assertTrue(output.is_file())
-            self.assertEqual(len(list(Path(tmp).glob("*.png"))),1)
+            self.assertEqual(len(list(Path(tmp).glob("*.png"))),2)
+            self.assertTrue(outcome["oracle_plot"].is_file())
+            self.assertEqual(outcome["oracle_plot"].name,"example_oracle_prediction.png")
+            self.assertTrue(outcome["oracle_plot"].with_suffix(".csv").is_file())
             self.assertTrue(output.with_suffix(".csv").is_file())
             self.assertTrue(output.with_suffix(".json").is_file())
             self.assertEqual(len(outcome["summary"]),4)
+            self.assertEqual(len(outcome["oracle"]["oracle_hourly"]),7)
             self.assertEqual(outcome["baseline"].metadata["samples"],4*7)
             self.assertEqual(len(outcome["historical_intervals"]),4)
             self.assertTrue((outcome["summary"]["wm4_rmse"]>=0).all())
