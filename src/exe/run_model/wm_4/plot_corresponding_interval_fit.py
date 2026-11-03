@@ -152,6 +152,14 @@ def _context(frame,start,k,edge):
     return np.arange(-edge,k+edge+1,dtype=float),np.r_[values,values[-1]]
 
 
+def _clock_axis(start,k,edge):
+    """Continuous clock-hour coordinates with labels wrapped to 00..23."""
+    hour=int(pd.Timestamp(start).hour)
+    left,right=hour-edge,hour+k+edge
+    ticks=np.unique(np.r_[np.arange(left,right+1,3,dtype=int),hour,hour+k])
+    return hour,left,right,ticks,[f"{int(tick)%24:02d}" for tick in ticks]
+
+
 def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
     """Exactly ONE grid figure, with one panel per historical interval."""
     edge=int(ceil((24-k)/2))
@@ -161,6 +169,7 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
                           sharex=True,sharey=True,squeeze=False)
     all_values=[]
     fine=np.arange(k*sph+1,dtype=float)/sph
+    hour,left,right,xticks,labels=_clock_axis(starts[0],k,edge)
     rows=[]
     for m,(start,data,state) in enumerate(zip(starts,inputs,fit["deterministic_states"])):
         ax=axes.flat[m]
@@ -176,13 +185,18 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
         rows.append({"interval":m+1,"start":start,"end":start+pd.Timedelta(hours=k),
                      "F0":float(init[0]),"R0":float(init[1]),
                      "wm4_rmse":score["rmse"],"baseline_rmse":bscore["rmse"]})
-        ax.axvspan(0,k,color="tab:blue",alpha=.08)
-        ax.axvline(0,color="0.55",lw=.8,ls=":")
-        ax.axvline(k,color="0.55",lw=.8,ls=":")
-        ax.step(offset,context,where="post",color="0.18",lw=1.8,label="Observed demand (full context)")
-        ax.plot(fine,baseline,lw=2,color="tab:orange",ls="--",
+        # Keep continuous hours for cross-midnight windows, but label actual
+        # clock time, so a fitting origin at 06:00 appears at x=6.
+        clock_hour=int(start.hour)
+        ax.axvspan(clock_hour,clock_hour+k,color="tab:blue",alpha=.08)
+        ax.axvline(clock_hour,color="0.55",lw=.8,ls=":")
+        ax.axvline(clock_hour+k,color="0.55",lw=.8,ls=":")
+        ax.step(offset+clock_hour,context,where="post",color="0.18",lw=1.8,
+                label="Observed demand (full context)")
+        ax.plot(fine+clock_hour,baseline,lw=2,color="tab:orange",ls="--",
                 label="Baseline (fitting interval)")
-        ax.plot(fine,fitted,lw=2,color="tab:blue",label="WM4 fit (fitting interval)")
+        ax.plot(fine+clock_hour,fitted,lw=2,color="tab:blue",
+                label="WM4 fit (fitting interval)")
         ax.set_title(f"Week -{N-m}: {start:%a %d %b %Y, %H:%M}  |  "
                      f"RMSE {score['rmse']:.4f}",fontsize=10)
         ax.grid(alpha=.18)
@@ -194,12 +208,12 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
         low,high=float(np.min(all_values)),float(np.max(all_values))
         pad=max(.025,.08*(high-low))
         for ax in axes.flat[:N]: ax.set_ylim(low-pad,high+pad)
-    xticks=np.arange(-edge,k+edge+1,3)
     for ax in axes.flat[:N]:
-        ax.set_xlim(-edge,k+edge)
+        ax.set_xlim(left,right)
         ax.set_xticks(xticks)
+        ax.set_xticklabels(labels)
         ax.tick_params(labelbottom=True,labelleft=True,labelsize=8)
-    fig.supxlabel("Hours relative to each historical interval origin (0 = fitted interval start)")
+    fig.supxlabel("Hour of day (24-hour clock; wraps at midnight)")
     fig.supylabel("Normalized aggregate electricity demand")
     fig.suptitle(f"WM4 historical joint fit | {N} corresponding weekdays | "
                  f"k={k}h | B={B}\n"
