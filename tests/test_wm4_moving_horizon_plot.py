@@ -118,7 +118,7 @@ class test_wm4_moving_horizon_plot(unittest.TestCase):
                     else:
                         np.testing.assert_allclose(observed.get_xdata(),observed_axis)
                     tick_map=dict(zip(ax.get_xticks(),[label.get_text() for label in ax.get_xticklabels()]))
-                    self.assertEqual(tick_map[24],"00\\n21 Jun")
+                    self.assertEqual(tick_map[24],"00\n21 Jun")
                 self.assertEqual(common_lim,(13.,41.))
                 plt.close(figure)
 
@@ -147,7 +147,7 @@ class test_wm4_moving_horizon_plot(unittest.TestCase):
         self.assertEqual((left,right),(0.,32.))
         self.assertEqual(len(x),len(y))
         self.assertEqual(len(x),33)
-        self.assertEqual(labels[list(ticks).index(24)],"00\\n21 Jun")
+        self.assertEqual(labels[list(ticks).index(24)],"00\n21 Jun")
         self.assertEqual((starts[-1]-reference).total_seconds()/3600,14.)
 
     def test_invalid_arguments(self):
