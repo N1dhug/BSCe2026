@@ -154,6 +154,17 @@ def _coefficient(value,se,identified):
             "p_approx":float(erfc(abs(z)/sqrt(2)))}
 
 
+def _fit_quality(observed,residual):
+    """In-sample descriptive goodness-of-fit, not forecast accuracy."""
+    y=np.asarray(observed,dtype=float)
+    error=np.asarray(residual,dtype=float)
+    mse=float(np.mean(error**2))
+    total=float(np.mean((y-np.mean(y))**2))
+    return {"samples":int(y.size),"mse":mse,"rmse":float(np.sqrt(mse)),
+            "mae":float(np.mean(np.abs(error))),
+            "r2":float(1.0-mse/total) if total>1e-14 else None}
+
+
 def dependence(frame,base_temperature=18.0,hac_lags=24):
     """Weekday-hour fixed-effects: chill alone, then chill+price.
 
@@ -198,6 +209,11 @@ def dependence(frame,base_temperature=18.0,hac_lags=24):
         "mse_weekday_hour":mse_time,
         "mse_with_temperature":mse_temp,
         "mse_with_temperature_and_price":mse_full,
+        "fit_quality":{
+            "weekday_hour":_fit_quality(y,resid_time),
+            "weekday_hour_temperature":_fit_quality(y,resid_temp),
+            "weekday_hour_temperature_price":_fit_quality(y,resid_full),
+        },
         "temperature_mse_gain":mse_time-mse_temp,
         "price_conditional_mse_gain":mse_temp-mse_full,
         "identified_temperature":identified_c,
@@ -317,7 +333,47 @@ def _write_exploratory(frame,directory,max_weeks,max_acf_lag,base_temperature,ha
     remaining=acf(residuals["residual_temperature_price"],max_acf_lag)
     _plot_acf(remaining,directory/"adjusted_residual_acf.png",
               "Residual autocorrelation after time, temperature and price")
-    return report
+    return report,raw_acf,similarity,remaining
+
+
+def _terminal_summary(group,report,raw_acf,similarity,remaining):
+    """Print measured temporal diagnostics and each regression fit quality."""
+    def lag(acf_table,hours):
+        row=acf_table.loc[acf_table["lag_hours"]==hours]
+        if row.empty: return "n/a"
+        value=float(row["autocorrelation"].iloc[0])
+        return f"{value:.4f}" if np.isfinite(value) else "n/a"
+
+    print(f"[{group}] Autocorrelation: raw 24h={lag(raw_acf,24)}  168h={lag(raw_acf,168)}  "
+          f"adjusted residual 24h={lag(remaining,24)}  168h={lag(remaining,168)}")
+    print(f"[{group}] Historical interval RMSE (same weekday / 1 day closer / 1 day farther):")
+    for row in similarity.itertuples(index=False):
+        print(f"  week={row.weeks:>2d}  pairs={row.matched_pairs:>5d}  "
+              f"RMSE={row.weekly_rmse:.5f} / {row.preceding_weekday_rmse:.5f} "
+              f"/ {row.following_weekday_rmse:.5f}")
+
+    print(f"[{group}] Regression fit quality (in-sample, weekday-hour fixed effects):")
+    print(f"  {'Fit':<32} {'Samples':>8} {'MSE':>11} {'RMSE':>10} {'MAE':>10} {'R2':>10}")
+    labels=(("weekday_hour","Time only"),
+            ("weekday_hour_temperature","Time + heating degree"),
+            ("weekday_hour_temperature_price","Time + heating degree + price"))
+    for key,label in labels:
+        fit=report["fit_quality"][key]
+        r2="n/a" if fit["r2"] is None else f"{fit['r2']:.5f}"
+        print(f"  {label:<32} {fit['samples']:>8d} "
+              f"{fit['mse']:>11.6f} {fit['rmse']:>10.6f} "
+              f"{fit['mae']:>10.6f} {r2:>10}")
+    for key,label in (("temperature_only","Heating degree | time controlled"),
+                      ("temperature_conditional","Heating degree | time + price"),
+                      ("price_conditional","Price | time + heating degree")):
+        coef=report[key]
+        pval="n/a" if coef["p_approx"] is None else f"{coef['p_approx']:.4g}"
+        print(f"  {label:<38} coefficient={coef['coefficient']:+.6g}  HAC p~{pval}")
+    print(f"[{group}] In-sample MSE improvement: temperature="
+          f"{report['temperature_mse_gain']:.6f}, "
+          f"conditional price={report['price_conditional_mse_gain']:.6f}")
+    print(f"[{group}] Note: descriptive associations; neither the fit scores nor HAC p-values "
+          f"measure out-of-sample prediction quality.")
 
 
 def run(*,groups=("MED","ALL"),start=None,end=None,max_weeks=8,
@@ -337,7 +393,7 @@ def run(*,groups=("MED","ALL"),start=None,end=None,max_weeks=8,
         period=_period(frame,start,end)
         if period.empty: raise ValueError(f"No hourly observations in selected period for {group}.")
         directory=dest/group.lower()
-        report=_write_exploratory(
+        report,raw_acf,similarity,remaining=_write_exploratory(
             period,directory,max_weeks,max_acf_lag,base_temperature,hac_lags)
         summary={"group":group,"start":str(period.index.min()),
                  "end_inclusive":str(period.index.max()),
@@ -357,9 +413,7 @@ def run(*,groups=("MED","ALL"),start=None,end=None,max_weeks=8,
                         "dependence":report,
                         "residuals":directory/"adjusted_residuals.csv"}
         print(f"[{group}] saved four preliminary statistical analyses to {directory}")
-        print(f"[{group}] samples={report['samples']}, "
-              f"chill coefficient={report['temperature_only']['coefficient']:.6g}, "
-              f"conditional price coefficient={report['price_conditional']['coefficient']:.6g}")
+        _terminal_summary(group,report,raw_acf,similarity,remaining)
     return answers
 
 
