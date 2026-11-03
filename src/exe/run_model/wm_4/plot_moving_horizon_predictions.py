@@ -7,9 +7,11 @@ For each origin t_m=t_0+m hours, independently:
   4. Collect the prediction and its error, then advance the origin one hour.
 
 Plots contain only the M target predictions (no historical-fit panels).
-Each panel shows the same 24/25-hour demand context as the single-interval
-plotter; the historical baseline is dashed orange and the oracle WM4
-prediction is red, both restricted to the k-hour interval. Target demand
+All panels use ONE fixed time axis and the same observed-demand context,
+covering the union of the 24/25-hour windows. The moving origin and
+k-hour interval visibly shift right by one hour per subplot. Historical
+baseline is dashed orange and oracle WM4 prediction red, both restricted
+to the moving k-hour interval. Target demand
 is never used to estimate B or theta, only the oracle initial state.
 """
 from argparse import ArgumentParser
@@ -23,7 +25,7 @@ import pandas as pd
 
 from src.exe.run_model.wm_4.moving_horizon_common import group_frame, metrics
 from src.exe.run_model.wm_4.plot_corresponding_interval_fit import (
-    BASELINES, _clock_axis, _context, _fit_sparse_baseline, _intervals, _origin, _window,
+    BASELINES, _fit_sparse_baseline, _intervals, _origin, _window,
 )
 from src.model.wm_4 import wm_4
 from src.params.wm_4 import joint_qp_params, optimized_qp_params
@@ -78,12 +80,10 @@ def _predict_origin(frame,origin,k,N,B,sph,model):
     base=np.asarray(target["O"],dtype=float)
     score=metrics(observed,predicted[obs_idx])
     baseline_score=metrics(observed,base[obs_idx])
-    context_x,context_y=_context(frame,origin,k,int(ceil((24-k)/2)))
 
     return {
         "origin":origin,"theta":theta,"initial_state":init,
         "baseline":base,"prediction":predicted,
-        "context_x":context_x,"context_y":context_y,
         "score":score,"baseline_score":baseline_score,
         "historical_starts":starts,
         "historical_samples":int(baseline.metadata["samples"]),
@@ -93,26 +93,60 @@ def _predict_origin(frame,origin,k,N,B,sph,model):
     }
 
 
-def _plot_grid(results,k,N,B,sph,output):
-    """One PNG with M prediction panels and no parameter-fitting days."""
-    M=len(results)
+def _common_axis(frame,origins,k):
+    """One absolute clock axis and the same raw demand on every subplot.
+
+    Use the union of all per-origin 24/25-hour contexts, so moving the
+    prediction never moves the axes or clips a later prediction.
+    """
     edge=int(ceil((24-k)/2))
+    reference=origins[0].normalize()
+    left=origins[0]-pd.Timedelta(hours=edge)
+    right=origins[-1]+pd.Timedelta(hours=k+edge)
+    if left<frame.index.min() or right-pd.Timedelta(hours=1)>frame.index.max():
+        raise ValueError("Insufficient observed demand for the common moving-horizon context.")
+    index=pd.date_range(left,right-pd.Timedelta(hours=1),freq="h")
+    demand=frame.reindex(index)["I"].to_numpy(dtype=float)
+    if not np.isfinite(demand).any():
+        raise ValueError("No observed demand in the common moving-horizon context.")
+    xmin=(left-reference).total_seconds()/3600.0
+    xmax=(right-reference).total_seconds()/3600.0
+    context_x=np.arange(int(xmin),int(xmax)+1,dtype=float)
+    context_y=np.r_[demand,demand[-1]]
+
+    ticks=np.arange(3*int(ceil(xmin/3)),int(xmax)+1,3,dtype=int)
+    labels=[]
+    for tick in ticks:
+        clock=int(tick)%24
+        if clock==0:
+            date=reference+pd.Timedelta(hours=int(tick))
+            labels.append(f"00\n{date:%d %b}")
+        else: labels.append(f"{clock:02d}")
+    return reference,(xmin,xmax),ticks,labels,context_x,context_y
+
+
+def _plot_grid(results,frame,k,N,B,sph,output):
+    """M predictions on a single fixed x-axis; interval advances per panel."""
+    M=len(results)
     cols=min(3,int(ceil(sqrt(M))))
     rows=int(ceil(M/cols))
     fig,axes=plt.subplots(rows,cols,figsize=(6.1*cols,4.1*rows),
-                          sharex=False,sharey=True,squeeze=False)
+                          sharex=True,sharey=True,squeeze=False)
+    origins=[item["origin"] for item in results]
+    reference,limits,ticks,ticklabels,context_x,context_y=_common_axis(frame,origins,k)
     fine=np.arange(k*sph+1,dtype=float)/sph
-    extrema=[]
+    extrema=context_y[np.isfinite(context_y)].tolist()
     for m,item in enumerate(results):
         ax=axes.flat[m]
         start=item["origin"]
-        hour,left,right,ticks,labels=_clock_axis(start,k,edge)
-        context_x=item["context_x"]+hour
-        x=fine+hour
-        ax.axvspan(hour,hour+k,color="tab:red",alpha=.07)
-        ax.axvline(hour,color="0.5",lw=.8,ls=":")
-        ax.axvline(hour+k,color="0.5",lw=.8,ls=":")
-        ax.step(context_x,item["context_y"],where="post",
+        # Coordinates refer to the FIRST origin's calendar day, not to the
+        # local prediction origin, so the red interval moves in the grid.
+        x0=(start-reference).total_seconds()/3600.0
+        x=fine+x0
+        ax.axvspan(x0,x0+k,color="tab:red",alpha=.07)
+        ax.axvline(x0,color="0.5",lw=.8,ls=":")
+        ax.axvline(x0+k,color="0.5",lw=.8,ls=":")
+        ax.step(context_x,context_y,where="post",
                 color="0.18",lw=1.65,label="Observed demand")
         ax.plot(x,item["baseline"],color="tab:orange",ls="--",lw=1.8,
                 label="Historical baseline")
@@ -120,27 +154,29 @@ def _plot_grid(results,k,N,B,sph,output):
                 label="WM4 oracle prediction")
         ax.set_title(f"Origin {m+1}/{M}: {start:%a %d %b %Y, %H:%M}  |  "
                      f"RMSE {item['score']['rmse']:.4f}",fontsize=10)
-        ax.set_xlim(left,right)
-        ax.set_xticks(ticks)
-        ax.set_xticklabels(labels)
-        ax.tick_params(labelbottom=True,labelleft=True,labelsize=8)
         ax.grid(alpha=.18)
-        for values in (item["context_y"],item["baseline"],item["prediction"]):
+        for values in (item["baseline"],item["prediction"]):
             extrema.extend(np.asarray(values)[np.isfinite(values)].tolist())
     for ax in axes.flat[M:]: ax.set_visible(False)
-    if extrema:
-        lower,upper=float(np.min(extrema)),float(np.max(extrema))
-        pad=max(.025,.08*(upper-lower))
-        for ax in axes.flat[:M]: ax.set_ylim(lower-pad,upper+pad)
+
+    lower,upper=float(np.min(extrema)),float(np.max(extrema))
+    pad=max(.025,.08*(upper-lower))
+    for ax in axes.flat[:M]:
+        ax.set_xlim(*limits)
+        ax.set_ylim(lower-pad,upper+pad)
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(ticklabels)
+        ax.tick_params(labelbottom=True,labelleft=True,labelsize=8)
+
     mean_mse=float(np.mean([item["score"]["mse"] for item in results]))
     fig.suptitle(
         f"WM4 moving-horizon oracle predictions | M={M}, k={k}h, N={N}, B={B}\n"
         f"Hourly origin shift | Aggregate RMSE={sqrt(mean_mse):.4f}",
         fontsize=13)
-    fig.supxlabel("Hour of day (24-hour clock; wraps at midnight)")
+    fig.supxlabel("Shared timeline: hour of day (dates at midnight)")
     fig.supylabel("Normalized aggregate electricity demand")
-    handles,labels=axes.flat[0].get_legend_handles_labels()
-    fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(.5,.932),
+    handles,legend_labels=axes.flat[0].get_legend_handles_labels()
+    fig.legend(handles,legend_labels,loc="upper center",bbox_to_anchor=(.5,.932),
                ncol=3,fontsize=9)
     fig.tight_layout(rect=(.02,.04,.99,.895))
     fig.savefig(output,dpi=190,bbox_inches="tight")
@@ -239,7 +275,7 @@ def run(*,day,hour,k,N,B,M,group="MED",steps_per_hour=4,output=None):
         OUTPUT/group.lower()/f"{origins[0]:%Y-%m-%d_%H}h_M{M}_k{k}_N{N}_{B}.png")
     if target.suffix.lower()!=".png": raise ValueError("output must be a PNG file path.")
     target.parent.mkdir(parents=True,exist_ok=True)
-    _plot_grid(results,k,N,B,sph,target)
+    _plot_grid(results,frame,k,N,B,sph,target)
     summary,hourly,aggregate=_reports(results,k,N,B,group,sph)
     summary.to_csv(target.with_suffix(".csv"),index=False)
     hourly.to_csv(target.with_name(target.stem+"_hourly.csv"),index=False)
