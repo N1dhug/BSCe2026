@@ -1,128 +1,104 @@
-# Preliminary statistical tests and baseline diagnostics
+# Preliminary statistical analyses
 
-Executable: `src/exe/data/baseline_diagnostics.py`
+Executable: `src/exe/data/baseline_diagnostics.py`.
 
-## Run
+The filename is retained for existing commands, but the executable now
+runs **only four exploratory statistical analyses**. It does not fit or
+compare baselines, evaluate rolling forecasts, or optimize WM4 states.
 
-```bash
-python -m src.exe.data.baseline_diagnostics --groups MED ALL --N 4 --k 12
-```
-
-To compare several backlogs and horizons:
+## Usage
 
 ```bash
-python -m src.exe.data.baseline_diagnostics --groups MED --N 2 4 8 --k 6 12 24 --stride-hours 24 --max-origins 80
+python -m src.exe.data.baseline_diagnostics --groups MED ALL
 ```
 
-Optional arguments: `--start 2022-03-01`, `--end 2022-11-01`
-(end is exclusive), `--base-temperature 18`, `--max-week-lag 8`,
-`--max-acf-lag 336`, `--hac-lags 24`, and `--output /some/folder`.
+To focus on one group and a selected date range:
 
-Python entrypoint:
+```bash
+python -m src.exe.data.baseline_diagnostics --groups MED --start 2022-03-01 --end 2022-11-01 --max-week-lag 8 --max-acf-lag 336
+```
+
+`--start` is inclusive; `--end` is exclusive. Optional arguments are
+`--base-temperature 18`, `--hac-lags 24`, `--max-week-lag 8`,
+`--max-acf-lag 336`, and `--output path`.
+
+Python usage:
 
 ```python
 from src.exe.data.baseline_diagnostics import run
-result=run(groups=("MED","ALL"),backlogs=(4,),horizons=(12,),
-           stride_hours=24,max_origins=64)
+result=run(groups=("MED","ALL"),max_weeks=8,max_acf_lag=336)
 ```
 
-The executable loads the same aligned, normalized `I`, `U`, and
-physical-temperature `Temp` signals as WM4 via `group_frame` and
-creates separate outputs for MED and ALL.
+The script uses the same aligned normalized aggregate demand `I`,
+normalized spot price `U` and physical weather temperature `Temp`
+as the existing WM4 executable. No additional normalization or
+full-day imputation is introduced by this script.
 
-## Preliminary statistical analyses
+## Analyses
 
-1. **Temporal patterns**. Compute mean, standard deviation and sample
-   count for each weekday/hour; plot weekday hourly profiles. Evaluate
-   pairwise raw-demand ACF using actual timestamps, including lags 24 h
-   and 168 h. Observations separated by gaps are never misidentified as
-   adjacent hours.
-2. **Corresponding historical similarity**. For weekly offsets
-   `n = 1..max_week_lag`, compute matched-sample RMSE for `168*n`
-   hourly separation. Compare against `168*n +/- 24` hour lags
-   (the adjacent weekday at roughly the same historical distance).
-   All three comparisons use exactly the same valid target timestamps;
-   improvement is descriptive rather than proof of causal relevance.
-3. **Temperature and price dependence**. Remove 168 weekday/hour
-   fixed effects and regress residual demand first on the residual
-   heating-degree factor `max(0,base_temperature-Temp)`, then jointly
-   on the residual heating-degree factor and price. Report coefficients,
-   reduced MSEs, incremental MSE improvement, and approximate
-   Bartlett/Newey-West HAC normal p-values. Plot daily demand versus
-   heating-degree factor and *partial* temperature and price
-   relationships. Price coefficients are associations, **not causal
-   estimates of flexibility response**.
-4. **Residual diagnostics**. Save hourly residuals and matched-hour
-   ACFs after the weekday/hour adjustment, after temperature, and after
-   temperature and price. Use residual ACF to identify temporal
-   structure not captured by the candidate nominal baseline variables.
+1. **Temporal consumption patterns.** Plot the average hourly
+   consumption profile for every weekday, and compute the raw demand
+   autocorrelation at exact hourly lags (including 24 and 168 hours).
+   The code uses explicit named `weekday` and `hour` columns rather
+   than inherited pandas group names, avoiding collisions when the
+   source DatetimeIndex is called `Datetime`.
 
-## Rolling-origin baseline comparison
+2. **Corresponding-interval similarity.** For weekly offsets
+   `n=1,...,max_week_lag`, calculate the mean-squared differences
+   between demand at the same weekday/hour, compared with historical
+   observations one weekday earlier/later. Each reported triplet uses
+   an identical set of available timestamps.
 
-For each origin in a common, evenly sampled set and for each choice of
-`N` and `k`:
+3. **Temperature dependence.** Remove weekday/hour fixed effects
+   from normalized demand and from the heating-degree variable
+   `max(0,base_temperature-Temp)`. Estimate their conditional
+   association using least squares. Record coefficients, residual MSE,
+   incremental MSE improvement and approximate Bartlett/Newey-West
+   HAC normal p-values. Plot daily chill/consumption and the hourly
+   fixed-effect-adjusted partial relationship.
 
-- Use **only** the `N` corresponding historical `k`-hour intervals
-  to estimate each baseline using the *same internal estimation logic*
-  as the WM4 single-interval plotter.
-- Evaluate `weekly_average`, `weekly_temperature` and
-  `statistical_output` against the next `k` hourly demand values.
-- Report per-origin RMSE, MSE, MAE and bias; aggregate errors across
-  the matched target hours and plot pooled RMSE/bias.
+4. **Price dependence.** Jointly regress fixed-effect-adjusted demand
+   on chill and normalized price. The price partial-regression plot
+   first adjusts for weekday/hour and chill effects. Record coefficient,
+   incremental MSE improvement and HAC approximate p-value.
 
-All three baselines use the **same training and evaluation timestamps**
-at each origin. All evaluation origins are selected from the period
-that can accommodate the **largest** requested backlog/horizon.
-By default the candidate origin sequence uses a 24-hour stride and is
-thinned evenly across the full admissible period to at most 64 origins,
-so the default analysis does not concentrate only on the first weeks.
+Residual ACFs after removing weekday/hour effects, then temperature,
+then price, are saved as **diagnostics supporting these four analyses**.
 
-**No missing target demand is imputed.** In this diagnostic, incomplete
-historical `N*k` intervals are skipped rather than being filled from
-hours outside the selected intervals. This is deliberately stricter
-than the WM4 plotting script's historical-day imputation: the baseline
-comparison isolates exactly the chosen intervals. Skipped windows are
-counted in the JSON output.
-
-`Temp` is the **observed target-period temperature**. Thus, baseline
-parameter estimation is out-of-sample but the evaluation is
-retrospective with known exogenous conditions. A deployable forecast
-would replace `Temp` with an available weather forecast. Likewise,
-the use of historical prices here is exploratory and not a causal
-estimate. Repeated targets across overlapping horizons are *not*
-independent observations; RMSE is descriptive, not a confidence
-interval.
-
-Lower standalone baseline RMSE does **not** automatically imply better
-WM4 model performance: a flexible baseline may absorb dynamics that
-the WM4 residual model is intended to identify.
+Price coefficients are *conditional associations*, not causal
+estimates of consumer flexibility. Statistical significance alone
+does not demonstrate that either input improves out-of-sample
+prediction. Baseline performance comparisons are intentionally
+outside the scope of this script.
 
 ## Outputs
 
 Default directory:
-`files/output/data/baseline_diagnostics/{med,all}/`
+`files/output/data/preliminary_statistics/med/` and
+`files/output/data/preliminary_statistics/all/`.
 
-Key tables:
-- `weekday_hour_profile.csv`
-- `consumption_acf.csv`
-- `corresponding_similarity.csv`
+Main outputs:
+
+- `weekday_hour_profile.csv`, `weekday_profiles.png`
+- `consumption_acf.csv`, `consumption_acf.png`
+- `corresponding_similarity.csv`, `corresponding_similarity.png`
+- `daily_temperature.csv`, `daily_temperature.png`
 - `dependence.json`
+- `temperature_partial.png`, `price_partial.png`
 - `adjusted_residuals.csv`
-- `residual_{time,temperature,temperature_price}_acf.csv`
-- `baseline_origin_scores.csv`
-- `baseline_hourly_predictions.csv`
-- `baseline_summary.csv`
-- `summary.json`
+- `residual_time_acf.csv`, `residual_temperature_acf.csv`,
+  `residual_temperature_price_acf.csv`,
+  `adjusted_residual_acf.png`
+- `summary.json` with statistical settings and regression results
 
-Figures:
-`weekday_profiles.png`, `consumption_acf.png`,
-`corresponding_similarity.png`, `daily_temperature.png`,
-`temperature_partial.png`, `price_partial.png`,
-`adjusted_residual_acf.png`, `baseline_rmse.png`, and
-`baseline_bias.png`.
+All results describe observed 2022 data (or the provided selected
+period), without using oracle predictions.
 
 ## Tests
 
 ```bash
 python -m unittest discover -s tests -p "test_baseline_diagnostics.py"
 ```
+
+Regression tests include a DatetimeIndex named `Datetime` to cover
+the prior pandas `ValueError: cannot insert Datetime, already exists`.
