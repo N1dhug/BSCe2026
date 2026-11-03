@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.plot_corresponding_interval_fit import (
-    BASELINES,_context,_fit_sparse_baseline,_intervals,_origin,_window,run,
+    BASELINES,_clock_axis,_context,_fit_sparse_baseline,_intervals,_origin,_window,run,
 )
 
 
@@ -68,6 +68,24 @@ class test_wm4_corresponding_interval_fit(unittest.TestCase):
                 self.assertEqual(window["transition_mask"].sum(),(k-1)*4)
                 self.assertEqual(len(window["O"]),k*4+1)
 
+    def test_clock_axis_uses_actual_hour_and_wraps_at_midnight(self):
+        for hour,k,edge,expected_left,expected_right in [
+            (6,12,6,0,24),(8,12,6,2,26),(6,7,9,-3,22),(23,7,9,14,39)]:
+            with self.subTest(hour=hour,k=k):
+                start=pd.Timestamp("2022-06-20")+pd.Timedelta(hours=hour)
+                actual,left,right,ticks,labels=_clock_axis(start,k,edge)
+                self.assertEqual(actual,hour)
+                self.assertEqual(left,expected_left)
+                self.assertEqual(right,expected_right)
+                self.assertIn(hour,ticks)
+                self.assertIn(hour+k,ticks)
+                self.assertEqual(labels[list(ticks).index(hour)],f"{hour:02d}")
+                self.assertEqual(labels[list(ticks).index(hour+k)],
+                                 f"{(hour+k)%24:02d}")
+                self.assertTrue(all(0<=int(label)<=23 for label in labels))
+        _,_,_,ticks,labels=_clock_axis(pd.Timestamp("2022-06-20 08:00"),12,6)
+        self.assertEqual(labels[list(ticks).index(24)],"00")
+
     def test_run_produces_single_grid_with_n_independent_states(self):
         frame=self.frame()
         with tempfile.TemporaryDirectory() as tmp:
@@ -85,11 +103,28 @@ class test_wm4_corresponding_interval_fit(unittest.TestCase):
             with patch("src.exe.run_model.wm_4.plot_corresponding_interval_fit.group_frame",
                        return_value=frame),patch(
                        "src.exe.run_model.wm_4.plot_corresponding_interval_fit.joint_qp_params"
-                       ) as joint:
+                       ) as joint,patch(
+                       "src.exe.run_model.wm_4.plot_corresponding_interval_fit.plt.close"
+                       ) as close_plot:
                 joint.return_value.fit_many.side_effect=example_result
                 outcome=run(day="2022-06-20",hour=8,k=7,N=4,
                             B="weekly_temperature",group="MED",output=output)
                 joint.return_value.fit_many.assert_called_once()
+                figure=close_plot.call_args.args[0]
+                for ax in figure.axes:
+                    fit_line=next(line for line in ax.get_lines()
+                                  if line.get_label()=="WM4 fit (fitting interval)")
+                    baseline_line=next(line for line in ax.get_lines()
+                                       if line.get_label()=="Baseline (fitting interval)")
+                    demand_line=next(line for line in ax.get_lines()
+                                     if line.get_label()=="Observed demand (full context)")
+                    self.assertAlmostEqual(float(fit_line.get_xdata()[0]),8)
+                    self.assertAlmostEqual(float(fit_line.get_xdata()[-1]),15)
+                    self.assertAlmostEqual(float(baseline_line.get_xdata()[0]),8)
+                    self.assertAlmostEqual(float(demand_line.get_xdata()[0]),-1)
+                    self.assertEqual(ax.get_xticklabels()[list(ax.get_xticks()).index(8)].get_text(),"08")
+                import matplotlib.pyplot as plt
+                plt.close(figure)
             self.assertTrue(output.is_file())
             self.assertEqual(len(list(Path(tmp).glob("*.png"))),1)
             self.assertTrue(output.with_suffix(".csv").is_file())
