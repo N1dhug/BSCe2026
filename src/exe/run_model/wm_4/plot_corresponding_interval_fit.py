@@ -5,10 +5,12 @@ intervals. Fit the selected baseline using ONLY those N x k hourly
 observations, then fit one common WM4 theta and one F0 per interval
 (R0 is observed as D0-B0) with the historical joint convex QP.
 
-The single grid PNG contains N subplots, each displaying 24 or 25
+The historical grid PNG contains N subplots, each displaying 24 or 25
 hours of observed demand while baseline and WM4 fit appear ONLY
-inside the k-hour fitting interval. No prediction-day observations
-are used in either fit.
+inside the k-hour fitting interval. A second PNG displays the prediction
+interval with an independently optimized oracle initial state in red.
+The prediction-day observations are used ONLY to optimize that oracle state
+and report retrospective prediction error, never to fit baseline or theta.
 """
 from argparse import ArgumentParser
 from math import ceil, sqrt
@@ -21,7 +23,7 @@ import pandas as pd
 
 from src.exe.run_model.wm_4.moving_horizon_common import group_frame, metrics
 from src.model.wm_4 import wm_4
-from src.params.wm_4 import joint_qp_params
+from src.params.wm_4 import joint_qp_params, optimized_qp_params
 from src.tools.baseline import weekly_average, weekly_temperature, statistical_output
 from src.tools.impute_hourly import impute_hourly_days
 
@@ -231,6 +233,63 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
     return rows
 
 
+def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output):
+    """One independent oracle prediction figure; no historical-fit subplots."""
+    edge=int(ceil((24-k)/2))
+    hour,left,right,ticks,labels=_clock_axis(origin,k,edge)
+    offset,context=_context(frame,origin,k,edge)
+    fine=np.arange(k*sph+1,dtype=float)/sph
+    observed=np.asarray(input_data["I"],dtype=float)[np.arange(k)*sph]
+    baseline=np.asarray(input_data["O"],dtype=float)
+    prediction=np.asarray(oracle["deterministic_state"]["I"],dtype=float)
+    if prediction.shape!=(k*sph+1,) or not np.isfinite(prediction).all():
+        raise ValueError("WM4 oracle returned invalid prediction.")
+    score=metrics(observed,prediction[np.arange(k)*sph])
+    bscore=metrics(observed,baseline[np.arange(k)*sph])
+    init=np.asarray(oracle["init_cond"],dtype=float)
+    if init.shape!=(2,) or not np.isfinite(init).all():
+        raise ValueError("WM4 oracle returned invalid initial state.")
+
+    fig,ax=plt.subplots(figsize=(11.8,5.0))
+    ax.axvspan(hour,hour+k,color="tab:red",alpha=.07)
+    ax.axvline(hour,color="0.55",lw=.8,ls=":")
+    ax.axvline(hour+k,color="0.55",lw=.8,ls=":")
+    ax.step(offset+hour,context,where="post",color="0.18",lw=1.8,
+            label="Observed demand (full context)")
+    ax.plot(fine+hour,baseline,color="tab:orange",lw=2,ls="--",
+            label="Fitted historical baseline (prediction interval)")
+    ax.plot(fine+hour,prediction,color="red",lw=2.25,
+            label="WM4 oracle prediction (prediction interval)")
+    ax.set_xlim(left,right)
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(labels)
+    ax.set_xlabel("Hour of day (24-hour clock; wraps at midnight)")
+    ax.set_ylabel("Normalized aggregate electricity demand")
+    ax.set_title(f"WM4 oracle prediction | {origin:%a %d %b %Y, %H:%M} | "
+                 f"k={k}h | N={N} | B={B}\n"
+                 f"Oracle RMSE {score['rmse']:.4f} | Baseline RMSE {bscore['rmse']:.4f}")
+    ax.grid(alpha=.18)
+    ax.legend(loc="best",fontsize=9)
+    fig.tight_layout()
+    fig.savefig(output,dpi=190,bbox_inches="tight")
+    plt.close(fig)
+
+    hourly=np.arange(k,dtype=int)
+    rows=pd.DataFrame({
+        "timestamp":origin+pd.to_timedelta(hourly,unit="h"),
+        "lead_hour":hourly,
+        "observed":observed,
+        "baseline":baseline[hourly*sph],
+        "wm4_oracle":prediction[hourly*sph],
+    })
+    rows.to_csv(output.with_suffix(".csv"),index=False)
+    return {"oracle_F0":float(init[0]),"oracle_R0":float(init[1]),
+            "oracle_rmse":score["rmse"],"oracle_mse":score["mse"],
+            "oracle_mae":score["mae"],"oracle_bias":score["bias"],
+            "baseline_rmse":bscore["rmse"],"baseline_mse":bscore["mse"],
+            "oracle_plot":output,"oracle_hourly":rows}
+
+
 def run(*,day,hour,k,N,B,group="MED",steps_per_hour=4,output=None):
     """Fit and display N corresponding weekly-offset WM4 histories.
 
@@ -281,6 +340,13 @@ def run(*,day,hour,k,N,B,group="MED",steps_per_hour=4,output=None):
         f"{origin:%Y-%m-%d_%H}h_k{k}_N{N}_{B}.png")
     target.parent.mkdir(parents=True,exist_ok=True)
     rows=_plot(starts,frame,k,N,B,sph,fit,model,inputs,target)
+    # The baseline and shared theta are historical; future observations enter
+    # ONLY this independent two-state oracle optimization and its evaluation.
+    prediction_data=_window(frame,origin,k,baseline,sph)
+    oracle=optimized_qp_params(model).optimize_prediction_initial_state(
+        prediction_data,np.asarray(fit["r"],dtype=float))
+    oracle_path=target.with_name(target.stem+"_oracle_prediction.png")
+    oracle_result=_plot_oracle(origin,frame,k,N,B,sph,prediction_data,oracle,oracle_path)
     report=pd.DataFrame(rows)
     report.to_csv(target.with_suffix(".csv"),index=False)
     target.with_suffix(".json").write_text(json.dumps({
@@ -289,6 +355,15 @@ def run(*,day,hour,k,N,B,group="MED",steps_per_hour=4,output=None):
         "steps_per_hour":sph,"fitting_mode":"exact N corresponding k-hour intervals",
         "theta_F":float(fit["r"][0]),"theta_U":float(fit["r"][1]),
         "theta_R":float(fit["r"][2]),"qp_loss":float(fit["qp_loss"]),
+        "oracle_F0":oracle_result["oracle_F0"],
+        "oracle_R0":oracle_result["oracle_R0"],
+        "oracle_rmse":oracle_result["oracle_rmse"],
+        "oracle_mse":oracle_result["oracle_mse"],
+        "oracle_mae":oracle_result["oracle_mae"],
+        "oracle_bias":oracle_result["oracle_bias"],
+        "prediction_baseline_rmse":oracle_result["baseline_rmse"],
+        "oracle_prediction_plot":str(oracle_path),
+        "oracle_prediction_csv":str(oracle_path.with_suffix(".csv")),
         "imputed_historical_hours":int(imputation["imputed_hourly_slots"]),
         "historical_intervals":[{"start":x.isoformat(),
                                  "end":(x+pd.Timedelta(hours=k)).isoformat()} for x in starts],
@@ -296,9 +371,15 @@ def run(*,day,hour,k,N,B,group="MED",steps_per_hour=4,output=None):
     print(f"WM4 historical fitting example: {origin:%Y-%m-%d %H:%M} | "
           f"k={k} | N={N} | B={B} | one shared theta, N initial states")
     print(report.to_string(index=False,float_format=lambda v:f"{v:.6f}"))
-    print(f"\nSingle grid figure: {target}")
-    return {"plot":target,"summary":report,"fit":fit,"baseline":baseline,
-            "historical_intervals":starts,"imputation":imputation}
+    print(f"\nHistorical fitting grid: {target}")
+    print(f"Oracle prediction plot: {oracle_path}")
+    print(f"Oracle F0={oracle_result['oracle_F0']:.6f}, "
+          f"R0={oracle_result['oracle_R0']:.6f}, "
+          f"RMSE={oracle_result['oracle_rmse']:.6f}")
+    return {"plot":target,"oracle_plot":oracle_path,
+            "summary":report,"oracle":oracle_result,"fit":fit,
+            "baseline":baseline,"historical_intervals":starts,
+            "imputation":imputation}
 
 
 def main():
