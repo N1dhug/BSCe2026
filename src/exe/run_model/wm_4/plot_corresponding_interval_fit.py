@@ -291,7 +291,7 @@ def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output):
 
 
 def run(*,day,hour,k,N,B,group="MED",steps_per_hour=4,output=None):
-    """Fit and display N corresponding weekly-offset WM4 histories.
+    """Fit N corresponding weekly-offset WM4 histories and plot the target-day oracle.
 
     Parameters
     ----------
@@ -383,7 +383,7 @@ def run(*,day,hour,k,N,B,group="MED",steps_per_hour=4,output=None):
 
 
 def main():
-    parser=ArgumentParser(description="Plot WM4 joint fit of N weekly-offset k-hour histories in ONE grid figure.")
+    parser=ArgumentParser(description="Plot N weekly-offset WM4 historical fits in one grid and the target oracle in a second PNG.")
     parser.add_argument("--day",required=True,help="Prediction day YYYY-MM-DD (e.g. 2022-08-20).")
     parser.add_argument("--hour",type=int,required=True,help="Origin hour 0..23.")
     parser.add_argument("--k",type=int,default=12,help="Prediction horizon in hourly observations.")
@@ -392,7 +392,7 @@ def main():
                         default="weekly_temperature",help="Baseline formulation.")
     parser.add_argument("--group",choices=("MED","ALL"),default="MED")
     parser.add_argument("--steps-per-hour",type=int,default=4)
-    parser.add_argument("--output",default=None,help="Single grid PNG path (companion CSV/JSON alongside).")
+    parser.add_argument("--output",default=None,help="Historical grid PNG path (oracle PNG and companion CSV/JSON alongside).")
     args=parser.parse_args()
     if args.steps_per_hour<2: parser.error("--steps-per-hour must be >= 2.")
     return run(day=args.day,hour=args.hour,k=args.k,N=args.N,B=args.B,
