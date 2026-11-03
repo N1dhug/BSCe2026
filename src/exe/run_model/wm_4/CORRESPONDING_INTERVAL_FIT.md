@@ -53,7 +53,7 @@ Each panel uses the same x- and y-axis scales.
 - Blue: deterministic WM4 historical fit, **only inside** the
   k-hour fitting interval.
 - Pale shading: actual fitting interval [origin,origin+k).
-- X-axis: hours relative to that interval's own origin (hour 0).
+- X-axis: actual hour of day (00–23), with the fitting interval starting at the selected `--hour`. For intervals crossing midnight, the axis continues across the day boundary while the displayed tick labels wrap back to 00.
 
 The historical context is selected symmetrically:
 `edge=ceil((24-k)/2)` hourly observations on each side.
