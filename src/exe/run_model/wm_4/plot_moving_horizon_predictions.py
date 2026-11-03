@@ -152,8 +152,11 @@ def _plot_grid(results,frame,k,N,B,sph,output):
                 label="Historical baseline")
         ax.plot(x,item["prediction"],color="red",lw=2.0,
                 label="WM4 oracle prediction")
+        theta=item["theta"]
         ax.set_title(f"Origin {m+1}/{M}: {start:%a %d %b %Y, %H:%M}  |  "
-                     f"RMSE {item['score']['rmse']:.4f}",fontsize=10)
+                     f"RMSE {item['score']['rmse']:.4f}\n"
+                     f"θF={theta[0]:.3g}  θU={theta[1]:.3g}  θR={theta[2]:.3g}",
+                     fontsize=9.4)
         ax.grid(alpha=.18)
         for values in (item["baseline"],item["prediction"]):
             extrema.extend(np.asarray(values)[np.isfinite(values)].tolist())
