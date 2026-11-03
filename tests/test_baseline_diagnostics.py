@@ -91,10 +91,13 @@ class test_baseline_diagnostics(unittest.TestCase):
             self.assertEqual(len(training.index.unique()),12)
             self.assertEqual(training.index.hour.nunique(),6)
             self.assertTrue(np.isfinite(training.to_numpy(dtype=float)).all())
-        for origin in scores["origin"].unique():
-            for training,_ in training_sets:
-                if (origin-training.index.max())<pd.Timedelta(days=7):
-                    continue
+        for i,origin in enumerate(pd.DatetimeIndex(scores["origin"].unique())):
+            expected=pd.DatetimeIndex(np.concatenate([
+                pd.date_range(origin-pd.Timedelta(weeks=n),periods=6,freq="h").to_numpy()
+                for n in (2,1)]))
+            for training,_ in training_sets[i*len(mod.BASELINES):(i+1)*len(mod.BASELINES)]:
+                self.assertTrue(training.index.equals(expected))
+                self.assertLess(training.index.max(),origin)
         aggregates=mod.summarize_baselines(scores,rows)
         self.assertEqual(set(aggregates["baseline"]),set(mod.BASELINES))
         self.assertTrue((aggregates["origins"]==4).all())
