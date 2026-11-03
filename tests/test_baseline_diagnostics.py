@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -65,6 +67,21 @@ class test_baseline_diagnostics(unittest.TestCase):
         self.assertEqual(len(resid),140*24)
         self.assertTrue(len(daily)>100)
         self.assertTrue(np.isfinite(resid.to_numpy()).all())
+        quality=report["fit_quality"]
+        self.assertEqual(set(quality),{
+            "weekday_hour","weekday_hour_temperature","weekday_hour_temperature_price"})
+        mses=[quality[name]["mse"] for name in (
+            "weekday_hour","weekday_hour_temperature","weekday_hour_temperature_price")]
+        self.assertGreaterEqual(mses[0]+1e-12,mses[1])
+        self.assertGreaterEqual(mses[1]+1e-12,mses[2])
+        for name in quality:
+            fit=quality[name]
+            self.assertEqual(fit["samples"],len(resid))
+            self.assertAlmostEqual(fit["rmse"]**2,fit["mse"],places=12)
+            self.assertTrue(0<=fit["r2"]<=1)
+        self.assertAlmostEqual(mses[0],report["mse_weekday_hour"])
+        self.assertAlmostEqual(mses[1],report["mse_with_temperature"])
+        self.assertAlmostEqual(mses[2],report["mse_with_temperature_and_price"])
 
     def test_named_datetime_index_does_not_collide_with_groupby_columns(self):
         frame=self.frame()
@@ -92,11 +109,19 @@ class test_baseline_diagnostics(unittest.TestCase):
     def test_full_executable_saves_csv_json_and_png_without_real_data(self):
         frame=self.frame()
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(mod,"group_frame",return_value=frame):
+            stdout=StringIO()
+            with patch.object(mod,"group_frame",return_value=frame),redirect_stdout(stdout):
                 frame.index.name="Datetime"
                 results=mod.run(groups=("MED",),
                                 max_weeks=3,max_acf_lag=168,hac_lags=12,
                                 output=tmp)
+            log=stdout.getvalue()
+            for label in ("Autocorrelation","Historical interval RMSE",
+                          "Regression fit quality","Time only","Time + heating degree",
+                          "Time + heating degree + price","MSE","RMSE","MAE","R2",
+                          "HAC p","week= 1","week= 2","week= 3","in-sample"):
+                with self.subTest(terminal=label):
+                    self.assertIn(label,log)
             self.assertEqual(set(results),{"MED"})
             directory=Path(tmp)/"med"
             for name in ("weekday_hour_profile.csv","consumption_acf.csv",
@@ -111,6 +136,10 @@ class test_baseline_diagnostics(unittest.TestCase):
                 with self.subTest(file=name):
                     self.assertTrue((directory/name).is_file(),name)
             self.assertEqual(results["MED"]["dependence"]["samples"],len(frame))
+            quality=results["MED"]["dependence"]["fit_quality"]
+            self.assertEqual(quality["weekday_hour"]["samples"],len(frame))
+            self.assertLessEqual(quality["weekday_hour_temperature"]["rmse"],
+                                 quality["weekday_hour"]["rmse"]+1e-12)
             self.assertFalse((directory/"baseline_summary.csv").exists())
             self.assertFalse((directory/"baseline_rmse.png").exists())
 
