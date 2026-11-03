@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.plot_moving_horizon_predictions import _origins, run
+from src.exe.run_model.wm_4.plot_moving_horizon_predictions import _origins, _common_axis, run
 
 
 class test_wm4_moving_horizon_plot(unittest.TestCase):
@@ -95,16 +95,31 @@ class test_wm4_moving_horizon_plot(unittest.TestCase):
                 self.assertEqual(close.call_count,1)
                 figure=close.call_args.args[0]
                 self.assertEqual(len(figure.axes),4)
+                common_lim=figure.axes[0].get_xlim()
+                common_ticks=figure.axes[0].get_xticks()
+                observed_axis=None
                 for j,ax in enumerate(figure.axes):
                     origin=origins[j]
                     line=next(line for line in ax.get_lines()
                               if line.get_label()=="WM4 oracle prediction")
+                    observed=next(line for line in ax.get_lines()
+                                  if line.get_label()=="Observed demand")
                     self.assertEqual(line.get_color(),"red")
-                    self.assertAlmostEqual(float(line.get_xdata()[0]),origin.hour)
-                    self.assertAlmostEqual(float(line.get_xdata()[-1]),origin.hour+7)
+                    # All panels use the first day as time origin; the red
+                    # prediction moves one hour right at every iteration.
+                    x0=(origin-origins[0].normalize()).total_seconds()/3600
+                    self.assertAlmostEqual(float(line.get_xdata()[0]),x0)
+                    self.assertAlmostEqual(float(line.get_xdata()[-1]),x0+7)
                     self.assertEqual(len(line.get_xdata()),7*4+1)
+                    self.assertEqual(ax.get_xlim(),common_lim)
+                    np.testing.assert_allclose(ax.get_xticks(),common_ticks)
+                    if observed_axis is None:
+                        observed_axis=np.asarray(observed.get_xdata())
+                    else:
+                        np.testing.assert_allclose(observed.get_xdata(),observed_axis)
                     tick_map=dict(zip(ax.get_xticks(),[label.get_text() for label in ax.get_xticklabels()]))
-                    self.assertEqual(tick_map[origin.hour],f"{origin.hour:02d}")
+                    self.assertEqual(tick_map[24],"00\\n21 Jun")
+                self.assertEqual(common_lim,(13.,41.))
                 plt.close(figure)
 
             self.assertEqual(joint_calls,list(range(4)))
@@ -123,6 +138,17 @@ class test_wm4_moving_horizon_plot(unittest.TestCase):
             self.assertAlmostEqual(result["aggregate"]["rmse"],.004,places=10)
             self.assertEqual(result["aggregate"]["origins"],4)
             self.assertEqual(result["aggregate"]["total_forecast_samples"],28)
+
+    def test_fixed_axis_expands_to_cover_all_moving_intervals(self):
+        frame=self.frame()
+        starts=_origins("2022-06-20",6,9)
+        reference,(left,right),ticks,labels,x,y=_common_axis(frame,starts,12)
+        self.assertEqual(reference,pd.Timestamp("2022-06-20"))
+        self.assertEqual((left,right),(0.,32.))
+        self.assertEqual(len(x),len(y))
+        self.assertEqual(len(x),33)
+        self.assertEqual(labels[list(ticks).index(24)],"00\\n21 Jun")
+        self.assertEqual((starts[-1]-reference).total_seconds()/3600,14.)
 
     def test_invalid_arguments(self):
         with self.assertRaises(ValueError):
