@@ -16,13 +16,14 @@ from scipy.stats import chi2, norm
 
 from src.exe.run_model.wm_4.moving_horizon_common import group_frame
 from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays
-from src.exe.run_model.wm_4.sweep_weekday_horizon import baseline_from_history
+from src.tools.baseline import weekly_average, weekly_temperature
 from src.tools.impute_hourly import impute_hourly_days
 
 
 ROOT = Path(__file__).resolve().parents[3]
 OUTPUT = ROOT/"files"/"output"/"data"/"revised_rate_functions"
 BASELINES = ("weekly_average", "weekly_temperature")
+BASELINE_CLASSES = {"weekly_average": weekly_average, "weekly_temperature": weekly_temperature}
 LABELS = {"weekly_average": "Weekly average", "weekly_temperature": "Temperature-adjusted weekly"}
 FUNCTIONS = {
     "rate_quadratic": ("r2",),
@@ -90,7 +91,7 @@ def collect(frame, *, backlog=4, start_day=None, end_day=None, max_days=0, diffe
             history, _ = impute_hourly_days(frame, days=past, columns=("I", "U", "Temp"), require_days=True)
             today = []
             for name in BASELINES:
-                baseline = baseline_from_history(history, past, name)
+                baseline = BASELINE_CLASSES[name](min_samples=48).fit(history, day)
                 part = reconstruct_day(day, frame, baseline, difference=difference)
                 part["baseline"] = name
                 today.append(part)
