@@ -166,7 +166,10 @@ def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", 
     finite = summary["aggregate_rmse"].to_numpy(dtype=float)
     finite = finite[np.isfinite(finite)]
     if not len(finite): raise ValueError("No finite aggregate RMSE values to plot.")
-    vmax = float(np.max(finite)) if vmax is None else float(vmax)
+    if vmax is None:
+        vmax = float(np.max(finite))
+        if vmax == vmin: vmax = vmin + 1e-12  # E.g. exactly fitted k=1 oracle results.
+    else: vmax = float(vmax)
     if not np.isfinite(vmin) or not np.isfinite(vmax) or vmax <= vmin:
         raise ValueError("Color normalization must satisfy finite vmin < vmax.")
     norm = Normalize(vmin=vmin, vmax=vmax)
