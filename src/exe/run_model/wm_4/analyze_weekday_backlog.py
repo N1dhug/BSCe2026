@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[4] if len(Path(__file__).resolve().parents) > 4 else Path.cwd()
 INPUT = ROOT / "files" / "output" / "wm_4" / "weekday_horizon_sweep_expanded"
 BASELINES = ("statistical_output", "weekly_average", "weekly_temperature")
 LABELS = {"statistical_output": "Statistical", "weekly_average": "Weekly average",
