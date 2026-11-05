@@ -10,7 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.colors import Normalize
+from src.exe.run_model.wm_4.plot_demand_metric_grid import draw_demand_metric_grid
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -189,7 +189,8 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
                 entry = {"baseline": b, "training_weekdays": n, "horizon_hours": h,
                          "hour_start": min(hours) if hours else np.nan,
                          "hour_end": max(hours)+1 if hours else np.nan,
-                         "hours_scored": len(hours), "days": 0, "observations": 0, "aggregate_rmse": np.nan,
+                         "hours_scored": len(hours), "days": 0, "observations": 0,
+                         "aggregate_rmse": np.nan, "aggregate_mae": np.nan, "aggregate_bias": np.nan,
                          "start_day": pd.NaT, "end_day": pd.NaT,
                          "eligible_fit_days": int(eligible_counts.get((b,n),0)),
                          "missing_prediction_days": np.nan}
@@ -208,6 +209,8 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
                     if not np.isfinite(residual).all(): raise ValueError(f"Nonfinite reconstructed oracle errors: {b}, N={n}, k={h}.")
                     entry.update(days=len(scored), observations=len(residual),
                                  aggregate_rmse=float(np.sqrt(np.mean(residual**2))),
+                                 aggregate_mae=float(np.mean(np.abs(residual))),
+                                 aggregate_bias=float(np.mean(residual)),
                                  start_day=scored["day"].min(), end_day=scored["day"].max())
                 if cohort == "fitted":
                     entry["missing_prediction_days"] = entry["eligible_fit_days"]-entry["days"]
@@ -216,47 +219,21 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
 
 
 def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", vmin=0.0,
-                  vmax=None, dpi=190, figsize=(19, 6.8), title=None):
-    """Exactly two baseline panes, one common normalization and one colorbar."""
-    baselines = tuple(baselines)
-    if len(baselines) != 2: raise ValueError("Two-panel figure requires exactly two baselines.")
-    ns = sorted(summary["training_weekdays"].unique())
-    ks = sorted(summary["horizon_hours"].unique())
-    finite = summary["aggregate_rmse"].to_numpy(dtype=float)
-    finite = finite[np.isfinite(finite)]
-    if not len(finite): raise ValueError("No finite aggregate RMSE values to plot.")
-    if vmax is None:
-        vmax = float(np.max(finite))
-        if vmax == vmin: vmax = vmin + 1e-12  # E.g. exactly fitted k=1 oracle results.
-    else: vmax = float(vmax)
-    if not np.isfinite(vmin) or not np.isfinite(vmax) or vmax <= vmin:
-        raise ValueError("Color normalization must satisfy finite vmin < vmax.")
-    norm = Normalize(vmin=vmin, vmax=vmax)
-    color = plt.get_cmap(cmap).copy()
-    color.set_bad("#e6e8ea")
-    fig, axes = plt.subplots(1, 2, figsize=figsize, sharex=True, sharey=True,
-                             gridspec_kw={"wspace": 0.08})
-    for ax, baseline in zip(axes, baselines):
-        subset = summary.loc[summary["baseline"] == baseline]
-        pivot = subset.pivot(index="training_weekdays", columns="horizon_hours", values="aggregate_rmse")
-        values = pivot.reindex(index=ns, columns=ks).to_numpy(dtype=float)
-        im = ax.imshow(np.ma.masked_invalid(values), origin="lower", aspect="auto",
-                       interpolation="nearest", cmap=color, norm=norm)
-        ax.set_title(TITLES.get(baseline, baseline), fontsize=12)
-        ax.set_xticks(np.arange(len(ks)), [str(v) for v in ks], fontsize=8)
-        ax.set_yticks(np.arange(len(ns)), [str(v) for v in ns])
-        ax.set_xlabel("Prediction horizon k (hours scored)")
-        ax.tick_params(axis="both", length=0)
-    axes[0].set_ylabel("Backlog N (preceding matching weekdays)")
-    subtitle = title if title else "ARM (Affine Revised Model) | pooled historical DEMAND PREDICTION RMSE"
-    fig.suptitle(subtitle, fontsize=12)
-    fig.subplots_adjust(left=0.055, right=0.90, bottom=0.13, top=0.83, wspace=0.07)
-    cax = fig.add_axes((0.916, 0.19, 0.015, 0.57))
-    fig.colorbar(im, cax=cax, label="Pooled demand prediction RMSE (normalized demand)")
-    if output is not None:
-        output = Path(output); output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output, dpi=dpi, bbox_inches="tight")
-    return fig
+                  vmax=None, dpi=190, figsize=(19,15), title=None,
+                  group="ALL", period="all saved prediction origins"):
+    """Plot RMSE, MAE, and signed BIAS in a 3-row by 2-column grid.
+
+    One shared colorbar per metric is used for both baseline columns.
+    The CLI --vmax option still controls the RMSE row only.
+    """
+    if vmin!=0.0: raise ValueError("RMSE and MAE colorbars must start at zero (vmin=0).")
+    return draw_demand_metric_grid(
+        summary,{"rmse":"aggregate_rmse","mae":"aggregate_mae","bias":"aggregate_bias"},
+        baselines=baselines,titles=TITLES,group=group,period=period,
+        evaluation="PREDICTION",
+        subtitle="Saved constrained 24h theta and fitted oracle initial states; k selects scoring hours",
+        horizon_label="Prediction horizon k (hours scored)",output=output,
+        cmap=cmap,rmse_vmax=vmax,dpi=dpi,figsize=figsize,title=title)
 
 
 def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=None,
@@ -265,7 +242,7 @@ def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=
                   fit_manifest=None, start_day=None, end_day=None,
                   complete_missing=True, steps_per_hour=4, completion_fail_fast=False,
                   **plot_kwargs):
-    """Plot saved two-baseline N-k RMSE with a selectable score window.
+    """Plot saved two-baseline N-k RMSE/MAE/BIAS with a selectable score window.
 
     Examples: plot_heatmaps(hour_start=6, hour_end=12)
               plot_heatmaps(last_hours=4)
@@ -295,7 +272,7 @@ def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=
                              baselines=baselines, n_values=n_values, horizons=horizons)
     selected = (f"last_{last_hours:02d}h" if last_hours is not None else
                 f"hours_{hour_start:02d}_{hour_end if hour_end is not None else 'end'}")
-    stem = f"aggregate_rmse_two_baselines_{selected}_{cohort}"
+    stem = f"aggregate_rmse_mae_bias_two_baselines_{selected}_{cohort}"
     output = Path(output) if output is not None else input_dir/(stem+".png")
     output.parent.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output.with_suffix(".csv"), index=False)
@@ -321,19 +298,17 @@ def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=
     dates = (f"{first:%Y-%m-%d} to {last:%Y-%m-%d}" if pd.notna(first) and pd.notna(last)
              else "all saved prediction origins")
     fig = draw_heatmaps(summary, baselines=baselines, output=output,
-                        title=f"ARM (Affine Revised Model) | {group} | pooled historical DEMAND PREDICTION RMSE | {dates}\n"
-                              "Saved constrained 24h theta and fitted oracle initial states; k selects scoring hours",
-                        **plot_kwargs)
+                        group=group,period=dates,**plot_kwargs)
     plt.close(fig)
     print(f"Saved figure: {output}")
-    print(f"Saved pooled metrics: {output.with_suffix('.csv')}")
+    print(f"Saved pooled RMSE, MAE, and signed BIAS metrics: {output.with_suffix('.csv')}")
     print(f"Cohort: {cohort}; matched days per scored cell: "
           f"{int(summary.loc[summary['days']>0, 'days'].min())}--{int(summary['days'].max())}")
     return summary
 
 
 def main():
-    parser = ArgumentParser(description="Plot 2-panel pooled N-k oracle RMSE (weekly average/temperature) from completed WM4 sweep CSVs, without refitting.")
+    parser = ArgumentParser(description="Plot 3x2 pooled N-k oracle RMSE, MAE, and BIAS heatmaps for the two ARM baselines.")
     parser.add_argument("--group", choices=("MED", "ALL"), default="ALL")
     parser.add_argument("--input", default=None, help="Directory with oracle_horizon_scores.csv and forecast_components.csv.")
     parser.add_argument("--output", default=None, help="Output PNG path; a same-name CSV is written alongside.")
