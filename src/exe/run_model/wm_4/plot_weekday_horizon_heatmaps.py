@@ -1,4 +1,4 @@
-"""Three-panel pooled oracle-RMSE heatmaps from a completed WM4 N-k sweep.
+"""Two-panel pooled oracle-RMSE heatmaps from a completed WM4 N-k sweep.
 
 Uses saved oracle_horizon_scores.csv and forecast_components.csv, never refits.
 Each (N, k, day, baseline) uses the *k-specific fitted oracle state*;
@@ -15,9 +15,9 @@ from matplotlib.colors import Normalize
 
 ROOT = Path(__file__).resolve().parents[4]
 INPUT = ROOT / "files" / "output" / "wm_4" / "weekday_horizon_sweep_expanded"
-BASELINES = ("statistical_output", "weekly_average", "weekly_temperature")
-TITLES = {"statistical_output": "Statistical", "weekly_average": "Weekly average",
-          "weekly_temperature": "Temperature-adjusted weekly"}
+BASELINES = ("weekly_average", "weekly_temperature")
+TITLES = {"weekly_average": "Weekly average",
+          "weekly_temperature": "Weekly temperature"}
 KEY = ["day", "baseline", "training_weekdays"]
 SCORE_KEY = KEY + ["horizon_hours"]
 COMPONENT_KEY = KEY + ["hour"]
@@ -157,10 +157,10 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
 
 
 def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", vmin=0.0,
-                  vmax=None, dpi=190, figsize=(19.5, 6.3), title=None):
-    """Exactly three baseline panes, one common normalization and one colorbar."""
+                  vmax=None, dpi=190, figsize=(19, 6.8), title=None):
+    """Exactly two baseline panes, one common normalization and one colorbar."""
     baselines = tuple(baselines)
-    if len(baselines) != 3: raise ValueError("Three-panel figure requires exactly three baselines.")
+    if len(baselines) != 2: raise ValueError("Two-panel figure requires exactly two baselines.")
     ns = sorted(summary["training_weekdays"].unique())
     ks = sorted(summary["horizon_hours"].unique())
     finite = summary["aggregate_rmse"].to_numpy(dtype=float)
@@ -175,7 +175,7 @@ def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", 
     norm = Normalize(vmin=vmin, vmax=vmax)
     color = plt.get_cmap(cmap).copy()
     color.set_bad("#e6e8ea")
-    fig, axes = plt.subplots(1, 3, figsize=figsize, sharex=True, sharey=True,
+    fig, axes = plt.subplots(1, 2, figsize=figsize, sharex=True, sharey=True,
                              gridspec_kw={"wspace": 0.08})
     for ax, baseline in zip(axes, baselines):
         subset = summary.loc[summary["baseline"] == baseline]
@@ -189,7 +189,7 @@ def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", 
         ax.set_xlabel("Prediction horizon $k$ (hours)")
         ax.tick_params(axis="both", length=0)
     axes[0].set_ylabel("Historical matching weekdays $N$")
-    subtitle = title if title else "WM4 full-state oracle | pooled RMSE | three historical baselines"
+    subtitle = title if title else "WM4 full-state oracle | pooled RMSE | weekly average vs weekly temperature"
     fig.suptitle(subtitle, fontsize=13)
     fig.subplots_adjust(left=0.055, right=0.90, bottom=0.13, top=0.87, wspace=0.08)
     cax = fig.add_axes((0.915, 0.18, 0.015, 0.63))
@@ -203,7 +203,7 @@ def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", 
 def plot_heatmaps(*, input_dir=INPUT/"med", output=None, hour_start=0, hour_end=None,
                   last_hours=None, require_full_window=False, cohort="global",
                   baselines=BASELINES, n_values=None, horizons=None, **plot_kwargs):
-    """Plot saved full-sweep three-baseline N-k RMSE with a selectable score window.
+    """Plot saved two-baseline N-k RMSE with a selectable score window.
 
     Examples: plot_heatmaps(hour_start=6, hour_end=12)
               plot_heatmaps(last_hours=4)
@@ -216,7 +216,7 @@ def plot_heatmaps(*, input_dir=INPUT/"med", output=None, hour_start=0, hour_end=
                              cohort=cohort, baselines=baselines, n_values=n_values, horizons=horizons)
     selected = (f"last_{last_hours:02d}h" if last_hours is not None else
                 f"hours_{hour_start:02d}_{hour_end if hour_end is not None else 'end'}")
-    stem = f"aggregate_rmse_three_baselines_{selected}_{cohort}"
+    stem = f"aggregate_rmse_two_baselines_{selected}_{cohort}"
     output = Path(output) if output is not None else input_dir/(stem+".png")
     output.parent.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output.with_suffix(".csv"), index=False)
@@ -233,7 +233,7 @@ def plot_heatmaps(*, input_dir=INPUT/"med", output=None, hour_start=0, hour_end=
 
 
 def main():
-    parser = ArgumentParser(description="Plot 3-panel pooled N-k oracle RMSE from completed WM4 sweep CSVs, without refitting.")
+    parser = ArgumentParser(description="Plot 2-panel pooled N-k oracle RMSE (weekly average/temperature) from completed WM4 sweep CSVs, without refitting.")
     parser.add_argument("--group", choices=("MED", "ALL"), default="MED")
     parser.add_argument("--input", default=None, help="Directory with oracle_horizon_scores.csv and forecast_components.csv.")
     parser.add_argument("--output", default=None, help="Output PNG path; a same-name CSV is written alongside.")
