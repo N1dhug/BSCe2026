@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.exe.run_model.wm_4.analyze_observation_uncertainty import DEFAULT_WEEKS, _stack_days, corresponding_days, uncertainty_frame
-from src.exe.run_model.wm_4.fit_daily import DAY_HOURS, aligned_wm4_data, day_start
+from src.exe.run_model.wm_4.fit_daily import DAY_HOURS, aligned_wm4_data, day_start, selected_day
 from src.exe.run_model.wm_4.predict_all_days_optimized import fit_history_optimized, historical_optimized_state
 from src.exe.run_model.wm_4.predict_daily import prediction_setup
 from src.params.wm_4 import constant_diffusion_qp
@@ -23,7 +23,6 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
     history_days = corresponding_days(prediction_day, weeks)
     empirical = uncertainty_frame(_stack_days(frame, history_days))
     observed_variance = empirical["var_I"].to_numpy(dtype=float)
-    observed_std = empirical["s_I"].to_numpy(dtype=float)
 
     output_model, _, fit, _ = fit_history_optimized(
         frame, prediction_day, weeks, steps_per_hour,
@@ -37,20 +36,33 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
     hourly_index = np.arange(DAY_HOURS, dtype=int) * steps_per_hour
     process_kernel = prediction_model.process_variance_kernel({"r": fit["r"]}, hourly_index)
 
+    # Historical demand errors separate the constant observation floor from
+    # the Brownian variance accumulated through the R-state dynamics.
+    residual_days = []
+    for day, historical_state in zip(fit["training_days"], fit["deterministic_states"]):
+        _, measured = selected_day(frame, day)
+        prediction = np.asarray(historical_state["I"], dtype=float)[hourly_index]
+        residual_days.append(measured["I"].to_numpy(dtype=float) - prediction)
+    demand_residuals = np.vstack(residual_days)
+
     P0 = np.zeros((2, 2), dtype=float)
     initial_variance = np.zeros(DAY_HOURS, dtype=float)
 
     fit_mask = np.ones(DAY_HOURS, dtype=bool)
     qp = constant_diffusion_qp(prediction_model).fit(
         process_kernel, observed_variance,
-        initial_variance=initial_variance, fit_mask=fit_mask,
+        initial_variance=initial_variance, fit_mask=fit_mask, residuals=demand_residuals,
     )
-    fine_diffusion = constant_diffusion_qp.evaluate(prediction_model.t_steps, qp["q"])
+    fine_diffusion = constant_diffusion_qp.evaluate(prediction_model.t_steps, qp["q"], qp["observation_q"])
 
+    observed_variance = qp["observed_variance"]
     var_scale = float(np.var(observed_variance[fit_mask]))
     r2 = np.nan if var_scale <= 0.0 else 1.0 - qp["variance_mse"] / var_scale
 
     hourly = empirical[["hour", "var_I", "s_I"]].copy()
+    hourly["demand_residual_variance"] = observed_variance
+    hourly["demand_residual_std"] = np.sqrt(observed_variance)
+    hourly["observation_variance"] = qp["observation_variance"]
     hourly["initial_variance"] = initial_variance
     hourly["fitted_process_variance"] = qp["process_variance"]
     hourly["fitted_propagated_variance"] = qp["propagated_variance"]
@@ -60,12 +72,15 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
         "prediction_day": prediction_day, "history_days": history_days,
         "r": np.asarray(fit["r"], dtype=float), "init": np.asarray(init, dtype=float),
         "q": qp["q"], "sigma": qp["sigma"],
+        "observation_q": qp["observation_q"], "observation_sigma": qp["observation_sigma"],
+        "demand_residuals": demand_residuals,
         "variance_rmse": qp["variance_rmse"], "std_rmse": qp["std_rmse"], "std_mae": qp["std_mae"], "r2": r2,
         "P0": P0, "initial_variance": initial_variance,
         "hourly": hourly, "prediction_state": prediction_state,
         "training_days": list(fit["training_days"]),
         "training_states": list(fit["deterministic_states"]),
         "fine_index": fine_index, "fine_variance": fine_diffusion["variance"], "fine_g": fine_diffusion["std"],
+        "fine_observation_std": fine_diffusion["observation_std"],
         "actual": actual,
     }
 
@@ -74,14 +89,15 @@ def save_plot(result, path):
     hourly = result["hourly"]
     fig, axes = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
 
-    axes[0].plot(hourly["hour"], hourly["var_I"], marker="o", label="Observed 5-week hourly variance $s_I^2$")
+    axes[0].plot(hourly["hour"], hourly["demand_residual_variance"], marker="o", label="Observed demand prediction MSE by hour")
+    axes[0].axhline(result["observation_q"], linestyle=":", label="Constant demand observation variance")
     axes[0].plot(hourly["hour"], hourly["fitted_propagated_variance"], marker="o", label="WM4 propagated variance from constant $q$")
     axes[0].set_ylabel("Variance")
     axes[0].grid(True, alpha=0.25); axes[0].legend()
 
-    axes[1].plot(hourly["hour"], hourly["s_I"], marker="o", label="Observed 5-week $s_I$")
+    axes[1].plot(hourly["hour"], hourly["demand_residual_std"], marker="o", label="Observed demand residual RMS")
     axes[1].plot(hourly["hour"], hourly["fitted_propagated_std"], marker="o", label="WM4 propagated std")
-    axes[1].axhline(result["sigma"], linestyle="--", label=f"Constant diffusion $\\sigma$={result['sigma']:.4f}")
+    axes[1].axhline(result["observation_sigma"], linestyle=":", label=f"Observation error std={result['observation_sigma']:.4f}")
     axes[1].set_xlabel("Hour of day"); axes[1].set_ylabel("Standard deviation / diffusion")
     axes[1].set_xticks(np.arange(0, DAY_HOURS, 2))
     axes[1].grid(True, alpha=0.25); axes[1].legend()
@@ -99,14 +115,16 @@ def print_result(result, plot_path, csv_path):
     print()
     print("local convex constant-diffusion QP")
     print("g(t)=sigma, q=sigma^2")
-    print("The QP fits WM4-propagated hourly Var(I), not the empirical s_I directly.")
+    print("The QP fits mean squared demand residuals to constant observation variance plus accumulated process variance.")
     print(f"q={result['q']:.10f}")
     print(f"sigma={result['sigma']:.10f}")
+    print(f"observation variance={result['observation_q']:.10f}, observation std={result['observation_sigma']:.10f}")
     print(f"variance RMSE={result['variance_rmse']:.10f}, R2={result['r2']:.8f}")
     print(f"std RMSE after sqrt={result['std_rmse']:.10f}, MAE={result['std_mae']:.10f}")
     print()
     print("P0=[[0,0],[0,0]]: the constant diffusion fit is conditional on a known/oracle initial state.")
-    print("All 24 hourly variances are included; hour 0 contributes an irreducible residual because process diffusion has not accumulated yet.")
+    print("All 24 hourly residual moments are included; hour 0 identifies the observation error floor when P0=0.")
+    print("Historical fitted states may absorb observation error; verify on held-out demand residuals.")
     print("The additive constant Ito diffusion has zero mean, so E[I_stochastic]=I_deterministic for the same initial mean.")
     print(f"hourly={csv_path}")
     print(f"plot={plot_path}")
