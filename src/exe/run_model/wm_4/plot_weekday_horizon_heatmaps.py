@@ -234,7 +234,7 @@ def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=
     dates = (f"{first:%Y-%m-%d} to {last:%Y-%m-%d}" if pd.notna(first) and pd.notna(last)
              else "all saved prediction origins")
     fig = draw_heatmaps(summary, baselines=baselines, output=output,
-                        title=f"ARM (Affine Revised Model) | {group} | pooled historical DEMAND PREDICTION RMSE | {dates}\\n"
+                        title=f"ARM (Affine Revised Model) | {group} | pooled historical DEMAND PREDICTION RMSE | {dates}\n"
                               "Saved constrained 24h theta and fitted oracle initial states; k selects scoring hours",
                         **plot_kwargs)
     plt.close(fig)
