@@ -1,10 +1,14 @@
 """Pooled WM4 linear-rate R² on historical intervals using SAVED theta estimates.
 
 No theta refitting. Each fitted target (day, baseline, N) supplies one theta
-and N historical F0 values from the completed weekday-horizon sweep. Score
-the observed rate increments against dR/dt = theta_F F + theta_U U + theta_R R
-over the first min(k,23) rate hours of each historical interval. One common R² scale is
-used for weekly_average and weekly_temperature.
+and N historical F0 values from the completed weekday-horizon sweep.
+Observed derivatives are formed from ORIGINAL hourly endpoints:
+    (R[h+1] - R[h]) / (1/24),  R[h] = I[h] - O[h].
+Predicted hourly derivatives average theta @ [F,U,R] over the corresponding
+hour using the existing fine-grid state reconstruction. Thus there is exactly
+ONE derivative observation per hour, not steps_per_hour pseudo-observations.
+Only the first 23 hourly transitions are observable in each 24-sample day;
+k=24 uses the same 23 transitions as k=23. Both baselines share one R² scale.
 
 Run as: python -m src.exe.run_model.wm_4.plot_linear_rate_r2
 """
@@ -34,25 +38,38 @@ def _values(values, low, high, name):
 
 
 def _rate_components(frame, start, baseline, f0, sph):
-    """Reconstruct exactly the historical rate design used to estimate theta.
+    """Compute 23 HOURLY derivatives and matching mean hourly WM4 drift.
 
-    The original WM4 joint QP works on the normalized-day grid T=[0,1],
-    with dt=1/(24*sph), even though data timestamps are expressed in hours.
-    Its 24 hourly observations contain only 23 observable hourly differences:
-    the last hour is padded and excluded by transition_mask. Respect that
-    mask rather than requiring an unavailable hour-24 sample.
+    The existing WM4 model uses normalized-day time dt=1/(24*sph).
+    We retain the fitted historical F0 and fine-grid F reconstruction so the
+    saved theta stays on the correct time scale. Only the rate TARGET is
+    changed from sub-hourly forward differences to genuine hourly
+    differences; model drift is averaged over each complete hour.
     """
     model, data, _, _ = window_data(frame, start, baseline, sph)
     R = np.asarray(data["I"]-data["O"], dtype=float)
     F = np.r_[float(f0), float(f0)+np.cumsum(model.dt*R[:-1])]
-    X = np.column_stack((F[:-1], data["U"][:-1], R[:-1]))
-    y = np.diff(R)/model.dt
+    X_fine = np.column_stack((F[:-1], data["U"][:-1], R[:-1]))
     valid = np.asarray(data["transition_mask"], dtype=bool)
-    if np.count_nonzero(valid) != (23*sph):
+    if np.count_nonzero(valid) != 23*sph or not np.all(valid[:23*sph]) or np.any(valid[23*sph:]):
         raise ValueError("Historical 24-hour WM4 window has an unexpected transition mask.")
-    if not np.isfinite(X[valid]).all() or not np.isfinite(y[valid]).all():
-        raise ValueError("Nonfinite historical rate observations.")
-    return X[valid], y[valid]
+
+    # Anchor differences use the 24 ACTUAL hourly observations (0,...,23).
+    # Time is normalized to one day, so one hour is delta_t = 1/24.
+    hourly_R = R[np.arange(24)*sph]
+    y_hourly = np.diff(hourly_R)/(sph*model.dt)
+
+    # Match an hourly average derivative to the hourly average model drift:
+    # (1/delta_t_hour) integral_h^(h+1) theta @ [F,U,R] dt.
+    # The left-rectangle approximation exactly uses the same fine-grid
+    # reconstruction as the stored theta estimation, without pretending that
+    # interpolation creates independent sub-hourly observations.
+    X_hourly = X_fine[:23*sph].reshape(23,sph,3).mean(axis=1)
+    if X_hourly.shape != (23,3) or y_hourly.shape != (23,):
+        raise RuntimeError("Hourly rate-regression shapes are inconsistent.")
+    if not np.isfinite(X_hourly).all() or not np.isfinite(y_hourly).all():
+        raise ValueError("Nonfinite hourly rate observations.")
+    return X_hourly, y_hourly
 
 
 def _one_configuration(frame, day, n, baseline_name, theta, states, sph):
@@ -121,10 +138,10 @@ def evaluate(*, group="MED", n_values=range(2,15), horizons=range(1,25),
             theta = [row.theta_F,row.theta_U,row.theta_R]
             actual, predicted = _one_configuration(frame,key[0],key[2],key[1],theta,history_states,sph)
             for k in ks:
-                # Each 24-hour historical input has 23 observed hourly transitions.
-                # Thus k=24 scores 23 derivative hours (as in the original QP fit).
-                hours = min(k, 23)
-                y, p = actual[:,:hours*sph].reshape(-1),predicted[:,:hours*sph].reshape(-1)
+                # Exactly one observed derivative per complete hourly transition.
+                # 24 hourly data points have 23 observable hourly transitions.
+                hours = min(k,23)
+                y, p = actual[:,:hours].reshape(-1),predicted[:,:hours].reshape(-1)
                 if not np.isfinite(y).all() or not np.isfinite(p).all():
                     raise ValueError("Nonfinite rate observations or predictions.")
                 totals[(key[1],key[2],k)] += (len(y),np.sum(y),np.dot(y,y),np.dot(y-p,y-p),1)
@@ -179,10 +196,10 @@ def plot(summary,ns,ks,group,output,cmap="viridis",dpi=190):
         ax.set_xlabel("Horizon k (hours)")
         ax.tick_params(length=0)
     axes[0].set_ylabel("Backlog N (preceding matching weekdays)")
-    fig.suptitle(f"WM4 | {group} | pooled linear rate-dynamics R² (saved θ) | k=24 uses 23 rate hours")
+    fig.suptitle(f"WM4 | {group} | pooled HOURLY rate-dynamics R² (saved θ) | k=24 uses 23 rate hours")
     fig.subplots_adjust(left=0.06,right=0.90,bottom=0.13,top=0.87,wspace=0.08)
     cax=fig.add_axes([0.92,0.18,0.015,0.63])
-    fig.colorbar(image,cax=cax,label="Pooled rate-dynamics R²")
+    fig.colorbar(image,cax=cax,label="Pooled hourly rate-dynamics R²")
     fig.savefig(output,dpi=dpi,bbox_inches="tight")
     plt.close(fig)
 
