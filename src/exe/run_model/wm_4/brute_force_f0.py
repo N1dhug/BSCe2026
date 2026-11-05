@@ -46,7 +46,7 @@ def save_profile(fit, output):
     ax.axvline(0.0, linestyle=":", label="neutral F0=0")
     ax.set_xlabel("Shared fixed F0")
     ax.set_ylabel("Rate-transition QP loss")
-    ax.set_title("WM4 brute-force profile for shared midnight flexibility state")
+    ax.set_title("ARM (Affine Revised Model) brute-force profile for shared midnight flexibility state")
     ax.legend(); ax.grid(True, alpha=0.25)
     fig.tight_layout(); fig.savefig(output / "f0_qp_loss_profile.png", dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -57,7 +57,7 @@ def save_profile(fit, output):
     ax.axvline(float(fit["F0"]), linestyle="--", label=f"best F0={fit['F0']:.4f}")
     ax.set_xlabel("Shared fixed F0")
     ax.set_ylabel("Fitted coefficient")
-    ax.set_title("WM4 coefficients across the F0 profile")
+    ax.set_title("ARM (Affine Revised Model) coefficients across the F0 profile")
     ax.legend(); ax.grid(True, alpha=0.25)
     fig.tight_layout(); fig.savefig(output / "f0_parameter_profile.png", dpi=300, bbox_inches="tight"); plt.close(fig)
     return profile

@@ -228,7 +228,7 @@ def plot_origins(cumulative,output):
         ax.axvspan(origin,origin+H,color="grey",alpha=.08)
         ax.fill_between(x,0,step_wm,step="pre",color="tab:blue",alpha=.24)
         ax.step(x,step_wm,where="pre",color="tab:blue",lw=1.8,
-                label="WM4 full-state oracle (pooled prefix RMSE)")
+                label="ARM full-state oracle (pooled prefix RMSE)")
         ax.step(x,step_base,where="pre",color="tab:orange",ls="--",lw=1.5,
                 label="Weekly-temperature baseline")
         ax.plot(x[1:],wm,"o",color="tab:blue",markersize=2.5)
@@ -240,7 +240,7 @@ def plot_origins(cumulative,output):
                      fontsize=10)
     handles,labels=axes.flat[0].get_legend_handles_labels()
     fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(.5,.968),ncol=2)
-    fig.suptitle("WM4: N=9 corresponding weekdays, H=12h | pooled cumulative RMSE by forecast origin",
+    fig.suptitle("ARM (Affine Revised Model): N=9 corresponding weekdays, H=12h | pooled cumulative RMSE by forecast origin",
                  fontsize=15,y=.994)
     fig.supxlabel("Hour of day (all panels 00–24)")
     fig.supylabel("Pooled cumulative RMSE (normalized demand)")

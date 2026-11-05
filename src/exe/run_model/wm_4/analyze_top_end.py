@@ -237,7 +237,7 @@ def save_plots(frame, output):
     ax.plot([0.0, limit], [0.0, limit], linestyle="--")
     ax.set_xlabel("Warmup-parameter fit with oracle state MSE")
     ax.set_ylabel("Optimized-parameter fit with oracle state MSE")
-    ax.set_title("WM4 top-end parameterization comparison")
+    ax.set_title("ARM (Affine Revised Model) top-end parameterization comparison")
     ax.grid(True, alpha=0.25)
     fig.tight_layout()
     fig.savefig(output / "top_end_mse_comparison.png", dpi=300, bbox_inches="tight")

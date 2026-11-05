@@ -236,7 +236,7 @@ def save_plots(frame, correlations, predictions, output):
     image = ax.imshow(matrix.to_numpy(dtype=float), vmin=-1.0, vmax=1.0, aspect="auto")
     ax.set_xticks(np.arange(3), matrix.columns)
     ax.set_yticks(np.arange(2), ("oracle F0", "oracle R0"))
-    ax.set_title("WM4 fitted r versus oracle initial state")
+    ax.set_title("ARM (Affine Revised Model) fitted r versus oracle initial state")
     fig.colorbar(image, ax=ax, label="Pearson correlation")
     fig.tight_layout(); fig.savefig(output / "r_oracle_state_correlation.png", dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -261,7 +261,7 @@ def save_plots(frame, correlations, predictions, output):
         ax.plot(predictions["day"], predictions[f"{short}_r"], label="walk-forward r regression")
         ax.plot(predictions["day"], predictions[f"{short}_r_U0"], label="walk-forward r + U0 regression")
         ax.set_xlabel("Prediction day"); ax.set_ylabel(short)
-        ax.set_title(f"Walk-forward {short} prediction from fitted WM4 parameters")
+        ax.set_title(f"Walk-forward {short} prediction from fitted ARM (Affine Revised Model) parameters")
         ax.legend(); ax.grid(True, alpha=0.25)
         fig.tight_layout(); fig.savefig(output / f"{short.lower()}_walk_forward.png", dpi=300, bbox_inches="tight"); plt.close(fig)
 

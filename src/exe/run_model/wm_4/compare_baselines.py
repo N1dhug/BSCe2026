@@ -190,7 +190,7 @@ def save_plots(summary, horizon, examples, output):
         for offset, method in zip((-width, 0, width), METHODS):
             ax.bar(x+offset, subset[f"{method}_aggregate_rmse"], width, label=method)
         ax.set_xticks(x, names)
-        ax.set_title(f"{group}: WM4 baseline vs standard forecast vs future-state oracle")
+        ax.set_title(f"{group}: ARM (Affine Revised Model) baseline vs standard forecast vs future-state oracle")
         ax.set_ylabel("Matched 24-hour aggregate RMSE"); ax.grid(axis="y", alpha=0.2); ax.legend()
         fig.tight_layout(); fig.savefig(directory / "aggregate_rmse.png", dpi=180); plt.close(fig)
 

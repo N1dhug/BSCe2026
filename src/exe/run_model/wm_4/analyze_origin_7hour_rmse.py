@@ -275,7 +275,7 @@ def plot_cumulative_rmse_panels(cumulative,output):
         baseline_bins=np.r_[baseline[0],baseline]
         ax.axvspan(origin,origin+HORIZON,alpha=.08,color="grey")
         ax.fill_between(x,0,wm_bins,step="pre",alpha=.25,color="tab:blue")
-        ax.step(x,wm_bins,where="pre",lw=1.8,color="tab:blue",label="WM4 cumulative RMSE")
+        ax.step(x,wm_bins,where="pre",lw=1.8,color="tab:blue",label="ARM cumulative RMSE")
         ax.step(x,baseline_bins,where="pre",lw=1.2,ls="--",color="tab:orange",
                 label="Baseline cumulative RMSE")
         ax.scatter(x[1:],wm,s=13,color="tab:blue",zorder=3)
@@ -287,7 +287,7 @@ def plot_cumulative_rmse_panels(cumulative,output):
         ax.tick_params(labelbottom=True,labelleft=True,labelsize=8)
     handles,labels=axes.flat[0].get_legend_handles_labels()
     fig.legend(handles,labels,loc="upper center",ncol=2,bbox_to_anchor=(.5,.972))
-    fig.suptitle("WM4 N=8 / H=7: pooled cumulative prediction RMSE within each origin",
+    fig.suptitle("ARM (Affine Revised Model) N=8 / H=7: pooled cumulative prediction RMSE within each origin",
                  y=.993,fontsize=15)
     fig.supxlabel("Hour of day (all panels 00–24)")
     fig.supylabel("Cumulative pooled RMSE (normalized demand)")
@@ -299,12 +299,12 @@ def plot_cumulative_rmse_panels(cumulative,output):
 def plot_results(aggregate,leads,output):
     fig,ax=plt.subplots(figsize=(13,6))
     ax.plot(aggregate["origin_hour"],aggregate["aggregate_rmse"],marker="o",lw=2.2,
-            label="WM4 seven-hour oracle, pooled RMSE")
+            label="ARM seven-hour oracle, pooled RMSE")
     ax.plot(aggregate["origin_hour"],aggregate["baseline_rmse"],marker=".",ls="--",lw=1.4,
             label="Historical weekly-temperature baseline")
     ax.set_xticks(ORIGINS);ax.set_xlabel("Forecast origin hour (00–17)")
     ax.set_ylabel("Aggregate RMSE (normalized demand)")
-    ax.set_title("WM4 N=8, H=7: pooled oracle prediction RMSE by forecast origin")
+    ax.set_title("ARM (Affine Revised Model) N=8, H=7: pooled oracle prediction RMSE by forecast origin")
     ax.grid(alpha=.25);ax.legend()
     fig.tight_layout();fig.savefig(output/"origin_aggregate_rmse.png",dpi=180);plt.close(fig)
 
@@ -328,7 +328,7 @@ def plot_results(aggregate,leads,output):
     ax.set_yticks(np.arange(len(ORIGINS)),[f"{i:02d}:00" for i in ORIGINS])
     ax.set_xticks(np.arange(HORIZON),[f"+{i} h" for i in range(HORIZON)])
     ax.set_ylabel("Forecast origin");ax.set_xlabel("Lead hour")
-    ax.set_title("WM4 error by origin and forecast lead hour (same day)")
+    ax.set_title("ARM (Affine Revised Model) error by origin and forecast lead hour (same day)")
     fig.tight_layout();fig.savefig(output/"origin_lead_rmse_heatmap.png",dpi=180);plt.close(fig)
 
 

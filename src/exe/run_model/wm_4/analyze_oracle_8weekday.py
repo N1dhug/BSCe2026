@@ -266,7 +266,7 @@ def plot_parameters(daily, stats, output):
         for q in (20, 50, 80):
             ax.axhline(float(np.percentile(values, q)), linestyle="--", lw=1, label=f"Q{q}")
         ax.set_ylabel(variable); ax.grid(alpha=.2); ax.legend(ncol=3, fontsize=8)
-    axes[0].set_title("WM4 joint-QP parameters: eight matching weekdays")
+    axes[0].set_title("ARM (Affine Revised Model) joint-QP parameters: eight matching weekdays")
     axes[-1].set_xlabel("Prediction day")
     save_figure(fig, output, "theta_time_quantiles.png")
 

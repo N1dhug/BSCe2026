@@ -176,7 +176,7 @@ def parameter_regions(frame, parameters, bins=3, min_days=3):
 def save_weekday_plot(summary, path):
     ordered = summary.sort_values("mse_rank")
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(ordered["weekday"], ordered["mean_wm4_mse"], label="WM4")
+    ax.bar(ordered["weekday"], ordered["mean_wm4_mse"], label="ARM")
     ax.plot(ordered["weekday"], ordered["mean_O_mse"], marker="o", label="O(t)")
     ax.set_ylabel("Mean daily MSE")
     ax.set_xlabel("Weekday")
@@ -191,7 +191,7 @@ def save_parameter_plot(frame, parameter, path):
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.scatter(frame[parameter], frame["wm4_mse"], alpha=0.65)
     ax.set_xlabel(parameter)
-    ax.set_ylabel("WM4 daily MSE")
+    ax.set_ylabel("ARM daily MSE")
     ax.grid(True, alpha=0.25)
     fig.tight_layout()
     fig.savefig(path, dpi=300, bbox_inches="tight")

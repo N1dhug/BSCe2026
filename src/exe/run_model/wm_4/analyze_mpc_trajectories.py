@@ -157,7 +157,7 @@ def plot_trajectory(frame, origin, output, label="MPC origin"):
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
     ax = axes[0, 0]
     ax.plot(h, obs, "s-", label="Observed demand", markersize=4)
-    ax.plot(h, mean, "o-", label="WM4 deterministic prediction", markersize=4)
+    ax.plot(h, mean, "o-", label="ARM deterministic prediction", markersize=4)
     ax.fill_between(h, mean - 1.96 * std, mean + 1.96 * std,
         alpha=0.18, label="Predicted 95% marginal interval")
     ax.set_title("Eight-hour demand trajectory (no state reinitialization)")
@@ -206,7 +206,7 @@ def plot_trajectory(frame, origin, output, label="MPC origin"):
         ("r_F", "r_U", "r_R", "F_initialized_origin", "R_initialized_origin")
         if p in row and pd.notna(row[p]))
     text = f"Fitted parameters and initial state: {ptxt}" if ptxt else "Parameters fixed within this MPC origin"
-    fig.suptitle(f"WM4 | {label} | origin {pd.Timestamp(origin):%Y-%m-%d %H:%M}\n{text}",
+    fig.suptitle(f"ARM (Affine Revised Model) | {label} | origin {pd.Timestamp(origin):%Y-%m-%d %H:%M}\n{text}",
         fontsize=14)
     fig.tight_layout(rect=(0, 0, 1, 0.91), h_pad=2.3, w_pad=1.6)
     output = Path(output)
@@ -298,7 +298,7 @@ def plot_reliability(grouped, output):
         ax.set_xlabel("Cumulative forecast horizon (hours)")
         ax.set_ylabel("Normalized demand squared")
         ax.set_xticks(grouped["horizon_hours"].unique())
-    fig.suptitle("WM4 MPC | cumulative variance calibration by predicted uncertainty"
+    fig.suptitle("ARM (Affine Revised Model) MPC | cumulative variance calibration by predicted uncertainty"
         "\nMeans across origins (not single-trajectory empirical variance)", fontsize=15)
     fig.tight_layout(rect=(0, 0, 1, 0.92), h_pad=2.1)
     output = Path(output)
