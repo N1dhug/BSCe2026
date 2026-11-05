@@ -197,7 +197,7 @@ def save_plots(fits, overview, quantiles, leads, output):
         ax.set_xlabel("Diffusion fitting horizon (hours)")
         ax.set_xticks(h[::max(1, len(h) // 9)])
         ax.grid(alpha=0.2)
-    fig.suptitle(f"WM4 | constant Wiener q, {int(fits['history_days'].iloc[0])}-day backlog, 24h historical MPC paths\n"
+    fig.suptitle(f"ARM (Affine Revised Model) | constant Wiener q, {int(fits['history_days'].iloc[0])}-day backlog, 24h historical MPC paths\n"
         f"Evaluation: same {int(overview['n_origins'].iloc[0])} origins, next six hours, no P0")
     fig.tight_layout(rect=(0, 0, 1, .95))
     fig.savefig(output / "fit_hours_sweep.png", dpi=165, bbox_inches="tight")
@@ -217,7 +217,7 @@ def save_plots(fits, overview, quantiles, leads, output):
         ax.set_xlabel("Diffusion fitting horizon (hours)")
         ax.grid(alpha=0.25)
         ax.legend(ncol=2)
-    fig.suptitle("WM4 | conditional six-hour reliability by 6–24h diffusion fitting horizon")
+    fig.suptitle("ARM (Affine Revised Model) | conditional six-hour reliability by 6–24h diffusion fitting horizon")
     fig.tight_layout()
     fig.savefig(output / "fit_hours_quintile_sweep.png", dpi=165, bbox_inches="tight")
     plt.close(fig)
@@ -250,7 +250,7 @@ def save_plots(fits, overview, quantiles, leads, output):
     for ax in list(axs.flat)[len(hours):]: ax.axis("off")
     fig.supxlabel("Predicted six-hour mean variance")
     fig.supylabel("Realized six-hour MPC MSE")
-    fig.suptitle("WM4 | same origins across all diffusion fitting horizons | no initial P0")
+    fig.suptitle("ARM (Affine Revised Model) | same origins across all diffusion fitting horizons | no initial P0")
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     fig.savefig(output / "fit_hours_scatter.png", dpi=145, bbox_inches="tight")
     plt.close(fig)

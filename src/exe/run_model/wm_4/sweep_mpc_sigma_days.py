@@ -244,7 +244,7 @@ def save_plots(result, output):
         a.set_xlabel("Historical diffusion fitting days")
         a.set_xticks(days[::max(1, len(days) // 11)])
         a.grid(alpha=0.25)
-    fig.suptitle(f"WM4 | six-hour Wiener sigma fit | rolling {int(days.min())}–{int(days.max())} day sweep\n"
+    fig.suptitle(f"ARM (Affine Revised Model) | six-hour Wiener sigma fit | rolling {int(days.min())}–{int(days.max())} day sweep\n"
         f"Identical {int(score['n_origins'].iloc[0])} complete MPC origins across all windows")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(output / "matched_sigma_sweep.png", dpi=170, bbox_inches="tight")
@@ -267,7 +267,7 @@ def save_plots(result, output):
         a.set_xlabel("Historical diffusion fitting days")
         a.grid(alpha=0.25)
         a.legend(ncol=2)
-    fig.suptitle("WM4 | matched-cohort conditional reliability over all diffusion backlogs")
+    fig.suptitle("ARM (Affine Revised Model) | matched-cohort conditional reliability over all diffusion backlogs")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(output / "matched_quintile_sweep.png", dpi=170, bbox_inches="tight")
     plt.close(fig)

@@ -310,7 +310,7 @@ def save_horizon_curves(ranking, output):
         ax.set_ylabel("Pooled full-state oracle RMSE"); ax.set_title(name)
         ax.grid(alpha=0.25); ax.legend(ncol=5, fontsize=8)
     axes[-1, 0].set_xlabel("Prediction horizon (hours)")
-    fig.suptitle("WM4 oracle prediction quality by historical weekdays and baseline")
+    fig.suptitle("ARM (Affine Revised Model) oracle prediction quality by historical weekdays and baseline")
     fig.tight_layout(); fig.savefig(output/"rmse_by_horizon.png", dpi=190, bbox_inches="tight"); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(12, 6))

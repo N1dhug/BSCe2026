@@ -99,7 +99,7 @@ def save_best_oracle_plot(prediction_day, training_days, best_row, oracle_result
     fig, axes = plt.subplots(3, 1, figsize=(15, 10), sharex=True)
 
     axes[0].plot(actual.index, actual["I"], marker="o", label="Observed input I")
-    axes[0].plot(fine_index, state["I"], label="Best oracle WM4 I")
+    axes[0].plot(fine_index, state["I"], label="Best oracle ARM I")
     axes[0].plot(fine_index, state["O"], label="Expected output O", alpha=0.8)
     axes[0].set_ylabel("Normalized input")
     axes[0].legend(); axes[0].grid(True, alpha=0.25)
@@ -116,7 +116,7 @@ def save_best_oracle_plot(prediction_day, training_days, best_row, oracle_result
 
     fit_days = ", ".join(day.strftime("%Y-%m-%d") for day in training_days)
     fig.suptitle(
-        f"WM4 best oracle after historical F0-seed sensitivity | prediction {prediction_day:%Y-%m-%d}\n"
+        f"ARM (Affine Revised Model) best oracle after historical F0-seed sensitivity | prediction {prediction_day:%Y-%m-%d}\n"
         f"best historical seed F0={best_row['F0_guess']:.3f} | MSE={metrics['mse']:.6f}, RMSE={metrics['rmse']:.6f}, MAE={metrics['mae']:.6f}\n"
         f"training days: {fit_days}"
     )

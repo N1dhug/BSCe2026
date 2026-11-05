@@ -54,7 +54,7 @@ def plot_origin_scatter(fits, archive, path):
     for ax in list(axes.flat)[len(days):]: ax.axis("off")
     fig.supxlabel("Predicted six-hour mean variance (Wiener only)")
     fig.supylabel("Realized six-hour mean squared MPC error")
-    fig.suptitle("WM4 | no initial-state covariance | matched origins in every panel")
+    fig.suptitle("ARM (Affine Revised Model) | no initial-state covariance | matched origins in every panel")
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

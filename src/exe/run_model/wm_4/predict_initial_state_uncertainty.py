@@ -61,7 +61,7 @@ def predict_day(date="2022-08-22", quantile_bounds=(0.025, 0.975), baseline_week
 
     fig, axes = plt.subplots(3, 1, figsize=(15, 11), sharex=True)
     axes[0].fill_between(fine_index, lower, upper, alpha=0.2, label=f"{100.0 * (upper_q - lower_q):.1f}% initial-state interval")
-    axes[0].plot(fine_index, state["I"], label="WM4 mean prediction")
+    axes[0].plot(fine_index, state["I"], label="ARM mean prediction")
     axes[0].plot(fine_index, state["O"], label="Expected output O", alpha=0.8)
     axes[0].scatter(actual.index, observed, s=24, label="Actual user input I", zorder=3)
     axes[0].set_ylabel("Normalized input"); axes[0].legend(); axes[0].grid(True, alpha=0.25)

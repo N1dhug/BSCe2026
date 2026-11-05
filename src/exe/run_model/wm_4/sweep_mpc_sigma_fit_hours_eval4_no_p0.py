@@ -213,7 +213,7 @@ def save_figures(fits, scores, quantiles, leads, output):
         a.set_xlabel("Diffusion fitting horizon (hours)")
         a.set_xticks(hours)
         a.grid(alpha=.2)
-    fig.suptitle("WM4 constant Wiener | 25-day backlog | 24h deterministic fit | "
+    fig.suptitle("ARM (Affine Revised Model) constant Wiener | 25-day backlog | 24h deterministic fit | "
         f"4h evaluation | {int(scores['n_origins'].iloc[0])} identical origins | no P0")
     fig.tight_layout()
     fig.savefig(output / "4h_evaluation_fit_2_8_sweep.png", dpi=175, bbox_inches="tight")
@@ -235,7 +235,7 @@ def save_figures(fits, scores, quantiles, leads, output):
         a.set_xticks(hours)
         a.grid(alpha=.2)
         a.legend()
-    fig.suptitle("WM4 | 4h MPC evaluation | own predicted-uncertainty quintiles")
+    fig.suptitle("ARM (Affine Revised Model) | 4h MPC evaluation | own predicted-uncertainty quintiles")
     fig.tight_layout()
     fig.savefig(output / "4h_evaluation_quintiles.png", dpi=175, bbox_inches="tight")
     plt.close(fig)
@@ -268,7 +268,7 @@ def save_figures(fits, scores, quantiles, leads, output):
     for a in list(ax.flat)[len(hours):]: a.axis("off")
     fig.supxlabel("Predicted mean variance over 4h")
     fig.supylabel("Observed mean squared error over 4h")
-    fig.suptitle("WM4 | matched-origin predicted vs realized 4h MPC variance")
+    fig.suptitle("ARM (Affine Revised Model) | matched-origin predicted vs realized 4h MPC variance")
     fig.tight_layout(rect=(0, 0, 1, .96))
     fig.savefig(output / "4h_evaluation_scatter.png", dpi=175, bbox_inches="tight")
     plt.close(fig)
