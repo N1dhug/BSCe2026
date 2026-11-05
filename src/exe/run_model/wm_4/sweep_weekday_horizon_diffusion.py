@@ -117,7 +117,7 @@ def _split(frame, fraction):
     """Split chronologically by forecast origin, never by correlated forecast rows."""
     if not 0.0 < fraction < 1.0: raise ValueError("calibration_fraction must lie strictly between 0 and 1.")
     origin = frame["origin"].astype(str)
-    distinct = sorted(origin.unique(), key=lambda x: pd.Timestamp(x) if pd.notna(pd.to_datetime(x, errors="coerce")) else x)
+    distinct = sorted(origin.unique())
     if len(distinct) < 3:
         raise ValueError("At least three distinct forecast origins are required for calibration/validation.")
     cut = max(2, min(len(distinct) - 1, int(np.floor(fraction * len(distinct)))))
@@ -247,7 +247,13 @@ def main():
     if data.empty: raise ValueError("No sweep rows remain after tag/variant filtering.")
     backlogs = tuple(range(args.backlog_min, args.backlog_max + 1))
     horizons = tuple(range(args.horizon_min, args.horizon_max + 1))
-    summary = sweep(data, backlogs, horizons, args.calibration_fraction, args.min_samples)
+    # Pool all selected consumer datasets as the default aggregate analysis;
+    # keep dataset-specific results as additional diagnostics when available.
+    aggregate = data.copy()
+    aggregate["tag"] = "all"
+    summary_all = sweep(aggregate, backlogs, horizons, args.calibration_fraction, args.min_samples)
+    summary_tags = sweep(data, backlogs, horizons, args.calibration_fraction, args.min_samples)
+    summary = pd.concat([summary_all, summary_tags], ignore_index=True)
     if summary.empty: raise RuntimeError("No identifiable variance fits were possible; check N/k coverage, origins and sample counts.")
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
