@@ -14,10 +14,13 @@ class wm_4(wm):
 
     dF = R dt
     dR = (r_F F + r_U U + r_R R) dt
-    I = O + R
+    I_mean = O + R
+    I_observed = I_mean + eta, eta ~ iid N(0, observation_q)
+    dR = (r_F F + r_U U + r_R R) dt + sigma dW
 
-    The structural model and parameter fit are deterministic. Constant additive
-    process uncertainty is handled separately through the covariance kernel.
+    Structural parameter fitting stays deterministic. The process variance
+    kernel propagates Brownian uncertainty; the observation-error variance is
+    a separate constant floor in observed demand, fitted in params/wm_4.py.
 
     F, U in [-1, 1], with F = U = 0 as the neutral point.
     """

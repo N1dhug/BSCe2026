@@ -359,24 +359,20 @@ class optimized_qp_params(qp_params):
 
 
 class constant_diffusion_qp:
-    """Convex local QP for a constant WM4 diffusion term.
+    """Separate constant demand-observation variance from accumulated WM4 process variance.
 
-    The SDE diffusion is
+    D_k = B_k + R_k + eta_k, eta_k iid N(0, observation_variance)
+    dF = R dt
+    dR = (r_F F + r_U U + r_R R) dt + sigma dW
 
-        g(t) = sigma,
-
-    so the instantaneous process variance is the single nonnegative parameter
-
-        q = sigma^2.
-
-    For fixed deterministic coefficients r, WM4 covariance propagation is
-    linear in q. The fitter therefore estimates q directly from the empirical
-    hourly Var(I) of the corresponding historical weekdays.
+    For zero-mean demand residuals e, E[e_k**2] = observation_variance
+    + initial_variance[k] + q * process_kernel[k].sum(), q=sigma**2.
+    Both variances are fitted as nonnegative parameters in a convex QP.
     """
 
     def __init__(self, model): self.model = model
 
-    def fit(self, process_kernel, observed_variance, initial_variance=None, fit_mask=None):
+    def fit(self, process_kernel, observed_variance, initial_variance=None, fit_mask=None, residuals=None):
         process_kernel = np.asarray(process_kernel, dtype=float)
         observed_variance = np.asarray(observed_variance, dtype=float).reshape(-1)
         if process_kernel.ndim != 2: raise ValueError("process_kernel must be a two-dimensional matrix.")
@@ -384,60 +380,83 @@ class constant_diffusion_qp:
         if not np.all(np.isfinite(process_kernel)): raise ValueError("process_kernel must contain finite values.")
         if not np.all(np.isfinite(observed_variance)) or np.any(observed_variance < 0.0): raise ValueError("observed_variance must contain finite nonnegative values.")
 
+        if residuals is not None:
+            residuals = np.asarray(residuals, dtype=float)
+            if residuals.ndim != 2 or residuals.shape[1] != observed_variance.size or residuals.shape[0] < 1:
+                raise ValueError("residuals must be a nonempty (days, hours) matrix.")
+            if not np.all(np.isfinite(residuals)): raise ValueError("demand residuals must be finite.")
+            observed_variance = np.mean(residuals ** 2, axis=0)
+
         if initial_variance is None: initial_variance = np.zeros_like(observed_variance)
         initial_variance = np.asarray(initial_variance, dtype=float).reshape(-1)
         if initial_variance.size != observed_variance.size or not np.all(np.isfinite(initial_variance)) or np.any(initial_variance < 0.0): raise ValueError("initial_variance must match observed_variance and be finite and nonnegative.")
 
         if fit_mask is None: fit_mask = np.ones(observed_variance.size, dtype=bool)
         fit_mask = np.asarray(fit_mask, dtype=bool).reshape(-1)
-        if fit_mask.size != observed_variance.size or np.count_nonzero(fit_mask) < 1: raise ValueError("fit_mask must select at least one observed variance sample.")
+        if fit_mask.size != observed_variance.size or np.count_nonzero(fit_mask) < 2: raise ValueError("fit_mask must select at least two variance samples.")
 
-        unit_q = np.ones(process_kernel.shape[1], dtype=float)
-        response = process_kernel @ unit_q
-        X = response[fit_mask, None]
+        response = process_kernel @ np.ones(process_kernel.shape[1], dtype=float)
+        X = np.column_stack((np.ones(np.count_nonzero(fit_mask)), response[fit_mask]))
         y = (observed_variance - initial_variance)[fit_mask]
-        denominator = float(X[:, 0] @ X[:, 0])
-        seed = max(1e-12, float((X[:, 0] @ y) / denominator) if denominator > 0.0 else 1e-12)
-        q = float(self.model._least_squares_qp(
-            X, y,
-            lb=np.array([0.0], dtype=float),
-            ridge=self.model._FIT_RIDGE,
-            x0=np.array([seed], dtype=float),
-        )[0])
-
+        if np.ptp(response[fit_mask]) <= 1e-12:
+            raise ValueError("Cannot distinguish constant observation error from diffusion without distinct process horizons.")
+        seed = np.maximum(np.linalg.lstsq(X, y, rcond=None)[0], 1e-12)
+        fitted = self.model._least_squares_qp(
+            X, y, lb=np.zeros(2, dtype=float),
+            ridge=self.model._FIT_RIDGE, x0=seed,
+        )
+        observation_q, q = np.maximum(np.asarray(fitted, dtype=float), 0.0)
+        observation_variance = np.full(observed_variance.size, observation_q, dtype=float)
         process_variance = np.maximum(response * q, 0.0)
-        propagated_variance = np.maximum(initial_variance + process_variance, 0.0)
+        propagated_variance = np.maximum(initial_variance + process_variance + observation_variance, 0.0)
         propagated_std = np.sqrt(propagated_variance)
         observed_std = np.sqrt(observed_variance)
         variance_residual = propagated_variance - observed_variance
         std_residual = propagated_std - observed_std
-        fit_variance_residual = variance_residual[fit_mask]
-        fit_std_residual = std_residual[fit_mask]
 
         return {
-            "q": q,
-            "sigma": float(np.sqrt(max(q, 0.0))),
+            "q": float(q), "sigma": float(np.sqrt(q)),
+            "observation_q": float(observation_q), "observation_sigma": float(np.sqrt(observation_q)),
+            "observation_variance": observation_variance,
             "initial_variance": initial_variance.copy(),
-            "process_variance": process_variance,
-            "propagated_variance": propagated_variance,
-            "propagated_std": propagated_std,
-            "fit_mask": fit_mask.copy(),
-            "variance_residual": variance_residual,
+            "process_variance": process_variance, "propagated_variance": propagated_variance,
+            "propagated_std": propagated_std, "observed_variance": observed_variance.copy(),
+            "fit_mask": fit_mask.copy(), "variance_residual": variance_residual,
             "std_residual": std_residual,
-            "variance_mse": float(np.mean(fit_variance_residual ** 2)),
-            "variance_rmse": float(np.sqrt(np.mean(fit_variance_residual ** 2))),
-            "std_rmse": float(np.sqrt(np.mean(fit_std_residual ** 2))),
-            "std_mae": float(np.mean(np.abs(fit_std_residual))),
+            "variance_mse": float(np.mean(variance_residual[fit_mask] ** 2)),
+            "variance_rmse": float(np.sqrt(np.mean(variance_residual[fit_mask] ** 2))),
+            "std_rmse": float(np.sqrt(np.mean(std_residual[fit_mask] ** 2))),
+            "std_mae": float(np.mean(np.abs(std_residual[fit_mask]))),
         }
 
     @staticmethod
-    def evaluate(size, q):
-        size = int(size)
-        q = float(q)
+    def one_step_diffusion(residuals, dt):
+        """Gaussian MLE sigma**2 = mean(e**2)/dt when observations are noiseless.
+
+        If demand contains independent observation error, one-step residuals
+        also contain errors from the state inferred at the previous sample.
+        Use fit() on demand-residual moments across horizons to distinguish the
+        constant observation floor from accumulating Brownian variance.
+        """
+        residuals = np.asarray(residuals, dtype=float).reshape(-1)
+        dt = float(dt)
+        if residuals.size == 0 or not np.all(np.isfinite(residuals)): raise ValueError("residuals must be nonempty and finite.")
+        if not np.isfinite(dt) or dt <= 0.0: raise ValueError("dt must be positive.")
+        q = float(np.mean(residuals ** 2) / dt)
+        return {"q": q, "sigma": float(np.sqrt(q))}
+
+    @staticmethod
+    def evaluate(size, q, observation_q=0.0):
+        size, q, observation_q = int(size), float(q), float(observation_q)
         if size < 1: raise ValueError("size must be positive.")
         if not np.isfinite(q) or q < 0.0: raise ValueError("q must be finite and nonnegative.")
-        variance = np.full(size, q, dtype=float)
-        return {"variance": variance, "std": np.sqrt(variance)}
+        if not np.isfinite(observation_q) or observation_q < 0.0: raise ValueError("observation_q must be finite and nonnegative.")
+        return {
+            "variance": np.full(size, q, dtype=float),
+            "std": np.full(size, np.sqrt(q), dtype=float),
+            "observation_variance": np.full(size, observation_q, dtype=float),
+            "observation_std": np.full(size, np.sqrt(observation_q), dtype=float),
+        }
 
 
 class brute_force_params(qp_params):

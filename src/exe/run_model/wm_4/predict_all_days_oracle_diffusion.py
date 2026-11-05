@@ -10,6 +10,7 @@ from src.exe.run_model.wm_4.analyze_observation_uncertainty import _stack_days, 
 from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, aligned_wm4_data, day_start, model_input
 from src.exe.run_model.wm_4.predict_all_days_optimized import END_DAY, START_DAY, fit_history_optimized
 from src.exe.run_model.wm_4.predict_daily import deviation_metrics, prediction_setup
+from src.exe.run_model.wm_4.fit_constant_diffusion_qp import historical_demand_residuals
 from src.params.wm_4 import constant_diffusion_qp, optimized_qp_params
 
 
@@ -35,17 +36,19 @@ def fit_day(frame, day, baseline_weeks, steps_per_hour, max_state_iter=50, state
     observed_variance = empirical["var_I"].to_numpy(dtype=float)
     hourly_index = np.arange(DAY_HOURS, dtype=int) * steps_per_hour
     process_kernel = model.process_variance_kernel({"r": fit["r"]}, hourly_index)
+    residuals = historical_demand_residuals(frame, fit["training_days"], fit["deterministic_states"], steps_per_hour)
     diffusion = constant_diffusion_qp(model).fit(
         process_kernel, observed_variance,
         initial_variance=np.zeros(DAY_HOURS, dtype=float),
-        fit_mask=np.ones(DAY_HOURS, dtype=bool),
+        fit_mask=np.ones(DAY_HOURS, dtype=bool), residuals=residuals,
     )
 
     process_variance = np.asarray(diffusion["process_variance"], dtype=float)
     process_std = np.sqrt(np.maximum(process_variance, 0.0))
+    total_std = np.asarray(diffusion["propagated_std"], dtype=float)
     observed = actual["I"].to_numpy(dtype=float)
     predicted = np.asarray(state["I"], dtype=float)[hourly_index]
-    lower, upper = predicted - Z_95 * process_std, predicted + Z_95 * process_std
+    lower, upper = predicted - Z_95 * total_std, predicted + Z_95 * total_std
     covered = (observed >= lower) & (observed <= upper)
     metrics = deviation_metrics(observed, predicted)
     r = np.asarray(fit["r"], dtype=float)
@@ -55,6 +58,7 @@ def fit_day(frame, day, baseline_weeks, steps_per_hour, max_state_iter=50, state
         "day": day, "weekday": day.day_name(),
         "r_F": r[0], "r_U": r[1], "r_R": r[2],
         "sigma": float(diffusion["sigma"]), "diffusion_q": float(diffusion["q"]),
+        "observation_std": float(diffusion["observation_sigma"]), "observation_variance": float(diffusion["observation_q"]),
         "diffusion_variance_rmse": float(diffusion["variance_rmse"]),
         "oracle_F0": init[0], "oracle_R0": init[1], "oracle_fit_mse": float(oracle["loss"]),
         "coverage_95": float(np.mean(covered)),
@@ -71,6 +75,8 @@ def fit_day(frame, day, baseline_weeks, steps_per_hour, max_state_iter=50, state
         "day": day, "I_observed": observed, "I_oracle": predicted,
         "ci95_lower": lower, "ci95_upper": upper, "covered_95": covered,
         "process_std": process_std, "process_variance": process_variance,
+        "observation_variance": np.asarray(diffusion["observation_variance"], dtype=float),
+        "total_std": total_std,
         "O": np.asarray(state["O"], dtype=float)[hourly_index],
         "U": np.asarray(state["U"], dtype=float)[hourly_index],
         "F": np.asarray(state["F"], dtype=float)[hourly_index],
@@ -111,7 +117,7 @@ def save_plot(hourly, daily, path):
 
     axes[0].plot(hourly.index, hourly["I_observed"], label="Observed I", linewidth=0.9)
     axes[0].plot(hourly.index, hourly["I_oracle"], label="Oracle-state WM4 mean", linewidth=0.9)
-    axes[0].fill_between(hourly.index, hourly["ci95_lower"], hourly["ci95_upper"], alpha=0.2, label="Process-only 95% interval")
+    axes[0].fill_between(hourly.index, hourly["ci95_lower"], hourly["ci95_upper"], alpha=0.2, label="Process + demand observation error 95% interval")
     axes[0].set_ylabel("Normalized input"); axes[0].legend(); axes[0].grid(True, alpha=0.25)
 
     axes[1].plot(daily["day"], 100.0 * daily["coverage_95"], label="24-hour coverage")
@@ -124,7 +130,7 @@ def save_plot(hourly, daily, path):
     axes[2].set_xlabel("Prediction day"); axes[2].set_ylabel("sigma")
     axes[2].legend(); axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 oracle initial state + constant process diffusion")
+    fig.suptitle("WM4 oracle initial state + constant process and demand observation uncertainty")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 
