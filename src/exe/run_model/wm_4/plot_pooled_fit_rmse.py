@@ -20,7 +20,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.colors import Normalize
+from src.exe.run_model.wm_4.plot_demand_metric_grid import draw_demand_metric_grid
 
 from src.exe.run_model.wm_4.moving_horizon_common import group_frame, window_data
 from src.exe.run_model.wm_4.plot_linear_rate_r2 import _values
@@ -77,36 +77,13 @@ def _fit_observations(frame, day, n, name, theta, states, sph):
 
 
 def _plot(summary, ns, ks, group, output, start, end, cmap="viridis", dpi=190):
-    finite = summary["pooled_fit_rmse"].to_numpy(dtype=float)
-    finite = finite[np.isfinite(finite)]
-    if not finite.size:
-        raise RuntimeError("No valid historical fit RMSE values; inspect skipped_windows.csv.")
-    vmax = max(float(np.max(finite)),1e-12)
-    norm = Normalize(vmin=0.0,vmax=vmax)
-    colors = plt.get_cmap(cmap).copy()
-    colors.set_bad("#e5e7eb")
-    fig,axes = plt.subplots(1,2,figsize=(19,6.8),sharex=True,sharey=True)
-    for ax,name in zip(axes,BASELINES):
-        grid = (summary.loc[summary["baseline"]==name]
-                .pivot(index="training_weekdays",columns="horizon_hours",values="pooled_fit_rmse")
-                .reindex(index=ns,columns=ks).to_numpy(dtype=float))
-        image = ax.imshow(np.ma.masked_invalid(grid),cmap=colors,norm=norm,
-                          origin="lower",aspect="auto",interpolation="nearest")
-        ax.set_title(TITLES[name],fontsize=12)
-        ax.set_xticks(np.arange(len(ks)),[str(k) for k in ks],fontsize=8)
-        ax.set_yticks(np.arange(len(ns)),[str(n) for n in ns])
-        ax.set_xlabel("Historical fit horizon k (hours scored)")
-        ax.tick_params(axis="both",length=0)
-    axes[0].set_ylabel("Backlog N (preceding matching weekdays)")
-    dates = (f"{start:%Y-%m-%d} to {end:%Y-%m-%d}" if start is not None and end is not None
-             else "all saved fitting origins")
-    fig.suptitle(f"ARM (Affine Revised Model) | {group} | pooled historical DEMAND FIT RMSE | {dates}\n"
-                 "Saved constrained 24h theta and fitted historical initial states; k selects scoring hours",
-                 fontsize=12)
-    fig.subplots_adjust(left=0.055,right=0.90,bottom=0.13,top=0.83,wspace=0.07)
-    cax = fig.add_axes([0.916,0.19,0.015,0.57])
-    fig.colorbar(image,cax=cax,label="Pooled demand fit RMSE (normalized demand)")
-    fig.savefig(output,dpi=dpi,bbox_inches="tight")
+    period = (f"{start:%Y-%m-%d} to {end:%Y-%m-%d}"
+              if start is not None and end is not None else "all saved fitting origins")
+    fig = draw_demand_metric_grid(
+        summary, {"rmse":"pooled_fit_rmse","mae":"pooled_fit_mae","bias":"pooled_fit_bias"},
+        baselines=BASELINES,titles=TITLES,group=group,period=period,evaluation="FIT",
+        subtitle="Saved constrained 24h theta and fitted historical initial states; k selects scoring hours",
+        horizon_label="Historical fit horizon k (hours scored)",output=output,cmap=cmap,dpi=dpi)
     plt.close(fig)
 
 
@@ -156,9 +133,10 @@ def evaluate(*, group="ALL", n_values=range(2,15), horizons=range(1,25),
                      for (day,name,n),data in states.groupby(["day","baseline","training_weekdays"])}
     frame = group_frame(group)
 
-    # Store sum of squared errors and sample counts, to get genuine pooled
-    # RMSE rather than a mean of day-level RMSE values.
-    totals = {(name,n):np.zeros((len(ks),4),dtype=float) for name in BASELINES for n in ns}
+    # Pool sums of squared/absolute/signed errors across all observations;
+    # never take a mean of per-window RMSE, MAE, or bias.
+    # Columns: SSE, SAE, signed error, baseline SSE/SAE/signed, count, windows.
+    totals = {(name,n):np.zeros((len(ks),8),dtype=float) for name in BASELINES for n in ns}
     failures,records = [],[]
     for index,row in enumerate(fits.itertuples(index=False),1):
         key = (pd.Timestamp(row.day).normalize(),row.baseline,int(row.training_weekdays))
@@ -174,7 +152,11 @@ def evaluate(*, group="ALL", n_values=range(2,15), horizons=range(1,25),
             residual = fitted-observed
             baseline_residual = baseline-observed
             sq = np.cumsum(residual**2,axis=1).sum(axis=0)
+            abs_err = np.cumsum(np.abs(residual),axis=1).sum(axis=0)
+            signed_err = np.cumsum(residual,axis=1).sum(axis=0)
             baseline_sq = np.cumsum(baseline_residual**2,axis=1).sum(axis=0)
+            baseline_abs = np.cumsum(np.abs(baseline_residual),axis=1).sum(axis=0)
+            baseline_signed = np.cumsum(baseline_residual,axis=1).sum(axis=0)
             exact_rmse = float(np.sqrt(sq[-1]/(key[2]*24)))
             saved_rmse = float(getattr(row,"fit_rmse",np.nan))
             if verify_saved_rmse and np.isfinite(saved_rmse):
@@ -183,11 +165,18 @@ def evaluate(*, group="ALL", n_values=range(2,15), horizons=range(1,25),
                                      f"does not match saved fit_rmse {saved_rmse:.8g}; "
                                      "check source data, saved states and theta version.")
 
+            denominator = key[2]*24
             records.append({"day":key[0],"baseline":key[1],"training_weekdays":key[2],
                             "fitted_24h_rmse":exact_rmse,"saved_fit_rmse":saved_rmse,
-                            "baseline_24h_rmse":float(np.sqrt(baseline_sq[-1]/(key[2]*24)))})
+                            "fitted_24h_mae":float(abs_err[-1]/denominator),
+                            "fitted_24h_bias":float(signed_err[-1]/denominator),
+                            "baseline_24h_rmse":float(np.sqrt(baseline_sq[-1]/denominator)),
+                            "baseline_24h_mae":float(baseline_abs[-1]/denominator),
+                            "baseline_24h_bias":float(baseline_signed[-1]/denominator)})
             for i,k in enumerate(ks):
-                totals[(key[1],key[2])][i] += (sq[k-1],baseline_sq[k-1],key[2]*k,1)
+                totals[(key[1],key[2])][i] += (
+                    sq[k-1],abs_err[k-1],signed_err[k-1],
+                    baseline_sq[k-1],baseline_abs[k-1],baseline_signed[k-1],key[2]*k,1)
         except (ValueError,RuntimeError,KeyError,np.linalg.LinAlgError) as exc:
             if fail_fast: raise
             failures.append({"day":key[0],"baseline":key[1],"training_weekdays":key[2],"error":str(exc)})
@@ -198,19 +187,31 @@ def evaluate(*, group="ALL", n_values=range(2,15), horizons=range(1,25),
     for name in BASELINES:
         for n in ns:
             for i,k in enumerate(ks):
-                sse,baseline_sse,count,windows = totals[(name,n)][i]
+                sse,sae,se,baseline_sse,baseline_sae,baseline_se,count,windows = totals[(name,n)][i]
                 rmse = float(np.sqrt(sse/count)) if count else np.nan
+                mae = float(sae/count) if count else np.nan
+                bias = float(se/count) if count else np.nan
                 base_rmse = float(np.sqrt(baseline_sse/count)) if count else np.nan
+                base_mae = float(baseline_sae/count) if count else np.nan
+                base_bias = float(baseline_se/count) if count else np.nan
                 summary_rows.append({"baseline":name,"training_weekdays":n,"horizon_hours":k,
                                      "fitting_windows":int(windows),"historical_intervals":int(windows*n),
-                                     "observations":int(count),"sse":sse if count else np.nan,
-                                     "pooled_fit_rmse":rmse,"baseline_fit_rmse":base_rmse,
-                                     "fit_rmse_gain":base_rmse-rmse})
+                                     "observations":int(count),
+                                     "sse":sse if count else np.nan,
+                                     "sae":sae if count else np.nan,
+                                     "signed_error_sum":se if count else np.nan,
+                                     "pooled_fit_rmse":rmse,"pooled_fit_mae":mae,
+                                     "pooled_fit_bias":bias,
+                                     "baseline_fit_rmse":base_rmse,"baseline_fit_mae":base_mae,
+                                     "baseline_fit_bias":base_bias,
+                                     "fit_rmse_gain":base_rmse-rmse,"fit_mae_gain":base_mae-mae})
     summary = pd.DataFrame(summary_rows)
     output_dir.mkdir(parents=True,exist_ok=True)
     summary.to_csv(output_dir/"pooled_fit_rmse.csv",index=False)
+    summary.to_csv(output_dir/"pooled_fit_metrics.csv",index=False)
     pd.DataFrame(records,columns=["day","baseline","training_weekdays","fitted_24h_rmse",
-                                  "saved_fit_rmse","baseline_24h_rmse"]).to_csv(
+                                  "saved_fit_rmse","fitted_24h_mae","fitted_24h_bias",
+                                  "baseline_24h_rmse","baseline_24h_mae","baseline_24h_bias"]).to_csv(
                                   output_dir/"per_window_fit_rmse.csv",index=False)
     pd.DataFrame(failures,columns=["day","baseline","training_weekdays","error"]).to_csv(
                                   output_dir/"skipped_windows.csv",index=False)
@@ -218,7 +219,7 @@ def evaluate(*, group="ALL", n_values=range(2,15), horizons=range(1,25),
     first,last = ((pd.Timestamp(evaluated["day"].min()),pd.Timestamp(evaluated["day"].max()))
                   if not evaluated.empty else (None,None))
     _plot(summary,ns,ks,group,output_dir/"pooled_fit_rmse.png",first,last,dpi=dpi)
-    print(f"Saved pooled historical demand FIT RMSE: {output_dir} | "
+    print(f"Saved pooled historical demand FIT RMSE / MAE / BIAS: {output_dir} | "
           f"fitting windows={len(records)} | skipped={len(failures)}")
     print("These are in-sample fits to historical weekdays; target-day predictions and oracle states are not used.")
     return summary
