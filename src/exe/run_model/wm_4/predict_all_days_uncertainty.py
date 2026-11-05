@@ -10,6 +10,7 @@ from src.exe.run_model.wm_4.analyze_observation_uncertainty import _stack_days, 
 from src.exe.run_model.wm_4.fit_daily import BASELINE_WEEKS, DAY_HOURS, aligned_wm4_data, day_start, model_input
 from src.exe.run_model.wm_4.predict_all_days_optimized import END_DAY, START_DAY, fit_history_optimized
 from src.exe.run_model.wm_4.predict_daily import deviation_metrics, prediction_setup
+from src.exe.run_model.wm_4.fit_constant_diffusion_qp import historical_demand_residuals
 from src.params.wm_4 import constant_diffusion_qp, optimized_qp_params
 
 
@@ -80,17 +81,19 @@ def fit_day(frame, day, baseline_weeks, steps_per_hour, max_state_iter=50, state
 
     hourly_index = np.arange(DAY_HOURS, dtype=int) * int(steps_per_hour)
     process_kernel = model.process_variance_kernel({"r": fit["r"]}, hourly_index)
+    residuals = historical_demand_residuals(frame, fit["training_days"], fit["deterministic_states"], steps_per_hour)
     diffusion_fit = constant_diffusion_qp(model).fit(
         process_kernel, observed_variance,
         initial_variance=np.zeros(DAY_HOURS, dtype=float),
-        fit_mask=np.ones(DAY_HOURS, dtype=bool),
+        fit_mask=np.ones(DAY_HOURS, dtype=bool), residuals=residuals,
     )
 
     sensitivity = model.sensitivity(fit["r"])["input"][hourly_index]
     initial_variance = np.einsum("ni,ij,nj->n", sensitivity, P0, sensitivity)
     initial_variance = np.maximum(initial_variance, 0.0)
     process_variance = np.asarray(diffusion_fit["process_variance"], dtype=float)
-    joint_variance = np.maximum(initial_variance + process_variance, 0.0)
+    observation_variance = np.asarray(diffusion_fit["observation_variance"], dtype=float)
+    joint_variance = np.maximum(initial_variance + process_variance + observation_variance, 0.0)
     joint_std = np.sqrt(joint_variance)
 
     observed = actual["I"].to_numpy(dtype=float)
@@ -111,6 +114,7 @@ def fit_day(frame, day, baseline_weeks, steps_per_hour, max_state_iter=50, state
         "day": day, "weekday": day.day_name(),
         "r_F": r[0], "r_U": r[1], "r_R": r[2],
         "sigma": float(diffusion_fit["sigma"]), "diffusion_q": float(diffusion_fit["q"]),
+        "observation_std": float(diffusion_fit["observation_sigma"]), "observation_q": float(diffusion_fit["observation_q"]),
         "diffusion_variance_rmse": float(diffusion_fit["variance_rmse"]),
         "F0_mean": init_mean[0], "R0_mean": init_mean[1],
         "F0_std": oracle_coverage["std"][0], "R0_std": oracle_coverage["std"][1],
@@ -144,6 +148,7 @@ def fit_day(frame, day, baseline_weeks, steps_per_hour, max_state_iter=50, state
         "joint_std": joint_std,
         "initial_variance": initial_variance,
         "process_variance": process_variance,
+        "observation_variance": observation_variance,
         "joint_variance": joint_variance,
         "process_only_ci95_lower": process_lower,
         "process_only_ci95_upper": process_upper,
