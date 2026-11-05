@@ -262,7 +262,9 @@ def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", 
 def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=None,
                   last_hours=None, require_full_window=False, cohort="fitted",
                   baselines=BASELINES, n_values=None, horizons=None,
-                  fit_manifest=None, start_day=None, end_day=None, **plot_kwargs):
+                  fit_manifest=None, start_day=None, end_day=None,
+                  complete_missing=True, steps_per_hour=4, completion_fail_fast=False,
+                  **plot_kwargs):
     """Plot saved two-baseline N-k RMSE with a selectable score window.
 
     Examples: plot_heatmaps(hour_start=6, hour_end=12)
@@ -282,6 +284,11 @@ def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=
     fitted = (load_fitted_cohort(input_dir, baselines=baselines, n_values=n_values,
                                 fit_manifest=fit_manifest, start_day=start_day, end_day=end_day)
               if cohort == "fitted" else None)
+    if fitted is not None and complete_missing:
+        from src.exe.run_model.wm_4.complete_oracle_from_fitted_days import complete
+        scores, components = complete(scores, components, fitted, input_dir=input_dir,
+                                      horizons=(horizons if horizons is not None else range(1,25)),
+                                      steps_per_hour=steps_per_hour, fail_fast=completion_fail_fast)
     summary = aggregate_rmse(scores, components, hour_start=hour_start, hour_end=hour_end,
                              last_hours=last_hours, require_full_window=require_full_window,
                              cohort=cohort, fitted_cohort=fitted,
@@ -337,6 +344,10 @@ def main():
     parser.add_argument("--cohort", choices=("fitted", "global", "cell"), default="fitted",
                         help="fitted uses exactly the historical fit plotter's admitted (day,N,baseline) windows.") 
     parser.add_argument("--fit-manifest", default=None, help="Optional per_window_fit_rmse.csv from the demand fitting heatmap.")
+    parser.add_argument("--no-complete-missing", action="store_true",
+                        help="Only use already saved prediction scores; do not generate missing fitted-day oracle scores.")
+    parser.add_argument("--steps-per-hour", type=int, default=4,
+                        help="Same integration resolution as the saved parameter sweep.")
     parser.add_argument("--start-day", default=None, help="First target day, inclusive (same interpretation as fit plotter).")
     parser.add_argument("--end-day", default=None, help="Last target day, inclusive.")
     parser.add_argument("--min-weekdays", type=int, default=None)
@@ -347,8 +358,17 @@ def main():
     args = parser.parse_args()
     folder = Path(args.input) if args.input is not None else INPUT/args.group.lower()
     scores, _ = load_saved(folder)
-    ns = sorted(set(scores["training_weekdays"].astype(int)))
-    ks = sorted(set(scores["horizon_hours"].astype(int)))
+    # The FITTER decides day/N eligibility, not the potentially partial oracle
+    # score archive. Include N with successful historical fits even if no
+    # prediction score has yet been saved for that N.
+    if args.cohort == "fitted":
+        fit_keys = load_fitted_cohort(folder, fit_manifest=args.fit_manifest,
+                                     start_day=args.start_day, end_day=args.end_day)
+        ns = sorted(set(fit_keys["training_weekdays"].astype(int)))
+        ks = list(range(1,25))
+    else:
+        ns = sorted(set(scores["training_weekdays"].astype(int)))
+        ks = sorted(set(scores["horizon_hours"].astype(int)))
     ns = [n for n in ns if (args.min_weekdays is None or n >= args.min_weekdays) and
           (args.max_weekdays is None or n <= args.max_weekdays)]
     ks = [k for k in ks if (args.min_horizon is None or k >= args.min_horizon) and
@@ -357,7 +377,8 @@ def main():
                   hour_end=args.hour_end, last_hours=args.last_hours,
                   require_full_window=args.require_full_window, cohort=args.cohort,
                   n_values=ns, horizons=ks, vmax=args.vmax,
-                  fit_manifest=args.fit_manifest, start_day=args.start_day, end_day=args.end_day)
+                  fit_manifest=args.fit_manifest, start_day=args.start_day, end_day=args.end_day,
+                  complete_missing=not args.no_complete_missing, steps_per_hour=args.steps_per_hour)
 
 
 if __name__ == "__main__": main()
