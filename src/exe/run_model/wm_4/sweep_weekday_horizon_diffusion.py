@@ -17,6 +17,26 @@ OUTPUT = ROOT / "files" / "output" / "wm_4" / "weekday_horizon_diffusion"
 BASELINES = ("weekly_average", "weekly_temperature")
 N_VALUES = tuple(range(2, 15))
 K_VALUES = tuple(range(1, 25))
+START_DAY = "2022-04-09"
+END_DAY = "2022-10-31"
+
+
+def same_period(frame, start_day=START_DAY, end_day=END_DAY, baselines=BASELINES, backlogs=N_VALUES, horizons=K_VALUES):
+    """Use one identical calendar-day cohort for both baselines and every N,k cell."""
+    start, end = pd.Timestamp(start_day).normalize(), pd.Timestamp(end_day).normalize()
+    if end < start: raise ValueError("end-day must be on or after start-day.")
+    data = frame.loc[frame["day"].between(start, end)].copy()
+    if data.empty: raise ValueError(f"No saved sweep predictions in {start:%Y-%m-%d} to {end:%Y-%m-%d}.")
+    required = {(baseline, n, k) for baseline in baselines for n in backlogs for k in horizons}
+    complete = data.groupby("day").apply(
+        lambda part: required.issubset(set(zip(part["baseline"], part["training_weekdays"], part["horizon_hours"]))),
+        include_groups=False,
+    )
+    days = pd.DatetimeIndex(complete.index[complete.to_numpy(dtype=bool)])
+    if days.empty:
+        raise ValueError("No fully matched days across all requested baselines, backlogs and horizons in the selected period. Run the complete weekday sweep or narrow the hyperparameter ranges.")
+    return data.loc[data["day"].isin(days)].copy(), days
+
 
 
 @lru_cache(maxsize=50000)
@@ -132,7 +152,7 @@ def summarize_grid(frame, min_days=1):
     return pd.DataFrame(records), pd.concat(fitted_rows, ignore_index=True) if fitted_rows else pd.DataFrame()
 
 
-def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=K_VALUES):
+def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=K_VALUES, start_day=START_DAY, end_day=END_DAY):
     fig, axes = plt.subplots(2, 2, figsize=(19, 10), sharex=True, sharey=True, constrained_layout=True)
     for row, (metric, label) in enumerate((
             ("reported_rmse", "Predicted demand RMSE (normalized demand)"),
@@ -157,7 +177,9 @@ def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=
             if row == 1: ax.set_xlabel("Prediction horizon k (hours scored)")
             if col == 0: ax.set_ylabel("Backlog N (preceding matching weekdays)")
         fig.colorbar(im, ax=axes[row, :], label=label, shrink=0.94, pad=0.012)
-    fig.suptitle("WM4 constant demand error + Brownian diffusion | in-sample approximation")
+    start, end = pd.Timestamp(start_day), pd.Timestamp(end_day)
+    date_label = f"{start.month}/{start.day}-{end.month}/{end.day}/{end.year}"
+    fig.suptitle(f"WM4 constant demand error + Brownian diffusion | {date_label} | in-sample")
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=220, bbox_inches="tight")
     plt.close(fig)
@@ -171,16 +193,19 @@ def run(args):
     forecasts = forecasts.loc[forecasts["training_weekdays"].between(args.min_weekdays, args.max_weekdays)
                               & forecasts["horizon_hours"].between(args.min_horizon, args.max_horizon)].copy()
     if forecasts.empty: raise RuntimeError("No saved sweep forecasts in requested N and k ranges.")
+    backlogs = tuple(range(args.min_weekdays, args.max_weekdays+1))
+    horizons = tuple(range(args.min_horizon, args.max_horizon+1))
+    forecasts, matched_days = same_period(forecasts, args.start_day, args.end_day, baselines, backlogs, horizons)
     summary, fitted = summarize_grid(forecasts, args.min_days)
     if summary.empty: raise RuntimeError("No N,k cells contained sufficient in-sample demand residuals.")
     output = Path(args.output) if args.output else OUTPUT/args.group.lower()
     output.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output/"diffusion_grid.csv", index=False)
     fitted.to_csv(output/"diffusion_fitted_forecasts.csv", index=False)
-    plot_grid(summary, output/"diffusion_heatmaps_2x2.png", baselines,
-              tuple(range(args.min_weekdays, args.max_weekdays+1)),
-              tuple(range(args.min_horizon, args.max_horizon+1)))
+    plot_grid(summary, output/"diffusion_heatmaps_2x2.png", baselines, backlogs, horizons,
+              args.start_day, args.end_day)
     print(f"source={source} | group={args.group} | steps_per_hour={config['steps_per_hour']}")
+    print(f"period={args.start_day} to {args.end_day} | matched days={len(matched_days)}")
     print(f"saved forecast rows={len(forecasts)} | in-sample fitted cells={len(summary)}")
     print("theta_F, theta_R were loaded from the original WM4 sweep and never refitted.")
     print("Diffusion parameters fitted and assessed on the SAME demand residuals; no train/test split.")
@@ -195,6 +220,8 @@ def main():
     parser.add_argument("--group", choices=("ALL", "MED"), default="ALL")
     parser.add_argument("--source", default=None, help="Existing sweep output directory with saved fit/scores/components CSVs.")
     parser.add_argument("--baselines", nargs=2, choices=("statistical_output",)+BASELINES, default=list(BASELINES))
+    parser.add_argument("--start-day", default=START_DAY, help="First scored calendar day (inclusive).")
+    parser.add_argument("--end-day", default=END_DAY, help="Last scored calendar day (inclusive).")
     parser.add_argument("--min-weekdays", type=int, default=2)
     parser.add_argument("--max-weekdays", type=int, default=14)
     parser.add_argument("--min-horizon", type=int, default=1)
