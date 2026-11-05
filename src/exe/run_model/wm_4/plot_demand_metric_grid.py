@@ -17,6 +17,7 @@ METRICS = (("rmse", "RMSE"), ("mae", "MAE"), ("bias", "BIAS"))
 def draw_demand_metric_grid(summary, metric_columns, *, baselines, titles,
                             group, period, evaluation, subtitle, horizon_label,
                             output=None, figsize=(19, 15), dpi=190, cmap="viridis",
+                            title=None,
                             bias_cmap="coolwarm", rmse_vmax=None):
     """Render two baselines across columns and RMSE/MAE/signed BIAS down rows.
 
@@ -82,9 +83,10 @@ def draw_demand_metric_grid(summary, metric_columns, *, baselines, titles,
                    else f"Pooled demand {evaluation.lower()} BIAS (model − observed)")
         fig.colorbar(mappable,cax=cax,label=meaning)
 
-    fig.suptitle(f"ARM (Affine Revised Model) | {group} | pooled historical "
-                 f"DEMAND {evaluation.upper()} RMSE / MAE / BIAS | {period}\n"
-                 f"{subtitle}",fontsize=12,y=0.975)
+    full_title = (title if title is not None else
+                  f"ARM (Affine Revised Model) | {group} | pooled historical "
+                  f"DEMAND {evaluation.upper()} RMSE / MAE / BIAS | {period}\\n{subtitle}")
+    fig.suptitle(full_title,fontsize=12,y=0.975)
     if output is not None:
         output = Path(output)
         output.parent.mkdir(parents=True,exist_ok=True)
