@@ -160,7 +160,7 @@ def save_comparison(result, output_root=OUTPUT, *, save_plot=True):
         top, bottom = axes
         top.plot(hourly.index, hourly["I_actual"], label="Observed demand", color="black", linewidth=2.1, marker="o", markersize=3)
         for label, color, name in (("BM1", "#3477b8", "BM1 day-ahead"), ("WM4", "#d46835", "WM4 MPC 1h-ahead")):
-            forecast = hourly[label if label == "BM1" else "ARM_MPC"]
+            forecast = hourly[label if label == "BM1" else "WM4_MPC"]
             top.fill_between(hourly.index, hourly[f"{label}_lower_95"].to_numpy(), hourly[f"{label}_upper_95"].to_numpy(), color=color, alpha=0.1)
             top.fill_between(hourly.index, hourly[f"{label}_lower_68"].to_numpy(), hourly[f"{label}_upper_68"].to_numpy(), color=color, alpha=0.22)
             top.plot(hourly.index, forecast, color=color, linewidth=1.8, label=name)
