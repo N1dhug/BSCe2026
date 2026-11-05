@@ -273,7 +273,7 @@ def save_plot(summary, path):
     ax.set_xticks(horizon)
     ax.legend()
     ax.grid(True, alpha=0.25)
-    fig.suptitle("WM4 rolling adaptive forecast performance")
+    fig.suptitle("ARM (Affine Revised Model) rolling adaptive forecast performance")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")

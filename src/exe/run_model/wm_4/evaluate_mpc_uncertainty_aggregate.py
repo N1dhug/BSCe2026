@@ -185,7 +185,7 @@ def save_plot(cumulative, daily, path):
     axes[1].legend()
     axes[1].grid(True, axis="y", alpha=0.25)
 
-    fig.suptitle("WM4 MPC aggregate stochastic RMSE calibration")
+    fig.suptitle("ARM (Affine Revised Model) MPC aggregate stochastic RMSE calibration")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")

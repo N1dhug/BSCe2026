@@ -63,13 +63,13 @@ def day_result(frame, start, baseline_weeks, warmup_hours, steps_per_hour, optim
 def save_performance_plot(hourly, daily, path):
     fig, axes = plt.subplots(2, 1, figsize=(18, 10), sharex=False)
     axes[0].plot(hourly.index, hourly["I_observed"], label="Observed I")
-    axes[0].plot(hourly.index, hourly["I_wm4"], label="WM4")
+    axes[0].plot(hourly.index, hourly["I_wm4"], label="ARM")
     axes[0].plot(hourly.index, hourly["O"], label="Weather-aware O", alpha=0.8)
     axes[0].set_ylabel("Normalized input")
     axes[0].legend()
     axes[0].grid(True, alpha=0.25)
 
-    axes[1].plot(daily["day"], daily["wm4_mse"], label="WM4 daily MSE")
+    axes[1].plot(daily["day"], daily["wm4_mse"], label="ARM daily MSE")
     axes[1].plot(daily["day"], daily["O_mse"], label="O daily MSE")
     axes[1].set_ylabel("Daily MSE")
     axes[1].set_xlabel("Day")

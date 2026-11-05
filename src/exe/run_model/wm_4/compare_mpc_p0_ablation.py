@@ -196,7 +196,7 @@ def plot_comparison(origins, metrics, output, history_days):
         ax.set_xticks(range(1, max_quantile + 1))
         ax.grid(alpha=0.25)
         ax.legend(fontsize=8)
-    fig.suptitle(f"WM4 | {history_days}-day / 6h Wiener QP | P0 propagation ablation\n"
+    fig.suptitle(f"ARM (Affine Revised Model) | {history_days}-day / 6h Wiener QP | P0 propagation ablation\n"
         f"{origins['origin'].nunique()} matched MPC origins; unchanged deterministic forecasts")
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(output / "p0_ablation_quantiles.png", dpi=170, bbox_inches="tight")
@@ -212,7 +212,7 @@ def plot_comparison(origins, metrics, output, history_days):
             xlabel="Predicted six-hour mean variance")
         ax.grid(alpha=0.2)
     axes[0].set_ylabel("Realized six-hour mean squared error")
-    fig.suptitle("WM4 | matched-origin variance-vs-realized-error scatter")
+    fig.suptitle("ARM (Affine Revised Model) | matched-origin variance-vs-realized-error scatter")
     fig.tight_layout()
     fig.savefig(output / "p0_ablation_scatter.png", dpi=170, bbox_inches="tight")
     plt.close(fig)

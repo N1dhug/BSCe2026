@@ -195,7 +195,7 @@ def plot_paired(curves, output, quantiles=5, new_label="24-day/24h", old_label="
     ax.legend(fontsize=8)
     ax.grid(alpha=0.2)
     for unused in axes[int(quantiles) + 1:]: unused.axis("off")
-    fig.suptitle(f"WM4 | {new_label} versus {old_label} sigma calibration"
+    fig.suptitle(f"ARM (Affine Revised Model) | {new_label} versus {old_label} sigma calibration"
         "\nMatched 8h MPC origins, stratified by ORIGINAL predicted variance",
         fontsize=15)
     fig.tight_layout(rect=(0, 0, 1, 0.92))
@@ -229,7 +229,7 @@ def plot_independent(curves, output, new_label="24-day/24h", old_label="5-week/8
     for ax in axes:
         ax.grid(alpha=0.2)
         ax.legend()
-    fig.suptitle("WM4 | conditional calibration on identical evaluation origins")
+    fig.suptitle("ARM (Affine Revised Model) | conditional calibration on identical evaluation origins")
     fig.tight_layout()
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)

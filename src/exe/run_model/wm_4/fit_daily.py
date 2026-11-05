@@ -97,7 +97,7 @@ def save_plot(start, end, day, fine_index, fit, warmup_hours):
     axes[0].plot(day.index, day["I"], label="Observed hourly aggregate input I")
     axes[0].scatter(day.index, day["I"], s=18, label="Observed I samples")
     axes[0].plot(fine_index[target], state["I"][target], label="Fitted wm_4 input I=O+R")
-    axes[0].scatter(fine_index[obs], state["I"][obs], s=18, label="WM4 prediction at observation times")
+    axes[0].scatter(fine_index[obs], state["I"][obs], s=18, label="ARM prediction at observation times")
     axes[0].set_ylabel("Normalized input")
     axes[0].legend()
     axes[0].grid(True, alpha=0.25)

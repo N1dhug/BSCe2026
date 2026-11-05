@@ -75,18 +75,18 @@ def save_plot(result, path):
     fig, axes = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
 
     axes[0].plot(hourly["hour"], hourly["var_I"], marker="o", label="Observed 5-week hourly variance $s_I^2$")
-    axes[0].plot(hourly["hour"], hourly["fitted_propagated_variance"], marker="o", label="WM4 propagated variance from constant $q$")
+    axes[0].plot(hourly["hour"], hourly["fitted_propagated_variance"], marker="o", label="ARM propagated variance from constant $q$")
     axes[0].set_ylabel("Variance")
     axes[0].grid(True, alpha=0.25); axes[0].legend()
 
     axes[1].plot(hourly["hour"], hourly["s_I"], marker="o", label="Observed 5-week $s_I$")
-    axes[1].plot(hourly["hour"], hourly["fitted_propagated_std"], marker="o", label="WM4 propagated std")
+    axes[1].plot(hourly["hour"], hourly["fitted_propagated_std"], marker="o", label="ARM propagated std")
     axes[1].axhline(result["sigma"], linestyle="--", label=f"Constant diffusion $\\sigma$={result['sigma']:.4f}")
     axes[1].set_xlabel("Hour of day"); axes[1].set_ylabel("Standard deviation / diffusion")
     axes[1].set_xticks(np.arange(0, DAY_HOURS, 2))
     axes[1].grid(True, alpha=0.25); axes[1].legend()
 
-    fig.suptitle(f"WM4 local constant diffusion QP | prediction {result['prediction_day']:%Y-%m-%d}")
+    fig.suptitle(f"ARM (Affine Revised Model) local constant diffusion QP | prediction {result['prediction_day']:%Y-%m-%d}")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 

@@ -255,13 +255,13 @@ def save_plot(rolling, lead, global_summary, path):
 
     h = lead["lead_hours"].to_numpy(dtype=int)
     axes[1].plot(h, lead["empirical_oracle_variance"], marker="o", label="Oracle residual variance across MPC origins")
-    axes[1].plot(h, lead["fitted_process_variance"], marker="o", label="WM4 propagated variance (q * mean K)")
+    axes[1].plot(h, lead["fitted_process_variance"], marker="o", label="ARM propagated variance (q * mean K)")
     axes[1].set_ylabel("Input variance")
     axes[1].set_xticks(np.arange(1, DAY_HOURS + 1, 2))
     axes[1].legend(); axes[1].grid(True, alpha=0.25)
 
     axes[2].plot(h, lead["empirical_oracle_std"], marker="o", label="Empirical oracle residual std")
-    axes[2].plot(h, lead["fitted_process_std"], marker="o", label="Variance-matched WM4 process std")
+    axes[2].plot(h, lead["fitted_process_std"], marker="o", label="Variance-matched ARM process std")
     axes[2].plot(h, lead["oracle_rmse"], linestyle=":", label="Oracle residual RMSE")
     axes[2].plot(h, lead["baseline_rmse"], linestyle="--", label="Robust O(t) RMSE")
     axes[2].set_xlabel("Hours since hourly MPC origin")
@@ -269,7 +269,7 @@ def save_plot(rolling, lead, global_summary, path):
     axes[2].set_xticks(np.arange(1, DAY_HOURS + 1, 2))
     axes[2].legend(); axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 oracle-conditioned constant diffusion | direct empirical variance fit over 24h")
+    fig.suptitle("ARM (Affine Revised Model) oracle-conditioned constant diffusion | direct empirical variance fit over 24h")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 

@@ -349,7 +349,7 @@ def save_calibration_plot(summary, output):
     axes[0].plot(h, summary["empirical_oracle_variance"], marker="o",
         label="Empirical oracle-residual variance across MPC origins")
     axes[0].plot(h, summary["mean_predicted_total_variance"], marker="o",
-        label="Mean WM4 fitted total variance")
+        label="Mean ARM fitted total variance")
     axes[0].plot(h, summary["mean_predicted_observation_variance"], linestyle=":",
         label="Observation variance sigma_0^2")
     axes[0].plot(h, summary["mean_predicted_process_variance"], linestyle="--",
@@ -376,7 +376,7 @@ def save_calibration_plot(summary, output):
 
     mode = ("historical diffusion / oracle state" if
         "fit_mode" in summary and summary["fit_mode"].eq("historical").all() else "in-sample")
-    fig.suptitle(f"WM4 observation + Wiener process variance and 68% / 95% coverage ({mode})")
+    fig.suptitle(f"ARM (Affine Revised Model) observation + Wiener process variance and 68% / 95% coverage ({mode})")
     fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -406,7 +406,7 @@ def save_plot(origins, summary, output):
 
     mode = ("historical" if "fit_mode" in origins and
         origins["fit_mode"].eq("historical").all() else "in-sample")
-    fig.suptitle(f"WM4 observation + process uncertainty: 24h cumulative oracle errors ({mode})")
+    fig.suptitle(f"ARM (Affine Revised Model) observation + process uncertainty: 24h cumulative oracle errors ({mode})")
     fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -525,7 +525,7 @@ def save_day_error_quintiles(daily, quintiles, output, mode="calendar-day"):
     protocol = ("historical diffusion, oracle state" if
         "fit_mode" in daily.columns and daily["fit_mode"].eq("historical").all()
         else "in-sample diffusion and oracle state")
-    fig.suptitle(f"WM4 predicted-error quintiles vs observed error ({context}; {protocol})")
+    fig.suptitle(f"ARM (Affine Revised Model) predicted-error quintiles vs observed error ({context}; {protocol})")
     fig.tight_layout(); output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=300, bbox_inches="tight"); plt.close(fig)
 

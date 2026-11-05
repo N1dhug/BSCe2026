@@ -161,7 +161,7 @@ def save_plot(selected, candidates, path):
     axes[2].grid(True, axis="y", alpha=0.25)
 
     metric = str(selected["selection_metric"].iloc[0])
-    fig.suptitle(f"WM4 adaptive parameter traceback | selection by {metric}")
+    fig.suptitle(f"ARM (Affine Revised Model) adaptive parameter traceback | selection by {metric}")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 
