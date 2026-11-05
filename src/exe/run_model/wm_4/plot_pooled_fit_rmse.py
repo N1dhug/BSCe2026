@@ -1,10 +1,10 @@
-"""Pooled WM4 HISTORICAL DEMAND FIT RMSE across backlog N and scored horizon k.
+"""Pooled ARM historical demand FIT RMSE, MAE and signed BIAS over N and k.
 
 Read the constrained theta and fitted historical initial states produced by
 sweep_weekday_horizon.py. Reconstruct free-running WM4 demand on the SAME
 historical weekdays used for those fits (never on forecast/target days).
-At each (N,k), pool all squared demand errors from the first k hourly
-observations of every historical fitting trajectory.
+At each (N,k), pool squared, absolute and signed demand errors from the
+first k hourly observations of every historical fitting trajectory.
 
 IMPORTANT: Saved theta and [F0,R0] were fitted to complete 24-hour
 historical windows. k changes the subset SCORED, not the parameter fit.
@@ -91,11 +91,11 @@ def evaluate(*, group="ALL", n_values=range(2,15), horizons=range(1,25),
              start_day=None, end_day=None, steps_per_hour=4, input_dir=None,
              output_dir=None, fail_fast=False, progress_every=25,
              verify_saved_rmse=True, verification_atol=1e-6, dpi=190, **kwargs):
-    """Pooled in-sample RMSE of free-running WM4 demand on training histories.
+    """Pooled in-sample RMSE, MAE and signed BIAS of ARM fitted demand.
 
     Dates are target origins whose N PRECEDING same-weekday histories were used
     to estimate theta. The historical fits themselves are what is scored.
-    RMSE = sqrt(total SSE / total hourly observations), not mean daily RMSE.
+    RMSE=sqrt(SSE/M), MAE=SAE/M, BIAS=sum(fitted-observed)/M.
     """
     if kwargs: raise TypeError(f"Unexpected keyword arguments: {', '.join(kwargs)}")
     if group not in ("MED","ALL"): raise ValueError("group must be MED or ALL.")

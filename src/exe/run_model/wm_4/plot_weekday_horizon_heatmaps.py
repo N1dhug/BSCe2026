@@ -1,4 +1,4 @@
-"""Two-panel pooled oracle-RMSE heatmaps from a completed WM4 N-k sweep.
+"""Six-panel pooled ARM oracle RMSE, MAE and signed BIAS over N and k.
 
 Uses saved oracle_horizon_scores.csv and forecast_components.csv, never refits.
 Each (N, k, day, baseline) uses the *k-specific fitted oracle state*;
@@ -94,7 +94,7 @@ def selected_hours(horizon, *, hour_start=0, hour_end=None, last_hours=None, req
 def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hours=None,
                    require_full_window=False, baselines=BASELINES, n_values=None, horizons=None,
                    cohort="global", fitted_cohort=None):
-    """Reconstruct *pooled* RMSE from each horizon's independently fitted oracle.
+    """Reconstruct pooled RMSE, MAE and signed BIAS from each oracle horizon.
 
     hour_start inclusive, hour_end exclusive; e.g. 6:12 scores hours 7--12.
     last_hours=4 scores the last four hours of each k (mutually exclusive).
@@ -329,7 +329,7 @@ def main():
     parser.add_argument("--max-weekdays", type=int, default=None)
     parser.add_argument("--min-horizon", type=int, default=None)
     parser.add_argument("--max-horizon", type=int, default=None)
-    parser.add_argument("--vmax", type=float, default=None, help="Optional common upper color limit.")
+    parser.add_argument("--vmax", type=float, default=None, help="Optional upper color limit for the RMSE row only.")
     args = parser.parse_args()
     folder = Path(args.input) if args.input is not None else INPUT/args.group.lower()
     scores, _ = load_saved(folder)
