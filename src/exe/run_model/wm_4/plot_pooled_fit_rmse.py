@@ -100,7 +100,7 @@ def _plot(summary, ns, ks, group, output, start, end, cmap="viridis", dpi=190):
     axes[0].set_ylabel("Backlog N (preceding matching weekdays)")
     dates = (f"{start:%Y-%m-%d} to {end:%Y-%m-%d}" if start is not None and end is not None
              else "all saved fitting origins")
-    fig.suptitle(f"WM4 | {group} | pooled historical DEMAND FIT RMSE | {dates}\n"
+    fig.suptitle(f"ARM (Affine Revised Model) | {group} | pooled historical DEMAND FIT RMSE | {dates}\n"
                  "Saved constrained 24h theta and fitted historical initial states; k selects scoring hours",
                  fontsize=12)
     fig.subplots_adjust(left=0.055,right=0.90,bottom=0.13,top=0.83,wspace=0.07)
@@ -110,7 +110,7 @@ def _plot(summary, ns, ks, group, output, start, end, cmap="viridis", dpi=190):
     plt.close(fig)
 
 
-def evaluate(*, group="MED", n_values=range(2,15), horizons=range(1,25),
+def evaluate(*, group="ALL", n_values=range(2,15), horizons=range(1,25),
              start_day=None, end_day=None, steps_per_hour=4, input_dir=None,
              output_dir=None, fail_fast=False, progress_every=25,
              verify_saved_rmse=True, verification_atol=1e-6, dpi=190, **kwargs):
@@ -226,7 +226,7 @@ def evaluate(*, group="MED", n_values=range(2,15), horizons=range(1,25),
 
 def main(**kwargs):
     """Adjust ranges, group, and evaluation period through keyword arguments."""
-    defaults = dict(group="MED",n_values=range(2,15),horizons=range(1,25),
+    defaults = dict(group="ALL",n_values=range(2,15),horizons=range(1,25),
                     start_day=None,end_day=None,steps_per_hour=4,
                     input_dir=None,output_dir=None,fail_fast=False,
                     progress_every=25,verify_saved_rmse=True,verification_atol=1e-6,dpi=190)

@@ -89,7 +89,7 @@ def _one_configuration(frame, day, n, baseline_name, theta, states, sph):
     return y, predicted
 
 
-def evaluate(*, group="MED", n_values=range(2,15), horizons=range(1,25),
+def evaluate(*, group="ALL", n_values=range(2,15), horizons=range(1,25),
              start_day=None, end_day=None, steps_per_hour=4, input_dir=None,
              output_dir=None, fail_fast=False, progress_every=25, **kwargs):
     """Compute pooled derivative R² for saved moving-horizon thetas.
@@ -196,7 +196,7 @@ def plot(summary,ns,ks,group,output,cmap="viridis",dpi=190):
         ax.set_xlabel("Horizon k (hours)")
         ax.tick_params(length=0)
     axes[0].set_ylabel("Backlog N (preceding matching weekdays)")
-    fig.suptitle(f"WM4 | {group} | pooled HOURLY rate-dynamics R² (saved θ) | k=24 uses 23 rate hours")
+    fig.suptitle(f"ARM (Affine Revised Model) | {group} | pooled HOURLY rate-dynamics R² (saved θ) | k=24 uses 23 rate hours")
     fig.subplots_adjust(left=0.06,right=0.90,bottom=0.13,top=0.87,wspace=0.08)
     cax=fig.add_axes([0.92,0.18,0.015,0.63])
     fig.colorbar(image,cax=cax,label="Pooled hourly rate-dynamics R²")
@@ -206,7 +206,7 @@ def plot(summary,ns,ks,group,output,cmap="viridis",dpi=190):
 
 def main(**kwargs):
     """Editable kwargs are the intended configuration interface."""
-    defaults = dict(group="MED",n_values=range(2,15),horizons=range(1,25),
+    defaults = dict(group="ALL",n_values=range(2,15),horizons=range(1,25),
                     start_day=None,end_day=None,steps_per_hour=4,
                     input_dir=None,output_dir=None,fail_fast=False,progress_every=25)
     return evaluate(**(defaults|kwargs))

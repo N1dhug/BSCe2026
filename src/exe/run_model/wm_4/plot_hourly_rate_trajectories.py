@@ -48,7 +48,7 @@ def _plot(observed, fitted, target_days, historical_days, baseline, n, k, group,
     fig,(ax,err) = plt.subplots(2,1,figsize=(18,8),sharex=True,
                                 gridspec_kw={"height_ratios":[3,1],"hspace":0.12})
     ax.plot(x,observed_line,lw=0.75,alpha=0.85,label="Observed hourly R-dot")
-    ax.plot(x,fitted_line,lw=0.75,alpha=0.75,label="WM4 constrained fitted R-dot")
+    ax.plot(x,fitted_line,lw=0.75,alpha=0.75,label="ARM constrained fitted R-dot")
     ax.axhline(0.0,color="black",lw=0.7,alpha=0.4)
     ax.set_ylabel("R-dot (normalized-day time)")
     ax.legend(loc="upper right")
@@ -65,7 +65,7 @@ def _plot(observed, fitted, target_days, historical_days, baseline, n, k, group,
                    rotation=25,ha="right")
     err.set_xlabel("Historical intervals grouped by moving-horizon target day (gaps between intervals)")
     first,last = min(target_days),max(target_days)
-    fig.suptitle(f"WM4 {group} | {TITLES[baseline]} | N={n} | k={k}h "
+    fig.suptitle(f"ARM (Affine Revised Model) {group} | {TITLES[baseline]} | N={n} | k={k}h "
                  f"({hours} derivative hours per historical interval)\n"
                  f"Target origins {first:%Y-%m-%d} to {last:%Y-%m-%d} | "
                  f"intervals={count:,} | observations={len(y):,} | R²={r2:.4f} | RMSE={rmse:.4f}")

@@ -189,7 +189,7 @@ def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", 
         ax.set_xlabel("Prediction horizon $k$ (hours)")
         ax.tick_params(axis="both", length=0)
     axes[0].set_ylabel("Historical matching weekdays $N$")
-    subtitle = title if title else "WM4 full-state oracle | pooled RMSE | weekly average vs weekly temperature"
+    subtitle = title if title else "ARM (Affine Revised Model) full-state oracle | pooled RMSE | weekly average vs weekly temperature"
     fig.suptitle(subtitle, fontsize=13)
     fig.subplots_adjust(left=0.055, right=0.90, bottom=0.13, top=0.87, wspace=0.08)
     cax = fig.add_axes((0.915, 0.18, 0.015, 0.63))
@@ -223,7 +223,7 @@ def plot_heatmaps(*, input_dir=INPUT/"med", output=None, hour_start=0, hour_end=
     note = (f"last {last_hours} h of each horizon" if last_hours is not None else
             f"hours {hour_start+1}--{hour_end if hour_end is not None else 'k'} (end exclusive in zero-based indexing)")
     fig = draw_heatmaps(summary, baselines=baselines, output=output,
-                        title=f"WM4 oracle RMSE by baseline, N and k | {note}", **plot_kwargs)
+                        title=f"ARM (Affine Revised Model) oracle RMSE by baseline, N and k | {note}", **plot_kwargs)
     plt.close(fig)
     print(f"Saved figure: {output}")
     print(f"Saved pooled metrics: {output.with_suffix('.csv')}")
@@ -234,7 +234,7 @@ def plot_heatmaps(*, input_dir=INPUT/"med", output=None, hour_start=0, hour_end=
 
 def main():
     parser = ArgumentParser(description="Plot 2-panel pooled N-k oracle RMSE (weekly average/temperature) from completed WM4 sweep CSVs, without refitting.")
-    parser.add_argument("--group", choices=("MED", "ALL"), default="MED")
+    parser.add_argument("--group", choices=("MED", "ALL"), default="ALL")
     parser.add_argument("--input", default=None, help="Directory with oracle_horizon_scores.csv and forecast_components.csv.")
     parser.add_argument("--output", default=None, help="Output PNG path; a same-name CSV is written alongside.")
     parser.add_argument("--hour-start", type=int, default=0, help="First scored prediction hour, zero-based inclusive.")
