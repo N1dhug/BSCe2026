@@ -28,11 +28,10 @@ def same_period(frame, start_day=START_DAY, end_day=END_DAY, baselines=BASELINES
     data = frame.loc[frame["day"].between(start, end)].copy()
     if data.empty: raise ValueError(f"No saved sweep predictions in {start:%Y-%m-%d} to {end:%Y-%m-%d}.")
     required = {(baseline, n, k) for baseline in baselines for n in backlogs for k in horizons}
-    complete = data.groupby("day").apply(
-        lambda part: required.issubset(set(zip(part["baseline"], part["training_weekdays"], part["horizon_hours"]))),
-        include_groups=False,
-    )
-    days = pd.DatetimeIndex(complete.index[complete.to_numpy(dtype=bool)])
+    days = pd.DatetimeIndex([
+        day for day, part in data.groupby("day", sort=True)
+        if required.issubset(set(zip(part["baseline"], part["training_weekdays"], part["horizon_hours"])))
+    ])
     if days.empty:
         raise ValueError("No fully matched days across all requested baselines, backlogs and horizons in the selected period. Run the complete weekday sweep or narrow the hyperparameter ranges.")
     return data.loc[data["day"].isin(days)].copy(), days
