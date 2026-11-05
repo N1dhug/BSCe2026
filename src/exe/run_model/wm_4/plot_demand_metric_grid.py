@@ -85,7 +85,7 @@ def draw_demand_metric_grid(summary, metric_columns, *, baselines, titles,
 
     full_title = (title if title is not None else
                   f"ARM (Affine Revised Model) | {group} | pooled historical "
-                  f"DEMAND {evaluation.upper()} RMSE / MAE / BIAS | {period}\\n{subtitle}")
+                  f"DEMAND {evaluation.upper()} RMSE / MAE / BIAS | {period}\n{subtitle}")
     fig.suptitle(full_title,fontsize=12,y=0.975)
     if output is not None:
         output = Path(output)
