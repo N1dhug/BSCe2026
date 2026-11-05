@@ -15,6 +15,7 @@ from matplotlib.colors import Normalize
 
 ROOT = Path(__file__).resolve().parents[4]
 INPUT = ROOT / "files" / "output" / "wm_4" / "weekday_horizon_sweep_expanded"
+FIT_OUTPUT = ROOT / "files" / "output" / "wm_4" / "pooled_fit_rmse"
 BASELINES = ("weekly_average", "weekly_temperature")
 TITLES = {"weekly_average": "Weekly average",
           "weekly_temperature": "Weekly temperature"}
@@ -46,6 +47,40 @@ def load_saved(input_dir):
     return scores, components
 
 
+def load_fitted_cohort(input_dir, *, baselines=BASELINES, n_values=None, fit_manifest=None,
+                       start_day=None, end_day=None):
+    """Use exactly the successful historical intervals admitted by the fit RMSE plotter.
+
+    This is the actual filtered per-window manifest produced by
+    plot_pooled_fit_rmse.py, not a global intersection over N, k or baselines.
+    A target day is eligible if its N historical trajectories were
+    successfully reconstructed and scored as a historical demand fit.
+    """
+    input_dir = Path(input_dir)
+    location = Path(fit_manifest) if fit_manifest is not None else (
+        FIT_OUTPUT/input_dir.name/"per_window_fit_rmse.csv")
+    if not location.is_file():
+        raise FileNotFoundError(
+            f"Missing historical fit eligibility manifest: {location}. "
+            "Run python -m src.exe.run_model.wm_4.plot_pooled_fit_rmse "
+            f"for the {input_dir.name.upper()} group first, or supply --fit-manifest.")
+    fitting = pd.read_csv(location)
+    needed = set(KEY)
+    if fitting.empty or not needed.issubset(fitting.columns):
+        raise ValueError(f"Historical fit manifest is empty or lacks {sorted(needed)}: {location}")
+    fitting["day"] = pd.to_datetime(fitting["day"]).dt.normalize()
+    fitting["training_weekdays"] = pd.to_numeric(fitting["training_weekdays"], errors="raise").astype(int)
+    fitting = fitting.loc[fitting["baseline"].isin(baselines)].copy()
+    if n_values is not None: fitting = fitting.loc[fitting["training_weekdays"].isin(n_values)]
+    if start_day is not None:
+        fitting = fitting.loc[fitting["day"] >= pd.Timestamp(start_day).normalize()]
+    if end_day is not None:
+        fitting = fitting.loc[fitting["day"] <= pd.Timestamp(end_day).normalize()]
+    fitting = fitting[KEY].drop_duplicates()
+    if fitting.empty: raise ValueError(f"No historical fit windows match the selected criteria in {location}.")
+    return fitting
+
+
 def selected_hours(horizon, *, hour_start=0, hour_end=None, last_hours=None, require_full_window=False):
     """Return zero-based hours scored for a k-hour oracle prediction."""
     horizon = int(horizon)
@@ -58,18 +93,28 @@ def selected_hours(horizon, *, hour_start=0, hour_end=None, last_hours=None, req
 
 def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hours=None,
                    require_full_window=False, baselines=BASELINES, n_values=None, horizons=None,
-                   cohort="global"):
+                   cohort="fitted", fitted_cohort=None):
     """Reconstruct *pooled* RMSE from each horizon's independently fitted oracle.
 
     hour_start inclusive, hour_end exclusive; e.g. 6:12 scores hours 7--12.
     last_hours=4 scores the last four hours of each k (mutually exclusive).
     Shorter k values have their slice truncated unless require_full_window=True.
+    cohort='fitted' retains every eligible (day,baseline,N) from the historical
+    fit plotter, without discarding dates for missing unrelated configurations.
     cohort='global' matches days across *all* B,N,k configurations;
     cohort='cell' matches days across the baselines at each (N,k).
     """
     baselines = tuple(baselines)
     if not baselines or len(set(baselines)) != len(baselines): raise ValueError("Select unique baselines.")
-    if cohort not in ("global", "cell"): raise ValueError("cohort must be 'global' or 'cell'.")
+    if cohort not in ("fitted", "global", "cell"):
+        raise ValueError("cohort must be 'fitted', 'global', or 'cell'.")
+    if cohort == "fitted":
+        if fitted_cohort is None or not set(KEY).issubset(fitted_cohort.columns):
+            raise ValueError("The fitted cohort requires a historical fit manifest with day, baseline, and N.")
+        fitted_cohort = fitted_cohort[KEY].drop_duplicates().copy()
+        fitted_cohort["day"] = pd.to_datetime(fitted_cohort["day"]).dt.normalize()
+        fitted_cohort = fitted_cohort.loc[fitted_cohort["baseline"].isin(baselines)]
+        if fitted_cohort.empty: raise ValueError("No eligible fitted intervals are available.")
     if not isinstance(hour_start, int) or not 0 <= hour_start < 24:
         raise ValueError("hour_start must be an integer from 0 through 23.")
     if hour_end is not None and (not isinstance(hour_end, int) or not hour_start < hour_end <= 24):
@@ -95,6 +140,12 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
     components = components.loc[components["baseline"].isin(baselines) &
                                  components["training_weekdays"].isin(n_values)].copy()
     if scores.empty or components.empty: raise ValueError("No saved rows match the selected baselines or N/k range.")
+    if cohort == "fitted":
+        fitted_cohort = fitted_cohort.loc[fitted_cohort["training_weekdays"].isin(n_values)]
+        scores = scores.merge(fitted_cohort,on=KEY,how="inner",validate="many_to_one")
+        components = components.merge(fitted_cohort,on=KEY,how="inner",validate="many_to_one")
+        if scores.empty or components.empty:
+            raise ValueError("No saved prediction rows correspond to the eligible historical fitting windows.")
     present = set(scores["baseline"].unique()) & set(components["baseline"].unique())
     missing = set(baselines)-present
     if missing: raise ValueError(f"Saved sweep is missing baselines: {sorted(missing)}")
@@ -118,7 +169,7 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
         common = set(counts.index[counts == expected])
         if not common: raise ValueError("No prediction days match across all baselines, N values and scored horizons.")
         scores = scores.loc[scores["day"].isin(common)]
-    else:
+    elif cohort == "cell":
         # This matches baselines for each (N,k); the count can vary by cell.
         count = scores.groupby(["day", "training_weekdays", "horizon_hours"])["baseline"].nunique()
         matched = set(count.index[count == len(baselines)])
@@ -126,6 +177,8 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
                              scores[["day", "training_weekdays", "horizon_hours"]].itertuples(index=False, name=None)]]
         if scores.empty: raise ValueError("No (N,k) cells contain matched days across all baselines.")
 
+    eligible_counts = (fitted_cohort.groupby(["baseline","training_weekdays"])["day"].nunique().to_dict()
+                       if cohort == "fitted" else {})
     grouped_components = {(b, int(n)): frame for (b, n), frame in components.groupby(["baseline", "training_weekdays"])}
     grouped_scores = {(b, int(n), int(h)): frame for (b, n, h), frame in scores.groupby(["baseline", "training_weekdays", "horizon_hours"])}
     rows = []
@@ -137,7 +190,9 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
                          "hour_start": min(hours) if hours else np.nan,
                          "hour_end": max(hours)+1 if hours else np.nan,
                          "hours_scored": len(hours), "days": 0, "observations": 0, "aggregate_rmse": np.nan,
-                         "start_day": pd.NaT, "end_day": pd.NaT}
+                         "start_day": pd.NaT, "end_day": pd.NaT,
+                         "eligible_fit_days": int(eligible_counts.get((b,n),0)),
+                         "missing_prediction_days": np.nan}
                 scored = grouped_scores.get((b, n, h))
                 trajectory = grouped_components.get((b, n))
                 if hours and scored is not None and trajectory is not None:
@@ -154,6 +209,8 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
                     entry.update(days=len(scored), observations=len(residual),
                                  aggregate_rmse=float(np.sqrt(np.mean(residual**2))),
                                  start_day=scored["day"].min(), end_day=scored["day"].max())
+                if cohort == "fitted":
+                    entry["missing_prediction_days"] = entry["eligible_fit_days"]-entry["days"]
                 rows.append(entry)
     return pd.DataFrame(rows)
 
@@ -203,8 +260,9 @@ def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", 
 
 
 def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=None,
-                  last_hours=None, require_full_window=False, cohort="global",
-                  baselines=BASELINES, n_values=None, horizons=None, **plot_kwargs):
+                  last_hours=None, require_full_window=False, cohort="fitted",
+                  baselines=BASELINES, n_values=None, horizons=None,
+                  fit_manifest=None, start_day=None, end_day=None, **plot_kwargs):
     """Plot saved two-baseline N-k RMSE with a selectable score window.
 
     Examples: plot_heatmaps(hour_start=6, hour_end=12)
@@ -213,15 +271,37 @@ def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=
     """
     input_dir = Path(input_dir)
     scores, components = load_saved(input_dir)
+    if start_day is not None and end_day is not None and pd.Timestamp(end_day) < pd.Timestamp(start_day):
+        raise ValueError("end_day must not precede start_day.")
+    if start_day is not None:
+        scores = scores.loc[scores["day"] >= pd.Timestamp(start_day).normalize()]
+        components = components.loc[components["day"] >= pd.Timestamp(start_day).normalize()]
+    if end_day is not None:
+        scores = scores.loc[scores["day"] <= pd.Timestamp(end_day).normalize()]
+        components = components.loc[components["day"] <= pd.Timestamp(end_day).normalize()]
+    fitted = (load_fitted_cohort(input_dir, baselines=baselines, n_values=n_values,
+                                fit_manifest=fit_manifest, start_day=start_day, end_day=end_day)
+              if cohort == "fitted" else None)
     summary = aggregate_rmse(scores, components, hour_start=hour_start, hour_end=hour_end,
                              last_hours=last_hours, require_full_window=require_full_window,
-                             cohort=cohort, baselines=baselines, n_values=n_values, horizons=horizons)
+                             cohort=cohort, fitted_cohort=fitted,
+                             baselines=baselines, n_values=n_values, horizons=horizons)
     selected = (f"last_{last_hours:02d}h" if last_hours is not None else
                 f"hours_{hour_start:02d}_{hour_end if hour_end is not None else 'end'}")
     stem = f"aggregate_rmse_two_baselines_{selected}_{cohort}"
     output = Path(output) if output is not None else input_dir/(stem+".png")
     output.parent.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output.with_suffix(".csv"), index=False)
+    if cohort == "fitted":
+        summary[["baseline","training_weekdays","horizon_hours","eligible_fit_days",
+                 "days","missing_prediction_days"]].to_csv(
+                 output.with_name(output.stem+"_coverage.csv"), index=False)
+        missing = int(summary["missing_prediction_days"].fillna(0).sum())
+        if missing:
+            print(f"WARNING: {missing} eligible fit-day/horizon combinations lack saved oracle "
+                  "prediction scores or complete hourly components. "
+                  "To generate them, resume the matching weekday-horizon sweep; "
+                  "the plot cannot reconstruct unsaved oracle optimizations.")
     group = input_dir.name.upper()
     if group not in ("ALL", "MED"):
         configuration = input_dir/"configuration.json"
@@ -254,7 +334,11 @@ def main():
     parser.add_argument("--hour-end", type=int, default=None, help="Last scored hour, zero-based exclusive; default k.")
     parser.add_argument("--last-hours", type=int, default=None, help="Score the final L hours of each k instead.")
     parser.add_argument("--require-full-window", action="store_true", help="Leave cells blank where k is too short for the requested slice.")
-    parser.add_argument("--cohort", choices=("global", "cell"), default="global")
+    parser.add_argument("--cohort", choices=("fitted", "global", "cell"), default="fitted",
+                        help="fitted uses exactly the historical fit plotter's admitted (day,N,baseline) windows.") 
+    parser.add_argument("--fit-manifest", default=None, help="Optional per_window_fit_rmse.csv from the demand fitting heatmap.")
+    parser.add_argument("--start-day", default=None, help="First target day, inclusive (same interpretation as fit plotter).")
+    parser.add_argument("--end-day", default=None, help="Last target day, inclusive.")
     parser.add_argument("--min-weekdays", type=int, default=None)
     parser.add_argument("--max-weekdays", type=int, default=None)
     parser.add_argument("--min-horizon", type=int, default=None)
@@ -272,7 +356,8 @@ def main():
     plot_heatmaps(input_dir=folder, output=args.output, hour_start=args.hour_start,
                   hour_end=args.hour_end, last_hours=args.last_hours,
                   require_full_window=args.require_full_window, cohort=args.cohort,
-                  n_values=ns, horizons=ks, vmax=args.vmax)
+                  n_values=ns, horizons=ks, vmax=args.vmax,
+                  fit_manifest=args.fit_manifest, start_day=args.start_day, end_day=args.end_day)
 
 
 if __name__ == "__main__": main()
