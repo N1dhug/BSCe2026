@@ -93,7 +93,7 @@ def selected_hours(horizon, *, hour_start=0, hour_end=None, last_hours=None, req
 
 def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hours=None,
                    require_full_window=False, baselines=BASELINES, n_values=None, horizons=None,
-                   cohort="fitted", fitted_cohort=None):
+                   cohort="global", fitted_cohort=None):
     """Reconstruct *pooled* RMSE from each horizon's independently fitted oracle.
 
     hour_start inclusive, hour_end exclusive; e.g. 6:12 scores hours 7--12.
