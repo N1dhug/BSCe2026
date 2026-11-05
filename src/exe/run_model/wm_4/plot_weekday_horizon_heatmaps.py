@@ -136,7 +136,8 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
                 entry = {"baseline": b, "training_weekdays": n, "horizon_hours": h,
                          "hour_start": min(hours) if hours else np.nan,
                          "hour_end": max(hours)+1 if hours else np.nan,
-                         "hours_scored": len(hours), "days": 0, "observations": 0, "aggregate_rmse": np.nan}
+                         "hours_scored": len(hours), "days": 0, "observations": 0, "aggregate_rmse": np.nan,
+                         "start_day": pd.NaT, "end_day": pd.NaT}
                 scored = grouped_scores.get((b, n, h))
                 trajectory = grouped_components.get((b, n))
                 if hours and scored is not None and trajectory is not None:
@@ -151,7 +152,8 @@ def aggregate_rmse(scores, components, *, hour_start=0, hour_end=None, last_hour
                                 joined["observed"].to_numpy(dtype=float))
                     if not np.isfinite(residual).all(): raise ValueError(f"Nonfinite reconstructed oracle errors: {b}, N={n}, k={h}.")
                     entry.update(days=len(scored), observations=len(residual),
-                                 aggregate_rmse=float(np.sqrt(np.mean(residual**2))))
+                                 aggregate_rmse=float(np.sqrt(np.mean(residual**2))),
+                                 start_day=scored["day"].min(), end_day=scored["day"].max())
                 rows.append(entry)
     return pd.DataFrame(rows)
 
@@ -186,14 +188,14 @@ def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", 
         ax.set_title(TITLES.get(baseline, baseline), fontsize=12)
         ax.set_xticks(np.arange(len(ks)), [str(v) for v in ks], fontsize=8)
         ax.set_yticks(np.arange(len(ns)), [str(v) for v in ns])
-        ax.set_xlabel("Prediction horizon $k$ (hours)")
+        ax.set_xlabel("Prediction horizon k (hours scored)")
         ax.tick_params(axis="both", length=0)
-    axes[0].set_ylabel("Historical matching weekdays $N$")
-    subtitle = title if title else "ARM (Affine Revised Model) full-state oracle | pooled RMSE | weekly average vs weekly temperature"
-    fig.suptitle(subtitle, fontsize=13)
-    fig.subplots_adjust(left=0.055, right=0.90, bottom=0.13, top=0.87, wspace=0.08)
-    cax = fig.add_axes((0.915, 0.18, 0.015, 0.63))
-    fig.colorbar(im, cax=cax, label="Aggregate RMSE (normalized demand)")
+    axes[0].set_ylabel("Backlog N (preceding matching weekdays)")
+    subtitle = title if title else "ARM (Affine Revised Model) | pooled historical DEMAND PREDICTION RMSE"
+    fig.suptitle(subtitle, fontsize=12)
+    fig.subplots_adjust(left=0.055, right=0.90, bottom=0.13, top=0.83, wspace=0.07)
+    cax = fig.add_axes((0.916, 0.19, 0.015, 0.57))
+    fig.colorbar(im, cax=cax, label="Pooled demand prediction RMSE (normalized demand)")
     if output is not None:
         output = Path(output); output.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(output, dpi=dpi, bbox_inches="tight")
@@ -220,10 +222,21 @@ def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=
     output = Path(output) if output is not None else input_dir/(stem+".png")
     output.parent.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output.with_suffix(".csv"), index=False)
-    note = (f"last {last_hours} h of each horizon" if last_hours is not None else
-            f"hours {hour_start+1}--{hour_end if hour_end is not None else 'k'} (end exclusive in zero-based indexing)")
+    group = input_dir.name.upper()
+    if group not in ("ALL", "MED"):
+        configuration = input_dir/"configuration.json"
+        if configuration.is_file():
+            import json
+            group = str(json.loads(configuration.read_text(encoding="utf-8")).get("group", "CUSTOM")).upper()
+        else: group = "CUSTOM"
+    first = pd.to_datetime(summary["start_day"]).min()
+    last = pd.to_datetime(summary["end_day"]).max()
+    dates = (f"{first:%Y-%m-%d} to {last:%Y-%m-%d}" if pd.notna(first) and pd.notna(last)
+             else "all saved prediction origins")
     fig = draw_heatmaps(summary, baselines=baselines, output=output,
-                        title=f"ARM (Affine Revised Model) oracle RMSE by baseline, N and k | {note}", **plot_kwargs)
+                        title=f"ARM (Affine Revised Model) | {group} | pooled historical DEMAND PREDICTION RMSE | {dates}\\n"
+                              "Saved constrained 24h theta and fitted oracle initial states; k selects scoring hours",
+                        **plot_kwargs)
     plt.close(fig)
     print(f"Saved figure: {output}")
     print(f"Saved pooled metrics: {output.with_suffix('.csv')}")
