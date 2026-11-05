@@ -15,6 +15,18 @@ ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT / "files" / "output" / "wm_4" / "uncertainty" / "constant_diffusion_qp"
 
 
+def historical_demand_residuals(frame, training_days, training_states, steps_per_hour):
+    """Observed I - deterministic I for the fitted historical WM4 trajectories."""
+    hourly_index = np.arange(DAY_HOURS, dtype=int) * int(steps_per_hour)
+    residual_days = []
+    for day, state in zip(training_days, training_states):
+        _, measured = selected_day(frame, day)
+        predicted = np.asarray(state["I"], dtype=float)[hourly_index]
+        residual_days.append(measured["I"].to_numpy(dtype=float) - predicted)
+    if not residual_days: raise ValueError("At least one historical trajectory is required.")
+    return np.vstack(residual_days)
+
+
 def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hour=60, max_state_iter=50, state_tol=1e-8):
     prediction_day, weeks, steps_per_hour = day_start(prediction_day), int(weeks), int(steps_per_hour)
     if weeks < 2: raise ValueError("weeks must be at least 2.")
@@ -36,14 +48,7 @@ def fit_prediction_day(frame, prediction_day, weeks=DEFAULT_WEEKS, steps_per_hou
     hourly_index = np.arange(DAY_HOURS, dtype=int) * steps_per_hour
     process_kernel = prediction_model.process_variance_kernel({"r": fit["r"]}, hourly_index)
 
-    # Historical demand errors separate the constant observation floor from
-    # the Brownian variance accumulated through the R-state dynamics.
-    residual_days = []
-    for day, historical_state in zip(fit["training_days"], fit["deterministic_states"]):
-        _, measured = selected_day(frame, day)
-        prediction = np.asarray(historical_state["I"], dtype=float)[hourly_index]
-        residual_days.append(measured["I"].to_numpy(dtype=float) - prediction)
-    demand_residuals = np.vstack(residual_days)
+    demand_residuals = historical_demand_residuals(frame, fit["training_days"], fit["deterministic_states"], steps_per_hour)
 
     P0 = np.zeros((2, 2), dtype=float)
     initial_variance = np.zeros(DAY_HOURS, dtype=float)
