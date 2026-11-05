@@ -84,8 +84,8 @@ def _best_backlogs(scores, components, eligible, baselines, n_values, *, selecti
         sample = summary.loc[summary["baseline"]==baseline].copy()
         if sample.empty: raise ValueError(f"No complete k=24 predictions for {baseline}.")
         for metric in METRICS:
-            # Default: pick the k=24 RMSE best N for the RMSE row, and the
-            # k=24 MAE best N for the MAE row (one per plotted metric/baseline).
+            # Default: the same k=24 RMSE-optimal N is used for both metric
+            # rows of a baseline. The per_metric option selects each separately.
             rank_metric = metric if selection=="per_metric" else selection
             column = {"rmse":"aggregate_rmse","mae":"aggregate_mae"}[rank_metric]
             sorted_rows = sample.sort_values([column,"training_weekdays"],kind="stable")
@@ -171,7 +171,6 @@ def _plot(quantiles, selections, *, group, output, dpi=190, figsize=(18,11)):
             ax.tick_params(labelbottom=True)
     handles,labels=axes[0,0].get_legend_handles_labels()
     fig.legend(handles,labels,loc="lower center",ncol=6,frameon=False,bbox_to_anchor=(0.52,0.04))
-    first,last = quantiles["horizon_hours"].min(),quantiles["horizon_hours"].max()
     ranges=selections[["first_day","last_day"]].dropna()
     from_day=pd.Timestamp(ranges["first_day"].min())
     to_day=pd.Timestamp(ranges["last_day"].max())
@@ -186,7 +185,7 @@ def _plot(quantiles, selections, *, group, output, dpi=190, figsize=(18,11)):
 
 
 def run(*, group="ALL", n_values=range(2,15), start_day=None, end_day=None,
-        input_dir=None, output_dir=None, fit_manifest=None, selection="per_metric",
+        input_dir=None, output_dir=None, fit_manifest=None, selection="rmse",
         steps_per_hour=4, complete_missing=True, completion_fail_fast=False,
         min_days=5, dpi=190, figsize=(18,11)):
     """Generate the 2x2 quintile curves, selected backlogs, and numerical CSVs."""
@@ -243,7 +242,7 @@ def run(*, group="ALL", n_values=range(2,15), start_day=None, end_day=None,
 def main(**kwargs):
     defaults = dict(group="ALL",n_values=range(2,15),start_day=None,end_day=None,
                     input_dir=None,output_dir=None,fit_manifest=None,
-                    selection="per_metric",steps_per_hour=4,complete_missing=True,
+                    selection="rmse",steps_per_hour=4,complete_missing=True,
                     completion_fail_fast=False,min_days=5,dpi=190,figsize=(18,11))
     return run(**(defaults|kwargs))
 
@@ -258,7 +257,7 @@ if __name__=="__main__":
     parser.add_argument("--input",default=None)
     parser.add_argument("--output-dir",default=None)
     parser.add_argument("--fit-manifest",default=None)
-    parser.add_argument("--selection",choices=("per_metric","rmse","mae"),default="per_metric")
+    parser.add_argument("--selection",choices=("per_metric","rmse","mae"),default="rmse")
     parser.add_argument("--steps-per-hour",type=int,default=4)
     parser.add_argument("--min-days",type=int,default=5)
     parser.add_argument("--no-complete-missing",action="store_true")
