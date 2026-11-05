@@ -215,7 +215,7 @@ def plot_leads(exact, cumulative, output):
     axes[0, 0].legend(); axes[0, 1].legend()
     for col in range(2):
         axes[1, col].set_ylim(-3, 103); axes[2, col].set_ylim(-3, 103)
-    fig.suptitle("BM1 vs WM4 | 24-hour shifted historical fitting, 8-hour receding-horizon forecasts")
+    fig.suptitle("BM1 vs ARM (Affine Revised Model) | 24-hour shifted historical fitting, 8-hour receding-horizon forecasts")
     fig.tight_layout()
     try: fig.savefig(output, dpi=190, bbox_inches="tight")
     except PermissionError as exc:

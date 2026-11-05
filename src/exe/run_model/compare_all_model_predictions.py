@@ -81,8 +81,8 @@ def report_plot(daily, aggregate, path):
     by_name = aggregate.set_index("model")
     detail = " | ".join(f"{name}: RMSE={by_name.loc[name, 'rmse']:.4f}, 95% coverage={by_name.loc[name, 'coverage_95_pct']:.1f}%"
         for name, _ in styles)
-    fig.suptitle("Daily BM1 vs hourly-updated WM4 MPC | " + detail + "\n"
-        "Daily coverage uses 24 observations; BM1 day-ahead, WM4 1-hour-ahead")
+    fig.suptitle("Daily BM1 vs hourly-updated ARM (Affine Revised Model) MPC | " + detail + "\n"
+        "Daily coverage uses 24 observations; BM1 day-ahead, ARM (Affine Revised Model) 1-hour-ahead")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=180, bbox_inches="tight")

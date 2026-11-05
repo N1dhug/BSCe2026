@@ -160,15 +160,15 @@ def save_comparison(result, output_root=OUTPUT, *, save_plot=True):
         top, bottom = axes
         top.plot(hourly.index, hourly["I_actual"], label="Observed demand", color="black", linewidth=2.1, marker="o", markersize=3)
         for label, color, name in (("BM1", "#3477b8", "BM1 day-ahead"), ("WM4", "#d46835", "WM4 MPC 1h-ahead")):
-            forecast = hourly[label if label == "BM1" else "WM4_MPC"]
+            forecast = hourly[label if label == "BM1" else "ARM_MPC"]
             top.fill_between(hourly.index, hourly[f"{label}_lower_95"].to_numpy(), hourly[f"{label}_upper_95"].to_numpy(), color=color, alpha=0.1)
             top.fill_between(hourly.index, hourly[f"{label}_lower_68"].to_numpy(), hourly[f"{label}_upper_68"].to_numpy(), color=color, alpha=0.22)
             top.plot(hourly.index, forecast, color=color, linewidth=1.8, label=name)
-        top.set_ylabel("Normalized aggregate demand (WM4 I scale)")
-        top.set_title(f"BM1 vs WM4 MPC predictions | {result['day']:%Y-%m-%d}\nShading: central 95% and 68% predictive intervals")
+        top.set_ylabel("Normalized aggregate demand (ARM I scale)")
+        top.set_title(f"BM1 vs ARM (Affine Revised Model) MPC predictions | {result['day']:%Y-%m-%d}\nShading: central 95% and 68% predictive intervals")
         top.legend(loc="upper right"); top.grid(True, alpha=0.16)
         bottom.plot(hourly.index, hourly["BM1_error"], color="#3477b8", label="BM1 error")
-        bottom.plot(hourly.index, hourly["WM4_error"], color="#d46835", label="WM4 MPC error")
+        bottom.plot(hourly.index, hourly["ARM_error"], color="#d46835", label="ARM MPC error")
         bottom.axhline(0.0, color="black", linewidth=0.8)
         bottom.set_ylabel("Prediction − actual"); bottom.set_xlabel("Target-day hour")
         bottom.grid(True, alpha=0.2); bottom.legend(loc="upper right")
