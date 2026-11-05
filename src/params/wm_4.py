@@ -430,20 +430,19 @@ class constant_diffusion_qp:
         }
 
     @staticmethod
-    def one_step_diffusion(residuals, dt, observation_variance=0.0):
-        """Estimate q from one-step residuals after removing known independent observation noise.
+    def one_step_diffusion(residuals, dt):
+        """Gaussian MLE sigma**2 = mean(e**2)/dt when observations are noiseless.
 
-        The textbook q=mean(e**2)/dt holds only if observation_variance=0.
-        With noisy observed R_k reconstructed as D_k-B_k, the one-step observation
-        error includes both eta[k+1] and propagated eta[k]; use full covariance
-        calibration in that case, rather than this helper.
+        If demand contains independent observation error, one-step residuals
+        also contain errors from the state inferred at the previous sample.
+        Use fit() on demand-residual moments across horizons to distinguish the
+        constant observation floor from accumulating Brownian variance.
         """
         residuals = np.asarray(residuals, dtype=float).reshape(-1)
-        dt, observation_variance = float(dt), float(observation_variance)
+        dt = float(dt)
         if residuals.size == 0 or not np.all(np.isfinite(residuals)): raise ValueError("residuals must be nonempty and finite.")
         if not np.isfinite(dt) or dt <= 0.0: raise ValueError("dt must be positive.")
-        if not np.isfinite(observation_variance) or observation_variance < 0.0: raise ValueError("observation_variance must be nonnegative.")
-        q = max(0.0, (float(np.mean(residuals ** 2)) - observation_variance) / dt)
+        q = float(np.mean(residuals ** 2) / dt)
         return {"q": q, "sigma": float(np.sqrt(q))}
 
     @staticmethod
