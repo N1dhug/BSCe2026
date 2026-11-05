@@ -173,7 +173,7 @@ def _plot_grid(results,frame,k,N,B,sph,output):
 
     mean_mse=float(np.mean([item["score"]["mse"] for item in results]))
     fig.suptitle(
-        f"WM4 moving-horizon oracle predictions | M={M}, k={k}h, N={N}, B={B}\n"
+        f"ARM (Affine Revised Model) moving-horizon oracle predictions | M={M}, k={k}h, N={N}, B={B}\n"
         f"Hourly origin shift | Aggregate RMSE={sqrt(mean_mse):.4f}",
         fontsize=13)
     fig.supxlabel("Shared timeline: hour of day (dates at midnight)")

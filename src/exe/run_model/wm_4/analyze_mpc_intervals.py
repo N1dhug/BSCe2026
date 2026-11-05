@@ -350,7 +350,7 @@ def plot_day_fans(day, frame, output, horizon):
             alpha=0.16, label="95% interval")
         ax.fill_between(h, part["lower_68"].to_numpy(), part["upper_68"].to_numpy(),
             alpha=0.3, label="68% interval")
-        ax.plot(h, part["I_mpc"].to_numpy(), linewidth=1.3, label="WM4 mean")
+        ax.plot(h, part["I_mpc"].to_numpy(), linewidth=1.3, label="ARM mean")
         ax.plot(h, part["I_observed"].to_numpy(), marker="o", markersize=2.6,
             linewidth=1.05, label="Observed")
         ax.set_xlim(1, horizon)
@@ -361,7 +361,7 @@ def plot_day_fans(day, frame, output, horizon):
     for ax in axes: ax.set_ylim(ymin - margin, ymax + margin)
     handles, labels = next(ax.get_legend_handles_labels() for ax in axes if ax.get_legend_handles_labels()[0])
     fig.legend(handles, labels, ncol=4, loc="upper center", bbox_to_anchor=(0.5, 0.992))
-    fig.suptitle(f"WM4 MPC | every receding {horizon}h prediction interval | {day:%Y-%m-%d}",
+    fig.suptitle(f"ARM (Affine Revised Model) MPC | every receding {horizon}h prediction interval | {day:%Y-%m-%d}",
         y=1.008)
     fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.975))
     return _save_fig(fig, output)
@@ -376,7 +376,7 @@ def plot_rolling_one_hour(day, frame, output):
     ax.plot(t, part["I_mpc"], marker=".", label="Rolling 1h predicted mean")
     ax.plot(t, part["I_observed"], marker="o", markersize=3, label="Observed")
     ax.set_xlabel("Target time"); ax.set_ylabel("Normalized demand")
-    ax.set_title(f"WM4 MPC | hourly receding 1h predictions | {day:%Y-%m-%d}")
+    ax.set_title(f"ARM (Affine Revised Model) MPC | hourly receding 1h predictions | {day:%Y-%m-%d}")
     ax.grid(alpha=0.25); ax.legend(ncol=4)
     fig.autofmt_xdate(); fig.tight_layout()
     return _save_fig(fig, output)
@@ -419,9 +419,9 @@ def plot_diffusion(exact, cumulative, output, *, covariance_mode="legacy/unspeci
         ax.set_xticks(h)
     axes[2].set_xlabel("Horizon H (hours)")
     if not (np.all(np.isfinite(F)) and np.all(np.isfinite(R))):
-        fig.suptitle("WM4 | LEGACY covariance data (F/R decomposition unavailable)")
+        fig.suptitle("ARM (Affine Revised Model) | LEGACY covariance data (F/R decomposition unavailable)")
     else:
-        fig.suptitle(f"WM4 | initial covariance and accumulated stochastic diffusion | R0: {covariance_mode}")
+        fig.suptitle(f"ARM (Affine Revised Model) | initial covariance and accumulated stochastic diffusion | R0: {covariance_mode}")
     fig.tight_layout()
     return _save_fig(fig, output)
 
@@ -459,7 +459,7 @@ def plot_hour_lead_heatmaps(by_hour, output, horizon):
         ax.set_yticks(range(0, 24, 2))
         fig.colorbar(image, ax=ax, shrink=0.75)
     axes[0].set_ylabel("MPC origin hour")
-    fig.suptitle("WM4 MPC | calibration and diffusion across origin time and lead")
+    fig.suptitle("ARM (Affine Revised Model) MPC | calibration and diffusion across origin time and lead")
     fig.tight_layout()
     return _save_fig(fig, output)
 

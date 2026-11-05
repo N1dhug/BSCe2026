@@ -128,20 +128,20 @@ def win_summary(daily):
 def save_plots(daily, output):
     fig, ax = plt.subplots(figsize=(16, 6))
     for method in METHODS: ax.plot(daily["day"], daily[f"wm4_mse_{method}"], label=method)
-    ax.set_xlabel("Prediction day"); ax.set_ylabel("Daily MSE"); ax.set_title("WM4 fitter prediction error")
+    ax.set_xlabel("Prediction day"); ax.set_ylabel("Daily MSE"); ax.set_title("ARM fitter prediction error")
     ax.legend(); ax.grid(True, alpha=0.25); fig.tight_layout()
     fig.savefig(output / "daily_mse_comparison.png", dpi=300, bbox_inches="tight"); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(16, 6))
     for method in METHODS: ax.plot(daily["day"], daily[f"F_0_{method}"], label=method)
     ax.axhline(0.0, linestyle="--"); ax.set_xlabel("Prediction day"); ax.set_ylabel("Prediction F0")
-    ax.set_title("WM4 initial flexibility state by fitter"); ax.legend(); ax.grid(True, alpha=0.25); fig.tight_layout()
+    ax.set_title("ARM (Affine Revised Model) initial flexibility state by fitter"); ax.legend(); ax.grid(True, alpha=0.25); fig.tight_layout()
     fig.savefig(output / "F0_comparison.png", dpi=300, bbox_inches="tight"); plt.close(fig)
 
     for parameter in PARAMETERS:
         fig, ax = plt.subplots(figsize=(16, 6))
         for method in METHODS: ax.plot(daily["day"], daily[f"{parameter}_{method}"], label=method)
-        ax.set_xlabel("Prediction day"); ax.set_ylabel(parameter); ax.set_title(f"WM4 {parameter} by fitter")
+        ax.set_xlabel("Prediction day"); ax.set_ylabel(parameter); ax.set_title(f"ARM {parameter} by fitter")
         ax.legend(); ax.grid(True, alpha=0.25); fig.tight_layout()
         fig.savefig(output / f"{parameter}_comparison.png", dpi=300, bbox_inches="tight"); plt.close(fig)
 

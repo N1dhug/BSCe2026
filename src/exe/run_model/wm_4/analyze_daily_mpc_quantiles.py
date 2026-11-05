@@ -267,7 +267,7 @@ def plot_quantiles(daily, overlap_calibration, overlap_uncertainty, origins, out
     axes[1, 1].grid(alpha=0.2)
     axes[1, 1].legend(loc="upper right", fontsize=8)
     axes[1, 1].tick_params(axis="x", labelrotation=35)
-    fig.suptitle("WM4 MPC | daily quality quantiles and individual 1..H-hour MPC forecasts", fontsize=15)
+    fig.suptitle("ARM (Affine Revised Model) MPC | daily quality quantiles and individual 1..H-hour MPC forecasts", fontsize=15)
     fig.tight_layout(rect=(0, 0, 1, 0.96), h_pad=3.5, w_pad=2)
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)

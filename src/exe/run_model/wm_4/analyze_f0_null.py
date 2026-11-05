@@ -118,7 +118,7 @@ def save_plots(frames, summary, output):
     for method, frame in frames.items(): ax.plot(frame["day"], frame["F_0"], label=method)
     ax.axhline(0.0, linestyle="--", label="H0: F0 mean = 0")
     ax.set_xlabel("Prediction day"); ax.set_ylabel("Oracle F0")
-    ax.set_title("WM4 oracle prediction-state F0"); ax.legend(); ax.grid(True, alpha=0.25)
+    ax.set_title("ARM (Affine Revised Model) oracle prediction-state F0"); ax.legend(); ax.grid(True, alpha=0.25)
     fig.tight_layout(); fig.savefig(output / "f0_time_series.png", dpi=300, bbox_inches="tight"); plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(9, 6))

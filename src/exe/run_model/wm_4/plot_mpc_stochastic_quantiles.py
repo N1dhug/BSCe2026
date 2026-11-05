@@ -157,7 +157,7 @@ def plot_quantiles(summary, output, *, mode="mpc_replay_32d_6h_clip4", mature_on
     for ax in axes[-1]: ax.set_xlabel("Exact forecast lead (hours)")
     status = "mature rolling fits only" if mature_only and mode in ROLLING_MODES else "all complete origins"
     fig.suptitle(
-        f"WM4 MPC | RMSE and Gaussian interval coverage by predicted-uncertainty quantile\n"
+        f"ARM (Affine Revised Model) MPC | RMSE and Gaussian interval coverage by predicted-uncertainty quantile\n"
         f"{mode} | {status} | fixed {int(summary['lead_hours'].max())}-hour MPC-origin cohorts (Q1 lowest uncertainty)",
         fontsize=15)
     fig.tight_layout(rect=(0, 0, 1, 0.95), h_pad=2.5)

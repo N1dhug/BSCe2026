@@ -128,7 +128,7 @@ def save_plot(day, forecasts, states, estimate, path, max_horizon):
         cbar.set_label("Normalized Gaussian density (peak = 1)")
 
     fig.suptitle(
-        f"WM4 receding MPC predictive distributions | {day:%Y-%m-%d} | "
+        f"ARM (Affine Revised Model) receding MPC predictive distributions | {day:%Y-%m-%d} | "
         f"sigma_R0={estimate['sigma_R0']:.4f}, sigma_W={estimate['sigma_W']:.4f}",
         y=0.995,
     )

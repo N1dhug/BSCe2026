@@ -64,7 +64,7 @@ def save_plot(result, days, path):
     axes[3].set_xticks(np.arange(0, 25, 2))
     prediction_day = day_start(result["prediction_day"])
     fig.suptitle(
-        f"WM4 diffusion context | {len(days)} corresponding {prediction_day.day_name()}s before {prediction_day:%Y-%m-%d}"
+        f"ARM (Affine Revised Model) diffusion context | {len(days)} corresponding {prediction_day.day_name()}s before {prediction_day:%Y-%m-%d}"
     )
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -261,7 +261,7 @@ def save_plot(horizon, path, confidence=CONFIDENCE, tolerance_pct_points=5.0):
     axes[2].set_xlabel("Forecast horizon (hours)"); axes[2].set_ylabel("RMSE")
     axes[2].set_xticks(np.arange(0, DAY_HOURS, 2)); axes[2].legend(); axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 initial-state uncertainty calibration by forecast horizon")
+    fig.suptitle("ARM (Affine Revised Model) initial-state uncertainty calibration by forecast horizon")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 
