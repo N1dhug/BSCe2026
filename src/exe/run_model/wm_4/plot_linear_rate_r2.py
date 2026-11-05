@@ -3,7 +3,7 @@
 No theta refitting. Each fitted target (day, baseline, N) supplies one theta
 and N historical F0 values from the completed weekday-horizon sweep. Score
 the observed rate increments against dR/dt = theta_F F + theta_U U + theta_R R
-over the first k hours of each historical interval. One common R² scale is
+over the first min(k,23) rate hours of each historical interval. One common R² scale is
 used for weekly_average and weekly_temperature.
 
 Run as: python -m src.exe.run_model.wm_4.plot_linear_rate_r2
@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.colors import Normalize
 
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame
+from src.exe.run_model.wm_4.moving_horizon_common import group_frame, window_data
 from src.exe.run_model.wm_4.sweep_weekday_horizon import baseline_from_history, load_tables
 from src.tools.impute_hourly import impute_hourly_days
 
@@ -34,30 +34,25 @@ def _values(values, low, high, name):
 
 
 def _rate_components(frame, start, baseline, f0, sph):
-    """Observed fine-grid rate and integrated flexibility, including hour 24.
+    """Reconstruct exactly the historical rate design used to estimate theta.
 
-    Unlike a 24-point forecast, scoring all 24 derivatives requires the
-    historical observation at start + 24 h. Never fabricate that endpoint.
+    The original WM4 joint QP works on the normalized-day grid T=[0,1],
+    with dt=1/(24*sph), even though data timestamps are expressed in hours.
+    Its 24 hourly observations contain only 23 observable hourly differences:
+    the last hour is padded and excluded by transition_mask. Respect that
+    mask rather than requiring an unavailable hour-24 sample.
     """
-    dates = pd.date_range(start, periods=25, freq="h")
-    hourly = frame.reindex(dates)[["I", "U", "Temp"]]
-    if hourly.isna().any().any() or not np.isfinite(hourly.to_numpy(dtype=float)).all():
-        raise ValueError(f"Missing historical data in [{start}, {dates[-1]}].")
-    elapsed = np.arange(24*sph+1, dtype=float)/sph
-    timestamps = start+pd.to_timedelta(elapsed, unit="h")
-    I = np.interp(elapsed, np.arange(25), hourly["I"].to_numpy(dtype=float))
-    T = np.interp(elapsed, np.arange(25), hourly["Temp"].to_numpy(dtype=float))
-    U = hourly["U"].to_numpy(dtype=float)[np.minimum(np.floor(elapsed+1e-10).astype(int),24)]
-    O = np.asarray(baseline.predict(timestamps, T), dtype=float)
-    if O.shape != I.shape or not np.isfinite(O).all(): raise ValueError("Invalid fitted baseline observations.")
-    R = I-O
-    dt = 1.0/sph
-    F = np.empty_like(R)
-    F[0] = float(f0)
-    F[1:] = F[0]+dt*np.cumsum(R[:-1])
-    X = np.column_stack((F[:-1], U[:-1], R[:-1]))
-    y = np.diff(R)/dt
-    return X, y
+    model, data, _, _ = window_data(frame, start, baseline, sph)
+    R = np.asarray(data["I"]-data["O"], dtype=float)
+    F = np.r_[float(f0), float(f0)+np.cumsum(model.dt*R[:-1])]
+    X = np.column_stack((F[:-1], data["U"][:-1], R[:-1]))
+    y = np.diff(R)/model.dt
+    valid = np.asarray(data["transition_mask"], dtype=bool)
+    if np.count_nonzero(valid) != (23*sph):
+        raise ValueError("Historical 24-hour WM4 window has an unexpected transition mask.")
+    if not np.isfinite(X[valid]).all() or not np.isfinite(y[valid]).all():
+        raise ValueError("Nonfinite historical rate observations.")
+    return X[valid], y[valid]
 
 
 def _one_configuration(frame, day, n, baseline_name, theta, states, sph):
@@ -126,7 +121,10 @@ def evaluate(*, group="MED", n_values=range(2,15), horizons=range(1,25),
             theta = [row.theta_F,row.theta_U,row.theta_R]
             actual, predicted = _one_configuration(frame,key[0],key[2],key[1],theta,history_states,sph)
             for k in ks:
-                y, p = actual[:,:k*sph].reshape(-1),predicted[:,:k*sph].reshape(-1)
+                # Each 24-hour historical input has 23 observed hourly transitions.
+                # Thus k=24 scores 23 derivative hours (as in the original QP fit).
+                hours = min(k, 23)
+                y, p = actual[:,:hours*sph].reshape(-1),predicted[:,:hours*sph].reshape(-1)
                 if not np.isfinite(y).all() or not np.isfinite(p).all():
                     raise ValueError("Nonfinite rate observations or predictions.")
                 totals[(key[1],key[2],k)] += (len(y),np.sum(y),np.dot(y,y),np.dot(y-p,y-p),1)
@@ -144,6 +142,7 @@ def evaluate(*, group="MED", n_values=range(2,15), horizons=range(1,25),
                 r2 = 1.0-sse/sst if count>1 and sst>1e-12 else np.nan
                 rows.append({"baseline":name,"training_weekdays":n,"horizon_hours":k,
                              "windows":int(windows),"observations":int(count),
+                             "rate_hours_per_window":min(k,23),
                              "sse":sse if count else np.nan,"sst":sst,
                              "r2":r2})
     summary = pd.DataFrame(rows)
@@ -158,7 +157,8 @@ def evaluate(*, group="MED", n_values=range(2,15), horizons=range(1,25),
 def plot(summary,ns,ks,group,output,cmap="viridis",dpi=190):
     finite = summary["r2"].to_numpy(dtype=float)
     finite = finite[np.isfinite(finite)]
-    if not finite.size: raise RuntimeError("No usable pooled R² values; examine skipped_windows.csv.")
+    if not finite.size:
+        raise RuntimeError("No usable pooled R² values. Review skipped_windows.csv (error column) and confirm saved theta/states correspond to this dataset.")
     # A common [min(R²,0),1] scale preserves negative R² rather than clipping
     # it to zero, with an identical color for identical scores in both panels.
     vmin = min(0.0,float(np.min(finite)))
@@ -179,7 +179,7 @@ def plot(summary,ns,ks,group,output,cmap="viridis",dpi=190):
         ax.set_xlabel("Horizon k (hours)")
         ax.tick_params(length=0)
     axes[0].set_ylabel("Backlog N (preceding matching weekdays)")
-    fig.suptitle(f"WM4 | {group} | pooled linear rate-dynamics R² (saved θ)")
+    fig.suptitle(f"WM4 | {group} | pooled linear rate-dynamics R² (saved θ) | k=24 uses 23 rate hours")
     fig.subplots_adjust(left=0.06,right=0.90,bottom=0.13,top=0.87,wspace=0.08)
     cax=fig.add_axes([0.92,0.18,0.015,0.63])
     fig.colorbar(image,cax=cax,label="Pooled rate-dynamics R²")
