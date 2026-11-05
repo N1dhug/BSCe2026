@@ -465,7 +465,7 @@ def save_r0_plot(daily, path):
     axes[2].legend(ncol=2)
     axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 recent-residual R0 diagnostic and hybrid initialization")
+    fig.suptitle("ARM (Affine Revised Model) recent-residual R0 diagnostic and hybrid initialization")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -491,7 +491,7 @@ def save_horizon_plot(summary, path):
     ax.set_xticks(horizon)
     ax.legend()
     ax.grid(True, alpha=0.25)
-    fig.suptitle("WM4 cumulative RMSE with recent-residual R0 initialization")
+    fig.suptitle("ARM (Affine Revised Model) cumulative RMSE with recent-residual R0 initialization")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")

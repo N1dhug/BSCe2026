@@ -110,7 +110,7 @@ def save_plot(predict_start, predict_end, actual, fine_index, state, path, train
 
     axes[0].plot(actual.index, actual["I"], label="Observed same-weekday input I")
     axes[0].scatter(actual.index, actual["I"], s=18)
-    axes[0].plot(fine_index, state["I"], label="WM4 prediction I=O+R")
+    axes[0].plot(fine_index, state["I"], label="ARM prediction I=O+R")
     axes[0].plot(fine_index, state["O"], label="Weather-aware expected output O", alpha=0.8)
     axes[0].plot(fine_index, state["U"], label="Normalized DK1 spot price U", alpha=0.8)
     axes[0].set_ylabel("Normalized input / price")

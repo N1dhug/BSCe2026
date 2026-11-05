@@ -134,7 +134,7 @@ def save_daily_rmse_plot(daily, output):
     for q in (20, 40, 60, 80):
         value = float(np.percentile(values, q))
         ax.axvline(value, ls="--", lw=1.3, label=f"Q{q} = {value:.4f}")
-    ax.set_title("Distribution of 24-hour WM4 full-state oracle [F0,R0] forecast RMSE")
+    ax.set_title("Distribution of 24-hour ARM (Affine Revised Model) full-state oracle [F0,R0] forecast RMSE")
     ax.set_xlabel("Per-day RMSE (normalized demand)"); ax.set_ylabel("Days")
     ax.grid(alpha=0.2); ax.legend()
     fig.tight_layout()

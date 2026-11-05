@@ -236,7 +236,7 @@ def save_summary_plot(daily, path):
     axes[3].legend()
     axes[3].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 I0-inferred initial state vs historical direct state and oracle")
+    fig.suptitle("ARM (Affine Revised Model) I0-inferred initial state vs historical direct state and oracle")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -266,7 +266,7 @@ def save_state_error_plot(daily, path):
     axes[2].legend()
     axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 initial-state centre error relative to target-day oracle")
+    fig.suptitle("ARM (Affine Revised Model) initial-state centre error relative to target-day oracle")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")

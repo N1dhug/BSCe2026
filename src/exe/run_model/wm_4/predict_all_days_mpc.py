@@ -795,7 +795,7 @@ def save_plot(cumulative, lead, path):
     fig, axes = plt.subplots(2, 1, figsize=(12, 10), sharex=False)
 
     h = cumulative["horizon_hours"].to_numpy(dtype=int)
-    axes[0].plot(h, cumulative["mpc_rmse"], marker="o", label="WM4 MPC")
+    axes[0].plot(h, cumulative["mpc_rmse"], marker="o", label="ARM MPC")
     axes[0].plot(h, cumulative["O_rmse"], marker="o", label="O(t)")
     axes[0].set_ylabel("Cumulative RMSE")
     axes[0].set_xlabel("Prediction horizon from MPC update (hours)")
@@ -804,7 +804,7 @@ def save_plot(cumulative, lead, path):
     axes[0].grid(True, alpha=0.25)
 
     lead_h = lead["lead_hours"].to_numpy(dtype=int)
-    axes[1].plot(lead_h, lead["mpc_rmse"], marker="o", label="WM4 MPC")
+    axes[1].plot(lead_h, lead["mpc_rmse"], marker="o", label="ARM MPC")
     axes[1].plot(lead_h, lead["O_rmse"], marker="o", label="O(t)")
     axes[1].set_ylabel("Exact-lead RMSE")
     axes[1].set_xlabel("Lead time (hours)")
@@ -812,7 +812,7 @@ def save_plot(cumulative, lead, path):
     axes[1].legend()
     axes[1].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 receding-horizon MPC forecast vs baseline O(t)")
+    fig.suptitle("ARM (Affine Revised Model) receding-horizon MPC forecast vs baseline O(t)")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -839,7 +839,7 @@ def save_stochastic_plot(lead, path):
     axes[1].legend()
     axes[1].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 MPC stochastic variance calibration")
+    fig.suptitle("ARM (Affine Revised Model) MPC stochastic variance calibration")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")

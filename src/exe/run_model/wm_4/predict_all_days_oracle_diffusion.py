@@ -110,7 +110,7 @@ def save_plot(hourly, daily, path):
     fig, axes = plt.subplots(3, 1, figsize=(18, 13), sharex=False)
 
     axes[0].plot(hourly.index, hourly["I_observed"], label="Observed I", linewidth=0.9)
-    axes[0].plot(hourly.index, hourly["I_oracle"], label="Oracle-state WM4 mean", linewidth=0.9)
+    axes[0].plot(hourly.index, hourly["I_oracle"], label="Oracle-state ARM mean", linewidth=0.9)
     axes[0].fill_between(hourly.index, hourly["ci95_lower"], hourly["ci95_upper"], alpha=0.2, label="Process-only 95% interval")
     axes[0].set_ylabel("Normalized input"); axes[0].legend(); axes[0].grid(True, alpha=0.25)
 
@@ -124,7 +124,7 @@ def save_plot(hourly, daily, path):
     axes[2].set_xlabel("Prediction day"); axes[2].set_ylabel("sigma")
     axes[2].legend(); axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 oracle initial state + constant process diffusion")
+    fig.suptitle("ARM (Affine Revised Model) oracle initial state + constant process diffusion")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 

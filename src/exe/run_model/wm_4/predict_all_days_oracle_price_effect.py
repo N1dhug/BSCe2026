@@ -154,7 +154,7 @@ def save_summary_plot(daily, path, effect_share):
     axes[3].set_xlabel("Prediction day")
     axes[3].legend(); axes[3].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 oracle-state predictions and fitted price-response contribution")
+    fig.suptitle("ARM (Affine Revised Model) oracle-state predictions and fitted price-response contribution")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 
@@ -164,7 +164,7 @@ def save_hourly_plot(hourly, path):
     fig, axes = plt.subplots(3, 1, figsize=(20, 12), sharex=True)
 
     axes[0].plot(data["time"], data["I_observed"], label="Observed I", linewidth=0.8)
-    axes[0].plot(data["time"], data["I_oracle"], label="Oracle-state WM4", linewidth=0.8)
+    axes[0].plot(data["time"], data["I_oracle"], label="Oracle-state ARM", linewidth=0.8)
     axes[0].set_ylabel("Normalized input")
     axes[0].legend(); axes[0].grid(True, alpha=0.25)
 
@@ -183,7 +183,7 @@ def save_hourly_plot(hourly, path):
     axes[2].set_xlabel("Time")
     axes[2].legend(); axes[2].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 oracle-state hourly price-response contribution")
+    fig.suptitle("ARM (Affine Revised Model) oracle-state hourly price-response contribution")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 

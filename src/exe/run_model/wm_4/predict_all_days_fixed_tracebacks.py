@@ -175,7 +175,7 @@ def save_plot(summary, path):
     axes[2].set_xlabel("Corresponding historical weekdays used for parameter fit")
     for ax in axes:
         ax.grid(True, alpha=0.25); ax.legend()
-    fig.suptitle("WM4 fixed traceback comparison on identical prediction days")
+    fig.suptitle("ARM (Affine Revised Model) fixed traceback comparison on identical prediction days")
     fig.tight_layout(); path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight"); plt.close(fig)
 

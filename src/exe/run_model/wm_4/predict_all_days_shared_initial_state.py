@@ -273,7 +273,7 @@ def save_cumulative_horizon_plot(summary, path):
     axes[1].legend()
     axes[1].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 cumulative open-loop forecast performance by initialization")
+    fig.suptitle("ARM (Affine Revised Model) cumulative open-loop forecast performance by initialization")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -345,7 +345,7 @@ def save_summary_plot(daily, path):
     axes[3].legend()
     axes[3].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 shared historical initial state vs historical-direct state and oracle")
+    fig.suptitle("ARM (Affine Revised Model) shared historical initial state vs historical-direct state and oracle")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")
@@ -371,7 +371,7 @@ def save_training_plot(daily, path):
     axes[1].legend()
     axes[1].grid(True, alpha=0.25)
 
-    fig.suptitle("WM4 shared-state historical fit and out-of-sample prediction gain")
+    fig.suptitle("ARM (Affine Revised Model) shared-state historical fit and out-of-sample prediction gain")
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=300, bbox_inches="tight")
