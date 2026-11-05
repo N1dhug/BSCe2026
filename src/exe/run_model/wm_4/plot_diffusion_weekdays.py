@@ -35,12 +35,13 @@ def save_plot(result, days, path):
     hours = np.arange(DAY_HOURS, dtype=float)
     diffusion_time = np.asarray(result["prediction_state"]["Time"], dtype=float)
     diffusion = np.asarray(result["fine_g"], dtype=float)
-    observed_std = result["hourly"]["s_I"].to_numpy(dtype=float)
 
     fig, axes = plt.subplots(4, 1, figsize=(14, 13), sharex=True)
 
     axes[0].plot(diffusion_time, diffusion, label=f"Estimated constant diffusion $\\sigma$={result['sigma']:.4f}")
-    axes[0].plot(hours, observed_std, marker="o", linestyle="--", label="Empirical observed $s_I$ across 5 weekdays")
+    axes[0].plot(hours, result["hourly"]["demand_residual_std"], marker="o", linestyle="--", label="Historical demand residual RMS")
+    axes[0].axhline(result["observation_sigma"], linestyle=":", label=f"Constant demand error std={result['observation_sigma']:.4f}")
+    axes[0].plot(hours, result["hourly"]["fitted_propagated_std"], marker=".", label="Total propagated demand std")
     axes[0].set_ylabel("Diffusion / observed std")
     axes[0].legend()
     axes[0].grid(True, alpha=0.25)
@@ -95,7 +96,7 @@ def main():
 
     print(f"prediction day={result['prediction_day']:%Y-%m-%d}")
     print("corresponding weekdays=" + ", ".join(values["day"].strftime("%Y-%m-%d") for values in days))
-    print(f"constant diffusion sigma={result['sigma']:.10f}")
+    print(f"constant process sigma={result['sigma']:.10f}, demand error std={result['observation_sigma']:.10f}")
     print(f"plot={path}")
 
 
