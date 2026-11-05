@@ -74,13 +74,6 @@ def load_sweep(source, baselines=BASELINES):
     return merged, config
 
 
-def split_days(frame, fraction=0.7):
-    days = np.sort(frame["day"].unique())
-    if len(days) < 3: return frame.iloc[:0], frame.iloc[:0]
-    n = max(2, min(len(days)-1, int(np.floor(len(days)*fraction))))
-    return frame[frame["day"].isin(days[:n])], frame[frame["day"].isin(days[n:])]
-
-
 def fit_variance(train):
     """min_{tau2,q>=0} sum (error**2-tau2-q*K)**2, with both variances nonnegative."""
     if train.empty: return None
@@ -102,25 +95,24 @@ def distribution_similarity(error, variance):
     return float(1.0-kstest(error[valid]/np.sqrt(variance[valid]), "norm").statistic)
 
 
-def summarize_grid(frame, fraction=0.7, min_train_days=5, min_test_days=2):
-    records, diagnostics = [], []
+def summarize_grid(frame, min_days=1):
+    """In-sample approximation: calibrate and score diffusion on identical saved residuals."""
+    records, fitted_rows = [], []
     for (baseline, N, k), part in frame.groupby(["baseline", "training_weekdays", "horizon_hours"], sort=True):
-        calibration, validation = split_days(part, fraction)
-        n_train, n_test = calibration["day"].nunique(), validation["day"].nunique()
-        if n_train < min_train_days or n_test < min_test_days: continue
-        fitted = fit_variance(calibration)
+        n_days = int(part["day"].nunique())
+        if n_days < int(min_days): continue
+        fitted = fit_variance(part)
         if fitted is None: continue
         tau2, q, identifiable = fitted
-        error = validation["error"].to_numpy(dtype=float)
-        kernel = validation["unit_process_variance"].to_numpy(dtype=float)
+        error = part["error"].to_numpy(dtype=float)
+        kernel = part["unit_process_variance"].to_numpy(dtype=float)
         variance = np.maximum(tau2 + q*kernel, 0.0)
         observed_rmse = float(np.sqrt(np.mean(error**2)))
         reported_rmse = float(np.sqrt(np.mean(variance)))
         similarity = distribution_similarity(error, variance)
         records.append({
             "baseline":baseline, "training_weekdays":int(N), "horizon_hours":int(k),
-            "train_days":int(n_train), "test_days":int(n_test),
-            "train_forecasts":len(calibration), "test_forecasts":len(validation),
+            "days":n_days, "forecasts":len(part),
             "observation_variance":tau2, "observation_sigma":float(np.sqrt(tau2)),
             "process_variance_rate":q, "process_sigma":float(np.sqrt(q)),
             "process_identifiable":bool(identifiable),
@@ -131,13 +123,13 @@ def summarize_grid(frame, fraction=0.7, min_train_days=5, min_test_days=2):
             "coverage_95":float(np.mean(np.abs(error)<=1.959963984540054*np.sqrt(variance))),
             "demand_bias":float(np.mean(error)),
         })
-        details = validation[["day", "baseline", "training_weekdays", "horizon_hours", "hour", "observed", "predicted", "error", "unit_process_variance"]].copy()
+        details = part[["day", "baseline", "training_weekdays", "horizon_hours", "hour", "observed", "predicted", "error", "unit_process_variance"]].copy()
         details["observation_variance"] = tau2
         details["process_variance"] = q*kernel
         details["estimated_variance"] = variance
         details["estimated_std"] = np.sqrt(variance)
-        diagnostics.append(details)
-    return pd.DataFrame(records), pd.concat(diagnostics, ignore_index=True) if diagnostics else pd.DataFrame()
+        fitted_rows.append(details)
+    return pd.DataFrame(records), pd.concat(fitted_rows, ignore_index=True) if fitted_rows else pd.DataFrame()
 
 
 def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=K_VALUES):
@@ -165,7 +157,7 @@ def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=
             if row == 1: ax.set_xlabel("Prediction horizon k (hours scored)")
             if col == 0: ax.set_ylabel("Backlog N (preceding matching weekdays)")
         fig.colorbar(im, ax=axes[row, :], label=label, shrink=0.94, pad=0.012)
-    fig.suptitle("WM4 constant demand error + Brownian diffusion | held-out days")
+    fig.suptitle("WM4 constant demand error + Brownian diffusion | in-sample approximation")
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=220, bbox_inches="tight")
     plt.close(fig)
@@ -174,28 +166,28 @@ def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=
 def run(args):
     baselines = tuple(args.baselines)
     if len(baselines) != 2: raise ValueError("The reference 2x2 heatmap requires exactly two baseline methods.")
-    if not 0 < args.calibration_fraction < 1: raise ValueError("calibration-fraction must lie in (0,1).")
     source = Path(args.source) if args.source else SWEEP_OUTPUT/args.group.lower()
     forecasts, config = load_sweep(source, baselines)
     forecasts = forecasts.loc[forecasts["training_weekdays"].between(args.min_weekdays, args.max_weekdays)
                               & forecasts["horizon_hours"].between(args.min_horizon, args.max_horizon)].copy()
     if forecasts.empty: raise RuntimeError("No saved sweep forecasts in requested N and k ranges.")
-    summary, validation = summarize_grid(forecasts, args.calibration_fraction, args.min_train_days, args.min_test_days)
-    if summary.empty: raise RuntimeError("No N,k cells passed the calibration/validation requirements.")
+    summary, fitted = summarize_grid(forecasts, args.min_days)
+    if summary.empty: raise RuntimeError("No N,k cells contained sufficient in-sample demand residuals.")
     output = Path(args.output) if args.output else OUTPUT/args.group.lower()
     output.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output/"diffusion_grid.csv", index=False)
-    validation.to_csv(output/"diffusion_validation_forecasts.csv", index=False)
+    fitted.to_csv(output/"diffusion_fitted_forecasts.csv", index=False)
     plot_grid(summary, output/"diffusion_heatmaps_2x2.png", baselines,
               tuple(range(args.min_weekdays, args.max_weekdays+1)),
               tuple(range(args.min_horizon, args.max_horizon+1)))
     print(f"source={source} | group={args.group} | steps_per_hour={config['steps_per_hour']}")
-    print(f"saved forecast rows={len(forecasts)} | calibrated cells={len(summary)}")
+    print(f"saved forecast rows={len(forecasts)} | in-sample fitted cells={len(summary)}")
     print("theta_F, theta_R were loaded from the original WM4 sweep and never refitted.")
+    print("Diffusion parameters fitted and assessed on the SAME demand residuals; no train/test split.")
     print("NOTE: the saved sweep uses target-horizon oracle [F0,R0]; its residuals are in-sample with respect to state, not causal forecasts.")
     print("NOTE: k=1 contains zero accumulated process variance and cannot identify sigma; q=0 is a convention there.")
     print(f"heatmap={output/'diffusion_heatmaps_2x2.png'}")
-    return summary, validation
+    return summary, fitted
 
 
 def main():
@@ -207,12 +199,11 @@ def main():
     parser.add_argument("--max-weekdays", type=int, default=14)
     parser.add_argument("--min-horizon", type=int, default=1)
     parser.add_argument("--max-horizon", type=int, default=24)
-    parser.add_argument("--calibration-fraction", type=float, default=0.7)
-    parser.add_argument("--min-train-days", type=int, default=5)
-    parser.add_argument("--min-test-days", type=int, default=2)
+    parser.add_argument("--min-days", type=int, default=1, help="Minimum number of fitted days per N,k cell.")
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
     if args.min_weekdays < 2 or args.max_weekdays < args.min_weekdays: parser.error("Invalid backlog N range.")
+    if args.min_days < 1: parser.error("--min-days must be >= 1.")
     if args.min_horizon < 1 or args.max_horizon > 24 or args.max_horizon < args.min_horizon: parser.error("Invalid horizon k range.")
     return run(args)
 
