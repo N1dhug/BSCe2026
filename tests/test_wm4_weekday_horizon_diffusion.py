@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.sweep_weekday_horizon_diffusion import (
-    fit_variance, load_sweep, plot_grid, summarize_grid, unit_process_variance,
+    fit_variance, load_sweep, plot_grid, same_period, summarize_grid, unit_process_variance,
 )
 from src.exe.run_model.wm_4.sweep_weekday_horizon import COLUMNS
 
@@ -27,6 +27,18 @@ class wm4_weekday_diffusion_tests(unittest.TestCase):
         self.assertTrue(identifiable)
         self.assertAlmostEqual(observation, 0.02, delta=0.003)
         self.assertAlmostEqual(process, 0.05, delta=0.008)
+
+    def test_common_period_matches_both_baselines_and_backlogs(self):
+        rows = []
+        for day in ("2022-04-08", "2022-04-09", "2022-04-10", "2022-10-31", "2022-11-01"):
+            for baseline in ("weekly_average", "weekly_temperature"):
+                for n in (2, 3):
+                    for k in (1, 2):
+                        if day == "2022-04-10" and baseline == "weekly_temperature" and n == 3 and k == 2: continue
+                        rows.append({"day":pd.Timestamp(day), "baseline":baseline, "training_weekdays":n, "horizon_hours":k})
+        matched, days = same_period(pd.DataFrame(rows), backlogs=(2, 3), horizons=(1, 2))
+        self.assertEqual([d.strftime("%Y-%m-%d") for d in days], ["2022-04-09", "2022-10-31"])
+        self.assertEqual(len(matched), 16)
 
     def test_actual_sweep_schema_and_2x2_plot(self):
         rng = np.random.default_rng(123)
