@@ -178,7 +178,7 @@ def plot_components(details, summary, output, reference_days=24):
         ax.grid(alpha=0.25)
         ax.legend(ncol=5)
     axes[-1].set_xlabel("Historical diffusion fitting days")
-    fig.suptitle("WM4 | initial-state vs Wiener attribution by uncertainty quantile")
+    fig.suptitle("ARM (Affine Revised Model) | initial-state vs Wiener attribution by uncertainty quantile")
     fig.tight_layout()
     fig.savefig(output / "variance_components_across_backlogs.png", dpi=170,
         bbox_inches="tight")
@@ -201,7 +201,7 @@ def plot_components(details, summary, output, reference_days=24):
     for ax in list(axes.flat)[len(days):]: ax.axis("off")
     fig.supxlabel("Predicted six-hour mean variance")
     fig.supylabel("Observed six-hour mean squared error")
-    fig.suptitle("WM4 | same MPC origins in every panel; color is initial-state variance share")
+    fig.suptitle("ARM (Affine Revised Model) | same MPC origins in every panel; color is initial-state variance share")
     fig.subplots_adjust(right=0.9, top=0.95, bottom=0.07, hspace=0.38, wspace=0.28)
     bar = fig.colorbar(last, ax=axes.ravel().tolist(), shrink=0.55, pad=0.02)
     bar.set_label("Initial-state share of predicted variance (%)")

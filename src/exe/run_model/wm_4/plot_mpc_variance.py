@@ -106,7 +106,7 @@ def plot_variance(lead, cumulative, output, fully_mpc=False):
     axes[-1].set_xticks(lead["lead_hours"].to_numpy(dtype=int))
     axes[0].set_ylim(bottom=0)
     caption = " | fully MPC-calibrated origins only" if fully_mpc else " | all complete origins"
-    fig.suptitle("WM4 MPC | predicted vs actual forecast-error variance" + caption)
+    fig.suptitle("ARM (Affine Revised Model) MPC | predicted vs actual forecast-error variance" + caption)
     fig.tight_layout()
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)

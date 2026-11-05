@@ -102,7 +102,7 @@ def save_plot(day, forecasts, states, estimate, path, max_horizon):
             x_edges, y_edges, density,
             shading="flat", vmin=0.0, vmax=1.0,
         )
-        ax.plot(lead, mean, linewidth=1.0, label="WM4 mean")
+        ax.plot(lead, mean, linewidth=1.0, label="ARM mean")
         ax.plot(lead, part["O"].to_numpy(dtype=float), linestyle="--", linewidth=0.9, label="O(t)")
         ax.scatter(lead, part["I_observed"].to_numpy(dtype=float), s=15, edgecolors="white", linewidths=0.4, label="Observed")
 

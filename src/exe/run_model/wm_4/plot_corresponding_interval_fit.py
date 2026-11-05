@@ -198,7 +198,7 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
         ax.plot(fine+clock_hour,baseline,lw=2,color="tab:orange",ls="--",
                 label="Baseline (fitting interval)")
         ax.plot(fine+clock_hour,fitted,lw=2,color="tab:blue",
-                label="WM4 fit (fitting interval)")
+                label="ARM fit (fitting interval)")
         ax.set_title(f"Week -{N-m}: {start:%a %d %b %Y, %H:%M}  |  "
                      f"RMSE {score['rmse']:.4f}",fontsize=10)
         ax.grid(alpha=.18)
@@ -217,7 +217,7 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
         ax.tick_params(labelbottom=True,labelleft=True,labelsize=8)
     fig.supxlabel("Hour of day (24-hour clock; wraps at midnight)")
     fig.supylabel("Normalized aggregate electricity demand")
-    fig.suptitle(f"WM4 historical joint fit | {N} corresponding weekdays | "
+    fig.suptitle(f"ARM (Affine Revised Model) historical joint fit | {N} corresponding weekdays | "
                  f"k={k}h | B={B}\n"
                  f"Shared parameters: "
                  f"θF={float(fit['r'][0]):.4g}, "
@@ -259,13 +259,13 @@ def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output):
     ax.plot(fine+hour,baseline,color="tab:orange",lw=2,ls="--",
             label="Fitted historical baseline (prediction interval)")
     ax.plot(fine+hour,prediction,color="red",lw=2.25,
-            label="WM4 oracle prediction (prediction interval)")
+            label="ARM oracle prediction (prediction interval)")
     ax.set_xlim(left,right)
     ax.set_xticks(ticks)
     ax.set_xticklabels(labels)
     ax.set_xlabel("Hour of day (24-hour clock; wraps at midnight)")
     ax.set_ylabel("Normalized aggregate electricity demand")
-    ax.set_title(f"WM4 oracle prediction | {origin:%a %d %b %Y, %H:%M} | "
+    ax.set_title(f"ARM (Affine Revised Model) oracle prediction | {origin:%a %d %b %Y, %H:%M} | "
                  f"k={k}h | N={N} | B={B}\n"
                  f"Oracle RMSE {score['rmse']:.4f} | Baseline RMSE {bscore['rmse']:.4f}")
     ax.grid(alpha=.18)

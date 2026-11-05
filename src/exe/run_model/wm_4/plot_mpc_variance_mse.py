@@ -114,7 +114,7 @@ def _mse_panel(ax, data, x, title, *, show_quality=False):
     ax.fill_between(h, error_var, mse, color="tab:purple", alpha=0.55,
         label="Squared aggregate bias")
     ax.plot(h, data["predicted_mse_unbiased"], color="black", marker="o",
-        linewidth=1.9, markersize=5, label="Predicted MSE (unbiased WM4)")
+        linewidth=1.9, markersize=5, label="Predicted MSE (unbiased ARM)")
     ax.plot(h, data["actual_mse"], color="tab:red", marker="s",
         linestyle="--", linewidth=1.8, markersize=5, label="Observed MSE")
     if show_quality:
@@ -149,7 +149,7 @@ def plot_budget(exact, cumulative, output, *, fully_mpc=False):
         ax.set_ylim(bottom=0)
     for ax in axes[1]: ax.set_xlabel("Forecast horizon H (hours)")
     subtitle = "fully MPC-calibrated" if fully_mpc else "all complete origins"
-    fig.suptitle("WM4 MPC | uncertainty budget and forecast-error calibration"
+    fig.suptitle("ARM (Affine Revised Model) MPC | uncertainty budget and forecast-error calibration"
         f" | {subtitle}\n"
         "Per-hour labels: predicted / observed (%). Predicted MSE assumes unbiased conditional means.",
         fontsize=15, y=0.995)

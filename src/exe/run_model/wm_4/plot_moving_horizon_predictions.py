@@ -151,7 +151,7 @@ def _plot_grid(results,frame,k,N,B,sph,output):
         ax.plot(x,item["baseline"],color="tab:orange",ls="--",lw=1.8,
                 label="Historical baseline")
         ax.plot(x,item["prediction"],color="red",lw=2.0,
-                label="WM4 oracle prediction")
+                label="ARM oracle prediction")
         theta=item["theta"]
         ax.set_title(f"Origin {m+1}/{M}: {start:%a %d %b %Y, %H:%M}  |  "
                      f"RMSE {item['score']['rmse']:.4f}\n"
