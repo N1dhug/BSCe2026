@@ -200,7 +200,7 @@ def draw_heatmaps(summary, *, baselines=BASELINES, output=None, cmap="viridis", 
     return fig
 
 
-def plot_heatmaps(*, input_dir=INPUT/"med", output=None, hour_start=0, hour_end=None,
+def plot_heatmaps(*, input_dir=INPUT/"all", output=None, hour_start=0, hour_end=None,
                   last_hours=None, require_full_window=False, cohort="global",
                   baselines=BASELINES, n_values=None, horizons=None, **plot_kwargs):
     """Plot saved two-baseline N-k RMSE with a selectable score window.
