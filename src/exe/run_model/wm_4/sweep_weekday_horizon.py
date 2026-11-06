@@ -98,7 +98,7 @@ def interval_window(frame, start, baseline, steps_per_hour, horizon_hours):
     count = len(elapsed)
     if O.size != count or not np.isfinite(O).all(): raise ValueError("Baseline must be finite throughout the requested horizon.")
     observation_mask = np.zeros(count, dtype=bool)
-    observation_mask[np.arange(horizon_hours)*steps_per_hour] = True
+    observation_mask[np.arange(min(horizon_hours+1, HOURS))*steps_per_hour] = True
     transition_mask = np.zeros(count-1, dtype=bool)
     transition_mask[:min(horizon_hours, HOURS-1)*steps_per_hour] = True
     data = {"I":I, "U":U, "PE":U.copy(), "Time":elapsed, "O":O,
