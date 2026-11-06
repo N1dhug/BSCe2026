@@ -67,6 +67,7 @@ class wm4_weekday_diffusion_tests(unittest.TestCase):
             summary, fitted = summarize_grid(frames)
             self.assertEqual(len(summary), 2)
             self.assertTrue((summary["reported_rmse"] >= 0.0).all())
+            np.testing.assert_allclose(summary["rmse_absolute_error"], np.abs(summary["reported_rmse"]-summary["observed_rmse"]))
             self.assertTrue((summary["process_sigma"] >= 0.0).all())
             self.assertEqual(len(fitted), 12*2*4)
             self.assertEqual(int(summary["days"].min()), 12)
