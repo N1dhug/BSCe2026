@@ -219,7 +219,7 @@ def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=
             ax.set_title(f"{'Mean hourly RMSE difference' if row == 0 else 'Distribution similarity'} | {name.replace('_', ' ')}")
             ax.set_xticks(np.arange(len(k_values)), labels=k_values, fontsize=8)
             ax.set_yticks(np.arange(len(N_values)), labels=N_values)
-            if row == 1: ax.set_xlabel("Prediction horizon k (hours scored)")
+            if row == 1: ax.set_xlabel("Historical evaluation horizon k (hours scored)")
             if col == 0: ax.set_ylabel("Backlog N (preceding matching weekdays)")
         fig.colorbar(im, ax=axes[row, :], label=label, shrink=0.94, pad=0.012)
     start, end = pd.Timestamp(start_day), pd.Timestamp(end_day)
@@ -250,7 +250,7 @@ def run(args):
     output = Path(args.output) if args.output else OUTPUT/args.group.lower()
     output.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output/"diffusion_grid.csv", index=False)
-    fitted.to_csv(output/"diffusion_fitted_forecasts.csv", index=False)
+    fitted.to_csv(output/"diffusion_fitted_trajectories.csv", index=False)
     plot_grid(summary, output/"diffusion_heatmaps_2x2.png", baselines, backlogs, horizons,
               args.start_day, args.end_day)
     print(f"source={source} | group={args.group} | steps_per_hour={config['steps_per_hour']}")
