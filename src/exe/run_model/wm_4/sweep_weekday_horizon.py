@@ -427,8 +427,8 @@ def save_top_three_plots(scores, top, common, output):
         label = f"#{row.rank}: {row.baseline}, N={row.training_weekdays}, H={row.horizon_hours}h"
         ax.plot(subset["day"], subset["rmse"], lw=0.8, alpha=0.75, label=label)
         samples.append(subset["rmse"].to_numpy(dtype=float)); labels.append(label)
-    ax.set_title("Best three weekday/horizon configurations — daily oracle-state RMSE")
-    ax.set_xlabel("Prediction date"); ax.set_ylabel("Daily RMSE")
+    ax.set_title("Best three weekday/horizon configurations — hourly-origin oracle-state RMSE")
+    ax.set_xlabel("Prediction origin"); ax.set_ylabel("Per-origin RMSE")
     ax.grid(alpha=0.25); ax.legend()
     fig.tight_layout(); fig.savefig(output/"top_three_daily_rmse.png", dpi=190, bbox_inches="tight"); plt.close(fig)
 
@@ -436,8 +436,8 @@ def save_top_three_plots(scores, top, common, output):
     ax.boxplot(samples, showmeans=True)
     ax.set_xticks(np.arange(1, len(labels)+1))
     ax.set_xticklabels(labels)
-    ax.set_title("Best three configurations — across-day RMSE distributions")
-    ax.set_ylabel("Per-day oracle-state RMSE"); ax.grid(alpha=0.25, axis="y")
+    ax.set_title("Best three configurations — across-origin RMSE distributions")
+    ax.set_ylabel("Per-origin oracle-state RMSE"); ax.grid(alpha=0.25, axis="y")
     fig.tight_layout(); fig.savefig(output/"top_three_rmse_distribution.png", dpi=190, bbox_inches="tight"); plt.close(fig)
 
 
@@ -454,7 +454,7 @@ def print_report(top, ranking, common, tables, basis, output):
         print("WARNING: no fully matched hourly-origin cohort; ranking uses differing origins per combination.")
     print("\nTHREE BEST COMBINATIONS (ranked by LOWEST ABSOLUTE aggregate full-state oracle RMSE):")
     print("Baseline improvement is reported separately and NEVER used to determine ranking.")
-    fields = ["rank", "baseline", "training_weekdays", "horizon_hours", "days", "aggregate_rmse",
+    fields = ["rank", "baseline", "training_weekdays", "horizon_hours", "origins", "aggregate_rmse",
               "baseline_rmse", "rmse_q20", "median_daily_rmse", "rmse_q80"]
     print(top[fields].to_string(index=False, float_format=lambda x: f"{x:.6f}"))
     nontrivial=ranking.loc[ranking["horizon_hours"]>=6].head(3).copy()
@@ -467,7 +467,7 @@ def print_report(top, ranking, common, tables, basis, output):
         best = subset.sort_values(RANKING_METRIC).iloc[0]
         print(f"  {name:<20} N={int(best['training_weekdays']):2d}, "
               f"H={int(best['horizon_hours']):2d}h | pooled RMSE={best[RANKING_METRIC]:.8f} "
-              f"| days={int(best['days'])}")
+              f"| origins={int(best['origins'])}")
     print("\nTop configurations: historical coefficient distribution on the ranked cohort")
     for row in top.itertuples():
         subset = fits.loc[(fits["baseline"] == row.baseline) & (fits["training_weekdays"] == row.training_weekdays) & (fits["horizon_hours"] == row.horizon_hours) & fits["day"].isin(common)]
