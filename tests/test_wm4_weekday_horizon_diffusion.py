@@ -59,7 +59,29 @@ class wm4_weekday_diffusion_tests(unittest.TestCase):
             self.assertEqual(len(actual_scores), 1)
             self.assertEqual(config["steps_per_hour"], 4)
 
-    def test_full_historical_trajectory_variance_fit_and_hourly_rmse_difference(self):
+    def test_diffusion_variances_are_refitted_on_each_historical_horizon(self):
+        rows = []
+        for d in range(2):
+            day = pd.Timestamp("2022-04-09")+pd.Timedelta(days=d)
+            for h, e in enumerate((0.1, 0.1, 0.1, 0.6)):
+                rows.append({
+                    "day":day, "historical_day":day-pd.Timedelta(days=7),
+                    "baseline":"weekly_average", "training_weekdays":2,
+                    "hour":h, "observed":e, "predicted":0., "error":e,
+                    "unit_process_variance":float(h),
+                })
+        summary, fitted = summarize_grid(pd.DataFrame(rows), horizons=(2, 4))
+        self.assertEqual(len(summary), 2)
+        self.assertEqual(len(fitted), 4)
+        short = fitted.loc[fitted["horizon_hours"] == 2].sort_values("day")
+        full = fitted.loc[fitted["horizon_hours"] == 4].sort_values("day")
+        self.assertTrue((short["observations"] == 2).all())
+        self.assertTrue((full["observations"] == 4).all())
+        self.assertTrue((short["process_variance_rate"] < 1e-12).all())
+        self.assertTrue((full["process_variance_rate"] > 0).all())
+        self.assertFalse(np.allclose(short["observation_variance"], full["observation_variance"]))
+
+    def test_per_horizon_historical_trajectory_variance_and_hourly_rmse_difference(self):
         rng = np.random.default_rng(203)
         rows = []
         for baseline in ("weekly_average", "weekly_temperature"):
@@ -74,7 +96,9 @@ class wm4_weekday_diffusion_tests(unittest.TestCase):
                                  "unit_process_variance":K})
         summary, fitted = summarize_grid(pd.DataFrame(rows), horizons=(1, 4, 24))
         self.assertEqual(len(summary), 2*3)
-        self.assertEqual(len(fitted), 2*8*24)
+        self.assertEqual(len(fitted), 2*8*3)
+        self.assertEqual(set(fitted["horizon_hours"].unique()), {1, 4, 24})
+        self.assertTrue((fitted["observations"] == fitted["horizon_hours"]).all())
         self.assertTrue((summary["rmse_absolute_error"] >= 0).all())
         self.assertTrue((summary["rmse_pooled_absolute_error"] >= 0).all())
         self.assertTrue((summary["distribution_similarity"] <= 1.0).all())
