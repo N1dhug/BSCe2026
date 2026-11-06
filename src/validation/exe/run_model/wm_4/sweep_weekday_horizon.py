@@ -22,8 +22,8 @@ class sweep_weekday_horizon_validation:
             raw = getattr(args, label)
             if raw is None: continue
             value = pd.Timestamp(raw)
-            if pd.isna(value) or value != value.normalize():
-                raise ValueError(f"{label} must represent a valid midnight calendar day.")
+            if pd.isna(value) or value != value.floor("h"):
+                raise ValueError(f"{label} must represent a valid hour-aligned timestamp.")
         if args.start_day and args.end_day and pd.Timestamp(args.start_day) > pd.Timestamp(args.end_day):
             raise ValueError("start_day cannot follow end_day.")
 
