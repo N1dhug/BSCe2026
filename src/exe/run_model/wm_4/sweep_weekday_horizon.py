@@ -10,7 +10,8 @@ import pandas as pd
 from src.exe.run_model.wm_4.moving_horizon_common import HOURS, group_frame, metrics, window_data
 from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays
 from src.params.wm_4 import joint_qp_params
-from src.tools.baseline import statistical_output, weekly_average, weekly_temperature
+from src.model.wm_4 import wm_4
+from src.tools.baseline import statistical_output, weekly_average, weekly_temperature, output_callable
 from src.tools.impute_hourly import impute_hourly_days
 from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekday_horizon_validation as validation
 
@@ -22,7 +23,7 @@ BASELINES = {"statistical_output": statistical_output, "weekly_average": weekly_
 BASELINE_NAMES = tuple(BASELINES)
 PERCENTILES = (20, 40, 50, 60, 80)
 RANKING_METRIC = "aggregate_rmse"  # Absolute pooled prediction error; never baseline-relative improvement.
-EXPERIMENT_VERSION = "3_baseline_matched_training_hourly_imputation_full_oracle_v4_N14_H1"
+EXPERIMENT_VERSION = "4_baseline_matched_training_per_horizon_joint_drift_oracle_v5"
 COLUMNS = {
     "fit": "parameter_estimates.csv",
     "score": "oracle_horizon_scores.csv",
@@ -51,118 +52,135 @@ class corresponding_weekday_baseline:
         return np.interp(h, np.arange(HOURS+1), np.r_[self.profile, self.profile[0]])
 
 
-def baseline_from_history(frame, history, name):
+def baseline_from_history(frame, history, name, horizon_hours=HOURS):
+    """Fit the baseline ONLY to N corresponding historical intervals of k hours."""
     if name not in BASELINES: raise ValueError(f"Unknown baseline: {name}.")
-    samples = [frame.reindex(pd.date_range(past, periods=HOURS, freq="h"))[["I", "Temp"]]
+    horizon_hours = int(horizon_hours)
+    if not 1 <= horizon_hours <= HOURS: raise ValueError("horizon_hours must lie in [1,24].")
+    samples = [frame.reindex(pd.date_range(past, periods=horizon_hours, freq="h"))[["I", "Temp"]]
                for past in history]
     train = pd.concat(samples).sort_index()
     if train[["I", "Temp"]].isna().any().any():
-        raise ValueError("All matched-weekday baseline training samples must be complete.")
-    # The standard baseline estimators require seven historical days by default.
-    # This comparative study deliberately fits each one to EXACTLY N same weekdays.
-    # Explicit min_samples=48 enables N=2 without leaking other calendar days.
-    baseline = BASELINES[name](min_samples=48).fit(train, max(history)+pd.Timedelta(days=1))
-    return baseline
+        raise ValueError("All selected historical baseline samples must be complete.")
+    return BASELINES[name](min_samples=max(2, min(48, len(train)))).fit(
+        train, max(history)+pd.Timedelta(days=1))
+
+
+def interval_window(frame, start, baseline, steps_per_hour, horizon_hours):
+    """Construct the SAME k-hour numerical interval for fitting and propagation."""
+    horizon_hours, steps_per_hour = int(horizon_hours), int(steps_per_hour)
+    if not 1 <= horizon_hours <= HOURS: raise ValueError("horizon_hours must lie in [1,24].")
+    model, data, index, observed = window_data(frame, start, baseline, steps_per_hour)
+    if horizon_hours == HOURS: return model, data, index, observed
+    count = horizon_hours*steps_per_hour+1
+    short = {key:np.asarray(value)[:count].copy() for key, value in data.items()}
+    # The hour-k endpoint is required to identify the last rate transition.
+    short["observation_mask"] = np.zeros(count, dtype=bool)
+    short["observation_mask"][np.arange(horizon_hours+1)*steps_per_hour] = True
+    short["transition_mask"] = np.ones(count-1, dtype=bool)
+    model = wm_4((0.0, horizon_hours/HOURS), count, output_callable(index[:count], short["O"]))
+    return model, short, index[:count], observed[:horizon_hours]
 
 
 def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, max_horizon,
                            baseline_name="weekly_average"):
     history = validation.history(day, historical_weekdays(day, n_weekdays))
-    # Only historical days may be filled; the target-day observations are never
-    # fabricated for scoring or oracle initial-state estimation.
     training, imputation = impute_hourly_days(frame, days=history,
                                                columns=("I", "U", "Temp"), require_days=True)
-    profiles = validation.training_data(training, history)
-    baseline = baseline_from_history(training, history, baseline_name)
-    datasets = [window_data(training, earlier, baseline, steps_per_hour)[1] for earlier in history]
-    model, forecast, _, observed = window_data(frame, day, baseline, steps_per_hour)
+    fits, scores, components, states = [], [], [], []
+    for horizon in range(min_horizon, max_horizon+1):
+        baseline = baseline_from_history(training, history, baseline_name, horizon)
+        datasets = [interval_window(training, past, baseline, steps_per_hour, horizon)[1] for past in history]
+        model, forecast, _, observed = interval_window(frame, day, baseline, steps_per_hour, horizon)
 
-    started = perf_counter()
-    fit = joint_qp_params(model).fit_many(datasets)
-    runtime = perf_counter()-started
-    theta = np.asarray(fit["r"], dtype=float)       # [theta_F, theta_U, theta_R]
-    historical_origins = pd.DatetimeIndex(history)
-    historical_temps = training.reindex(historical_origins)["Temp"].to_numpy(dtype=float)
-    history_R0 = profiles[:, 0]-baseline.predict(historical_origins, historical_temps)
-    R0 = float(np.median(history_R0))              # strictly historical, never optimized
+        started = perf_counter()
+        fit = joint_qp_params(model).fit_many(datasets)
+        runtime = perf_counter()-started
+        theta = np.asarray(fit["r"], dtype=float)   # [theta_F, theta_U, theta_R]
+        sample_idx = np.arange(horizon, dtype=int)*steps_per_hour
+        base_state = model._solve_deterministic([0.0, 0.0], forecast["U"], forecast["PE"],
+                                                forecast["Time"], forecast["O"], theta)
+        base = np.asarray(base_state["I"], dtype=float)[sample_idx]
+        S = np.asarray(model.sensitivity({"r":theta})["input"], dtype=float)[sample_idx, :]
+        observed, base, _ = validation.oracle(observed, base, S[:, 0], horizon, horizon)
+        baseline_hourly = np.asarray(forecast["O"], dtype=float)[sample_idx]
+        if len(observed) != horizon: raise ValueError("Prediction observations and horizon do not agree.")
 
-    # The historical median R0 is diagnostic only. For every horizon,
-    # BOTH oracle initial-state components are fitted jointly over
-    # that horizon's target observations, using the existing active-set QP.
-    state0 = model._solve_deterministic([0.0, 0.0], forecast["U"], forecast["PE"],
-                                        forecast["Time"], forecast["O"], theta)
-    sample_idx = np.arange(HOURS, dtype=int)*steps_per_hour
-    base = np.asarray(state0["I"], dtype=float)[sample_idx]
-    S = np.asarray(model.sensitivity({"r": theta})["input"], dtype=float)[sample_idx, :]
-    sensitivity = S[:, 0]
-    observed, base, sensitivity = validation.oracle(observed, base, sensitivity, min_horizon, max_horizon)
-    baseline_hourly = np.asarray(forecast["O"], dtype=float)[sample_idx]
+        origins = pd.DatetimeIndex(history)
+        temps = training.reindex(origins)["Temp"].to_numpy(dtype=float)
+        profiles = validation.training_data(training, history)
+        history_R0 = profiles[:, 0]-baseline.predict(origins, temps)
+        R0 = float(np.median(history_R0))
 
-    coeffs = {"theta_F": float(theta[0]), "theta_R": float(theta[2]), "theta_U": float(theta[1])}
-    fit_row = {
-        "day": day, "weekday": day.day_name(), "baseline": baseline_name, "training_weekdays": n_weekdays,
-        "training_days": ";".join(f"{d:%Y-%m-%d}" for d in history),
-        "baseline_coefficients": json.dumps(np.asarray(baseline.coef, dtype=float).tolist()),
-        "baseline_metadata": json.dumps(baseline.metadata, default=str),
-        "baseline_feature_mean": json.dumps(None if baseline.feature_mean is None else baseline.feature_mean.tolist())
-            if hasattr(baseline, "feature_mean") else "null",
-        "baseline_feature_scale": json.dumps(None if baseline.feature_scale is None else baseline.feature_scale.tolist())
-            if hasattr(baseline, "feature_scale") else "null",
-        "baseline_beta_C": float(baseline.beta_C) if hasattr(baseline, "beta_C") else np.nan,
-        "baseline_chill_center": float(baseline.chill_center) if hasattr(baseline, "chill_center") else np.nan,
-        "baseline_samples": int(baseline.metadata["samples"]),
-        "imputed_training_hours": int(imputation["imputed_hourly_slots"]),
-        "imputed_training_I_hours": int(imputation["imputed_by_column"]["I"]),
-        "imputed_training_U_hours": int(imputation["imputed_by_column"]["U"]),
-        "imputed_training_Temp_hours": int(imputation["imputed_by_column"]["Temp"]),
-        "hourly_imputation_method": imputation["method"],
-        **coeffs, "historical_R0": R0, "fit_qp_loss": float(fit["qp_loss"]),
-        "fit_rmse": float(np.sqrt(fit["deterministic_loss"])), "fit_seconds": runtime,
-        "design_rank": int(fit["design_rank"]), "design_columns": len(fit["beta"]),
-        "damping_ratio": float(-theta[2]/(2*np.sqrt(-theta[0]))),
-        "training_F0_mean": float(np.mean(fit["init_cond"][:, 0])),
-        "training_F0_std": float(np.std(fit["init_cond"][:, 0])),
-    }
-    for hour, value in enumerate(baseline_hourly):
-        fit_row[f"baseline_hour_{hour:02d}"] = float(value)
+        coeffs = {"theta_F":float(theta[0]), "theta_R":float(theta[2]), "theta_U":float(theta[1])}
+        fit_row = {
+            "day":day, "weekday":day.day_name(), "baseline":baseline_name,
+            "training_weekdays":n_weekdays, "horizon_hours":horizon,
+            "training_days":";".join(f"{d:%Y-%m-%d}" for d in history),
+            "baseline_coefficients":json.dumps(np.asarray(baseline.coef, dtype=float).tolist()),
+            "baseline_metadata":json.dumps(baseline.metadata, default=str),
+            "baseline_feature_mean":json.dumps(None if baseline.feature_mean is None else baseline.feature_mean.tolist())
+                if hasattr(baseline, "feature_mean") else "null",
+            "baseline_feature_scale":json.dumps(None if baseline.feature_scale is None else baseline.feature_scale.tolist())
+                if hasattr(baseline, "feature_scale") else "null",
+            "baseline_beta_C":float(baseline.beta_C) if hasattr(baseline, "beta_C") else np.nan,
+            "baseline_chill_center":float(baseline.chill_center) if hasattr(baseline, "chill_center") else np.nan,
+            "baseline_samples":int(baseline.metadata["samples"]),
+            "imputed_training_hours":int(imputation["imputed_hourly_slots"]),
+            "imputed_training_I_hours":int(imputation["imputed_by_column"]["I"]),
+            "imputed_training_U_hours":int(imputation["imputed_by_column"]["U"]),
+            "imputed_training_Temp_hours":int(imputation["imputed_by_column"]["Temp"]),
+            "hourly_imputation_method":imputation["method"], **coeffs,
+            "historical_R0":R0, "fit_qp_loss":float(fit["qp_loss"]),
+            "fit_rmse":float(np.sqrt(fit["deterministic_loss"])), "fit_seconds":runtime,
+            "design_rank":int(fit["design_rank"]), "design_columns":len(fit["beta"]),
+            "damping_ratio":float(-theta[2]/(2*np.sqrt(-theta[0]))),
+            "training_F0_mean":float(np.mean(fit["init_cond"][:, 0])),
+            "training_F0_std":float(np.std(fit["init_cond"][:, 0])),
+        }
+        # Keep fixed CSV columns across different k values.
+        day_index = pd.date_range(day, periods=HOURS, freq="h")
+        temperature = frame.reindex(day_index)["Temp"].to_numpy(dtype=float)
+        baseline_all = baseline.predict(day_index, temperature)
+        for hour, value in enumerate(baseline_all):
+            fit_row[f"baseline_hour_{hour:02d}"] = float(value)
+        fits.append(fit_row)
 
-    states = [{"day": day, "baseline": baseline_name, "training_weekdays": n_weekdays, "historical_day": past,
-               "historical_F0": float(state[0]), "historical_R0": float(state[1]),
-               "baseline_hour_00": float(baseline.predict(pd.DatetimeIndex([past]),
-                                              np.array([training.at[past, "Temp"]]))[0])}
-              for past, state in zip(history, fit["init_cond"])]
-    components = [{"day": day, "baseline": baseline_name, "training_weekdays": n_weekdays, "hour": h,
-                   "time": day+pd.Timedelta(hours=h), "observed": float(observed[h]),
-                   "baseline_value": float(baseline_hourly[h]), "price": float(forecast["U"][sample_idx[h]]),
-                   "prediction_at_F0_zero": float(base[h]), "sensitivity_F0": float(sensitivity[h]),
-                   "prediction_at_initial_zero": float(base[h]), "sensitivity_R0": float(S[h, 1])}
-                  for h in range(HOURS)]
+        states.extend({
+            "day":day, "baseline":baseline_name, "training_weekdays":n_weekdays,
+            "horizon_hours":horizon, "historical_day":past,
+            "historical_F0":float(state[0]), "historical_R0":float(state[1]),
+            "baseline_hour_00":float(baseline.predict(pd.DatetimeIndex([past]),
+                                      np.array([training.at[past, "Temp"]]))[0]),
+        } for past, state in zip(history, fit["init_cond"]))
+        components.extend({
+            "day":day, "baseline":baseline_name, "training_weekdays":n_weekdays,
+            "horizon_hours":horizon, "hour":h,
+            "time":day+pd.Timedelta(hours=h), "observed":float(observed[h]),
+            "baseline_value":float(baseline_hourly[h]), "price":float(forecast["U"][sample_idx[h]]),
+            "prediction_at_F0_zero":float(base[h]),
+            "sensitivity_F0":float(S[h, 0]),
+            "prediction_at_initial_zero":float(base[h]), "sensitivity_R0":float(S[h, 1]),
+        } for h in range(horizon))
 
-    # For fixed theta the complete trajectory is affine in [F0,R0],
-    # hence each horizon-specific target-day oracle is a globally solved
-    # box-constrained two-variable convex QP.
-    scores=[]
-    for horizon in range(min_horizon,max_horizon+1):
-        desired=observed[:horizon]-base[:horizon]
-        initial=np.asarray(model._least_squares_qp(
-            S[:horizon],desired,lb=np.array([-1.,-1.]),ub=np.array([1.,1.]),
-            ridge=model._FIT_RIDGE),dtype=float)
-        predicted=base[:horizon]+S[:horizon]@initial
-        score=metrics(observed[:horizon],predicted)
-        bscore=metrics(observed[:horizon],baseline_hourly[:horizon])
+        desired = observed-base
+        initial = np.asarray(model._least_squares_qp(
+            S, desired, lb=np.array([-1., -1.]), ub=np.array([1., 1.]),
+            ridge=model._FIT_RIDGE), dtype=float)
+        predicted = base+S@initial
+        score, bscore = metrics(observed, predicted), metrics(observed, baseline_hourly)
         scores.append({
-            "day":day,"baseline":baseline_name,"training_weekdays":n_weekdays,
-            "horizon_hours":horizon,**coeffs,
-            "oracle_F0":float(initial[0]),"oracle_R0":float(initial[1]),
-            "historical_R0":R0,
-            "oracle_sensitivity_norm":float(np.linalg.norm(S[:horizon])),
-            "oracle_state_design_rank":int(np.linalg.matrix_rank(S[:horizon])),
+            "day":day, "baseline":baseline_name, "training_weekdays":n_weekdays,
+            "horizon_hours":horizon, **coeffs,
+            "oracle_F0":float(initial[0]), "oracle_R0":float(initial[1]),
+            "historical_R0":R0, "oracle_sensitivity_norm":float(np.linalg.norm(S)),
+            "oracle_state_design_rank":int(np.linalg.matrix_rank(S)),
             "oracle_state_observations":int(horizon),
-            "rmse":score["rmse"],"mse":score["mse"],"mae":score["mae"],"bias":score["bias"],
-            "baseline_rmse":bscore["rmse"],"baseline_mse":bscore["mse"],
+            "rmse":score["rmse"], "mse":score["mse"], "mae":score["mae"], "bias":score["bias"],
+            "baseline_rmse":bscore["rmse"], "baseline_mse":bscore["mse"],
             "rmse_gain":bscore["rmse"]-score["rmse"],
         })
-    return fit_row, scores, components, states
+    return fits, scores, components, states
 
 
 def append_rows(path, records):
@@ -185,10 +203,10 @@ def read_table(path, subset):
 def load_tables(output):
     return {
         name: read_table(output/filename, {
-            "fit": ["day", "baseline", "training_weekdays"],
+            "fit": ["day", "baseline", "training_weekdays", "horizon_hours"],
             "score": ["day", "baseline", "training_weekdays", "horizon_hours"],
-            "component": ["day", "baseline", "training_weekdays", "hour"],
-            "state": ["day", "baseline", "training_weekdays", "historical_day"],
+            "component": ["day", "baseline", "training_weekdays", "horizon_hours", "hour"],
+            "state": ["day", "baseline", "training_weekdays", "horizon_hours", "historical_day"],
             "fail": ["day", "baseline", "training_weekdays", "error"],
         }[name])
         for name, filename in COLUMNS.items()
@@ -198,14 +216,16 @@ def load_tables(output):
 def completed_pairs(tables, counts, horizons, baselines=BASELINE_NAMES):
     if any(tables[key].empty for key in ("fit", "score", "component", "state")): return set()
     key = ["day", "baseline", "training_weekdays"]
-    fit_counts = tables["fit"].groupby(key).size()
+    fit_counts = tables["fit"].groupby(key)["horizon_hours"].nunique()
     scores = tables["score"].groupby(key)["horizon_hours"].nunique()
-    components = tables["component"].groupby(key)["hour"].nunique()
-    states = tables["state"].groupby(key)["historical_day"].nunique()
+    components = tables["component"].groupby(key).size()
+    states = tables["state"].groupby(key).size()
+    required_components = sum(range(int(tables["score"]["horizon_hours"].min()),
+                                    int(tables["score"]["horizon_hours"].max())+1))
     return {(day, name, int(n)) for (day, name, n), size in fit_counts.items()
-            if size >= 1 and scores.get((day, name, n), 0) == horizons
-            and components.get((day, name, n), 0) == HOURS
-            and states.get((day, name, n), 0) == n and n in counts and name in baselines}
+            if size == horizons and scores.get((day, name, n), 0) == horizons
+            and components.get((day, name, n), 0) == required_components
+            and states.get((day, name, n), 0) == n*horizons and n in counts and name in baselines}
 
 
 def summarise(scores):
@@ -270,7 +290,7 @@ def write_outputs(tables, output, weekdays, horizons, baselines=BASELINE_NAMES):
     meaningful.to_csv(output/"top_three_h6plus.csv",index=False)
     best_by_horizon = ranking.sort_values([RANKING_METRIC, "baseline", "training_weekdays"]).drop_duplicates("horizon_hours").sort_values("horizon_hours")
     best_by_horizon.to_csv(output/"best_by_horizon.csv", index=False)
-    parameters = tables["fit"].groupby(["baseline", "training_weekdays"])[
+    parameters = tables["fit"].groupby(["baseline", "training_weekdays", "horizon_hours"])[
         ["theta_F", "theta_R", "theta_U", "fit_qp_loss", "fit_seconds"]
     ].agg(["mean", "std", "median", "min", "max"])
     parameters.columns = ["_".join(column) for column in parameters.columns]
@@ -382,8 +402,8 @@ def print_report(top, ranking, common, tables, basis, output):
               f"| days={int(best['days'])}")
     print("\nTop configurations: historical coefficient distribution on the ranked cohort")
     for row in top.itertuples():
-        subset = fits.loc[(fits["baseline"] == row.baseline) & (fits["training_weekdays"] == row.training_weekdays) & fits["day"].isin(common)]
-        if subset.empty: subset = fits.loc[(fits["baseline"] == row.baseline) & (fits["training_weekdays"] == row.training_weekdays)]
+        subset = fits.loc[(fits["baseline"] == row.baseline) & (fits["training_weekdays"] == row.training_weekdays) & (fits["horizon_hours"] == row.horizon_hours) & fits["day"].isin(common)]
+        if subset.empty: subset = fits.loc[(fits["baseline"] == row.baseline) & (fits["training_weekdays"] == row.training_weekdays) & (fits["horizon_hours"] == row.horizon_hours)]
         print(f"#{row.rank} B={row.baseline}, N={row.training_weekdays}, H={row.horizon_hours}h — theta means "
               f"[F={subset['theta_F'].mean():.6f}, R={subset['theta_R'].mean():.6f}, U={subset['theta_U'].mean():.6f}] "
               f"(std [{subset['theta_F'].std():.6f}, {subset['theta_R'].std():.6f}, {subset['theta_U'].std():.6f}])")
@@ -467,7 +487,7 @@ def run(args):
                 try:
                     fit, score, component, state = evaluate_configuration(
                         frame, day, n, args.steps_per_hour, args.min_horizon, args.max_horizon, name)
-                    append_rows(output/COLUMNS["fit"], [fit])
+                    append_rows(output/COLUMNS["fit"], fit)
                     append_rows(output/COLUMNS["score"], score)
                     append_rows(output/COLUMNS["component"], component)
                     append_rows(output/COLUMNS["state"], state)
