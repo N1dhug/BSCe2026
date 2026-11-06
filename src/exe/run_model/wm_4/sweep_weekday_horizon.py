@@ -67,19 +67,44 @@ def baseline_from_history(frame, history, name, horizon_hours=HOURS):
 
 
 def interval_window(frame, start, baseline, steps_per_hour, horizon_hours):
-    """Construct the SAME k-hour numerical interval for fitting and propagation."""
+    """Build only the requested k-hour window, not a full-day data window.
+
+    The k hourly observations at hours 0..k-1 are scored. For k<24,
+    the observation at hour k closes the k-hour historical fitting
+    interval, providing the last actual rate transition. At k=24 the
+    available 24 observations span 23 observed hourly transitions.
+    """
     horizon_hours, steps_per_hour = int(horizon_hours), int(steps_per_hour)
     if not 1 <= horizon_hours <= HOURS: raise ValueError("horizon_hours must lie in [1,24].")
-    model, data, index, observed = window_data(frame, start, baseline, steps_per_hour)
-    if horizon_hours == HOURS: return model, data, index, observed
-    count = horizon_hours*steps_per_hour+1
-    short = {key:np.asarray(value)[:count].copy() for key, value in data.items()}
-    # The hour-k endpoint is required to identify the last rate transition.
-    short["observation_mask"] = np.zeros(count, dtype=bool)
-    short["observation_mask"][np.arange(horizon_hours+1)*steps_per_hour] = True
-    short["transition_mask"] = np.ones(count-1, dtype=bool)
-    model = wm_4((0.0, horizon_hours/HOURS), count, output_callable(index[:count], short["O"]))
-    return model, short, index[:count], observed[:horizon_hours]
+    if steps_per_hour < 2: raise ValueError("steps_per_hour must be >= 2.")
+    start = pd.Timestamp(start)
+    points = min(horizon_hours+1, HOURS)
+    index = pd.date_range(start, periods=points, freq="h")
+    source = frame.reindex(index)[["I", "U", "Temp"]]
+    if source.isna().any().any():
+        raise ValueError(f"Missing consumption, price or temperature in historical/prediction interval {start} (k={horizon_hours}).")
+    observed = source["I"].to_numpy(dtype=float)[:horizon_hours]
+    elapsed = np.arange(horizon_hours*steps_per_hour+1, dtype=float)/steps_per_hour
+    fine_index = start+pd.to_timedelta(elapsed, unit="h")
+    I_hour = source["I"].to_numpy(dtype=float)
+    T_hour = source["Temp"].to_numpy(dtype=float)
+    U_hour = source["U"].to_numpy(dtype=float)
+    if points == horizon_hours:
+        I_hour, T_hour, U_hour = np.r_[I_hour, I_hour[-1]], np.r_[T_hour, T_hour[-1]], np.r_[U_hour, U_hour[-1]]
+    I = np.interp(elapsed, np.arange(horizon_hours+1), I_hour)
+    Temp = np.interp(elapsed, np.arange(horizon_hours+1), T_hour)
+    U = U_hour[np.minimum(np.floor(elapsed+1e-10).astype(int), horizon_hours)]
+    O = np.asarray(baseline.predict(fine_index, Temp), dtype=float).reshape(-1)
+    count = len(elapsed)
+    if O.size != count or not np.isfinite(O).all(): raise ValueError("Baseline must be finite throughout the requested horizon.")
+    observation_mask = np.zeros(count, dtype=bool)
+    observation_mask[np.arange(horizon_hours)*steps_per_hour] = True
+    transition_mask = np.zeros(count-1, dtype=bool)
+    transition_mask[:min(horizon_hours, HOURS-1)*steps_per_hour] = True
+    data = {"I":I, "U":U, "PE":U.copy(), "Time":elapsed, "O":O,
+            "observation_mask":observation_mask, "transition_mask":transition_mask}
+    model = wm_4((0.0, horizon_hours/HOURS), count, output_callable(fine_index, O))
+    return model, data, fine_index, observed
 
 
 def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, max_horizon,
