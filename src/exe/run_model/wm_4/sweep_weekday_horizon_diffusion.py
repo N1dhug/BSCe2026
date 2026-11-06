@@ -24,10 +24,10 @@ END_DAY = "2022-10-31"
 def same_period(frame, start_day=START_DAY, end_day=END_DAY, baselines=BASELINES, backlogs=N_VALUES, horizons=K_VALUES):
     """Match exact hourly target origins across both baseline methods, N and k."""
     start, end = pd.Timestamp(start_day), pd.Timestamp(end_day)
-    if end < start: raise ValueError("end-day must be on or after start-day.")
     # A midnight end is an inclusive calendar date; a nonmidnight end is an
     # inclusive hourly origin, matching the drift sweep command-line behavior.
     until = end+pd.Timedelta(days=1) if end == end.normalize() else end+pd.Timedelta(hours=1)
+    if until <= start: raise ValueError("end-day must not precede the first included hourly origin.")
     data = frame.loc[(frame["day"] >= start) & (frame["day"] < until)].copy()
     if data.empty: raise ValueError(f"No saved sweep configurations in {start:%Y-%m-%d} to {end:%Y-%m-%d}.")
     required = {(baseline, n, k) for baseline in baselines for n in backlogs for k in horizons}
