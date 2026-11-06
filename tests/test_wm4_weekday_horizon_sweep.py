@@ -17,10 +17,12 @@ from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekda
 
 
 class fake_joint_fitter:
+    seen = []
     def __init__(self, model): self.model = model
 
     def fit_many(self, datasets):
         n = len(datasets)
+        self.seen.append((n, self.model.t_steps, tuple(len(d["I"]) for d in datasets)))
         return {
             "r": np.array([-0.8, -0.15, -1.4]),
             "init_cond": np.zeros((n, 2)),
@@ -59,29 +61,38 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         self.assertEqual(values.shape, (10, 24))
         self.assertAlmostEqual(values[-1, 7], frame.loc[dates[-1]+pd.Timedelta(hours=7), "I"])
 
-    def test_single_joint_fit_reused_for_multiple_oracle_horizons(self):
+    def test_joint_drift_and_initial_states_are_specific_to_both_N_and_k(self):
         frame = self.sample_frame()
         day = pd.Timestamp("2022-03-12")
+        fake_joint_fitter.seen = []
         with patch("src.exe.run_model.wm_4.sweep_weekday_horizon.joint_qp_params", fake_joint_fitter):
-            fit, score, component, states = evaluate_configuration(frame, day, 3, 4, 6, 24)
+            fits, scores, components, states = evaluate_configuration(frame, day, 6, 4, 6, 8)
             changed = frame.copy()
             changed.loc[day+pd.Timedelta(hours=20), "I"] += 0.3
-            _, changed_scores, _, _ = evaluate_configuration(changed, day, 3, 4, 6, 24)
-        self.assertEqual(len(score), 19)
-        self.assertEqual(len(states), 3)
-        self.assertEqual(len(component), 24)
-        self.assertAlmostEqual(fit["theta_U"], -0.15)
-        self.assertAlmostEqual(fit["theta_R"], -1.4)
-        self.assertAlmostEqual(score[0]["oracle_F0"], changed_scores[0]["oracle_F0"])
-        self.assertAlmostEqual(score[0]["rmse"], changed_scores[0]["rmse"])
-        self.assertNotAlmostEqual(score[-1]["rmse"], changed_scores[-1]["rmse"])
-        first = score[0]
-        self.assertIn("oracle_R0",first)
-        self.assertAlmostEqual(score[0]["oracle_R0"],changed_scores[0]["oracle_R0"])
+            _, changed_scores, _, _ = evaluate_configuration(changed, day, 6, 4, 6, 8)
+        self.assertEqual(len(fits), 3)
+        self.assertEqual(len(scores), 3)
+        self.assertEqual(len(states), 6*3)
+        self.assertEqual(len(components), 6+7+8)
+        self.assertEqual({fit["horizon_hours"] for fit in fits}, {6,7,8})
+        self.assertTrue(all(fit["training_weekdays"] == 6 for fit in fits))
+        self.assertEqual(fake_joint_fitter.seen[:3], [
+            (6, 6*4+1, (6*4+1,)*6),
+            (6, 7*4+1, (7*4+1,)*6),
+            (6, 8*4+1, (8*4+1,)*6),
+        ])
+        self.assertTrue(all(len([r for r in states if r["horizon_hours"] == k]) == 6
+                            for k in (6,7,8)))
+        self.assertEqual([fit["baseline_samples"] for fit in fits], [6*6,6*7,6*8])
+        self.assertAlmostEqual(fits[0]["theta_U"], -0.15)
+        self.assertAlmostEqual(fits[0]["theta_R"], -1.4)
+        self.assertAlmostEqual(scores[0]["rmse"], changed_scores[0]["rmse"])
+        self.assertAlmostEqual(scores[-1]["rmse"], changed_scores[-1]["rmse"])
+        first = scores[0]
         forecast = np.array([row["prediction_at_initial_zero"]+
                              first["oracle_F0"]*row["sensitivity_F0"]+
-                             first["oracle_R0"]*row["sensitivity_R0"] for row in component[:6]])
-        truth = np.array([row["observed"] for row in component[:6]])
+                             first["oracle_R0"]*row["sensitivity_R0"] for row in components[:6]])
+        truth = np.array([row["observed"] for row in components[:6]])
         self.assertAlmostEqual(np.sqrt(np.mean((forecast-truth)**2)), first["rmse"])
 
     def test_expanded_fourteen_weekdays_and_one_to_twentyfour_hours(self):
@@ -105,8 +116,9 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
             fit,scores,components,states=evaluate_configuration(
                 frame,day,14,4,1,24,"weekly_average")
         self.assertEqual(len(scores),24)
-        self.assertEqual(len(components),24)
-        self.assertEqual(len(states),14)
+        self.assertEqual(len(components),sum(range(1,25)))
+        self.assertEqual(len(states),14*24)
+        self.assertEqual(len(fit),24)
         self.assertEqual(scores[0]["horizon_hours"],1)
         self.assertEqual(scores[-1]["horizon_hours"],24)
         self.assertEqual(scores[0]["oracle_state_design_rank"],1)
@@ -115,7 +127,7 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         self.assertTrue(all(-1<=row["oracle_F0"]<=1 and -1<=row["oracle_R0"]<=1
                             for row in scores))
         self.assertTrue(all(np.isfinite(row["rmse"]) for row in scores))
-        self.assertEqual(fit["baseline_samples"],14*24)
+        self.assertEqual([r["baseline_samples"] for r in fit], [14*k for k in range(1,25)])
 
     def test_expanded_range_validation_rejects_out_of_bounds(self):
         from types import SimpleNamespace
@@ -206,7 +218,7 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
             impute_hourly_days(data, days=pd.date_range("2022-03-01", "2022-03-04", freq="D"),
                                columns=("I", "U", "Temp"), require_days=True)
 
-    def test_baseline_fits_impute_hours_and_never_fill_whole_days(self):
+    def test_baseline_requires_filled_selected_historical_hours_only(self):
         frame = self.sample_frame()
         origin = pd.Timestamp("2022-03-12")
         history = historical_weekdays(origin, 2)
@@ -215,13 +227,17 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         fragment = fragment.drop(history[0]+pd.Timedelta(hours=6))
         fragment.loc[history[1]+pd.Timedelta(hours=10), "Temp"] = np.nan
         for name in BASELINE_NAMES:
-            model = baseline_from_history(fragment, history, name)
-            self.assertEqual(model.metadata["samples"], 48)
-            self.assertEqual(model.metadata["imputation"]["imputed_hourly_slots"], 2)
+            with self.assertRaisesRegex(ValueError, "complete"):
+                baseline_from_history(fragment, history, name, 12)
+        filled, report = impute_hourly_days(fragment, days=history, columns=("I","U","Temp"), require_days=True)
+        self.assertEqual(report["imputed_hourly_slots"], 2)
+        for name in BASELINE_NAMES:
+            baseline = baseline_from_history(filled, history, name, 12)
+            self.assertEqual(baseline.metadata["samples"], 24)
+            self.assertEqual(baseline.metadata["imputation"]["method"], "exact_selected_historical_hours")
         incomplete = fragment.loc[fragment.index.normalize() != history[0]]
         with self.assertRaisesRegex(ValueError, "Missing full day"):
-            impute_hourly_days(incomplete, days=history, columns=("I", "U", "Temp"),
-                               require_days=True)
+            impute_hourly_days(incomplete, days=history, columns=("I","U","Temp"), require_days=True)
 
     def test_sweep_imputes_historical_hours_but_never_target_labels(self):
         original = self.sample_frame()
@@ -232,9 +248,9 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         with patch("src.exe.run_model.wm_4.sweep_weekday_horizon.joint_qp_params", fake_joint_fitter):
             fit, scores, components, states = evaluate_configuration(
                 altered, day, 2, 2, 6, 8, "weekly_average")
-            self.assertEqual(fit["imputed_training_hours"], 2)
+            self.assertTrue(all(r["imputed_training_hours"] == 2 for r in fit))
             self.assertEqual(len(scores), 3)
-            self.assertEqual(len(states), 2)
+            self.assertEqual(len(states), 2*3)
             # Never fabricate forecast labels to create optimistic oracle scores.
             altered.loc[day+pd.Timedelta(hours=7), "I"] = np.nan
             with self.assertRaisesRegex(ValueError, "Missing consumption"):
@@ -293,21 +309,22 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         with patch("src.exe.run_model.wm_4.sweep_weekday_horizon.joint_qp_params", fake_joint_fitter):
             for name in BASELINE_NAMES:
                 fit, scores, components, states = evaluate_configuration(frame, day, 2, 2, 6, 8, name)
-                self.assertEqual(fit["baseline"], name)
-                self.assertEqual(fit["baseline_samples"], 48)
+                self.assertTrue(all(item["baseline"] == name for item in fit))
+                self.assertEqual([item["baseline_samples"] for item in fit], [12,14,16])
                 self.assertEqual(len(scores), 3)
                 self.assertTrue(all(item["baseline"] == name for item in scores))
                 self.assertTrue(all(item["baseline"] == name and "baseline_value" in item
                                     for item in components))
-                self.assertEqual(len(states), 2)
+                self.assertEqual(len(states), 2*3)
 
     def test_saved_reporting_produces_top_three_and_figures(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp)
             days = pd.date_range("2022-03-12", periods=3, freq="D")
-            fits = [{"day": day, "training_weekdays": n,
+            fits = [{"day": day, "training_weekdays": n, "horizon_hours": h,
                      "theta_F": -0.7, "theta_R": -1.5, "theta_U": -0.2,
-                     "fit_qp_loss": .01, "fit_seconds": .02} for day in days for n in (2, 3)]
+                     "fit_qp_loss": .01, "fit_seconds": .02}
+                    for day in days for n in (2,3) for h in (6,7)]
             scores = [{"day": day, "training_weekdays": n, "horizon_hours": h,
                        "rmse": .05+.01*n+.001*h, "mse": (.05+.01*n+.001*h)**2,
                        "baseline_rmse": .12, "baseline_mse": .12**2,
@@ -325,7 +342,7 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
             self.assertTrue((output/"rmse_heatmap.png").is_file())
             self.assertTrue((output/"top_three_rmse_distribution.png").is_file())
             tables = load_tables(output)
-            self.assertEqual(len(tables["fit"]), 6)
+            self.assertEqual(len(tables["fit"]), 12)
 
 
 if __name__ == "__main__": unittest.main()
