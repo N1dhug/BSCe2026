@@ -1,11 +1,12 @@
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.sweep_weekday_horizon import COLUMNS, interval_window
+from src.exe.run_model.wm_4.sweep_weekday_horizon import COLUMNS, EXPERIMENT_VERSION, baseline_from_history, interval_window
 from src.exe.run_model.wm_4.sweep_weekday_horizon_diffusion import (
     fit_variance, load_sweep, plot_grid, same_period, summarize_grid, unit_process_variance,
 )
@@ -57,6 +58,22 @@ class wm4_weekday_diffusion_tests(unittest.TestCase):
             self.assertEqual(int(np.sum(data["transition_mask"])), min(k, 23)*4)
             self.assertEqual(int(np.sum(data["observation_mask"])), min(k+1, 24))
 
+    def test_baseline_uses_only_N_corresponding_k_hour_intervals(self):
+        history = [pd.Timestamp("2022-04-04")+pd.Timedelta(weeks=j) for j in range(6)]
+        idx = pd.DatetimeIndex(np.concatenate([
+            pd.date_range(day, periods=24, freq="h").values for day in history
+        ])).sort_values()
+        frame = pd.DataFrame({
+            "I":0.4+0.04*np.sin(idx.hour.to_numpy(dtype=float)/3),
+            "Temp":np.full(len(idx), 12.),
+        }, index=idx)
+        for method in ("weekly_average", "weekly_temperature", "statistical_output"):
+            baseline = baseline_from_history(frame, history, method, 6)
+            self.assertEqual(int(baseline.metadata["samples"]), 6*6)
+            self.assertEqual(baseline.metadata["imputation"]["method"], "exact_selected_historical_hours")
+            baseline24 = baseline_from_history(frame, history, method, 24)
+            self.assertEqual(int(baseline24.metadata["samples"]), 6*24)
+
     def test_horizon_specific_saved_fit_states_required(self):
         day, history = pd.Timestamp("2022-05-01"), pd.Timestamp("2022-04-24")
         fit = [{"day":day, "baseline":"weekly_average", "training_weekdays":1, "horizon_hours":6,
@@ -70,7 +87,8 @@ class wm4_weekday_diffusion_tests(unittest.TestCase):
             pd.DataFrame(fit).to_csv(source/COLUMNS["fit"], index=False)
             pd.DataFrame(states).to_csv(source/COLUMNS["state"], index=False)
             pd.DataFrame(scores).to_csv(source/COLUMNS["score"], index=False)
-            (source/"configuration.json").write_text('{"steps_per_hour": 4}', encoding="utf-8")
+            (source/"configuration.json").write_text(
+                json.dumps({"steps_per_hour":4, "version":EXPERIMENT_VERSION}), encoding="utf-8")
             fits, historical, _, cfg = load_sweep(source, ("weekly_average",))
             self.assertEqual(len(fits), 1)
             self.assertEqual(len(historical), 1)
