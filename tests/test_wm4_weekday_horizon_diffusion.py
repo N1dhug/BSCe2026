@@ -41,6 +41,19 @@ class wm4_weekday_diffusion_tests(unittest.TestCase):
         self.assertEqual([d.strftime("%Y-%m-%d") for d in days], ["2022-04-09", "2022-10-31"])
         self.assertEqual(len(matched), 16)
 
+    def test_matched_cohort_preserves_hourly_origins_and_inclusive_end_date(self):
+        rows = []
+        origins = pd.to_datetime(["2022-04-08 23:00", "2022-04-09 00:00",
+                                  "2022-04-09 01:00", "2022-10-31 22:00",
+                                  "2022-10-31 23:00", "2022-11-01 00:00"])
+        for origin in origins:
+            for baseline in ("weekly_average", "weekly_temperature"):
+                for k in (1, 2):
+                    rows.append({"day":origin, "baseline":baseline,
+                                 "training_weekdays":2, "horizon_hours":k})
+        _, matched = same_period(pd.DataFrame(rows), backlogs=(2,), horizons=(1,2))
+        self.assertEqual(list(matched), list(origins[1:-1]))
+
     def test_sweep_interval_is_exactly_k_hours_not_24(self):
         class baseline:
             @staticmethod
