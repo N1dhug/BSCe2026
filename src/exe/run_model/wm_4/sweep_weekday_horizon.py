@@ -175,9 +175,9 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
 
         coeffs = {"theta_F":float(theta[0]), "theta_R":float(theta[2]), "theta_U":float(theta[1])}
         fit_row = {
-            "day":day, "weekday":day.day_name(), "baseline":baseline_name,
+            "day":day, "origin":day, "weekday":day.day_name(), "baseline":baseline_name,
             "training_weekdays":n_weekdays, "horizon_hours":horizon,
-            "training_days":";".join(f"{d:%Y-%m-%d}" for d in history),
+            "training_days":";".join(f"{d:%Y-%m-%dT%H:%M:%S}" for d in history),
             "baseline_coefficients":json.dumps(np.asarray(baseline.coef, dtype=float).tolist()),
             "baseline_metadata":json.dumps(baseline.metadata, default=str),
             "baseline_feature_mean":json.dumps(None if baseline.feature_mean is None else baseline.feature_mean.tolist())
@@ -205,14 +205,14 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
         fits.append(fit_row)
 
         states.extend({
-            "day":day, "baseline":baseline_name, "training_weekdays":n_weekdays,
+            "day":day, "origin":day, "baseline":baseline_name, "training_weekdays":n_weekdays,
             "horizon_hours":horizon, "historical_day":past,
             "historical_F0":float(state[0]), "historical_R0":float(state[1]),
             "baseline_hour_00":float(baseline.predict(pd.DatetimeIndex([past]),
                                       np.array([training.at[past, "Temp"]]))[0]),
         } for past, state in zip(history, fit["init_cond"]))
         components.extend({
-            "day":day, "baseline":baseline_name, "training_weekdays":n_weekdays,
+            "day":day, "origin":day, "baseline":baseline_name, "training_weekdays":n_weekdays,
             "horizon_hours":horizon, "hour":h,
             "time":day+pd.Timedelta(hours=h), "observed":float(observed[h]),
             "baseline_value":float(baseline_hourly[h]), "price":float(forecast["U"][sample_idx[h]]),
@@ -228,7 +228,7 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
         predicted = base+S@initial
         score, bscore = metrics(observed, predicted), metrics(observed, baseline_hourly)
         scores.append({
-            "day":day, "baseline":baseline_name, "training_weekdays":n_weekdays,
+            "day":day, "origin":day, "baseline":baseline_name, "training_weekdays":n_weekdays,
             "horizon_hours":horizon, **coeffs,
             "oracle_F0":float(initial[0]), "oracle_R0":float(initial[1]),
             "historical_R0":R0, "oracle_sensitivity_norm":float(np.linalg.norm(S)),
@@ -251,7 +251,7 @@ def read_table(path, subset):
     try: frame = pd.read_csv(path)
     except pd.errors.EmptyDataError: return pd.DataFrame()
     if frame.empty: return frame
-    for col in ("day", "historical_day", "time"):
+    for col in ("day", "origin", "historical_day", "time"):
         if col in frame: frame[col] = pd.to_datetime(frame[col])
     if "baseline" not in frame: frame["baseline"] = "corresponding_weekday"  # Legacy CSV compatibility.
     if subset: frame = frame.drop_duplicates(subset=subset, keep="last")
@@ -506,7 +506,9 @@ def run(args):
         "max_weekdays": args.max_weekdays, "min_horizon": args.min_horizon,
         "max_horizon": args.max_horizon, "steps_per_hour": args.steps_per_hour,
         "start_day": args.start_day, "end_day": args.end_day,
-        "baselines": list(baselines), "version": EXPERIMENT_VERSION,
+        "baselines": list(baselines), "max_days":args.max_days,
+        "max_origins":args.max_origins, "stride_hours":args.stride_hours,
+        "version": EXPERIMENT_VERSION,
     }
     info = output/"configuration.json"
     if args.report_only:
@@ -524,20 +526,16 @@ def run(args):
         info.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     frame = group_frame(args.group)
-    earliest = max(frame.index.min().normalize(), pd.Timestamp("2022-01-01"))
-    last = min(frame.index.max().normalize(), pd.Timestamp("2022-10-31"))
-    # Use the SAME eligible calendar period for all N, allowing fair ranking.
-    begin = earliest + pd.Timedelta(weeks=args.max_weekdays)
-    if args.start_day: begin = max(begin, pd.Timestamp(args.start_day))
-    if args.end_day: last = min(last, pd.Timestamp(args.end_day))
-    if begin > last: raise ValueError("No prediction dates remain after matching-weekday warm-up.")
-    days = pd.date_range(begin, last, freq="D")
-    if args.max_days: days = days[:args.max_days]
+    origins = hourly_origins(
+        frame, max_weekdays=args.max_weekdays, max_horizon=args.max_horizon,
+        start_day=args.start_day, end_day=args.end_day, max_days=args.max_days,
+        max_origins=args.max_origins, stride_hours=args.stride_hours)
     saved = load_tables(output) if args.resume else {name: pd.DataFrame() for name in COLUMNS}
     done = completed_pairs(saved, weekdays, horizons, baselines) if args.resume else set()
     successful, attempted = 0, 0
-    total = len(days)*len(weekdays)*len(baselines)
-    for day in days:
+    total = len(origins)*len(weekdays)*len(baselines)
+    print(f"[ARM hourly sweep] origins={len(origins)} | stride={args.stride_hours}h | configurations={total} | horizon-specific fits={total*horizons}", flush=True)
+    for day in origins:
         for n in weekdays:
             for name in baselines:
                 key = (day, name, n)
@@ -552,17 +550,17 @@ def run(args):
                     successful += 1
                 except (RuntimeError, ValueError, np.linalg.LinAlgError) as exc:
                     if args.fail_fast: raise
-                    append_rows(output/COLUMNS["fail"], [{"day": day, "baseline": name, "training_weekdays": n, "error": str(exc)}])
+                    append_rows(output/COLUMNS["fail"], [{"day":day, "origin":day, "baseline":name, "training_weekdays":n, "error":str(exc)}])
                     print(f"[skip] {day:%Y-%m-%d} B={name} N={n}: {exc}", flush=True)
                 attempted += 1
                 if attempted % args.progress_every == 0:
-                    print(f"[WM4 sweep] computed {successful} new / {total} possible fits "
+                    print(f"[ARM hourly sweep] computed {successful} new / {total} possible fits "
                           f"(resumed {len(done)}) | {day:%Y-%m-%d} B={name} N={n}", flush=True)
     return report_only(output, weekdays, horizons, baselines)
 
 
 def main():
-    parser = ArgumentParser(description="WM4 full-state oracle sweep over N=2..14 matching weekdays and H=1..24h.")
+    parser = ArgumentParser(description="ARM hourly moving-origin sweep with independent drift and initial-state fitting for every N,k.")
     parser.add_argument("--group", choices=("MED", "ALL"), default="MED")
     parser.add_argument("--baselines", nargs="+", choices=BASELINE_NAMES, default=list(BASELINE_NAMES),
                         help="Baseline methods; default all three: statistical_output weekly_average weekly_temperature.")
@@ -573,7 +571,9 @@ def main():
     parser.add_argument("--steps-per-hour", type=int, default=4)
     parser.add_argument("--start-day", default=None)
     parser.add_argument("--end-day", default=None)
-    parser.add_argument("--max-days", type=int, default=0, help="Limit the calendar days evaluated (0=all).")
+    parser.add_argument("--max-days", type=int, default=0, help="Limit calendar dates from the selected start (0=all); all included dates use hourly origins.")
+    parser.add_argument("--max-origins", type=int, default=0, help="Limit hourly prediction origins for a small test run (0=all).")
+    parser.add_argument("--stride-hours", type=int, default=1, help="Moving-origin increment in hours (default 1).")
     parser.add_argument("--progress-every", type=int, default=10)
     parser.add_argument("--output", default=None)
     parser.add_argument("--resume", action="store_true", help="Resume from saved CSVs and matched configuration.json.")
