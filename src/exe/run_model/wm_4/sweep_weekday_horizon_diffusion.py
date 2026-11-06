@@ -141,59 +141,79 @@ def distribution_similarity(error, variance):
 
 
 def summarize_grid(frame, min_days=1, horizons=K_VALUES):
-    """Fit variance on each full in-sample historical collection; assess cumulative hourly profiles."""
-    fitted_parts, evaluations = [], []
+    """Fit a separate [tau², sigma²] on the N historical trajectories truncated to EACH k.
+
+    The deterministic drift and historical initial states are those of the
+    preceding joint-QP sweep. Only the diffusion fitting window changes with k.
+    Each origin's N corresponding historical intervals share one variance fit.
+    """
+    horizons = tuple(int(k) for k in horizons)
+    if not horizons or any(k < 1 or k > 24 for k in horizons): raise ValueError("Horizons must lie in [1,24].")
+    interval_fits, pools, evaluations = [], {}, []
     for (day, baseline, N), group in frame.groupby(["day", "baseline", "training_weekdays"], sort=True):
-        estimated = fit_variance(group)
-        if estimated is None: continue
-        tau2, q, identifiable = estimated
-        part = group.copy()
-        part["observation_variance"] = tau2
-        part["process_variance_rate"] = q
-        part["process_variance"] = q*part["unit_process_variance"]
-        part["estimated_variance"] = np.maximum(tau2+part["process_variance"], 0.0)
-        part["estimated_std"] = np.sqrt(part["estimated_variance"])
-        part["process_identifiable"] = bool(identifiable)
-        fitted_parts.append(part)
-    if not fitted_parts: return pd.DataFrame(), pd.DataFrame()
-    fitted = pd.concat(fitted_parts, ignore_index=True)
-    for (baseline, N), group in fitted.groupby(["baseline", "training_weekdays"], sort=True):
-        n_days = int(group["day"].nunique())
-        if n_days < min_days: continue
         for k in horizons:
             part = group.loc[group["hour"] < k]
             if part.empty: continue
+            estimated = fit_variance(part)
+            if estimated is None: continue
+            tau2, q, identifiable = estimated
             error = part["error"].to_numpy(dtype=float)
-            variance = part["estimated_variance"].to_numpy(dtype=float)
-            observed_rmse = float(np.sqrt(np.mean(error**2)))
-            reported_rmse = float(np.sqrt(np.mean(variance)))
-            hourly = part.groupby("hour", sort=True).agg(
-                error_mse=("error", lambda e: float(np.mean(np.asarray(e, dtype=float)**2))),
-                expected_mse=("estimated_variance", "mean"),
-            )
-            # Unlike the pooled RMSE, the hourly-profile difference is not forced
-            # to zero by the intercept in a two-parameter variance regression.
-            hourly_rmse_difference = float(np.mean(np.abs(
-                np.sqrt(hourly["error_mse"].to_numpy()) -
-                np.sqrt(hourly["expected_mse"].to_numpy()))))
-            similarity = distribution_similarity(error, variance)
-            evaluations.append({
-                "baseline":baseline, "training_weekdays":int(N), "horizon_hours":int(k),
-                "days":n_days, "historical_trajectories":len(part[["day", "historical_day"]].drop_duplicates()),
+            kernel = part["unit_process_variance"].to_numpy(dtype=float)
+            variance = np.maximum(tau2 + q*kernel, 0.0)
+            key = (baseline, int(N), k)
+            pool = pools.setdefault(key, {"errors":[], "variances":[], "hours":[], "days":[],
+                                         "trajectories":[], "tau2":[], "q":[], "identifiable":[]})
+            pool["errors"].append(error)
+            pool["variances"].append(variance)
+            pool["hours"].append(part["hour"].to_numpy(dtype=int))
+            pool["days"].append(pd.Timestamp(day))
+            pool["trajectories"].append(part["historical_day"].nunique())
+            pool["tau2"].append(tau2)
+            pool["q"].append(q)
+            pool["identifiable"].append(identifiable)
+            interval_fits.append({
+                "day":day, "baseline":baseline, "training_weekdays":int(N), "horizon_hours":k,
+                "historical_trajectories":int(part["historical_day"].nunique()),
                 "observations":len(part),
-                "observation_variance_mean":float(part["observation_variance"].mean()),
-                "process_variance_rate_mean":float(part["process_variance_rate"].mean()),
-                "process_identifiable_pct":float(100*part.groupby("day")["process_identifiable"].first().mean()),
-                "reported_rmse":reported_rmse, "observed_rmse":observed_rmse,
-                "rmse_error":reported_rmse-observed_rmse,
-                "rmse_pooled_absolute_error":abs(reported_rmse-observed_rmse),
-                "rmse_absolute_error":hourly_rmse_difference,
-                "distribution_similarity":similarity,
-                "ks_distance":1.0-similarity if np.isfinite(similarity) else np.nan,
-                "coverage_95":float(np.mean(np.abs(error)<=1.959963984540054*np.sqrt(variance))),
-                "demand_bias":float(np.mean(error)),
+                "observation_variance":tau2, "observation_sigma":float(np.sqrt(tau2)),
+                "process_variance_rate":q, "process_sigma":float(np.sqrt(q)),
+                "process_identifiable":bool(identifiable),
+                "observed_rmse":float(np.sqrt(np.mean(error**2))),
+                "estimated_rmse":float(np.sqrt(np.mean(variance))),
             })
-    return pd.DataFrame(evaluations), fitted
+
+    for (baseline, N, k), pool in sorted(pools.items()):
+        n_days = len(set(pool["days"]))
+        if n_days < int(min_days): continue
+        error = np.concatenate(pool["errors"])
+        variance = np.concatenate(pool["variances"])
+        hours = np.concatenate(pool["hours"])
+        counts = np.bincount(hours, minlength=k)
+        valid = counts > 0
+        observed_by_hour = np.sqrt(
+            np.bincount(hours, weights=error**2, minlength=k)[valid]/counts[valid])
+        estimated_by_hour = np.sqrt(
+            np.bincount(hours, weights=variance, minlength=k)[valid]/counts[valid])
+        similarity = distribution_similarity(error, variance)
+        observed_rmse = float(np.sqrt(np.mean(error**2)))
+        reported_rmse = float(np.sqrt(np.mean(variance)))
+        evaluations.append({
+            "baseline":baseline, "training_weekdays":N, "horizon_hours":k,
+            "days":n_days, "historical_trajectories":int(sum(pool["trajectories"])),
+            "observations":len(error),
+            "observation_variance_mean":float(np.mean(pool["tau2"])),
+            "process_variance_rate_mean":float(np.mean(pool["q"])),
+            "process_identifiable_pct":float(100*np.mean(pool["identifiable"])),
+            "reported_rmse":reported_rmse, "observed_rmse":observed_rmse,
+            "rmse_error":reported_rmse-observed_rmse,
+            "rmse_pooled_absolute_error":abs(reported_rmse-observed_rmse),
+            "rmse_absolute_error":float(np.mean(np.abs(observed_by_hour-estimated_by_hour))),
+            "distribution_similarity":similarity,
+            "ks_distance":1.0-similarity if np.isfinite(similarity) else np.nan,
+            "coverage_95":float(np.mean(np.abs(error) <= 1.959963984540054*np.sqrt(variance))),
+            "demand_bias":float(np.mean(error)),
+        })
+    return pd.DataFrame(evaluations), pd.DataFrame(interval_fits)
 
 
 def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=K_VALUES, start_day=START_DAY, end_day=END_DAY):
@@ -250,21 +270,23 @@ def run(args):
     output = Path(args.output) if args.output else OUTPUT/args.group.lower()
     output.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output/"diffusion_grid.csv", index=False)
-    fitted.to_csv(output/"diffusion_fitted_trajectories.csv", index=False)
+    fitted.to_csv(output/"diffusion_interval_parameters.csv", index=False)
+    fitted_trajectories.to_csv(output/"diffusion_fitted_trajectories.csv", index=False)
     plot_grid(summary, output/"diffusion_heatmaps_2x2.png", baselines, backlogs, horizons,
               args.start_day, args.end_day)
     print(f"source={source} | group={args.group} | steps_per_hour={config['steps_per_hour']}")
     print(f"period={args.start_day} to {args.end_day} | matched target fit days={len(matched_days)}")
     print(f"historical trajectory samples={len(fitted)} | evaluated N,k cells={len(summary)}")
     print("In-sample: theta and each historical [F0,R0] are reused from the existing drift QP.")
-    print("Diffusion is calibrated once on each FULL 24h historical fit; no target-day oracle states are used.")
+    print("For each (day,N,k), diffusion is fitted independently from its N historical trajectories over HOURS 0..k-1.")
+    print("Drift theta and historical initial states remain those already estimated by the 24h weekday sweep.")
     print("RMSE heatmaps show mean absolute HOURLY RMSE discrepancy; pooled RMSE discrepancy is also saved.")
     print(f"heatmap={output/'diffusion_heatmaps_2x2.png'}")
     return summary, fitted
 
 
 def main():
-    parser = ArgumentParser(description="Fit ARM constant observation and Brownian variances to saved in-sample historical fitted-state trajectories, then plot RMSE and KS heatmaps.")
+    parser = ArgumentParser(description="Fit ARM observation and Brownian variances separately for each N,k historical interval, then plot in-sample RMSE and KS heatmaps.")
     parser.add_argument("--group", choices=("ALL", "MED"), default="ALL")
     parser.add_argument("--source", default=None, help="Existing sweep output directory with saved fit/states/scores CSVs.")
     parser.add_argument("--baselines", nargs=2, choices=("statistical_output",)+BASELINES, default=list(BASELINES))
