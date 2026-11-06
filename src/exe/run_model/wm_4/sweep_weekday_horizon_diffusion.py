@@ -54,14 +54,16 @@ def unit_process_variance(theta_F, theta_R, steps_per_hour, hour):
 def load_sweep(source, baselines=BASELINES):
     """Read saved drift coefficients and their historical fitted initial states, not oracle states."""
     source = Path(source)
-    fit = read_table(source/COLUMNS["fit"], ["day", "baseline", "training_weekdays"])
-    states = read_table(source/COLUMNS["state"], ["day", "baseline", "training_weekdays", "historical_day"])
+    fit = read_table(source/COLUMNS["fit"], ["day", "baseline", "training_weekdays", "horizon_hours"])
+    states = read_table(source/COLUMNS["state"], ["day", "baseline", "training_weekdays", "horizon_hours", "historical_day"])
     scores = read_table(source/COLUMNS["score"], ["day", "baseline", "training_weekdays", "horizon_hours"])
     if fit.empty or states.empty or scores.empty:
         raise FileNotFoundError("First run sweep_weekday_horizon.py: parameter_estimates.csv, historical_initial_states.csv and oracle_horizon_scores.csv are required.")
     config_path = source/"configuration.json"
     if not config_path.is_file(): raise FileNotFoundError(f"Missing sweep configuration: {config_path}")
     config = json.loads(config_path.read_text(encoding="utf-8"))
+    if "horizon_hours" not in fit or "horizon_hours" not in states:
+        raise ValueError("Saved ARM drift fits are not horizon-specific. Rerun sweep_weekday_horizon.py after the N,k-specific update (without --resume).")
     selected = set(baselines)
     fit = fit[fit["baseline"].isin(selected)].copy()
     states = states[states["baseline"].isin(selected)].copy()
@@ -70,52 +72,51 @@ def load_sweep(source, baselines=BASELINES):
 
 
 def historical_trajectories(frame, fits, states, steps_per_hour):
-    """Rebuild historical full trajectories using theta and [F0,R0] from the original fit.
+    """Replay each original joint-QP fit over its EXACT N historical k-hour intervals.
 
-    The target day is NEVER simulated or used to fit diffusion. Its date indexes
-    the independent historical fit to which these in-sample trajectories belong.
+    Every [day,baseline,N,k] combination has its own fitted drift coefficients,
+    N reconstructed historical initial states, and k-hour fitted baseline.
     """
-    from src.exe.run_model.wm_4.moving_horizon_common import HOURS, window_data
-    from src.exe.run_model.wm_4.sweep_weekday_horizon import baseline_from_history
+    from src.exe.run_model.wm_4.sweep_weekday_horizon import baseline_from_history, interval_window
     from src.tools.impute_hourly import impute_hourly_days
 
-    keys = ["day", "baseline", "training_weekdays"]
     rows = []
-    sample = np.arange(HOURS, dtype=int)*int(steps_per_hour)
     states = states.copy()
     states["historical_day"] = pd.to_datetime(states["historical_day"])
     for fit in fits.itertuples(index=False):
         day = pd.Timestamp(fit.day)
-        baseline_name, N = str(fit.baseline), int(fit.training_weekdays)
+        baseline_name, N, k = str(fit.baseline), int(fit.training_weekdays), int(fit.horizon_hours)
         selection = states.loc[(states["day"] == day) &
                                (states["baseline"] == baseline_name) &
-                               (states["training_weekdays"] == N)].sort_values("historical_day")
+                               (states["training_weekdays"] == N) &
+                               (states["horizon_hours"] == k)].sort_values("historical_day")
         if len(selection) != N:
-            raise ValueError(f"Expected {N} saved historical states for {day} {baseline_name}, found {len(selection)}.")
+            raise ValueError(f"Expected {N} historical states for {day} {baseline_name} N={N} k={k}, found {len(selection)}.")
         history = pd.DatetimeIndex(selection["historical_day"])
         if hasattr(fit, "training_days") and isinstance(fit.training_days, str):
             expected = tuple(pd.to_datetime(fit.training_days.split(";")))
             if tuple(history) != expected:
-                raise ValueError(f"Historical initial states do not match parameter-fit training days: {day} {baseline_name}.")
+                raise ValueError(f"Historical states do not match original k-specific fitting days: {day} {baseline_name} N={N} k={k}.")
         training, _ = impute_hourly_days(frame, days=history, columns=("I", "U", "Temp"), require_days=True)
-        baseline = baseline_from_history(training, history, baseline_name)
+        baseline = baseline_from_history(training, history, baseline_name, k)
         theta = np.array([fit.theta_F, fit.theta_U, fit.theta_R], dtype=float)
+        sample = np.arange(k, dtype=int)*int(steps_per_hour)
         for row in selection.itertuples(index=False):
             historical_day = pd.Timestamp(row.historical_day)
-            model, data, _, observed = window_data(training, historical_day, baseline, steps_per_hour)
+            model, data, _, observed = interval_window(training, historical_day, baseline, steps_per_hour, k)
             initial = np.array([row.historical_F0, row.historical_R0], dtype=float)
             trajectory = model._solve_deterministic(initial, data["U"], data["PE"],
                                                     data["Time"], data["O"], theta)
             predicted = np.asarray(trajectory["I"], dtype=float)[sample]
             kernel = model.process_variance_kernel({"r":theta}, sample).sum(axis=1)
-            if not np.isfinite(predicted).all() or not np.isfinite(kernel).all():
-                raise ValueError(f"Nonfinite historical fitted trajectory: {day} {historical_day}.")
+            if len(observed) != k or not np.isfinite(predicted).all() or not np.isfinite(kernel).all():
+                raise ValueError(f"Invalid {k}-hour historical fitted trajectory for {day} and {historical_day}.")
             rows.extend({
                 "day":day, "historical_day":historical_day, "baseline":baseline_name,
-                "training_weekdays":N, "hour":int(h), "observed":float(obs),
-                "predicted":float(pred), "error":float(obs-pred),
+                "training_weekdays":N, "horizon_hours":k, "hour":int(h),
+                "observed":float(obs), "predicted":float(pred), "error":float(obs-pred),
                 "unit_process_variance":float(K),
-            } for h, obs, pred, K in zip(range(HOURS), observed, predicted, kernel))
+            } for h, obs, pred, K in zip(range(k), observed, predicted, kernel))
     return pd.DataFrame(rows)
 
 
@@ -141,46 +142,43 @@ def distribution_similarity(error, variance):
 
 
 def summarize_grid(frame, min_days=1, horizons=K_VALUES):
-    """Fit a separate [tau², sigma²] on the N historical trajectories truncated to EACH k.
-
-    The deterministic drift and historical initial states are those of the
-    preceding joint-QP sweep. Only the diffusion fitting window changes with k.
-    Each origin's N corresponding historical intervals share one variance fit.
-    """
+    """Fit diffusion on the SAME N independent k-hour trajectories as their drift QP."""
     horizons = tuple(int(k) for k in horizons)
     if not horizons or any(k < 1 or k > 24 for k in horizons): raise ValueError("Horizons must lie in [1,24].")
     interval_fits, pools, evaluations = [], {}, []
-    for (day, baseline, N), group in frame.groupby(["day", "baseline", "training_weekdays"], sort=True):
-        for k in horizons:
-            part = group.loc[group["hour"] < k]
-            if part.empty: continue
-            estimated = fit_variance(part)
-            if estimated is None: continue
-            tau2, q, identifiable = estimated
-            error = part["error"].to_numpy(dtype=float)
-            kernel = part["unit_process_variance"].to_numpy(dtype=float)
-            variance = np.maximum(tau2 + q*kernel, 0.0)
-            key = (baseline, int(N), k)
-            pool = pools.setdefault(key, {"errors":[], "variances":[], "hours":[], "days":[],
-                                         "trajectories":[], "tau2":[], "q":[], "identifiable":[]})
-            pool["errors"].append(error)
-            pool["variances"].append(variance)
-            pool["hours"].append(part["hour"].to_numpy(dtype=int))
-            pool["days"].append(pd.Timestamp(day))
-            pool["trajectories"].append(part["historical_day"].nunique())
-            pool["tau2"].append(tau2)
-            pool["q"].append(q)
-            pool["identifiable"].append(identifiable)
-            interval_fits.append({
-                "day":day, "baseline":baseline, "training_weekdays":int(N), "horizon_hours":k,
-                "historical_trajectories":int(part["historical_day"].nunique()),
-                "observations":len(part),
-                "observation_variance":tau2, "observation_sigma":float(np.sqrt(tau2)),
-                "process_variance_rate":q, "process_sigma":float(np.sqrt(q)),
-                "process_identifiable":bool(identifiable),
-                "observed_rmse":float(np.sqrt(np.mean(error**2))),
-                "estimated_rmse":float(np.sqrt(np.mean(variance))),
-            })
+    frame = frame.loc[frame["horizon_hours"].isin(horizons)].copy()
+    for (day, baseline, N, k), part in frame.groupby(
+            ["day", "baseline", "training_weekdays", "horizon_hours"], sort=True):
+        if part["historical_day"].nunique() != N:
+            raise ValueError(f"Insufficient historical fit trajectories: {day} {baseline} N={N} k={k}")
+        if len(part) != N*k:
+            raise ValueError(f"Expected N*k={N*k} residuals for {day} {baseline} N={N} k={k}, found {len(part)}.")
+        estimated = fit_variance(part)
+        if estimated is None: continue
+        tau2, q, identifiable = estimated
+        error = part["error"].to_numpy(dtype=float)
+        kernel = part["unit_process_variance"].to_numpy(dtype=float)
+        variance = np.maximum(tau2 + q*kernel, 0.0)
+        key = (baseline, int(N), int(k))
+        pool = pools.setdefault(key, {"errors":[], "variances":[], "hours":[], "days":[],
+                                     "trajectories":[], "tau2":[], "q":[], "identifiable":[]})
+        pool["errors"].append(error)
+        pool["variances"].append(variance)
+        pool["hours"].append(part["hour"].to_numpy(dtype=int))
+        pool["days"].append(pd.Timestamp(day))
+        pool["trajectories"].append(int(part["historical_day"].nunique()))
+        pool["tau2"].append(tau2)
+        pool["q"].append(q)
+        pool["identifiable"].append(identifiable)
+        interval_fits.append({
+            "day":day, "baseline":baseline, "training_weekdays":int(N), "horizon_hours":int(k),
+            "historical_trajectories":int(part["historical_day"].nunique()),
+            "observations":len(part), "observation_variance":tau2,
+            "observation_sigma":float(np.sqrt(tau2)), "process_variance_rate":q,
+            "process_sigma":float(np.sqrt(q)), "process_identifiable":bool(identifiable),
+            "observed_rmse":float(np.sqrt(np.mean(error**2))),
+            "estimated_rmse":float(np.sqrt(np.mean(variance))),
+        })
 
     for (baseline, N, k), pool in sorted(pools.items()):
         n_days = len(set(pool["days"]))
@@ -189,11 +187,9 @@ def summarize_grid(frame, min_days=1, horizons=K_VALUES):
         variance = np.concatenate(pool["variances"])
         hours = np.concatenate(pool["hours"])
         counts = np.bincount(hours, minlength=k)
-        valid = counts > 0
-        observed_by_hour = np.sqrt(
-            np.bincount(hours, weights=error**2, minlength=k)[valid]/counts[valid])
-        estimated_by_hour = np.sqrt(
-            np.bincount(hours, weights=variance, minlength=k)[valid]/counts[valid])
+        if np.any(counts == 0): raise ValueError(f"Missing hourly residual at N={N}, k={k}.")
+        observed_by_hour = np.sqrt(np.bincount(hours, weights=error**2, minlength=k)/counts)
+        estimated_by_hour = np.sqrt(np.bincount(hours, weights=variance, minlength=k)/counts)
         similarity = distribution_similarity(error, variance)
         observed_rmse = float(np.sqrt(np.mean(error**2)))
         reported_rmse = float(np.sqrt(np.mean(variance)))
@@ -261,7 +257,7 @@ def run(args):
     horizons = tuple(range(args.min_horizon, args.max_horizon+1))
     scores = scores.loc[scores["training_weekdays"].isin(backlogs) & scores["horizon_hours"].isin(horizons)]
     _, matched_days = same_period(scores, args.start_day, args.end_day, baselines, backlogs, horizons)
-    fits = fits.loc[fits["day"].isin(matched_days) & fits["training_weekdays"].isin(backlogs)]
+    fits = fits.loc[fits["day"].isin(matched_days) & fits["training_weekdays"].isin(backlogs) & fits["horizon_hours"].isin(horizons)]
     if fits.empty: raise RuntimeError("No complete saved historical parameter fits available.")
     print(f"[ARM diffusion] Replaying {len(fits)} historical fitted parameter sets.", flush=True)
     fitted_trajectories = historical_trajectories(group_frame(args.group), fits, states, int(config["steps_per_hour"]))
@@ -278,8 +274,7 @@ def run(args):
     print(f"period={args.start_day} to {args.end_day} | matched target fit days={len(matched_days)}")
     print(f"historical trajectory samples={len(fitted)} | evaluated N,k cells={len(summary)}")
     print("In-sample: theta and each historical [F0,R0] are reused from the existing drift QP.")
-    print("For each (day,N,k), diffusion is fitted independently from its N historical trajectories over HOURS 0..k-1.")
-    print("Drift theta and historical initial states remain those already estimated by the 24h weekday sweep.")
+    print("For each (day,N,k), drift, historical initial states, and diffusion use the SAME N matching k-hour intervals.")
     print("RMSE heatmaps show mean absolute HOURLY RMSE discrepancy; pooled RMSE discrepancy is also saved.")
     print(f"heatmap={output/'diffusion_heatmaps_2x2.png'}")
     return summary, fitted
