@@ -15,8 +15,9 @@ class sweep_weekday_horizon_validation:
             raise ValueError("Weekday training counts must satisfy 2 <= min <= max <= 14.")
         if not 1 <= args.min_horizon <= args.max_horizon <= 24:
             raise ValueError("Forecast horizons must satisfy 1 <= min <= max <= 24.")
-        if args.steps_per_hour < 2 or args.max_days < 0 or args.progress_every < 1:
-            raise ValueError("steps_per_hour >=2, max_days >=0 and progress_every >=1 are required.")
+        if (args.steps_per_hour < 2 or args.max_days < 0 or args.progress_every < 1 or
+                getattr(args, "max_origins", 0) < 0 or getattr(args, "stride_hours", 1) < 1):
+            raise ValueError("steps_per_hour >=2, max_days/max_origins >=0, stride_hours >=1 and progress_every >=1 are required.")
         for label in ("start_day", "end_day"):
             raw = getattr(args, label)
             if raw is None: continue
@@ -27,19 +28,21 @@ class sweep_weekday_horizon_validation:
             raise ValueError("start_day cannot follow end_day.")
 
     @staticmethod
-    def training_data(frame, days):
+    def training_data(frame, days, horizon_hours=24):
         if not isinstance(frame, pd.DataFrame) or not {"I", "U", "Temp"} <= set(frame.columns):
             raise ValueError("Input frame needs I, U and Temp columns.")
         if not isinstance(days, (list, tuple)) or not 2 <= len(days) <= 14:
             raise ValueError("Training requires between 2 and 14 preceding matching weekdays.")
         if len(set(pd.Timestamp(x) for x in days)) != len(days):
             raise ValueError("Training dates must be distinct.")
+        horizon_hours = int(horizon_hours)
+        if not 1 <= horizon_hours <= 24: raise ValueError("Historical fitting horizon must lie in [1,24].")
+        origins = pd.DatetimeIndex(days)
+        if len(set((day.hour, day.minute, day.second) for day in origins)) != 1:
+            raise ValueError("Corresponding historical intervals must have matching hours.")
         blocks = []
-        for day in days:
-            day = pd.Timestamp(day)
-            if day != day.normalize():
-                raise ValueError("Training days must begin at midnight.")
-            index = pd.date_range(day, periods=24, freq="h")
+        for day in origins:
+            index = pd.date_range(day, periods=horizon_hours, freq="h")
             sample = frame.reindex(index)[["I", "U", "Temp"]]
             if sample.isna().any().any():
                 raise ValueError(f"Missing consumption, price or temperature on {day:%Y-%m-%d}.")
@@ -54,8 +57,8 @@ class sweep_weekday_horizon_validation:
         observed = np.asarray(observed, dtype=float).reshape(-1)
         base = np.asarray(base, dtype=float).reshape(-1)
         sensitivity = np.asarray(sensitivity, dtype=float).reshape(-1)
-        if observed.shape != (24,) or base.shape != (24,) or sensitivity.shape != (24,):
-            raise ValueError("Oracle requires 24 hourly observations and matching predictions/sensitivities.")
+        if not 1 <= len(observed) <= 24 or base.shape != observed.shape or sensitivity.shape != observed.shape:
+            raise ValueError("Oracle requires 1-24 aligned hourly observations and predictions/sensitivities.")
         if not np.isfinite(np.r_[observed, base, sensitivity]).all():
             raise ValueError("Oracle inputs must be finite.")
         if not 1 <= int(min_horizon) <= int(max_horizon) <= 24:
@@ -67,6 +70,8 @@ class sweep_weekday_horizon_validation:
         day = pd.Timestamp(day)
         if len(days) < 2 or len(days) > 14 or any(pd.Timestamp(d) >= day for d in days):
             raise ValueError("All training weekdays must precede the forecast origin.")
-        if any(pd.Timestamp(d).dayofweek != day.dayofweek for d in days):
-            raise ValueError("Historical training dates must match the forecast weekday.")
+        if any((pd.Timestamp(d).dayofweek != day.dayofweek or
+                pd.Timestamp(d).hour != day.hour or pd.Timestamp(d).minute != day.minute or
+                pd.Timestamp(d).second != day.second) for d in days):
+            raise ValueError("Historical training origins must match the forecast weekday and hour.")
         return days
