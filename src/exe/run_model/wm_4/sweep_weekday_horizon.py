@@ -102,7 +102,8 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
                                                 forecast["Time"], forecast["O"], theta)
         base = np.asarray(base_state["I"], dtype=float)[sample_idx]
         S = np.asarray(model.sensitivity({"r":theta})["input"], dtype=float)[sample_idx, :]
-        observed, base, _ = validation.oracle(observed, base, S[:, 0], horizon, horizon)
+        if not np.isfinite(np.r_[observed, base, S.reshape(-1)]).all():
+            raise ValueError("Oracle observations and fitted-state sensitivities must be finite.")
         baseline_hourly = np.asarray(forecast["O"], dtype=float)[sample_idx]
         if len(observed) != horizon: raise ValueError("Prediction observations and horizon do not agree.")
 
