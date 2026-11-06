@@ -295,7 +295,8 @@ def summarise(scores):
         base = float(np.sqrt(np.mean(data["baseline_mse"])))
         rmse = data["rmse"].to_numpy(dtype=float)
         row = {
-            "baseline": name, "training_weekdays": int(n), "horizon_hours": int(horizon), "days": len(data),
+            "baseline": name, "training_weekdays": int(n), "horizon_hours": int(horizon),
+            "days": len(data), "origins": len(data),
             "aggregate_rmse": pooled, "baseline_rmse": base, "mean_daily_rmse": float(np.mean(rmse)),
             "median_daily_rmse": float(np.median(rmse)), "mean_bias": float(data["bias"].mean()),
             "baseline_gain": base-pooled, "baseline_improvement_pct": 100*(base-pooled)/base if base > 0 else np.nan,
@@ -308,18 +309,25 @@ def summarise(scores):
 
 
 def matched_cohort(tables, weekdays, horizons, baselines=None):
+    """Keep only exact HOURLY origins with a complete drift and oracle N,k grid."""
     fits, scores = tables["fit"], tables["score"]
     if fits.empty or scores.empty: return pd.DatetimeIndex([])
     if "baseline" not in fits: fits = fits.assign(baseline="corresponding_weekday")
     if "baseline" not in scores: scores = scores.assign(baseline="corresponding_weekday")
     if baselines is None: baselines = tuple(fits["baseline"].unique())
-    counts = scores.groupby(["day", "baseline", "training_weekdays"])["horizon_hours"].nunique()
-    complete = {(day, name, int(n)) for (day, name, n), size in counts.items() if size == horizons}
-    eligible = fits.loc[fits.apply(lambda r: (r["day"], r["baseline"], int(r["training_weekdays"])) in complete
-                             and r["baseline"] in baselines and int(r["training_weekdays"]) in weekdays, axis=1)]
-    by_day = eligible.groupby("day").apply(lambda group:
-        len(set(zip(group["baseline"], group["training_weekdays"]))))
-    return pd.DatetimeIndex(by_day.index[by_day == len(weekdays)*len(baselines)]).sort_values()
+    key = ["day", "baseline", "training_weekdays"]
+    scores_count = scores.groupby(key)["horizon_hours"].nunique()
+    # Old single-24-hour drift fits are not valid for the hourly N,k methodology.
+    if "horizon_hours" not in fits: return pd.DatetimeIndex([])
+    fit_count = fits.groupby(key)["horizon_hours"].nunique()
+    complete = {(origin, name, int(n)) for (origin, name, n), size in scores_count.items()
+                if size == horizons and fit_count.get((origin, name, n), 0) == horizons
+                and name in baselines and int(n) in weekdays}
+    eligible = fits.loc[fits.apply(
+        lambda r: (r["day"], r["baseline"], int(r["training_weekdays"])) in complete, axis=1)]
+    unique = eligible[["day", "baseline", "training_weekdays"]].drop_duplicates()
+    counts = unique.groupby("day").size()
+    return pd.DatetimeIndex(counts.index[counts == len(weekdays)*len(baselines)]).sort_values()
 
 
 def write_outputs(tables, output, weekdays, horizons, baselines=BASELINE_NAMES):
@@ -433,15 +441,15 @@ def save_top_three_plots(scores, top, common, output):
 
 def print_report(top, ranking, common, tables, basis, output):
     fits, scores = tables["fit"], tables["score"]
-    print("\nWM4 full-state [F0,R0] oracle historical-weekday / prediction-horizon sweep")
+    print("\nARM hourly moving-origin historical-weekday / prediction-horizon sweep")
     print(f"completed parameter fits: {len(fits)} | horizon scores: {len(scores)} | failed/skipped: {len(tables['fail'])}")
-    print(f"matched forecast days across ALL baseline methods and weekday counts: {len(common)}")
+    print(f"matched hourly forecast origins across ALL baselines, N and k: {len(common)}")
     print(f"evaluated baselines: {', '.join(sorted(fits['baseline'].unique()))}")
     if "imputed_training_hours" in fits:
         print(f"historical missing-hour imputations: {int(fits['imputed_training_hours'].sum())} "
               "(summed across overlapping training windows; whole missing days remain excluded)")
     if basis != "matched":
-        print("WARNING: no fully matched cohort; ranking uses differing available dates per combination.")
+        print("WARNING: no fully matched hourly-origin cohort; ranking uses differing origins per combination.")
     print("\nTHREE BEST COMBINATIONS (ranked by LOWEST ABSOLUTE aggregate full-state oracle RMSE):")
     print("Baseline improvement is reported separately and NEVER used to determine ranking.")
     fields = ["rank", "baseline", "training_weekdays", "horizon_hours", "days", "aggregate_rmse",
