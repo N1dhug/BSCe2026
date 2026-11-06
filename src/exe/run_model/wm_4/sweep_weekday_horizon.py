@@ -23,7 +23,7 @@ BASELINES = {"statistical_output": statistical_output, "weekly_average": weekly_
 BASELINE_NAMES = tuple(BASELINES)
 PERCENTILES = (20, 40, 50, 60, 80)
 RANKING_METRIC = "aggregate_rmse"  # Absolute pooled prediction error; never baseline-relative improvement.
-EXPERIMENT_VERSION = "4_baseline_matched_training_per_horizon_joint_drift_oracle_v5"
+EXPERIMENT_VERSION = "5_hourly_origin_matched_Nk_joint_drift_oracle_v1"
 COLUMNS = {
     "fit": "parameter_estimates.csv",
     "score": "oracle_horizon_scores.csv",
@@ -107,10 +107,46 @@ def interval_window(frame, start, baseline, steps_per_hour, horizon_hours):
     return model, data, fine_index, observed
 
 
+def historical_calendar_days(history, horizon_hours):
+    """Calendar dates touched by the corresponding historical k-hour intervals."""
+    k = int(horizon_hours)
+    if not 1 <= k <= HOURS: raise ValueError("Historical horizon must lie in [1,24].")
+    points = k+1 if k < HOURS else HOURS
+    return pd.DatetimeIndex([
+        timestamp.normalize() for origin in history
+        for timestamp in pd.date_range(pd.Timestamp(origin), periods=points, freq="h")
+    ]).unique().sort_values()
+
+
+def hourly_origins(frame, *, max_weekdays, max_horizon, start_day=None, end_day=None,
+                   max_days=0, max_origins=0, stride_hours=1):
+    """Every eligible hourly origin, with complete data for all evaluated horizons."""
+    stride_hours, max_days, max_origins = int(stride_hours), int(max_days), int(max_origins)
+    if stride_hours < 1 or max_days < 0 or max_origins < 0:
+        raise ValueError("stride_hours must be positive; max_days and max_origins must be nonnegative.")
+    if not 1 <= int(max_horizon) <= HOURS or int(max_weekdays) < 2:
+        raise ValueError("Invalid maximum horizon or historical weekday backlog.")
+    earliest = max(frame.index.min().normalize(), pd.Timestamp("2022-01-01"))
+    latest = min(frame.index.max().floor("h"), pd.Timestamp("2022-10-31 23:00"))
+    # An endpoint observation at hour k is needed for fitting when k<24.
+    # At k=24 the 24 available observations end at hour 23.
+    forward = int(max_horizon) if int(max_horizon) < HOURS else HOURS-1
+    first = earliest+pd.Timedelta(weeks=int(max_weekdays))
+    last = latest-pd.Timedelta(hours=forward)
+    if start_day is not None: first = max(first, pd.Timestamp(start_day))
+    if end_day is not None: last = min(last, pd.Timestamp(end_day)+pd.Timedelta(hours=23))
+    if max_days: last = min(last, first.normalize()+pd.Timedelta(days=max_days-1, hours=23))
+    if first > last: raise ValueError("No hourly prediction origins have sufficient history and a complete target horizon.")
+    origins = pd.date_range(first, last, freq=f"{stride_hours}h")
+    return origins[:max_origins] if max_origins else origins
+
+
 def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, max_horizon,
                            baseline_name="weekly_average"):
+    day = pd.Timestamp(day)  # Preserve the hourly origin, never round to midnight.
     history = validation.history(day, historical_weekdays(day, n_weekdays))
-    training, imputation = impute_hourly_days(frame, days=history,
+    historical_dates = historical_calendar_days(history, max_horizon)
+    training, imputation = impute_hourly_days(frame, days=historical_dates,
                                                columns=("I", "U", "Temp"), require_days=True)
     fits, scores, components, states = [], [], [], []
     for horizon in range(min_horizon, max_horizon+1):
