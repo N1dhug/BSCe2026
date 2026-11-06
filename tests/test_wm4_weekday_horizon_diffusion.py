@@ -8,7 +8,7 @@ import pandas as pd
 
 from src.exe.run_model.wm_4.sweep_weekday_horizon import COLUMNS, EXPERIMENT_VERSION, baseline_from_history, interval_window
 from src.exe.run_model.wm_4.sweep_weekday_horizon_diffusion import (
-    fit_variance, load_sweep, plot_grid, same_period, summarize_grid, unit_process_variance,
+    fit_variance, historical_trajectories, load_sweep, plot_grid, same_period, summarize_grid, unit_process_variance,
 )
 
 
@@ -18,6 +18,34 @@ class wm4_weekday_diffusion_tests(unittest.TestCase):
         self.assertAlmostEqual(K[0], 0.0)
         self.assertTrue(np.isfinite(K).all())
         self.assertTrue(all(K[i+1] > K[i] for i in range(4)))
+
+    def test_hourly_historical_replay_uses_matching_cross_midnight_N_k_fit(self):
+        origin = pd.Timestamp("2022-03-12 21:00")
+        history = pd.to_datetime(["2022-02-26 21:00", "2022-03-05 21:00"])
+        index = pd.date_range("2022-01-01", periods=24*90, freq="h")
+        hours = index.hour.to_numpy(dtype=float)
+        frame = pd.DataFrame({"I":0.5+0.05*np.sin(2*np.pi*hours/24),
+                              "U":np.zeros(len(index)),
+                              "Temp":np.full(len(index), 12.0)}, index=index)
+        fit = pd.DataFrame([{
+            "day":origin, "baseline":"weekly_average", "training_weekdays":2,
+            "horizon_hours":6, "training_days":";".join(str(ts) for ts in history),
+            "theta_F":-1.0, "theta_U":0.0, "theta_R":-1.0,
+        }])
+        states = pd.DataFrame([{
+            "day":origin, "baseline":"weekly_average", "training_weekdays":2,
+            "horizon_hours":6, "historical_day":past,
+            "historical_F0":0.0, "historical_R0":0.0,
+        } for past in history])
+        observations = historical_trajectories(frame, fit, states, 4)
+        self.assertEqual(len(observations), 12)
+        self.assertEqual(observations["historical_day"].nunique(), 2)
+        self.assertEqual(set(observations["hour"]), set(range(6)))
+        self.assertTrue((observations["day"] == origin).all())
+        self.assertTrue((observations["horizon_hours"] == 6).all())
+        self.assertTrue((observations["historical_day"].dt.hour == 21).all())
+        self.assertTrue(np.isfinite(observations["error"].to_numpy()).all())
+        self.assertTrue((observations["fitted_theta_F"] == -1.0).all())
 
     def test_nonnegative_variance_recovery(self):
         rng = np.random.default_rng(123)
