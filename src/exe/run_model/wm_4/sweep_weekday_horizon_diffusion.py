@@ -9,7 +9,7 @@ import pandas as pd
 from scipy.optimize import nnls
 from scipy.stats import kstest
 
-from src.exe.run_model.wm_4.sweep_weekday_horizon import OUTPUT as SWEEP_OUTPUT, COLUMNS, read_table
+from src.exe.run_model.wm_4.sweep_weekday_horizon import OUTPUT as SWEEP_OUTPUT, COLUMNS, EXPERIMENT_VERSION, read_table
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -54,16 +54,19 @@ def unit_process_variance(theta_F, theta_R, steps_per_hour, hour):
 def load_sweep(source, baselines=BASELINES):
     """Read saved drift coefficients and their historical fitted initial states, not oracle states."""
     source = Path(source)
-    fit = read_table(source/COLUMNS["fit"], ["day", "baseline", "training_weekdays", "horizon_hours"])
-    states = read_table(source/COLUMNS["state"], ["day", "baseline", "training_weekdays", "horizon_hours", "historical_day"])
-    scores = read_table(source/COLUMNS["score"], ["day", "baseline", "training_weekdays", "horizon_hours"])
+    fit = read_table(source/COLUMNS["fit"], [])
+    states = read_table(source/COLUMNS["state"], [])
+    scores = read_table(source/COLUMNS["score"], [])
     if fit.empty or states.empty or scores.empty:
         raise FileNotFoundError("First run sweep_weekday_horizon.py: parameter_estimates.csv, historical_initial_states.csv and oracle_horizon_scores.csv are required.")
     config_path = source/"configuration.json"
     if not config_path.is_file(): raise FileNotFoundError(f"Missing sweep configuration: {config_path}")
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    if "horizon_hours" not in fit or "horizon_hours" not in states:
-        raise ValueError("Saved ARM drift fits are not horizon-specific. Rerun sweep_weekday_horizon.py after the N,k-specific update (without --resume).")
+    if config.get("version") != EXPERIMENT_VERSION or "horizon_hours" not in fit or "horizon_hours" not in states:
+        raise ValueError("Saved ARM drift fit is from an older sweep or is not N,k-specific. Rerun sweep_weekday_horizon.py without --resume before diffusion evaluation.")
+    fit = fit.drop_duplicates(subset=["day", "baseline", "training_weekdays", "horizon_hours"], keep="last")
+    states = states.drop_duplicates(subset=["day", "baseline", "training_weekdays", "horizon_hours", "historical_day"], keep="last")
+    scores = scores.drop_duplicates(subset=["day", "baseline", "training_weekdays", "horizon_hours"], keep="last")
     selected = set(baselines)
     fit = fit[fit["baseline"].isin(selected)].copy()
     states = states[states["baseline"].isin(selected)].copy()
