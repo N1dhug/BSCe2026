@@ -63,7 +63,7 @@ def baseline_from_history(frame, history, name, horizon_hours=HOURS):
     if train[["I", "Temp"]].isna().any().any():
         raise ValueError("All selected historical baseline samples must be complete.")
     return BASELINES[name](min_samples=max(2, min(48, len(train)))).fit(
-        train, max(history)+pd.Timedelta(days=1))
+        train, max(history)+pd.Timedelta(days=1), exact_historical=True)
 
 
 def interval_window(frame, start, baseline, steps_per_hour, horizon_hours):
