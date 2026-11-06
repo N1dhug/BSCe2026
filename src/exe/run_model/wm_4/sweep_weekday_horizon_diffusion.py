@@ -117,6 +117,8 @@ def historical_trajectories(frame, fits, states, steps_per_hour):
             rows.extend({
                 "day":day, "historical_day":historical_day, "baseline":baseline_name,
                 "training_weekdays":N, "horizon_hours":k, "hour":int(h),
+                "fitted_theta_F":float(theta[0]), "fitted_theta_U":float(theta[1]), "fitted_theta_R":float(theta[2]),
+                "fitted_initial_F0":float(initial[0]), "fitted_initial_R0":float(initial[1]),
                 "observed":float(obs), "predicted":float(pred), "error":float(obs-pred),
                 "unit_process_variance":float(K),
             } for h, obs, pred, K in zip(range(k), observed, predicted, kernel))
@@ -261,7 +263,9 @@ def run(args):
     scores = scores.loc[scores["training_weekdays"].isin(backlogs) & scores["horizon_hours"].isin(horizons)]
     _, matched_days = same_period(scores, args.start_day, args.end_day, baselines, backlogs, horizons)
     fits = fits.loc[fits["day"].isin(matched_days) & fits["training_weekdays"].isin(backlogs) & fits["horizon_hours"].isin(horizons)]
-    if fits.empty: raise RuntimeError("No complete saved historical parameter fits available.")
+    required = len(matched_days)*len(baselines)*len(backlogs)*len(horizons)
+    if len(fits) != required:
+        raise ValueError(f"Missing horizon-specific ARM drift estimates: expected {required} distinct [day,baseline,N,k] fits, got {len(fits)}. Rerun the updated fitting sweep.")
     print(f"[ARM diffusion] Replaying {len(fits)} historical fitted parameter sets.", flush=True)
     fitted_trajectories = historical_trajectories(group_frame(args.group), fits, states, int(config["steps_per_hour"]))
     summary, fitted = summarize_grid(fitted_trajectories, args.min_days, horizons)
@@ -276,7 +280,7 @@ def run(args):
     print(f"source={source} | group={args.group} | steps_per_hour={config['steps_per_hour']}")
     print(f"period={args.start_day} to {args.end_day} | matched target fit days={len(matched_days)}")
     print(f"historical trajectory samples={len(fitted)} | evaluated N,k cells={len(summary)}")
-    print("In-sample: theta and each historical [F0,R0] are reused from the existing drift QP.")
+    print("In-sample: each [day,baseline,N,k] reuses its own theta and N historical [F0,R0] values.")
     print("For each (day,N,k), drift, historical initial states, and diffusion use the SAME N matching k-hour intervals.")
     print("RMSE heatmaps show mean absolute HOURLY RMSE discrepancy; pooled RMSE discrepancy is also saved.")
     print(f"heatmap={output/'diffusion_heatmaps_2x2.png'}")
