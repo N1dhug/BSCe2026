@@ -134,8 +134,7 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
 
         origins = pd.DatetimeIndex(history)
         temps = training.reindex(origins)["Temp"].to_numpy(dtype=float)
-        profiles = validation.training_data(training, history)
-        history_R0 = profiles[:, 0]-baseline.predict(origins, temps)
+        history_R0 = training.reindex(origins)["I"].to_numpy(dtype=float)-baseline.predict(origins, temps)
         R0 = float(np.median(history_R0))
 
         coeffs = {"theta_F":float(theta[0]), "theta_R":float(theta[2]), "theta_U":float(theta[1])}
@@ -164,12 +163,9 @@ def evaluate_configuration(frame, day, n_weekdays, steps_per_hour, min_horizon, 
             "training_F0_mean":float(np.mean(fit["init_cond"][:, 0])),
             "training_F0_std":float(np.std(fit["init_cond"][:, 0])),
         }
-        # Keep fixed CSV columns across different k values.
-        day_index = pd.date_range(day, periods=HOURS, freq="h")
-        temperature = frame.reindex(day_index)["Temp"].to_numpy(dtype=float)
-        baseline_all = baseline.predict(day_index, temperature)
-        for hour, value in enumerate(baseline_all):
-            fit_row[f"baseline_hour_{hour:02d}"] = float(value)
+        # Preserve a fixed CSV schema without evaluating beyond the fitted horizon.
+        for hour in range(HOURS):
+            fit_row[f"baseline_hour_{hour:02d}"] = float(baseline_hourly[hour]) if hour < horizon else np.nan
         fits.append(fit_row)
 
         states.extend({
