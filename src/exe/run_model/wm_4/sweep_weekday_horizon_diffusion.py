@@ -178,7 +178,7 @@ def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=
         fig.colorbar(im, ax=axes[row, :], label=label, shrink=0.94, pad=0.012)
     start, end = pd.Timestamp(start_day), pd.Timestamp(end_day)
     date_label = f"{start.month}/{start.day}-{end.month}/{end.day}/{end.year}"
-    fig.suptitle(f"WM4 constant demand error + Brownian diffusion | {date_label} | in-sample")
+    fig.suptitle(f"ARM constant demand error + Brownian diffusion | {date_label} | in-sample")
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=220, bbox_inches="tight")
     plt.close(fig)
