@@ -154,7 +154,7 @@ def summarize_grid(frame, min_days=1):
 def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=K_VALUES, start_day=START_DAY, end_day=END_DAY):
     fig, axes = plt.subplots(2, 2, figsize=(19, 10), sharex=True, sharey=True, constrained_layout=True)
     for row, (metric, label) in enumerate((
-            ("reported_rmse", "Predicted demand RMSE (normalized demand)"),
+            ("rmse_absolute_error", "Absolute RMSE difference (normalized demand; 0 is ideal)"),
             ("distribution_similarity", "Similarity to Gaussian error law (1 - KS)"))):
         grids = []
         for name in baselines:
@@ -165,12 +165,13 @@ def plot_grid(summary, output, baselines=BASELINES, N_values=N_VALUES, k_values=
         finite = np.concatenate([g[np.isfinite(g)] for g in grids])
         vmin, vmax = (float(finite.min()), float(finite.max())) if finite.size else (0.0, 1.0)
         if metric == "distribution_similarity": vmin, vmax = 0.0, 1.0
+        else: vmin = 0.0
         if vmin >= vmax: vmax = vmin+1e-10
         for col, (name, grid) in enumerate(zip(baselines, grids)):
             ax = axes[row, col]
             im = ax.imshow(np.ma.masked_invalid(grid), origin="lower", aspect="auto",
                            interpolation="nearest", vmin=vmin, vmax=vmax, cmap="viridis")
-            ax.set_title(f"{'Reported RMSE' if row == 0 else 'Distribution similarity'} | {name.replace('_', ' ')}")
+            ax.set_title(f"{'Absolute RMSE difference' if row == 0 else 'Distribution similarity'} | {name.replace('_', ' ')}")
             ax.set_xticks(np.arange(len(k_values)), labels=k_values, fontsize=8)
             ax.set_yticks(np.arange(len(N_values)), labels=N_values)
             if row == 1: ax.set_xlabel("Prediction horizon k (hours scored)")
