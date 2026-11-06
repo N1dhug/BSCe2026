@@ -191,8 +191,8 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
 
     def test_pooled_ranking_uses_mse_and_requires_matched_days(self):
         days = pd.to_datetime(["2022-03-12", "2022-03-13", "2022-03-14"])
-        fits = pd.DataFrame([{"day": day, "training_weekdays": n}
-                             for day in days[:2] for n in (2, 3)])
+        fits = pd.DataFrame([{"day": day, "training_weekdays": n, "horizon_hours": h}
+                             for day in days[:2] for n in (2, 3) for h in (6, 7)])
         scores = pd.DataFrame([{"day": day, "training_weekdays": n, "horizon_hours": h,
                                 "rmse": float(i+1), "mse": float((i+1)**2),
                                 "baseline_rmse": 3.0, "baseline_mse": 9.0, "bias": 0.0}
@@ -200,6 +200,11 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         tables = {"fit": fits, "score": scores}
         cohort = matched_cohort(tables, (2, 3), 2)
         self.assertEqual(list(cohort), list(days[:2]))
+        incomplete_fit = fits.loc[~((fits["day"] == days[0]) &
+                                    (fits["training_weekdays"] == 3) &
+                                    (fits["horizon_hours"] == 7))]
+        self.assertEqual(list(matched_cohort({"fit": incomplete_fit, "score": scores},
+                                              (2, 3), 2)), [days[1]])
         ranking = summarise(scores)
         self.assertAlmostEqual(ranking.iloc[0]["aggregate_rmse"], np.sqrt(2.5))
         missing = scores.drop(scores[(scores["day"] == days[0]) &
@@ -327,8 +332,8 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         day = pd.Timestamp("2022-03-12")
         baselines = BASELINE_NAMES
         ns = (2, 3)
-        fit = pd.DataFrame([{"day": day, "baseline": b, "training_weekdays": n}
-                            for b in baselines for n in ns])
+        fit = pd.DataFrame([{"day": day, "baseline": b, "training_weekdays": n, "horizon_hours": h}
+                            for b in baselines for n in ns for h in (6, 7)])
         rows = []
         for b in baselines:
             for n in ns:
