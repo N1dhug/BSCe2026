@@ -80,14 +80,21 @@ class statistical_output:
         if self.feature_mean is None or self.feature_scale is None: raise RuntimeError("statistical_output must be fitted before prediction.")
         return (X - self.feature_mean) / self.feature_scale
 
-    def fit(self, frame, end):
+    def fit(self, frame, end, *, exact_historical=False):
         if not isinstance(frame, pd.DataFrame): raise TypeError("frame must be a pandas DataFrame.")
         missing = [name for name in ("I", "Temp") if name not in frame.columns]
         if missing: raise ValueError("frame is missing required columns: " + ", ".join(missing) + ".")
         end = pd.Timestamp(end)
         source = frame.loc[frame.index < end, ["I", "Temp"]]
-        train, self.imputation = impute_hourly_days(source, columns=("I", "Temp"))
-        train = train.loc[train.index < end].copy()  # Never create training samples after the cutoff.
+        if exact_historical:
+            train = source.copy()
+            if not np.isfinite(train.to_numpy(dtype=float)).all():
+                raise ValueError("Exact historical baseline intervals must contain only finite observations.")
+            self.imputation = {"imputed_hourly_slots":0, "included_days":train.index.normalize().nunique(),
+                               "method":"exact_selected_historical_hours"}
+        else:
+            train, self.imputation = impute_hourly_days(source, columns=("I", "Temp"))
+            train = train.loc[train.index < end].copy()  # Never create training samples after the cutoff.
         if len(train) < self.min_samples: raise ValueError(f"At least {self.min_samples} historical I/temperature observations are required to fit O.")
 
         X_raw = self._features(train.index, train["Temp"].to_numpy(dtype=float))
@@ -179,7 +186,7 @@ class weekly_average:
         fallback = hour_means[np.arange(168) % 24]
         return np.divide(sums, counts, out=fallback.copy(), where=counts > 0)
 
-    def _training(self, frame, end):
+    def _training(self, frame, end, *, exact_historical=False):
         if not isinstance(frame, pd.DataFrame): raise TypeError("frame must be a pandas DataFrame.")
         missing = [name for name in ("I", "Temp") if name not in frame.columns]
         if missing: raise ValueError("frame is missing required columns: " + ", ".join(missing) + ".")
@@ -187,8 +194,15 @@ class weekly_average:
         end = pd.Timestamp(end)
         if pd.isna(end): raise ValueError("end must be a valid timestamp.")
         source = frame.loc[frame.index < end, ["I", "Temp"]]
-        train, self.imputation = impute_hourly_days(source, columns=("I", "Temp"))
-        train = train.loc[train.index < end].copy()  # Never create training samples after the cutoff.
+        if exact_historical:
+            train = source.copy()
+            if not np.isfinite(train.to_numpy(dtype=float)).all():
+                raise ValueError("Exact historical baseline intervals must contain only finite observations.")
+            self.imputation = {"imputed_hourly_slots":0, "included_days":train.index.normalize().nunique(),
+                               "method":"exact_selected_historical_hours"}
+        else:
+            train, self.imputation = impute_hourly_days(source, columns=("I", "Temp"))
+            train = train.loc[train.index < end].copy()  # Never create training samples after the cutoff.
         if len(train) < self.min_samples: raise ValueError(f"At least {self.min_samples} historical I/temperature observations are required to fit O.")
         if not np.all(np.isfinite(train[["I", "Temp"]].to_numpy(dtype=float))): raise ValueError("Training data must be finite.")
         return train
@@ -207,8 +221,8 @@ class weekly_average:
         }
         return self
 
-    def fit(self, frame, end):
-        train = self._training(frame, end)
+    def fit(self, frame, end, *, exact_historical=False):
+        train = self._training(frame, end, exact_historical=exact_historical)
         groups = self._groups(train.index)
         self.levels = self._profile(groups, train["I"].to_numpy(dtype=float))
         self.beta_C, self.chill_center = 0.0, 0.0
@@ -231,8 +245,8 @@ class weekly_temperature(weekly_average):
         self.base_temperature = float(base_temperature)
         if not np.isfinite(self.base_temperature): raise ValueError("base_temperature must be finite.")
 
-    def fit(self, frame, end):
-        train = self._training(frame, end)
+    def fit(self, frame, end, *, exact_historical=False):
+        train = self._training(frame, end, exact_historical=exact_historical)
         groups = self._groups(train.index)
         y = train["I"].to_numpy(dtype=float)
         chill = np.maximum(0.0, self.base_temperature - train["Temp"].to_numpy(dtype=float))
