@@ -24,8 +24,11 @@ class sweep_weekday_horizon_validation:
             value = pd.Timestamp(raw)
             if pd.isna(value) or value != value.floor("h"):
                 raise ValueError(f"{label} must represent a valid hour-aligned timestamp.")
-        if args.start_day and args.end_day and pd.Timestamp(args.start_day) > pd.Timestamp(args.end_day):
-            raise ValueError("start_day cannot follow end_day.")
+        if args.start_day and args.end_day:
+            end = pd.Timestamp(args.end_day)
+            upper = end+pd.Timedelta(hours=23) if end == end.normalize() else end
+            if pd.Timestamp(args.start_day) > upper:
+                raise ValueError("start_day cannot follow the final included hourly origin.")
 
     @staticmethod
     def training_data(frame, days, horizon_hours=24):
