@@ -22,17 +22,18 @@ END_DAY = "2022-10-31"
 
 
 def same_period(frame, start_day=START_DAY, end_day=END_DAY, baselines=BASELINES, backlogs=N_VALUES, horizons=K_VALUES):
-    """Match target calendar days across both baseline methods, every N and every k."""
+    """Match exact hourly target origins across both baseline methods, N and k."""
     start, end = pd.Timestamp(start_day).normalize(), pd.Timestamp(end_day).normalize()
     if end < start: raise ValueError("end-day must be on or after start-day.")
-    data = frame.loc[frame["day"].between(start, end)].copy()
+    # end-day is an inclusive calendar date, not midnight-only.
+    data = frame.loc[(frame["day"] >= start) & (frame["day"] < end+pd.Timedelta(days=1))].copy()
     if data.empty: raise ValueError(f"No saved sweep configurations in {start:%Y-%m-%d} to {end:%Y-%m-%d}.")
     required = {(baseline, n, k) for baseline in baselines for n in backlogs for k in horizons}
     days = pd.DatetimeIndex([
         day for day, part in data.groupby("day", sort=True)
         if required.issubset(set(zip(part["baseline"], part["training_weekdays"], part["horizon_hours"])))
     ])
-    if days.empty: raise ValueError("No fully matched target days for the requested baselines, backlogs and horizons.")
+    if days.empty: raise ValueError("No fully matched hourly target origins for the requested baselines, backlogs and horizons.")
     return data.loc[data["day"].isin(days)].copy(), days
 
 
@@ -80,7 +81,7 @@ def historical_trajectories(frame, fits, states, steps_per_hour):
     Every [day,baseline,N,k] combination has its own fitted drift coefficients,
     N reconstructed historical initial states, and k-hour fitted baseline.
     """
-    from src.exe.run_model.wm_4.sweep_weekday_horizon import baseline_from_history, interval_window
+    from src.exe.run_model.wm_4.sweep_weekday_horizon import baseline_from_history, interval_window, historical_calendar_days
     from src.tools.impute_hourly import impute_hourly_days
 
     rows = []
@@ -100,7 +101,8 @@ def historical_trajectories(frame, fits, states, steps_per_hour):
             expected = tuple(pd.to_datetime(fit.training_days.split(";")))
             if tuple(history) != expected:
                 raise ValueError(f"Historical states do not match original k-specific fitting days: {day} {baseline_name} N={N} k={k}.")
-        training, _ = impute_hourly_days(frame, days=history, columns=("I", "U", "Temp"), require_days=True)
+        training, _ = impute_hourly_days(frame, days=historical_calendar_days(history, k),
+                                           columns=("I", "U", "Temp"), require_days=True)
         baseline = baseline_from_history(training, history, baseline_name, k)
         theta = np.array([fit.theta_F, fit.theta_U, fit.theta_R], dtype=float)
         sample = np.arange(k, dtype=int)*int(steps_per_hour)
@@ -186,8 +188,8 @@ def summarize_grid(frame, min_days=1, horizons=K_VALUES):
         })
 
     for (baseline, N, k), pool in sorted(pools.items()):
-        n_days = len(set(pool["days"]))
-        if n_days < int(min_days): continue
+        n_origins = len(set(pool["days"]))
+        if n_origins < int(min_days): continue
         error = np.concatenate(pool["errors"])
         variance = np.concatenate(pool["variances"])
         hours = np.concatenate(pool["hours"])
@@ -200,7 +202,8 @@ def summarize_grid(frame, min_days=1, horizons=K_VALUES):
         reported_rmse = float(np.sqrt(np.mean(variance)))
         evaluations.append({
             "baseline":baseline, "training_weekdays":N, "horizon_hours":k,
-            "days":n_days, "historical_trajectories":int(sum(pool["trajectories"])),
+            "days":len(set(pd.Timestamp(origin).normalize() for origin in pool["days"])),
+            "origins":n_origins, "historical_trajectories":int(sum(pool["trajectories"])),
             "observations":len(error),
             "observation_variance_mean":float(np.mean(pool["tau2"])),
             "process_variance_rate_mean":float(np.mean(pool["q"])),
@@ -261,9 +264,10 @@ def run(args):
     backlogs = tuple(range(args.min_weekdays, args.max_weekdays+1))
     horizons = tuple(range(args.min_horizon, args.max_horizon+1))
     scores = scores.loc[scores["training_weekdays"].isin(backlogs) & scores["horizon_hours"].isin(horizons)]
-    _, matched_days = same_period(scores, args.start_day, args.end_day, baselines, backlogs, horizons)
-    fits = fits.loc[fits["day"].isin(matched_days) & fits["training_weekdays"].isin(backlogs) & fits["horizon_hours"].isin(horizons)]
-    required = len(matched_days)*len(baselines)*len(backlogs)*len(horizons)
+    _, matched_origins = same_period(scores, args.start_day, args.end_day, baselines, backlogs, horizons)
+    if args.max_origins: matched_origins = matched_origins[:args.max_origins]
+    fits = fits.loc[fits["day"].isin(matched_origins) & fits["training_weekdays"].isin(backlogs) & fits["horizon_hours"].isin(horizons)]
+    required = len(matched_origins)*len(baselines)*len(backlogs)*len(horizons)
     if len(fits) != required:
         raise ValueError(f"Missing horizon-specific ARM drift estimates: expected {required} distinct [day,baseline,N,k] fits, got {len(fits)}. Rerun the updated fitting sweep.")
     print(f"[ARM diffusion] Replaying {len(fits)} historical fitted parameter sets.", flush=True)
@@ -278,7 +282,7 @@ def run(args):
     plot_grid(summary, output/"diffusion_heatmaps_2x2.png", baselines, backlogs, horizons,
               args.start_day, args.end_day)
     print(f"source={source} | group={args.group} | steps_per_hour={config['steps_per_hour']}")
-    print(f"period={args.start_day} to {args.end_day} | matched target fit days={len(matched_days)}")
+    print(f"period={args.start_day} to {args.end_day} | matched hourly target origins={len(matched_origins)}")
     print(f"historical trajectory samples={len(fitted)} | evaluated N,k cells={len(summary)}")
     print("In-sample: each [day,baseline,N,k] reuses its own theta and N historical [F0,R0] values.")
     print("For each (day,N,k), drift, historical initial states, and diffusion use the SAME N matching k-hour intervals.")
@@ -298,11 +302,13 @@ def main():
     parser.add_argument("--max-weekdays", type=int, default=14)
     parser.add_argument("--min-horizon", type=int, default=1)
     parser.add_argument("--max-horizon", type=int, default=24)
-    parser.add_argument("--min-days", type=int, default=1, help="Minimum number of fitted days per N,k cell.")
+    parser.add_argument("--min-days", type=int, default=1, help="Minimum number of matched hourly origins per N,k cell (legacy option).")
+    parser.add_argument("--max-origins", type=int, default=0, help="Limit matched hourly origins for a smaller replay (0=all).")
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
     if args.min_weekdays < 2 or args.max_weekdays < args.min_weekdays: parser.error("Invalid backlog N range.")
     if args.min_days < 1: parser.error("--min-days must be >= 1.")
+    if args.max_origins < 0: parser.error("--max-origins must be >= 0.")
     if args.min_horizon < 1 or args.max_horizon > 24 or args.max_horizon < args.min_horizon: parser.error("Invalid horizon k range.")
     return run(args)
 
