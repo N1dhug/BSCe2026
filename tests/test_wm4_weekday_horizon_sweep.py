@@ -10,7 +10,8 @@ import pandas as pd
 
 from src.exe.run_model.wm_4.sweep_weekday_horizon import (
     BASELINE_NAMES, baseline_from_history, corresponding_weekday_baseline, evaluate_configuration,
-    historical_weekdays, load_tables, matched_cohort, report_only, save_top_three_plots, summarise,
+    historical_weekdays, historical_calendar_days, hourly_origins, load_tables, matched_cohort,
+    report_only, save_top_three_plots, summarise,
 )
 from src.tools.impute_hourly import impute_hourly_days
 from src.validation.exe.run_model.wm_4.sweep_weekday_horizon import sweep_weekday_horizon_validation
@@ -60,6 +61,50 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         values = validation.training_data(frame, dates)
         self.assertEqual(values.shape, (10, 24))
         self.assertAlmostEqual(values[-1, 7], frame.loc[dates[-1]+pd.Timedelta(hours=7), "I"])
+
+    def test_hourly_origin_grid_and_last_complete_horizon(self):
+        frame = self.sample_frame()
+        starts = hourly_origins(frame, max_weekdays=3, max_horizon=6,
+                                start_day="2022-03-12", end_day="2022-03-13",
+                                max_origins=6)
+        self.assertEqual(len(starts), 6)
+        self.assertEqual(starts[0], pd.Timestamp("2022-03-12 00:00"))
+        self.assertEqual(starts[-1], pd.Timestamp("2022-03-12 05:00"))
+        self.assertTrue(all((starts[j+1]-starts[j]) == pd.Timedelta(hours=1)
+                            for j in range(len(starts)-1)))
+        # The final six-hour origin requires the observation at hour +6.
+        last_day = frame.index.max().normalize()
+        last = hourly_origins(frame, max_weekdays=3, max_horizon=6,
+                              start_day=last_day, end_day=last_day)
+        self.assertEqual(last[-1], frame.index.max()-pd.Timedelta(hours=6))
+        # For 24 hours only samples at offsets 0..23 are required.
+        last_24 = hourly_origins(frame, max_weekdays=3, max_horizon=24,
+                                 start_day=last_day, end_day=last_day)
+        self.assertEqual(last_24.tolist(), [last_day])
+
+    def test_hourly_origin_historical_intervals_cross_midnight(self):
+        day = pd.Timestamp("2022-03-12 21:00")
+        history = historical_weekdays(day, 3)
+        dates = historical_calendar_days(history, 6)
+        self.assertEqual(len(dates), 6)
+        self.assertEqual(history[-1], pd.Timestamp("2022-03-05 21:00"))
+        self.assertEqual(dates[-1], pd.Timestamp("2022-03-06"))
+        frame = self.sample_frame()
+        fake_joint_fitter.seen = []
+        with patch("src.exe.run_model.wm_4.sweep_weekday_horizon.joint_qp_params", fake_joint_fitter):
+            fits, scores, components, states = evaluate_configuration(
+                frame, day, 3, 4, 6, 6, "weekly_average")
+        self.assertEqual(len(fits), 1)
+        self.assertEqual(len(states), 3)
+        self.assertEqual(len(components), 6)
+        self.assertEqual(fake_joint_fitter.seen, [(3, 25, (25, 25, 25))])
+        self.assertEqual(fits[0]["baseline_samples"], 3*6)
+        self.assertEqual(fits[0]["origin"], day)
+        self.assertEqual(scores[0]["origin"], day)
+        self.assertEqual(components[3]["time"], pd.Timestamp("2022-03-13 00:00"))
+        self.assertTrue(all(row["historical_day"].hour == 21 for row in states))
+        self.assertTrue(all(pd.Timestamp(value).hour == 21 for value in
+                            fits[0]["training_days"].split(";")))
 
     def test_joint_drift_and_initial_states_are_specific_to_both_N_and_k(self):
         frame = self.sample_frame()
