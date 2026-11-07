@@ -156,6 +156,29 @@ class test_wm4_moving_horizon_diffusion(unittest.TestCase):
             metadata = json.loads((output/"diffusion_configuration.json").read_text())
             self.assertEqual(metadata["drift_parameter_refits"], 0)
 
+    def test_historical_only_requires_no_target_oracle_scores(self):
+        frame, fit, states, _ = self.source_data()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source, output = root/"sweep", root/"diffusion"
+            source.mkdir()
+            pd.DataFrame([fit]).to_csv(source/"parameter_estimates.csv", index=False)
+            pd.DataFrame(states).to_csv(source/"historical_initial_states.csv", index=False)
+            config = {"version":EXPERIMENT_VERSION, "group":"ALL", "steps_per_hour":4,
+                      "baselines":["weekly_average"], "min_weekdays":2,
+                      "max_weekdays":2, "min_horizon":6, "max_horizon":6}
+            (source/"configuration.json").write_text(json.dumps(config), encoding="utf-8")
+            args = Namespace(group="ALL", source=str(source), output=str(output),
+                             evaluation="historical", cohort="all", baselines=None,
+                             start_day=None, end_day=None, min_weekdays=None,
+                             max_weekdays=None, min_horizon=None, max_horizon=None,
+                             progress_every=1, max_configurations=0)
+            with patch("src.exe.run_model.wm_4.fit_moving_horizon_diffusion.group_frame",
+                       return_value=frame):
+                run(args)
+            self.assertTrue((output/"diffusion_historical_summary.csv").is_file())
+            self.assertFalse((output/"diffusion_oracle_summary.csv").exists())
+
     def test_saved_row_alignment_is_checked(self):
         from src.exe.run_model.wm_4.fit_moving_horizon_diffusion import iter_saved
         _, fit, states, score = self.source_data()
