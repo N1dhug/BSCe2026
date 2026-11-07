@@ -368,7 +368,8 @@ def run(args):
                 if matched is not None and origin not in matched: continue
                 n, k = int(row["training_weekdays"]), int(row["horizon_hours"])
                 key = (row["baseline"], n, k)
-                e = historical_errors(history_frame, row, states, steps)
+                # Shared replay utility reports model-observed; diffusion uses observed-model.
+                e = -historical_errors(history_frame, row, states, steps)
                 K = variance_kernel(float(row["theta_F"]), float(row["theta_R"]), steps, k)
                 K_hist = np.tile(K, n)
                 tau2, q, identifiable = fit_variances(e, K_hist)
