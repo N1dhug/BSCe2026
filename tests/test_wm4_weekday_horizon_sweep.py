@@ -367,6 +367,21 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
                                     for item in components))
                 self.assertEqual(len(states), 2*3)
 
+    def test_mixed_midnight_and_hourly_csv_timestamps_are_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp)
+            pd.DataFrame([
+                {"day":"2022-04-09", "origin":"2022-04-09", "baseline":"weekly_average",
+                 "training_weekdays":2, "horizon_hours":6},
+                {"day":"2022-04-09 01:00:00", "origin":"2022-04-09 01:00:00",
+                 "baseline":"weekly_average", "training_weekdays":2, "horizon_hours":6},
+            ]).to_csv(output/"parameter_estimates.csv", index=False)
+            frame = load_tables(output)["fit"]
+            self.assertEqual(len(frame), 2)
+            self.assertEqual(frame["day"].tolist(),
+                             [pd.Timestamp("2022-04-09"), pd.Timestamp("2022-04-09 01:00")])
+            self.assertEqual(frame["origin"].tolist(), frame["day"].tolist())
+
     def test_saved_reporting_produces_top_three_and_figures(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp)
