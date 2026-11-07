@@ -81,6 +81,43 @@ class test_wm4_plot_moving_horizon_quality(unittest.TestCase):
         ])
         np.testing.assert_allclose(residuals, expected, atol=1e-14)
 
+    def test_vectorized_replay_matches_wm4_euler_with_nonzero_price_and_initial_states(self):
+        from src.model.wm_4 import wm_4
+        from src.tools.baseline import output_callable
+        frame = self.frame()
+        origins = pd.to_datetime(["2022-03-19 21:00:00", "2022-03-26 21:00:00"])
+        k, steps = 6, 4
+        # Include the 21:00 -> next calendar day crossing.
+        frame.loc[:, "U"] = 0.2*np.sin(np.arange(len(frame))/24)
+        row = {"day":"2022-04-09 21:00:00", "baseline":"weekly_average",
+               "training_weekdays":"2", "horizon_hours":str(k),
+               "theta_F":"-0.8", "theta_U":"-0.2", "theta_R":"-1.4",
+               "baseline_coefficients":json.dumps(np.linspace(.3, .6, 168).tolist()),
+               "baseline_beta_C":"0", "baseline_chill_center":"0"}
+        states = [{"day":row["day"], "baseline":"weekly_average", "training_weekdays":"2",
+                   "horizon_hours":str(k), "historical_day":str(origin),
+                   "historical_F0":str(f0), "historical_R0":str(r0)}
+                  for origin, f0, r0 in zip(origins, [0.1, -0.2], [0.02, -0.04])]
+        residual = historical_errors(frame, row, states, steps).reshape(2, k)
+        baseline = saved_baseline(row)
+        elapsed = np.arange(k*steps+1)/steps
+        sample = np.arange(k)*steps
+        for i, origin in enumerate(origins):
+            index = origin+pd.to_timedelta(elapsed, unit="h")
+            raw = frame.reindex(index)
+            U = frame.reindex(pd.date_range(origin, periods=k, freq="h"))["U"].to_numpy()
+            U_fine = U[np.minimum(np.floor(elapsed+1e-10).astype(int), k-1)]
+            T_fine = np.full(len(index), 8.)
+            O_fine = baseline.predict(index, T_fine)
+            model = wm_4((0., k/24.), len(index), output_callable(index, O_fine))
+            trajectory = model._solve_deterministic([float(states[i]["historical_F0"]),
+                                                     float(states[i]["historical_R0"])],
+                         U_fine, U_fine, elapsed, O_fine,
+                         np.array([-0.8, -0.2, -1.4]))
+            observed = frame.reindex(pd.date_range(origin, periods=k, freq="h"))["I"].to_numpy()
+            np.testing.assert_allclose(residual[i], trajectory["I"][sample]-observed,
+                                       atol=1e-12, rtol=1e-12)
+
     def test_replay_streams_saved_initial_states_without_refitting(self):
         frame = self.frame()
         with tempfile.TemporaryDirectory() as directory:
