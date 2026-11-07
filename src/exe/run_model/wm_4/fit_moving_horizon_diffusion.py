@@ -108,9 +108,14 @@ def fit_variances(errors, kernel):
     return float(tau2), float(q), True
 
 
+def row_key(row):
+    return (pd.Timestamp(row["day"]), str(row["baseline"]),
+            int(row["training_weekdays"]), int(row["horizon_hours"]))
+
+
 def oracle_errors(frame, row, score, steps_per_hour):
     """Reconstruct the saved target oracle trajectory without fitting anything."""
-    if any(str(row[field]) != str(score[field]) for field in SCORE_FIELDS):
+    if row_key(row) != row_key(score):
         raise ValueError("Saved fit and oracle-score rows are misaligned.")
     origin = pd.Timestamp(row["day"])
     k = int(row["horizon_hours"])
@@ -315,16 +320,21 @@ def iter_saved(source, include_scores):
             score_reader = iter(DictReader(score_file)) if score_file else None
             for fit in fit_reader:
                 n = int(fit["training_weekdays"])
-                key = tuple(fit[field] for field in SCORE_FIELDS)
+                key = row_key(fit)
                 history = []
                 for _ in range(n):
                     row = next(state_reader, None)
                     if row is None: raise ValueError(f"Truncated historical states for {key}.")
-                    if tuple(row[field] for field in SCORE_FIELDS) != key:
+                    if row_key(row) != key:
                         raise ValueError(f"Saved drift and initial-state rows are not aligned at {key}.")
                     history.append(row)
+                if fit.get("training_days"):
+                    expected = tuple(pd.Timestamp(value) for value in fit["training_days"].split(";"))
+                    actual = tuple(pd.Timestamp(row["historical_day"]) for row in history)
+                    if actual != expected:
+                        raise ValueError(f"Saved historical initial states differ from original corresponding intervals at {key}.")
                 score = next(score_reader, None) if score_reader else None
-                if score_reader and (score is None or tuple(score[field] for field in SCORE_FIELDS) != key):
+                if score_reader and (score is None or row_key(score) != key):
                     raise ValueError(f"Saved drift and oracle-score rows are not aligned at {key}.")
                 yield fit, history, score
             if next(state_reader, None) is not None or (
