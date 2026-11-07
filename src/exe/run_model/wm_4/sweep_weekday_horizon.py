@@ -254,7 +254,7 @@ def read_table(path, subset):
     except pd.errors.EmptyDataError: return pd.DataFrame()
     if frame.empty: return frame
     for col in ("day", "origin", "historical_day", "time"):
-        if col in frame: frame[col] = pd.to_datetime(frame[col])
+        if col in frame: frame[col] = pd.to_datetime(frame[col], format="mixed")
     if "baseline" not in frame: frame["baseline"] = "corresponding_weekday"  # Legacy CSV compatibility.
     if subset: frame = frame.drop_duplicates(subset=subset, keep="last")
     return frame
