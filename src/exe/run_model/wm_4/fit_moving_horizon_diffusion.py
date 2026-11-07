@@ -14,6 +14,7 @@ holding hundreds of millions of residuals in memory.
 from argparse import ArgumentParser
 from collections import defaultdict
 from csv import DictReader, DictWriter
+from contextlib import nullcontext
 from pathlib import Path
 import json
 
@@ -25,7 +26,7 @@ import pandas as pd
 from scipy.special import ndtr
 
 from src.exe.run_model.wm_4.plot_moving_horizon_quality import (
-    BASELINES, OUTPUT as QUALITY_OUTPUT, bounds, common_origins,
+    BASELINES, bounds, common_origins,
     configuration, historical_errors, saved_baseline, selected,
 )
 from src.exe.run_model.wm_4.sweep_weekday_horizon import OUTPUT as SWEEP_OUTPUT
@@ -357,7 +358,7 @@ def run(args):
     with in_path.open(mode, encoding="utf-8", newline="") as f_in:
         writer_in = DictWriter(f_in, fieldnames=PARAMETER_FIELDS)
         writer_in.writeheader()
-        with target_path.open(mode, encoding="utf-8", newline="") if needs_target else open(Path("/dev/null"), "w") as f_target:
+        with (target_path.open(mode, encoding="utf-8", newline="") if needs_target else nullcontext(None)) as f_target:
             writer_target = DictWriter(f_target, fieldnames=TARGET_FIELDS) if needs_target else None
             if writer_target: writer_target.writeheader()
             for row, states, score in iter_saved(source, include_scores=needs_target):
