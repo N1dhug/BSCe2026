@@ -101,10 +101,12 @@ class test_wm4_moving_horizon_plot(unittest.TestCase):
                 for j,ax in enumerate(figure.axes):
                     origin=origins[j]
                     line=next(line for line in ax.get_lines()
-                              if line.get_label()=="WM4 oracle prediction")
+                              if line.get_label()=="ARM oracle prediction")
                     observed=next(line for line in ax.get_lines()
                                   if line.get_label()=="Observed demand")
                     self.assertEqual(line.get_color(),"red")
+                    self.assertTrue(any(c.get_label()=="95% oracle-conditioned demand interval"
+                                        for c in ax.collections))
                     # All panels use the first day as time origin; the red
                     # prediction moves one hour right at every iteration.
                     x0=(origin-origins[0].normalize()).total_seconds()/3600
@@ -138,6 +140,13 @@ class test_wm4_moving_horizon_plot(unittest.TestCase):
             self.assertAlmostEqual(result["aggregate"]["rmse"],.004,places=10)
             self.assertEqual(result["aggregate"]["origins"],4)
             self.assertEqual(result["aggregate"]["total_forecast_samples"],28)
+            self.assertIn("process_sigma",result["summary"])
+            self.assertIn("observation_tau",result["summary"])
+            self.assertIn("oracle_coverage_95",result["aggregate"])
+            self.assertIn("demand_std",result["hourly"])
+            self.assertIn("lower_95",result["hourly"])
+            self.assertIn("upper_95",result["hourly"])
+            self.assertTrue((result["hourly"]["upper_95"]>=result["hourly"]["lower_95"]).all())
 
     def test_fixed_axis_expands_to_cover_all_moving_intervals(self):
         frame=self.frame()
