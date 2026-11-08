@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.moving_horizon_common import group_frame, metrics
+from src.exe.run_model.wm_4.methodology_uncertainty import demand_interval, fit_historical_uncertainty
 from src.model.wm_4 import wm_4
 from src.params.wm_4 import joint_qp_params, optimized_qp_params
 from src.tools.baseline import weekly_average, weekly_temperature, statistical_output
@@ -162,7 +163,7 @@ def _clock_axis(start,k,edge):
     return hour,left,right,ticks,[f"{int(tick)%24:02d}" for tick in ticks]
 
 
-def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
+def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output,uncertainty):
     """Exactly ONE grid figure, with one panel per historical interval."""
     edge=int(ceil((24-k)/2))
     ncols=min(3,int(ceil(sqrt(N))))
@@ -186,7 +187,9 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
         init=np.asarray(fit["init_cond"],dtype=float)[m]
         rows.append({"interval":m+1,"start":start,"end":start+pd.Timedelta(hours=k),
                      "F0":float(init[0]),"R0":float(init[1]),
-                     "wm4_rmse":score["rmse"],"baseline_rmse":bscore["rmse"]})
+                     "wm4_rmse":score["rmse"],"baseline_rmse":bscore["rmse"],
+                     "process_sigma":uncertainty["sigma"],"observation_tau":uncertainty["tau"],
+                     "historical_coverage_95":uncertainty["historical_coverage_95"]})
         # Keep continuous hours for cross-midnight windows, but label actual
         # clock time, so a fitting origin at 06:00 appears at x=6.
         clock_hour=int(start.hour)
@@ -197,6 +200,9 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
                 label="Observed demand (full context)")
         ax.plot(fine+clock_hour,baseline,lw=2,color="tab:orange",ls="--",
                 label="Baseline (fitting interval)")
+        lower,upper=demand_interval(fitted,uncertainty)
+        ax.fill_between(fine+clock_hour,lower,upper,color="tab:blue",alpha=.20,
+                        linewidth=0,label="95% demand interval (historical fit)")
         ax.plot(fine+clock_hour,fitted,lw=2,color="tab:blue",
                 label="ARM fit (fitting interval)")
         ax.set_title(f"Week -{N-m}: {start:%a %d %b %Y, %H:%M}  |  "
@@ -205,6 +211,8 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
         all_values.extend(context[np.isfinite(context)])
         all_values.extend(baseline[np.isfinite(baseline)])
         all_values.extend(fitted[np.isfinite(fitted)])
+        all_values.extend(lower[np.isfinite(lower)])
+        all_values.extend(upper[np.isfinite(upper)])
     for ax in axes.flat[N:]: ax.set_visible(False)
     if all_values:
         low,high=float(np.min(all_values)),float(np.max(all_values))
@@ -222,10 +230,11 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
                  f"Shared parameters: "
                  f"θF={float(fit['r'][0]):.4g}, "
                  f"θU={float(fit['r'][1]):.4g}, "
-                 f"θR={float(fit['r'][2]):.4g}",fontsize=13)
+                 f"θR={float(fit['r'][2]):.4g} | "
+                 f"σ={uncertainty['sigma']:.4g}, τ={uncertainty['tau']:.4g}",fontsize=13)
     handles,labels=axes.flat[0].get_legend_handles_labels()
     fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(.5,.927),
-               ncol=3,fontsize=9)
+               ncol=4,fontsize=9)
     fig.tight_layout(rect=(.02,.045,.99,.895))
     output=Path(output)
     fig.savefig(output,dpi=190,bbox_inches="tight")
@@ -233,7 +242,7 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output):
     return rows
 
 
-def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output):
+def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output,uncertainty):
     """One independent oracle prediction figure; no historical-fit subplots."""
     edge=int(ceil((24-k)/2))
     hour,left,right,ticks,labels=_clock_axis(origin,k,edge)
@@ -258,6 +267,9 @@ def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output):
             label="Observed demand (full context)")
     ax.plot(fine+hour,baseline,color="tab:orange",lw=2,ls="--",
             label="Fitted historical baseline (prediction interval)")
+    lower,upper=demand_interval(prediction,uncertainty)
+    ax.fill_between(fine+hour,lower,upper,color="tab:red",alpha=.20,
+                    linewidth=0,label="95% oracle-conditioned demand interval")
     ax.plot(fine+hour,prediction,color="red",lw=2.25,
             label="ARM oracle prediction (prediction interval)")
     ax.set_xlim(left,right)
@@ -267,7 +279,8 @@ def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output):
     ax.set_ylabel("Normalized aggregate electricity demand")
     ax.set_title(f"ARM (Affine Revised Model) oracle prediction | {origin:%a %d %b %Y, %H:%M} | "
                  f"k={k}h | N={N} | B={B}\n"
-                 f"Oracle RMSE {score['rmse']:.4f} | Baseline RMSE {bscore['rmse']:.4f}")
+                 f"Oracle RMSE {score['rmse']:.4f} | Baseline RMSE {bscore['rmse']:.4f} | "
+                 f"σ={uncertainty['sigma']:.4g}, τ={uncertainty['tau']:.4g}")
     ax.grid(alpha=.18)
     ax.legend(loc="best",fontsize=9)
     fig.tight_layout()
@@ -281,9 +294,15 @@ def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output):
         "observed":observed,
         "baseline":baseline[hourly*sph],
         "wm4_oracle":prediction[hourly*sph],
+        "demand_std":uncertainty["sd_hourly"],
+        "lower_95":lower[hourly*sph],"upper_95":upper[hourly*sph],
     })
     rows.to_csv(output.with_suffix(".csv"),index=False)
+    coverage=float(np.mean((observed>=lower[hourly*sph])&
+                           (observed<=upper[hourly*sph])))
     return {"oracle_F0":float(init[0]),"oracle_R0":float(init[1]),
+            "oracle_coverage_95":coverage,"process_sigma":uncertainty["sigma"],
+            "observation_tau":uncertainty["tau"],
             "oracle_rmse":score["rmse"],"oracle_mse":score["mse"],
             "oracle_mae":score["mae"],"oracle_bias":score["bias"],
             "baseline_rmse":bscore["rmse"],"baseline_mse":bscore["mse"],
@@ -335,18 +354,19 @@ def run(*,day,hour,k,N,B,group="MED",steps_per_hour=4,output=None):
     if not np.all(np.isfinite(fit["r"])):
         raise RuntimeError("Joint fit returned nonfinite parameters.")
 
+    uncertainty=fit_historical_uncertainty(fit,inputs,sph)
     target=Path(output) if output else (
         OUTPUT/group.lower()/
         f"{origin:%Y-%m-%d_%H}h_k{k}_N{N}_{B}.png")
     target.parent.mkdir(parents=True,exist_ok=True)
-    rows=_plot(starts,frame,k,N,B,sph,fit,model,inputs,target)
+    rows=_plot(starts,frame,k,N,B,sph,fit,model,inputs,target,uncertainty)
     # The baseline and shared theta are historical; future observations enter
     # ONLY this independent two-state oracle optimization and its evaluation.
     prediction_data=_window(frame,origin,k,baseline,sph)
     oracle=optimized_qp_params(model).optimize_prediction_initial_state(
         prediction_data,np.asarray(fit["r"],dtype=float))
     oracle_path=target.with_name(target.stem+"_oracle_prediction.png")
-    oracle_result=_plot_oracle(origin,frame,k,N,B,sph,prediction_data,oracle,oracle_path)
+    oracle_result=_plot_oracle(origin,frame,k,N,B,sph,prediction_data,oracle,oracle_path,uncertainty)
     report=pd.DataFrame(rows)
     report.to_csv(target.with_suffix(".csv"),index=False)
     target.with_suffix(".json").write_text(json.dumps({
@@ -355,6 +375,13 @@ def run(*,day,hour,k,N,B,group="MED",steps_per_hour=4,output=None):
         "steps_per_hour":sph,"fitting_mode":"exact N corresponding k-hour intervals",
         "theta_F":float(fit["r"][0]),"theta_U":float(fit["r"][1]),
         "theta_R":float(fit["r"][2]),"qp_loss":float(fit["qp_loss"]),
+        "process_sigma":uncertainty["sigma"],"observation_tau":uncertainty["tau"],
+        "process_variance_rate":uncertainty["sigma2"],
+        "observation_variance":uncertainty["tau2"],
+        "process_identifiable":uncertainty["identifiable"],
+        "historical_coverage_95":uncertainty["historical_coverage_95"],
+        "oracle_coverage_95":oracle_result["oracle_coverage_95"],
+        "uncertainty":"95% pointwise Gaussian; historical-only variance fit, oracle-conditioned target",
         "oracle_F0":oracle_result["oracle_F0"],
         "oracle_R0":oracle_result["oracle_R0"],
         "oracle_rmse":oracle_result["oracle_rmse"],
@@ -376,8 +403,13 @@ def run(*,day,hour,k,N,B,group="MED",steps_per_hour=4,output=None):
     print(f"Oracle F0={oracle_result['oracle_F0']:.6f}, "
           f"R0={oracle_result['oracle_R0']:.6f}, "
           f"RMSE={oracle_result['oracle_rmse']:.6f}")
+    print(f"Historical noise fit: σ={uncertainty['sigma']:.6f}, "
+          f"τ={uncertainty['tau']:.6f}, "
+          f"historical_coverage_95={uncertainty['historical_coverage_95']:.3f}, "
+          f"oracle_coverage_95={oracle_result['oracle_coverage_95']:.3f}")
     return {"plot":target,"oracle_plot":oracle_path,
             "summary":report,"oracle":oracle_result,"fit":fit,
+            "uncertainty":uncertainty,
             "baseline":baseline,"historical_intervals":starts,
             "imputation":imputation}
 
