@@ -36,9 +36,14 @@ from 08:00 through 20:00.
 4. Run the existing `joint_qp_params.fit_many` solver once:
    shared `[theta_F,theta_U,theta_R]`; independent F0 for
    each historical interval; R0 observed as the interval's D0-B0.
-5. Plot the historical demand with the fitted baseline and WM4 trajectory
-   inside each selected k-hour interval.
-6. Hold the baseline and the single shared theta fixed, then optimize both
+5. Estimate process diffusion and observation variance using nonnegative least
+   squares of squared hourly residuals from the N historical fitted trajectories.
+   Compute the Euler-Maruyama rate-variance kernel and the model-implied
+   pointwise 95% Gaussian demand interval. Target observations are not used
+   to estimate sigma or tau.
+6. Plot the historical demand with the fitted baseline, WM4 trajectory,
+   and blue 95% uncertainty shading inside each selected k-hour interval.
+7. Hold the baseline, the single shared theta and both noise parameters fixed, then optimize both
    WM4 prediction initial-state components [F0,R0] from **target-window**
    observations using the existing convex oracle QP. Plot this retrospective
    oracle prediction in a separate PNG with a **red** WM4 line.
@@ -59,6 +64,8 @@ PNG shows the selected prediction interval on its own.
   k-hour fitting interval.
 - Blue: deterministic WM4 historical fit, **only inside** the
   k-hour fitting interval.
+- Transparent blue band: 95% pointwise Gaussian demand uncertainty,
+  estimated from all N historical trajectories.
 - Pale shading: actual fitting interval [origin,origin+k).
 - X-axis: actual hour of day (00–23), with the fitting interval starting at the selected `--hour`. For intervals crossing midnight, the axis continues across the day boundary while the displayed tick labels wrap back to 00.
 
@@ -67,10 +74,13 @@ The separate oracle PNG has the same 24–25-hour context:
 - Orange dashed: the **historically fitted** baseline, only within the
   prediction interval.
 - Red: WM4 oracle predicted demand, only within the prediction interval.
+- Transparent red band: 95% oracle-conditioned pointwise demand interval
+  using historical sigma and tau, with no target-period noise refit.
 - Light red shading: prediction interval.
 
 This second PNG is named `<grid_stem>_oracle_prediction.png`, and its
-companion CSV contains observed, baseline, and oracle values for each of
+companion CSV contains observed, baseline, oracle, demand standard deviation,
+95% lower bound and 95% upper bound for each of
 the k hourly prediction samples. The grid PNG itself remains unchanged.
 
 The historical context is selected symmetrically:
@@ -80,8 +90,13 @@ Demand values outside the fitting interval are displayed only; they
 are neither fitted nor imputed for plotting.
 
 The program also writes a historical per-interval CSV with initial
-states and RMSE, and a JSON with the shared fitted parameters plus the
-prediction oracle state and error metrics.
+states, RMSE, and historical noise estimates, and a JSON with the shared fitted
+parameters, sigma, tau, process identifiability, historical and oracle
+interval coverage, plus the prediction oracle state and error metrics.
+
+The bands are pointwise marginal Gaussian intervals conditional on fitted
+initial states and parameters. They are not simultaneous confidence bands
+or estimates of uncertainty in the fitted baseline or drift parameters.
 
 Default output directory:
 `files/output/wm_4/corresponding_interval_fit/med/`.
