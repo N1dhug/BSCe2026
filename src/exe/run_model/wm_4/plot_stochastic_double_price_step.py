@@ -40,7 +40,7 @@ def check(args):
     if args.paths < 0: raise ValueError("paths must be nonnegative.")
     if not -1. <= args.price_start <= 1. or not -1. <= args.price_down <= 1. or not -1. <= args.price_up <= 1.:
         raise ValueError("Price levels must be in [-1, 1].")
-    if not args.price_down < args.price_start < args.price_up:
+    if not args.price_down < args.price_start or not args.price_up > args.price_down:
         raise ValueError("The first price step must decrease U, and the second must increase U.")
     r = wm_4_validation.r_coefficients([args.theta_f, args.theta_u, args.theta_r])
     natural_frequency = float(np.sqrt(-r[0]))
