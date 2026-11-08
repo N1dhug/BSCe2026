@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.moving_horizon_common import group_frame, metrics
+from src.exe.run_model.wm_4.methodology_uncertainty import demand_interval, fit_historical_uncertainty
 from src.exe.run_model.wm_4.plot_corresponding_interval_fit import (
     BASELINES, _fit_sparse_baseline, _intervals, _origin, _window,
 )
@@ -65,6 +66,9 @@ def _predict_origin(frame,origin,k,N,B,sph,model):
     if len(fit["deterministic_states"])!=N or np.asarray(fit["init_cond"]).shape!=(N,2):
         raise RuntimeError(f"Historical joint fit did not return N states at {origin}.")
 
+    # Estimate diffusion only from N historical fitted trajectories.
+    uncertainty=fit_historical_uncertainty(fit,historical_inputs,sph)
+
     # The oracle is deliberately the ONLY operation that uses target demand.
     target=_window(frame,origin,k,baseline,sph)
     oracle=optimized_qp_params(model).optimize_prediction_initial_state(target,theta)
@@ -80,10 +84,13 @@ def _predict_origin(frame,origin,k,N,B,sph,model):
     base=np.asarray(target["O"],dtype=float)
     score=metrics(observed,predicted[obs_idx])
     baseline_score=metrics(observed,base[obs_idx])
+    lower,upper=demand_interval(predicted,uncertainty)
+    coverage=float(np.mean((observed>=lower[obs_idx])&(observed<=upper[obs_idx])))
 
     return {
         "origin":origin,"theta":theta,"initial_state":init,
         "baseline":base,"prediction":predicted,
+        "uncertainty":uncertainty,"coverage_95":coverage,
         "score":score,"baseline_score":baseline_score,
         "historical_starts":starts,
         "historical_samples":int(baseline.metadata["samples"]),
@@ -150,15 +157,19 @@ def _plot_grid(results,frame,k,N,B,sph,output):
                 color="0.18",lw=1.65,label="Observed demand")
         ax.plot(x,item["baseline"],color="tab:orange",ls="--",lw=1.8,
                 label="Historical baseline")
+        lower,upper=demand_interval(item["prediction"],item["uncertainty"])
+        ax.fill_between(x,lower,upper,color="tab:red",alpha=.20,
+                        linewidth=0,label="95% oracle-conditioned demand interval")
         ax.plot(x,item["prediction"],color="red",lw=2.0,
                 label="ARM oracle prediction")
         theta=item["theta"]
         ax.set_title(f"Origin {m+1}/{M}: {start:%a %d %b %Y, %H:%M}  |  "
                      f"RMSE {item['score']['rmse']:.4f}\n"
-                     f"θF={theta[0]:.3g}  θU={theta[1]:.3g}  θR={theta[2]:.3g}",
+                     f"θF={theta[0]:.3g}  θU={theta[1]:.3g}  θR={theta[2]:.3g}  "
+                     f"σ={item['uncertainty']['sigma']:.3g}  τ={item['uncertainty']['tau']:.3g}",
                      fontsize=9.4)
         ax.grid(alpha=.18)
-        for values in (item["baseline"],item["prediction"]):
+        for values in (item["baseline"],item["prediction"],lower,upper):
             extrema.extend(np.asarray(values)[np.isfinite(values)].tolist())
     for ax in axes.flat[M:]: ax.set_visible(False)
 
@@ -180,7 +191,7 @@ def _plot_grid(results,frame,k,N,B,sph,output):
     fig.supylabel("Normalized aggregate electricity demand")
     handles,legend_labels=axes.flat[0].get_legend_handles_labels()
     fig.legend(handles,legend_labels,loc="upper center",bbox_to_anchor=(.5,.932),
-               ncol=3,fontsize=9)
+               ncol=4,fontsize=9)
     fig.tight_layout(rect=(.02,.04,.99,.895))
     fig.savefig(output,dpi=190,bbox_inches="tight")
     plt.close(fig)
@@ -200,6 +211,13 @@ def _reports(results,k,N,B,group,sph):
             "theta_F":float(theta[0]),"theta_U":float(theta[1]),
             "theta_R":float(theta[2]),
             "oracle_F0":float(init[0]),"oracle_R0":float(init[1]),
+            "process_sigma":item["uncertainty"]["sigma"],
+            "observation_tau":item["uncertainty"]["tau"],
+            "process_variance_rate":item["uncertainty"]["sigma2"],
+            "observation_variance":item["uncertainty"]["tau2"],
+            "process_identifiable":item["uncertainty"]["identifiable"],
+            "historical_coverage_95":item["uncertainty"]["historical_coverage_95"],
+            "oracle_coverage_95":item["coverage_95"],
             "mse":score["mse"],"rmse":score["rmse"],
             "mae":score["mae"],"bias":score["bias"],
             "baseline_mse":bscore["mse"],"baseline_rmse":bscore["rmse"],
@@ -211,11 +229,14 @@ def _reports(results,k,N,B,group,sph):
         observed=item["observed_hourly"]
         baseline=item["baseline"][idx*sph]
         prediction=item["prediction"][idx*sph]
+        lower,upper=demand_interval(item["prediction"],item["uncertainty"])
         hourly_rows.extend({
             "step":m,"origin":origin,
             "timestamp":origin+pd.Timedelta(hours=int(h)),
             "lead_hour":int(h),"observed":float(observed[h]),
             "baseline":float(baseline[h]),"wm4_oracle":float(prediction[h]),
+            "demand_std":float(item["uncertainty"]["sd_hourly"][h]),
+            "lower_95":float(lower[h*sph]),"upper_95":float(upper[h*sph]),
         } for h in idx)
 
     summary=pd.DataFrame(summary_rows)
@@ -238,6 +259,11 @@ def _reports(results,k,N,B,group,sph):
         "baseline_rmse":float(np.sqrt(np.mean(base_errors**2))),
         "baseline_mae":float(np.mean(np.abs(base_errors))),
         "baseline_bias":float(np.mean(base_errors)),
+        "oracle_coverage_95":float(np.mean((hourly["observed"]>=hourly["lower_95"])&
+                                          (hourly["observed"]<=hourly["upper_95"]))),
+        "mean_process_sigma":float(summary["process_sigma"].mean()),
+        "mean_observation_tau":float(summary["observation_tau"].mean()),
+        "uncertainty":"95% pointwise Gaussian, noise fitted on historical intervals only",
         "evaluation":"retrospective oracle; prediction data optimize initial state only",
         "overlapping_intervals":"hourly-shifted windows overlap when k>1",
         "historical_fitting":"baseline and WM4 theta refitted at every origin",
@@ -272,7 +298,10 @@ def run(*,day,hour,k,N,B,M,group="MED",steps_per_hour=4,output=None):
         results.append(item)
         print(f"[moving-horizon] {m+1}/{M} {origin:%Y-%m-%d %H:%M}  "
               f"RMSE={item['score']['rmse']:.6f}  "
-              f"baseline_RMSE={item['baseline_score']['rmse']:.6f}")
+              f"baseline_RMSE={item['baseline_score']['rmse']:.6f}  "
+              f"sigma={item['uncertainty']['sigma']:.6f}  "
+              f"tau={item['uncertainty']['tau']:.6f}  "
+              f"coverage_95={item['coverage_95']:.3f}")
 
     target=Path(output) if output is not None else (
         OUTPUT/group.lower()/f"{origins[0]:%Y-%m-%d_%H}h_M{M}_k{k}_N{N}_{B}.png")
@@ -285,6 +314,7 @@ def run(*,day,hour,k,N,B,M,group="MED",steps_per_hour=4,output=None):
     target.with_suffix(".json").write_text(json.dumps(aggregate,indent=2),encoding="utf-8")
     print(f"\nMoving-horizon prediction grid: {target}")
     print(f"Aggregated oracle RMSE: {aggregate['rmse']:.6f}")
+    print(f"Aggregated oracle 95% coverage: {aggregate['oracle_coverage_95']:.3f}")
     return {"plot":target,"summary":summary,"hourly":hourly,
             "aggregate":aggregate,"predictions":results}
 
