@@ -3,9 +3,11 @@ import tempfile
 import unittest
 from argparse import Namespace
 from pathlib import Path
+from unittest.mock import patch
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -103,7 +105,9 @@ class test_wm4_plot_diffusion_demand_std(unittest.TestCase):
                              min_weekdays=None, max_weekdays=None,
                              min_horizon=None, max_horizon=None,
                              start_day=None, end_day=None, progress_every=100)
-            summary = run(args)
+            with patch("src.exe.run_model.wm_4.plot_diffusion_demand_std.plt.subplots", wraps=plt.subplots) as subplots:
+                summary = run(args)
+            self.assertEqual(subplots.call_args.args[:2], (1, 2))
             self.assertEqual(len(summary), 2)
             self.assertTrue((diffusion/"diffusion_demand_std_heatmaps.png").is_file())
             saved = pd.read_csv(diffusion/"diffusion_demand_std_summary.csv")
