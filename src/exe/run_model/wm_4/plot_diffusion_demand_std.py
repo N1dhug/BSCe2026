@@ -116,11 +116,11 @@ def aggregate(drift_file, diffusion_file, steps_per_hour, selection,
 
 
 def plot(summary, destination, ns, ks):
-    """Two vertically stacked heatmaps with a common color scale."""
+    """Two side-by-side heatmaps with a common color scale."""
     if any(name not in summary["baseline"].unique() for name in BASELINES):
         raise ValueError("Both weekly_average and weekly_temperature are required for a 2x1 comparison.")
     maximum = max(float(summary["mean_demand_std"].max()), 1e-12)
-    fig, axes = plt.subplots(2, 1, figsize=(13.5, 9.5), constrained_layout=True)
+    fig, axes = plt.subplots(1, 2, figsize=(16, 5.5), constrained_layout=True)
     for ax, name in zip(axes, BASELINES):
         part = summary.loc[summary["baseline"] == name]
         matrix = part.pivot(index="training_weekdays", columns="horizon_hours",
