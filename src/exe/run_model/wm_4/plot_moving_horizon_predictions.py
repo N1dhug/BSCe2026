@@ -271,7 +271,7 @@ def _reports(results,k,N,B,group,sph):
     return summary,hourly,aggregate
 
 
-def run(*,day,hour,k,N,B,M,group="MED",steps_per_hour=4,output=None):
+def run(*,day,hour,k,N,B,M,group="ALL",steps_per_hour=4,output=None):
     """Fit and plot M independently refitted, hourly-shifted WM4 oracles.
 
     day, hour : start origin; k : horizon (2..24 hours);
@@ -330,7 +330,7 @@ def main():
                         default="weekly_temperature")
     parser.add_argument("--M",type=int,required=True,
                         help="Number of successive hourly origins, including the first origin.")
-    parser.add_argument("--group",choices=("MED","ALL"),default="MED")
+    parser.add_argument("--group",choices=("MED","ALL"),default="ALL")
     parser.add_argument("--steps-per-hour",type=int,default=4)
     parser.add_argument("--output",default=None,help="Path for the one grid PNG (CSV/JSON alongside).")
     args=parser.parse_args()
