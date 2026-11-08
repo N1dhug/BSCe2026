@@ -309,7 +309,7 @@ def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output,uncertainty):
             "oracle_plot":output,"oracle_hourly":rows}
 
 
-def run(*,day,hour,k,N,B,group="MED",steps_per_hour=4,output=None):
+def run(*,day,hour,k,N,B,group="ALL",steps_per_hour=4,output=None):
     """Fit N corresponding weekly-offset WM4 histories and plot the target-day oracle.
 
     Parameters
@@ -422,7 +422,7 @@ def main():
     parser.add_argument("--N",type=int,default=4,help="Number of historical corresponding weekdays.")
     parser.add_argument("--B","--baseline",dest="B",choices=tuple(BASELINES),
                         default="weekly_temperature",help="Baseline formulation.")
-    parser.add_argument("--group",choices=("MED","ALL"),default="MED")
+    parser.add_argument("--group",choices=("MED","ALL"),default="ALL")
     parser.add_argument("--steps-per-hour",type=int,default=4)
     parser.add_argument("--output",default=None,help="Historical grid PNG path (oracle PNG and companion CSV/JSON alongside).")
     args=parser.parse_args()
