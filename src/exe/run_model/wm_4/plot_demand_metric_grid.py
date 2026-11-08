@@ -18,7 +18,8 @@ def draw_demand_metric_grid(summary, metric_columns, *, baselines, titles,
                             group, period, evaluation, subtitle, horizon_label,
                             output=None, figsize=(19, 15), dpi=190, cmap="viridis",
                             title=None,
-                            bias_cmap="coolwarm", rmse_vmax=None):
+                            bias_cmap="coolwarm", rmse_vmax=None,
+                            mae_vmax=None, bias_vmax=None):
     """Render two baselines across columns and RMSE/MAE/signed BIAS down rows.
 
     The metric_columns mapping supplies the three pooled statistic columns.
@@ -40,15 +41,18 @@ def draw_demand_metric_grid(summary, metric_columns, *, baselines, titles,
         finite = data[np.isfinite(data)]
         if not finite.size: raise ValueError(f"No finite {label} values are available for the metric grid.")
         if key=="bias":
-            extent = max(float(np.max(np.abs(finite))),1e-12)
+            extent = (float(bias_vmax) if bias_vmax is not None
+                      else max(float(np.max(np.abs(finite))),1e-12))
+            if not np.isfinite(extent) or extent<=0:
+                raise ValueError("bias_vmax must be positive and finite.")
             normalizations[key] = TwoSlopeNorm(vmin=-extent,vcenter=0.0,vmax=extent)
             palette = plt.get_cmap(bias_cmap).copy()
         else:
-            limit = (float(rmse_vmax) if key=="rmse" and rmse_vmax is not None
-                     else float(np.max(finite)))
+            fixed = rmse_vmax if key=="rmse" else mae_vmax if key=="mae" else None
+            limit = float(fixed) if fixed is not None else float(np.max(finite))
             if not np.isfinite(limit) or limit<=0:
-                if key=="rmse" and rmse_vmax is not None:
-                    raise ValueError("rmse_vmax must be positive and finite.")
+                if fixed is not None:
+                    raise ValueError(f"{key}_vmax must be positive and finite.")
                 limit = 1e-12
             normalizations[key] = Normalize(vmin=0.0,vmax=limit)
             palette = plt.get_cmap(cmap).copy()
