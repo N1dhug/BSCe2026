@@ -82,7 +82,7 @@ class test_wm4_plot_diffusion_demand_std(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "could not be matched"):
                 list(matched_rows(source, diffusion))
 
-    def test_plot_2x1_heatmap_and_saved_sources(self):
+    def test_plot_1x2_heatmap_shared_colorbar_and_saved_sources(self):
         day = "2022-04-04 04:00:00"
         drifts = [self.drift(day, "weekly_average"), self.drift(day, "weekly_temperature")]
         noises = [self.noise(drifts[0], 0.001, 0.02), self.noise(drifts[1], 0.002, 0.03)]
@@ -105,8 +105,13 @@ class test_wm4_plot_diffusion_demand_std(unittest.TestCase):
                              min_weekdays=None, max_weekdays=None,
                              min_horizon=None, max_horizon=None,
                              start_day=None, end_day=None, progress_every=100)
-            with patch("src.exe.run_model.wm_4.plot_diffusion_demand_std.plt.subplots", wraps=plt.subplots) as subplots:
-                summary = run(args)
+            with patch("src.exe.run_model.wm_4.plot_diffusion_demand_std.plt.close"):
+                with patch("src.exe.run_model.wm_4.plot_diffusion_demand_std.plt.subplots", wraps=plt.subplots) as subplots:
+                    summary = run(args)
+                fig = plt.gcf()
+                self.assertEqual(len(fig.axes), 3)  # Two heatmaps and one shared colorbar.
+                self.assertEqual(sum(bool(ax.images) for ax in fig.axes), 2)
+            plt.close(fig)
             self.assertEqual(subplots.call_args.args[:2], (1, 2))
             self.assertEqual(len(summary), 2)
             self.assertTrue((diffusion/"diffusion_demand_std_heatmaps.png").is_file())
