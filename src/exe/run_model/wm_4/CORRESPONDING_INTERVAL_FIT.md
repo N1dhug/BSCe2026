@@ -5,7 +5,7 @@ Executable: `src/exe/run_model/wm_4/plot_corresponding_interval_fit.py`
 ## Example
 
 ```bash
-python -m src.exe.run_model.wm_4.plot_corresponding_interval_fit --day 2022-08-20 --hour 8 --k 12 --N 4 --B weekly_temperature
+python -m src.exe.run_model.wm_4.plot_corresponding_interval_fit --day 2022-08-20 --hour 8 --k 12 --N 4 --B weekly_temperature --group ALL
 ```
 
 Equivalent Python call:
@@ -13,7 +13,7 @@ Equivalent Python call:
 ```python
 from src.exe.run_model.wm_4.plot_corresponding_interval_fit import run
 
-result = run(day="2022-08-20", hour=8, k=12, N=4, B="weekly_temperature", group="MED")
+result = run(day="2022-08-20", hour=8, k=12, N=4, B="weekly_temperature", group="ALL")
 ```
 
 Allowed baseline selectors:
@@ -99,7 +99,7 @@ initial states and parameters. They are not simultaneous confidence bands
 or estimates of uncertainty in the fitted baseline or drift parameters.
 
 Default output directory:
-`files/output/wm_4/corresponding_interval_fit/med/`.
+`files/output/wm_4/corresponding_interval_fit/all/`.
 
 ## Tests
 
