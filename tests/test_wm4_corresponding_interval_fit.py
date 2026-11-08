@@ -127,7 +127,7 @@ class test_wm4_corresponding_interval_fit(unittest.TestCase):
                 prediction=close_plot.call_args_list[1].args[0]
                 for ax in grid.axes:
                     fit_line=next(line for line in ax.get_lines()
-                                  if line.get_label()=="WM4 fit (fitting interval)")
+                                  if line.get_label()=="ARM fit (fitting interval)")
                     baseline_line=next(line for line in ax.get_lines()
                                        if line.get_label()=="Baseline (fitting interval)")
                     demand_line=next(line for line in ax.get_lines()
@@ -138,9 +138,13 @@ class test_wm4_corresponding_interval_fit(unittest.TestCase):
                     self.assertAlmostEqual(float(demand_line.get_xdata()[0]),-1)
                     self.assertEqual(ax.get_xticklabels()[list(ax.get_xticks()).index(8)].get_text(),"08")
                 self.assertEqual(len(prediction.axes),1)
+                self.assertTrue(any(collection.get_label()=="95% demand interval (historical fit)"
+                                    for ax in grid.axes for collection in ax.collections))
+                self.assertTrue(any(collection.get_label()=="95% oracle-conditioned demand interval"
+                                    for collection in prediction.axes[0].collections))
                 ax=prediction.axes[0]
                 oracle_line=next(line for line in ax.get_lines()
-                                 if line.get_label()=="WM4 oracle prediction (prediction interval)")
+                                 if line.get_label()=="ARM oracle prediction (prediction interval)")
                 self.assertEqual(oracle_line.get_color(),"red")
                 self.assertAlmostEqual(float(oracle_line.get_xdata()[0]),8)
                 self.assertAlmostEqual(float(oracle_line.get_xdata()[-1]),15)
@@ -161,6 +165,11 @@ class test_wm4_corresponding_interval_fit(unittest.TestCase):
             self.assertTrue(output.with_suffix(".json").is_file())
             self.assertEqual(len(outcome["summary"]),4)
             self.assertEqual(len(outcome["oracle"]["oracle_hourly"]),7)
+            self.assertIn("demand_std",outcome["oracle"]["oracle_hourly"])
+            self.assertIn("lower_95",outcome["oracle"]["oracle_hourly"])
+            self.assertIn("process_sigma",outcome["summary"])
+            self.assertIn("observation_tau",outcome["summary"])
+            self.assertEqual(len(outcome["uncertainty"]["sd_fine"]),7*4+1)
             self.assertEqual(outcome["baseline"].metadata["samples"],4*7)
             self.assertEqual(len(outcome["historical_intervals"]),4)
             self.assertTrue((outcome["summary"]["wm4_rmse"]>=0).all())
