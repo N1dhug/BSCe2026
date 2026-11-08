@@ -118,7 +118,7 @@ def aggregate(drift_file, diffusion_file, steps_per_hour, selection,
 def plot(summary, destination, ns, ks):
     """Two side-by-side heatmaps with a common color scale."""
     if any(name not in summary["baseline"].unique() for name in BASELINES):
-        raise ValueError("Both weekly_average and weekly_temperature are required for a 2x1 comparison.")
+        raise ValueError("Both weekly_average and weekly_temperature are required for a 1x2 comparison.")
     maximum = max(float(summary["mean_demand_std"].max()), 1e-12)
     fig, axes = plt.subplots(1, 2, figsize=(16, 5.5), constrained_layout=True)
     for ax, name in zip(axes, BASELINES):
@@ -133,8 +133,8 @@ def plot(summary, destination, ns, ks):
         ax.set_yticks(np.arange(len(ns)), labels=ns, fontsize=8)
         ax.set_xlabel("Historical fitting horizon k (hours)")
         ax.set_ylabel("N preceding matching weekdays")
-        fig.colorbar(heatmap, ax=ax, shrink=0.87, pad=0.015,
-                     label="Mean model-implied demand std (normalized demand)")
+    fig.colorbar(heatmap, ax=axes, shrink=0.87, pad=0.015,
+                 label="Mean model-implied demand std (normalized demand)")
     fig.suptitle("ARM diffusion | mean historical demand standard deviation",
                  fontsize=13)
     destination.parent.mkdir(parents=True, exist_ok=True)
