@@ -59,6 +59,8 @@ the earliest left margin and the latest right margin. On that common axis:
 - Orange dashed: the baseline independently fitted at this origin, only
   within its k-hour prediction interval.
 - Red: the WM4 oracle prediction, only within that same interval.
+- Transparent red: its 95% pointwise Gaussian demand interval computed from
+  the independently refitted historical noise parameters at this origin.
 - Light red: the current interval, shifted one hour right per panel.
 
 This makes the motion of the prediction origin and the re-estimated
@@ -77,13 +79,17 @@ Default:
 `files/output/wm_4/moving_horizon_predictions/med/<origin>_M<M>_k<k>_N<N>_<B>.png`
 
 Companions with the same PNG stem:
-- `.csv`: origin-level WM4 theta, oracle state, prediction error and
-  baseline error.
-- `_hourly.csv`: all `M*k` hourly prediction/observation pairs,
-  with origin and lead-hour labels. Overlapping horizons remain separate
-  rows; no deduplication.
-- `.json`: aggregate pooled errors (and mean per-origin RMSE), with
-  settings and methodology metadata.
+- `.csv`: origin-level WM4 theta, oracle state, process sigma, observation
+  tau, historical/target interval coverage, prediction error and baseline error.
+- `_hourly.csv`: all `M*k` hourly prediction/observation pairs, demand
+  standard deviations and 95% lower/upper intervals with origin and lead-hour
+  labels. Overlapping horizons remain separate rows; no deduplication.
+- `.json`: aggregate pooled errors, empirical 95% coverage, mean fitted
+  sigma/tau, and methodology metadata.
+
+The shaded intervals are pointwise and conditional on the retrospectively
+optimized oracle state, fitted baseline and fitted drift coefficients. They
+are not simultaneous intervals or operational out-of-sample predictions.
 
 Pooled RMSE is calculated over all `M*k` prediction errors:
 `sqrt(mean((predicted-observed)^2))`. Overlap between hourly-shifted
