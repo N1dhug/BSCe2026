@@ -5,7 +5,7 @@ Executable: `src/exe/run_model/wm_4/plot_moving_horizon_predictions.py`
 ## Run
 
 ```bash
-python -m src.exe.run_model.wm_4.plot_moving_horizon_predictions --day 2022-08-20 --hour 6 --k 12 --N 4 --M 9 --B weekly_temperature
+python -m src.exe.run_model.wm_4.plot_moving_horizon_predictions --day 2022-08-20 --hour 6 --k 12 --N 4 --M 9 --B weekly_temperature --group ALL
 ```
 
 Equivalent Python kwargs:
@@ -14,7 +14,7 @@ Equivalent Python kwargs:
 from src.exe.run_model.wm_4.plot_moving_horizon_predictions import run
 
 result = run(day="2022-08-20", hour=6, k=12, N=4, M=9,
-             B="weekly_temperature", group="MED", steps_per_hour=4)
+             B="weekly_temperature", group="ALL", steps_per_hour=4)
 ```
 
 `day` and `hour` define the initial origin `t0`. `M` is the **number of
@@ -25,7 +25,7 @@ crosses midnight continues into the next calendar day.
 `k` is the prediction horizon in hours, `N` is the number of preceding
 weekly-offset historical intervals used for each refit, and `B` is one of
 `weekly_average`, `weekly_temperature`, or `statistical_output`.
-`group` may be `MED` (default) or `ALL`.
+`group` uses `ALL` by default; `MED` remains available with `--group MED`.
 
 ## Every one-hour step
 
@@ -76,7 +76,7 @@ the same 00:00–08:00 (next day) axis in *every* panel.
 ## Outputs
 
 Default:
-`files/output/wm_4/moving_horizon_predictions/med/<origin>_M<M>_k<k>_N<N>_<B>.png`
+`files/output/wm_4/moving_horizon_predictions/all/<origin>_M<M>_k<k>_N<N>_<B>.png`
 
 Companions with the same PNG stem:
 - `.csv`: origin-level WM4 theta, oracle state, process sigma, observation
