@@ -20,7 +20,6 @@ from pathlib import Path
 from time import perf_counter
 import json
 
-import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
@@ -58,7 +57,7 @@ def _load(root, name):
     forecast = _read_csv(directory / "oracle_prediction.csv",
                          ("timestamp", "lead_hour", "observed", "baseline", "beta_mean", *BANDS))
     history["historical_origin"] = pd.to_datetime(history["historical_origin"], errors="raise")
-    history = history.sort_values(("historical_origin", "lead_hour")).reset_index(drop=True)
+    history = history.sort_values(["historical_origin", "lead_hour"]).reset_index(drop=True)
     forecast = forecast.sort_values("lead_hour").reset_index(drop=True)
     N, k = int(report["N"]), int(report["k"])
     dates = pd.DatetimeIndex(pd.to_datetime(report["historical_origins"]))
@@ -175,7 +174,9 @@ def plot_saved(*, run_dir, baseline="both", tag=None, show=False, dpi=190, recon
     names = list(BASELINES) if baseline == "both" else [baseline]
     if isinstance(dpi, bool) or not isinstance(dpi, int) or dpi < 40: raise ValueError("dpi must be an integer >=40.")
     summary_path = root / "run_summary.json"
-    with summary_path.open("r", encoding="utf-8") as handle: summary = json.load(handle) if summary_path.is_file() else {}
+    summary = {}
+    if summary_path.is_file():
+        with summary_path.open("r", encoding="utf-8") as handle: summary = json.load(handle)
     if tag is None: tag = summary.get("tag", root.name.rsplit("_", 1)[-1])
     if tag not in ("ALL", "MED", "UDEN"): raise ValueError("Specify --tag ALL, MED, or UDEN for historical uncertainty reconstruction.")
     groups = [_load(root, name) for name in names]
