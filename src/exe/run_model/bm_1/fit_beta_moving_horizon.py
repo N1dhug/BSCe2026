@@ -172,7 +172,7 @@ def run_baseline(frame, origin, dates, k, name, args, root):
     try:
         fitted = timed(timings, "stochastic_beta_mle", lambda: solver.fit_mle(
             historical, deterministic, maxiter=args.maxiter, maxfun=args.maxfun,
-            progress=args.progress, nll_improvement_pct=args.nll_improvement_pct))
+            progress=args.progress, nll_ratio_threshold=args.nll_ratio_threshold))
     except Exception as exc:
         timings["total_until_failure"] = float(perf_counter() - started)
         save_json(directory/"timings.json", timings)
@@ -242,9 +242,9 @@ def run_baseline(frame, origin, dates, k, name, args, root):
               "historical_stochastic_states":fitted["initial_states"],
               "historical_nll":fitted["nll"], "mle_converged":fitted["converged"],
               "mle_optimizer_converged":fitted["optimizer_converged"],
-              "mle_stopped_by_improvement":fitted["stopped_by_improvement"],
+              "mle_stopped_by_ratio":fitted["stopped_by_ratio"],
               "mle_stop_reason":fitted["stop_reason"],
-              "mle_nll_improvement_pct_threshold":fitted["nll_improvement_pct_threshold"],
+              "mle_nll_ratio_threshold":fitted["nll_ratio_threshold"],
               "mle_accepted_iteration_history":fitted["accepted_iteration_history"],
               "mle_iterations":fitted["iterations"],"mle_evaluations":fitted["evaluations"],
               "mle_message":fitted["message"], "resolutions":{"estimation":fitted["resolution"],
@@ -257,7 +257,7 @@ def run_baseline(frame, origin, dates, k, name, args, root):
 
 
 def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
-        output=None, x0=0.5, maxiter=45, maxfun=700, nll_improvement_pct=2.0, deterministic_cycles=4,
+        output=None, x0=0.5, maxiter=45, maxfun=700, nll_ratio_threshold=0.99, deterministic_cycles=4,
         max_nfev=120, state_maxiter=60, substeps=2, oracle_maxiter=70,
         verify_refined=False, verify_fv=False, strict=False, progress=False):
     """Execute one historical-fit/oracle experiment for each selected baseline."""
@@ -283,7 +283,7 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
     reports = {}
     for name in names:
         reports[name] = run_baseline(frame, origin, dates, k, name, argparse_namespace(
-            x0=x0,maxiter=maxiter,maxfun=maxfun,nll_improvement_pct=nll_improvement_pct,
+            x0=x0,maxiter=maxiter,maxfun=maxfun,nll_ratio_threshold=nll_ratio_threshold,
             deterministic_cycles=deterministic_cycles,
             max_nfev=max_nfev,state_maxiter=state_maxiter,substeps=substeps,
             oracle_maxiter=oracle_maxiter,verify_refined=verify_refined,verify_fv=verify_fv,strict=strict,progress=progress),root)
@@ -293,7 +293,7 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
                                       "results":{name:{"historical_fit":r["historical_fit"],"oracle":r["oracle"],
                                                        "baseline_score":r["baseline_score"],"mle_converged":r["mle_converged"],
                                                        "mle_stop_reason":r["mle_stop_reason"],
-                                                       "mle_nll_improvement_pct_threshold":r["mle_nll_improvement_pct_threshold"],
+                                                       "mle_nll_ratio_threshold":r["mle_nll_ratio_threshold"],
                                                        "methodology_accepted":r["methodology_accepted"],
                                                        "timings_seconds":r["timings_seconds"]} for name,r in reports.items()}})
     print(f"[BM1 beta] Finished. Full run {global_timings['full_run']:.3f}s. Output: {root}",flush=True)
@@ -316,8 +316,8 @@ def main():
     parser.add_argument("--x0",type=float,default=0.5)
     parser.add_argument("--maxiter",type=int,default=45,help="Maximum stochastic MLE L-BFGS-B iterations.")
     parser.add_argument("--maxfun",type=int,default=700,help="Maximum stochastic MLE objective evaluations.")
-    parser.add_argument("--nll-improvement-pct",type=float,default=2.0,
-                        help="Stop the stochastic MLE when relative improvement in NLL per accepted iteration is below this percentage (default 2%%).")
+    parser.add_argument("--nll-ratio-threshold",type=float,default=0.99,
+                        help="Stop stochastic MLE if NLL(previous)/NLL(current) > this fraction at an accepted iteration (default 0.99).")
     parser.add_argument("--deterministic-cycles",type=int,default=4)
     parser.add_argument("--max-nfev",type=int,default=120)
     parser.add_argument("--state-maxiter",type=int,default=60)
