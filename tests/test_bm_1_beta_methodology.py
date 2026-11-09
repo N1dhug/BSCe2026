@@ -121,16 +121,18 @@ class BM1BetaMethodologyTests(unittest.TestCase):
         checks.settings(3,12,5,2,10)
         with self.assertRaises(ValueError): checks.settings(3,169,5,2,10)
 
-    def test_relative_nll_stopping_handles_negative_log_likelihood(self):
-        """For negative NLL, a more negative value is an improvement."""
-        improve = bm_1_beta_params.nll_improvement_pct
-        self.assertAlmostEqual(improve(-195.0, -205.0), 100.0*10.0/195.0)
-        self.assertLess(improve(-205.0, -208.0), 2.0)
-        self.assertLess(improve(195.0, 205.0), 0.0)
-        self.assertGreater(improve(205.0, 195.0), 2.0)
+    def test_direct_nll_ratio_rule(self):
+        """The requested criterion is NLL(previous)/NLL(current) > 0.99."""
+        ratio = bm_1_beta_params.nll_ratio
+        self.assertAlmostEqual(ratio(-195.0, -205.0), -195.0 / -205.0)
+        self.assertLess(ratio(-195.0, -205.0), 0.99)
+        self.assertLess(ratio(-205.0, -208.0), 0.99)
+        self.assertGreater(ratio(-208.0, -209.0), 0.99)
+        self.assertEqual(ratio(-99.0, -100.0), 0.99)
+        self.assertIsNone(ratio(-5.0, 0.0))
 
-    def test_mle_stops_on_two_percent_per_accepted_iteration(self):
-        """Callback triggers on accepted optimizer iterations, not perturbations."""
+    def test_mle_stops_on_direct_ratio_at_accepted_iteration_and_returns_params(self):
+        """No stop on objective calls or equality to 0.99; return best parameters."""
         params = self.parameters()
         datasets = [self.data(), self.data()]
         deterministic = {key:params[key] for key in bm_1_beta_params.NAMES}
@@ -146,23 +148,25 @@ class BM1BetaMethodologyTests(unittest.TestCase):
             second[0] += 0.23
             func(start)
             func(first)
-            callback(first)  # 2.1% NLL improvement; continue.
+            callback(first)  # -200/-204.2 < 0.99: continue.
             func(second)
             with self.assertRaises(StopIteration):
-                callback(second)  # <2% improvement; stop.
+                callback(second)  # -204.2/-204.6 > 0.99: stop.
             return SimpleNamespace(success=False, message="stopped by callback",
                                    status=99, nit=2)
         with patch("src.params.bm_1_beta.bm_1_beta", FakeBeta), patch(
                 "src.params.bm_1_beta.minimize", fake_minimize):
             result = bm_1_beta_params().fit_mle(datasets, deterministic, sigma_y0=0.03,
-                                                 nll_improvement_pct=2.0)
-        self.assertTrue(result["stopped_by_improvement"])
+                                                 nll_ratio_threshold=0.99)
+        self.assertTrue(result["stopped_by_ratio"])
         self.assertTrue(result["converged"])
         self.assertFalse(result["optimizer_converged"])
-        self.assertEqual(result["stop_reason"], "relative_nll_improvement")
+        self.assertEqual(result["stop_reason"], "nll_ratio_threshold")
         self.assertEqual(result["evaluations"], 3)
         self.assertAlmostEqual(result["nll"], -204.6)
+        self.assertAlmostEqual(result["alpha"], 2.0*np.exp(0.23))
         self.assertEqual(len(result["accepted_iteration_history"]), 3)
+        self.assertGreater(result["accepted_iteration_history"][-1]["nll_ratio"], 0.99)
 
     def test_metrics_and_timing(self):
         metrics = score(np.array([1.,2.,3.]),np.array([2.,2.,2.]))
