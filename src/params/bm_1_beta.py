@@ -103,25 +103,25 @@ class bm_1_beta_params:
                 "lsq_message": best["lsq_message"], "seconds": perf_counter()-started}
 
     @staticmethod
-    def nll_improvement_pct(previous, current):
-        """Relative decrease in NLL, including cases with negative NLL.
+    def nll_ratio(previous, current):
+        """Direct ratio NLL_(i-1)/NLL_i, with no percentage conversion.
 
-        A lower NLL is always better. The absolute previous NLL is used in
-        the denominator, rather than the signed value, so -205 is an
-        improvement over -195. The percentage is ill-conditioned near zero;
-        there the scale is floored at 1 to avoid spurious termination.
+        The requested >0.99 stopping rule is most meaningful for negative
+        NLL values, where a decrease from -195 to -205 is an improvement.
+        A zero current NLL has no defined ratio and is not a stopping event.
         """
         if not np.isfinite(previous) or not np.isfinite(current):
-            raise ValueError("NLL improvement requires finite objective values.")
-        return 100.0 * (float(previous) - float(current)) / max(abs(float(previous)), 1.0)
+            raise ValueError("NLL ratio requires finite objective values.")
+        if current == 0.0: return None
+        return float(previous) / float(current)
 
     def fit_mle(self, datasets, deterministic, *, components=8, quadrature=8,
                 reconstruction_quadrature=48, max_step=0.25, maxiter=45, maxfun=700,
-                sigma_x0=0.15, sigma_y0=None, progress=False, nll_improvement_pct=2.0):
+                sigma_x0=0.15, sigma_y0=None, progress=False, nll_ratio_threshold=0.99):
         datasets = self._prepare(datasets)
         n = len(datasets)
-        if not np.isfinite(nll_improvement_pct) or not 0.0 < nll_improvement_pct < 100.0:
-            raise ValueError("nll_improvement_pct must lie strictly between 0 and 100.")
+        if not np.isfinite(nll_ratio_threshold) or not 0.0 < nll_ratio_threshold < 1.0:
+            raise ValueError("nll_ratio_threshold must lie strictly between 0 and 1.")
         solver = bm_1_beta(components, quadrature, reconstruction_quadrature, max_step)
         names = (*self.NAMES, "sigma_x", "sigma_y")
         raw_seed = np.array([float(deterministic[key]) for key in self.NAMES], dtype=float)
@@ -146,7 +146,7 @@ class bm_1_beta_params:
         evaluated = {}
         accepted_iterations = []
         previous_accepted_nll = None
-        stopped_by_improvement = False
+        stopped_by_ratio = False
         started = perf_counter()
         def decode(q):
             p = {key: float(np.exp(q[j])) for j, key in enumerate(self.NAMES)}
@@ -178,42 +178,41 @@ class bm_1_beta_params:
             if previous_accepted_nll is None:
                 previous_accepted_nll = value
                 accepted_iterations.append({"iteration": 0, "nll": value,
-                    "improvement_pct": None, "elapsed_seconds": perf_counter()-started,
+                    "nll_ratio": None, "elapsed_seconds": perf_counter()-started,
                     "evaluations": evaluations})
             if value < best[0]: best[0], best[1] = value, q.copy()
             if progress and evaluations % 10 == 0:
                 print(f"[beta MLE] calls={evaluations} invalid={invalid_evaluations} best_NLL={best[0]:.7f} "
                       f"elapsed={perf_counter()-started:.1f}s", flush=True)
             return value
-        def stop_on_nll_improvement(xk):
-            nonlocal previous_accepted_nll, stopped_by_improvement
-            # SciPy invokes this callback once per accepted L-BFGS-B iteration,
-            # unlike objective(), which it calls repeatedly for finite differences.
-            # Reuse the exact NLL cached at that iterate to avoid an extra
-            # expensive beta-mixture propagation.
+        def stop_on_nll_ratio(xk):
+            nonlocal previous_accepted_nll, stopped_by_ratio
+            # Check accepted L-BFGS-B iterations, not finite-difference calls.
+            # The objective cache avoids extra beta-mixture propagation.
             current = objective(np.asarray(xk, dtype=float))
             if current >= 1e14: return
             if previous_accepted_nll is None or previous_accepted_nll >= 1e14:
                 previous_accepted_nll = current
                 return
-            improvement = self.nll_improvement_pct(previous_accepted_nll, current)
+            ratio = self.nll_ratio(previous_accepted_nll, current)
             accepted_iterations.append({"iteration": len(accepted_iterations),
-                "nll": current, "improvement_pct": improvement,
+                "nll": current, "nll_ratio": ratio,
                 "elapsed_seconds": perf_counter()-started, "evaluations": evaluations})
             if progress:
+                ratio_text = "undefined" if ratio is None else f"{ratio:.6f}"
                 print(f"[beta MLE] iter={len(accepted_iterations)-1} NLL={current:.7f} "
-                      f"relative_improvement={improvement:.4f}% "
-                      f"threshold={nll_improvement_pct:.2f}% "
+                      f"NLL_previous/NLL_current={ratio_text} "
+                      f"threshold={nll_ratio_threshold:.4f} "
                       f"elapsed={perf_counter()-started:.1f}s", flush=True)
             previous_accepted_nll = current
-            if improvement < nll_improvement_pct:
-                stopped_by_improvement = True
-                print(f"[beta MLE] Stopping: accepted iteration improved NLL by "
-                      f"{improvement:.4f}% (< {nll_improvement_pct:.2f}% threshold). "
-                      f"Best NLL={best[0]:.7f}; elapsed={perf_counter()-started:.1f}s", flush=True)
+            if ratio is not None and ratio > nll_ratio_threshold:
+                stopped_by_ratio = True
+                print(f"[beta MLE] Stopping: NLL_previous/NLL_current={ratio:.6f} "
+                      f"> {nll_ratio_threshold:.4f}. Returning best admissible parameters "
+                      f"(NLL={best[0]:.7f}); elapsed={perf_counter()-started:.1f}s", flush=True)
                 raise StopIteration
         result = minimize(objective, seed, method="L-BFGS-B", bounds=bounds,
-                          callback=stop_on_nll_improvement,
+                          callback=stop_on_nll_ratio,
                           options={"maxiter": int(maxiter), "maxfun": int(maxfun), "ftol": 1e-9, "maxls": 20})
         if best[1] is None or not np.isfinite(best[0]) or best[0] >= 1e14:
             reasons = "; ".join(f"{key} ({count} occurrences)" for key, count in failure_examples.items())
@@ -221,15 +220,15 @@ class bm_1_beta_params:
                                f"after {evaluations} evaluations ({invalid_evaluations} invalid). "
                                f"First numerical failure causes: {reasons or 'no error details'}")
         p, states = decode(best[1])
-        stop_reason = ("relative_nll_improvement" if stopped_by_improvement else
+        stop_reason = ("nll_ratio_threshold" if stopped_by_ratio else
                        ("optimizer_converged" if result.success else "optimizer_limit_or_failure"))
-        message = (f"NLL improvement below {nll_improvement_pct:.2f}% per accepted iteration."
-                   if stopped_by_improvement else str(result.message))
+        message = (f"NLL_previous/NLL_current exceeded {nll_ratio_threshold:.4f}."
+                   if stopped_by_ratio else str(result.message))
         return {**p, "initial_states": np.asarray(states), "nll": float(best[0]),
-                "converged": bool(result.success or stopped_by_improvement),
+                "converged": bool(result.success or stopped_by_ratio),
                 "optimizer_converged": bool(result.success),
-                "stopped_by_improvement": bool(stopped_by_improvement),
-                "nll_improvement_pct_threshold": float(nll_improvement_pct),
+                "stopped_by_ratio": bool(stopped_by_ratio),
+                "nll_ratio_threshold": float(nll_ratio_threshold),
                 "stop_reason": stop_reason, "accepted_iteration_history": accepted_iterations,
                 "message": message,
                 "optimizer_status": int(result.status), "iterations": int(result.nit),
