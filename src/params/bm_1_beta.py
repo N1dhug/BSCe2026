@@ -55,8 +55,7 @@ class bm_1_beta_params:
                 k3 = rate(x + h*k2/2.0, phase+h/2.0)
                 k4 = rate(x + h*k3, phase+h)
                 x += h * (k1 + 2*k2 + 2*k3 + k4) / 6.0
-                if x < -1e-8 or x > 1.0+1e-8: raise FloatingPointError("BM1 RK4 exited [0,1].")
-                x = min(1.0, max(0.0, x))
+                if x < 0.0 or x > 1.0: raise FloatingPointError("BM1 RK4 exited [0,1]; trajectory is not clipped.")
         return prediction
 
     def fit_deterministic(self, datasets, *, initial_state=0.5, cycles=4, max_nfev=120, state_maxiter=60, substeps=2):
@@ -92,10 +91,11 @@ class bm_1_beta_params:
             errors = residual(theta_new, states_new)
             score = float(errors @ errors)
             iterations += 1
-            if best is None or score < best["sse"]:
+            old_best = np.inf if best is None else best["sse"]
+            if score < old_best:
                 best = {"theta": theta_new.copy(), "states": states_new.copy(), "sse": score,
                         "lsq_converged": bool(fit.success), "lsq_message": str(fit.message)}
-            if cycle > 0 and score >= best["sse"] - 1e-11: break
+            if cycle > 0 and old_best - score < 1e-11: break
             theta, states = theta_new, states_new
         return {**dict(zip(self.NAMES, best["theta"])), "initial_states": best["states"],
                 "mse": best["sse"] / sum(len(d["I"]) for d in datasets), "sse": best["sse"],
