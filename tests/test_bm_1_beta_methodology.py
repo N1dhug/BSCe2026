@@ -29,6 +29,29 @@ class BM1BetaMethodologyTests(unittest.TestCase):
                 "U":np.array([0.5,0.6,0.6,0.4]),
                 "I":np.array([0.3,0.35,0.3,0.33])}
 
+    def test_concentrated_beta_quadrature_preserves_moments_without_overflow(self):
+        """Normalized Jacobi eigenweights must work when scipy roots_jacobi overflows."""
+        for mean, variance in ((0.25,1e-6),(0.5,1e-5),(0.6,1e-8),(0.96,1e-6)):
+            points, weights = bm_1_beta._component_nodes(mean, variance, 8)
+            self.assertTrue(np.all(np.isfinite(points)))
+            self.assertTrue(np.all(np.isfinite(weights)))
+            self.assertAlmostEqual(float(weights.sum()),1.0,places=12)
+            self.assertAlmostEqual(float(weights @ points),mean,places=11)
+            self.assertLess(abs(float(weights @ np.square(points - mean))-variance),1e-11)
+
+    def test_concentrated_beta_remains_admissible_for_sustained_price_extremes(self):
+        """Old raw Gauss-Jacobi weights overflowed within a few hours here."""
+        data = {"B":np.full(14,0.25), "I":np.full(14,0.25)}
+        p = self.parameters()
+        solver = bm_1_beta(components=8,quadrature=8,reconstruction_quadrature=48,max_step=0.25)
+        for price in (0.01,0.99):
+            data["U"] = np.full(14,price)
+            result = solver.simulate(data,p,0.5,observations=None)
+            self.assertTrue(np.all(np.isfinite(result["mean"])))
+            self.assertTrue(all(abs(float(w.sum())-1.0)<1e-12 for w in result["weights"]))
+            fit = solver.simulate(data,p,0.5,observations=data["I"])
+            self.assertTrue(np.isfinite(fit["nll"]))
+
     def test_moment_preserving_equal_mass_reconstruction(self):
         method = bm_1_beta(components=4, quadrature=6, reconstruction_quadrature=12, max_step=0.25)
         mixture = (np.array([0.5,0.5]),np.array([0.25,0.75]),np.array([0.01,0.02]))
