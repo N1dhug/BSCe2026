@@ -118,6 +118,41 @@ def refined_beta_checks(training, target, fitted, oracle, historical, *, mean_to
                           and max(nll_diffs) <= nll_per_obs_tol)}
 
 
+def finite_volume_checks(training, target, fitted, oracle, *, mean_tol=0.002, nll_per_obs_tol=0.02):
+    """Independent FV beta accuracy check at two spatial/time resolutions."""
+    from src.method.bm_1_fv_reference import bm_1_fv_reference
+    beta = bm_1_beta(32, 24, 96, 0.0625)
+    checks = {}
+    for label, cells, step in (("reference",1631,1.0/32.0), ("refined",3263,1.0/64.0)):
+        reference = bm_1_fv_reference(cells,step)
+        max_mean, max_nll = 0.0, 0.0
+        for data, state in zip(training, fitted["initial_states"]):
+            same = beta.simulate(data, fitted, float(state))
+            control = reference.simulate(data, fitted, float(state))
+            max_mean = max(max_mean, float(np.max(np.abs(same["mean"]-control["mean"]))))
+            beta_nll = beta.simulate(data, fitted, float(state), observations=data["I"])["nll"]
+            fv_nll = reference.simulate(data, fitted, float(state), observations=data["I"])["nll"]
+            max_nll = max(max_nll,float(abs(beta_nll-fv_nll)/len(data["I"])))
+        x0 = float(oracle["initial_state"])
+        target_beta = beta.simulate(target, fitted, x0)
+        target_beta.update(beta.intervals(target_beta, fitted["sigma_y"]))
+        target_fv = reference.simulate(target, fitted, x0)
+        target_fv.update(reference.intervals(target_fv, fitted["sigma_y"]))
+        target_mean = float(np.max(np.abs(target_beta["mean"]-target_fv["mean"])))
+        target_quantile = max(float(np.max(np.abs(target_beta[key]-target_fv[key])))
+                              for key in ("lower_68","upper_68","lower_95","upper_95"))
+        checks[label] = {"historical_max_mean_difference":max_mean,
+                         "historical_max_nll_difference_per_observation":max_nll,
+                         "oracle_max_mean_difference":target_mean,
+                         "oracle_max_quantile_difference":target_quantile,
+                         "passed":bool(max(max_mean,target_mean,target_quantile)<=mean_tol
+                                       and max_nll<=nll_per_obs_tol)}
+    checks["passed"] = bool(all(value["passed"] for value in checks.values()))
+    checks["mean_tolerance"] = mean_tol
+    checks["nll_per_observation_tolerance"] = nll_per_obs_tol
+    return checks
+
+
 def run_baseline(frame, origin, dates, k, name, args, root):
     timings = {}
     started = perf_counter()
@@ -150,11 +185,18 @@ def run_baseline(frame, origin, dates, k, name, args, root):
     fit_prediction = np.concatenate([r["mean"] for r in historical_curves])
     fit_score = score(fit_truth, fit_prediction)
     verification = None
-    if args.verify_refined:
+    if args.verify_refined or args.verify_fv:
         verification = timed(timings, "refined_beta_validation", lambda: refined_beta_checks(
             historical, prediction, fitted, oracle, historical_curves))
         print(f"[BM1 beta/{name}] refined numerical check passed={verification['passed']}", flush=True)
         if args.strict and not verification["passed"]: raise RuntimeError(f"BM1 beta resolution check failed for {name}.")
+    if args.verify_fv:
+        fv_verification = timed(timings, "finite_volume_validation", lambda: finite_volume_checks(
+            historical, prediction, fitted, oracle))
+        verification = {"beta":verification,"finite_volume":fv_verification,
+                        "passed":bool(verification["passed"] and fv_verification["passed"])}
+        print(f"[BM1 beta/{name}] independent FV check passed={fv_verification['passed']}", flush=True)
+        if args.strict and not fv_verification["passed"]: raise RuntimeError(f"BM1 finite-volume verification failed for {name}.")
     rows = []
     for data, curve, date in zip(historical, historical_curves, dates):
         for j, (time, actual, nominal, estimate) in enumerate(zip(data["timestamps"], data["I"], data["B"], curve["mean"])):
@@ -195,7 +237,7 @@ def run_baseline(frame, origin, dates, k, name, args, root):
 def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
         output=None, x0=0.5, maxiter=45, maxfun=700, deterministic_cycles=4,
         max_nfev=120, state_maxiter=60, substeps=2, oracle_maxiter=70,
-        verify_refined=False, strict=False, progress=False):
+        verify_refined=False, verify_fv=False, strict=False, progress=False):
     """Execute one historical-fit/oracle experiment for each selected baseline."""
     N, k = checks.settings(N, k, maxiter, deterministic_cycles, max_nfev)
     origin = checks.origin(origin)
@@ -219,7 +261,7 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
         reports[name] = run_baseline(frame, origin, dates, k, name, argparse_namespace(
             x0=x0,maxiter=maxiter,maxfun=maxfun,deterministic_cycles=deterministic_cycles,
             max_nfev=max_nfev,state_maxiter=state_maxiter,substeps=substeps,
-            oracle_maxiter=oracle_maxiter,verify_refined=verify_refined,strict=strict,progress=progress),root)
+            oracle_maxiter=oracle_maxiter,verify_refined=verify_refined,verify_fv=verify_fv,strict=strict,progress=progress),root)
     global_timings["full_run"] = float(perf_counter()-started)
     save_json(root/"run_summary.json", {"origin":origin,"N":N,"k":k,"tag":tag,"baselines":names,
                                       "normalization":normalization,"timings_seconds":global_timings,
@@ -252,6 +294,7 @@ def main():
     parser.add_argument("--substeps",type=int,default=2)
     parser.add_argument("--oracle-maxiter",type=int,default=70)
     parser.add_argument("--verify-refined",action="store_true",help="Check against finer adaptive beta-mixture discretization.")
+    parser.add_argument("--verify-fv",action="store_true",help="Check beta against independent K=1631 and K=3263 finite-volume references (slow).")
     parser.add_argument("--strict",action="store_true",help="Reject non-converged MLE or failed requested numerical verification.")
     parser.add_argument("--progress",action="store_true",help="Print MLE objective-evaluation progress and elapsed time.")
     args = parser.parse_args()
