@@ -48,7 +48,7 @@ class bm_1_fv_reference:
             if obs is not None:
                 sigma = params["sigma_y"]
                 z = (float(obs[j])-demand)/sigma
-                logweights = np.log(np.maximum(mass, 1e-300))-0.5*z*z
+                with np.errstate(divide="ignore"):\n                    logweights = np.log(mass)-0.5*z*z
                 log_evidence = float(logsumexp(logweights))
                 total_nll += -log_evidence + np.log(sigma) + 0.5*np.log(2*np.pi)
                 mass = np.exp(logweights-log_evidence)
