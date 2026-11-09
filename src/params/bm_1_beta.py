@@ -102,11 +102,26 @@ class bm_1_beta_params:
                 "iterations": iterations, "lsq_converged": best["lsq_converged"],
                 "lsq_message": best["lsq_message"], "seconds": perf_counter()-started}
 
+    @staticmethod
+    def nll_improvement_pct(previous, current):
+        """Relative decrease in NLL, including cases with negative NLL.
+
+        A lower NLL is always better. The absolute previous NLL is used in
+        the denominator, rather than the signed value, so -205 is an
+        improvement over -195. The percentage is ill-conditioned near zero;
+        there the scale is floored at 1 to avoid spurious termination.
+        """
+        if not np.isfinite(previous) or not np.isfinite(current):
+            raise ValueError("NLL improvement requires finite objective values.")
+        return 100.0 * (float(previous) - float(current)) / max(abs(float(previous)), 1.0)
+
     def fit_mle(self, datasets, deterministic, *, components=8, quadrature=8,
                 reconstruction_quadrature=48, max_step=0.25, maxiter=45, maxfun=700,
-                sigma_x0=0.15, sigma_y0=None, progress=False):
+                sigma_x0=0.15, sigma_y0=None, progress=False, nll_improvement_pct=2.0):
         datasets = self._prepare(datasets)
         n = len(datasets)
+        if not np.isfinite(nll_improvement_pct) or not 0.0 < nll_improvement_pct < 100.0:
+            raise ValueError("nll_improvement_pct must lie strictly between 0 and 100.")
         solver = bm_1_beta(components, quadrature, reconstruction_quadrature, max_step)
         names = (*self.NAMES, "sigma_x", "sigma_y")
         raw_seed = np.array([float(deterministic[key]) for key in self.NAMES], dtype=float)
@@ -128,13 +143,19 @@ class bm_1_beta_params:
         invalid_evaluations = 0
         failure_examples = {}
         best = [np.inf, None]
+        evaluated = {}
+        accepted_iterations = []
+        previous_accepted_nll = None
+        stopped_by_improvement = False
         started = perf_counter()
         def decode(q):
             p = {key: float(np.exp(q[j])) for j, key in enumerate(self.NAMES)}
             p["sigma_x"], p["sigma_y"] = float(np.exp(q[-2])), float(np.exp(q[-1]))
             return p, q[5:-2]
         def objective(q):
-            nonlocal evaluations, invalid_evaluations
+            nonlocal evaluations, invalid_evaluations, previous_accepted_nll
+            key = np.asarray(q, dtype=float).tobytes()
+            if key in evaluated: return evaluated[key]
             evaluations += 1
             p, x0 = decode(q)
             interval = -1
@@ -152,12 +173,47 @@ class bm_1_beta_params:
                     failure_examples[reason] = 0
                 if reason in failure_examples: failure_examples[reason] += 1
                 value = 1e15
-            if value < best[0]: best[0], best[1] = float(value), q.copy()
+            value = float(value)
+            evaluated[key] = value
+            if previous_accepted_nll is None:
+                previous_accepted_nll = value
+                accepted_iterations.append({"iteration": 0, "nll": value,
+                    "improvement_pct": None, "elapsed_seconds": perf_counter()-started,
+                    "evaluations": evaluations})
+            if value < best[0]: best[0], best[1] = value, q.copy()
             if progress and evaluations % 10 == 0:
                 print(f"[beta MLE] calls={evaluations} invalid={invalid_evaluations} best_NLL={best[0]:.7f} "
                       f"elapsed={perf_counter()-started:.1f}s", flush=True)
             return value
+        def stop_on_nll_improvement(xk):
+            nonlocal previous_accepted_nll, stopped_by_improvement
+            # SciPy invokes this callback once per accepted L-BFGS-B iteration,
+            # unlike objective(), which it calls repeatedly for finite differences.
+            # Reuse the exact NLL cached at that iterate to avoid an extra
+            # expensive beta-mixture propagation.
+            current = objective(np.asarray(xk, dtype=float))
+            if current >= 1e14: return
+            if previous_accepted_nll is None or previous_accepted_nll >= 1e14:
+                previous_accepted_nll = current
+                return
+            improvement = self.nll_improvement_pct(previous_accepted_nll, current)
+            accepted_iterations.append({"iteration": len(accepted_iterations),
+                "nll": current, "improvement_pct": improvement,
+                "elapsed_seconds": perf_counter()-started, "evaluations": evaluations})
+            if progress:
+                print(f"[beta MLE] iter={len(accepted_iterations)-1} NLL={current:.7f} "
+                      f"relative_improvement={improvement:.4f}% "
+                      f"threshold={nll_improvement_pct:.2f}% "
+                      f"elapsed={perf_counter()-started:.1f}s", flush=True)
+            previous_accepted_nll = current
+            if improvement < nll_improvement_pct:
+                stopped_by_improvement = True
+                print(f"[beta MLE] Stopping: accepted iteration improved NLL by "
+                      f"{improvement:.4f}% (< {nll_improvement_pct:.2f}% threshold). "
+                      f"Best NLL={best[0]:.7f}; elapsed={perf_counter()-started:.1f}s", flush=True)
+                raise StopIteration
         result = minimize(objective, seed, method="L-BFGS-B", bounds=bounds,
+                          callback=stop_on_nll_improvement,
                           options={"maxiter": int(maxiter), "maxfun": int(maxfun), "ftol": 1e-9, "maxls": 20})
         if best[1] is None or not np.isfinite(best[0]) or best[0] >= 1e14:
             reasons = "; ".join(f"{key} ({count} occurrences)" for key, count in failure_examples.items())
@@ -165,8 +221,17 @@ class bm_1_beta_params:
                                f"after {evaluations} evaluations ({invalid_evaluations} invalid). "
                                f"First numerical failure causes: {reasons or 'no error details'}")
         p, states = decode(best[1])
+        stop_reason = ("relative_nll_improvement" if stopped_by_improvement else
+                       ("optimizer_converged" if result.success else "optimizer_limit_or_failure"))
+        message = (f"NLL improvement below {nll_improvement_pct:.2f}% per accepted iteration."
+                   if stopped_by_improvement else str(result.message))
         return {**p, "initial_states": np.asarray(states), "nll": float(best[0]),
-                "converged": bool(result.success), "message": str(result.message),
+                "converged": bool(result.success or stopped_by_improvement),
+                "optimizer_converged": bool(result.success),
+                "stopped_by_improvement": bool(stopped_by_improvement),
+                "nll_improvement_pct_threshold": float(nll_improvement_pct),
+                "stop_reason": stop_reason, "accepted_iteration_history": accepted_iterations,
+                "message": message,
                 "optimizer_status": int(result.status), "iterations": int(result.nit),
                 "evaluations": evaluations, "invalid_evaluations": invalid_evaluations,
                 "failure_examples": failure_examples, "seconds": perf_counter()-started,
