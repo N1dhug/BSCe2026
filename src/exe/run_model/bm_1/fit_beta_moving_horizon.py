@@ -100,7 +100,9 @@ def refined_beta_checks(training, target, fitted, oracle, historical, *, mean_to
     historical_diffs, nll_diffs = [], []
     for data, state, original in zip(training, fitted["initial_states"], historical):
         control = refined.simulate(data, fitted, float(state))
-        historical_diffs.append(float(np.max(np.abs(control["mean"]-original["mean"]))))
+        pilot_open = bm_1_beta(8, 8, 48, 0.25).simulate(data, fitted, float(state))
+        historical_diffs.append(float(max(np.max(np.abs(control["mean"]-original["mean"])),
+                                           np.max(np.abs(control["mean"]-pilot_open["mean"])))))
         pilot_nll = bm_1_beta(8, 8, 48, 0.25).simulate(data, fitted, float(state), observations=data["I"])["nll"]
         control_nll = refined.simulate(data, fitted, float(state), observations=data["I"])["nll"]
         nll_diffs.append(float(abs(pilot_nll-control_nll)/len(data["I"])))
@@ -214,7 +216,10 @@ def run_baseline(frame, origin, dates, k, name, args, root):
                 for level in (68,95)}
     timings["total"] = float(perf_counter()-started)
     save_json(directory/"timings.json", timings)
+    numerically_verified = bool(verification is not None and (verification["passed"] if args.verify_fv else False))
+    accepted = bool(fitted["converged"] and numerically_verified)
     report = {"baseline":name, "N":len(dates), "k":k, "origin":origin,
+              "numerically_verified":numerically_verified,"methodology_accepted":accepted,
               "historical_origins":dates, "historical_fit":fit_score, "oracle":predicted_score,
               "baseline_score":baseline_score, "coverage":coverage,
               "oracle_initial_state":oracle["initial_state"],
@@ -240,6 +245,8 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
         verify_refined=False, verify_fv=False, strict=False, progress=False):
     """Execute one historical-fit/oracle experiment for each selected baseline."""
     N, k = checks.settings(N, k, maxiter, deterministic_cycles, max_nfev)
+    if strict and not (verify_refined and verify_fv):
+        raise ValueError("--strict requires --verify-refined and --verify-fv for methodology acceptance.")
     origin = checks.origin(origin)
     tag = str(tag).upper()
     if tag not in ("ALL", "MED", "UDEN"): raise ValueError("tag must be ALL, MED, or UDEN.")
@@ -267,6 +274,7 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
                                       "normalization":normalization,"timings_seconds":global_timings,
                                       "results":{name:{"historical_fit":r["historical_fit"],"oracle":r["oracle"],
                                                        "baseline_score":r["baseline_score"],"mle_converged":r["mle_converged"],
+                                                       "methodology_accepted":r["methodology_accepted"],
                                                        "timings_seconds":r["timings_seconds"]} for name,r in reports.items()}})
     print(f"[BM1 beta] Finished. Full run {global_timings['full_run']:.3f}s. Output: {root}",flush=True)
     return reports
