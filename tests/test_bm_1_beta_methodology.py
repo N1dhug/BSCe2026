@@ -3,6 +3,8 @@
 These do not load the real ALL workbook or run expensive real-data likelihood fits.
 """
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -118,6 +120,49 @@ class BM1BetaMethodologyTests(unittest.TestCase):
         self.assertLess(selected.index.max(),origin)
         checks.settings(3,12,5,2,10)
         with self.assertRaises(ValueError): checks.settings(3,169,5,2,10)
+
+    def test_relative_nll_stopping_handles_negative_log_likelihood(self):
+        """For negative NLL, a more negative value is an improvement."""
+        improve = bm_1_beta_params.nll_improvement_pct
+        self.assertAlmostEqual(improve(-195.0, -205.0), 100.0*10.0/195.0)
+        self.assertLess(improve(-205.0, -208.0), 2.0)
+        self.assertLess(improve(195.0, 205.0), 0.0)
+        self.assertGreater(improve(205.0, 195.0), 2.0)
+
+    def test_mle_stops_on_two_percent_per_accepted_iteration(self):
+        """Callback triggers on accepted optimizer iterations, not perturbations."""
+        params = self.parameters()
+        datasets = [self.data(), self.data()]
+        deterministic = {key:params[key] for key in bm_1_beta_params.NAMES}
+        deterministic["initial_states"] = np.array([0.5, 0.6])
+        class FakeBeta:
+            def __init__(self, *args, **kwargs): pass
+            def simulate(self, data, p, x0, observations=None):
+                return {"nll":-100.0 - 10.0*(np.log(p["alpha"])-np.log(2.0))}
+        def fake_minimize(func, x, *, method, bounds, callback, options):
+            start = x.copy()
+            first, second = start.copy(), start.copy()
+            first[0] += 0.21
+            second[0] += 0.23
+            func(start)
+            func(first)
+            callback(first)  # 2.1% NLL improvement; continue.
+            func(second)
+            with self.assertRaises(StopIteration):
+                callback(second)  # <2% improvement; stop.
+            return SimpleNamespace(success=False, message="stopped by callback",
+                                   status=99, nit=2)
+        with patch("src.params.bm_1_beta.bm_1_beta", FakeBeta), patch(
+                "src.params.bm_1_beta.minimize", fake_minimize):
+            result = bm_1_beta_params().fit_mle(datasets, deterministic, sigma_y0=0.03,
+                                                 nll_improvement_pct=2.0)
+        self.assertTrue(result["stopped_by_improvement"])
+        self.assertTrue(result["converged"])
+        self.assertFalse(result["optimizer_converged"])
+        self.assertEqual(result["stop_reason"], "relative_nll_improvement")
+        self.assertEqual(result["evaluations"], 3)
+        self.assertAlmostEqual(result["nll"], -204.6)
+        self.assertEqual(len(result["accepted_iteration_history"]), 3)
 
     def test_metrics_and_timing(self):
         metrics = score(np.array([1.,2.,3.]),np.array([2.,2.,2.]))
