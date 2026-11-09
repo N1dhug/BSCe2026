@@ -44,11 +44,11 @@ class bm_1_beta:
 
     @staticmethod
     def _component_nodes(mean, var, n):
-        if var <= 1e-18 or mean <= 0.0 or mean >= 1.0:
+        if var <= 1e-18 or var <= 1e-8*mean*(1.0-mean) or mean <= 0.0 or mean >= 1.0:
             return np.array([float(mean)]), np.array([1.0])
         strength = mean * (1.0 - mean) / var - 1.0
         a, b = mean * strength, (1.0 - mean) * strength
-        if a <= 0.0 or b <= 0.0: raise FloatingPointError("Invalid beta component shape.")
+        if not np.isfinite(a + b) or a <= 0.0 or b <= 0.0: raise FloatingPointError("Invalid beta component shape.")
         nodes, weights = roots_jacobi(n, b - 1.0, a - 1.0)
         weights = np.asarray(weights, dtype=float)
         if not np.isfinite(weights).all() or weights.sum() <= 0.0:
