@@ -127,22 +127,31 @@ def fit_baseline(frame, training, history, origin, n, k, steps_per_hour, name):
 
 
 def plot_comparison(results, history, origin, k, path, show=False):
-    """Single BM1-style panel: historical intervals, then oracle, two bands."""
+    """BM1-style trajectories followed by cumulative historical/oracle RMSE curves.
+
+    Cumulative observed RMSE is the sum of the observed hourly RMSE magnitudes.
+    Historical hours pool errors across N trajectories; for the single oracle,
+    hourly observed RMSE is the absolute demand error. The predicted cumulative
+    RMSE is the sum of the model-implied marginal standard deviations.
+    """
     n = len(history)
     gap = max(1.0, 0.08*k)
-    width = max(17.0, 2.5*(n+1))
-    fig, ax = plt.subplots(figsize=(width, 7.0))
-    fig.subplots_adjust(left=0.046, right=0.99, top=0.88, bottom=0.18)
+    width = max(21.0, 2.5*(n+1)+6.0)
+    fig = plt.figure(figsize=(width, 8.0))
+    grid = fig.add_gridspec(2, 2, width_ratios=(max(6, n+1), 2.6),
+                            left=0.045, right=0.985, top=0.87, bottom=0.16,
+                            wspace=0.22, hspace=0.38)
+    ax = fig.add_subplot(grid[:, 0])
+    cumulative_axes = {"historical": fig.add_subplot(grid[0, 1]),
+                       "oracle": fig.add_subplot(grid[1, 1])}
     ax.axvspan(n*(k+gap)-gap/2, (n+1)*(k+gap), facecolor="gray", alpha=0.055, zorder=0)
-    xticks, ticklabels, all_observed = [], [], []
+    xticks, ticklabels = [], []
     for j, at in enumerate([*history, origin]):
         x = j*(k+gap)+np.arange(k, dtype=float)
-        if j:
-            ax.axvline(j*(k+gap)-gap/2, color="0.8", ls=":", lw=0.9)
+        if j: ax.axvline(j*(k+gap)-gap/2, color="0.8", ls=":", lw=0.9)
         xticks.append(float(np.mean(x)))
         ticklabels.append(f"{'Oracle prediction' if j == n else f'Historical {j+1}'}\n{at:%d %b %Y %H:%M}")
         observed = results[BASELINES[0]]["curves"][j]["observed"]
-        all_observed.extend(observed)
         for name in BASELINES:
             curve = results[name]["curves"][j]
             mean, std = curve["predicted"], curve["std"]
@@ -167,6 +176,29 @@ def plot_comparison(results, history, origin, k, path, show=False):
                 Patch(facecolor="gray", alpha=0.075, label="Central 95% demand interval")]
     ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 1.005),
               ncol=3, fontsize=9, framealpha=0.95)
+
+    # Each cumulative line starts at the first predicted/observed lead hour.
+    # It is the integral (discrete sum) of the *hourly RMSE*, not the RMSE of
+    # cumulative demand and not the sum of absolute RMSE differences.
+    hours = np.arange(1, k+1, dtype=int)
+    for kind, cumulative_ax in cumulative_axes.items():
+        for name in BASELINES:
+            result = results[name]
+            observed_hourly = result[f"{kind}_score"]["observed_hourly_rmse"]
+            predicted_hourly = result["std"]
+            cumulative_ax.plot(hours, np.cumsum(observed_hourly), color=COLORS[name],
+                               ls="-", marker="o" if k <= 12 else None, lw=2.0,
+                               label=f"{LABELS[name]} observed")
+            cumulative_ax.plot(hours, np.cumsum(predicted_hourly), color=COLORS[name],
+                               ls="--", lw=2.0, label=f"{LABELS[name]} predicted")
+        cumulative_ax.set_title(f"{'Historical fitted' if kind == 'historical' else 'Oracle'} cumulative error")
+        cumulative_ax.set_ylabel("Cumulative hourly RMSE")
+        cumulative_ax.set_xlim(1, max(k, 2))
+        cumulative_ax.set_ylim(bottom=0.0)
+        cumulative_ax.grid(color="0.88", lw=0.75)
+        cumulative_ax.tick_params(labelsize=9)
+        cumulative_ax.legend(loc="upper left", fontsize=8, ncol=1, framealpha=0.90)
+    cumulative_axes["oracle"].set_xlabel("Lead hour")
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=200, bbox_inches="tight")
     if show: plt.show()
@@ -198,6 +230,22 @@ def save_tables(results, output):
                               "total_seconds": result["total_seconds"]})
     pd.DataFrame(rows).to_csv(output/"trajectories.csv", index=False)
     pd.DataFrame(summaries).to_csv(output/"metrics.csv", index=False)
+    cumulative_rows = []
+    for name in BASELINES:
+        result = results[name]
+        for kind in ("historical", "oracle"):
+            observed_rmse = result[f"{kind}_score"]["observed_hourly_rmse"]
+            predicted_rmse = result["std"]
+            for hour in range(len(predicted_rmse)):
+                cumulative_rows.append({
+                    "baseline": name, "kind": kind, "lead_hour": hour+1,
+                    "observed_hourly_rmse": float(observed_rmse[hour]),
+                    "predicted_hourly_rmse": float(predicted_rmse[hour]),
+                    "observed_cumulative_rmse": float(np.sum(observed_rmse[:hour+1])),
+                    "predicted_cumulative_rmse": float(np.sum(predicted_rmse[:hour+1])),
+                    "cumulative_absolute_rmse_discrepancy": float(np.sum(np.abs(observed_rmse[:hour+1]-predicted_rmse[:hour+1]))),
+                })
+    pd.DataFrame(cumulative_rows).to_csv(output/"cumulative_errors.csv", index=False)
 
 
 def run(origin, n=7, k=24, steps_per_hour=60, output=None, show=False):
@@ -238,7 +286,8 @@ def run(origin, n=7, k=24, steps_per_hour=60, output=None, show=False):
               f"baseline total={fit['total_seconds']:.3f} s")
     print(f"\nHistorical imputed hourly slots={imputed['imputed_hourly_slots']}")
     print(f"Complete end-to-end time (data load + both fits + plot + CSV)={total_seconds:.3f} s")
-    print(f"Plot: {plot_path}\nData: {output/'trajectories.csv'}\nMetrics: {output/'metrics.csv'}")
+    print(f"Plot: {plot_path}\nData: {output/'trajectories.csv'}\nMetrics: {output/'metrics.csv'}"
+          f"\nCumulative errors: {output/'cumulative_errors.csv'}")
     return results
 
 
