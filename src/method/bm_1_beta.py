@@ -155,13 +155,18 @@ class bm_1_beta:
             t = left
             while t < right - 1e-12:
                 h = min(step, right - t)
+                last_error = None
                 for _ in range(18):
                     try:
                         candidate = self._rk4(mix, h, b0, b1, u, t, p)
                         break
-                    except (FloatingPointError, ValueError):
+                    except (FloatingPointError, ValueError) as exc:
+                        last_error = exc
                         h *= 0.5
-                else: raise FloatingPointError("Adaptive beta RK4 step could not maintain admissible moments.")
+                else:
+                    raise FloatingPointError(
+                        f"Adaptive beta RK4 failed at hour_fraction={t:.6g}, "
+                        f"last_step={h:.3g}: {last_error}") from last_error
                 if h < 1e-9: raise FloatingPointError("Beta RK4 substep underflow.")
                 mix, t = candidate, t + h
             if first and right == 0.25: mix = self._reconstruct(mix)
@@ -211,7 +216,10 @@ class bm_1_beta:
                 mix, loss = self._observe(mix, float(observed[j]), float(b[j]), float(u[j]), p)
                 nll += loss
             if j + 1 < len(b):
-                mix = self._propagate_hour(mix, float(b[j]), float(b[j+1]), float(u[j]), p, first=(j == 0))
+                try:
+                    mix = self._propagate_hour(mix, float(b[j]), float(b[j+1]), float(u[j]), p, first=(j == 0))
+                except (FloatingPointError, ValueError) as exc:
+                    raise FloatingPointError(f"BM1 beta propagation failed between hours {j} and {j+1}: {exc}") from exc
         return {"mean": np.asarray(means), "supports": supports, "weights": weights,
                 "states": states, "nll": float(nll)}
 
