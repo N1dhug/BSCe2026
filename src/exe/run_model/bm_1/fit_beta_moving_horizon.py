@@ -169,9 +169,21 @@ def run_baseline(frame, origin, dates, k, name, args, root):
         historical, initial_state=args.x0, cycles=args.deterministic_cycles,
         max_nfev=args.max_nfev, state_maxiter=args.state_maxiter, substeps=args.substeps))
     print(f"[BM1 beta/{name}] deterministic MSE={deterministic['mse']:.8f}", flush=True)
-    fitted = timed(timings, "stochastic_beta_mle", lambda: solver.fit_mle(
-        historical, deterministic, maxiter=args.maxiter, maxfun=args.maxfun,
-        progress=args.progress))
+    try:
+        fitted = timed(timings, "stochastic_beta_mle", lambda: solver.fit_mle(
+            historical, deterministic, maxiter=args.maxiter, maxfun=args.maxfun,
+            progress=args.progress))
+    except Exception as exc:
+        timings["total_until_failure"] = float(perf_counter() - started)
+        save_json(directory/"timings.json", timings)
+        save_json(directory/"failure.json", {"stage":"stochastic_beta_mle",
+            "error_type":type(exc).__name__, "message":str(exc),
+            "N":len(dates), "k":k, "origin":origin, "baseline":name,
+            "deterministic_fit":{"mse":deterministic["mse"],
+                                 "parameters":{key:deterministic[key] for key in solver.NAMES},
+                                 "historical_states":deterministic["initial_states"]},
+            "timings_seconds":timings})
+        raise
     if not fitted["converged"]:
         print(f"[BM1 beta/{name}] WARNING: MLE did not converge: {fitted['message']}", flush=True)
         if args.strict: raise RuntimeError(f"BM1 beta MLE failed to converge for {name}: {fitted['message']}")
