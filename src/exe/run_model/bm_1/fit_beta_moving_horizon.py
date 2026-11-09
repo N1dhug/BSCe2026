@@ -213,9 +213,13 @@ def run_baseline(frame, origin, dates, k, name, args, root):
         if args.strict and not fv_verification["passed"]: raise RuntimeError(f"BM1 finite-volume verification failed for {name}.")
     rows = []
     for data, curve, date in zip(historical, historical_curves, dates):
-        for j, (time, actual, nominal, estimate) in enumerate(zip(data["timestamps"], data["I"], data["B"], curve["mean"])):
+        bounds = stochastic.intervals(curve, fitted["sigma_y"])
+        for j, (time, actual, nominal, price, estimate) in enumerate(
+                zip(data["timestamps"], data["I"], data["B"], data["U"], curve["mean"])):
             rows.append({"historical_origin":date, "timestamp":time, "lead_hour":j,
-                         "observed":actual, "baseline":nominal, "beta_mean":estimate})
+                         "observed":actual, "baseline":nominal, "price":price, "beta_mean":estimate,
+                         "lower_68":bounds["lower_68"][j], "upper_68":bounds["upper_68"][j],
+                         "lower_95":bounds["lower_95"][j], "upper_95":bounds["upper_95"][j]})
     pd.DataFrame(rows).to_csv(directory/"historical_fit.csv", index=False)
     p = oracle["prediction"]
     forecast = pd.DataFrame({"timestamp":prediction["timestamps"],"lead_hour":np.arange(k),
