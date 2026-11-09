@@ -125,6 +125,8 @@ class bm_1_beta_params:
         bounds += [(0.0, 1.0)] * n
         bounds += [(np.log(self.BOUNDS[key][0]), np.log(self.BOUNDS[key][1])) for key in ("sigma_x", "sigma_y")]
         evaluations = 0
+        invalid_evaluations = 0
+        failure_examples = {}
         best = [np.inf, None]
         started = perf_counter()
         def decode(q):
@@ -132,31 +134,42 @@ class bm_1_beta_params:
             p["sigma_x"], p["sigma_y"] = float(np.exp(q[-2])), float(np.exp(q[-1]))
             return p, q[5:-2]
         def objective(q):
-            nonlocal evaluations
+            nonlocal evaluations, invalid_evaluations
             evaluations += 1
             p, x0 = decode(q)
+            interval = -1
             try:
-                value = sum(solver.simulate(d, p, float(x), observations=d["I"])["nll"]
-                            for d, x in zip(datasets, x0))
+                value = 0.0
+                for interval, (data, x) in enumerate(zip(datasets, x0), start=1):
+                    value += solver.simulate(data, p, float(x), observations=data["I"])["nll"]
                 if not np.isfinite(value): raise FloatingPointError("nonfinite likelihood")
-            except (FloatingPointError, ValueError, OverflowError):
-                # Numerically inadmissible iterates are rejected, rather than
-                # altering the model or silently projecting its state.
+            except (FloatingPointError, ValueError, OverflowError) as exc:
+                # Reject inadmissible parameter candidates, but retain the
+                # cause; an all-penalty run must never look like a valid fit.
+                invalid_evaluations += 1
+                reason = f"historical interval {interval}: {type(exc).__name__}: {exc}"
+                if reason not in failure_examples and len(failure_examples) < 8:
+                    failure_examples[reason] = 0
+                if reason in failure_examples: failure_examples[reason] += 1
                 value = 1e15
             if value < best[0]: best[0], best[1] = float(value), q.copy()
             if progress and evaluations % 10 == 0:
-                print(f"[beta MLE] calls={evaluations} best_NLL={best[0]:.7f} "
+                print(f"[beta MLE] calls={evaluations} invalid={invalid_evaluations} best_NLL={best[0]:.7f} "
                       f"elapsed={perf_counter()-started:.1f}s", flush=True)
             return value
         result = minimize(objective, seed, method="L-BFGS-B", bounds=bounds,
                           options={"maxiter": int(maxiter), "maxfun": int(maxfun), "ftol": 1e-9, "maxls": 20})
         if best[1] is None or not np.isfinite(best[0]) or best[0] >= 1e14:
-            raise RuntimeError("BM1 beta-mixture likelihood returned no admissible parameter candidate.")
+            reasons = "; ".join(f"{key} ({count} occurrences)" for key, count in failure_examples.items())
+            raise RuntimeError("BM1 beta-mixture likelihood returned no admissible parameter candidate "
+                               f"after {evaluations} evaluations ({invalid_evaluations} invalid). "
+                               f"First numerical failure causes: {reasons or 'no error details'}")
         p, states = decode(best[1])
         return {**p, "initial_states": np.asarray(states), "nll": float(best[0]),
                 "converged": bool(result.success), "message": str(result.message),
                 "optimizer_status": int(result.status), "iterations": int(result.nit),
-                "evaluations": evaluations, "seconds": perf_counter()-started,
+                "evaluations": evaluations, "invalid_evaluations": invalid_evaluations,
+                "failure_examples": failure_examples, "seconds": perf_counter()-started,
                 "resolution": {"components":components, "quadrature":quadrature,
                                "reconstruction_quadrature":reconstruction_quadrature, "max_step":max_step}}
 
