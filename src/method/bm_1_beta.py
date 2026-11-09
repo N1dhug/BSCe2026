@@ -6,7 +6,8 @@ equal-mass beta components. Historical likelihoods apply Bayes updates at the
 observed timestamps; forecasts use open propagation without updates.
 """
 import numpy as np
-from scipy.special import logsumexp, ndtr, roots_jacobi
+from scipy.special import logsumexp, ndtr
+from scipy.linalg import eigh_tridiagonal
 from scipy.optimize import brentq
 
 
@@ -44,16 +45,42 @@ class bm_1_beta:
 
     @staticmethod
     def _component_nodes(mean, var, n):
-        if var <= 1e-18 or var <= 1e-8*mean*(1.0-mean) or mean <= 0.0 or mean >= 1.0:
+        """Gauss-Jacobi rule with normalized weights from a stable Jacobi matrix.
+
+        scipy.special.roots_jacobi calculates an unnormalized weight integral
+        whose exponential normalization overflows for concentrated beta laws,
+        even when all component moments are admissible. Golub-Welsch avoids
+        that exponential: eigenvalues give the nodes and the squared first
+        eigenvector row gives weights summing directly to one.
+        """
+        if var <= 1e-18 or var <= 1e-8 * mean * (1.0 - mean) or mean <= 0.0 or mean >= 1.0:
             return np.array([float(mean)]), np.array([1.0])
         strength = mean * (1.0 - mean) / var - 1.0
         a, b = mean * strength, (1.0 - mean) * strength
-        if not np.isfinite(a + b) or a <= 0.0 or b <= 0.0: raise FloatingPointError("Invalid beta component shape.")
-        nodes, weights = roots_jacobi(n, b - 1.0, a - 1.0)
-        weights = np.asarray(weights, dtype=float)
-        if not np.isfinite(weights).all() or weights.sum() <= 0.0:
-            raise FloatingPointError("Invalid Gauss-Jacobi weights.")
-        return np.clip((nodes + 1.0) / 2.0, 0.0, 1.0), weights / weights.sum()
+        if not np.isfinite(a + b) or a <= 0.0 or b <= 0.0:
+            raise FloatingPointError("Invalid beta component shape.")
+        total = a + b
+        diagonal = np.empty(n, dtype=float)
+        diagonal[0] = mean
+        for j in range(1, n):
+            s = 2.0 * j + total
+            diagonal[j] = 0.5 * (1.0 + (a - b) * (total - 2.0) / ((s - 2.0) * s))
+        off_diagonal = np.empty(n - 1, dtype=float)
+        if n > 1:
+            off_diagonal[0] = np.sqrt((a / total) * (b / total) / (total + 1.0))
+        for j in range(2, n):
+            s = 2.0 * j + total
+            # Factor the rational formula to avoid needless large products.
+            numerator = j * (j + a - 1.0) * (j + b - 1.0) * (j + total - 2.0)
+            denominator = (s - 2.0) ** 2 * (s - 3.0) * (s - 1.0)
+            off_diagonal[j - 1] = np.sqrt(numerator / denominator)
+        if not np.all(np.isfinite(diagonal)) or not np.all(np.isfinite(off_diagonal)):
+            raise FloatingPointError("Non-finite beta Jacobi recurrence coefficients.")
+        nodes, eigenvectors = eigh_tridiagonal(diagonal, off_diagonal)
+        weights = np.square(eigenvectors[0, :])
+        if not np.all(np.isfinite(nodes)) or not np.all(np.isfinite(weights)) or weights.sum() <= 0.0:
+            raise FloatingPointError("Invalid normalized beta quadrature.")
+        return np.clip(nodes, 0.0, 1.0), weights / weights.sum()
 
     def support(self, mix, quadrature=None):
         w, mu, var = self._check(mix)
