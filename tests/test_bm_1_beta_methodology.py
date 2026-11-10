@@ -3,6 +3,8 @@
 These do not load the real ALL workbook or run expensive real-data likelihood fits.
 """
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -13,7 +15,7 @@ from src.method.bm_1_beta import bm_1_beta
 from src.method.bm_1_fv_reference import bm_1_fv_reference
 from src.params.bm_1_beta import bm_1_beta_params
 from src.exe.run_model.bm_1.fit_beta_moving_horizon import (
-    historical_origins, historical_training, score, timed)
+    historical_origins, historical_training, run, score, timed)
 from src.validation.exe.run_model.bm_1.fit_beta_moving_horizon import (
     bm_1_beta_moving_horizon_validation as checks)
 
@@ -63,6 +65,32 @@ class BM1BetaMethodologyTests(unittest.TestCase):
         self.assertAlmostEqual(float(w @ mu), 0.5, places=9)
         original_second = float(np.sum(mixture[0] * (mixture[2]+mixture[1]**2)))
         self.assertAlmostEqual(float(w @ (var+mu**2)),original_second,places=9)
+
+    def test_fixed_hourly_rk4_has_no_adaptive_refinement_and_one_reconstruction(self):
+        p = self.parameters()
+        p.update({"Xi":0.05, "C":10.0, "sigma_x":0.03})
+        solver = bm_1_beta(components=8, quadrature=8,
+                           reconstruction_quadrature=48, fixed_steps_per_hour=1)
+        data = {"B":np.full(3,0.3), "U":np.full(3,0.5)}
+        with patch.object(solver, "_rk4", wraps=solver._rk4) as rk4, patch.object(
+                solver, "_reconstruct", wraps=solver._reconstruct) as reconstruct:
+            predicted = solver.simulate(data, p, 0.5)
+        self.assertEqual(rk4.call_count, 2)
+        self.assertEqual(reconstruct.call_count, 2)
+        self.assertTrue(all(np.isclose(call.args[1],1.0) for call in rk4.call_args_list))
+        self.assertTrue(all(len(state[0]) == 8 for state in predicted["states"][1:]))
+        self.assertTrue(np.isfinite(predicted["mean"]).all())
+
+    def test_fixed_hourly_inadmissible_step_is_not_halved(self):
+        solver = bm_1_beta(fixed_steps_per_hour=1)
+        with patch.object(solver,"_rk4",side_effect=FloatingPointError("invalid stage")) as rk4:
+            with self.assertRaisesRegex(FloatingPointError,"Fixed-step"):
+                solver._propagate_hour((np.array([1.]),np.array([0.5]),np.array([0.])),
+                                       0.3,0.3,0.5,self.parameters(),first=True)
+        self.assertEqual(rk4.call_count,1)
+        for invalid in (0,-1,1.5,True):
+            with self.assertRaises(ValueError):
+                bm_1_beta(fixed_steps_per_hour=invalid)
 
     def test_stochastic_open_forecast_and_historical_bayes_likelihood(self):
         solver = bm_1_beta(components=4,quadrature=4,reconstruction_quadrature=8,max_step=0.25)
@@ -138,7 +166,8 @@ class BM1BetaMethodologyTests(unittest.TestCase):
         deterministic = {key:params[key] for key in bm_1_beta_params.NAMES}
         deterministic["initial_states"] = np.array([0.5, 0.6])
         class FakeBeta:
-            def __init__(self, *args, **kwargs): pass
+            requested = []
+            def __init__(self, *args, **kwargs): self.requested.append(kwargs)
             def simulate(self, data, p, x0, observations=None):
                 return {"nll":-100.0 - 10.0*(np.log(p["alpha"])-np.log(2.0))}
         def fake_minimize(func, x, *, method, bounds, callback, options):
@@ -162,11 +191,42 @@ class BM1BetaMethodologyTests(unittest.TestCase):
         self.assertTrue(result["converged"])
         self.assertFalse(result["optimizer_converged"])
         self.assertEqual(result["stop_reason"], "nll_ratio_threshold")
+        self.assertEqual(FakeBeta.requested[0]["fixed_steps_per_hour"],1)
+        self.assertEqual(result["resolution"]["components"],8)
         self.assertEqual(result["evaluations"], 3)
         self.assertAlmostEqual(result["nll"], -204.6)
         self.assertAlmostEqual(result["alpha"], 2.0*np.exp(0.23))
         self.assertEqual(len(result["accepted_iteration_history"]), 3)
         self.assertGreater(result["accepted_iteration_history"][-1]["nll_ratio"], 0.99)
+
+    def test_single_fit_automatically_calls_one_plotter_for_both_baselines(self):
+        origin = pd.Timestamp("2022-08-22 06:00")
+        index = pd.date_range(origin-pd.Timedelta(weeks=3), origin+pd.Timedelta(days=1), freq="h")
+        frame = pd.DataFrame({"I":np.linspace(0.2,0.8,len(index)),
+                              "U":np.linspace(0.25,0.75,len(index)),
+                              "Temp":np.full(len(index),15.0)},index=index)
+        report = {"historical_fit":{}, "oracle":{}, "baseline_score":{},
+                  "mle_converged":True, "mle_stop_reason":"nll_ratio_threshold",
+                  "mle_nll_ratio_threshold":0.99,"methodology_accepted":False,
+                  "timings_seconds":{}}
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            with patch("src.exe.run_model.bm_1.fit_beta_moving_horizon.aligned_data",
+                       return_value=(frame,{})), patch(
+                       "src.exe.run_model.bm_1.fit_beta_moving_horizon.run_baseline",
+                       return_value=report) as fit, patch(
+                       "src.exe.run_model.bm_1.plot_beta_moving_horizon.plot_saved",
+                       return_value={"plot":root/"demand_fit_all_intervals.png"}) as plotter:
+                result = run(N=2,k=4,origin=origin,output=root,tag="ALL",
+                             baseline="both",fit_components=8,fit_steps_per_hour=1)
+            self.assertEqual(len(result),2)
+            self.assertEqual(fit.call_count,2)
+            self.assertEqual(plotter.call_count,1)
+            self.assertEqual(plotter.call_args.kwargs["baseline"],"both")
+            self.assertFalse(plotter.call_args.kwargs["show"])
+            self.assertEqual(fit.call_args.args[5].fit_steps_per_hour,1)
+            self.assertEqual(fit.call_args.args[5].fit_components,8)
+            self.assertTrue((root/"run_summary.json").is_file())
 
     def test_metrics_and_timing(self):
         metrics = score(np.array([1.,2.,3.]),np.array([2.,2.,2.]))
