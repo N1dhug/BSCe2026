@@ -120,13 +120,15 @@ class bm_1_beta_params:
         return float(previous) / float(current)
 
     def fit_mle(self, datasets, deterministic, *, components=8, quadrature=8,
-                reconstruction_quadrature=48, max_step=0.25, fixed_steps_per_hour=1,
+                reconstruction_quadrature=48, max_step=0.25, fixed_steps_per_hour=None,
                 maxiter=45, maxfun=700, sigma_x0=0.15, sigma_y0=None,
                 progress=False, nll_ratio_threshold=0.99):
         datasets = self._prepare(datasets)
         n = len(datasets)
         if not np.isfinite(nll_ratio_threshold) or not 0.0 < nll_ratio_threshold < 1.0:
             raise ValueError("nll_ratio_threshold must lie strictly between 0 and 1.")
+        # Adaptive RK4 is now the default; a fixed step count is retained
+        # only as an explicit reproduction/benchmarking option.
         solver = bm_1_beta(components, quadrature, reconstruction_quadrature, max_step,
                            fixed_steps_per_hour=fixed_steps_per_hour)
         names = (*self.NAMES, "sigma_x", "sigma_y")
@@ -184,7 +186,7 @@ class bm_1_beta_params:
             value = float(value)
             objective_seconds += perf_counter() - eval_started
             evaluated[key] = value
-            if previous_accepted_nll is None:
+            if previous_accepted_nll is None and value < 1e14:
                 previous_accepted_nll = value
                 accepted_iterations.append({"iteration": 0, "nll": value,
                     "nll_ratio": None, "elapsed_seconds": perf_counter()-started,
@@ -225,6 +227,36 @@ class bm_1_beta_params:
                       f"> {nll_ratio_threshold:.4f}. Returning best admissible parameters "
                       f"(NLL={best[0]:.7f}); elapsed={perf_counter()-started:.1f}s", flush=True)
                 raise StopIteration
+        # Numerical feasibility test before L-BFGS-B. Starting at an invalid
+        # plateau gives a constant 1e15 objective/zero finite-difference
+        # gradient, so the optimizer may stop before finding any valid point.
+        # Retry progressively smaller process-noise seeds only if the
+        # deterministic warm start is inadmissible. All retries use the SAME
+        # adaptive beta-mixture likelihood as subsequent objective calls.
+        initial_seed = seed.copy()
+        alternatives = [float(np.exp(initial_seed[-2])), 0.05, 0.01, 0.001]
+        seen_noise = set()
+        selected_seed = None
+        for candidate_sigma in alternatives:
+            candidate_sigma = float(np.clip(
+                candidate_sigma, self.BOUNDS["sigma_x"][0]+1e-10,
+                self.BOUNDS["sigma_x"][1]-1e-10))
+            if candidate_sigma in seen_noise: continue
+            seen_noise.add(candidate_sigma)
+            candidate = initial_seed.copy()
+            candidate[-2] = np.log(candidate_sigma)
+            if objective(candidate) < 1e14:
+                selected_seed = candidate
+                break
+        if selected_seed is None:
+            reasons = "; ".join(f"{key} ({count} occurrences)"
+                                for key,count in failure_examples.items())
+            raise RuntimeError(
+                "BM1 adaptive beta-mixture MLE could not find an admissible "
+                "starting process-noise seed. "
+                f"Tested sigma_x={sorted(seen_noise)}; "
+                f"numerical failures: {reasons or 'no error details'}.")
+        seed = selected_seed
         result = minimize(objective, seed, method="L-BFGS-B", bounds=bounds,
                           callback=stop_on_nll_ratio,
                           options={"maxiter": int(maxiter), "maxfun": int(maxfun), "ftol": 1e-9, "maxls": 20})
@@ -252,7 +284,9 @@ class bm_1_beta_params:
                 "failure_examples": failure_examples, "seconds": perf_counter()-started,
                 "resolution": {"components":components, "quadrature":quadrature,
                                "reconstruction_quadrature":reconstruction_quadrature,
-                               "max_step":max_step, "fixed_steps_per_hour":fixed_steps_per_hour}}
+                               "max_step":max_step, "fixed_steps_per_hour":fixed_steps_per_hour,
+                               "step_selector":"adaptive" if fixed_steps_per_hour is None else "fixed"},
+                "initial_seed_sigma_x":float(np.exp(seed[-2]))}
 
     def oracle(self, target, fitted, *, components=24, quadrature=12,
                reconstruction_quadrature=48, max_step=0.125, maxiter=70):
