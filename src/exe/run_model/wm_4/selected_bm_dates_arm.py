@@ -281,8 +281,9 @@ def plot_cumulative(curves,path,show=False):
                 marker="o",ms=3,label="Empirical cumulative hourly RMSE")
         ax.plot(h,part["predicted_cumulative_hourly_rmse"],color=color,lw=2.2,ls="--",
                 marker="s",ms=3,label="Model-predicted cumulative hourly RMSE")
-        ax.fill_between(h,part["empirical_cumulative_hourly_rmse"],
-                        part["predicted_cumulative_hourly_rmse"],color=color,alpha=0.11)
+        ax.fill_between(h,part["empirical_cumulative_hourly_rmse"].to_numpy(dtype=float),
+                        part["predicted_cumulative_hourly_rmse"].to_numpy(dtype=float),
+                        color=color,alpha=0.11)
         ax.set_title(LABELS[baseline])
         ax.set_xlabel("Prediction lead hour")
         ax.set_xlim(1,K)
@@ -351,6 +352,14 @@ def run(args):
               f"empirical 95% coverage={row.empirical_coverage_95_percent:.2f}%")
         print(f"  Mean COMPLETE compute time per origin={row.mean_compute_seconds:.3f}s "
               f"(excludes data read-in and historical imputation)")
+    all_times=np.array([item["total_compute_seconds"] for name in BASELINES
+                        for item in results[name]],dtype=float)
+    combined_times=np.array([sum(results[name][i]["total_compute_seconds"]
+                                  for name in BASELINES) for i in range(len(dates))],dtype=float)
+    print(f"\nMean complete compute time per baseline estimate (24 estimates)="
+          f"{np.mean(all_times):.3f}s")
+    print(f"Mean complete compute time per selected day (both baselines)="
+          f"{np.mean(combined_times):.3f}s")
     print(f"\nSaved results to {args.output}")
     return pooled
 
