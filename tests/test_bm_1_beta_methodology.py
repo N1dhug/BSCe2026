@@ -81,6 +81,19 @@ class BM1BetaMethodologyTests(unittest.TestCase):
         self.assertTrue(all(len(state[0]) == 8 for state in predicted["states"][1:]))
         self.assertTrue(np.isfinite(predicted["mean"]).all())
 
+    def test_nll_only_fast_path_agrees_with_full_likelihood(self):
+        p = self.parameters()
+        p.update({"Xi":0.05,"C":10.0,"sigma_x":0.03})
+        solver = bm_1_beta(components=8,quadrature=8,reconstruction_quadrature=48,
+                           fixed_steps_per_hour=1)
+        data = self.data()
+        full = solver.simulate(data,p,0.5,observations=data["I"])
+        fast = solver.simulate(data,p,0.5,observations=data["I"],nll_only=True)
+        self.assertAlmostEqual(fast["nll"],full["nll"],places=11)
+        self.assertEqual(set(fast),{"nll"})
+        with self.assertRaisesRegex(ValueError,"requires historical observations"):
+            solver.simulate(data,p,0.5,nll_only=True)
+
     def test_fixed_hourly_inadmissible_step_is_not_halved(self):
         solver = bm_1_beta(fixed_steps_per_hour=1)
         with patch.object(solver,"_rk4",side_effect=FloatingPointError("invalid stage")) as rk4:
@@ -168,7 +181,8 @@ class BM1BetaMethodologyTests(unittest.TestCase):
         class FakeBeta:
             requested = []
             def __init__(self, *args, **kwargs): self.requested.append(kwargs)
-            def simulate(self, data, p, x0, observations=None):
+            def simulate(self, data, p, x0, observations=None, nll_only=False):
+                if not nll_only: raise AssertionError("MLE must request the likelihood-only fast path.")
                 return {"nll":-100.0 - 10.0*(np.log(p["alpha"])-np.log(2.0))}
         def fake_minimize(func, x, *, method, bounds, callback, options):
             start = x.copy()
