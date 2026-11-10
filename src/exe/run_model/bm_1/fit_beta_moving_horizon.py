@@ -4,10 +4,10 @@ Run from repository root:
     python -m src.exe.run_model.bm_1.fit_beta_moving_horizon --N 5 --k 24 --origin "2022-08-22 06:00" --tag ALL --show
 
 Both weekly-average and weekly-temperature baselines are fitted using the N
-historical windows. The joint stochastic MLE uses a fixed component count
-(default eight) and one fixed RK4 time step per hour, without adaptive temporal
-refinement. More accurate adaptive propagation remains available for the
-final demand uncertainty intervals and numerical verification. All historical
+historical windows. The joint stochastic MLE uses a fixed component count (default eight)
+and an admissibility-controlled adaptive RK4 selector. Fixed hourly
+substeps remain available as an explicit benchmarking option. The oracle
+forecast and uncertainty intervals also use adaptive propagation. All historical
 fitted demands and the single oracle prediction are plotted in ONE figure and
 saved automatically. No separate plotting command is required.
 """
@@ -197,8 +197,10 @@ def run_baseline(frame, origin, dates, k, name, args, root):
         historical, initial_state=args.x0, cycles=args.deterministic_cycles,
         max_nfev=args.max_nfev, state_maxiter=args.state_maxiter, substeps=args.substeps))
     print(f"[BM1 beta/{name}] deterministic MSE={deterministic['mse']:.8f}", flush=True)
-    print(f"[BM1 beta/{name}] stochastic MLE: {args.fit_components} fixed beta components, "
-          f"{args.fit_steps_per_hour} fixed RK4 step(s)/hour, no adaptive refinement", flush=True)
+    method=(f"{args.fit_steps_per_hour} fixed RK4 step(s)/hour"
+            if args.fit_steps_per_hour is not None else "adaptive admissibility-controlled RK4")
+    print(f"[BM1 beta/{name}] stochastic MLE: {args.fit_components} beta components, "
+          f"{method}", flush=True)
     try:
         fitted = timed(timings, "stochastic_beta_mle", lambda: solver.fit_mle(
             historical, deterministic, maxiter=args.maxiter, maxfun=args.maxfun,
@@ -316,15 +318,18 @@ def run_baseline(frame, origin, dates, k, name, args, root):
 
 def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
         output=None, x0=0.5, maxiter=45, maxfun=700, nll_ratio_threshold=0.99,
-        fit_components=8, fit_steps_per_hour=1, deterministic_cycles=4,
+        fit_components=8, fit_steps_per_hour=None, deterministic_cycles=4,
         max_nfev=120, state_maxiter=60, substeps=2, oracle_maxiter=70,
         verify_refined=False, verify_fv=False, strict=False, progress=False,
         plot=True, show=False):
     """Execute one historical-fit/oracle experiment for each selected baseline."""
     N, k = checks.settings(N, k, maxiter, deterministic_cycles, max_nfev)
-    if any(isinstance(value, bool) or not isinstance(value, int) or value < 1
-           for value in (fit_components, fit_steps_per_hour)):
-        raise ValueError("fit_components and fit_steps_per_hour must be positive integers.")
+    if isinstance(fit_components,bool) or not isinstance(fit_components,int) or fit_components<1:
+        raise ValueError("fit_components must be a positive integer.")
+    if fit_steps_per_hour is not None and (
+            isinstance(fit_steps_per_hour,bool) or not isinstance(fit_steps_per_hour,int)
+            or fit_steps_per_hour<1):
+        raise ValueError("fit_steps_per_hour must be None (adaptive) or a positive integer.")
     if strict and not (verify_refined and verify_fv):
         raise ValueError("--strict requires --verify-refined and --verify-fv for methodology acceptance.")
     origin = checks.origin(origin)
@@ -417,8 +422,8 @@ def main():
     parser.add_argument("--maxfun",type=int,default=700,help="Maximum stochastic MLE objective evaluations.")
     parser.add_argument("--fit-components",type=int,default=8,
                         help="Fixed number of beta components in the MLE (default 8).")
-    parser.add_argument("--fit-steps-per-hour",type=int,default=1,
-                        help="Fixed RK4 steps per hourly MLE transition, with no adaptive subdivision (default 1).")
+    parser.add_argument("--fit-steps-per-hour",type=int,default=None,
+                        help="Optional fixed RK4 steps/hour for benchmarking; omit for adaptive MLE.")
     parser.add_argument("--nll-ratio-threshold",type=float,default=0.99,
                         help="Stop stochastic MLE if NLL(previous)/NLL(current) > this fraction at an accepted iteration (default 0.99).")
     parser.add_argument("--deterministic-cycles",type=int,default=4)
