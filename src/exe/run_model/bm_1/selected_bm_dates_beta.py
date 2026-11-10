@@ -346,10 +346,16 @@ def plot_cumulative(cumulative,output,show=False):
 
 
 def run(args):
-    if args.fit_components<1 or args.fit_steps_per_hour<1:
+    if args.fit_components<1 or (args.fit_steps_per_hour is not None
+                                  and args.fit_steps_per_hour<1):
         raise ValueError("Fokker-Planck beta-mixture fitting resolution must be positive.")
+    if not 0.<args.fit_max_step<=1.:
+        raise ValueError("Adaptive beta-mixture max step must lie in (0,1].")
     if args.strict and args.maxiter<1: raise ValueError("Invalid MLE maximum iterations.")
     dates,histories,raw,training,imputation=inputs()  # OUTSIDE timing.
+    print(f"[BM1 beta] MLE step selector="
+          f"{'adaptive (max_step='+str(args.fit_max_step)+')' if args.fit_steps_per_hour is None else 'fixed ('+str(args.fit_steps_per_hour)+' steps/hour)'}",
+          flush=True)
     args.output.mkdir(parents=True,exist_ok=True)
     rows=[]
     for i,(date,history) in enumerate(zip(dates,histories),1):
@@ -380,7 +386,9 @@ def run(args):
         "secondary_nll":"sequential target likelihood with hourly observation updates (also oracle-conditioned)",
         "timing":"baseline preparation + deterministic + MLE + oracle optimization/propagation + NLL, excluding input read, imputation and output",
         "mle_resolution":{"components":args.fit_components,
+                           "step_selector":"adaptive" if args.fit_steps_per_hour is None else "fixed",
                            "fixed_steps_per_hour":args.fit_steps_per_hour,
+                           "max_step":args.fit_max_step,
                            "quadrature":args.fit_quadrature,
                            "reconstruction_quadrature":args.fit_reconstruction_quadrature},
         "oracle_resolution":{"components":args.oracle_components,
@@ -420,8 +428,10 @@ def main():
     parser.add_argument("--fit-components",type=int,default=8)
     parser.add_argument("--fit-quadrature",type=int,default=8)
     parser.add_argument("--fit-reconstruction-quadrature",type=int,default=48)
-    parser.add_argument("--fit-max-step",type=float,default=0.25)
-    parser.add_argument("--fit-steps-per-hour",type=int,default=1)
+    parser.add_argument("--fit-max-step",type=float,default=0.25,
+                        help="Maximum attempted RK4 step in hours for adaptive stochastic MLE.")
+    parser.add_argument("--fit-steps-per-hour",type=int,default=None,
+                        help="Optional fixed RK4 steps/hour; omit to use adaptive admissibility-controlled RK4.")
     parser.add_argument("--nll-ratio-threshold",type=float,default=0.99)
     parser.add_argument("--oracle-components",type=int,default=24)
     parser.add_argument("--oracle-quadrature",type=int,default=12)
