@@ -8,8 +8,8 @@ Report pooled target RMSE, MAE, signed bias, Gaussian similarity, variance/
 RMSE discrepancy, empirical 95% coverage, and mean complete computation time.
 Data loading and historical-day imputation are excluded from computation time.
 
-Outputs: a 3x4 weekly-temperature target-day panel, a separate pooled cumulative hourly-RMSE
-comparison, and hourly, per-day, pooled, and cumulative-metric CSV files.
+Outputs: 3x4 target-day demand and drift-contribution panels, a separate
+pooled cumulative hourly-RMSE comparison, and CSV data and metrics.
 
 From repository root:
     python -m src.exe.run_model.wm_4.selected_bm_dates_arm --show
@@ -111,6 +111,21 @@ def fit_origin(frame, training, day, history, baseline_name, steps):
         S, np.asarray(observed,dtype=float)-base,
         lb=np.array([-1.,-1.]), ub=np.array([1.,1.]), ridge=model._FIT_RIDGE),dtype=float)
     predicted = base+S@init
+    # Evaluate the SAME oracle state trajectory as the demand forecast. ARM
+    # uses g(R)=R and h(U)=U, so the three drift contributions are additive.
+    oracle_state = model._solve_deterministic(
+        init, forecast["U"], forecast["PE"], forecast["Time"], forecast["O"], theta)
+    oracle_F = np.asarray(oracle_state["F"],dtype=float)[sampled]
+    oracle_R = np.asarray(oracle_state["R"],dtype=float)[sampled]
+    oracle_U = np.asarray(oracle_state["U"],dtype=float)[sampled]
+    effect_F = theta[0]*oracle_F
+    effect_R = theta[2]*oracle_R
+    effect_U = theta[1]*oracle_U
+    total_drift = effect_F+effect_R+effect_U
+    if not np.allclose(np.asarray(oracle_state["I"])[sampled],predicted,rtol=1e-7,atol=1e-9):
+        raise RuntimeError(f"Oracle trajectory and affine initial-state prediction disagree at {day}.")
+    if not np.allclose(np.asarray(oracle_state["R_dot"])[sampled],total_drift,rtol=1e-9,atol=1e-10):
+        raise RuntimeError(f"ARM rate contributions do not sum to the predicted rate derivative at {day}.")
     oracle_time = perf_counter()-oracle_start
     total_time = perf_counter()-start
 
@@ -122,6 +137,9 @@ def fit_origin(frame, training, day, history, baseline_name, steps):
         "day":day, "baseline":baseline_name, "observed":np.asarray(observed,dtype=float),
         "predicted":predicted, "baseline_predicted":forecast["O"][sampled],
         "error":signed_error, "variance":variance, "std":sigma, "theta":theta,
+        "oracle_F":oracle_F, "oracle_R":oracle_R, "oracle_U":oracle_U,
+        "effect_F":effect_F, "effect_R":effect_R, "effect_U":effect_U,
+        "total_drift":total_drift,
         "initial":init, "tau2":float(tau2), "sigma2":float(sigma2),
         "process_identifiable":bool(identifiable),
         "demand_metrics":metrics(observed,predicted),
@@ -210,6 +228,13 @@ def make_tables(results, output):
                     "hour":hour, "observed":obs, "predicted":pred,
                     "baseline_predicted":base, "error_predicted_minus_observed":err,
                     "predicted_variance":var, "predicted_std":std,
+                    "oracle_F":float(item["oracle_F"][hour]),
+                    "oracle_R":float(item["oracle_R"][hour]),
+                    "price_response_h_U":float(item["oracle_U"][hour]),
+                    "theta_F_times_F":float(item["effect_F"][hour]),
+                    "theta_R_times_R":float(item["effect_R"][hour]),
+                    "theta_U_times_h_U":float(item["effect_U"][hour]),
+                    "predicted_R_dot":float(item["total_drift"][hour]),
                     "lower_68":pred-Z68*std,"upper_68":pred+Z68*std,
                     "lower_95":pred-Z95*std,"upper_95":pred+Z95*std,
                     "covered_95":abs(err)<=Z95*std,
@@ -270,6 +295,46 @@ def plot_days(results, path, show=False):
     plt.close(fig)
 
 
+
+def plot_rate_contributions(results,path,show=False):
+    """Three terms of the fitted ARM rate drift on each oracle prediction day.
+
+    The fixed ARM implementation is affine: g(R)=R and h(U)=U.
+    Contributions are sampled from the deterministic ORACLE state trajectory
+    at precisely the same 24 hours as the demand-prediction figure.
+    """
+    name = BASELINES[0]
+    fig,axes=plt.subplots(3,4,figsize=(20,12),sharex=True,sharey=True)
+    hours = np.arange(K)
+    contributions = (
+        ("effect_F",r"$\theta_F F$", "tab:blue"),
+        ("effect_R",r"$\theta_R R$", "tab:green"),
+        ("effect_U",r"$\theta_U h(U)$", "tab:orange"),
+    )
+    for sample,axis in enumerate(axes.flat,1):
+        result = results[name][sample-1]
+        for key,label,color in contributions:
+            axis.plot(hours,result[key],label=label,color=color,lw=1.9)
+        axis.plot(hours,result["total_drift"],label=r"Total $\dot{R}$",
+                  color="0.2",ls="--",lw=1.3)
+        axis.axhline(0.,color="0.45",lw=0.8)
+        axis.set_title(f"{sample:02d} | {result['day']:%a %d %b %Y}",fontsize=10)
+        axis.set_xlim(0,K-1)
+        axis.set_xticks([0,4,8,12,16,20,23])
+        axis.grid(alpha=0.23)
+        if (sample-1)//4 == 2: axis.set_xlabel("Hour of day")
+        if (sample-1)%4 == 0: axis.set_ylabel(r"Contribution to $\dot{R}$")
+    handles,labels=axes.flat[0].get_legend_handles_labels()
+    fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(0.5,0.962),
+               ncol=4,fontsize=10)
+    fig.suptitle("ARM rate-response contributions | 12 selected oracle prediction days | "
+                 "Weekly temperature | ALL | N=6, k=24 h",fontsize=15,y=0.995)
+    fig.tight_layout(rect=(0,0,1,0.92))
+    fig.savefig(path,dpi=190,bbox_inches="tight")
+    if show: plt.show()
+    plt.close(fig)
+
+
 def plot_cumulative(curves,path,show=False):
     """Cumulative sums of pooled hourly RMSE, not RMSE of accumulated energy."""
     baseline = BASELINES[0]
@@ -322,6 +387,7 @@ def run(args):
 
     hourly,daily,pooled,curves=make_tables(results,args.output)
     plot_days(results,args.output/"selected_12_days_3x4.png",args.show)
+    plot_rate_contributions(results,args.output/"selected_12_days_rate_contributions_3x4.png",args.show)
     plot_cumulative(curves,args.output/"pooled_cumulative_error.png",args.show)
     config={
         "group":"ALL","N":N,"k":K,"origin_hour":0,"steps_per_hour":args.steps_per_hour,
@@ -333,6 +399,7 @@ def run(args):
         "target_initial_state":"oracle optimized from target observations",
         "time_definition":"complete weekly-temperature estimation and prediction, excludes initial ALL data reading and imputation",
         "cumulative_plot":"sum over lead hours of sqrt(mean over 12 dates of squared hourly errors); predicted uses sqrt(mean model-implied variance)",
+        "rate_contributions":"theta_F*F + theta_R*R + theta_U*h(U) = predicted dR/dt; g(R)=R, h(U)=U; evaluated on oracle trajectory",
         "signed_bias":"predicted minus observed",
         "empirical_coverage":"pointwise 95 percent Gaussian intervals",
         "historical_imputed_hourly_slots":int(imputed["imputed_hourly_slots"]),
@@ -354,7 +421,8 @@ def run(args):
               f"(excludes data read-in and historical imputation)")
     print(f"\nMean complete compute time per selected day (weekly temperature only)="
           f"{pooled.iloc[0]['mean_compute_seconds']:.3f}s")
-    print(f"\nSaved results to {args.output}")
+    print(f"\nSaved rate-contribution plot: {args.output/'selected_12_days_rate_contributions_3x4.png'}")
+    print(f"Saved results to {args.output}")
     return pooled
 
 
