@@ -1,4 +1,4 @@
-"""ARM evaluation on 14 non-holiday reference dates, N=6, k=24, origins 00:00.
+"""ARM evaluation on 14 non-holiday August dates, N=6, k=24, origins 00:00.
 
 Using only the temperature-adjusted weekly baseline, fit historical ARM drift by joint QP, fit
 tau^2 and sigma^2 on the six free-running historical trajectories, then
@@ -44,20 +44,20 @@ BASELINES = ("weekly_temperature",)
 LABELS = {"weekly_temperature":"Weekly temperature"}
 COLORS = {"weekly_temperature":"tab:orange"}
 DATES = (
-    ("2022-09-26", "2022-08-15", "2022-09-19"),
-    ("2022-09-27", "2022-08-16", "2022-09-20"),
-    ("2022-09-28", "2022-08-17", "2022-09-21"),
-    ("2022-09-29", "2022-08-18", "2022-09-22"),
-    ("2022-09-30", "2022-08-19", "2022-09-23"),
-    ("2022-10-01", "2022-08-20", "2022-09-24"),
-    ("2022-10-02", "2022-08-21", "2022-09-25"),
-    ("2022-10-03", "2022-08-22", "2022-09-26"),
-    ("2022-10-04", "2022-08-23", "2022-09-27"),
-    ("2022-10-05", "2022-08-24", "2022-09-28"),
-    ("2022-10-06", "2022-08-25", "2022-09-29"),
-    ("2022-10-07", "2022-08-26", "2022-09-30"),
-    ("2022-10-08", "2022-08-27", "2022-10-01"),
-    ("2022-10-09", "2022-08-28", "2022-10-02"),
+    ("2022-08-15", "2022-07-04", "2022-08-08"),
+    ("2022-08-16", "2022-07-05", "2022-08-09"),
+    ("2022-08-17", "2022-07-06", "2022-08-10"),
+    ("2022-08-18", "2022-07-07", "2022-08-11"),
+    ("2022-08-19", "2022-07-08", "2022-08-12"),
+    ("2022-08-20", "2022-07-09", "2022-08-13"),
+    ("2022-08-21", "2022-07-10", "2022-08-14"),
+    ("2022-08-22", "2022-07-11", "2022-08-15"),
+    ("2022-08-23", "2022-07-12", "2022-08-16"),
+    ("2022-08-24", "2022-07-13", "2022-08-17"),
+    ("2022-08-25", "2022-07-14", "2022-08-18"),
+    ("2022-08-26", "2022-07-15", "2022-08-19"),
+    ("2022-08-27", "2022-07-16", "2022-08-20"),
+    ("2022-08-28", "2022-07-17", "2022-08-21"),
 )
 Z68, Z95 = float(norm.ppf(0.84)), float(norm.ppf(0.975))
 EXPECTED_ABS_NORMAL = float(np.sqrt(2./np.pi))
@@ -70,7 +70,7 @@ def reference_dates():
         target = pd.Timestamp(day)
         history = historical_weekdays(target, N)
         if target.hour != 0 or history[0] != pd.Timestamp(first) or history[-1] != pd.Timestamp(last):
-            raise ValueError(f"BM1 reference-date mismatch at {day}.")
+            raise ValueError(f"Selected-date history mismatch at {day}.")
         dates.append(target)
         histories.append(history)
     if len(dates)!=14 or any(sum(date.weekday()==weekday for date in dates)!=2
@@ -377,10 +377,31 @@ def plot_cumulative(curves,path,show=False):
 def run(args):
     if args.steps_per_hour<2: raise ValueError("steps-per-hour must be at least 2.")
     dates,histories=reference_dates()
-    # Disk reading, alignment, and historical hourly imputation are outside timers.
+    # Historical fitting dates span July 4 through August 21, so neither the
+    # June 6-22 nor September/October full-day data gaps enter the N=6 backlog.
+    # Disk reading, alignment, availability checking and hourly imputation
+    # are deliberately outside the complete predictive computation timer.
     frame=group_frame("ALL")
     needed=pd.DatetimeIndex([d for history in histories
                              for d in historical_calendar_days(history,K)]).unique().sort_values()
+    # Fail with a direct distinction between missing historical days (which
+    # cannot be imputed) and incomplete target days (which must be measured).
+    signals=["I","U","Temp"]
+    missing_history=[]
+    for day in needed:
+        block=frame.reindex(pd.date_range(day,periods=24,freq="h"))[signals]
+        if block.notna().sum().eq(0).any(): missing_history.append(day.strftime("%Y-%m-%d"))
+    incomplete_targets=[]
+    for day in dates:
+        block=frame.reindex(pd.date_range(day,periods=K,freq="h"))[signals]
+        if block.isna().any().any(): incomplete_targets.append(day.strftime("%Y-%m-%d"))
+    if missing_history or incomplete_targets:
+        raise ValueError(
+            "The selected August reference dates do not have complete required data. "
+            f"Missing historical full days: {', '.join(missing_history) or 'none'}; "
+            f"incomplete prediction days: {', '.join(incomplete_targets) or 'none'}. "
+            "Choose other dates or correct the source data rather than imputing full days."
+        )
     training,imputed=impute_hourly_days(frame,days=needed,
                                         columns=("I","U","Temp"),require_days=True)
     results={name:[] for name in BASELINES}
@@ -404,7 +425,7 @@ def run(args):
         "group":"ALL","N":N,"k":K,"origin_hour":0,"steps_per_hour":args.steps_per_hour,
         "dates":[f"{day:%Y-%m-%d}" for day in dates],
         "baselines":list(BASELINES),
-        "input":"six corresponding prior weekdays for each selected non-holiday September/October date",
+        "input":"six corresponding prior weekdays (July-August) for each non-holiday August prediction date",
         "deterministic_fit":"historical joint convex QP",
         "diffusion_fit":"historical free-running squared residuals; joint nonnegative variance matching",
         "target_initial_state":"oracle optimized from target observations",
