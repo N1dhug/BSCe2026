@@ -188,10 +188,15 @@ class bm_1_beta:
         for left, right in zip(boundaries[:-1], boundaries[1:]):
             t, step = left, cap
             while t < right - 1e-12:
-                h = min(step, right-t)
+                remaining = right-t
+                h = min(step, remaining)
                 last_error = None
+                # The last fragment can be shorter than min_step because
+                # the preceding accepted steps need not divide an hour evenly.
+                # Permit that single terminal fragment, but never halve it.
+                smallest = min(min_step, remaining)
                 for rejected in range(24):
-                    if h < min_step or t+h <= t:
+                    if h < smallest or t+h <= t:
                         raise FloatingPointError(
                             f"Adaptive beta RK4 step underflow at hour_fraction={t:.7g}; "
                             f"last error: {last_error}") from last_error
