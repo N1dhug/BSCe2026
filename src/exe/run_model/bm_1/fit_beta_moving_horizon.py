@@ -65,6 +65,7 @@ def report_timings(name, timings):
               ("historical_open_propagation", "Historical demand propagation"),
               ("historical_uncertainty_export", "Historical uncertainty and CSV output"),
               ("total_parameter_fit", "Total deterministic + stochastic fitting"),
+              ("total_fit_with_baseline", "Total baseline + model parameter fitting"),
               ("prediction_ready_total", "Total wall time until target prediction is ready"),
               ("total", "Total baseline experiment wall time"))
     print(f"[BM1 beta/{name}] Timing breakdown (seconds):", flush=True)
@@ -359,9 +360,13 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
             for r in reports.values()))
     global_timings["total_parameter_fit"] = float(sum(
         r.get("timings_seconds", {}).get("total_parameter_fit", 0.0) for r in reports.values()))
+    global_timings["total_fit_with_baselines"] = float(sum(
+        r.get("timings_seconds", {}).get("total_fit_with_baseline", 0.0)
+        for r in reports.values()))
     global_timings["total_oracle_prediction"] = float(sum(
         r.get("timings_seconds", {}).get("oracle_initial_state", 0.0) for r in reports.values()))
     print(f"[BM1 beta] All baselines: total parameter fitting={global_timings['total_parameter_fit']:.3f}s; "
+          f"including baseline fits={global_timings['total_fit_with_baselines']:.3f}s; "
           f"oracle prediction solves={global_timings['total_oracle_prediction']:.3f}s; "
           f"prediction preparation/fitting work={global_timings['all_prediction_ready_work_total']:.3f}s; "
           f"wall time through all baseline experiments={global_timings['all_baseline_experiments_total']:.3f}s",
