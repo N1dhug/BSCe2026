@@ -116,13 +116,15 @@ class bm_1_beta_params:
         return float(previous) / float(current)
 
     def fit_mle(self, datasets, deterministic, *, components=8, quadrature=8,
-                reconstruction_quadrature=48, max_step=0.25, maxiter=45, maxfun=700,
-                sigma_x0=0.15, sigma_y0=None, progress=False, nll_ratio_threshold=0.99):
+                reconstruction_quadrature=48, max_step=0.25, fixed_steps_per_hour=1,
+                maxiter=45, maxfun=700, sigma_x0=0.15, sigma_y0=None,
+                progress=False, nll_ratio_threshold=0.99):
         datasets = self._prepare(datasets)
         n = len(datasets)
         if not np.isfinite(nll_ratio_threshold) or not 0.0 < nll_ratio_threshold < 1.0:
             raise ValueError("nll_ratio_threshold must lie strictly between 0 and 1.")
-        solver = bm_1_beta(components, quadrature, reconstruction_quadrature, max_step)
+        solver = bm_1_beta(components, quadrature, reconstruction_quadrature, max_step,
+                           fixed_steps_per_hour=fixed_steps_per_hour)
         names = (*self.NAMES, "sigma_x", "sigma_y")
         raw_seed = np.array([float(deterministic[key]) for key in self.NAMES], dtype=float)
         start_states = np.asarray(deterministic["initial_states"], dtype=float)
@@ -235,7 +237,8 @@ class bm_1_beta_params:
                 "evaluations": evaluations, "invalid_evaluations": invalid_evaluations,
                 "failure_examples": failure_examples, "seconds": perf_counter()-started,
                 "resolution": {"components":components, "quadrature":quadrature,
-                               "reconstruction_quadrature":reconstruction_quadrature, "max_step":max_step}}
+                               "reconstruction_quadrature":reconstruction_quadrature,
+                               "max_step":max_step, "fixed_steps_per_hour":fixed_steps_per_hour}}
 
     def oracle(self, target, fitted, *, components=24, quadrature=12,
                reconstruction_quadrature=48, max_step=0.125, maxiter=70):
