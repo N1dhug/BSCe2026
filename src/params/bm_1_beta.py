@@ -66,13 +66,14 @@ class bm_1_beta_params:
         lower, upper = [np.array([self.BOUNDS[key][i] for key in self.NAMES]) for i in (0,1)]
         theta = np.array([2.0, 2.0, 1.0, 0.5, 1.0])
         states = np.full(n, initial_state, dtype=float)
-        best, iterations = None, 0
+        best, iterations, cycle_times = None, 0, []
         def residual(candidate, x0):
             p = dict(zip(self.NAMES, candidate))
             return np.concatenate([self._deterministic(data, p, state, substeps) - data["I"]
                                    for data, state in zip(datasets, x0)])
         started = perf_counter()
         for cycle in range(int(cycles)):
+            cycle_started = perf_counter()
             fit = least_squares(lambda candidate: residual(candidate, states), theta,
                                 bounds=(lower, upper), max_nfev=max_nfev,
                                 method="trf", loss="linear")
@@ -91,6 +92,8 @@ class bm_1_beta_params:
             errors = residual(theta_new, states_new)
             score = float(errors @ errors)
             iterations += 1
+            cycle_times.append({"cycle":int(cycle + 1), "seconds":float(perf_counter()-cycle_started),
+                                "sse":score, "lsq_nfev":int(fit.nfev)})
             old_best = np.inf if best is None else best["sse"]
             if score < old_best:
                 best = {"theta": theta_new.copy(), "states": states_new.copy(), "sse": score,
@@ -100,7 +103,8 @@ class bm_1_beta_params:
         return {**dict(zip(self.NAMES, best["theta"])), "initial_states": best["states"],
                 "mse": best["sse"] / sum(len(d["I"]) for d in datasets), "sse": best["sse"],
                 "iterations": iterations, "lsq_converged": best["lsq_converged"],
-                "lsq_message": best["lsq_message"], "seconds": perf_counter()-started}
+                "lsq_message": best["lsq_message"], "seconds": perf_counter()-started,
+                "cycle_timings": cycle_times}
 
     @staticmethod
     def nll_ratio(previous, current):
@@ -142,6 +146,7 @@ class bm_1_beta_params:
         bounds += [(0.0, 1.0)] * n
         bounds += [(np.log(self.BOUNDS[key][0]), np.log(self.BOUNDS[key][1])) for key in ("sigma_x", "sigma_y")]
         evaluations = 0
+        objective_seconds = 0.0
         invalid_evaluations = 0
         failure_examples = {}
         best = [np.inf, None]
@@ -155,9 +160,10 @@ class bm_1_beta_params:
             p["sigma_x"], p["sigma_y"] = float(np.exp(q[-2])), float(np.exp(q[-1]))
             return p, q[5:-2]
         def objective(q):
-            nonlocal evaluations, invalid_evaluations, previous_accepted_nll
+            nonlocal evaluations, invalid_evaluations, previous_accepted_nll, objective_seconds
             key = np.asarray(q, dtype=float).tobytes()
             if key in evaluated: return evaluated[key]
+            eval_started = perf_counter()
             evaluations += 1
             p, x0 = decode(q)
             interval = -1
@@ -176,6 +182,7 @@ class bm_1_beta_params:
                 if reason in failure_examples: failure_examples[reason] += 1
                 value = 1e15
             value = float(value)
+            objective_seconds += perf_counter() - eval_started
             evaluated[key] = value
             if previous_accepted_nll is None:
                 previous_accepted_nll = value
@@ -197,15 +204,20 @@ class bm_1_beta_params:
                 previous_accepted_nll = current
                 return
             ratio = self.nll_ratio(previous_accepted_nll, current)
+            elapsed_now = perf_counter() - started
+            last = accepted_iterations[-1]
             accepted_iterations.append({"iteration": len(accepted_iterations),
                 "nll": current, "nll_ratio": ratio,
-                "elapsed_seconds": perf_counter()-started, "evaluations": evaluations})
+                "step_seconds":float(elapsed_now-last["elapsed_seconds"]),
+                "step_evaluations":int(evaluations-last["evaluations"]),
+                "elapsed_seconds":elapsed_now, "evaluations":evaluations})
             if progress:
                 ratio_text = "undefined" if ratio is None else f"{ratio:.6f}"
                 print(f"[beta MLE] iter={len(accepted_iterations)-1} NLL={current:.7f} "
                       f"NLL_previous/NLL_current={ratio_text} "
                       f"threshold={nll_ratio_threshold:.4f} "
-                      f"elapsed={perf_counter()-started:.1f}s", flush=True)
+                      f"step_time={accepted_iterations[-1]['step_seconds']:.1f}s "
+                      f"elapsed={elapsed_now:.1f}s", flush=True)
             previous_accepted_nll = current
             if ratio is not None and ratio > nll_ratio_threshold:
                 stopped_by_ratio = True
@@ -234,7 +246,9 @@ class bm_1_beta_params:
                 "stop_reason": stop_reason, "accepted_iteration_history": accepted_iterations,
                 "message": message,
                 "optimizer_status": int(result.status), "iterations": int(result.nit),
-                "evaluations": evaluations, "invalid_evaluations": invalid_evaluations,
+                "evaluations":evaluations, "objective_seconds":float(objective_seconds),
+                "average_evaluation_seconds":float(objective_seconds/max(1,evaluations)),
+                "invalid_evaluations": invalid_evaluations,
                 "failure_examples": failure_examples, "seconds": perf_counter()-started,
                 "resolution": {"components":components, "quadrature":quadrature,
                                "reconstruction_quadrature":reconstruction_quadrature,
