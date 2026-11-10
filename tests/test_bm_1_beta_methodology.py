@@ -149,6 +149,9 @@ class BM1BetaMethodologyTests(unittest.TestCase):
         self.assertEqual(len(result["initial_states"]),2)
         self.assertTrue(np.isfinite(result["mse"]))
         self.assertGreaterEqual(result["seconds"],0.0)
+        self.assertEqual(len(result["cycle_timings"]),result["iterations"])
+        self.assertTrue(all(item["seconds"] >= 0.0 for item in result["cycle_timings"]))
+        self.assertTrue(all(item["lsq_nfev"] >= 1 for item in result["cycle_timings"]))
 
     def test_weekly_history_and_target_do_not_overlap(self):
         origin = pd.Timestamp("2022-03-21 06:00")
@@ -208,10 +211,17 @@ class BM1BetaMethodologyTests(unittest.TestCase):
         self.assertEqual(FakeBeta.requested[0]["fixed_steps_per_hour"],1)
         self.assertEqual(result["resolution"]["components"],8)
         self.assertEqual(result["evaluations"], 3)
+        self.assertGreaterEqual(result["objective_seconds"],0.0)
+        self.assertGreaterEqual(result["average_evaluation_seconds"],0.0)
+        self.assertAlmostEqual(result["objective_seconds"]/3,
+                               result["average_evaluation_seconds"])
         self.assertAlmostEqual(result["nll"], -204.6)
         self.assertAlmostEqual(result["alpha"], 2.0*np.exp(0.23))
         self.assertEqual(len(result["accepted_iteration_history"]), 3)
         self.assertGreater(result["accepted_iteration_history"][-1]["nll_ratio"], 0.99)
+        self.assertTrue(all(item["step_seconds"] >= 0.0
+                            for item in result["accepted_iteration_history"][1:]))
+        self.assertEqual(result["accepted_iteration_history"][-1]["step_evaluations"],1)
 
     def test_single_fit_automatically_calls_one_plotter_for_both_baselines(self):
         origin = pd.Timestamp("2022-08-22 06:00")
@@ -241,6 +251,15 @@ class BM1BetaMethodologyTests(unittest.TestCase):
             self.assertEqual(fit.call_args.args[5].fit_steps_per_hour,1)
             self.assertEqual(fit.call_args.args[5].fit_components,8)
             self.assertTrue((root/"run_summary.json").is_file())
+            self.assertTrue((root/"timings.json").is_file())
+            with (root/"timings.json").open(encoding="utf-8") as handle:
+                breakdown = __import__("json").load(handle)
+            self.assertEqual(set(breakdown["per_baseline"]),
+                             {"weekly_average","weekly_temperature"})
+            self.assertIn("full_run",breakdown["global"])
+            self.assertIn("total_parameter_fit",breakdown["global"])
+            self.assertIn("all_prediction_ready_work_total",breakdown["global"])
+            self.assertGreaterEqual(breakdown["global"]["full_run"],0.0)
 
     def test_metrics_and_timing(self):
         metrics = score(np.array([1.,2.,3.]),np.array([2.,2.,2.]))
