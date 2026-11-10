@@ -164,7 +164,7 @@ class bm_1_beta_params:
             try:
                 value = 0.0
                 for interval, (data, x) in enumerate(zip(datasets, x0), start=1):
-                    value += solver.simulate(data, p, float(x), observations=data["I"])["nll"]
+                    value += solver.simulate(data, p, float(x), observations=data["I"], nll_only=True)["nll"]
                 if not np.isfinite(value): raise FloatingPointError("nonfinite likelihood")
             except (FloatingPointError, ValueError, OverflowError) as exc:
                 # Reject inadmissible parameter candidates, but retain the
