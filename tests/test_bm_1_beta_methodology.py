@@ -105,6 +105,51 @@ class BM1BetaMethodologyTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 bm_1_beta(fixed_steps_per_hour=invalid)
 
+    def test_adaptive_selector_halves_invalid_RK4_steps_and_recovers(self):
+        """An inadmissible coarse step must be retried without losing mass."""
+        solver=bm_1_beta(components=4,quadrature=4,reconstruction_quadrature=8,
+                         max_step=0.25,fixed_steps_per_hour=None)
+        initial=(np.array([1.]),np.array([0.5]),np.array([0.]))
+        attempts=[]
+        def reject_large_step(mix,h,b0,b1,u,t,parameters):
+            attempts.append(float(h))
+            if h>0.075:
+                raise FloatingPointError("Inadmissible beta-mixture variance.")
+            return mix
+        with patch.object(solver,"_rk4",side_effect=reject_large_step), patch.object(
+                solver,"_reconstruct",side_effect=lambda mix:mix) as reconstruct:
+            result=solver._propagate_hour(initial,0.35,0.35,0.5,self.parameters(),first=True)
+        self.assertTrue(any(h>0.075 for h in attempts))
+        self.assertTrue(any(h<=0.075 for h in attempts))
+        self.assertEqual(reconstruct.call_count,2)  # 0.25 boundary + hour end
+        self.assertAlmostEqual(float(result[0].sum()),1.0)
+        self.assertTrue(np.all(np.isfinite(result[1])))
+
+    def test_adaptive_mle_seed_reduces_process_sigma_when_initial_seed_invalid(self):
+        """Preflight explores feasible diffusion seeds instead of a flat 1e15 plateau."""
+        p=self.parameters()
+        datasets=[self.data(),self.data()]
+        deterministic={key:p[key] for key in bm_1_beta_params.NAMES}
+        deterministic["initial_states"]=np.array([0.4,0.6])
+        class FakeBeta:
+            def __init__(self,*args,**kwargs): pass
+            def simulate(self,data,params,x0,observations=None,nll_only=False):
+                if params["sigma_x"]>0.1:
+                    raise FloatingPointError("Inadmissible beta-mixture variance.")
+                return {"nll":float(np.sum((data["I"]-0.32)**2))}
+        def fake_minimize(func,x,*,method,bounds,callback,options):
+            self.assertLess(np.exp(x[-2]),0.1)
+            self.assertLess(func(x),1e14)
+            return SimpleNamespace(success=True,message="test",status=0,nit=1)
+        with patch("src.params.bm_1_beta.bm_1_beta",FakeBeta),patch(
+                "src.params.bm_1_beta.minimize",fake_minimize):
+            result=bm_1_beta_params().fit_mle(
+                datasets,deterministic,sigma_x0=0.15,sigma_y0=0.03)
+        self.assertTrue(result["converged"])
+        self.assertAlmostEqual(result["initial_seed_sigma_x"],0.05,places=12)
+        self.assertGreaterEqual(result["invalid_evaluations"],1)
+        self.assertEqual(result["resolution"]["step_selector"],"adaptive")
+
     def test_stochastic_open_forecast_and_historical_bayes_likelihood(self):
         solver = bm_1_beta(components=4,quadrature=4,reconstruction_quadrature=8,max_step=0.25)
         data, p = self.data(), self.parameters()
@@ -208,7 +253,7 @@ class BM1BetaMethodologyTests(unittest.TestCase):
         self.assertTrue(result["converged"])
         self.assertFalse(result["optimizer_converged"])
         self.assertEqual(result["stop_reason"], "nll_ratio_threshold")
-        self.assertEqual(FakeBeta.requested[0]["fixed_steps_per_hour"],1)
+        self.assertIsNone(FakeBeta.requested[0]["fixed_steps_per_hour"])
         self.assertEqual(result["resolution"]["components"],8)
         self.assertEqual(result["evaluations"], 3)
         self.assertGreaterEqual(result["objective_seconds"],0.0)
