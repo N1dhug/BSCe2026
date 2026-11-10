@@ -1,12 +1,15 @@
-"""Fit BM1 by the chapter-four historical/oracle methodology, using adaptive beta mixtures.
+"""Fit BM1 on historical windows, forecast one target window, and plot both in one run.
 
 Run from repository root:
-    python -m src.exe.run_model.bm_1.fit_beta_moving_horizon --N 5 --k 24 --origin "2022-08-22 06:00" --tag ALL
+    python -m src.exe.run_model.bm_1.fit_beta_moving_horizon --N 5 --k 24 --origin "2022-08-22 06:00" --tag ALL --show
 
-Both weekly-average and weekly-temperature baselines are fitted on exactly the
-N corresponding historical intervals; stochastic parameters and N latent X0
-are jointly optimized by adaptive beta-mixture maximum likelihood. The target
-interval is reserved for an oracle initial-state fit and retrospective scoring.
+Both weekly-average and weekly-temperature baselines are fitted using the N
+historical windows. The joint stochastic MLE uses a fixed component count
+(default eight) and one fixed RK4 time step per hour, without adaptive temporal
+refinement. More accurate adaptive propagation remains available for the
+final demand uncertainty intervals and numerical verification. All historical
+fitted demands and the single oracle prediction are plotted in ONE figure and
+saved automatically. No separate plotting command is required.
 """
 from argparse import ArgumentParser
 from pathlib import Path
