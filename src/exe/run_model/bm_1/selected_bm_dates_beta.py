@@ -187,6 +187,8 @@ def fit_day(raw,training,date,history,args):
         "mle_converged":bool(fitted["converged"]),
         "mle_stop_reason":str(fitted["stop_reason"]),
         "mle_evaluations":int(fitted["evaluations"]),
+        "mle_invalid_evaluations":int(fitted["invalid_evaluations"]),
+        "mle_initial_sigma_x":float(fitted["initial_seed_sigma_x"]),
         "baseline_seconds":prepared_seconds,"deterministic_seconds":deterministic_seconds,
         "mle_seconds":mle_seconds,"oracle_seconds":oracle_seconds,
         "scoring_seconds":scoring_seconds,"total_compute_seconds":total_seconds,
@@ -224,6 +226,8 @@ def summarize(rows):
         "total_complete_compute_seconds":float(np.sum(total_time)),
         "mean_mle_seconds":float(np.mean([r["mle_seconds"] for r in rows])),
         "mle_converged_days":int(sum(r["mle_converged"] for r in rows)),
+        "mle_invalid_evaluations_total":int(sum(
+            r["mle_invalid_evaluations"] for r in rows)),
     }
 
 
@@ -248,6 +252,8 @@ def save_tables(rows,pooled,output):
             "mle_converged":item["mle_converged"],
             "mle_stop_reason":item["mle_stop_reason"],
             "mle_evaluations":item["mle_evaluations"],
+            "mle_invalid_evaluations":item["mle_invalid_evaluations"],
+            "mle_initial_sigma_x":item["mle_initial_sigma_x"],
             "baseline_fit_and_windows_seconds":item["baseline_seconds"],
             "deterministic_fit_seconds":item["deterministic_seconds"],
             "stochastic_mle_seconds":item["mle_seconds"],
@@ -366,7 +372,8 @@ def run(args):
         print(f"[BM1 beta {i:02d}/{len(dates)}] RMSE={item['demand']['rmse']:.7f} | "
               f"oracle X0={item['oracle_x0']:.5f} | "
               f"target marginal NLL={item['marginal_nll'].sum():.5f} | "
-              f"MLE evaluations={item['mle_evaluations']} | "
+              f"MLE evaluations={item['mle_evaluations']} "
+              f"(invalid={item['mle_invalid_evaluations']}) | "
               f"complete compute={item['total_compute_seconds']:.3f}s",flush=True)
 
     summary=summarize(rows)
@@ -410,7 +417,8 @@ def run(args):
     print(f"Mean complete compute time per date={summary['mean_complete_compute_seconds']:.3f}s | "
           f"sum across dates={summary['total_complete_compute_seconds']:.3f}s | "
           f"mean MLE time={summary['mean_mle_seconds']:.3f}s | "
-          f"MLE converged={summary['mle_converged_days']}/{len(rows)}")
+          f"MLE converged={summary['mle_converged_days']}/{len(rows)} | "
+          f"invalid MLE trials={summary['mle_invalid_evaluations_total']}")
     print(f"Outputs: {args.output}")
     return summary
 
