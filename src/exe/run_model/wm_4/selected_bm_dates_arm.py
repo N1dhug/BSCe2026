@@ -1,4 +1,4 @@
-"""ARM evaluation on the 12 BM1 reference dates, N=6, k=24, origins 00:00.
+"""ARM evaluation on 14 non-holiday reference dates, N=6, k=24, origins 00:00.
 
 Using only the temperature-adjusted weekly baseline, fit historical ARM drift by joint QP, fit
 tau^2 and sigma^2 on the six free-running historical trajectories, then
@@ -8,7 +8,7 @@ Report pooled target RMSE, MAE, signed bias, Gaussian similarity, variance/
 RMSE discrepancy, empirical 95% coverage, and mean complete computation time.
 Data loading and historical-day imputation are excluded from computation time.
 
-Outputs: 3x4 target-day demand and drift-contribution panels, a separate
+Outputs: 2x7 target-day demand and drift-contribution panels, a separate
 pooled cumulative hourly-RMSE comparison, and CSV data and metrics.
 
 From repository root:
@@ -44,25 +44,27 @@ BASELINES = ("weekly_temperature",)
 LABELS = {"weekly_temperature":"Weekly temperature"}
 COLORS = {"weekly_temperature":"tab:orange"}
 DATES = (
-    ("2022-04-11", "2022-02-28", "2022-04-04"),
-    ("2022-04-19", "2022-03-08", "2022-04-12"),
-    ("2022-04-27", "2022-03-16", "2022-04-20"),
-    ("2022-05-05", "2022-03-24", "2022-04-28"),
-    ("2022-05-13", "2022-04-01", "2022-05-06"),
-    ("2022-05-21", "2022-04-09", "2022-05-14"),
-    ("2022-05-29", "2022-04-17", "2022-05-22"),
-    ("2022-05-30", "2022-04-18", "2022-05-23"),
-    ("2022-06-07", "2022-04-26", "2022-05-31"),
-    ("2022-08-10", "2022-06-29", "2022-08-03"),
-    ("2022-08-18", "2022-07-07", "2022-08-11"),
-    ("2022-08-26", "2022-07-15", "2022-08-19"),
+    ("2022-09-26", "2022-08-15", "2022-09-19"),
+    ("2022-09-27", "2022-08-16", "2022-09-20"),
+    ("2022-09-28", "2022-08-17", "2022-09-21"),
+    ("2022-09-29", "2022-08-18", "2022-09-22"),
+    ("2022-09-30", "2022-08-19", "2022-09-23"),
+    ("2022-10-01", "2022-08-20", "2022-09-24"),
+    ("2022-10-02", "2022-08-21", "2022-09-25"),
+    ("2022-10-03", "2022-08-22", "2022-09-26"),
+    ("2022-10-04", "2022-08-23", "2022-09-27"),
+    ("2022-10-05", "2022-08-24", "2022-09-28"),
+    ("2022-10-06", "2022-08-25", "2022-09-29"),
+    ("2022-10-07", "2022-08-26", "2022-09-30"),
+    ("2022-10-08", "2022-08-27", "2022-10-01"),
+    ("2022-10-09", "2022-08-28", "2022-10-02"),
 )
 Z68, Z95 = float(norm.ppf(0.84)), float(norm.ppf(0.975))
 EXPECTED_ABS_NORMAL = float(np.sqrt(2./np.pi))
 
 
 def reference_dates():
-    """Check the six corresponding weekdays against the exact BM1 date table."""
+    """Check two normal weeks, two of each weekday, and their six-week histories."""
     dates, histories = [], []
     for day, first, last in DATES:
         target = pd.Timestamp(day)
@@ -71,6 +73,15 @@ def reference_dates():
             raise ValueError(f"BM1 reference-date mismatch at {day}.")
         dates.append(target)
         histories.append(history)
+    if len(dates)!=14 or any(sum(date.weekday()==weekday for date in dates)!=2
+                             for weekday in range(7)):
+        raise ValueError("Reference selection must contain exactly two of every weekday.")
+    holiday_dates = {pd.Timestamp(value) for value in (
+        "2022-04-14","2022-04-15","2022-04-17","2022-04-18",
+        "2022-05-13","2022-05-26","2022-06-05","2022-06-06",
+    )}
+    if any(date in holiday_dates for date in dates):
+        raise ValueError("Selected prediction date is a Danish 2022 public holiday.")
     return dates, histories
 
 
@@ -152,7 +163,7 @@ def fit_origin(frame, training, day, history, baseline_name, steps):
 
 
 def pooled_metrics(items):
-    """Pooled across exactly 12*24 target observations for each baseline."""
+    """Pooled across 14*24 target observations for the weekly-temperature baseline."""
     error = np.stack([item["error"] for item in items])
     variance = np.stack([item["variance"] for item in items])
     observed_hourly_rmse = np.sqrt(np.mean(error**2,axis=0))
@@ -262,8 +273,8 @@ def make_tables(results, output):
 
 
 def plot_days(results, path, show=False):
-    """Exactly 3 rows x 4 columns, one subplot per reference prediction date."""
-    fig, axes = plt.subplots(3,4,figsize=(20,12),sharex=True,sharey=True)
+    """Two rows of seven weekdays, one subplot per regular prediction date."""
+    fig, axes = plt.subplots(2,7,figsize=(25,9),sharex=True,sharey=True)
     hours = np.arange(K)
     for index,axis in enumerate(axes.flat):
         target = results[BASELINES[0]][index]["day"]
@@ -279,15 +290,15 @@ def plot_days(results, path, show=False):
         axis.set_xlim(0,K-1)
         axis.set_xticks([0,4,8,12,16,20,23])
         axis.grid(alpha=0.23)
-        if index//4 == 2: axis.set_xlabel("Hour of day")
-        if index%4 == 0: axis.set_ylabel("Normalized demand")
+        if index//7 == 1: axis.set_xlabel("Hour of day")
+        if index%7 == 0: axis.set_ylabel("Normalized demand")
     handles,labels=axes.flat[0].get_legend_handles_labels()
     from matplotlib.patches import Patch
     handles.extend([Patch(color="gray",alpha=0.25,label="Central 68% interval"),
                     Patch(color="gray",alpha=0.12,label="Central 95% interval")])
     fig.legend(handles,[*labels,"Central 68% interval","Central 95% interval"],
                loc="upper center",bbox_to_anchor=(0.5,0.962),ncol=4,fontsize=10)
-    fig.suptitle("ARM: 12 selected oracle-conditioned prediction days | Weekly temperature | ALL | N=6, k=24 h",
+    fig.suptitle("ARM: 14 non-holiday oracle-conditioned prediction days | Weekly temperature | ALL | N=6, k=24 h",
                  fontsize=15,y=0.995)
     fig.tight_layout(rect=(0,0,1,0.92))
     fig.savefig(path,dpi=190,bbox_inches="tight")
@@ -304,7 +315,7 @@ def plot_rate_contributions(results,path,show=False):
     at precisely the same 24 hours as the demand-prediction figure.
     """
     name = BASELINES[0]
-    fig,axes=plt.subplots(3,4,figsize=(20,12),sharex=True,sharey=True)
+    fig,axes=plt.subplots(2,7,figsize=(25,9),sharex=True,sharey=True)
     hours = np.arange(K)
     contributions = (
         ("effect_F",r"$\theta_F F$", "tab:blue"),
@@ -322,12 +333,12 @@ def plot_rate_contributions(results,path,show=False):
         axis.set_xlim(0,K-1)
         axis.set_xticks([0,4,8,12,16,20,23])
         axis.grid(alpha=0.23)
-        if (sample-1)//4 == 2: axis.set_xlabel("Hour of day")
-        if (sample-1)%4 == 0: axis.set_ylabel(r"Contribution to $\dot{R}$")
+        if (sample-1)//7 == 1: axis.set_xlabel("Hour of day")
+        if (sample-1)%7 == 0: axis.set_ylabel(r"Contribution to $\dot{R}$")
     handles,labels=axes.flat[0].get_legend_handles_labels()
     fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(0.5,0.962),
                ncol=4,fontsize=10)
-    fig.suptitle("ARM rate-response contributions | 12 selected oracle prediction days | "
+    fig.suptitle("ARM rate-response contributions | 14 non-holiday oracle prediction days | "
                  "Weekly temperature | ALL | N=6, k=24 h",fontsize=15,y=0.995)
     fig.tight_layout(rect=(0,0,1,0.92))
     fig.savefig(path,dpi=190,bbox_inches="tight")
@@ -350,7 +361,7 @@ def plot_cumulative(curves,path,show=False):
     ax.plot(h,predicted,color=color,lw=2.2,ls="--",marker="s",ms=3,
             label="Model-predicted cumulative hourly RMSE")
     ax.fill_between(h,empirical,predicted,color=color,alpha=0.11)
-    ax.set_title("ARM | Weekly temperature | 12-day pooled empirical vs predicted error accumulation")
+    ax.set_title("ARM | Weekly temperature | 14-day pooled empirical vs predicted error accumulation")
     ax.set_xlabel("Prediction lead hour")
     ax.set_ylabel("Cumulative sum of pooled hourly RMSE (normalized demand)")
     ax.set_xlim(1,K)
@@ -380,32 +391,32 @@ def run(args):
             item=fit_origin(frame,training,day,history,name,args.steps_per_hour)
             results[name].append(item)
             metric=item["demand_metrics"]
-            print(f"[{sample:02d}/12] {day:%Y-%m-%d} | {LABELS[name]:18s} | "
+            print(f"[{sample:02d}/{len(dates)}] {day:%Y-%m-%d} | {LABELS[name]:18s} | "
                   f"RMSE={metric['rmse']:.6f} | MAE={metric['mae']:.6f} | "
                   f"bias={metric['bias']:+.6f} | compute={item['total_compute_seconds']:.3f}s",
                   flush=True)
 
     hourly,daily,pooled,curves=make_tables(results,args.output)
-    plot_days(results,args.output/"selected_12_days_3x4.png",args.show)
-    plot_rate_contributions(results,args.output/"selected_12_days_rate_contributions_3x4.png",args.show)
+    plot_days(results,args.output/"selected_14_days_2x7.png",args.show)
+    plot_rate_contributions(results,args.output/"selected_14_days_rate_contributions_2x7.png",args.show)
     plot_cumulative(curves,args.output/"pooled_cumulative_error.png",args.show)
     config={
         "group":"ALL","N":N,"k":K,"origin_hour":0,"steps_per_hour":args.steps_per_hour,
         "dates":[f"{day:%Y-%m-%d}" for day in dates],
         "baselines":list(BASELINES),
-        "input":"historical N corresponding weekdays as defined in BM1 reference date table",
+        "input":"six corresponding prior weekdays for each selected non-holiday September/October date",
         "deterministic_fit":"historical joint convex QP",
         "diffusion_fit":"historical free-running squared residuals; joint nonnegative variance matching",
         "target_initial_state":"oracle optimized from target observations",
         "time_definition":"complete weekly-temperature estimation and prediction, excludes initial ALL data reading and imputation",
-        "cumulative_plot":"sum over lead hours of sqrt(mean over 12 dates of squared hourly errors); predicted uses sqrt(mean model-implied variance)",
+        "cumulative_plot":"sum over lead hours of sqrt(mean over 14 dates of squared hourly errors); predicted uses sqrt(mean model-implied variance)",
         "rate_contributions":"theta_F*F + theta_R*R + theta_U*h(U) = predicted dR/dt; g(R)=R, h(U)=U; evaluated on oracle trajectory",
         "signed_bias":"predicted minus observed",
         "empirical_coverage":"pointwise 95 percent Gaussian intervals",
         "historical_imputed_hourly_slots":int(imputed["imputed_hourly_slots"]),
     }
     (args.output/"configuration.json").write_text(json.dumps(config,indent=2),encoding="utf-8")
-    print("\nPOOLED TARGET PERFORMANCE (12 dates x 24 hours, weekly temperature baseline)")
+    print("\nPOOLED TARGET PERFORMANCE (14 non-holiday dates x 24 hours, weekly temperature baseline)")
     for row in pooled.itertuples(index=False):
         print(f"\n{LABELS[row.baseline]} | N=6 k=24 | {row.observations} observations")
         print(f"  Demand RMSE={row.rmse:.8f} | MAE={row.mae:.8f} | "
@@ -421,13 +432,13 @@ def run(args):
               f"(excludes data read-in and historical imputation)")
     print(f"\nMean complete compute time per selected day (weekly temperature only)="
           f"{pooled.iloc[0]['mean_compute_seconds']:.3f}s")
-    print(f"\nSaved rate-contribution plot: {args.output/'selected_12_days_rate_contributions_3x4.png'}")
+    print(f"\nSaved rate-contribution plot: {args.output/'selected_14_days_rate_contributions_2x7.png'}")
     print(f"Saved results to {args.output}")
     return pooled
 
 
 def main():
-    parser=ArgumentParser(description="Fit ARM using only the weekly-temperature baseline and historical diffusion on 12 BM1 dates (ALL, N=6, k=24, origin 00:00).")
+    parser=ArgumentParser(description="Fit ARM using only the weekly-temperature baseline and historical diffusion on 14 regular non-holiday dates (ALL, N=6, k=24, origin 00:00).")
     parser.add_argument("--steps-per-hour",type=int,default=60)
     parser.add_argument("--output",type=Path,default=OUTPUT)
     parser.add_argument("--show",action="store_true")
