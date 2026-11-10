@@ -169,9 +169,12 @@ def run_baseline(frame, origin, dates, k, name, args, root):
         historical, initial_state=args.x0, cycles=args.deterministic_cycles,
         max_nfev=args.max_nfev, state_maxiter=args.state_maxiter, substeps=args.substeps))
     print(f"[BM1 beta/{name}] deterministic MSE={deterministic['mse']:.8f}", flush=True)
+    print(f"[BM1 beta/{name}] stochastic MLE: {args.fit_components} fixed beta components, "
+          f"{args.fit_steps_per_hour} fixed RK4 step(s)/hour, no adaptive refinement", flush=True)
     try:
         fitted = timed(timings, "stochastic_beta_mle", lambda: solver.fit_mle(
             historical, deterministic, maxiter=args.maxiter, maxfun=args.maxfun,
+            components=args.fit_components, fixed_steps_per_hour=args.fit_steps_per_hour,
             progress=args.progress, nll_ratio_threshold=args.nll_ratio_threshold))
     except Exception as exc:
         timings["total_until_failure"] = float(perf_counter() - started)
@@ -261,11 +264,16 @@ def run_baseline(frame, origin, dates, k, name, args, root):
 
 
 def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
-        output=None, x0=0.5, maxiter=45, maxfun=700, nll_ratio_threshold=0.99, deterministic_cycles=4,
+        output=None, x0=0.5, maxiter=45, maxfun=700, nll_ratio_threshold=0.99,
+        fit_components=8, fit_steps_per_hour=1, deterministic_cycles=4,
         max_nfev=120, state_maxiter=60, substeps=2, oracle_maxiter=70,
-        verify_refined=False, verify_fv=False, strict=False, progress=False):
+        verify_refined=False, verify_fv=False, strict=False, progress=False,
+        plot=True, show=False):
     """Execute one historical-fit/oracle experiment for each selected baseline."""
     N, k = checks.settings(N, k, maxiter, deterministic_cycles, max_nfev)
+    if any(isinstance(value, bool) or not isinstance(value, int) or value < 1
+           for value in (fit_components, fit_steps_per_hour)):
+        raise ValueError("fit_components and fit_steps_per_hour must be positive integers.")
     if strict and not (verify_refined and verify_fv):
         raise ValueError("--strict requires --verify-refined and --verify-fv for methodology acceptance.")
     origin = checks.origin(origin)
@@ -288,12 +296,23 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
     for name in names:
         reports[name] = run_baseline(frame, origin, dates, k, name, argparse_namespace(
             x0=x0,maxiter=maxiter,maxfun=maxfun,nll_ratio_threshold=nll_ratio_threshold,
+            fit_components=fit_components,fit_steps_per_hour=fit_steps_per_hour,
             deterministic_cycles=deterministic_cycles,
             max_nfev=max_nfev,state_maxiter=state_maxiter,substeps=substeps,
             oracle_maxiter=oracle_maxiter,verify_refined=verify_refined,verify_fv=verify_fv,strict=strict,progress=progress),root)
+    if plot:
+        # One execution performs fitting, saving and ONE combined figure
+        # (historical intervals + oracle prediction; both baselines if used).
+        from src.exe.run_model.bm_1.plot_beta_moving_horizon import plot_saved
+        figure = timed(global_timings, "single_panel_plot", lambda: plot_saved(
+            run_dir=root, baseline=baseline, tag=tag, show=show))
+        print(f"[BM1 beta] Demand fit figure: {figure['plot']}", flush=True)
     global_timings["full_run"] = float(perf_counter()-started)
     save_json(root/"run_summary.json", {"origin":origin,"N":N,"k":k,"tag":tag,"baselines":names,
                                       "normalization":normalization,"timings_seconds":global_timings,
+                                      "fit_resolution":{"components":fit_components,
+                                          "fixed_steps_per_hour":fit_steps_per_hour},
+                                      "plot":str(figure["plot"]) if plot else None,
                                       "results":{name:{"historical_fit":r["historical_fit"],"oracle":r["oracle"],
                                                        "baseline_score":r["baseline_score"],"mle_converged":r["mle_converged"],
                                                        "mle_stop_reason":r["mle_stop_reason"],
@@ -320,6 +339,10 @@ def main():
     parser.add_argument("--x0",type=float,default=0.5)
     parser.add_argument("--maxiter",type=int,default=45,help="Maximum stochastic MLE L-BFGS-B iterations.")
     parser.add_argument("--maxfun",type=int,default=700,help="Maximum stochastic MLE objective evaluations.")
+    parser.add_argument("--fit-components",type=int,default=8,
+                        help="Fixed number of beta components in the MLE (default 8).")
+    parser.add_argument("--fit-steps-per-hour",type=int,default=1,
+                        help="Fixed RK4 steps per hourly MLE transition, with no adaptive subdivision (default 1).")
     parser.add_argument("--nll-ratio-threshold",type=float,default=0.99,
                         help="Stop stochastic MLE if NLL(previous)/NLL(current) > this fraction at an accepted iteration (default 0.99).")
     parser.add_argument("--deterministic-cycles",type=int,default=4)
@@ -331,6 +354,9 @@ def main():
     parser.add_argument("--verify-fv",action="store_true",help="Check beta against independent K=1631 and K=3263 finite-volume references (slow).")
     parser.add_argument("--strict",action="store_true",help="Reject non-converged MLE or failed requested numerical verification.")
     parser.add_argument("--progress",action="store_true",help="Print MLE objective-evaluation progress and elapsed time.")
+    parser.add_argument("--no-plot",action="store_false",dest="plot",
+                        help="Do not generate the combined demand/uncertainty figure after fitting.")
+    parser.add_argument("--show",action="store_true",help="Display the combined figure after saving it.")
     args = parser.parse_args()
     run(**vars(args))
 
