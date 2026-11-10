@@ -269,15 +269,27 @@ class bm_1_beta_params:
             except (FloatingPointError, ValueError): return 1e12
         grid = np.linspace(0.0, 1.0, 5)
         candidates = [(loss(float(x)), float(x)) for x in grid]
+        searches = []
         for left, right in zip(grid[:-1], grid[1:]):
+            search_started = perf_counter()
             result = minimize_scalar(loss, method="bounded", bounds=(float(left), float(right)),
                                      options={"maxiter": int(maxiter), "xatol":1e-5})
+            searches.append({"interval":[float(left),float(right)],
+                             "seconds":float(perf_counter()-search_started),
+                             "evaluations":int(result.nfev)})
             candidates.append((float(result.fun), float(result.x)))
+        search_seconds = float(perf_counter()-started)
         mse, x0 = min(candidates)
         if mse >= 1e11: raise RuntimeError("BM1 oracle could not find a numerically valid initial state.")
+        forecast_started = perf_counter()
         prediction = solver.simulate(target, fitted, x0)
+        forecast_seconds = float(perf_counter()-forecast_started)
+        intervals_started = perf_counter()
         prediction.update(solver.intervals(prediction, fitted["sigma_y"]))
+        intervals_seconds = float(perf_counter()-intervals_started)
         return {"initial_state": x0, "mse": mse, "seconds":perf_counter()-started,
+                "search_seconds":search_seconds, "search_timings":searches,
+                "forecast_seconds":forecast_seconds, "intervals_seconds":intervals_seconds,
                 "evaluations":evaluations, "prediction":prediction,
                 "resolution": {"components":components, "quadrature":quadrature,
                                "reconstruction_quadrature":reconstruction_quadrature, "max_step":max_step}}
