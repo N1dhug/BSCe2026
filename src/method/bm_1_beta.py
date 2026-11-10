@@ -3,8 +3,9 @@
 The component count is always fixed. With fixed_steps_per_hour provided,
 moments use exactly that many RK4 steps per observation interval, with one
 beta-mixture reconstruction at the end of each hour and no adaptive step
-halving. Without that option, the original adaptive integrator is retained
-for reference predictions and numerical validation.
+halving. By default, an admissibility-controlled adaptive RK4 selector
+rejects invalid moment steps, halves their size, and cautiously regrows
+the step. This is also used by the stochastic MLE.
 """
 import numpy as np
 from scipy.special import logsumexp, ndtr
@@ -168,18 +169,32 @@ class bm_1_beta:
                     raise FloatingPointError(
                         f"Fixed-step beta RK4 failed on step {j+1}/{n}: {exc}") from exc
             return self._reconstruct(mix)
-        # Adaptive mode for reference predictions / verification.
-        # Conservative drift derivative bound limits stiff RK4 steps.
-        slope = p["Xi"] * p["k"] * p["alpha"] / (4.0 * p["C"] * np.tanh(p["alpha"] / 4.0))
-        step = min(self.max_step, 0.5 / max(1.0, slope))
-        if step < 1.0 / 4096.0: raise FloatingPointError("BM1 moment dynamics too stiff for the selected resolution.")
+        # Adaptive admissibility-controlled RK4 is used for stochastic MLE
+        # and reference propagation. Each trial is made on a COPY of the
+        # mixture; an inadmissible intermediate RK4 stage or final moment is
+        # rejected and retried at half the step size, without clipping a
+        # genuinely invalid variance into the [0,mu(1-mu)] domain.
+        #
+        # Estimate a conservative bound on the drift slope. This cap avoids
+        # requesting obviously unstable steps even before trial rejection.
+        slope = p["Xi"] * p["k"] * p["alpha"] / (
+            4.0 * p["C"] * np.tanh(p["alpha"] / 4.0))
+        cap = min(self.max_step, 0.5 / max(1.0, slope))
+        min_step = 1.0 / 1048576.0
+        if not np.isfinite(cap) or cap < min_step:
+            raise FloatingPointError(
+                "BM1 moment dynamics too stiff for adaptive beta propagation.")
         boundaries = (0.0, 0.25, 1.0) if first else (0.0, 1.0)
         for left, right in zip(boundaries[:-1], boundaries[1:]):
-            t = left
+            t, step = left, cap
             while t < right - 1e-12:
-                h = min(step, right - t)
+                h = min(step, right-t)
                 last_error = None
-                for _ in range(18):
+                for rejected in range(24):
+                    if h < min_step or t+h <= t:
+                        raise FloatingPointError(
+                            f"Adaptive beta RK4 step underflow at hour_fraction={t:.7g}; "
+                            f"last error: {last_error}") from last_error
                     try:
                         candidate = self._rk4(mix, h, b0, b1, u, t, p)
                         break
@@ -188,10 +203,14 @@ class bm_1_beta:
                         h *= 0.5
                 else:
                     raise FloatingPointError(
-                        f"Adaptive beta RK4 failed at hour_fraction={t:.6g}, "
-                        f"last_step={h:.3g}: {last_error}") from last_error
-                if h < 1e-9: raise FloatingPointError("Beta RK4 substep underflow.")
-                mix, t = candidate, t + h
+                        f"Adaptive beta RK4 found no admissible moment update at "
+                        f"hour_fraction={t:.7g}; last_step={h:.4g}: "
+                        f"{last_error}") from last_error
+                mix, t = candidate, min(right, t+h)
+                # Retain the safe scale after a rejection, then gradually
+                # expand it again. Do not retry the full inadmissible step at
+                # every subsequent subinterval.
+                step = min(cap, 1.5*h)
             if first and right == 0.25: mix = self._reconstruct(mix)
         return self._reconstruct(mix)
 
