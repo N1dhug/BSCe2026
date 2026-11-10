@@ -51,6 +51,23 @@ def timed(timings, label, function):
         print(f"[BM1 beta] {label}: {elapsed:.3f}s", flush=True)
 
 
+def report_timings(name, timings):
+    """Print non-overlapping solver timings and cumulative prediction totals."""
+    labels = (("baseline_fit", "Baseline fitting"),
+              ("deterministic_fit", "Deterministic parameter optimization"),
+              ("stochastic_beta_mle", "Stochastic MLE optimization"),
+              ("oracle_initial_state", "Prediction/oracle initial-state optimization"),
+              ("historical_open_propagation", "Historical demand propagation"),
+              ("historical_uncertainty_export", "Historical uncertainty and CSV output"),
+              ("total_parameter_fit", "Total deterministic + stochastic fitting"),
+              ("prediction_ready_total", "Total wall time until target prediction is ready"),
+              ("total", "Total baseline experiment wall time"))
+    print(f"[BM1 beta/{name}] Timing breakdown (seconds):", flush=True)
+    for key, label in labels:
+        if key in timings:
+            print(f"  {label}: {timings[key]:.3f}s", flush=True)
+
+
 def json_serializable(value):
     if isinstance(value, (pd.Timestamp, np.datetime64)): return str(value)
     if isinstance(value, np.ndarray): return value.tolist()
@@ -165,8 +182,10 @@ def run_baseline(frame, origin, dates, k, name, args, root):
     directory.mkdir(parents=True, exist_ok=True)
     base = timed(timings, "baseline_fit", lambda: BASELINES[name](min_samples=2).fit(
         historical_training(frame, dates, k), origin, exact_historical=True))
-    historical = [checks.window(frame, t, k, base) for t in dates]
-    prediction = checks.window(frame, origin, k, base)
+    historical = timed(timings, "historical_window_preparation",
+                       lambda: [checks.window(frame, t, k, base) for t in dates])
+    prediction = timed(timings, "prediction_window_preparation",
+                       lambda: checks.window(frame, origin, k, base))
     solver = bm_1_beta_params()
     deterministic = timed(timings, "deterministic_fit", lambda: solver.fit_deterministic(
         historical, initial_state=args.x0, cycles=args.deterministic_cycles,
@@ -195,6 +214,13 @@ def run_baseline(frame, origin, dates, k, name, args, root):
         if args.strict: raise RuntimeError(f"BM1 beta MLE failed to converge for {name}: {fitted['message']}")
     oracle = timed(timings, "oracle_initial_state", lambda: solver.oracle(
         prediction, fitted, maxiter=args.oracle_maxiter))
+    # The oracle method includes target open propagation and 68%/95%
+    # uncertainty quantiles. This is the moment its prediction is available.
+    timings["total_parameter_fit"] = float(timings["deterministic_fit"] + timings["stochastic_beta_mle"])
+    timings["total_fit_with_baseline"] = float(timings["baseline_fit"] + timings["total_parameter_fit"])
+    timings["prediction_ready_total"] = float(perf_counter() - started)
+    print(f"[BM1 beta/{name}] parameter fitting total: {timings['total_parameter_fit']:.3f}s; "
+          f"prediction ready after: {timings['prediction_ready_total']:.3f}s", flush=True)
     baseline_score = score(prediction["I"], prediction["B"])
     predicted_score = score(prediction["I"], oracle["prediction"]["mean"])
     stochastic = bm_1_beta(24, 12, 48, 0.125)
@@ -217,6 +243,7 @@ def run_baseline(frame, origin, dates, k, name, args, root):
                         "passed":bool(verification["passed"] and fv_verification["passed"])}
         print(f"[BM1 beta/{name}] independent FV check passed={fv_verification['passed']}", flush=True)
         if args.strict and not fv_verification["passed"]: raise RuntimeError(f"BM1 finite-volume verification failed for {name}.")
+    export_started = perf_counter()
     rows = []
     for data, curve, date in zip(historical, historical_curves, dates):
         bounds = stochastic.intervals(curve, fitted["sigma_y"])
@@ -233,6 +260,9 @@ def run_baseline(frame, origin, dates, k, name, args, root):
                              "beta_mean":p["mean"],"lower_68":p["lower_68"],"upper_68":p["upper_68"],
                              "lower_95":p["lower_95"],"upper_95":p["upper_95"]})
     forecast.to_csv(directory/"oracle_prediction.csv",index=False)
+    timings["historical_uncertainty_export"] = float(perf_counter() - export_started)
+    print(f"[BM1 beta/{name}] historical_uncertainty_export: "
+          f"{timings['historical_uncertainty_export']:.3f}s", flush=True)
     coverage = {f"coverage_{level}":float(np.mean(
         (prediction["I"] >= p[f"lower_{level}"]) & (prediction["I"] <= p[f"upper_{level}"])))
                 for level in (68,95)}
@@ -263,6 +293,7 @@ def run_baseline(frame, origin, dates, k, name, args, root):
     print(f"[BM1 beta/{name}] historical RMSE={fit_score['rmse']:.6f} "
           f"oracle RMSE={predicted_score['rmse']:.6f} baseline RMSE={baseline_score['rmse']:.6f} "
           f"total={timings['total']:.3f}s", flush=True)
+    report_timings(name, timings)
     return report
 
 
@@ -297,12 +328,23 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
         raise ValueError("Latest historical interval overlaps the prediction interval.")
     reports = {}
     for name in names:
+        print(f"[BM1 beta] Beginning {name} parameter fitting and target prediction", flush=True)
         reports[name] = run_baseline(frame, origin, dates, k, name, argparse_namespace(
             x0=x0,maxiter=maxiter,maxfun=maxfun,nll_ratio_threshold=nll_ratio_threshold,
             fit_components=fit_components,fit_steps_per_hour=fit_steps_per_hour,
             deterministic_cycles=deterministic_cycles,
             max_nfev=max_nfev,state_maxiter=state_maxiter,substeps=substeps,
             oracle_maxiter=oracle_maxiter,verify_refined=verify_refined,verify_fv=verify_fv,strict=strict,progress=progress),root)
+        global_timings[f"{name}_total"] = float(reports[name].get("timings_seconds", {}).get("total", 0.0))
+    global_timings["all_predictions_ready_total"] = float(perf_counter() - started)
+    global_timings["total_parameter_fit"] = float(sum(
+        r.get("timings_seconds", {}).get("total_parameter_fit", 0.0) for r in reports.values()))
+    global_timings["total_oracle_prediction"] = float(sum(
+        r.get("timings_seconds", {}).get("oracle_initial_state", 0.0) for r in reports.values()))
+    print(f"[BM1 beta] All baselines: total parameter fitting={global_timings['total_parameter_fit']:.3f}s; "
+          f"oracle prediction solves={global_timings['total_oracle_prediction']:.3f}s; "
+          f"wall time through all baseline experiments={global_timings['all_predictions_ready_total']:.3f}s",
+          flush=True)
     if plot:
         # One execution performs fitting, saving and ONE combined figure
         # (historical intervals + oracle prediction; both baselines if used).
@@ -311,6 +353,9 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
             run_dir=root, baseline=baseline, tag=tag, show=show))
         print(f"[BM1 beta] Demand fit figure: {figure['plot']}", flush=True)
     global_timings["full_run"] = float(perf_counter()-started)
+    timing_report = {"global":global_timings,
+                     "per_baseline":{name:r.get("timings_seconds",{}) for name,r in reports.items()}}
+    save_json(root/"timings.json", timing_report)
     save_json(root/"run_summary.json", {"origin":origin,"N":N,"k":k,"tag":tag,"baselines":names,
                                       "normalization":normalization,"timings_seconds":global_timings,
                                       "fit_resolution":{"components":fit_components,
@@ -322,7 +367,9 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
                                                        "mle_nll_ratio_threshold":r["mle_nll_ratio_threshold"],
                                                        "methodology_accepted":r["methodology_accepted"],
                                                        "timings_seconds":r["timings_seconds"]} for name,r in reports.items()}})
-    print(f"[BM1 beta] Finished. Full run {global_timings['full_run']:.3f}s. Output: {root}",flush=True)
+    print(f"[BM1 beta] Finished: total fitting={global_timings['total_parameter_fit']:.3f}s, "
+          f"end-to-end prediction/plotting={global_timings['full_run']:.3f}s. "
+          f"Timing report: {root/'timings.json'}. Output: {root}",flush=True)
     return reports
 
 
