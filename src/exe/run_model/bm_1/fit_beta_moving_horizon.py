@@ -336,14 +336,19 @@ def run(N=5, k=24, origin="2022-08-22 06:00", *, tag="ALL", baseline="both",
             max_nfev=max_nfev,state_maxiter=state_maxiter,substeps=substeps,
             oracle_maxiter=oracle_maxiter,verify_refined=verify_refined,verify_fv=verify_fv,strict=strict,progress=progress),root)
         global_timings[f"{name}_total"] = float(reports[name].get("timings_seconds", {}).get("total", 0.0))
-    global_timings["all_predictions_ready_total"] = float(perf_counter() - started)
+    global_timings["all_baseline_experiments_total"] = float(perf_counter() - started)
+    global_timings["all_prediction_ready_work_total"] = float(
+        global_timings["all_data_loading"] + global_timings["historical_normalization"] +
+        sum(r.get("timings_seconds", {}).get("prediction_ready_total", 0.0)
+            for r in reports.values()))
     global_timings["total_parameter_fit"] = float(sum(
         r.get("timings_seconds", {}).get("total_parameter_fit", 0.0) for r in reports.values()))
     global_timings["total_oracle_prediction"] = float(sum(
         r.get("timings_seconds", {}).get("oracle_initial_state", 0.0) for r in reports.values()))
     print(f"[BM1 beta] All baselines: total parameter fitting={global_timings['total_parameter_fit']:.3f}s; "
           f"oracle prediction solves={global_timings['total_oracle_prediction']:.3f}s; "
-          f"wall time through all baseline experiments={global_timings['all_predictions_ready_total']:.3f}s",
+          f"prediction preparation/fitting work={global_timings['all_prediction_ready_work_total']:.3f}s; "
+          f"wall time through all baseline experiments={global_timings['all_baseline_experiments_total']:.3f}s",
           flush=True)
     if plot:
         # One execution performs fitting, saving and ONE combined figure
