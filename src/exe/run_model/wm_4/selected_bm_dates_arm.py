@@ -1,6 +1,6 @@
 """ARM evaluation on the 12 BM1 reference dates, N=6, k=24, origins 00:00.
 
-For both weekly baselines, fit the historical ARM drift by joint QP, fit
+Using only the temperature-adjusted weekly baseline, fit historical ARM drift by joint QP, fit
 tau^2 and sigma^2 on the six free-running historical trajectories, then
 optimize only [F0,R0] on the 24-hour target interval (oracle conditioning).
 
@@ -8,7 +8,7 @@ Report pooled target RMSE, MAE, signed bias, Gaussian similarity, variance/
 RMSE discrepancy, empirical 95% coverage, and mean complete computation time.
 Data loading and historical-day imputation are excluded from computation time.
 
-Outputs: a 3x4 target-day panel, a separate pooled cumulative hourly-RMSE
+Outputs: a 3x4 weekly-temperature target-day panel, a separate pooled cumulative hourly-RMSE
 comparison, and hourly, per-day, pooled, and cumulative-metric CSV files.
 
 From repository root:
@@ -40,9 +40,9 @@ from src.tools.impute_hourly import impute_hourly_days
 ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT/"files"/"output"/"wm_4"/"selected_bm_dates_arm"
 N, K = 6, 24
-BASELINES = ("weekly_average", "weekly_temperature")
-LABELS = {"weekly_average":"Weekly average", "weekly_temperature":"Weekly temperature"}
-COLORS = {"weekly_average":"tab:blue", "weekly_temperature":"tab:orange"}
+BASELINES = ("weekly_temperature",)
+LABELS = {"weekly_temperature":"Weekly temperature"}
+COLORS = {"weekly_temperature":"tab:orange"}
 DATES = (
     ("2022-04-11", "2022-02-28", "2022-04-04"),
     ("2022-04-19", "2022-03-08", "2022-04-12"),
@@ -261,8 +261,8 @@ def plot_days(results, path, show=False):
     handles.extend([Patch(color="gray",alpha=0.25,label="Central 68% interval"),
                     Patch(color="gray",alpha=0.12,label="Central 95% interval")])
     fig.legend(handles,[*labels,"Central 68% interval","Central 95% interval"],
-               loc="upper center",bbox_to_anchor=(0.5,0.962),ncol=5,fontsize=10)
-    fig.suptitle("ARM: 12 selected oracle-conditioned prediction days | ALL | N=6, k=24 h",
+               loc="upper center",bbox_to_anchor=(0.5,0.962),ncol=4,fontsize=10)
+    fig.suptitle("ARM: 12 selected oracle-conditioned prediction days | Weekly temperature | ALL | N=6, k=24 h",
                  fontsize=15,y=0.995)
     fig.tight_layout(rect=(0,0,1,0.92))
     fig.savefig(path,dpi=190,bbox_inches="tight")
@@ -272,27 +272,27 @@ def plot_days(results, path, show=False):
 
 def plot_cumulative(curves,path,show=False):
     """Cumulative sums of pooled hourly RMSE, not RMSE of accumulated energy."""
-    fig,axes=plt.subplots(1,2,figsize=(15,5.6),sharey=True)
-    for ax,baseline in zip(axes,BASELINES):
-        part=curves.loc[curves["baseline"]==baseline].sort_values("lead_hour")
-        h=part["lead_hour"].to_numpy(dtype=int)
-        color=COLORS[baseline]
-        ax.plot(h,part["empirical_cumulative_hourly_rmse"],color="black",lw=2.2,
-                marker="o",ms=3,label="Empirical cumulative hourly RMSE")
-        ax.plot(h,part["predicted_cumulative_hourly_rmse"],color=color,lw=2.2,ls="--",
-                marker="s",ms=3,label="Model-predicted cumulative hourly RMSE")
-        ax.fill_between(h,part["empirical_cumulative_hourly_rmse"].to_numpy(dtype=float),
-                        part["predicted_cumulative_hourly_rmse"].to_numpy(dtype=float),
-                        color=color,alpha=0.11)
-        ax.set_title(LABELS[baseline])
-        ax.set_xlabel("Prediction lead hour")
-        ax.set_xlim(1,K)
-        ax.set_ylim(bottom=0.)
-        ax.grid(alpha=0.28)
-        ax.legend(loc="upper left",fontsize=9)
-    axes[0].set_ylabel("Cumulative sum of pooled hourly RMSE (normalized demand)")
-    fig.suptitle("ARM | 12-day pooled empirical vs predicted error accumulation | N=6, k=24 h")
-    fig.tight_layout(rect=(0,0,1,0.94))
+    baseline = BASELINES[0]
+    part = curves.loc[curves["baseline"]==baseline].sort_values("lead_hour")
+    h = part["lead_hour"].to_numpy(dtype=int)
+    empirical = part["empirical_cumulative_hourly_rmse"].to_numpy(dtype=float)
+    predicted = part["predicted_cumulative_hourly_rmse"].to_numpy(dtype=float)
+    color = COLORS[baseline]
+
+    fig,ax=plt.subplots(figsize=(10,5.6))
+    ax.plot(h,empirical,color="black",lw=2.2,marker="o",ms=3,
+            label="Empirical cumulative hourly RMSE")
+    ax.plot(h,predicted,color=color,lw=2.2,ls="--",marker="s",ms=3,
+            label="Model-predicted cumulative hourly RMSE")
+    ax.fill_between(h,empirical,predicted,color=color,alpha=0.11)
+    ax.set_title("ARM | Weekly temperature | 12-day pooled empirical vs predicted error accumulation")
+    ax.set_xlabel("Prediction lead hour")
+    ax.set_ylabel("Cumulative sum of pooled hourly RMSE (normalized demand)")
+    ax.set_xlim(1,K)
+    ax.set_ylim(bottom=0.)
+    ax.grid(alpha=0.28)
+    ax.legend(loc="upper left",fontsize=9)
+    fig.tight_layout()
     fig.savefig(path,dpi=190,bbox_inches="tight")
     if show: plt.show()
     plt.close(fig)
@@ -331,14 +331,14 @@ def run(args):
         "deterministic_fit":"historical joint convex QP",
         "diffusion_fit":"historical free-running squared residuals; joint nonnegative variance matching",
         "target_initial_state":"oracle optimized from target observations",
-        "time_definition":"complete per-baseline estimation and prediction, excludes initial ALL data reading and imputation",
+        "time_definition":"complete weekly-temperature estimation and prediction, excludes initial ALL data reading and imputation",
         "cumulative_plot":"sum over lead hours of sqrt(mean over 12 dates of squared hourly errors); predicted uses sqrt(mean model-implied variance)",
         "signed_bias":"predicted minus observed",
         "empirical_coverage":"pointwise 95 percent Gaussian intervals",
         "historical_imputed_hourly_slots":int(imputed["imputed_hourly_slots"]),
     }
     (args.output/"configuration.json").write_text(json.dumps(config,indent=2),encoding="utf-8")
-    print("\nPOOLED TARGET PERFORMANCE (12 dates x 24 hours per baseline)")
+    print("\nPOOLED TARGET PERFORMANCE (12 dates x 24 hours, weekly temperature baseline)")
     for row in pooled.itertuples(index=False):
         print(f"\n{LABELS[row.baseline]} | N=6 k=24 | {row.observations} observations")
         print(f"  Demand RMSE={row.rmse:.8f} | MAE={row.mae:.8f} | "
@@ -352,20 +352,14 @@ def run(args):
               f"empirical 95% coverage={row.empirical_coverage_95_percent:.2f}%")
         print(f"  Mean COMPLETE compute time per origin={row.mean_compute_seconds:.3f}s "
               f"(excludes data read-in and historical imputation)")
-    all_times=np.array([item["total_compute_seconds"] for name in BASELINES
-                        for item in results[name]],dtype=float)
-    combined_times=np.array([sum(results[name][i]["total_compute_seconds"]
-                                  for name in BASELINES) for i in range(len(dates))],dtype=float)
-    print(f"\nMean complete compute time per baseline estimate (24 estimates)="
-          f"{np.mean(all_times):.3f}s")
-    print(f"Mean complete compute time per selected day (both baselines)="
-          f"{np.mean(combined_times):.3f}s")
+    print(f"\nMean complete compute time per selected day (weekly temperature only)="
+          f"{pooled.iloc[0]['mean_compute_seconds']:.3f}s")
     print(f"\nSaved results to {args.output}")
     return pooled
 
 
 def main():
-    parser=ArgumentParser(description="Fit ARM and historical diffusion on the 12 BM1 dates (ALL, N=6, k=24, origin 00:00).")
+    parser=ArgumentParser(description="Fit ARM using only the weekly-temperature baseline and historical diffusion on 12 BM1 dates (ALL, N=6, k=24, origin 00:00).")
     parser.add_argument("--steps-per-hour",type=int,default=60)
     parser.add_argument("--output",type=Path,default=OUTPUT)
     parser.add_argument("--show",action="store_true")
