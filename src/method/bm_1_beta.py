@@ -1,9 +1,10 @@
-"""Adaptive beta-mixture approximation for the one-dimensional BM1 Fokker-Planck equation.
+"""Beta-mixture approximation for the one-dimensional BM1 Fokker-Planck equation.
 
-A component is represented by weight, mean and variance. Moments are advanced
-by RK4 using Gauss-Jacobi expectations, then the mixture is reconstructed into
-equal-mass beta components. Historical likelihoods apply Bayes updates at the
-observed timestamps; forecasts use open propagation without updates.
+The component count is always fixed. With fixed_steps_per_hour provided,
+moments use exactly that many RK4 steps per observation interval, with one
+beta-mixture reconstruction at the end of each hour and no adaptive step
+halving. Without that option, the original adaptive integrator is retained
+for reference predictions and numerical validation.
 """
 import numpy as np
 from scipy.special import logsumexp, ndtr
@@ -12,11 +13,18 @@ from scipy.optimize import brentq
 
 
 class bm_1_beta:
-    def __init__(self, components=8, quadrature=8, reconstruction_quadrature=48, max_step=0.25):
+    def __init__(self, components=8, quadrature=8, reconstruction_quadrature=48, max_step=0.25,
+                 fixed_steps_per_hour=None):
         self.components = int(components)
         self.quadrature = int(quadrature)
         self.reconstruction_quadrature = int(reconstruction_quadrature)
         self.max_step = float(max_step)
+        if fixed_steps_per_hour is not None and (
+                isinstance(fixed_steps_per_hour, (bool, np.bool_))
+                or not isinstance(fixed_steps_per_hour, (int, np.integer))
+                or fixed_steps_per_hour < 1):
+            raise ValueError("fixed_steps_per_hour must be a positive integer or None.")
+        self.fixed_steps_per_hour = None if fixed_steps_per_hour is None else int(fixed_steps_per_hour)
         if min(self.components, self.quadrature, self.reconstruction_quadrature) < 1 or not 0.0 < self.max_step <= 1.0:
             raise ValueError("Invalid beta-mixture resolution.")
 
@@ -146,6 +154,21 @@ class bm_1_beta:
         return self._check((np.full(L, 1.0 / L), means, variance))
 
     def _propagate_hour(self, mix, b0, b1, u, p, first=False):
+        if self.fixed_steps_per_hour is not None:
+            # One hourly observation interval, exactly n equally sized RK4
+            # steps, then exactly one fixed-M-component reconstruction.
+            # No stiffness-controlled subdivision and no rescue halving:
+            # inadmissible candidate parameters are rejected by the MLE.
+            n = self.fixed_steps_per_hour
+            h = 1.0 / n
+            for j in range(n):
+                try:
+                    mix = self._rk4(mix, h, b0, b1, u, j*h, p)
+                except (FloatingPointError, ValueError) as exc:
+                    raise FloatingPointError(
+                        f"Fixed-step beta RK4 failed on step {j+1}/{n}: {exc}") from exc
+            return self._reconstruct(mix)
+        # Adaptive mode for reference predictions / verification.
         # Conservative drift derivative bound limits stiff RK4 steps.
         slope = p["Xi"] * p["k"] * p["alpha"] / (4.0 * p["C"] * np.tanh(p["alpha"] / 4.0))
         step = min(self.max_step, 0.5 / max(1.0, slope))
