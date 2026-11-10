@@ -215,26 +215,29 @@ class bm_1_beta:
         return (self._check((updated_weights, moments, np.maximum(0.0, np.asarray(second)-moments**2))),
                 float(-log_total + np.log(sigma) + 0.5 * np.log(2.0 * np.pi)))
 
-    def simulate(self, data, p, x0, observations=None):
-        """Sample at times j=0,...,k-1, assimilating observations only when supplied."""
+    def simulate(self, data, p, x0, observations=None, nll_only=False):
+        """Sample hourly; nll_only skips costly unused forecast distributions during MLE."""
         b, u = np.asarray(data["B"], dtype=float), np.asarray(data["U"], dtype=float)
         observed = None if observations is None else np.asarray(observations, dtype=float)
         if b.ndim != 1 or b.size < 1 or u.shape != b.shape or not np.isfinite(b).all() or not np.isfinite(u).all():
             raise ValueError("Beta propagation needs finite, equally sized hourly B and U.")
         if observed is not None and (observed.shape != b.shape or not np.isfinite(observed).all()):
             raise ValueError("Historical observations must match the hourly inputs.")
+        if nll_only and observed is None:
+            raise ValueError("nll_only requires historical observations.")
         if not (0.0 <= x0 <= 1.0 and 0.0 < p["sigma_x"] <= 5.0 and 0.0 < p["sigma_y"] <= 0.5):
             raise ValueError("Initial state or stochastic parameters outside admissible bounds.")
         mix = (np.array([1.0]), np.array([float(x0)]), np.array([0.0]))
         means, supports, weights, states = [], [], [], []
         nll = 0.0
         for j in range(len(b)):
-            x, mass = self.support(mix)
-            demand = self._demand(x, b[j], u[j], p)
-            means.append(float(mass @ demand))
-            supports.append(demand)
-            weights.append(mass)
-            states.append((mix[0].copy(), mix[1].copy(), mix[2].copy()))
+            if not nll_only:
+                x, mass = self.support(mix)
+                demand = self._demand(x, b[j], u[j], p)
+                means.append(float(mass @ demand))
+                supports.append(demand)
+                weights.append(mass)
+                states.append((mix[0].copy(), mix[1].copy(), mix[2].copy()))
             if observed is not None:
                 mix, loss = self._observe(mix, float(observed[j]), float(b[j]), float(u[j]), p)
                 nll += loss
@@ -243,6 +246,7 @@ class bm_1_beta:
                     mix = self._propagate_hour(mix, float(b[j]), float(b[j+1]), float(u[j]), p, first=(j == 0))
                 except (FloatingPointError, ValueError) as exc:
                     raise FloatingPointError(f"BM1 beta propagation failed between hours {j} and {j+1}: {exc}") from exc
+        if nll_only: return {"nll":float(nll)}
         return {"mean": np.asarray(means), "supports": supports, "weights": weights,
                 "states": states, "nll": float(nll)}
 
