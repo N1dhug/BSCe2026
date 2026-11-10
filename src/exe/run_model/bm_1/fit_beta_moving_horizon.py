@@ -56,7 +56,12 @@ def report_timings(name, timings):
     labels = (("baseline_fit", "Baseline fitting"),
               ("deterministic_fit", "Deterministic parameter optimization"),
               ("stochastic_beta_mle", "Stochastic MLE optimization"),
+              ("stochastic_mle_objective_seconds", "  MLE likelihood computations (within MLE)"),
+              ("stochastic_mle_mean_evaluation_seconds", "  Mean time per likelihood evaluation"),
               ("oracle_initial_state", "Prediction/oracle initial-state optimization"),
+              ("oracle_search_seconds", "  Oracle initial-state searches (within oracle)"),
+              ("oracle_forecast_seconds", "  Oracle final target propagation (within oracle)"),
+              ("oracle_intervals_seconds", "  Oracle target uncertainty quantiles (within oracle)"),
               ("historical_open_propagation", "Historical demand propagation"),
               ("historical_uncertainty_export", "Historical uncertainty and CSV output"),
               ("total_parameter_fit", "Total deterministic + stochastic fitting"),
@@ -209,13 +214,20 @@ def run_baseline(frame, origin, dates, k, name, args, root):
                                  "historical_states":deterministic["initial_states"]},
             "timings_seconds":timings})
         raise
+    timings["stochastic_mle_objective_seconds"] = float(fitted["objective_seconds"])
+    timings["stochastic_mle_mean_evaluation_seconds"] = float(fitted["average_evaluation_seconds"])
+    print(f"[BM1 beta/{name}] MLE {fitted['evaluations']} evaluations; "
+          f"mean likelihood time={timings['stochastic_mle_mean_evaluation_seconds']:.3f}s", flush=True)
     if not fitted["converged"]:
         print(f"[BM1 beta/{name}] WARNING: MLE did not converge: {fitted['message']}", flush=True)
         if args.strict: raise RuntimeError(f"BM1 beta MLE failed to converge for {name}: {fitted['message']}")
     oracle = timed(timings, "oracle_initial_state", lambda: solver.oracle(
         prediction, fitted, maxiter=args.oracle_maxiter))
-    # The oracle method includes target open propagation and 68%/95%
-    # uncertainty quantiles. This is the moment its prediction is available.
+    # The oracle includes a bounded scalar search followed by final target
+    # propagation and 68%/95% quantiles; substage times are within its total.
+    timings["oracle_search_seconds"] = float(oracle["search_seconds"])
+    timings["oracle_forecast_seconds"] = float(oracle["forecast_seconds"])
+    timings["oracle_intervals_seconds"] = float(oracle["intervals_seconds"])
     timings["total_parameter_fit"] = float(timings["deterministic_fit"] + timings["stochastic_beta_mle"])
     timings["total_fit_with_baseline"] = float(timings["baseline_fit"] + timings["total_parameter_fit"])
     timings["prediction_ready_total"] = float(perf_counter() - started)
@@ -287,7 +299,11 @@ def run_baseline(frame, origin, dates, k, name, args, root):
               "mle_nll_ratio_threshold":fitted["nll_ratio_threshold"],
               "mle_accepted_iteration_history":fitted["accepted_iteration_history"],
               "mle_iterations":fitted["iterations"],"mle_evaluations":fitted["evaluations"],
-              "mle_message":fitted["message"], "resolutions":{"estimation":fitted["resolution"],
+              "mle_message":fitted["message"],
+              "optimization_timings":{"deterministic_cycles":deterministic["cycle_timings"],
+                                      "mle_iterations":fitted["accepted_iteration_history"],
+                                      "oracle_searches":oracle["search_timings"]},
+              "resolutions":{"estimation":fitted["resolution"],
               "prediction":oracle["resolution"]}, "verification":verification, "timings_seconds":timings}
     save_json(directory/"result.json", report)
     print(f"[BM1 beta/{name}] historical RMSE={fit_score['rmse']:.6f} "
