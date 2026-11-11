@@ -26,6 +26,18 @@ class test_wm_6(unittest.TestCase):
         S=self.model.sensitivity(self.r)["input"]
         np.testing.assert_allclose(other["I"]-state["I"],S@delta,atol=1e-10)
 
+    def test_rate_equilibrium_constraints_agree_with_qp(self):
+        # theta_F<0, theta_U<=0, theta_B>=0: max possible absolute
+        # forcing in the R equation is -theta_F-theta_U+theta_B.
+        # The QP enforces this to be no greater than -theta_R.
+        good=np.array([-.7,-.12,-1.1,.14])
+        self.model.coefficients(good)
+        self.assertLessEqual(-good[0]-good[1]+good[3],-good[2])
+        # Insufficient damping violates the rate equilibrium restriction.
+        bad=np.array([-.7,-.12,-.9,.14])
+        with self.assertRaisesRegex(ValueError,"rate-equilibrium"):
+            self.model.coefficients(bad)
+
     def test_joint_fit_and_variance(self):
         data=[]
         for j in range(6):
