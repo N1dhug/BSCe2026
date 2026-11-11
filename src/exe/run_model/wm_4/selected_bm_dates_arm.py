@@ -272,9 +272,21 @@ def make_tables(results, output):
     return hourly,daily,pooled,curves
 
 
+def sample_parameter_legend(item):
+    """Display the per-day fitted ARM parameters in each subplot legend."""
+    theta = np.asarray(item["theta"], dtype=float).reshape(-1)
+    if theta.size != 3: raise ValueError("WM4 sample legend needs [theta_F, theta_U, theta_R].")
+    tau, sigma = np.sqrt(float(item["tau2"])), np.sqrt(float(item["sigma2"]))
+    return (
+        rf"$\theta_F={theta[0]:+.4g}$  $\theta_U={theta[1]:+.4g}$" "\n"
+        rf"$\theta_R={theta[2]:+.4g}$" "\n"
+        rf"$\tau={tau:.4g}$  $\sigma={sigma:.4g}$"
+    )
+
+
 def plot_days(results, path, show=False):
     """Two rows of seven weekdays, one subplot per regular prediction date."""
-    fig, axes = plt.subplots(2,7,figsize=(25,9),sharex=True,sharey=True)
+    fig, axes = plt.subplots(2,7,figsize=(27,11),sharex=True,sharey=True)
     hours = np.arange(K)
     for index,axis in enumerate(axes.flat):
         target = results[BASELINES[0]][index]["day"]
@@ -292,6 +304,10 @@ def plot_days(results, path, show=False):
         axis.grid(alpha=0.23)
         if index//7 == 1: axis.set_xlabel("Hour of day")
         if index%7 == 0: axis.set_ylabel("Normalized demand")
+        axis.legend(title=sample_parameter_legend(results[BASELINES[0]][index]),
+                    loc="upper right",fontsize=7,title_fontsize=6.8,
+                    framealpha=0.88,borderaxespad=0.3,labelspacing=0.25,
+                    borderpad=0.4,handlelength=1.5)
     handles,labels=axes.flat[0].get_legend_handles_labels()
     from matplotlib.patches import Patch
     handles.extend([Patch(color="gray",alpha=0.25,label="Central 68% interval"),
@@ -315,7 +331,7 @@ def plot_rate_contributions(results,path,show=False):
     at precisely the same 24 hours as the demand-prediction figure.
     """
     name = BASELINES[0]
-    fig,axes=plt.subplots(2,7,figsize=(25,9),sharex=True,sharey=True)
+    fig,axes=plt.subplots(2,7,figsize=(27,11),sharex=True,sharey=True)
     hours = np.arange(K)
     contributions = (
         ("effect_F",r"$\theta_F F$", "tab:blue"),
@@ -335,6 +351,10 @@ def plot_rate_contributions(results,path,show=False):
         axis.grid(alpha=0.23)
         if (sample-1)//7 == 1: axis.set_xlabel("Hour of day")
         if (sample-1)%7 == 0: axis.set_ylabel(r"Contribution to $\dot{R}$")
+        axis.legend(title=sample_parameter_legend(result),
+                    loc="upper right",fontsize=7,title_fontsize=6.8,
+                    framealpha=0.88,borderaxespad=0.3,labelspacing=0.25,
+                    borderpad=0.4,handlelength=1.5)
     handles,labels=axes.flat[0].get_legend_handles_labels()
     fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(0.5,0.962),
                ncol=4,fontsize=10)
