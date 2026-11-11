@@ -19,7 +19,7 @@ class wm_6(wm_4):
         f, u, damping, baseline = r
         if f >= 0 or damping >= 0 or u > tol or baseline < -tol: raise ValueError("WM6 requires theta_F<0, theta_R<0, theta_U<=0, theta_B>=0.")
         if f+baseline-u > tol: raise ValueError("WM6 preferred equilibrium requires theta_B-theta_U <= -theta_F.")
-        if f+u+baseline-damping > tol: raise ValueError("WM6 rate-equilibrium restriction violated.")
+        if -f-u+baseline+damping > tol: raise ValueError("WM6 rate-equilibrium restriction violated.")
         return r
 
     @staticmethod
