@@ -31,7 +31,7 @@ class joint_qp_params:
 
         # Structural constraints, coefficient columns [theta_F, theta_U, theta_R, theta_B].
         # theta_B >= 0, theta_U <= 0 => |theta_B|+|theta_U|=theta_B-theta_U.
-        coeff=np.array([[1.,-1.,0.,1.],[-1.,-1.,1.,-1.]])
+        coeff=np.array([[1.,-1.,0.,1.],[-1.,-1.,1.,1.]])
         bounds=np.array([0.,0.])
         if stabilize:
             coeff=np.vstack((coeff,[dt*dt,0.,-2*dt,0.],[-dt,0.,1.,0.]))
