@@ -86,3 +86,29 @@ class wm_6(wm_4):
     def fit_params_joint_qp(self,input_data,initial_conditions=None,**kwargs):
         from src.params.wm_6 import joint_qp_params
         return joint_qp_params(self).fit_many(input_data,initial_conditions,**kwargs)
+
+    def stochastic_solver(self,init_cond,parameters,sigma=0.0,tau=0.0,seed=None):
+        """Euler-Maruyama with independent Gaussian observation noise.
+
+        Returns one sample path, deterministic mean, and exact discrete
+        unconditional demand variance for fixed initial state and inputs.
+        """
+        sigma,tau=float(sigma),float(tau)
+        if not np.isfinite([sigma,tau]).all() or min(sigma,tau)<0:
+            raise ValueError("WM6 sigma and tau must be finite and nonnegative.")
+        deterministic=self.deterministic_solver(init_cond,parameters)
+        r=deterministic["r"]
+        rng=np.random.default_rng(seed)
+        F,R=np.empty(self.t_steps),np.empty(self.t_steps)
+        F[0],R[0]=wm_4_validation.initial_condition(init_cond)
+        for k in range(self.t_steps-1):
+            rate=r[0]*F[k]+r[1]*deterministic["U"][k]+r[2]*R[k]+r[3]*deterministic["B_mapped"][k]
+            F[k+1]=F[k]+self.dt*R[k]
+            R[k+1]=R[k]+self.dt*rate+sigma*np.sqrt(self.dt)*rng.standard_normal()
+        variance_kernel=self.process_variance_kernel({"r":r},np.arange(self.t_steps)).sum(axis=1)
+        variance=tau*tau+sigma*sigma*variance_kernel
+        observation=deterministic["O"]+R+tau*rng.standard_normal(self.t_steps)
+        return {**deterministic,"sample_F":F,"sample_R":R,
+                "sample_demand":observation,"mean_demand":deterministic["I"].copy(),
+                "variance":variance,"std":np.sqrt(variance),
+                "sigma":sigma,"tau":tau}
