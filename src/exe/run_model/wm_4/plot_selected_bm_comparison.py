@@ -1,12 +1,16 @@
 """Compare seven IM and ARM prediction days and their response components.
 
-Four figures are saved per requested Monday-Sunday week:
+Five figures are saved per requested Monday-Sunday week:
   1. Seven rows x two columns: observed demand, baseline, model mean and 95%
      prediction interval for IM (left) and ARM (right).
   2. Seven rows x two columns: instantaneous IM E[f(X_t)], g(U_t) (left)
      and numerically integrated ARM rate-drift terms (right).
   3. Seven vertically stacked IM response panels.
   4. Seven vertically stacked integrated ARM response panels.
+  5. Seven rows x two columns of observed vs model-implied cumulative
+     hourly RMSE curves, IM left and ARM right. Default matches the
+     project convention: sum of hourly RMSE (absolute errors for one day)
+     and sum of hourly predicted standard deviations.
 
 IM state-response means are reconstructed from the saved fitted beta-mixture
 parameters and oracle initial state, without parameter refitting. ARM rate
@@ -76,8 +80,8 @@ def comparison(im_path=IM_INPUT, arm_path=ARM_INPUT, week=1):
     dates, _ = reference_dates()
     selected = dates[(week-1)*7:week*7]
     im = load_predictions(im_path, "IM", "beta_expected_demand",
-                          extra=("weekly_temperature_baseline", "price_U_0_1"))
-    arm = load_predictions(arm_path, "ARM", "predicted", extra=("baseline_predicted", "price_response_h_U", "oracle_F", "oracle_R", *ARM_CONTRIBUTIONS))
+                          extra=("weekly_temperature_baseline", "price_U_0_1", "predicted_demand_variance"))
+    arm = load_predictions(arm_path, "ARM", "predicted", extra=("baseline_predicted", "predicted_variance", "price_response_h_U", "oracle_F", "oracle_R", *ARM_CONTRIBUTIONS))
     keys = pd.MultiIndex.from_product([selected, range(K)], names=["day", "hour"])
     missing_im, missing_arm = keys.difference(im.index), keys.difference(arm.index)
     if len(missing_im) or len(missing_arm):
@@ -222,8 +226,98 @@ def arm_integrated_responses(day, hourly, fit, steps_per_hour):
     return integrated
 
 
+def cumulative_rmse(observed, predicted, variance, mode="sum"):
+    """Per-day empirical and model-implied error accumulation over lead hours.
+
+    'sum' follows the existing selected-14-day cumulative-hourly-RMSE
+    convention: sum_j sqrt(error_j^2) vs sum_j sqrt(predicted_var_j).
+    A single target-day observation exists at each hour, so empirical
+    hourly RMSE is its absolute prediction error.
+
+    'running' is conventional cumulative RMSE over the first h samples:
+      sqrt(sum_j error_j^2 / h) vs sqrt(sum_j predicted_var_j / h).
+    Model-implied variance is assumed to represent total predictive
+    uncertainty, including the fitted observation-noise component.
+    """
+    observed = np.asarray(observed,dtype=float)
+    predicted = np.asarray(predicted,dtype=float)
+    variance = np.asarray(variance,dtype=float)
+    if observed.shape!=(K,) or predicted.shape!=(K,) or variance.shape!=(K,):
+        raise ValueError(f"Cumulative RMSE requires three length-{K} hourly vectors.")
+    if not np.isfinite(np.r_[observed,predicted,variance]).all() or (variance<-1e-12).any():
+        raise ValueError("Invalid cumulative-RMSE observations, predictions or predictive variances.")
+    variance = np.maximum(variance,0.)
+    sq_error = (predicted-observed)**2
+    if mode=="sum":
+        return np.cumsum(np.sqrt(sq_error)), np.cumsum(np.sqrt(variance))
+    if mode=="running":
+        divisor = np.arange(1,K+1,dtype=float)
+        return np.sqrt(np.cumsum(sq_error)/divisor), np.sqrt(np.cumsum(variance)/divisor)
+    raise ValueError("Cumulative RMSE mode must be 'sum' or 'running'.")
+
+
+def plot_cumulative_rmse(days, im, arm, output, week, show=False, mode="sum"):
+    """Seven rows x IM/ARM columns comparing realized and expected RMSE."""
+    fig, axes = plt.subplots(7,2,figsize=(19,20),sharex=True,sharey="row")
+    hours = np.arange(1,K+1)
+    table = []
+    for row,day in enumerate(days):
+        for col,(name,part,mean,variance,color) in enumerate((
+            ("IM",im.loc[day].sort_index(),"beta_expected_demand",
+             "predicted_demand_variance","tab:orange"),
+            ("ARM",arm.loc[day].sort_index(),"predicted",
+             "predicted_variance","tab:blue"),
+        )):
+            obs = part["observed"].to_numpy(dtype=float)
+            pred = part[mean].to_numpy(dtype=float)
+            var = part[variance].to_numpy(dtype=float)
+            actual, expected = cumulative_rmse(obs,pred,var,mode)
+            axis = axes[row,col]
+            axis.plot(hours,actual,color="black",lw=1.9,marker="o",markersize=2.5,
+                      label="Observed cumulative RMSE")
+            axis.plot(hours,expected,color=color,lw=2.,
+                      label=f"{name} predicted cumulative RMSE")
+            axis.fill_between(hours,actual,expected,color=color,alpha=0.10)
+            axis.set_title(f"{day:%A %d %B %Y} | {name}",loc="left",fontsize=10)
+            axis.set_ylabel("Cumulative RMSE" if mode=="running" else "Sum of hourly RMSE")
+            axis.set_xlim(1,K)
+            axis.set_ylim(bottom=0.)
+            axis.grid(alpha=0.23)
+            axis.tick_params(axis="both",labelsize=9)
+            for lead,(actual_value,expected_value) in enumerate(zip(actual,expected),1):
+                table.append({"day":str(day.date()),"model":name,
+                              "lead_hour":lead,"mode":mode,
+                              "observed_cumulative_rmse":float(actual_value),
+                              "predicted_cumulative_rmse":float(expected_value)})
+    for ax in axes[-1]:
+        ax.set_xticks([1,4,8,12,16,20,24])
+        ax.set_xlabel("Prediction lead hour")
+    for ax in axes[0]:
+        ax.legend(loc="upper left",fontsize=8.5,framealpha=0.9)
+    note = ("Sum over lead hours of observed |prediction - demand| versus model-implied "
+            "predicted standard deviation" if mode=="sum" else
+            "Running RMSE over the first h hourly observations versus "
+            "sqrt(mean predicted variance)")
+    fig.suptitle(f"IM (left) vs ARM (right) | cumulative RMSE by weekday | week {week}\n"
+                 +note,fontsize=13,y=0.995)
+    fig.subplots_adjust(top=0.942,bottom=0.05,hspace=0.45,wspace=0.13)
+    output=Path(output)
+    output.mkdir(parents=True,exist_ok=True)
+    suffix="" if mode=="sum" else "_running"
+    image_path=output/f"im_arm_week_{week}_cumulative_rmse_7x2{suffix}.png"
+    csv_path=output/f"im_arm_week_{week}_cumulative_rmse_7x2{suffix}.csv"
+    fig.savefig(image_path,dpi=190,bbox_inches="tight")
+    pd.DataFrame(table).to_csv(csv_path,index=False)
+    if show: plt.show()
+    plt.close(fig)
+    print(f"Saved cumulative RMSE figure: {image_path}")
+    print(f"Saved cumulative RMSE hourly data: {csv_path}")
+    return image_path, csv_path
+
+
 def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=False,
-              im_params=None, im_config=None, arm_params=None, arm_config=None):
+              im_params=None, im_config=None, arm_params=None, arm_config=None,
+              cumulative_mode="sum"):
     days, im, arm = comparison(im_path, arm_path, week)
     im_params = Path(im_params) if im_params is not None else Path(im_path).parent/"per_day_metrics.csv"
     im_config = Path(im_config) if im_config is not None else Path(im_path).parent/"configuration.json"
@@ -234,6 +328,8 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
     hours = np.arange(K)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
+    cumulative_path, cumulative_csv = plot_cumulative_rmse(
+        days, im, arm, output, week, show, mode=cumulative_mode)
 
     # Main figure: IM on the left and ARM on the right. Both columns have
     # the same normalized-demand scale, but use their own saved baselines.
@@ -383,7 +479,8 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
                        ("IM contributions",im_path_out),("ARM contributions",arm_path_out)):
         print(f"Saved {name}: {path}")
     return {"demand":demand_path, "responses":response_path,
-            "im_contributions":im_path_out, "arm_contributions":arm_path_out}
+            "im_contributions":im_path_out, "arm_contributions":arm_path_out,
+            "cumulative_rmse":cumulative_path, "cumulative_rmse_csv":cumulative_csv}
 
 
 def main():
@@ -400,12 +497,15 @@ def main():
                         help="ARM saved per_day_metrics.csv containing theta and oracle F0/R0.")
     parser.add_argument("--arm-config",type=Path,default=None,
                         help="ARM saved configuration.json containing steps_per_hour.")
+    parser.add_argument("--cumulative-mode",choices=("sum","running"),default="sum",
+                        help="sum: cumulative sum of hourly RMSE (existing convention); "
+                             "running: conventional prefix RMSE over hours 1..h.")
     parser.add_argument("--output",type=Path,default=OUTPUT)
     parser.add_argument("--show",action="store_true")
     args = parser.parse_args()
     for week in (1,2) if args.week=="both" else (int(args.week),):
         plot_week(week,args.im_input,args.arm_input,args.output,args.show,args.im_params,args.im_config,
-                  args.arm_params,args.arm_config)
+                  args.arm_params,args.arm_config,args.cumulative_mode)
 
 
 if __name__=="__main__": main()
