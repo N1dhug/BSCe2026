@@ -1,10 +1,12 @@
 """Compare seven IM and ARM prediction days and their response components.
 
-Two figures are saved per requested Monday-Sunday week:
+Four figures are saved per requested Monday-Sunday week:
   1. Seven rows x two columns: observed demand, baseline, model mean and 95%
      prediction interval for IM (left) and ARM (right).
   2. Seven rows x two columns: instantaneous IM E[f(X_t)], g(U_t) (left)
-     and separately numerically integrated ARM rate-drift terms (right).
+     and numerically integrated ARM rate-drift terms (right).
+  3. Seven vertically stacked IM response panels.
+  4. Seven vertically stacked integrated ARM response panels.
 
 IM state-response means are reconstructed from the saved fitted beta-mixture
 parameters and oracle initial state, without parameter refitting. ARM rate
@@ -281,10 +283,12 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
     if missing_arm: raise ValueError(f"ARM fitted parameters missing days: {missing_arm}")
 
     response_fig, response_axes = plt.subplots(7,2,figsize=(20,20),sharex="col")
+    response_data = []
     for row, day in enumerate(days):
         i, a = im.loc[day].sort_index(), arm.loc[day].sort_index()
         f, g = im_responses(day, i, fits.loc[day], resolution)
         cumulative = arm_integrated_responses(day, a, arm_fits.loc[day], steps_per_hour)
+        response_data.append((day,f,g,cumulative))
         left, right = response_axes[row]
 
         left.plot(hours, f, color="tab:purple", lw=2., label=r"$\mathbb{E}[f(X_t)]$")
@@ -324,6 +328,48 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
     if show: plt.show()
     plt.close(response_fig)
 
+    # Keep the model-specific response figures as well as the new side-by-side
+    # layout. Reuse the computed arrays without rerunning IM propagation.
+    fig_im, axes_im = plt.subplots(7,1,figsize=(12,19),sharex=True,sharey=True)
+    fig_arm, axes_arm = plt.subplots(7,1,figsize=(12,19),sharex=True)
+    for row, (day,f,g,cumulative) in enumerate(response_data):
+        ax_i, ax_a = axes_im[row], axes_arm[row]
+        ax_i.plot(hours,f,color="tab:purple",lw=1.9,label=r"$\mathbb{E}[f(X_t)]$")
+        ax_i.plot(hours,g,color="tab:green",lw=1.9,label=r"$g(U_t)$")
+        ax_i.set_ylim(-1.05,1.05)
+        for col,color,label in (
+            (0,"tab:purple",r"$\int_0^t \theta_F F_s\,ds$"),
+            (1,"tab:green",r"$\int_0^t \theta_R R_s\,ds$"),
+            (2,"tab:red",r"$\int_0^t \theta_U g(U_s)\,ds$"),
+        ):
+            ax_a.plot(hours,cumulative[:,col],color=color,lw=1.9,label=label)
+        ax_a.plot(hours,cumulative.sum(axis=1),color="0.35",lw=1.3,ls="--",
+                  label=r"$R_t-R_0$")
+        for ax, ylabel in ((ax_i,"Direct response"),(ax_a,"Integrated response")):
+            ax.set_xlim(0,K-1)
+            ax.set_title(f"{day:%A %d %B %Y}",loc="left",fontsize=10)
+            ax.set_ylabel(ylabel)
+            ax.axhline(0,color="0.4",lw=0.8,alpha=0.6)
+            ax.grid(alpha=0.22)
+    for fig,axes1,title in (
+        (fig_im,axes_im,"IM direct responses"),
+        (fig_arm,axes_arm,"ARM numerically integrated rate contributions"),
+    ):
+        axes1[-1].set_xticks([0,4,8,12,16,20,23])
+        axes1[-1].set_xlabel("Hour of day")
+        handles,labels=axes1[0].get_legend_handles_labels()
+        fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(0.5,0.952),
+                   ncol=len(handles),fontsize=10,frameon=False)
+        fig.suptitle(f"{title} | sample week {week}",y=0.996,fontsize=14)
+        fig.subplots_adjust(top=0.915,bottom=0.05,hspace=0.43)
+    im_path_out = output/f"im_week_{week}_function_contributions.png"
+    arm_path_out = output/f"arm_week_{week}_function_contributions.png"
+    fig_im.savefig(im_path_out,dpi=190,bbox_inches="tight")
+    fig_arm.savefig(arm_path_out,dpi=190,bbox_inches="tight")
+    if show: plt.show()
+    plt.close(fig_im)
+    plt.close(fig_arm)
+
     observed = im["observed"].to_numpy(dtype=float)
     im_rmse = float(np.sqrt(np.mean((im["beta_expected_demand"].to_numpy()-observed)**2)))
     arm_rmse = float(np.sqrt(np.mean((arm["predicted"].to_numpy()-observed)**2)))
@@ -333,9 +379,11 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
                                         (observed<=arm["upper_95"].to_numpy())))
     print(f"Week {week}: IM RMSE={im_rmse:.6f}, ARM RMSE={arm_rmse:.6f}; "
           f"IM 95% coverage={im_coverage:.2f}%, ARM 95% coverage={arm_coverage:.2f}%")
-    for name, path in (("Demand",demand_path), ("IM/ARM responses",response_path)):
+    for name, path in (("Demand",demand_path),("IM/ARM responses",response_path),
+                       ("IM contributions",im_path_out),("ARM contributions",arm_path_out)):
         print(f"Saved {name}: {path}")
-    return {"demand":demand_path, "responses":response_path}
+    return {"demand":demand_path, "responses":response_path,
+            "im_contributions":im_path_out, "arm_contributions":arm_path_out}
 
 
 def main():
