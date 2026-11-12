@@ -1,17 +1,18 @@
-"""Compare saved IM (BM1 beta) and ARM (WM4) on seven matched weekdays.
+"""Plot saved IM and ARM demand fits and separate function contributions for seven days.
 
-For every day plot three side-by-side panels:
-    IM E[f(X_t)] and g(U_t) | observed/IM/ARM demand with 95% intervals
-    | ARM theta_F*F_t, theta_R*R_t and theta_U*g(U_t).
+Three figures are saved per selected Monday-Sunday week:
+  1. Seven rows x two columns: IM demand vs ARM demand, each with its
+     model-specific historical baseline, observations and central 95% interval.
+  2. Seven IM response panels: E[f(X_t)] and g(U_t).
+  3. Seven ARM rate-contribution panels: theta_F F_t, theta_R R_t,
+     theta_U g(U_t) (ARM currently uses g(U_t)=U_t).
 
-The ARM contributions are read directly from saved hourly predictions. IM
-contributions are reconstructed from its previously fitted parameters and
-oracle initial state by *propagating the beta mixture*, without fitting or
-optimizing anything. IM f(X_t) is shown as its predictive expectation because
-X_t is stochastic. The ARM implementation has g(U_t)=U_t (called h(U) in the
-WM4 executable); IM and ARM prices use their own original normalizations.
+The original fitted hourly predictions are reused. ARM contributions are read
+from their saved hourly CSV. IM response contributions are reconstructed using
+the stored beta-mixture parameters and oracle X0, without fitting parameters
+or optimizing initial states again.
 
-From the repository root:
+From repository root:
     python -m src.exe.run_model.wm_4.plot_selected_bm_comparison --week 1 --show
     python -m src.exe.run_model.wm_4.plot_selected_bm_comparison --week 2
     python -m src.exe.run_model.wm_4.plot_selected_bm_comparison --week both
@@ -21,8 +22,6 @@ from pathlib import Path
 import json
 
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
 
@@ -74,7 +73,7 @@ def comparison(im_path=IM_INPUT, arm_path=ARM_INPUT, week=1):
     selected = dates[(week-1)*7:week*7]
     im = load_predictions(im_path, "IM", "beta_expected_demand",
                           extra=("weekly_temperature_baseline", "price_U_0_1"))
-    arm = load_predictions(arm_path, "ARM", "predicted", extra=ARM_CONTRIBUTIONS)
+    arm = load_predictions(arm_path, "ARM", "predicted", extra=("baseline_predicted", *ARM_CONTRIBUTIONS))
     keys = pd.MultiIndex.from_product([selected, range(K)], names=["day", "hour"])
     missing_im, missing_arm = keys.difference(im.index), keys.difference(arm.index)
     if len(missing_im) or len(missing_arm):
@@ -160,77 +159,90 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
     if missing: raise ValueError(f"IM fitted parameters missing days: {missing}")
 
     hours = np.arange(K)
-    fig, axes = plt.subplots(7, 3, figsize=(25, 19), sharex="col",
-                             gridspec_kw={"width_ratios":[1.0,1.7,1.25]})
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+
+    # Main figure: IM on the left and ARM on the right. Both columns have
+    # the same normalized-demand scale, but use their own saved baselines.
+    fig, axes = plt.subplots(7, 2, figsize=(20, 20), sharex=True, sharey=True)
     for row, day in enumerate(days):
-        left, middle, right = axes[row]
-        i, a = im.loc[day].sort_index(), arm.loc[day].sort_index()
-        f, g = im_responses(day, i, fits.loc[day], resolution)
-        left.plot(hours, f, color="tab:purple", lw=1.8, label=r"$E[f(X_t)]$")
-        left.plot(hours, g, color="tab:green", lw=1.8, label=r"$g(U_t)$")
-        left.axhline(0, color="0.35", alpha=0.5, lw=0.8)
-        left.set_ylim(-1.05,1.05)
-
-        middle.fill_between(hours, i["lower_95"].to_numpy(), i["upper_95"].to_numpy(),
-                            color="tab:orange", alpha=0.16)
-        middle.fill_between(hours, a["lower_95"].to_numpy(), a["upper_95"].to_numpy(),
-                            color="tab:blue", alpha=0.13)
-        middle.plot(hours, i["beta_expected_demand"].to_numpy(), color="tab:orange", lw=1.9)
-        middle.plot(hours, a["predicted"].to_numpy(), color="tab:blue", lw=1.9)
-        middle.plot(hours, i["observed"].to_numpy(), color="black", lw=1.6,
-                    marker="o", markersize=2.8)
-        middle.set_title(f"{day:%A %d %B %Y}", fontsize=10, pad=4)
-
-        for key, color, label in (
-            ("theta_F_times_F","tab:purple",r"$\theta_F F_t$"),
-            ("theta_R_times_R","tab:green",r"$\theta_R R_t$"),
-            ("theta_U_times_h_U","tab:red",r"$\theta_U g(U_t)$"),
-        ):
-            right.plot(hours, a[key].to_numpy(), color=color, lw=1.8, label=label)
-        right.axhline(0, color="0.35", alpha=0.5, lw=0.8)
-
-        for ax in (left, middle, right):
-            ax.grid(alpha=0.2)
+        for col, (model, data, baseline, mean, color) in enumerate((
+            ("IM", im.loc[day].sort_index(), "weekly_temperature_baseline",
+             "beta_expected_demand", "tab:orange"),
+            ("ARM", arm.loc[day].sort_index(), "baseline_predicted",
+             "predicted", "tab:blue"),
+        )):
+            ax = axes[row, col]
+            ax.fill_between(hours, data["lower_95"].to_numpy(), data["upper_95"].to_numpy(),
+                            color=color, alpha=0.18, label="Central 95% interval")
+            ax.plot(hours, data["observed"].to_numpy(), color="black", lw=1.6,
+                    marker="o", markersize=2.5, label="Observed demand")
+            ax.plot(hours, data[baseline].to_numpy(), color="tab:green", lw=1.5,
+                    ls="--", label="Weekly-temperature baseline")
+            ax.plot(hours, data[mean].to_numpy(), color=color, lw=2.,
+                    label=f"{model} expected demand")
+            ax.set_title(f"{day:%A %d %B %Y} | {model}", fontsize=10, loc="left")
             ax.set_xlim(0, K-1)
-            ax.tick_params(axis="both",labelsize=8)
-        left.set_ylabel("Response", fontsize=9)
-        middle.set_ylabel("Normalized demand", fontsize=9)
-        right.set_ylabel("Rate contribution", fontsize=9)
+            ax.set_ylabel("Normalized demand" if col==0 else "")
+            ax.grid(alpha=0.22)
+            ax.tick_params(axis="both", labelsize=9)
     for ax in axes[-1]:
         ax.set_xticks([0,4,8,12,16,20,23])
         ax.set_xlabel("Hour of day")
-
-    fig.text(0.173,0.945,"IM responses",ha="center",va="top",fontweight="bold",fontsize=13)
-    fig.text(0.505,0.945,"IM vs ARM demand fit",ha="center",va="top",fontweight="bold",fontsize=13)
-    fig.text(0.835,0.945,"ARM drift contributions",ha="center",va="top",fontweight="bold",fontsize=13)
-
-    im_handles = [Line2D([],[],color="tab:purple",lw=1.8,label=r"$E[f(X_t)]$"),
-                  Line2D([],[],color="tab:green",lw=1.8,label=r"$g(U_t)$")]
-    fit_handles = [Line2D([],[],color="black",lw=1.6,marker="o",markersize=3,label="Observed"),
-                   Line2D([],[],color="tab:orange",lw=1.9,label="IM mean"),
-                   Patch(color="tab:orange",alpha=0.16,label="IM 95%"),
-                   Line2D([],[],color="tab:blue",lw=1.9,label="ARM mean"),
-                   Patch(color="tab:blue",alpha=0.13,label="ARM 95%")]
-    arm_handles = [Line2D([],[],color=color,lw=1.8,label=label) for color,label in (
-                   ("tab:purple",r"$\theta_F F_t$"),("tab:green",r"$\theta_R R_t$"),
-                   ("tab:red",r"$\theta_U g(U_t)$"))]
-    fig.legend(handles=im_handles,loc="upper center",bbox_to_anchor=(0.173,0.925),
-               ncol=2,fontsize=10,frameon=False)
-    fig.legend(handles=fit_handles,loc="upper center",bbox_to_anchor=(0.505,0.925),
-               ncol=5,fontsize=9,frameon=False)
-    fig.legend(handles=arm_handles,loc="upper center",bbox_to_anchor=(0.835,0.925),
-               ncol=3,fontsize=10,frameon=False)
-    fig.suptitle(f"IM vs ARM | seven corresponding weekdays | sample week {week}\n"
-                 "ALL · weekly temperature · N=6 historical weekdays · 24-hour oracle-conditioned predictions",
-                 y=0.997,fontsize=15)
-    fig.subplots_adjust(top=0.88,bottom=0.05,hspace=0.44,wspace=0.24)
-
-    output = Path(output)
-    output.mkdir(parents=True,exist_ok=True)
-    destination = output/f"im_arm_week_{week}_responses_and_demand_95pct.png"
-    fig.savefig(destination,dpi=190,bbox_inches="tight")
+    for ax in axes[0]:
+        ax.legend(loc="upper right", fontsize=8.5, framealpha=0.9)
+    fig.suptitle(f"IM (left) vs ARM (right) | 7-day demand fit | sample week {week}\n"
+                 "ALL · weekly temperature · N=6 prior weekdays · oracle-conditioned 24-hour predictions",
+                 fontsize=14, y=0.996)
+    fig.subplots_adjust(top=0.94, bottom=0.05, hspace=0.43, wspace=0.13)
+    demand_path = output/f"im_arm_week_{week}_demand_95pct.png"
+    fig.savefig(demand_path, dpi=190, bbox_inches="tight")
     if show: plt.show()
     plt.close(fig)
+
+    # IM and ARM contribution plots are separate from each other and from
+    # demand. The stochastic IM state-response is E[f(X_t)], not f(E[X_t]).
+    fig_im, ax_im = plt.subplots(7, 1, figsize=(12, 19), sharex=True, sharey=True)
+    fig_arm, ax_arm = plt.subplots(7, 1, figsize=(12, 19), sharex=True, sharey=True)
+    for row, day in enumerate(days):
+        i, a = im.loc[day].sort_index(), arm.loc[day].sort_index()
+        f, g = im_responses(day, i, fits.loc[day], resolution)
+        left, right = ax_im[row], ax_arm[row]
+        left.plot(hours, f, color="tab:purple", lw=1.9, label=r"$\mathbb{E}[f(X_t)]$")
+        left.plot(hours, g, color="tab:green", lw=1.9, label=r"$g(U_t)$")
+        left.set_ylim(-1.05, 1.05)
+        for key, color, label in (
+            ("theta_F_times_F", "tab:purple", r"$\theta_F F_t$"),
+            ("theta_R_times_R", "tab:green", r"$\theta_R R_t$"),
+            ("theta_U_times_h_U", "tab:red", r"$\theta_U g(U_t)$"),
+        ):
+            right.plot(hours, a[key].to_numpy(), color=color, lw=1.9, label=label)
+        for ax, ylabel in ((left, "IM response"), (right, "Rate contribution")):
+            ax.axhline(0, color="0.4", lw=0.8, alpha=0.6)
+            ax.set_title(f"{day:%A %d %B %Y}", loc="left", fontsize=10)
+            ax.set_xlim(0, K-1)
+            ax.set_ylabel(ylabel)
+            ax.grid(alpha=0.22)
+    for fig, axes1, model, subtitle in (
+        (fig_im, ax_im, "IM", "Predictive mean state response and price response"),
+        (fig_arm, ax_arm, "ARM", "Fitted rate-drift terms; g(U) = U"),
+    ):
+        axes1[-1].set_xticks([0,4,8,12,16,20,23])
+        axes1[-1].set_xlabel("Hour of day")
+        handles, labels = axes1[0].get_legend_handles_labels()
+        fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5,0.953),
+                   ncol=len(handles), frameon=False, fontsize=11)
+        fig.suptitle(f"{model} function contributions | sample week {week}\n{subtitle}",
+                     y=0.996, fontsize=14)
+        fig.subplots_adjust(top=0.917, bottom=0.05, hspace=0.43)
+    im_path_out = output/f"im_week_{week}_function_contributions.png"
+    arm_path_out = output/f"arm_week_{week}_function_contributions.png"
+    fig_im.savefig(im_path_out, dpi=190, bbox_inches="tight")
+    fig_arm.savefig(arm_path_out, dpi=190, bbox_inches="tight")
+    if show:
+        plt.show()
+    plt.close(fig_im)
+    plt.close(fig_arm)
 
     observed = im["observed"].to_numpy(dtype=float)
     im_rmse = float(np.sqrt(np.mean((im["beta_expected_demand"].to_numpy()-observed)**2)))
@@ -241,12 +253,15 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
                                         (observed<=arm["upper_95"].to_numpy())))
     print(f"Week {week}: IM RMSE={im_rmse:.6f}, ARM RMSE={arm_rmse:.6f}; "
           f"IM 95% coverage={im_coverage:.2f}%, ARM 95% coverage={arm_coverage:.2f}%")
-    print(f"Saved: {destination}")
-    return destination
+    for name, path in (("Demand",demand_path), ("IM contributions",im_path_out),
+                       ("ARM contributions",arm_path_out)):
+        print(f"Saved {name}: {path}")
+    return {"demand":demand_path, "im_contributions":im_path_out,
+            "arm_contributions":arm_path_out}
 
 
 def main():
-    parser = ArgumentParser(description="Plot IM responses, model demand fit, and ARM rate contributions for seven weekdays.")
+    parser = ArgumentParser(description="Plot seven-day IM/ARM demand fits and two separate function-contribution figures.")
     parser.add_argument("--week",choices=("1","2","both"),default="1",
                         help="First or second Monday–Sunday sample from the 14 fitted dates.")
     parser.add_argument("--im-input","--bm-input",dest="im_input",type=Path,default=IM_INPUT)
