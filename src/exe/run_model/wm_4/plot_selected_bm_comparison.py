@@ -182,9 +182,9 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
         middle.set_title(f"{day:%A %d %B %Y}", fontsize=10, pad=4)
 
         for key, color, label in (
-            ("theta_F_times_F","tab:purple",r"$\\theta_F F_t$"),
-            ("theta_R_times_R","tab:green",r"$\\theta_R R_t$"),
-            ("theta_U_times_h_U","tab:red",r"$\\theta_U g(U_t)$"),
+            ("theta_F_times_F","tab:purple",r"$\theta_F F_t$"),
+            ("theta_R_times_R","tab:green",r"$\theta_R R_t$"),
+            ("theta_U_times_h_U","tab:red",r"$\theta_U g(U_t)$"),
         ):
             right.plot(hours, a[key].to_numpy(), color=color, lw=1.8, label=label)
         right.axhline(0, color="0.35", alpha=0.5, lw=0.8)
@@ -200,12 +200,9 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
         ax.set_xticks([0,4,8,12,16,20,23])
         ax.set_xlabel("Hour of day")
 
-    axes[0,0].text(0.5, 1.36, "IM responses", transform=axes[0,0].transAxes,
-                   ha="center", va="bottom", fontweight="bold", fontsize=13)
-    axes[0,1].text(0.5, 1.36, "IM vs ARM demand fit", transform=axes[0,1].transAxes,
-                   ha="center", va="bottom", fontweight="bold", fontsize=13)
-    axes[0,2].text(0.5, 1.36, "ARM drift contributions", transform=axes[0,2].transAxes,
-                   ha="center", va="bottom", fontweight="bold", fontsize=13)
+    fig.text(0.173,0.945,"IM responses",ha="center",va="top",fontweight="bold",fontsize=13)
+    fig.text(0.505,0.945,"IM vs ARM demand fit",ha="center",va="top",fontweight="bold",fontsize=13)
+    fig.text(0.835,0.945,"ARM drift contributions",ha="center",va="top",fontweight="bold",fontsize=13)
 
     im_handles = [Line2D([],[],color="tab:purple",lw=1.8,label=r"$E[f(X_t)]$"),
                   Line2D([],[],color="tab:green",lw=1.8,label=r"$g(U_t)$")]
@@ -215,18 +212,18 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
                    Line2D([],[],color="tab:blue",lw=1.9,label="ARM mean"),
                    Patch(color="tab:blue",alpha=0.13,label="ARM 95%")]
     arm_handles = [Line2D([],[],color=color,lw=1.8,label=label) for color,label in (
-                   ("tab:purple",r"$\\theta_F F_t$"),("tab:green",r"$\\theta_R R_t$"),
-                   ("tab:red",r"$\\theta_U g(U_t)$"))]
-    fig.legend(handles=im_handles,loc="upper center",bbox_to_anchor=(0.173,0.950),
+                   ("tab:purple",r"$\theta_F F_t$"),("tab:green",r"$\theta_R R_t$"),
+                   ("tab:red",r"$\theta_U g(U_t)$"))]
+    fig.legend(handles=im_handles,loc="upper center",bbox_to_anchor=(0.173,0.925),
                ncol=2,fontsize=10,frameon=False)
-    fig.legend(handles=fit_handles,loc="upper center",bbox_to_anchor=(0.505,0.950),
+    fig.legend(handles=fit_handles,loc="upper center",bbox_to_anchor=(0.505,0.925),
                ncol=5,fontsize=9,frameon=False)
-    fig.legend(handles=arm_handles,loc="upper center",bbox_to_anchor=(0.835,0.950),
+    fig.legend(handles=arm_handles,loc="upper center",bbox_to_anchor=(0.835,0.925),
                ncol=3,fontsize=10,frameon=False)
     fig.suptitle(f"IM vs ARM | seven corresponding weekdays | sample week {week}\n"
                  "ALL · weekly temperature · N=6 historical weekdays · 24-hour oracle-conditioned predictions",
                  y=0.997,fontsize=15)
-    fig.subplots_adjust(top=0.915,bottom=0.05,hspace=0.44,wspace=0.24)
+    fig.subplots_adjust(top=0.88,bottom=0.05,hspace=0.44,wspace=0.24)
 
     output = Path(output)
     output.mkdir(parents=True,exist_ok=True)
