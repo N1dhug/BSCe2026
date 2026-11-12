@@ -1,4 +1,4 @@
-"""BM1 beta-mixture Fokker-Planck MLE on the same 14 ALL dates as selected_bm_dates_arm.
+"""IM (BM1) beta-mixture Fokker-Planck MLE on the same seven ALL dates as the ARM sample fitter.
 
 N=6 matching historical weekdays, k=24 hourly observations, origin at 00:00,
 weekly_temperature baseline only, and the same historical imputation.
@@ -39,13 +39,14 @@ from scipy.stats import norm
 
 from src.exe.run_model.wm_4.moving_horizon_common import group_frame, metrics
 from src.exe.run_model.wm_4.selected_bm_dates_arm import (
-    BASELINES, K, N, reference_dates,
+    BASELINES, K, N, reference_week,
 )
 from src.exe.run_model.wm_4.sweep_weekday_horizon import (
     baseline_from_history, historical_calendar_days,
 )
 from src.method.bm_1_beta import bm_1_beta
 from src.params.bm_1_beta import bm_1_beta_params
+from src.exe.run_model.wm_4.selected_bm_timing import timing_report
 from src.tools.impute_hourly import impute_hourly_days
 from src.validation.exe.run_model.bm_1.fit_beta_moving_horizon import (
     bm_1_beta_moving_horizon_validation as checks,
@@ -58,12 +59,12 @@ BASELINE = "weekly_temperature"
 Z95 = float(norm.ppf(0.975))
 
 
-def inputs():
-    """Read ALL once and enforce the exact ARM N,k dates, scale and imputation."""
+def inputs(week=1):
+    """Read ALL once and enforce the exact seven ARM weekday dates and scale."""
     if tuple(BASELINES)!=(BASELINE,) or N!=6 or K!=24:
         raise ValueError("Expected ARM reference experiment: weekly_temperature, N=6, k=24.")
-    dates,histories=reference_dates()
-    if len(dates)!=14: raise ValueError("Expected 14 prediction dates, two per weekday.")
+    dates,histories=reference_week(week)
+    if len(dates)!=7: raise ValueError("Expected seven prediction dates, one per weekday.")
     raw=group_frame("ALL").copy()
     raw["U"]=0.5*(raw["U"]+1.0)  # BM1 price domain; ARM I normalization unchanged.
     needed=pd.DatetimeIndex([day for history in histories
@@ -196,7 +197,7 @@ def fit_day(raw,training,date,history,args):
 
 
 def summarize(rows):
-    """Pool 14x24 fixed dates, never average the daily RMSE values."""
+    """Pool seven target dates x 24 hours, never average daily RMSE values."""
     e=np.stack([row["error"] for row in rows])
     variance=np.stack([row["variance"] for row in rows])
     likelihood=np.stack([row["marginal_nll"] for row in rows])
@@ -297,33 +298,33 @@ def save_tables(rows,pooled,output):
 
 
 def plot_days(rows,output,show=False):
-    fig,axes=plt.subplots(2,7,figsize=(25,9),sharex=True,sharey=True)
+    """Seven vertically stacked IM beta-mixture open-loop forecasts."""
+    if len(rows)!=7: raise ValueError("IM weekday plot requires seven prediction days.")
+    fig,axes=plt.subplots(7,1,figsize=(13,19),sharex=True,sharey=True)
     h=np.arange(K)
-    for i,ax in enumerate(axes.flat):
+    for i,ax in enumerate(axes):
         item=rows[i]
         observed=item["target"]["I"]
         pred=item["expected"]
-        f=item["forecast"]
+        forecast=item["forecast"]
         ax.plot(h,observed,color="black",lw=1.7,marker="o",markersize=2.4,
                 label="Observed demand")
-        ax.plot(h,pred,color="tab:orange",lw=1.9,label="Beta-mixture expected demand")
-        ax.fill_between(h,f["lower_95"],f["upper_95"],color="tab:orange",alpha=0.09,
-                        label="95% predicted interval" if i==0 else None)
-        ax.fill_between(h,f["lower_68"],f["upper_68"],color="tab:orange",alpha=0.18,
-                        label="68% predicted interval" if i==0 else None)
-        ax.set_title(f"{i+1:02d} | {item['date']:%a %d %b %Y}",fontsize=10)
+        ax.plot(h,pred,color="tab:orange",lw=1.9,label="IM expected demand")
+        ax.fill_between(h,forecast["lower_95"],forecast["upper_95"],
+                        color="tab:orange",alpha=0.09,label="95% predicted interval")
+        ax.fill_between(h,forecast["lower_68"],forecast["upper_68"],
+                        color="tab:orange",alpha=0.18,label="68% predicted interval")
+        ax.set_title(f"{i+1:02d} | {item['date']:%A %d %B %Y}",loc="left",fontsize=10)
         ax.set_xlim(0,K-1)
         ax.set_xticks([0,4,8,12,16,20,23])
+        ax.set_ylabel("Normalized demand")
         ax.grid(alpha=0.22)
-        if i//7==1: ax.set_xlabel("Hour of day")
-        if i%7==0: ax.set_ylabel("Normalized demand")
-    handles,labels=axes.flat[0].get_legend_handles_labels()
-    fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(0.5,0.965),
-               ncol=4,fontsize=10)
-    fig.suptitle("BM1 Fokker-Planck beta-mixture | 14 oracle-conditioned days | "
-                 "ALL, weekly temperature, N=6, k=24",fontsize=15,y=0.995)
-    fig.tight_layout(rect=(0,0,1,0.92))
-    fig.savefig(output/"bm1_14_days_2x7.png",dpi=190,bbox_inches="tight")
+        if i==0: ax.legend(loc="upper right",fontsize=9,framealpha=0.88)
+    axes[-1].set_xlabel("Hour of day")
+    fig.suptitle("IM Fokker-Planck beta mixture | 7 oracle-conditioned weekdays | ALL | N=6, k=24",
+                 fontsize=14,y=0.997)
+    fig.tight_layout(rect=(0,0,1,0.975))
+    fig.savefig(output/"bm1_7_days_7x1.png",dpi=190,bbox_inches="tight")
     if show: plt.show()
     plt.close(fig)
 
@@ -338,7 +339,7 @@ def plot_cumulative(cumulative,output,show=False):
     ax.plot(h,expected,color="tab:orange",ls="--",lw=2.2,marker="s",ms=3,
             label="Beta-mixture predicted cumulative hourly RMSE")
     ax.fill_between(h,actual,expected,color="tab:orange",alpha=0.10)
-    ax.set_title("BM1 beta-mixture | 14-day pooled marginal uncertainty vs empirical error")
+    ax.set_title("BM1 beta-mixture | 7-day pooled marginal uncertainty vs empirical error")
     ax.set_xlabel("Prediction lead hour")
     ax.set_ylabel("Cumulative sum of hourly RMSE (normalized demand)")
     ax.set_xlim(1,K)
@@ -358,7 +359,8 @@ def run(args):
     if not 0.<args.fit_max_step<=1.:
         raise ValueError("Adaptive beta-mixture max step must lie in (0,1].")
     if args.strict and args.maxiter<1: raise ValueError("Invalid MLE maximum iterations.")
-    dates,histories,raw,training,imputation=inputs()  # OUTSIDE timing.
+    dates,histories,raw,training,imputation=inputs(args.week)  # OUTSIDE timing.
+    if args.week==2 and args.output==OUTPUT: args.output=OUTPUT/"week_2"
     print(f"[BM1 beta] MLE step selector="
           f"{'adaptive (max_step='+str(args.fit_max_step)+')' if args.fit_steps_per_hour is None else 'fixed ('+str(args.fit_steps_per_hour)+' steps/hour)'}",
           flush=True)
@@ -378,10 +380,17 @@ def run(args):
 
     summary=summarize(rows)
     cumulative=save_tables(rows,summary,args.output)
+    timing_report(pd.read_csv(args.output/"per_day_metrics.csv"),"IM",args.output,(
+        ("Deterministic initial fit","deterministic_fit_seconds"),
+        ("Stochastic MLE","stochastic_mle_seconds"),
+        ("Oracle X0 and forecast","oracle_search_and_prediction_seconds"),
+        ("Complete process","total_compute_seconds"),
+    ),show=args.show)
     plot_days(rows,args.output,args.show)
     plot_cumulative(cumulative,args.output,args.show)
     configuration={
         "group":"ALL","baseline":BASELINE,"N":N,"k":K,
+        "sample_week":args.week,"prediction_days":len(dates),
         "dates":[str(date.date()) for date in dates],
         "historical_imputation":"same within-day I/Temp interpolation and piecewise constant price as ARM",
         "imputed_hourly_slots":int(imputation["imputed_hourly_slots"]),
@@ -404,7 +413,7 @@ def run(args):
                              "max_step":args.oracle_max_step},
     }
     (args.output/"configuration.json").write_text(json.dumps(configuration,indent=2),encoding="utf-8")
-    print("\nBM1 FOKKER-PLANCK BETA-MIXTURE | SAME 14 ARM DATES, N=6, k=24, ALL")
+    print(f"\nIM FOKKER-PLANCK BETA-MIXTURE | SAME {len(dates)} ARM DATES, N=6, k=24, ALL")
     print(f"Expected-demand pooled RMSE={summary['expected_value_rmse']:.8f} | "
           f"MAE={summary['expected_value_mae']:.8f} | "
           f"bias(pred-obs)={summary['expected_value_bias']:+.8f}")
@@ -424,7 +433,9 @@ def run(args):
 
 
 def main():
-    parser=ArgumentParser(description="Evaluate BM1 beta-mixture stochastic MLE on exact ARM 14-day N=6 k=24 weekly-temperature cohort.")
+    parser=ArgumentParser(description="Evaluate IM beta-mixture stochastic MLE on seven matched ARM weekdays (N=6, k=24).")
+    parser.add_argument("--week",type=int,choices=(1,2),default=1,
+                        help="Fit only Aug 15-21 (week 1, default) or Aug 22-28 (week 2), seven days each.")
     parser.add_argument("--output",type=Path,default=OUTPUT)
     parser.add_argument("--x0",type=float,default=0.5)
     parser.add_argument("--deterministic-cycles",type=int,default=4)
