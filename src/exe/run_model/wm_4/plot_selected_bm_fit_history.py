@@ -130,9 +130,9 @@ def plot(day,week=1,im_dir=IM_OUTPUT,arm_dir=ARM_OUTPUT,output=OUTPUT,show=False
 
     with plt.rc_context({"font.family":"serif",
                          "font.serif":["Times New Roman","DejaVu Serif"],
-                         "font.size":11,"axes.titlesize":11,
-                         "axes.labelsize":12,"xtick.labelsize":10,
-                         "ytick.labelsize":10}):
+                         "font.size":14,"axes.titlesize":14,
+                         "axes.labelsize":15,"xtick.labelsize":13,
+                         "ytick.labelsize":13}):
         fig,axes=plt.subplots(2,7,figsize=(29,9),sharex=True,sharey=True)
         h=np.arange(K)
         for row,(model,color) in enumerate((("IM","tab:orange"),("ARM","tab:blue"))):
@@ -172,16 +172,11 @@ def plot(day,week=1,im_dir=IM_OUTPUT,arm_dir=ARM_OUTPUT,output=OUTPUT,show=False
             Line2D([],[],color="tab:orange",lw=2.,label="IM fitted/predicted demand"),
             Line2D([],[],color="tab:blue",lw=2.,label="ARM fitted/predicted demand"),
             Patch(facecolor="0.5",alpha=0.2,label="Model-specific 95% predictive interval"),
-        ],loc="upper center",bbox_to_anchor=(0.5,0.95),ncol=5,frameon=False,fontsize=12)
+        ],loc="upper center",bbox_to_anchor=(0.5,0.95),ncol=5,frameon=False,fontsize=15)
         fig.suptitle(
             f"IM vs ARM | six corresponding historical weekdays and {day:%A %d %B %Y} prediction",
-            fontsize=17,y=0.994)
-        fig.text(0.5,0.885,
-                 "Historical IM: MLE one-step-ahead, observation-filtered | "
-                 "Historical ARM: QP free-running | "
-                 "Target: oracle-conditioned open-loop forecast",
-                 ha="center",fontsize=11)
-        fig.subplots_adjust(left=0.058,right=0.992,top=0.83,bottom=0.09,
+            fontsize=20,y=0.994)
+        fig.subplots_adjust(left=0.065,right=0.992,top=0.86,bottom=0.09,
                             wspace=0.11,hspace=0.25)
         output=Path(output)
         output.mkdir(parents=True,exist_ok=True)
