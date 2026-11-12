@@ -154,10 +154,18 @@ def plot(day,week=1,im_dir=IM_OUTPUT,arm_dir=ARM_OUTPUT,output=OUTPUT,show=False
                 ax.set_xlim(0,K-1)
                 ax.set_xticks([0,6,12,18,23])
                 ax.grid(alpha=0.2)
-                ax.set_ylim(bottom=0.)
                 if col==0:
                     ax.set_ylabel(f"{model}\nNormalized demand",fontweight="bold")
                 if row==1: ax.set_xlabel("Hour of day")
+        # Set the shared scale once, after every panel has been populated;
+        # preserve 95% tails even when they extend beyond [0,1].
+        all_panels=[data for group in paths for data in group]
+        ymin=min(float(data["lower_95"].min()) for data in all_panels)
+        ymax=max(max(float(data[col].max()) for col in
+                     ("observed","baseline_predicted","fitted_demand","upper_95"))
+                 for data in all_panels)
+        margin=max(0.02,0.04*(ymax-ymin))
+        axes[0,0].set_ylim(min(0.,ymin)-margin,ymax+margin)
         fig.legend(handles=[
             Line2D([],[],color="black",lw=1.6,marker="o",markersize=3,label="Observed demand"),
             Line2D([],[],color="tab:green",lw=1.6,ls="--",label="Weekly-temperature baseline"),
