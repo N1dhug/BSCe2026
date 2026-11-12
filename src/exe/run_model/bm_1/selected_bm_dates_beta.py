@@ -297,6 +297,46 @@ def save_tables(rows,pooled,output):
     return pd.DataFrame(cumulative)
 
 
+def save_historical_predictions(rows,training,args,output):
+    """Persist the six actual MLE-fitted historical intervals for every target.
+
+    Historical IM fitted means are one-step-ahead beta-mixture predictions
+    conditioned on earlier observations from the SAME historical day,
+    matching the stochastic MLE objective. The last target interval remains
+    the unfiltered, open-loop oracle prediction in hourly_predictions.csv.
+    This postprocessing is intentionally excluded from optimizer timings.
+    """
+    records=[]
+    solver=bm_1_beta(args.fit_components,args.fit_quadrature,
+                     args.fit_reconstruction_quadrature,args.fit_max_step,
+                     fixed_steps_per_hour=args.fit_steps_per_hour)
+    for item in rows:
+        base=baseline_from_history(training,item["history"],BASELINE,K)
+        states=np.asarray(item["fitted"]["initial_states"],dtype=float)
+        if states.shape!=(len(item["history"]),):
+            raise ValueError("IM MLE must retain exactly one fitted X0 per historical interval.")
+        for slot,(past,x0) in enumerate(zip(item["history"],states),1):
+            sample=checks.window(training,past,K,base)
+            fitted=solver.simulate(sample,item["fitted"],float(x0),observations=sample["I"])
+            interval=solver.intervals(fitted,float(item["fitted"]["sigma_y"]))
+            for hour in range(K):
+                records.append({
+                    "target_day":str(item["date"].date()),
+                    "historical_day":str(past.date()),
+                    "historical_number":slot,"hour":hour,
+                    "observed":float(sample["I"][hour]),
+                    "baseline_predicted":float(sample["B"][hour]),
+                    "fitted_demand":float(fitted["mean"][hour]),
+                    "lower_95":float(interval["lower_95"][hour]),
+                    "upper_95":float(interval["upper_95"][hour]),
+                    "fitted_initial_X0":float(x0),
+                    "fit_type":"historical MLE; one-step-ahead filtered",
+                })
+    path=output/"historical_fitted_predictions.csv"
+    pd.DataFrame(records).to_csv(path,index=False)
+    print(f"Saved IM historical fitted curves: {path}",flush=True)
+
+
 def plot_days(rows,output,show=False):
     """Seven vertically stacked IM beta-mixture open-loop forecasts."""
     if len(rows)!=7: raise ValueError("IM weekday plot requires seven prediction days.")
@@ -380,6 +420,7 @@ def run(args):
 
     summary=summarize(rows)
     cumulative=save_tables(rows,summary,args.output)
+    save_historical_predictions(rows,training,args,args.output)
     timing_report(pd.read_csv(args.output/"per_day_metrics.csv"),"IM",args.output,(
         ("Deterministic initial fit","deterministic_fit_seconds"),
         ("Stochastic MLE","stochastic_mle_seconds"),
