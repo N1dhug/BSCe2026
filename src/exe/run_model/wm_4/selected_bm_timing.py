@@ -49,27 +49,35 @@ def timing_report(daily, model, output, stages, show=False):
     summary.to_csv(output/"timing_average.csv",index=False)
     labels = summary["stage"].tolist()
     means = summary["mean_seconds"].to_numpy(dtype=float)
-    fig,ax=plt.subplots(figsize=(11,5.2))
-    color = "tab:orange" if model=="IM" else "tab:blue"
-    bars = ax.barh(np.arange(4),means,color=[color]*3+["0.40"],height=0.62)
-    ax.set_yticks(np.arange(4),labels)
-    ax.invert_yaxis()
-    ax.set_xlim(0.,max(means.max()*1.22,1e-9))
-    ax.set_xlabel("Mean wall-clock seconds per prediction date (seven dates)")
-    ax.set_title(f"{model} | Mean computation cost by stage | seven weekday samples")
-    ax.grid(axis="x",alpha=0.2)
-    ax.set_axisbelow(True)
-    for rect,value in zip(bars,means):
-        ax.text(value+max(means.max(),1e-9)*0.015,rect.get_y()+rect.get_height()/2,
-                f"{value:.4f} s",va="center",fontsize=10)
-    fig.text(0.5,0.01,
-             "Complete process includes the three stages plus other data preparation/scoring. "
-             "Bars are not additive.",ha="center",fontsize=9)
-    fig.tight_layout(rect=(0,0.06,1,1))
-    image = output/"timing_average.png"
-    fig.savefig(image,dpi=190,bbox_inches="tight")
-    if show: plt.show()
-    plt.close(fig)
+    # Set the publication-style font only for this plot, not for other figures.
+    # Times New Roman is used where installed; Matplotlib otherwise falls back
+    # to its available serif font.
+    with plt.rc_context({"font.family":"serif","font.serif":["Times New Roman","DejaVu Serif"],
+                         "font.size":16,"axes.titlesize":21,"axes.labelsize":18,
+                         "xtick.labelsize":16,"ytick.labelsize":17}):
+        fig,ax=plt.subplots(figsize=(13.8,6.5))
+        color="tab:orange" if model=="IM" else "tab:blue"
+        bars=ax.barh(np.arange(4),means,color=[color]*3+["0.40"],height=0.62)
+        ax.set_yticks(np.arange(4),labels)
+        ax.invert_yaxis()
+        ax.set_xlim(0.,max(means.max()*1.25,1e-9))
+        ax.set_xlabel("mean time (s)")
+        ax.set_title(f"{model} | Mean computation cost by stage | seven weekday samples",
+                     pad=18)
+        ax.grid(axis="x",alpha=0.2)
+        ax.set_axisbelow(True)
+        for rect,value in zip(bars,means):
+            ax.text(value+max(means.max(),1e-9)*0.015,
+                    rect.get_y()+rect.get_height()/2,
+                    f"{value:.4f} s",va="center",fontsize=16)
+        fig.text(0.5,0.015,
+                 "Complete process includes the three stages plus other data preparation/scoring. "
+                 "Bars are not additive.",ha="center",fontsize=12)
+        fig.tight_layout(rect=(0,0.07,1,1))
+        image=output/"timing_average.png"
+        fig.savefig(image,dpi=190,bbox_inches="tight")
+        if show: plt.show()
+        plt.close(fig)
     print(f"\n{model} mean per-origin computational time across {len(daily)} dates:")
     for label,value in zip(labels,means): print(f"  {label:30s} {value:.6f} s")
     print(f"Timing plot: {image}")
