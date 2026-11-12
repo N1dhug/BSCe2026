@@ -445,7 +445,7 @@ def run(args):
     hourly,daily,pooled,curves=make_tables(results,args.output)
     timing_report(daily,"ARM",args.output,(
         ("Deterministic drift QP","drift_fit_seconds"),
-        ("Stochastic variance fit (not MLE)","diffusion_fit_seconds"),
+        ("Variance fit","diffusion_fit_seconds"),
         ("Oracle initial-state QP","oracle_optimization_seconds"),
         ("Complete process","complete_compute_seconds"),
     ),show=args.show)
