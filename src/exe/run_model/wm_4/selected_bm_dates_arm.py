@@ -1,4 +1,4 @@
-"""ARM evaluation on 14 non-holiday August dates, N=6, k=24, origins 00:00.
+"""ARM evaluation on seven corresponding non-holiday weekdays, N=6, k=24, origins 00:00.
 
 Using only the temperature-adjusted weekly baseline, fit historical ARM drift by joint QP, fit
 tau^2 and sigma^2 on the six free-running historical trajectories, then
@@ -8,8 +8,9 @@ Report pooled target RMSE, MAE, signed bias, Gaussian similarity, variance/
 RMSE discrepancy, empirical 95% coverage, and mean complete computation time.
 Data loading and historical-day imputation are excluded from computation time.
 
-Outputs: 2x7 target-day demand and drift-contribution panels, a separate
-pooled cumulative hourly-RMSE comparison, and CSV data and metrics.
+Outputs: seven-row target-day demand and drift-contribution panels, a pooled
+cumulative hourly-RMSE comparison, timing averages and CSV data and metrics.
+Use --week 1 (default) for 15-21 August 2022, or --week 2 for 22-28 August.
 
 From repository root:
     python -m src.exe.run_model.wm_4.selected_bm_dates_arm --show
@@ -34,6 +35,7 @@ from src.exe.run_model.wm_4.sweep_weekday_horizon import (
     baseline_from_history, historical_calendar_days, interval_window,
 )
 from src.params.wm_4 import joint_qp_params
+from src.exe.run_model.wm_4.selected_bm_timing import timing_report
 from src.tools.impute_hourly import impute_hourly_days
 
 
@@ -85,6 +87,17 @@ def reference_dates():
     return dates, histories
 
 
+def reference_week(week=1):
+    """Return exactly one Monday-Sunday sample with its six historical weekdays."""
+    if week not in (1,2): raise ValueError("Sample week must be 1 or 2.")
+    dates,histories=reference_dates()
+    sl=slice(7*(week-1),7*week)
+    selected,previous=dates[sl],histories[sl]
+    if len(selected)!=7 or [day.weekday() for day in selected]!=list(range(7)):
+        raise ValueError("Selected ARM sample must cover Monday through Sunday exactly once.")
+    return selected,previous
+
+
 def fit_origin(frame, training, day, history, baseline_name, steps):
     """One complete independently fitted historical + oracle target estimate."""
     start = perf_counter()
@@ -93,6 +106,7 @@ def fit_origin(frame, training, day, history, baseline_name, steps):
                   for previous in history]
     model, forecast, _, observed = interval_window(frame, day, baseline, steps, K)
     sampled = np.arange(K, dtype=int)*steps
+    preparation_seconds = perf_counter()-start
 
     drift_start = perf_counter()
     fit = joint_qp_params(model).fit_many(historical)
@@ -157,13 +171,14 @@ def fit_origin(frame, training, day, history, baseline_name, steps):
         "historical_rmse":float(np.sqrt(np.mean(historical_error**2))),
         "baseline_demand_rmse":float(np.sqrt(np.mean(
             (forecast["O"][sampled]-observed)**2))),
+        "baseline_seconds":preparation_seconds,
         "total_compute_seconds":total_time, "drift_seconds":drift_time,
         "diffusion_seconds":diffusion_time, "oracle_seconds":oracle_time,
     }
 
 
 def pooled_metrics(items):
-    """Pooled across 14*24 target observations for the weekly-temperature baseline."""
+    """Pooled across seven target days, each with K hourly observations."""
     error = np.stack([item["error"] for item in items])
     variance = np.stack([item["variance"] for item in items])
     observed_hourly_rmse = np.sqrt(np.mean(error**2,axis=0))
@@ -227,6 +242,7 @@ def make_tables(results, output):
                 "process_sigma":float(np.sqrt(item["sigma2"])),
                 "process_identifiable":item["process_identifiable"],
                 "complete_compute_seconds":item["total_compute_seconds"],
+                "baseline_fit_and_windows_seconds":item["baseline_seconds"],
                 "drift_fit_seconds":item["drift_seconds"],
                 "diffusion_fit_seconds":item["diffusion_seconds"],
                 "oracle_optimization_seconds":item["oracle_seconds"],
@@ -284,83 +300,71 @@ def sample_parameter_legend(item):
     )
 
 
-def plot_days(results, path, show=False):
-    """Two rows of seven weekdays, one subplot per regular prediction date."""
-    fig, axes = plt.subplots(2,7,figsize=(27,11),sharex=True,sharey=True)
-    hours = np.arange(K)
-    for index,axis in enumerate(axes.flat):
-        target = results[BASELINES[0]][index]["day"]
-        axis.plot(hours,results[BASELINES[0]][index]["observed"],color="black",
-                  lw=1.9,marker="o",markersize=2.2,label="Observed")
+def plot_days(results,path,show=False):
+    """Seven vertically stacked oracle-conditioned weekday demand forecasts."""
+    days=results[BASELINES[0]]
+    if len(days)!=7: raise ValueError("ARM weekday plot requires exactly seven prediction dates.")
+    fig,axes=plt.subplots(7,1,figsize=(13,19),sharex=True,sharey=True)
+    h=np.arange(K)
+    for index,ax in enumerate(axes):
+        item=days[index]
+        ax.plot(h,item["observed"],color="black",lw=1.7,marker="o",markersize=2.5,
+                label="Observed demand")
         for baseline in BASELINES:
-            result = results[baseline][index]
-            mean,std,color=result["predicted"],result["std"],COLORS[baseline]
-            axis.fill_between(hours,mean-Z95*std,mean+Z95*std,color=color,alpha=0.085)
-            axis.fill_between(hours,mean-Z68*std,mean+Z68*std,color=color,alpha=0.15)
-            axis.plot(hours,mean,color=color,lw=1.7,label=LABELS[baseline])
-        axis.set_title(f"{index+1:02d} | {target:%a %d %b %Y}",fontsize=10)
-        axis.set_xlim(0,K-1)
-        axis.set_xticks([0,4,8,12,16,20,23])
-        axis.grid(alpha=0.23)
-        if index//7 == 1: axis.set_xlabel("Hour of day")
-        if index%7 == 0: axis.set_ylabel("Normalized demand")
-        axis.legend(title=sample_parameter_legend(results[BASELINES[0]][index]),
-                    loc="upper right",fontsize=7,title_fontsize=6.8,
-                    framealpha=0.88,borderaxespad=0.3,labelspacing=0.25,
-                    borderpad=0.4,handlelength=1.5)
-    handles,labels=axes.flat[0].get_legend_handles_labels()
-    from matplotlib.patches import Patch
-    handles.extend([Patch(color="gray",alpha=0.25,label="Central 68% interval"),
-                    Patch(color="gray",alpha=0.12,label="Central 95% interval")])
-    fig.legend(handles,[*labels,"Central 68% interval","Central 95% interval"],
-               loc="upper center",bbox_to_anchor=(0.5,0.962),ncol=4,fontsize=10)
-    fig.suptitle("ARM: 14 non-holiday oracle-conditioned prediction days | Weekly temperature | ALL | N=6, k=24 h",
-                 fontsize=15,y=0.995)
-    fig.tight_layout(rect=(0,0,1,0.92))
+            row=results[baseline][index]
+            mean,std,color=row["predicted"],row["std"],COLORS[baseline]
+            ax.fill_between(h,mean-Z95*std,mean+Z95*std,color=color,alpha=0.10,
+                            label="95% predicted interval")
+            ax.fill_between(h,mean-Z68*std,mean+Z68*std,color=color,alpha=0.15,
+                            label="68% predicted interval")
+            ax.plot(h,mean,color=color,lw=1.9,label=LABELS[baseline])
+        ax.set_title(f"{index+1:02d} | {item['day']:%A %d %B %Y}",loc="left",fontsize=10)
+        ax.set_xlim(0,K-1)
+        ax.set_xticks([0,4,8,12,16,20,23])
+        ax.set_ylabel("Normalized demand")
+        ax.grid(alpha=0.23)
+        if index==0:
+            ax.legend(title=sample_parameter_legend(item),loc="upper right",
+                      fontsize=8,title_fontsize=8,framealpha=0.88)
+    axes[-1].set_xlabel("Hour of day")
+    fig.suptitle("ARM | 7 oracle-conditioned weekdays | weekly temperature | ALL | N=6, k=24",
+                 fontsize=14,y=0.997)
+    fig.tight_layout(rect=(0,0,1,0.975))
     fig.savefig(path,dpi=190,bbox_inches="tight")
     if show: plt.show()
     plt.close(fig)
 
 
-
 def plot_rate_contributions(results,path,show=False):
-    """Three terms of the fitted ARM rate drift on each oracle prediction day.
-
-    The fixed ARM implementation is affine: g(R)=R and h(U)=U.
-    Contributions are sampled from the deterministic ORACLE state trajectory
-    at precisely the same 24 hours as the demand-prediction figure.
-    """
-    name = BASELINES[0]
-    fig,axes=plt.subplots(2,7,figsize=(27,11),sharex=True,sharey=True)
-    hours = np.arange(K)
-    contributions = (
-        ("effect_F",r"$\theta_F F$", "tab:blue"),
-        ("effect_R",r"$\theta_R R$", "tab:green"),
-        ("effect_U",r"$\theta_U h(U)$", "tab:orange"),
+    """ARM deterministic drift terms along each saved oracle target trajectory."""
+    days=results[BASELINES[0]]
+    if len(days)!=7: raise ValueError("ARM drift plot requires exactly seven prediction dates.")
+    fig,axes=plt.subplots(7,1,figsize=(13,19),sharex=True,sharey=True)
+    h=np.arange(K)
+    components=(
+        ("effect_F",r"$\theta_F F_t$","tab:blue"),
+        ("effect_R",r"$\theta_R R_t$","tab:green"),
+        ("effect_U",r"$\theta_U h(U_t)$","tab:orange"),
     )
-    for sample,axis in enumerate(axes.flat,1):
-        result = results[name][sample-1]
-        for key,label,color in contributions:
-            axis.plot(hours,result[key],label=label,color=color,lw=1.9)
-        axis.plot(hours,result["total_drift"],label=r"Total $\dot{R}$",
-                  color="0.2",ls="--",lw=1.3)
-        axis.axhline(0.,color="0.45",lw=0.8)
-        axis.set_title(f"{sample:02d} | {result['day']:%a %d %b %Y}",fontsize=10)
-        axis.set_xlim(0,K-1)
-        axis.set_xticks([0,4,8,12,16,20,23])
-        axis.grid(alpha=0.23)
-        if (sample-1)//7 == 1: axis.set_xlabel("Hour of day")
-        if (sample-1)%7 == 0: axis.set_ylabel(r"Contribution to $\dot{R}$")
-        axis.legend(title=sample_parameter_legend(result),
-                    loc="upper right",fontsize=7,title_fontsize=6.8,
-                    framealpha=0.88,borderaxespad=0.3,labelspacing=0.25,
-                    borderpad=0.4,handlelength=1.5)
-    handles,labels=axes.flat[0].get_legend_handles_labels()
-    fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(0.5,0.962),
-               ncol=4,fontsize=10)
-    fig.suptitle("ARM rate-response contributions | 14 non-holiday oracle prediction days | "
-                 "Weekly temperature | ALL | N=6, k=24 h",fontsize=15,y=0.995)
-    fig.tight_layout(rect=(0,0,1,0.92))
+    for index,ax in enumerate(axes):
+        item=days[index]
+        for key,label,color in components:
+            ax.plot(h,item[key],label=label,color=color,lw=1.9)
+        ax.plot(h,item["total_drift"],label=r"Total $\dot{R}_t$",
+                color="0.2",ls="--",lw=1.3)
+        ax.axhline(0.,color="0.45",lw=0.8)
+        ax.set_title(f"{index+1:02d} | {item['day']:%A %d %B %Y}",loc="left",fontsize=10)
+        ax.set_xlim(0,K-1)
+        ax.set_xticks([0,4,8,12,16,20,23])
+        ax.set_ylabel(r"Contribution to $\dot{R}$")
+        ax.grid(alpha=0.23)
+        if index==0:
+            ax.legend(title=sample_parameter_legend(item),loc="upper right",
+                      fontsize=8,title_fontsize=8,framealpha=0.88)
+    axes[-1].set_xlabel("Hour of day")
+    fig.suptitle("ARM drift responses | 7 oracle-conditioned weekdays | weekly temperature",
+                 fontsize=14,y=0.997)
+    fig.tight_layout(rect=(0,0,1,0.975))
     fig.savefig(path,dpi=190,bbox_inches="tight")
     if show: plt.show()
     plt.close(fig)
@@ -381,7 +385,7 @@ def plot_cumulative(curves,path,show=False):
     ax.plot(h,predicted,color=color,lw=2.2,ls="--",marker="s",ms=3,
             label="Model-predicted cumulative hourly RMSE")
     ax.fill_between(h,empirical,predicted,color=color,alpha=0.11)
-    ax.set_title("ARM | Weekly temperature | 14-day pooled empirical vs predicted error accumulation")
+    ax.set_title("ARM | Weekly temperature | 7-day pooled empirical vs predicted error accumulation")
     ax.set_xlabel("Prediction lead hour")
     ax.set_ylabel("Cumulative sum of pooled hourly RMSE (normalized demand)")
     ax.set_xlim(1,K)
@@ -396,8 +400,9 @@ def plot_cumulative(curves,path,show=False):
 
 def run(args):
     if args.steps_per_hour<2: raise ValueError("steps-per-hour must be at least 2.")
-    dates,histories=reference_dates()
-    # Historical fitting dates span July 4 through August 21, so neither the
+    dates,histories=reference_week(args.week)
+    if args.week==2 and args.output==OUTPUT: args.output=OUTPUT/"week_2"
+    # Historical fitting dates span July and August, so neither the
     # June 6-22 nor September/October full-day data gaps enter the N=6 backlog.
     # Disk reading, alignment, availability checking and hourly imputation
     # are deliberately outside the complete predictive computation timer.
@@ -438,11 +443,18 @@ def run(args):
                   flush=True)
 
     hourly,daily,pooled,curves=make_tables(results,args.output)
-    plot_days(results,args.output/"selected_14_days_2x7.png",args.show)
-    plot_rate_contributions(results,args.output/"selected_14_days_rate_contributions_2x7.png",args.show)
+    timing_report(daily,"ARM",args.output,(
+        ("Deterministic drift QP","drift_fit_seconds"),
+        ("Stochastic variance fit (not MLE)","diffusion_fit_seconds"),
+        ("Oracle initial-state QP","oracle_optimization_seconds"),
+        ("Complete process","complete_compute_seconds"),
+    ),show=args.show)
+    plot_days(results,args.output/"selected_7_days_7x1.png",args.show)
+    plot_rate_contributions(results,args.output/"selected_7_days_rate_contributions_7x1.png",args.show)
     plot_cumulative(curves,args.output/"pooled_cumulative_error.png",args.show)
     config={
-        "group":"ALL","N":N,"k":K,"origin_hour":0,"steps_per_hour":args.steps_per_hour,
+        "group":"ALL","N":N,"k":K,"sample_week":args.week,"prediction_days":len(dates),
+        "origin_hour":0,"steps_per_hour":args.steps_per_hour,
         "dates":[f"{day:%Y-%m-%d}" for day in dates],
         "baselines":list(BASELINES),
         "input":"six corresponding prior weekdays (July-August) for each non-holiday August prediction date",
@@ -450,14 +462,14 @@ def run(args):
         "diffusion_fit":"historical free-running squared residuals; joint nonnegative variance matching",
         "target_initial_state":"oracle optimized from target observations",
         "time_definition":"complete weekly-temperature estimation and prediction, excludes initial ALL data reading and imputation",
-        "cumulative_plot":"sum over lead hours of sqrt(mean over 14 dates of squared hourly errors); predicted uses sqrt(mean model-implied variance)",
+        "cumulative_plot":"sum over lead hours of sqrt(mean over 7 dates of squared hourly errors); predicted uses sqrt(mean model-implied variance)",
         "rate_contributions":"theta_F*F + theta_R*R + theta_U*h(U) = predicted dR/dt; g(R)=R, h(U)=U; evaluated on oracle trajectory",
         "signed_bias":"predicted minus observed",
         "empirical_coverage":"pointwise 95 percent Gaussian intervals",
         "historical_imputed_hourly_slots":int(imputed["imputed_hourly_slots"]),
     }
     (args.output/"configuration.json").write_text(json.dumps(config,indent=2),encoding="utf-8")
-    print("\nPOOLED TARGET PERFORMANCE (14 non-holiday dates x 24 hours, weekly temperature baseline)")
+    print(f"\nPOOLED TARGET PERFORMANCE ({len(dates)} non-holiday dates x 24 hours, weekly temperature baseline)")
     for row in pooled.itertuples(index=False):
         print(f"\n{LABELS[row.baseline]} | N=6 k=24 | {row.observations} observations")
         print(f"  Demand RMSE={row.rmse:.8f} | MAE={row.mae:.8f} | "
@@ -473,13 +485,15 @@ def run(args):
               f"(excludes data read-in and historical imputation)")
     print(f"\nMean complete compute time per selected day (weekly temperature only)="
           f"{pooled.iloc[0]['mean_compute_seconds']:.3f}s")
-    print(f"\nSaved rate-contribution plot: {args.output/'selected_14_days_rate_contributions_2x7.png'}")
+    print(f"\nSaved rate-contribution plot: {args.output/'selected_7_days_rate_contributions_7x1.png'}")
     print(f"Saved results to {args.output}")
     return pooled
 
 
 def main():
-    parser=ArgumentParser(description="Fit ARM using only the weekly-temperature baseline and historical diffusion on 14 regular non-holiday dates (ALL, N=6, k=24, origin 00:00).")
+    parser=ArgumentParser(description="Fit ARM on seven non-holiday weekdays with historical drift QP and variance matching (ALL, N=6, k=24).")
+    parser.add_argument("--week",type=int,choices=(1,2),default=1,
+                        help="Fit only Aug 15-21 (week 1, default) or Aug 22-28 (week 2), seven days each.")
     parser.add_argument("--steps-per-hour",type=int,default=60)
     parser.add_argument("--output",type=Path,default=OUTPUT)
     parser.add_argument("--show",action="store_true")
