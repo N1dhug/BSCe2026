@@ -168,6 +168,8 @@ def fit_origin(frame, training, day, history, baseline_name, steps):
         "initial":init, "tau2":float(tau2), "sigma2":float(sigma2),
         "process_identifiable":bool(identifiable),
         "demand_metrics":metrics(observed,predicted),
+        "historical_inputs":historical, "historical_states":fit["deterministic_states"],
+        "historical_days":history,
         "historical_rmse":float(np.sqrt(np.mean(historical_error**2))),
         "baseline_demand_rmse":float(np.sqrt(np.mean(
             (forecast["O"][sampled]-observed)**2))),
@@ -298,6 +300,51 @@ def sample_parameter_legend(item):
         rf"$\theta_R={theta[2]:+.4g}$" "\n"
         rf"$\tau={tau:.4g}$  $\sigma={sigma:.4g}$"
     )
+
+
+def save_historical_predictions(results,output,steps):
+    """Persist ARM fitted free-running trajectories from the joint historical QP.
+
+    Historical central 95% marginal bands use the same fitted tau^2 and
+    sigma^2 variance kernel as the target day. Postprocessing is outside
+    the measured parameter-estimation runtime.
+    """
+    records=[]
+    for name in BASELINES:
+        for item in results[name]:
+            dates=item["historical_days"]
+            data=item["historical_inputs"]
+            states=item["historical_states"]
+            if not len(dates)==len(data)==len(states)==N:
+                raise ValueError("ARM historical states do not match the six fitting intervals.")
+            kernel=variance_kernel(float(item["theta"][0]),float(item["theta"][2]),steps,K)
+            var=np.maximum(0.,float(item["tau2"])+float(item["sigma2"])*kernel)
+            if not np.isfinite(var).all() or len(var)!=K:
+                raise ValueError("Invalid ARM historical variance kernel.")
+            std=np.sqrt(var)
+            sampled=np.arange(K,dtype=int)*steps
+            for slot,(past,d,state) in enumerate(zip(dates,data,states),1):
+                observed=np.asarray(d["I"],dtype=float)[sampled]
+                baseline=np.asarray(d["O"],dtype=float)[sampled]
+                expected=np.asarray(state["I"],dtype=float)[sampled]
+                if any(len(v)!=K or not np.isfinite(v).all()
+                       for v in (observed,baseline,expected)):
+                    raise ValueError(f"Invalid fitted ARM historical trajectory {past}.")
+                for hour in range(K):
+                    records.append({
+                        "target_day":str(item["day"].date()),
+                        "historical_day":str(past.date()),
+                        "historical_number":slot,"hour":hour,
+                        "observed":float(observed[hour]),
+                        "baseline_predicted":float(baseline[hour]),
+                        "fitted_demand":float(expected[hour]),
+                        "lower_95":float(expected[hour]-Z95*std[hour]),
+                        "upper_95":float(expected[hour]+Z95*std[hour]),
+                        "fit_type":"historical joint QP; free-running",
+                    })
+    path=output/"historical_fitted_predictions.csv"
+    pd.DataFrame(records).to_csv(path,index=False)
+    print(f"Saved ARM historical fitted curves: {path}",flush=True)
 
 
 def plot_days(results,path,show=False):
@@ -443,6 +490,7 @@ def run(args):
                   flush=True)
 
     hourly,daily,pooled,curves=make_tables(results,args.output)
+    save_historical_predictions(results,args.output,args.steps_per_hour)
     timing_report(daily,"ARM",args.output,(
         ("Deterministic drift QP","drift_fit_seconds"),
         ("Variance fit","diffusion_fit_seconds"),
