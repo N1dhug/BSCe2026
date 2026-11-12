@@ -97,7 +97,7 @@ def plot_week(week=1, bm_path=BM_INPUT, wm_path=WM_INPUT, output=OUTPUT, show=Fa
               Patch(facecolor="tab:orange", alpha=0.16, label="BM1 central 95%"),
               plt.Line2D([], [], color="tab:blue", lw=2, label="WM4 mean"),
               Patch(facecolor="tab:blue", alpha=0.13, label="WM4 Gaussian 95%")]
-    fig.legend(handles=legend, loc="outside upper center", ncol=5, fontsize=10)
+    fig.legend(handles=legend, loc="upper center", bbox_to_anchor=(0.5, 0.955), ncol=5, fontsize=10)
     fig.suptitle(f"BM1 vs WM4 | Monday–Sunday | sample week {week}\n"
                  "ALL · weekly temperature · N=6 historical weekdays · 24-hour oracle-conditioned predictions",
                  fontsize=13)
