@@ -1,10 +1,10 @@
 """Compare seven IM and ARM prediction days and their response components.
 
 Five figures are saved per requested Monday-Sunday week:
-  1. Seven rows x three columns: IM demand (left), ARM demand (middle),
-     and empirical central 68%/95% predictive interval coverage (right).
-     Both demand panels visualize nested central 68% and 95% predictive bands.
-     Both demand panels show each day's fitted parameters and oracle state.
+  1. Seven rows x two columns: IM demand (left), ARM demand (right),
+     with central 68% and 95% prediction intervals. The terminal reports
+     both empirical coverage levels and the fitted parameters/oracle states
+     for each date plus the weekly average coverage.
   2. Seven rows x two columns: instantaneous IM E[f(X_t)], g(U_t) (left)
      and numerically integrated ARM rate-drift terms (right).
   3. Seven vertically stacked IM response panels.
@@ -341,170 +341,153 @@ def empirical_coverage(data, interval):
     return count, 100.*count/len(obs)
 
 
-def fitted_subtitle(model, fit):
-    """Two lines of parameter and oracle state values read from the saved fit."""
-    if model=="IM":
-        return (
-            rf"$\alpha={fit['alpha']:.4g},\ \beta={fit['beta']:.4g},\ "
-            rf"k={fit['k']:.4g}$",
-            rf"$\Xi={fit['Xi']:.4g},\ C={fit['C']:.4g},\ "
-            rf"\sigma_x={fit['sigma_x']:.4g},\ \sigma_y={fit['sigma_y']:.4g},\ "
-            rf"X_0={fit['oracle_X0']:.4g}$",
-        )
-    if model=="ARM":
-        return (
-            rf"$\theta_F={fit['theta_F']:.4g},\ \theta_R={fit['theta_R']:.4g},\ "
-            rf"\theta_U={fit['theta_U']:.4g}$",
-            rf"$\tau={fit['observation_tau']:.4g},\ \sigma={fit['process_sigma']:.4g},\ "
-            rf"F_0={fit['oracle_F0']:.4g},\ R_0={fit['oracle_R0']:.4g}$",
-        )
-    raise ValueError(f"Unknown model {model}.")
+def report_week_coverage(days, im, arm, im_fits, arm_fits, output, week):
+    """Print all saved fitted parameters, oracle states and empirical interval coverage.
+
+    Coverage is counted over each day's 24 observed target hours. Because
+    each target day has the same number of hours, the mean of the seven daily
+    coverage percentages equals the pooled 168-hour empirical coverage.
+    """
+    specs = (
+        ("IM",im,im_fits,IM_PARAMETERS),
+        ("ARM",arm,arm_fits,ARM_PARAMETERS),
+    )
+    rows=[]
+    print(f"\n{'='*78}\nWEEK {week} | EMPIRICAL PREDICTIVE INTERVAL COVERAGE AND FITTED PARAMETERS")
+    print(f"Seven prediction days | {K} hourly observations per day | central 68% and 95%")
+    for day in days:
+        print(f"\n{day:%A %d %B %Y}")
+        for model,frame,fits,parameters in specs:
+            sample=frame.loc[day].sort_index()
+            if len(sample)!=K: raise ValueError(f"{model}: expected {K} observations for {day}.")
+            fitted=fits.loc[day]
+            for name in parameters:
+                value=float(fitted[name])
+                if not np.isfinite(value):
+                    raise ValueError(f"{model}: invalid fitted parameter {name} on {day}.")
+            parameter_text=", ".join(f"{name}={float(fitted[name]):.6g}" for name in parameters)
+            observed=[]
+            for nominal in (68,95):
+                count,percent=empirical_coverage(sample,nominal)
+                rows.append({
+                    "day":str(day.date()),"model":model,
+                    "nominal_coverage_pct":nominal,
+                    "covered_hours":count,"hours":K,
+                    "empirical_coverage_pct":percent,
+                    "coverage_minus_nominal_pp":percent-nominal,
+                })
+                observed.append(f"{nominal}%: {percent:5.1f}% ({count:2d}/{K})")
+            print(f"  {model}: {' | '.join(observed)}")
+            print(f"    Parameters and oracle initial state: {parameter_text}")
+
+    detail=pd.DataFrame(rows)
+    summary=[]
+    print(f"\nWEEK {week} AVERAGE EMPIRICAL COVERAGE ({len(days)} days, {len(days)*K} hours)")
+    for model,_,_,_ in specs:
+        for nominal in (68,95):
+            group=detail.loc[(detail["model"]==model)&
+                             (detail["nominal_coverage_pct"]==nominal)]
+            if len(group)!=len(days): raise ValueError("Coverage summary is missing prediction dates.")
+            count=int(group["covered_hours"].sum())
+            total=int(group["hours"].sum())
+            pooled=100.*count/total
+            average=float(group["empirical_coverage_pct"].mean())
+            if not np.isclose(average,pooled,rtol=0.,atol=1e-9):
+                raise RuntimeError("Week coverage average and pooled coverage disagree.")
+            print(f"  {model} {nominal}% interval: mean daily={average:5.1f}%, "
+                  f"pooled={pooled:5.1f}% ({count}/{total}), "
+                  f"nominal difference={pooled-nominal:+.1f} pp")
+            summary.append({
+                "model":model,"nominal_coverage_pct":nominal,
+                "days":len(days),"covered_hours":count,"hours":total,
+                "mean_daily_coverage_pct":average,
+                "pooled_coverage_pct":pooled,
+                "coverage_minus_nominal_pp":pooled-nominal,
+            })
+    output=Path(output)
+    output.mkdir(parents=True,exist_ok=True)
+    detail_path=output/f"im_arm_week_{week}_empirical_coverage.csv"
+    summary_path=output/f"im_arm_week_{week}_coverage_summary.csv"
+    detail.to_csv(detail_path,index=False)
+    pd.DataFrame(summary).to_csv(summary_path,index=False)
+    print(f"Saved per-day coverage: {detail_path}")
+    print(f"Saved weekly average: {summary_path}\n{'='*78}")
+    return detail_path,summary_path
 
 
-def plot_demand_coverage(days, im, arm, im_fits, arm_fits, output, week, show=False):
-    """Plot demand and empirical pointwise interval coverage in seven rows x three columns.
+def plot_demand_week(days, im, arm, output, week, show=False):
+    """Plot the seven observed demand trajectories and nested predictive intervals.
 
-    The right-hand column is *realized* coverage: for each model and nominal
-    central interval, count how many of the 24 target observations fall
-    within its saved lower/upper predictive quantiles. Dashed reference marks
-    represent the nominal 68% and 95% rates.
+    Only IM and ARM demand panels are shown, seven weekdays by two columns.
+    The 68% interval is drawn over the wider 95% interval, with model-specific
+    color shading. Empirical coverage and fitted parameters are instead
+    printed to the terminal by report_week_coverage().
     """
     with plt.rc_context({"font.family":"serif",
                          "font.serif":["Times New Roman","DejaVu Serif"],
-                         "font.size":15,"axes.titlesize":15.5,
+                         "font.size":15,"axes.titlesize":16,
                          "axes.labelsize":15,"xtick.labelsize":14,"ytick.labelsize":14}):
-        fig, axes = plt.subplots(7,3,figsize=(34,40),sharex="col",
-                                gridspec_kw={"width_ratios":[1.1,1.1,0.8]})
-        hours = np.arange(K)
-        colors = {"IM":"tab:orange","ARM":"tab:blue"}
-        specs = (
-            ("IM",im,im_fits,"weekly_temperature_baseline","beta_expected_demand"),
-            ("ARM",arm,arm_fits,"baseline_predicted","predicted"),
+        fig,axes=plt.subplots(7,2,figsize=(23,25),sharex=True,sharey=True)
+        hours=np.arange(K)
+        specs=(
+            ("IM",im,"weekly_temperature_baseline","beta_expected_demand","tab:orange"),
+            ("ARM",arm,"baseline_predicted","predicted","tab:blue"),
         )
-        coverage_rows = []
-        extremes = []
+        values=[]
         for row,day in enumerate(days):
-            observed_by_model = {}
-            coverage_by_model = {}
-            for col,(model,frame,fits,baseline,mean) in enumerate(specs):
+            for col,(model,frame,baseline,mean,color) in enumerate(specs):
                 data=frame.loc[day].sort_index()
-                if len(data)!=K: raise ValueError(f"{model} expected {K} hourly predictions for {day}.")
+                if len(data)!=K: raise ValueError(f"{model}: expected {K} hours for {day}.")
                 ax=axes[row,col]
-                color=colors[model]
-                observed_by_model[model]=data["observed"].to_numpy(dtype=float)
-                extremes.append(data[["observed","lower_95","upper_95",baseline,mean]]
-                                .to_numpy(dtype=float))
-                # Render the wider 95% band first, then the darker 68% band.
                 ax.fill_between(hours,data["lower_95"].to_numpy(),data["upper_95"].to_numpy(),
-                                color=color,alpha=0.12)
+                                color=color,alpha=.12)
                 ax.fill_between(hours,data["lower_68"].to_numpy(),data["upper_68"].to_numpy(),
-                                color=color,alpha=0.29)
+                                color=color,alpha=.29)
                 ax.plot(hours,data["observed"].to_numpy(),color="black",lw=1.6,
-                        marker="o",markersize=2.7)
-                ax.plot(hours,data[baseline].to_numpy(),color="tab:green",
-                        ls="--",lw=1.5)
+                        marker="o",markersize=3.)
+                ax.plot(hours,data[baseline].to_numpy(),color="tab:green",ls="--",lw=1.5)
                 ax.plot(hours,data[mean].to_numpy(),color=color,lw=2.)
+                ax.set_title(f"{day:%A %d %B %Y} | {model}",loc="left",pad=8)
                 ax.set_xlim(0,K-1)
                 ax.set_xticks([0,4,8,12,16,20,23])
                 if col==0: ax.set_ylabel("Normalized demand")
                 if row==6: ax.set_xlabel("Hour of day")
-                ax.grid(alpha=0.23)
-                a,b=fitted_subtitle(model,fits.loc[day])
-                # Date is the title; all fitted model parameters and the oracle
-                # state are the two-line subtitle, kept outside the data area.
-                ax.text(0.,1.40,f"{day:%A %d %B %Y} | {model}",
-                        transform=ax.transAxes,fontsize=16,fontweight="semibold",
-                        va="bottom",ha="left")
-                ax.text(0.,1.08,a+"\n"+b,transform=ax.transAxes,
-                        fontsize=13.5,va="bottom",ha="left",linespacing=1.3)
-                coverage_by_model[model]={}
-                for nominal in (68,95):
-                    covered,percent=empirical_coverage(data,nominal)
-                    coverage_by_model[model][nominal]=percent
-                    coverage_rows.append({
-                        "day":str(day.date()),"model":model,
-                        "nominal_coverage_pct":nominal,
-                        "covered_hours":covered,"hours":K,
-                        "empirical_coverage_pct":percent,
-                        "coverage_minus_nominal_pp":percent-nominal,
-                    })
-            if not np.allclose(observed_by_model["IM"],observed_by_model["ARM"],
-                               atol=1e-8,rtol=1e-8):
-                raise ValueError(f"IM and ARM observations differ on {day:%Y-%m-%d}.")
-            # The coverage panel compares IM and ARM at both nominal levels;
-            # the small dotted horizontal marks show nominal coverage.
-            ax=axes[row,2]
-            xx=np.array([0.,1.])
-            width=.32
-            for model,dx in (("IM",-width/2),("ARM",width/2)):
-                values=[coverage_by_model[model][n] for n in (68,95)]
-                rects=ax.bar(xx+dx,values,width=width,align="center",
-                             color=colors[model],alpha=.86,label=model if row==0 else None)
-                for rect,v in zip(rects,values):
-                    ax.annotate(f"{v:.1f}%",(rect.get_x()+rect.get_width()/2,v),
-                                xytext=(0,3),textcoords="offset points",ha="center",
-                                va="bottom",fontsize=13)
-            for x,n in zip(xx,(68,95)):
-                ax.hlines(n,x-.35,x+.35,color=".25",ls=":",lw=1.5)
-            ax.set_ylim(0.,115.)
-            ax.set_xlim(-.5,1.5)
-            ax.set_xticks(xx,["68%","95%"])
-            if row==6: ax.set_xlabel("Nominal central interval")
-            ax.set_ylabel("Empirical coverage (%)")
-            ax.grid(axis="y",alpha=.2)
-            ax.set_axisbelow(True)
-            ax.text(0.,1.40,f"{day:%A %d %B %Y} | Coverage",
-                    transform=ax.transAxes,fontsize=16,fontweight="semibold",
-                    va="bottom",ha="left")
+                ax.grid(alpha=.22)
+                values.append(data[["observed",baseline,mean,"lower_95","upper_95"]].to_numpy(dtype=float))
 
-        # Shared demand range only across the two demand columns (never the coverage column).
-        observed_min=min(float(np.min(arr)) for arr in extremes)
-        observed_max=max(float(np.max(arr)) for arr in extremes)
-        margin=max(.02,.04*(observed_max-observed_min))
-        for row in range(7):
-            for col in (0,1):
-                axes[row,col].set_ylim(observed_min-margin,observed_max+margin)
-
-        fig.suptitle(
-            f"IM vs ARM | demand prediction and empirical interval coverage | week {week}\n"
-            "ALL · weekly-temperature baseline · N=6 corresponding weekdays · 24-hour oracle predictions",
-            fontsize=20,y=.997)
-        fig.subplots_adjust(left=.055,right=.988,top=.875,bottom=.045,
-                            wspace=.26,hspace=1.06)
-
-        for col,(model,_,_,_,_) in enumerate(specs):
-            color=colors[model]
+        # All IM and ARM demand panels use the same vertical scale.
+        minimum=min(float(np.min(v)) for v in values)
+        maximum=max(float(np.max(v)) for v in values)
+        pad=max(.02,.04*(maximum-minimum))
+        axes[0,0].set_ylim(minimum-pad,maximum+pad)
+        fig.subplots_adjust(left=.075,right=.985,top=.89,bottom=.055,
+                            hspace=.48,wspace=.14)
+        for col,(model,_,_,_,color) in enumerate(specs):
             handles=[
-                Line2D([],[],color="black",lw=1.6,marker="o",markersize=3,label="Observed"),
-                Line2D([],[],color="tab:green",lw=1.5,ls="--",label="Baseline"),
-                Line2D([],[],color=color,lw=2.,label=f"{model} expected"),
+                Line2D([],[],color="black",lw=1.6,marker="o",markersize=3,label="Observed demand"),
+                Line2D([],[],color="tab:green",ls="--",lw=1.5,label="Baseline"),
+                Line2D([],[],color=color,lw=2.,label=f"{model} expected demand"),
                 Patch(facecolor=color,alpha=.29,label="Central 68% interval"),
                 Patch(facecolor=color,alpha=.12,label="Central 95% interval"),
             ]
-            bbox=axes[0,col].get_position()
+            box=axes[0,col].get_position()
             fig.legend(handles=handles,loc="upper center",
-                       bbox_to_anchor=((bbox.x0+bbox.x1)/2,.961),
-                       ncol=2,fontsize=14,frameon=False)
-        bbox=axes[0,2].get_position()
-        fig.legend(handles=[
-            Patch(color=colors["IM"],label="IM coverage"),
-            Patch(color=colors["ARM"],label="ARM coverage"),
-            Line2D([],[],color=".25",ls=":",lw=1.5,label="Nominal"),
-        ],loc="upper center",bbox_to_anchor=((bbox.x0+bbox.x1)/2,.961),
-            ncol=2,fontsize=14,frameon=False)
+                       bbox_to_anchor=((box.x0+box.x1)/2,.957),
+                       ncol=3,fontsize=13,frameon=False)
+        fig.suptitle(
+            f"IM (left) vs ARM (right) | 7-day demand prediction | sample week {week}\n"
+            "ALL · weekly-temperature baseline · N=6 corresponding weekdays · 24-hour oracle predictions",
+            fontsize=19,y=.995)
         output=Path(output)
         output.mkdir(parents=True,exist_ok=True)
         image_path=output/f"im_arm_week_{week}_demand_95pct.png"
         pdf_path=output/f"im_arm_week_{week}_demand_95pct.pdf"
-        csv_path=output/f"im_arm_week_{week}_empirical_coverage.csv"
         fig.savefig(image_path,dpi=190,bbox_inches="tight")
         fig.savefig(pdf_path,bbox_inches="tight")
-        pd.DataFrame(coverage_rows).to_csv(csv_path,index=False)
         if show: plt.show()
         plt.close(fig)
-    print(f"Saved demand and empirical interval coverage: {image_path}")
-    print(f"Saved interval coverage table: {csv_path}")
-    return image_path,pdf_path,csv_path
+    print(f"Saved demand comparison (68% and 95% intervals): {image_path}, {pdf_path}")
+    return image_path,pdf_path
 
 
 def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=False,
@@ -528,9 +511,11 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
     cumulative_path, cumulative_csv = plot_cumulative_rmse(
         days, im, arm, output, week, show, mode=cumulative_mode)
 
-    # A demand panel for each model plus an independent empirical coverage panel.
-    demand_path, demand_pdf, coverage_csv = plot_demand_coverage(
-        days, im, arm, fits, arm_fits, output, week, show)
+    # Keep the figure focused on demand. Print saved parameters and all
+    # empirical 68%/95% coverage statistics to the terminal instead.
+    coverage_csv, coverage_summary_csv = report_week_coverage(
+        days, im, arm, fits, arm_fits, output, week)
+    demand_path, demand_pdf = plot_demand_week(days, im, arm, output, week, show)
 
     # Function responses: IM is instantaneous, while the ARM terms are
     # individually integrated to give contributions to the *rate* R(t).
@@ -638,14 +623,15 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
     for name, path in (("Demand",demand_path),("IM/ARM responses",response_path),
                        ("IM contributions",im_path_out),("ARM contributions",arm_path_out)):
         print(f"Saved {name}: {path}")
-    return {"demand":demand_path, "demand_pdf":demand_pdf, "coverage_csv":coverage_csv,
+    return {"demand":demand_path, "demand_pdf":demand_pdf,
+            "coverage_csv":coverage_csv, "coverage_summary_csv":coverage_summary_csv,
             "responses":response_path,
             "im_contributions":im_path_out, "arm_contributions":arm_path_out,
             "cumulative_rmse":cumulative_path, "cumulative_rmse_csv":cumulative_csv}
 
 
 def main():
-    parser = ArgumentParser(description="Plot seven-day IM/ARM demand fits with empirical coverage and separate response comparisons.")
+    parser = ArgumentParser(description="Plot seven-day IM/ARM demand curves with 68%/95% bands and report coverage/parameters in the terminal.")
     parser.add_argument("--week",choices=("1","2","both"),default="1",
                         help="First or second Monday–Sunday sample from the 14 fitted dates.")
     parser.add_argument("--im-input","--bm-input",dest="im_input",type=Path,default=IM_INPUT)
