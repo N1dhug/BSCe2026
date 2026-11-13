@@ -263,12 +263,12 @@ def cumulative_rmse(observed, predicted, variance, mode="sum"):
     raise ValueError("Cumulative RMSE mode must be 'sum' or 'running'.")
 
 
-def _raise_default_axis_fonts(fig):
-    """Increase Matplotlib's default axes label and tick text by four points."""
+def _raise_default_axis_fonts(fig, tick_size=None):
+    """Increase inherited default label sizes without overriding explicit ticks."""
     for ax in fig.axes:
         ax.xaxis.label.set_fontsize(14)
         ax.yaxis.label.set_fontsize(14)
-        ax.tick_params(axis="both",labelsize=14)
+        if tick_size is not None: ax.tick_params(axis="both",labelsize=tick_size)
 
 
 def plot_cumulative_rmse(days, im, arm, output, week, show=False, mode="sum"):
@@ -346,8 +346,9 @@ def fitted_subtitle(model, fit):
     if model=="IM":
         return (
             rf"$\alpha={fit['alpha']:.4g},\ \beta={fit['beta']:.4g},\ "
-            rf"k={fit['k']:.4g},\ \Xi={fit['Xi']:.4g},\ C={fit['C']:.4g}$",
-            rf"$\sigma_x={fit['sigma_x']:.4g},\ \sigma_y={fit['sigma_y']:.4g},\ "
+            rf"k={fit['k']:.4g}$",
+            rf"$\Xi={fit['Xi']:.4g},\ C={fit['C']:.4g},\ "
+            rf"\sigma_x={fit['sigma_x']:.4g},\ \sigma_y={fit['sigma_y']:.4g},\ "
             rf"X_0={fit['oracle_X0']:.4g}$",
         )
     if model=="ARM":
@@ -617,8 +618,8 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
         fig.subplots_adjust(top=0.915,bottom=0.05,hspace=0.56)
     im_path_out = output/f"im_week_{week}_function_contributions.png"
     arm_path_out = output/f"arm_week_{week}_function_contributions.png"
-    _raise_default_axis_fonts(fig_im)
-    _raise_default_axis_fonts(fig_arm)
+    _raise_default_axis_fonts(fig_im, tick_size=14)
+    _raise_default_axis_fonts(fig_arm, tick_size=14)
     fig_im.savefig(im_path_out,dpi=190,bbox_inches="tight")
     fig_arm.savefig(arm_path_out,dpi=190,bbox_inches="tight")
     if show: plt.show()
