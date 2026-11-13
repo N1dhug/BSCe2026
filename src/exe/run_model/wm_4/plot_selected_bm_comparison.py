@@ -3,6 +3,7 @@
 Five figures are saved per requested Monday-Sunday week:
   1. Seven rows x three columns: IM demand (left), ARM demand (middle),
      and empirical central 68%/95% predictive interval coverage (right).
+     Both demand panels visualize nested central 68% and 95% predictive bands.
      Both demand panels show each day's fitted parameters and oracle state.
   2. Seven rows x two columns: instantaneous IM E[f(X_t)], g(U_t) (left)
      and numerically integrated ARM rate-drift terms (right).
@@ -262,9 +263,17 @@ def cumulative_rmse(observed, predicted, variance, mode="sum"):
     raise ValueError("Cumulative RMSE mode must be 'sum' or 'running'.")
 
 
+def _raise_default_axis_fonts(fig):
+    """Increase Matplotlib's default axes label and tick text by four points."""
+    for ax in fig.axes:
+        ax.xaxis.label.set_fontsize(14)
+        ax.yaxis.label.set_fontsize(14)
+        ax.tick_params(axis="both",labelsize=14)
+
+
 def plot_cumulative_rmse(days, im, arm, output, week, show=False, mode="sum"):
     """Seven rows x IM/ARM columns comparing realized and expected RMSE."""
-    fig, axes = plt.subplots(7,2,figsize=(19,20),sharex=True,sharey="row")
+    fig, axes = plt.subplots(7,2,figsize=(24,28),sharex=True,sharey="row")
     hours = np.arange(1,K+1)
     table = []
     for row,day in enumerate(days):
@@ -284,12 +293,12 @@ def plot_cumulative_rmse(days, im, arm, output, week, show=False, mode="sum"):
             axis.plot(hours,expected,color=color,lw=2.,
                       label=f"{name} predicted cumulative RMSE")
             axis.fill_between(hours,actual,expected,color=color,alpha=0.10)
-            axis.set_title(f"{day:%A %d %B %Y} | {name}",loc="left",fontsize=10)
+            axis.set_title(f"{day:%A %d %B %Y} | {name}",loc="left",fontsize=14)
             axis.set_ylabel("Cumulative RMSE" if mode=="running" else "Sum of hourly RMSE")
             axis.set_xlim(1,K)
             axis.set_ylim(bottom=0.)
             axis.grid(alpha=0.23)
-            axis.tick_params(axis="both",labelsize=9)
+            axis.tick_params(axis="both",labelsize=13)
             for lead,(actual_value,expected_value) in enumerate(zip(actual,expected),1):
                 table.append({"day":str(day.date()),"model":name,
                               "lead_hour":lead,"mode":mode,
@@ -299,19 +308,20 @@ def plot_cumulative_rmse(days, im, arm, output, week, show=False, mode="sum"):
         ax.set_xticks([1,4,8,12,16,20,24])
         ax.set_xlabel("Prediction lead hour")
     for ax in axes[0]:
-        ax.legend(loc="upper left",fontsize=8.5,framealpha=0.9)
+        ax.legend(loc="upper left",fontsize=12.5,framealpha=0.9)
     note = ("Sum over lead hours of observed |prediction - demand| versus model-implied "
             "predicted standard deviation" if mode=="sum" else
             "Running RMSE over the first h hourly observations versus "
             "sqrt(mean predicted variance)")
     fig.suptitle(f"IM (left) vs ARM (right) | cumulative RMSE by weekday | week {week}\n"
-                 +note,fontsize=13,y=0.995)
-    fig.subplots_adjust(top=0.942,bottom=0.05,hspace=0.45,wspace=0.13)
+                 +note,fontsize=17,y=0.995)
+    fig.subplots_adjust(top=0.942,bottom=0.05,hspace=0.56,wspace=0.13)
     output=Path(output)
     output.mkdir(parents=True,exist_ok=True)
     suffix="" if mode=="sum" else "_running"
     image_path=output/f"im_arm_week_{week}_cumulative_rmse_7x2{suffix}.png"
     csv_path=output/f"im_arm_week_{week}_cumulative_rmse_7x2{suffix}.csv"
+    _raise_default_axis_fonts(fig)
     fig.savefig(image_path,dpi=190,bbox_inches="tight")
     pd.DataFrame(table).to_csv(csv_path,index=False)
     if show: plt.show()
@@ -360,9 +370,9 @@ def plot_demand_coverage(days, im, arm, im_fits, arm_fits, output, week, show=Fa
     """
     with plt.rc_context({"font.family":"serif",
                          "font.serif":["Times New Roman","DejaVu Serif"],
-                         "font.size":11,"axes.titlesize":11.5,
-                         "axes.labelsize":11,"xtick.labelsize":10,"ytick.labelsize":10}):
-        fig, axes = plt.subplots(7,3,figsize=(26,28),sharex="col",
+                         "font.size":15,"axes.titlesize":15.5,
+                         "axes.labelsize":15,"xtick.labelsize":14,"ytick.labelsize":14}):
+        fig, axes = plt.subplots(7,3,figsize=(34,40),sharex="col",
                                 gridspec_kw={"width_ratios":[1.1,1.1,0.8]})
         hours = np.arange(K)
         colors = {"IM":"tab:orange","ARM":"tab:blue"}
@@ -383,8 +393,11 @@ def plot_demand_coverage(days, im, arm, im_fits, arm_fits, output, week, show=Fa
                 observed_by_model[model]=data["observed"].to_numpy(dtype=float)
                 extremes.append(data[["observed","lower_95","upper_95",baseline,mean]]
                                 .to_numpy(dtype=float))
+                # Render the wider 95% band first, then the darker 68% band.
                 ax.fill_between(hours,data["lower_95"].to_numpy(),data["upper_95"].to_numpy(),
-                                color=color,alpha=0.18)
+                                color=color,alpha=0.12)
+                ax.fill_between(hours,data["lower_68"].to_numpy(),data["upper_68"].to_numpy(),
+                                color=color,alpha=0.29)
                 ax.plot(hours,data["observed"].to_numpy(),color="black",lw=1.6,
                         marker="o",markersize=2.7)
                 ax.plot(hours,data[baseline].to_numpy(),color="tab:green",
@@ -399,10 +412,10 @@ def plot_demand_coverage(days, im, arm, im_fits, arm_fits, output, week, show=Fa
                 # Date is the title; all fitted model parameters and the oracle
                 # state are the two-line subtitle, kept outside the data area.
                 ax.text(0.,1.40,f"{day:%A %d %B %Y} | {model}",
-                        transform=ax.transAxes,fontsize=12,fontweight="semibold",
+                        transform=ax.transAxes,fontsize=16,fontweight="semibold",
                         va="bottom",ha="left")
                 ax.text(0.,1.08,a+"\n"+b,transform=ax.transAxes,
-                        fontsize=9.5,va="bottom",ha="left",linespacing=1.3)
+                        fontsize=13.5,va="bottom",ha="left",linespacing=1.3)
                 coverage_by_model[model]={}
                 for nominal in (68,95):
                     covered,percent=empirical_coverage(data,nominal)
@@ -429,7 +442,7 @@ def plot_demand_coverage(days, im, arm, im_fits, arm_fits, output, week, show=Fa
                 for rect,v in zip(rects,values):
                     ax.annotate(f"{v:.1f}%",(rect.get_x()+rect.get_width()/2,v),
                                 xytext=(0,3),textcoords="offset points",ha="center",
-                                va="bottom",fontsize=9)
+                                va="bottom",fontsize=13)
             for x,n in zip(xx,(68,95)):
                 ax.hlines(n,x-.35,x+.35,color=".25",ls=":",lw=1.5)
             ax.set_ylim(0.,115.)
@@ -440,7 +453,7 @@ def plot_demand_coverage(days, im, arm, im_fits, arm_fits, output, week, show=Fa
             ax.grid(axis="y",alpha=.2)
             ax.set_axisbelow(True)
             ax.text(0.,1.40,f"{day:%A %d %B %Y} | Coverage",
-                    transform=ax.transAxes,fontsize=12,fontweight="semibold",
+                    transform=ax.transAxes,fontsize=16,fontweight="semibold",
                     va="bottom",ha="left")
 
         # Shared demand range only across the two demand columns (never the coverage column).
@@ -454,9 +467,9 @@ def plot_demand_coverage(days, im, arm, im_fits, arm_fits, output, week, show=Fa
         fig.suptitle(
             f"IM vs ARM | demand prediction and empirical interval coverage | week {week}\n"
             "ALL · weekly-temperature baseline · N=6 corresponding weekdays · 24-hour oracle predictions",
-            fontsize=16,y=.997)
+            fontsize=20,y=.997)
         fig.subplots_adjust(left=.055,right=.988,top=.875,bottom=.045,
-                            wspace=.22,hspace=.88)
+                            wspace=.26,hspace=1.06)
 
         for col,(model,_,_,_,_) in enumerate(specs):
             color=colors[model]
@@ -464,19 +477,20 @@ def plot_demand_coverage(days, im, arm, im_fits, arm_fits, output, week, show=Fa
                 Line2D([],[],color="black",lw=1.6,marker="o",markersize=3,label="Observed"),
                 Line2D([],[],color="tab:green",lw=1.5,ls="--",label="Baseline"),
                 Line2D([],[],color=color,lw=2.,label=f"{model} expected"),
-                Patch(facecolor=color,alpha=.18,label="Central 95% interval"),
+                Patch(facecolor=color,alpha=.29,label="Central 68% interval"),
+                Patch(facecolor=color,alpha=.12,label="Central 95% interval"),
             ]
             bbox=axes[0,col].get_position()
             fig.legend(handles=handles,loc="upper center",
                        bbox_to_anchor=((bbox.x0+bbox.x1)/2,.961),
-                       ncol=2,fontsize=10,frameon=False)
+                       ncol=2,fontsize=14,frameon=False)
         bbox=axes[0,2].get_position()
         fig.legend(handles=[
             Patch(color=colors["IM"],label="IM coverage"),
             Patch(color=colors["ARM"],label="ARM coverage"),
             Line2D([],[],color=".25",ls=":",lw=1.5,label="Nominal"),
         ],loc="upper center",bbox_to_anchor=((bbox.x0+bbox.x1)/2,.961),
-            ncol=2,fontsize=10,frameon=False)
+            ncol=2,fontsize=14,frameon=False)
         output=Path(output)
         output.mkdir(parents=True,exist_ok=True)
         image_path=output/f"im_arm_week_{week}_demand_95pct.png"
@@ -520,7 +534,7 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
     # Function responses: IM is instantaneous, while the ARM terms are
     # individually integrated to give contributions to the *rate* R(t).
     # They are shown side by side, one weekday per row, in a second figure.
-    response_fig, response_axes = plt.subplots(7,2,figsize=(20,20),sharex="col")
+    response_fig, response_axes = plt.subplots(7,2,figsize=(24,28),sharex="col")
     response_data = []
     for row, day in enumerate(days):
         i, a = im.loc[day].sort_index(), arm.loc[day].sort_index()
@@ -545,31 +559,32 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
         for ax, name, ylabel in ((left, "IM", "Direct response"),
                                  (right, "ARM", r"Integrated response ($\Delta R$)")):
             ax.axhline(0, color="0.4",lw=0.8,alpha=0.6)
-            ax.set_title(f"{day:%A %d %B %Y} | {name}", loc="left", fontsize=10)
+            ax.set_title(f"{day:%A %d %B %Y} | {name}", loc="left", fontsize=14)
             ax.set_xlim(0,K-1)
             ax.set_ylabel(ylabel)
             ax.grid(alpha=0.22)
-            ax.tick_params(axis="both", labelsize=9)
+            ax.tick_params(axis="both", labelsize=13)
 
     for ax in response_axes[-1]:
         ax.set_xticks([0,4,8,12,16,20,23])
         ax.set_xlabel("Hour of day")
     for ax in response_axes[0]:
-        ax.legend(loc="best",fontsize=8.3,framealpha=0.92)
+        ax.legend(loc="best",fontsize=12.3,framealpha=0.92)
     response_fig.suptitle(
         f"IM direct responses (left) vs ARM integrated rate contributions (right) | week {week}\n"
         "ARM time is in days; cumulative terms sum to R(t)-R(0); ARM g(U)=U",
-        y=0.996,fontsize=14)
-    response_fig.subplots_adjust(top=0.94,bottom=0.05,hspace=0.43,wspace=0.18)
+        y=0.996,fontsize=18)
+    response_fig.subplots_adjust(top=0.94,bottom=0.05,hspace=0.56,wspace=0.18)
     response_path = output/f"im_arm_week_{week}_responses_7x2.png"
+    _raise_default_axis_fonts(response_fig)
     response_fig.savefig(response_path,dpi=190,bbox_inches="tight")
     if show: plt.show()
     plt.close(response_fig)
 
     # Keep the model-specific response figures as well as the new side-by-side
     # layout. Reuse the computed arrays without rerunning IM propagation.
-    fig_im, axes_im = plt.subplots(7,1,figsize=(12,19),sharex=True,sharey=True)
-    fig_arm, axes_arm = plt.subplots(7,1,figsize=(12,19),sharex=True)
+    fig_im, axes_im = plt.subplots(7,1,figsize=(16,28),sharex=True,sharey=True)
+    fig_arm, axes_arm = plt.subplots(7,1,figsize=(16,28),sharex=True)
     for row, (day,f,g,cumulative) in enumerate(response_data):
         ax_i, ax_a = axes_im[row], axes_arm[row]
         ax_i.plot(hours,f,color="tab:purple",lw=1.9,label=r"$\mathbb{E}[f(X_t)]$")
@@ -585,7 +600,7 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
                   label=r"$R_t-R_0$")
         for ax, ylabel in ((ax_i,"Direct response"),(ax_a,"Integrated response")):
             ax.set_xlim(0,K-1)
-            ax.set_title(f"{day:%A %d %B %Y}",loc="left",fontsize=10)
+            ax.set_title(f"{day:%A %d %B %Y}",loc="left",fontsize=14)
             ax.set_ylabel(ylabel)
             ax.axhline(0,color="0.4",lw=0.8,alpha=0.6)
             ax.grid(alpha=0.22)
@@ -597,11 +612,13 @@ def plot_week(week=1, im_path=IM_INPUT, arm_path=ARM_INPUT, output=OUTPUT, show=
         axes1[-1].set_xlabel("Hour of day")
         handles,labels=axes1[0].get_legend_handles_labels()
         fig.legend(handles,labels,loc="upper center",bbox_to_anchor=(0.5,0.952),
-                   ncol=len(handles),fontsize=10,frameon=False)
-        fig.suptitle(f"{title} | sample week {week}",y=0.996,fontsize=14)
-        fig.subplots_adjust(top=0.915,bottom=0.05,hspace=0.43)
+                   ncol=len(handles),fontsize=14,frameon=False)
+        fig.suptitle(f"{title} | sample week {week}",y=0.996,fontsize=18)
+        fig.subplots_adjust(top=0.915,bottom=0.05,hspace=0.56)
     im_path_out = output/f"im_week_{week}_function_contributions.png"
     arm_path_out = output/f"arm_week_{week}_function_contributions.png"
+    _raise_default_axis_fonts(fig_im)
+    _raise_default_axis_fonts(fig_arm)
     fig_im.savefig(im_path_out,dpi=190,bbox_inches="tight")
     fig_arm.savefig(arm_path_out,dpi=190,bbox_inches="tight")
     if show: plt.show()
