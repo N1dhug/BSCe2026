@@ -1,13 +1,13 @@
 """Plot six fitted historical weekdays and their oracle-conditioned target.
 
-The default figure compares historical Mondays 4 July--8 August 2022
-(columns 1--6) to Monday 15 August 2022 (column 7), with IM above ARM.
+The default figure uses seven rows (six historical Mondays 4 July--8 August
+2022 followed by Monday 15 August 2022) and two columns (IM left, ARM right).
 
 Each historical panel shows observed demand, a common weekly-temperature
 baseline, its model-specific historical fitted mean and marginal 95% band.
 IM historical means are MLE one-step-ahead predictions updated using only
 past observations within that historical day; ARM historical means are
-free-running joint-QP trajectories. The seventh column uses each model's
+free-running joint-QP trajectories. The seventh row uses each model's
 saved open-loop oracle-conditioned prediction and predictive 95% interval.
 
 Historical results are persisted by both seven-day fitters in
@@ -133,12 +133,17 @@ def plot(day,week=1,im_dir=IM_OUTPUT,arm_dir=ARM_OUTPUT,output=OUTPUT,show=False
                          "font.size":14,"axes.titlesize":14,
                          "axes.labelsize":15,"xtick.labelsize":13,
                          "ytick.labelsize":13}):
-        fig,axes=plt.subplots(2,7,figsize=(29,9),sharex=True,sharey=True)
+        fig,axes=plt.subplots(7,2,figsize=(21,23),sharex=True,sharey=True)
         h=np.arange(K)
-        for row,(model,color) in enumerate((("IM","tab:orange"),("ARM","tab:blue"))):
-            for col,data in enumerate(paths[row]):
+        # Each row is the same calendar date; IM is on the left, ARM on the right.
+        # The seventh (final) row is the oracle-conditioned target prediction.
+        for row in range(7):
+            is_target=row==6
+            stamp=history[row] if row<6 else day
+            title=f"Historical {row+1}" if not is_target else "PREDICTION"
+            for col,(model,color) in enumerate((("IM","tab:orange"),("ARM","tab:blue"))):
+                data=paths[col][row]
                 ax=axes[row,col]
-                is_target=col==6
                 if is_target: ax.set_facecolor("#F4F5F8")
                 ax.fill_between(h,data["lower_95"].to_numpy(),data["upper_95"].to_numpy(),
                                 color=color,alpha=0.22 if is_target else 0.12)
@@ -147,16 +152,13 @@ def plot(day,week=1,im_dir=IM_OUTPUT,arm_dir=ARM_OUTPUT,output=OUTPUT,show=False
                 ax.plot(h,data["baseline_predicted"].to_numpy(),color="tab:green",
                         ls="--",lw=1.5)
                 ax.plot(h,data["fitted_demand"].to_numpy(),color=color,lw=1.9)
-                stamp=history[col] if col<6 else day
-                name=f"Historical {col+1}" if not is_target else "PREDICTION"
-                ax.set_title(f"{name}\n{stamp:%d %b %Y}",pad=7,
-                             fontweight="bold" if is_target else "normal")
+                ax.set_title(f"{title} | {stamp:%d %b %Y} | {model}",pad=7,
+                             fontweight="bold" if is_target else "normal",loc="left")
                 ax.set_xlim(0,K-1)
-                ax.set_xticks([0,6,12,18,23])
+                ax.set_xticks([0,4,8,12,16,20,23])
                 ax.grid(alpha=0.2)
-                if col==0:
-                    ax.set_ylabel(f"{model}\nNormalized demand",fontweight="bold")
-                if row==1: ax.set_xlabel("Hour of day")
+                if col==0: ax.set_ylabel("Normalized demand")
+                if row==6: ax.set_xlabel("Hour of day")
         # Set the shared scale once, after every panel has been populated;
         # preserve 95% tails even when they extend beyond [0,1].
         all_panels=[data for group in paths for data in group]
@@ -172,15 +174,15 @@ def plot(day,week=1,im_dir=IM_OUTPUT,arm_dir=ARM_OUTPUT,output=OUTPUT,show=False
             Line2D([],[],color="tab:orange",lw=2.,label="IM fitted/predicted demand"),
             Line2D([],[],color="tab:blue",lw=2.,label="ARM fitted/predicted demand"),
             Patch(facecolor="0.5",alpha=0.2,label="Model-specific 95% predictive interval"),
-        ],loc="upper center",bbox_to_anchor=(0.5,0.95),ncol=5,frameon=False,fontsize=15)
+        ],loc="upper center",bbox_to_anchor=(0.5,0.973),ncol=3,frameon=False,fontsize=15)
         fig.suptitle(
             f"IM vs ARM | six corresponding historical weekdays and {day:%A %d %B %Y} prediction",
             fontsize=20,y=0.994)
-        fig.subplots_adjust(left=0.065,right=0.992,top=0.86,bottom=0.09,
-                            wspace=0.11,hspace=0.25)
+        fig.subplots_adjust(left=0.075,right=0.987,top=0.91,bottom=0.06,
+                            wspace=0.15,hspace=0.47)
         output=Path(output)
         output.mkdir(parents=True,exist_ok=True)
-        filename=f"im_arm_{day:%Y_%m_%d}_historical_6_plus_prediction_2x7"
+        filename=f"im_arm_{day:%Y_%m_%d}_historical_6_plus_prediction_7x2"
         png=output/(filename+".png")
         pdf=output/(filename+".pdf")
         fig.savefig(png,dpi=200,bbox_inches="tight")
@@ -192,7 +194,7 @@ def plot(day,week=1,im_dir=IM_OUTPUT,arm_dir=ARM_OUTPUT,output=OUTPUT,show=False
 
 
 def main():
-    parser=ArgumentParser(description="Compare six fitted training weekdays and one oracle prediction for IM and ARM (2x7).")
+    parser=ArgumentParser(description="Compare six fitted training weekdays and one oracle prediction for IM and ARM (7x2).")
     parser.add_argument("--date",default="2022-08-15",
                         help="Target date in YYYY-MM-DD, default is Monday 15 August 2022.")
     parser.add_argument("--week",type=int,choices=(1,2),default=1)
