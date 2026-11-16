@@ -12,7 +12,7 @@ import pandas as pd
 from scipy.optimize import nnls
 
 from src.exe.run_model.wm_4.fit_moving_horizon_diffusion import (
-    fit_variances, grid_summary, ks_similarity, oracle_errors, pooled_record,
+    fit_variances, grid_summary, interval_nll, ks_similarity, oracle_errors, pooled_record,
     run, update_pool, variance_kernel,
 )
 from src.exe.run_model.wm_4.sweep_weekday_horizon import EXPERIMENT_VERSION
@@ -47,6 +47,15 @@ class test_wm4_moving_horizon_diffusion(unittest.TestCase):
         self.assertAlmostEqual(t, 0.1)
         self.assertEqual(q, 0.)
 
+    def test_interval_nll_is_sum_of_hourly_gaussian_scores(self):
+        e = np.array([0., 0.1, -0.2, 0.3])
+        v = np.array([0.01, 0.02, 0.04, 0.09])
+        expected = 0.5*np.sum(np.log(2.*np.pi*v)+e*e/v)
+        self.assertAlmostEqual(interval_nll(e, v, 2), expected)
+        self.assertTrue(np.isfinite(interval_nll([0.], [0.], 1)))
+        with self.assertRaises(ValueError):
+            interval_nll(e, v, 3)
+
     def test_pooled_metrics_weight_all_observations(self):
         pool = {}
         key = ("weekly_average", 2, 3)
@@ -60,6 +69,9 @@ class test_wm4_moving_horizon_diffusion(unittest.TestCase):
         self.assertAlmostEqual(row["observed_rmse"], np.sqrt(15/12))
         self.assertAlmostEqual(row["expected_rmse"], np.sqrt(0.015))
         self.assertAlmostEqual(row["bias_observed_minus_predicted"], 3/12)
+        expected_nll = interval_nll([0., 1., -2., 1., 0., 3.], [0.01]*6, 3)\
+            + interval_nll([0.]*6, [0.02]*6, 3)
+        self.assertAlmostEqual(row["mean_interval_nll"], expected_nll/4)
 
     def test_ks_distribution_similarity_prefers_normalized_gaussian_errors(self):
         rng = np.random.default_rng(17)
@@ -152,6 +164,10 @@ class test_wm4_moving_horizon_diffusion(unittest.TestCase):
             target = pd.read_csv(output/"diffusion_oracle_summary.csv")
             self.assertEqual(historic.loc[0, "observations"], 12)
             self.assertEqual(target.loc[0, "observations"], 6)
+            self.assertTrue(np.isfinite(historic.loc[0, "mean_interval_nll"]))
+            self.assertTrue(np.isfinite(target.loc[0, "mean_interval_nll"]))
+            self.assertIn("historical_interval_nll", pd.read_csv(output/"diffusion_interval_parameters.csv").columns)
+            self.assertIn("oracle_interval_nll", pd.read_csv(output/"diffusion_oracle_interval_scores.csv").columns)
             self.assertAlmostEqual(target.loc[0, "observed_rmse"], np.sqrt(score["mse"]))
             metadata = json.loads((output/"diffusion_configuration.json").read_text())
             self.assertEqual(metadata["drift_parameter_refits"], 0)
