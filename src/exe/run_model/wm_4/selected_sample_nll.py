@@ -1,26 +1,25 @@
-"""ARM/WM4 NLL for twelve 2022 sample days, N=6, k=24, 00:00 origins.
+"""ARM/WM4 historical and target marginal NLL on twelve selected 2022 dates.
 
-The observation at hour 0 is excluded from BOTH historical stochastic variance
-estimation and target likelihood scores. It is still used by the original
-24-hour target oracle to fit [F0,R0]; this is NOT a strict causal conditional
-forecast initialized solely from the hour-0 observation. N=6 historical weekdays each contribute hours 1,...,23
-(138 variance observations); each target date contributes 23 likelihood terms.
+N=6 corresponding historical weekdays, k=24 hours, weekly-temperature
+baseline, 00:00 origin, group ALL. Historical drift and target full-state
+oracle use the existing ARM joint QP. Stochastic observation/process
+variances are re-estimated by the existing nonnegative squared-residual QP
+using only historical hours 1,...,23 (the observed t=0 rate initializes
+each historical model). Both historical and target likelihoods use only
+hours 1,...,23. No sequential/filtered likelihood is evaluated.
 
-Historical drift parameters and the full-target [F0,R0] retrospective oracle
-remain unchanged. Variance is re-estimated from the same historical free-running
-ARM trajectories using only residuals at hours 1,...,23. Nonnegative tau^2 and
-sigma^2 remain admissible. An optional observation-noise floor can be requested
-with --min-observation-sigma 0.001 but is disabled by default.
+Historical fit NLL: six free-running historical trajectories, 6*23=138
+marginal Gaussian log densities per target date, computed with the
+historically fitted drift, initial states, and noise parameters.
+Target oracle NLL: 23 unfiltered Gaussian log densities per target date,
+using the unchanged target-day full-24-hour [F0,R0] retrospective oracle.
 
-Sequential score: Gaussian Kalman innovations with observation updates from
-hour 1 onward (analogous to IM's filtered MLE likelihood).
-Marginal score: unfiltered open-loop Gaussian likelihood for hours 1,...,23.
-No update or density evaluation is made using the observation at hour 0.
+The same historical dates can appear in multiple overlapping training
+windows; pooled historical NLL counts each fitted window separately.
+The oracle uses target observations to choose its initial state, so
+this is not an operational out-of-sample forecast score.
 
-Note: the oracle target state uses the target observations, so reported scores
-are retrospective oracle-conditioned, not operational forecast performance.
-
-Run:
+Run from repository root:
     python -m src.exe.run_model.wm_4.selected_sample_nll
 """
 from argparse import ArgumentParser
@@ -42,13 +41,13 @@ from src.tools.impute_hourly import impute_hourly_days
 ROOT=Path(__file__).resolve().parents[4]
 OUTPUT=ROOT/"files"/"output"/"wm_4"/"selected_sample_nll"
 N,K,BASELINE,GROUP=6,24,"weekly_temperature","ALL"
-DEFAULT_MIN_TAU=0.0  # No variance floor needed when scoring begins at hour 1.
+DEFAULT_MIN_TAU=0.0
 DAYS=("04-11","04-19","04-27","05-05","05-13","05-21",
       "05-29","05-30","06-07","08-10","08-18","08-26")
 
 
 def require_target(frame,day):
-    """Target observations must be measured, not imputed."""
+    """Target I, U, Temp must be observed on every hour; never impute targets."""
     block=frame.reindex(pd.date_range(day,periods=K,freq="h"))[["I","U","Temp"]]
     if block.isna().any().any():
         missing=block.isna().sum()
@@ -56,27 +55,34 @@ def require_target(frame,day):
                          f"U={missing['U']}, Temp={missing['Temp']}.")
 
 
-def historical_errors(result,steps_per_hour):
-    """Reuse the exact six historical free-running trajectories fitted by ARM."""
-    idx=np.arange(K,dtype=int)*int(steps_per_hour)
+def historical_trajectories(result,steps_per_hour):
+    """Return the actual six observed and historically fitted free-run curves."""
+    sph=int(steps_per_hour)
+    idx=np.arange(K,dtype=int)*sph
     inputs,states=result["historical_inputs"],result["historical_states"]
     if len(inputs)!=N or len(states)!=N:
         raise ValueError("Expected exactly six historical training intervals.")
-    errors=np.stack([np.asarray(d["I"],dtype=float)[idx]-
-                     np.asarray(s["I"],dtype=float)[idx]
-                     for d,s in zip(inputs,states)])
-    if errors.shape!=(N,K) or not np.isfinite(errors).all():
-        raise ValueError("Historical training residuals must have shape (6,24) and be finite.")
-    return errors
+    observed=np.stack([np.asarray(item["I"],dtype=float)[idx] for item in inputs])
+    fitted=np.stack([np.asarray(state["I"],dtype=float)[idx] for state in states])
+    if observed.shape!=(N,K) or fitted.shape!=(N,K) or not np.isfinite(
+            np.r_[observed.ravel(),fitted.ravel()]).all():
+        raise ValueError("Historical trajectories require six complete finite 24-hour curves.")
+    return observed,fitted
+
+
+def historical_errors(result,steps_per_hour):
+    """Residuals for the original fitted historical trajectories, including t=0."""
+    observed,fitted=historical_trajectories(result,steps_per_hour)
+    return observed-fitted
 
 
 def positive_variances(result,steps_per_hour,min_tau=DEFAULT_MIN_TAU):
-    """Refit historical variance QP from hours 1,...,23 only.
+    """Refit historical nonnegative variance QP using ONLY hours 1,...,23.
 
-    Retain the existing nonnegative least-squares estimator, but do NOT use
-    the six mechanically zero hour-0 residuals. If the optional observation
-    standard-deviation lower bound is active, solve the same convex QP on
-    its feasible boundary. Never use the old hour-0-inclusive estimates.
+    Original fit_origin's variance output includes t=0, so never use those
+    estimated tau2/sigma2 values for marginal likelihoods. By default the
+    new fit is purely nonnegative (tau>=0); --min-observation-sigma optionally
+    enforces a positive tau lower bound, using exact active-face QP solutions.
     """
     if not np.isfinite(min_tau) or min_tau<0:
         raise ValueError("The minimum observation-noise sigma must be finite and nonnegative.")
@@ -101,61 +107,30 @@ def positive_variances(result,steps_per_hour,min_tau=DEFAULT_MIN_TAU):
     return float(tau2),float(sigma2),True
 
 
-def score_likelihoods(observed,open_mean,theta,tau2,sigma2,steps_per_hour):
-    """Score hours 1,...,23 conditional on the fitted oracle initial state at hour 0.
+def score_marginal(observed,open_mean,theta,tau2,sigma2,steps_per_hour):
+    """Return marginal NLL for hours 1,...,23, for one or six trajectories.
 
-    The hourly Kalman filter propagates the unobserved state from t=0 to
-    t=1 BEFORE its first score and update. It never scores or assimilates
-    the initialization observation at t=0. Return 23-element arrays.
+    Accept arrays shaped (24,) for a target or (6,24) for the historical
+    fit. Both share the same fitted variance kernel and exclude t=0.
     """
     y=np.asarray(observed,dtype=float)
     mu=np.asarray(open_mean,dtype=float)
-    theta=np.asarray(theta,dtype=float)
+    r=np.asarray(theta,dtype=float)
     sph=int(steps_per_hour)
-    if y.shape!=(K,) or mu.shape!=(K,) or theta.shape!=(3,):
-        raise ValueError("Expected 24 observations/means and three ARM drift parameters.")
-    if sph<2 or not np.isfinite(np.r_[y,mu,theta,tau2,sigma2]).all():
-        raise ValueError("Invalid ARM input data or parameters for NLL.")
+    if y.ndim not in (1,2) or y.shape[-1]!=K or mu.shape!=y.shape or r.shape!=(3,):
+        raise ValueError("NLL needs matching complete 24-hour curves and three drift coefficients.")
+    if sph<2 or not np.isfinite(np.r_[y.ravel(),mu.ravel(),r,tau2,sigma2]).all():
+        raise ValueError("Nonfinite data or invalid time resolution in marginal score.")
     if tau2<0 or sigma2<0:
-        raise ValueError("Gaussian NLL requires nonnegative observation and process variances.")
-
-    kernel=variance_kernel(float(theta[0]),float(theta[2]),sph,K)
-    variance=tau2+sigma2*kernel[1:]
+        raise ValueError("Marginal Gaussian noise variances must be nonnegative.")
+    kernel=variance_kernel(float(r[0]),float(r[2]),sph,K)[1:]
+    variance=tau2+sigma2*kernel
     if not np.isfinite(variance).all() or np.any(variance<=0):
-        raise ValueError("Zero/nonfinite predictive variance at a scored hour (1..23); "
-                         "historical fit cannot define a Gaussian likelihood.")
-    marginal=-norm.logpdf(y[1:],loc=mu[1:],scale=np.sqrt(variance))
-    dt=1./(24*sph)
-    a=np.array([[1.,dt],[dt*float(theta[0]),1.+dt*float(theta[2])]])
-    h=np.array([0.,1.])
-    ident=np.eye(2)
-    process=np.array([[0.,0.],[0.,sigma2*dt]])
-    shift=np.zeros(2)
-    covariance=np.zeros((2,2))
-    filtered=np.empty(K-1,dtype=float)
-    sequential=np.empty(K-1,dtype=float)
-    for hour in range(1,K):
-        # Propagate one physical hour from the initial state / previous
-        # posterior. The initialization observation is never assimilated.
-        for _ in range(sph):
-            shift=a@shift
-            covariance=a@covariance@a.T+process
-        covariance=0.5*(covariance+covariance.T)
-        filtered[hour-1]=mu[hour]+shift[1]
-        s=float(covariance[1,1]+tau2)
-        if not np.isfinite(s) or s<=0:
-            raise ValueError(f"Invalid Kalman innovation variance at hour {hour}.")
-        innovation=float(y[hour]-filtered[hour-1])
-        sequential[hour-1]=0.5*(np.log(2.*np.pi*s)+innovation**2/s)
-        gain=covariance[:,1]/s
-        shift=shift+gain*innovation
-        update=ident-np.outer(gain,h)
-        covariance=update@covariance@update.T+tau2*np.outer(gain,gain)
-    if not np.isfinite(marginal).all() or not np.isfinite(sequential).all():
-        raise ValueError("Nonfinite ARM likelihood on hours 1..23.")
-    if sigma2==0 and not np.allclose(sequential,marginal,atol=1e-9,rtol=1e-9):
-        raise RuntimeError("Kalman and marginal scores differ with zero process noise.")
-    return marginal,sequential,variance,filtered
+        raise ValueError("Zero/nonfinite Gaussian variance at a scored hour (1..23).")
+    nll=-norm.logpdf(y[...,1:],loc=mu[...,1:],scale=np.sqrt(variance))
+    if not np.isfinite(nll).all():
+        raise ValueError("Nonfinite marginal negative log-likelihood.")
+    return np.asarray(nll,dtype=float),variance
 
 
 def score_day(frame,day,steps_per_hour,min_tau):
@@ -166,10 +141,19 @@ def score_day(frame,day,steps_per_hour,min_tau):
     require_target(frame,day)
     result=fit_origin(frame,training,day,history,BASELINE,steps_per_hour)
     tau2,sigma2,regularized=positive_variances(result,steps_per_hour,min_tau)
-    marginal,sequential,variance,filtered=score_likelihoods(
+    historical_observed,historical_predicted=historical_trajectories(result,steps_per_hour)
+    historical_nll,variance=score_marginal(
+        historical_observed,historical_predicted,result["theta"],
+        tau2,sigma2,steps_per_hour)
+    target_nll,target_variance=score_marginal(
         result["observed"],result["predicted"],result["theta"],
         tau2,sigma2,steps_per_hour)
-    return result,history,imputation,marginal,sequential,variance,filtered,tau2,sigma2,regularized
+    if historical_nll.shape!=(N,K-1) or target_nll.shape!=(K-1,):
+        raise RuntimeError("Historical and target marginal NLL sample counts are incorrect.")
+    if not np.allclose(variance,target_variance,rtol=1e-13,atol=1e-13):
+        raise RuntimeError("Historical and target scores used different variance kernels.")
+    return (result,history,imputation,historical_observed,historical_predicted,
+            historical_nll,target_nll,variance,tau2,sigma2,regularized)
 
 
 def run(year=2022,steps_per_hour=60,output=OUTPUT,fail_fast=False,min_tau=DEFAULT_MIN_TAU):
@@ -178,34 +162,35 @@ def run(year=2022,steps_per_hour=60,output=OUTPUT,fail_fast=False,min_tau=DEFAUL
     output=Path(output)
     output.mkdir(parents=True,exist_ok=True)
     frame=group_frame(GROUP)
-    daily,hourly,skipped=[],[],[]
-    print(f"ARM / WM4 | group={GROUP} | baseline={BASELINE} | N={N} historical weekdays "
-          f"| k={K} hourly observations | 00:00 origins",flush=True)
-    print(f"Scored hours: 01:00..23:00 only (23/day); hour 00:00 excluded from "
-          f"stochastic fit and score. Historical variance fit: {N*(K-1)} "
-          f"observations (6 x 23). Optional minimum tau={min_tau:g}.",flush=True)
+    daily,target_hourly,historical_hourly,skipped=[],[],[],[]
+    print(f"ARM / WM4 marginal NLL | group={GROUP} | baseline={BASELINE} "
+          f"| N={N} historical weekdays | k={K}h | origin=00:00",flush=True)
+    print(f"Scored hours=1..23; historical fit={N*(K-1)} observations/date; "
+          f"target oracle={K-1} observations/date; minimum tau={min_tau:g}.",flush=True)
     for number,md in enumerate(DAYS,1):
         day=pd.Timestamp(f"{year}-{md}")
         try:
-            result,history,imputation,marginal,sequential,variance,filtered,tau2,sigma2,regularized=score_day(
-                frame,day,steps_per_hour,min_tau)
-            total=float(np.sum(sequential))
-            open_total=float(np.sum(marginal))
+            (result,history,imputation,hist_obs,hist_pred,hist_nll,target_nll,
+             variance,tau2,sigma2,regularized)=score_day(frame,day,steps_per_hour,min_tau)
+            historical_total=float(hist_nll.sum())
+            target_total=float(target_nll.sum())
             row={
                 "day":str(day.date()),"origin_hour":0,"baseline":BASELINE,
-                "training_weekdays":N,"horizon_hours":K,"observations":K-1,
-                "target_sequential_nll":total,"target_sequential_nll_per_observation":total/(K-1),
-                "target_marginal_nll":open_total,"target_marginal_nll_per_observation":open_total/(K-1),
-                "rmse":float(np.sqrt(np.mean(np.square(
-                    np.asarray(result["observed"][1:])-np.asarray(result["predicted"][1:]))))),
-                "rmse_full_day":float(result["demand_metrics"]["rmse"]),
+                "training_weekdays":N,"horizon_hours":K,
+                "historical_observations":N*(K-1),
+                "historical_fit_marginal_nll":historical_total,
+                "historical_fit_marginal_nll_per_observation":historical_total/(N*(K-1)),
+                "target_observations":K-1,
+                "target_marginal_nll":target_total,
+                "target_marginal_nll_per_observation":target_total/(K-1),
+                "historical_rmse":float(np.sqrt(np.mean((hist_obs[:,1:]-hist_pred[:,1:])**2))),
+                "target_rmse":float(np.sqrt(np.mean(
+                    (np.asarray(result["observed"][1:])-np.asarray(result["predicted"][1:]))**2))),
                 "oracle_F0":float(result["initial"][0]),
                 "oracle_R0":float(result["initial"][1]),
                 "theta_F":float(result["theta"][0]),
                 "theta_U":float(result["theta"][1]),
                 "theta_R":float(result["theta"][2]),
-                "original_tau":float(np.sqrt(result["tau2"])),
-                "original_sigma":float(np.sqrt(result["sigma2"])),
                 "tau":float(np.sqrt(tau2)),
                 "sigma":float(np.sqrt(sigma2)),
                 "observation_variance_regularized":bool(regularized),
@@ -215,61 +200,72 @@ def run(year=2022,steps_per_hour=60,output=OUTPUT,fail_fast=False,min_tau=DEFAUL
             daily.append(row)
             for hour in range(1,K):
                 j=hour-1
-                hourly.append({
+                target_hourly.append({
                     "day":str(day.date()),"hour":hour,
                     "observed":float(result["observed"][hour]),
                     "open_loop_mean":float(result["predicted"][hour]),
-                    "filtered_one_step_mean":float(filtered[j]),
-                    "open_loop_variance":float(variance[j]),
-                    "marginal_nll":float(marginal[j]),
-                    "sequential_nll":float(sequential[j]),
+                    "predicted_variance":float(variance[j]),
+                    "marginal_nll":float(target_nll[j]),
                 })
+                for slot,past in enumerate(history):
+                    historical_hourly.append({
+                        "target_day":str(day.date()),"historical_day":str(past.date()),
+                        "historical_number":slot+1,"hour":hour,
+                        "observed":float(hist_obs[slot,hour]),
+                        "fitted_mean":float(hist_pred[slot,hour]),
+                        "predicted_variance":float(variance[j]),
+                        "marginal_nll":float(hist_nll[slot,j]),
+                    })
             adjusted=" [tau lower-bound active]" if regularized else ""
             print(f"[{number:02d}/{len(DAYS)}] {day:%Y-%m-%d} | "
-                  f"sequential NLL={total:+.8f} | marginal NLL={open_total:+.8f} | "
-                  f"RMSE={row['rmse']:.6f} | tau={row['tau']:.6g} | sigma={row['sigma']:.6g}"
+                  f"historical marginal NLL={historical_total:+.8f} "
+                  f"(mean/hour={row['historical_fit_marginal_nll_per_observation']:+.8f}) "
+                  f"| target marginal NLL={target_total:+.8f} "
+                  f"(mean/hour={row['target_marginal_nll_per_observation']:+.8f})"
                   f"{adjusted}",flush=True)
         except (ValueError,RuntimeError,KeyError,np.linalg.LinAlgError) as exc:
             if fail_fast: raise
             skipped.append({"day":str(day.date()),"reason":str(exc)})
             print(f"[{number:02d}/{len(DAYS)}] {day:%Y-%m-%d} | SKIPPED: {exc}",flush=True)
     pd.DataFrame(daily).to_csv(output/"per_day_nll.csv",index=False)
-    pd.DataFrame(hourly).to_csv(output/"hourly_nll.csv",index=False)
+    pd.DataFrame(target_hourly).to_csv(output/"hourly_nll.csv",index=False)
+    pd.DataFrame(historical_hourly).to_csv(output/"historical_hourly_nll.csv",index=False)
     pd.DataFrame(skipped,columns=("day","reason")).to_csv(output/"skipped_days.csv",index=False)
     (output/"configuration.json").write_text(json.dumps({
         "year":year,"days":list(DAYS),"group":GROUP,"baseline":BASELINE,
         "N":N,"k":K,"origin_hour":0,"steps_per_hour":steps_per_hour,
         "minimum_observation_sigma":min_tau,
-        "fit":"historical joint drift QP; variance QP refitted from only historical hours 1..23",
-        "historical_variance_observations":N*(K-1),
-        "scored_hours":list(range(1,K)),
-        "variance_regularization":"optional tau2 >= minimum_observation_sigma^2; disabled by default",
-        "target_state":"full-target [F0,R0] oracle, unchanged",
-        "sequential_score":"Gaussian observation-updating Kalman innovations; t0 neither scored nor filtered",
-        "marginal_score":"sum of unfiltered Gaussian marginal negative log densities for hours 1..23; compare with IM on identical hours",
-        "warning":"Target [F0,R0] oracle still fits the full 24-hour observed horizon including hour 0; retrospective, not a causal conditional forecast",
+        "historical_variance_fit":"joint drift QP followed by nonnegative variance LS QP on six historical days, hours 1..23",
+        "historical_nll":"six fitted free-running 23-hour Gaussian marginal likelihoods per target date",
+        "target_nll":"one oracle-conditioned open-loop 23-hour Gaussian marginal likelihood per target date",
+        "historical_observations_per_date":N*(K-1),
+        "target_observations_per_date":K-1,
+        "variance_regularization":"optional tau lower bound, disabled by default",
+        "target_initial_state":"[F0,R0] optimized over full observed 24-hour target (unchanged)",
+        "warning":"Retrospective oracle, not a causal forecast; historical windows may overlap across sample dates",
     },indent=2),encoding="utf-8")
     print(f"\nCompleted {len(daily)}/{len(DAYS)} days; skipped {len(skipped)}.")
     if daily:
-        seq=float(sum(row["target_sequential_nll"] for row in daily))
-        mar=float(sum(row["target_marginal_nll"] for row in daily))
-        print(f"Pooled sequential NLL={seq:+.8f}; "
-              f"mean/observation={seq/((K-1)*len(daily)):+.8f}.")
-        print(f"Pooled marginal NLL={mar:+.8f}; "
-              f"mean/observation={mar/((K-1)*len(daily)):+.8f}.")
-        print(f"Observation-noise floor active on {sum(r['observation_variance_regularized'] for r in daily)} day(s).")
+        nh=N*(K-1)*len(daily)
+        nt=(K-1)*len(daily)
+        htotal=float(sum(row["historical_fit_marginal_nll"] for row in daily))
+        ttotal=float(sum(row["target_marginal_nll"] for row in daily))
+        print(f"Pooled historical marginal NLL={htotal:+.8f}; "
+              f"mean/observation={htotal/nh:+.8f} ({nh} observations).")
+        print(f"Pooled target marginal NLL={ttotal:+.8f}; "
+              f"mean/observation={ttotal/nt:+.8f} ({nt} observations).")
     print(f"Results: {output}",flush=True)
     if not daily: raise RuntimeError("No sample day could be scored; see skipped_days.csv.")
     return pd.DataFrame(daily)
 
 
 def main():
-    parser=ArgumentParser(description="Compare ARM target marginal and IM-MLE-style sequential NLL on 12 selected days.")
+    parser=ArgumentParser(description="ARM historical-fit and target-oracle marginal NLL on 12 selected dates.")
     parser.add_argument("--year",type=int,default=2022)
     parser.add_argument("--steps-per-hour",type=int,default=60)
     parser.add_argument("--output",type=Path,default=OUTPUT)
     parser.add_argument("--min-observation-sigma",type=float,default=DEFAULT_MIN_TAU,
-                        help="Optional tau lower bound; default 0 (original nonnegative QP).")
+                        help="Optional tau lower bound (default 0).")
     parser.add_argument("--fail-fast",action="store_true")
     args=parser.parse_args()
     return run(args.year,args.steps_per_hour,args.output,args.fail_fast,args.min_observation_sigma)
