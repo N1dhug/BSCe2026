@@ -1,8 +1,9 @@
 """ARM/WM4 NLL for twelve 2022 sample days, N=6, k=24, 00:00 origins.
 
-The observation at hour 0 is treated as conditioning/initialization information:
-it is excluded from BOTH historical stochastic variance estimation and target
-likelihood scores. N=6 historical weekdays each contribute hours 1,...,23
+The observation at hour 0 is excluded from BOTH historical stochastic variance
+estimation and target likelihood scores. It is still used by the original
+24-hour target oracle to fit [F0,R0]; this is NOT a strict causal conditional
+forecast initialized solely from the hour-0 observation. N=6 historical weekdays each contribute hours 1,...,23
 (138 variance observations); each target date contributes 23 likelihood terms.
 
 Historical drift parameters and the full-target [F0,R0] retrospective oracle
@@ -101,7 +102,7 @@ def positive_variances(result,steps_per_hour,min_tau=DEFAULT_MIN_TAU):
 
 
 def score_likelihoods(observed,open_mean,theta,tau2,sigma2,steps_per_hour):
-    """Score hours 1,...,23 conditional on a fixed initial state at hour 0.
+    """Score hours 1,...,23 conditional on the fitted oracle initial state at hour 0.
 
     The hourly Kalman filter propagates the unobserved state from t=0 to
     t=1 BEFORE its first score and update. It never scores or assimilates
@@ -180,9 +181,9 @@ def run(year=2022,steps_per_hour=60,output=OUTPUT,fail_fast=False,min_tau=DEFAUL
     daily,hourly,skipped=[],[],[]
     print(f"ARM / WM4 | group={GROUP} | baseline={BASELINE} | N={N} historical weekdays "
           f"| k={K} hourly observations | 00:00 origins",flush=True)
-    print(f"Scored hours: 01:00..23:00 only (23/day); hour 00:00 conditions the initial state. "
-          f"Historical variance fit: {N*(K-1)} observations (6 x 23). "
-          f"Optional minimum tau={min_tau:g}.",flush=True)
+    print(f"Scored hours: 01:00..23:00 only (23/day); hour 00:00 excluded from "
+          f"stochastic fit and score. Historical variance fit: {N*(K-1)} "
+          f"observations (6 x 23). Optional minimum tau={min_tau:g}.",flush=True)
     for number,md in enumerate(DAYS,1):
         day=pd.Timestamp(f"{year}-{md}")
         try:
@@ -246,7 +247,7 @@ def run(year=2022,steps_per_hour=60,output=OUTPUT,fail_fast=False,min_tau=DEFAUL
         "target_state":"full-target [F0,R0] oracle, unchanged",
         "sequential_score":"Gaussian observation-updating Kalman innovations; t0 neither scored nor filtered",
         "marginal_score":"sum of unfiltered Gaussian marginal negative log densities for hours 1..23; compare with IM on identical hours",
-        "warning":"Target initial state uses future target observations; retrospective oracle, not out-of-sample",
+        "warning":"Target [F0,R0] oracle still fits the full 24-hour observed horizon including hour 0; retrospective, not a causal conditional forecast",
     },indent=2),encoding="utf-8")
     print(f"\nCompleted {len(daily)}/{len(DAYS)} days; skipped {len(skipped)}.")
     if daily:
