@@ -38,18 +38,19 @@ ROOT = Path(__file__).resolve().parents[4]
 OUTPUT = ROOT/"files"/"output"/"wm_4"/"moving_horizon_diffusion"
 HIST_BINS = np.linspace(-8., 8., 4097)
 Z_SCORE = 1.959963984540054
+NLL_VARIANCE_FLOOR = 1e-12  # Likelihood evaluation only; never changes fitted variances.
 SCORE_FIELDS = ("day", "baseline", "training_weekdays", "horizon_hours")
 PARAMETER_FIELDS = (
     "day", "baseline", "training_weekdays", "horizon_hours",
     "observation_variance", "observation_sigma", "process_variance_rate",
     "process_sigma", "process_identifiable", "historical_trajectories",
     "historical_observations", "historical_observed_rmse",
-    "historical_expected_rmse", "historical_coverage_95",
+    "historical_expected_rmse", "historical_coverage_95", "historical_interval_nll",
 )
 TARGET_FIELDS = (
     "day", "baseline", "training_weekdays", "horizon_hours",
     "observations", "oracle_observed_rmse", "oracle_expected_rmse",
-    "oracle_coverage_95", "oracle_bias",
+    "oracle_coverage_95", "oracle_bias", "oracle_interval_nll",
 )
 TITLES = {"weekly_average":"Weekly average", "weekly_temperature":"Weekly temperature",
           "statistical_output":"Statistical output"}
@@ -147,6 +148,24 @@ def oracle_errors(frame, row, score, steps_per_hour):
     return error
 
 
+def interval_nll(errors, variance, horizon):
+    """Sum Gaussian marginal NLL across each k-hour interval.
+
+    Predicted means are deterministic replay means. A numerical variance floor
+    makes degenerate nonnegative variance-QP fits scoreable without modifying
+    estimated tau2/q. No Kalman conditioning is performed between hours.
+    """
+    e = np.asarray(errors, dtype=float).reshape(-1)
+    v = np.asarray(variance, dtype=float).reshape(-1)
+    k = int(horizon)
+    if k < 1 or len(e) != len(v) or not len(e) or len(e) % k:
+        raise ValueError("NLL requires aligned, complete k-hour intervals.")
+    if not np.isfinite(e).all() or not np.isfinite(v).all() or np.any(v < 0):
+        raise ValueError("NLL requires finite residuals and nonnegative variances.")
+    safe_v = np.maximum(v, NLL_VARIANCE_FLOOR)
+    return float(np.sum(0.5*(np.log(2.*np.pi*safe_v)+e*e/safe_v)))
+
+
 def coverage(errors, variance):
     e = np.asarray(errors, dtype=float)
     v = np.asarray(variance, dtype=float)
@@ -155,7 +174,7 @@ def coverage(errors, variance):
 
 def pooled_record(k):
     return {"k":int(k), "origins":0, "count":0,
-            "observed_square":0., "expected_variance":0., "signed":0.,
+            "observed_square":0., "expected_variance":0., "signed":0., "interval_nll_sum":0.,
             "covered":0, "hourly_observed":np.zeros(k), "hourly_expected":np.zeros(k),
             "hourly_count":np.zeros(k, dtype=np.int64),
             "tau2_sum":0., "q_sum":0., "tau_sum":0., "sigma_sum":0.,
@@ -178,6 +197,7 @@ def update_pool(pool, key, errors, variance, tau2, q, identifiable, historical_N
     item["observed_square"] += float(np.dot(e, e))
     item["expected_variance"] += float(v.sum())
     item["signed"] += float(e.sum())
+    item["interval_nll_sum"] += interval_nll(e, v, k)
     item["covered"] += int(np.count_nonzero(np.abs(e) <= Z_SCORE*np.sqrt(np.maximum(v, 0.))))
     item["hourly_observed"] += np.square(e.reshape(historical_N, k)).sum(axis=0)
     item["hourly_expected"] += v.reshape(historical_N, k).sum(axis=0)
@@ -224,6 +244,7 @@ def grid_summary(pool):
             "origins":origins, "observations":count,
             "observed_rmse":observed, "expected_rmse":expected,
             "rmse_absolute_error":abs(expected-observed),
+            "mean_interval_nll":x["interval_nll_sum"]/(origins*(count//(origins*k))),
             "mean_hourly_rmse_absolute_error":float(np.mean(np.abs(expected_hourly-observed_hourly))),
             "bias_observed_minus_predicted":x["signed"]/count,
             "coverage_95":x["covered"]/count,
@@ -243,7 +264,7 @@ def grid_summary(pool):
 def plot_grid(frame, filename, eval_name, names, ns, ks):
     if frame.empty: raise ValueError(f"No diffusion {eval_name} results available.")
     metrics = (
-        ("mean_hourly_rmse_absolute_error", "Mean hourly RMSE discrepancy", "viridis", 0., None),
+        ("mean_interval_nll", "Mean interval marginal Gaussian NLL", "viridis", None, None),
         ("ks_similarity", "Gaussian similarity (1 - KS)", "viridis", 0., 1.),
         ("coverage_95", "Empirical 95% interval coverage", "viridis", 0., 1.),
     )
@@ -395,6 +416,7 @@ def run(args):
                     "historical_observed_rmse":float(np.sqrt(np.mean(e*e))),
                     "historical_expected_rmse":float(np.sqrt(np.mean(v_hist))),
                     "historical_coverage_95":coverage(e, v_hist),
+                    "historical_interval_nll":interval_nll(e, v_hist, k)/n,
                 })
                 if needs_target:
                     target = oracle_errors(raw, row, score, steps)
@@ -407,6 +429,7 @@ def run(args):
                         "oracle_expected_rmse":float(np.sqrt(np.mean(v_target))),
                         "oracle_coverage_95":coverage(target, v_target),
                         "oracle_bias":float(np.mean(target)),
+                        "oracle_interval_nll":interval_nll(target, v_target, k),
                     })
                 processed += 1
                 if args.max_configurations and processed >= args.max_configurations: break
@@ -433,6 +456,7 @@ def run(args):
             "distributions":"historical=in_sample; target=oracle_conditioned_not_operational",
             "ks":"binned_4096_edges_-8_8_approx_ks_distance_error_below_0.0016",
             "process_diffusion":"dR=sigma*dW; sigma2=q; observation_noise_variance=tau2",
+            "nll":"unfiltered marginal Gaussian, sum across k observed hours, mean over intervals; variance floor 1e-12 for likelihood only",
             "drift_parameter_refits":0, "fit_method":"analytic_exact_two_variable_nonnegative_least_squares"}
     (output/"diffusion_configuration.json").write_text(json.dumps(info, indent=2, default=str), encoding="utf-8")
     print(f"[ARM diffusion] complete={processed:,}; scanned={scanned:,}; drift QP refits=0", flush=True)
