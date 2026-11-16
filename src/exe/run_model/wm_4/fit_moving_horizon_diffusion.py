@@ -174,6 +174,7 @@ def interval_nll(errors, variance, horizon):
     safe_v = np.maximum(v, NLL_VARIANCE_FLOOR)
     return float(np.sum(0.5*(np.log(2.*np.pi*safe_v)+e*e/safe_v)))
 
+
 def coverage(errors, variance):
     e = np.asarray(errors, dtype=float)
     v = np.asarray(variance, dtype=float)
@@ -224,6 +225,7 @@ def update_pool(pool, key, errors, variance, tau2, q, identifiable, historical_N
                                             bins=HIST_BINS)[0].astype(np.int64)
         item["standardized"] += int(np.count_nonzero(good))
     item["zero_variance_errors"] += int(np.count_nonzero(~good & (e != 0.)))
+
 
 def ks_similarity(histogram, count):
     """Approximate 1-KS via fixed-width empirical CDF bins (width 0.00391).
@@ -417,7 +419,6 @@ def run(args):
                 # Shared replay utility reports model-observed; diffusion uses observed-model.
                 e = -historical_errors(history_frame, row, states, steps)
                 K = variance_kernel(float(row["theta_F"]), float(row["theta_R"]), steps, k)
-                K_hist = np.tile(K, n)
                 tau2, q, identifiable = fit_variances(scored_hours(e, k), np.tile(K[1:], n))
                 v_hist = tau2+q*K_hist
                 update_pool(historical_pool, key, e, v_hist, tau2, q, identifiable, n)
