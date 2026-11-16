@@ -171,7 +171,7 @@ class test_wm4_moving_horizon_diffusion(unittest.TestCase):
                        return_value=frame):
                 result = run(args)
             self.assertEqual(len(result), 1)
-            self.assertEqual(result.iloc[0]["observations"], 12)
+            self.assertEqual(result.iloc[0]["observations"], 10)
             self.assertTrue((output/"diffusion_historical_heatmaps.png").is_file())
             self.assertTrue((output/"diffusion_oracle_heatmaps.png").is_file())
             self.assertTrue((output/"diffusion_parameter_heatmaps.png").is_file())
@@ -186,7 +186,16 @@ class test_wm4_moving_horizon_diffusion(unittest.TestCase):
                                    np.sqrt(np.mean(oracle_residuals[1:]**2)))
             self.assertTrue(np.isfinite(historic.loc[0, "mean_interval_nll"]))
             self.assertTrue(np.isfinite(target.loc[0, "mean_interval_nll"]))
-            self.assertIn("historical_interval_nll", pd.read_csv(output/"diffusion_interval_parameters.csv").columns)
+            params = pd.read_csv(output/"diffusion_interval_parameters.csv")
+            self.assertEqual(params.loc[0, "historical_observations"], 10)
+            from src.exe.run_model.wm_4.plot_moving_horizon_quality import historical_errors
+            replay = -historical_errors(frame, fit, states, 4)
+            kernel = variance_kernel(fit["theta_F"], fit["theta_R"], 4, 6)
+            expected_tau2, expected_q, _ = fit_variances(
+                replay.reshape(2, 6)[:, 1:].reshape(-1), np.tile(kernel[1:], 2))
+            self.assertAlmostEqual(params.loc[0, "observation_variance"], expected_tau2)
+            self.assertAlmostEqual(params.loc[0, "process_variance_rate"], expected_q)
+            self.assertIn("historical_interval_nll", params.columns)
             self.assertIn("oracle_interval_nll", pd.read_csv(output/"diffusion_oracle_interval_scores.csv").columns)
             metadata = json.loads((output/"diffusion_configuration.json").read_text())
             self.assertEqual(metadata["drift_parameter_refits"], 0)
