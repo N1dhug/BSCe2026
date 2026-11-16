@@ -244,7 +244,7 @@ def grid_summary(pool):
             "origins":origins, "observations":count,
             "observed_rmse":observed, "expected_rmse":expected,
             "rmse_absolute_error":abs(expected-observed),
-            "mean_interval_nll":x["interval_nll_sum"]/(origins*(count//(origins*k))),
+            "mean_interval_nll":x["interval_nll_sum"]/(count//k),
             "mean_hourly_rmse_absolute_error":float(np.mean(np.abs(expected_hourly-observed_hourly))),
             "bias_observed_minus_predicted":x["signed"]/count,
             "coverage_95":x["covered"]/count,
