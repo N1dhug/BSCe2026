@@ -47,12 +47,16 @@ class test_wm4_moving_horizon_diffusion(unittest.TestCase):
         self.assertAlmostEqual(t, 0.1)
         self.assertEqual(q, 0.)
 
-    def test_interval_nll_is_sum_of_hourly_gaussian_scores(self):
-        e = np.array([0., 0.1, -0.2, 0.3])
-        v = np.array([0.01, 0.02, 0.04, 0.09])
-        expected = 0.5*np.sum(np.log(2.*np.pi*v)+e*e/v)
+    def test_interval_nll_excludes_initialization_hour_for_every_interval(self):
+        # Hour 0 may have zero variance and arbitrarily large fitted-state error.
+        e = np.array([1000., 0.1, 2000., 0.3])
+        v = np.array([0., 0.02, 0., 0.09])
+        expected = 0.5*np.sum(np.log(2.*np.pi*v[1::2])+e[1::2]**2/v[1::2])
         self.assertAlmostEqual(interval_nll(e, v, 2), expected)
-        self.assertTrue(np.isfinite(interval_nll([0.], [0.], 1)))
+        self.assertAlmostEqual(interval_nll([1e6, 0.1], [0., 0.02], 2),
+                               0.5*(np.log(2.*np.pi*0.02)+0.1**2/0.02))
+        with self.assertRaisesRegex(ValueError, "k >= 2"):
+            interval_nll([0.], [0.], 1)
         with self.assertRaises(ValueError):
             interval_nll(e, v, 3)
 
@@ -65,13 +69,26 @@ class test_wm4_moving_horizon_diffusion(unittest.TestCase):
                     [0.02]*6, 0.02, 0., True, 2)
         row = grid_summary(pool).iloc[0]
         self.assertEqual(row["origins"], 2)
-        self.assertEqual(row["observations"], 12)
-        self.assertAlmostEqual(row["observed_rmse"], np.sqrt(15/12))
+        self.assertEqual(row["observations"], 8)  # 2 origins * 2 intervals * (3-1) lead hours
+        self.assertAlmostEqual(row["observed_rmse"], np.sqrt(14/8))
         self.assertAlmostEqual(row["expected_rmse"], np.sqrt(0.015))
-        self.assertAlmostEqual(row["bias_observed_minus_predicted"], 3/12)
+        self.assertAlmostEqual(row["bias_observed_minus_predicted"], 2/8)
         expected_nll = interval_nll([0., 1., -2., 1., 0., 3.], [0.01]*6, 3)\
             + interval_nll([0.]*6, [0.02]*6, 3)
         self.assertAlmostEqual(row["mean_interval_nll"], expected_nll/4)
+
+    def test_pool_completely_ignores_zero_variance_initialization_hours(self):
+        errors = [1e5, 0.1, -0.1, -1e5, -0.2, 0.2]
+        variances = [0., 1., 1., 0., 1., 1.]
+        pool = {}
+        update_pool(pool, ("weekly_average", 2, 3), errors, variances, 0., 1., True, 2)
+        row = grid_summary(pool).iloc[0]
+        self.assertEqual(row["observations"], 4)
+        self.assertEqual(row["standardized_samples"], 4)
+        self.assertEqual(row["excluded_zero_variance_nonzero_errors"], 0)
+        self.assertAlmostEqual(row["observed_rmse"], np.sqrt(0.1/4))
+        self.assertAlmostEqual(row["coverage_95"], 1.)
+        self.assertTrue(np.isfinite(row["mean_interval_nll"]))
 
     def test_ks_distribution_similarity_prefers_normalized_gaussian_errors(self):
         rng = np.random.default_rng(17)
@@ -162,15 +179,36 @@ class test_wm4_moving_horizon_diffusion(unittest.TestCase):
             self.assertTrue((output/"diffusion_oracle_interval_scores.csv").is_file())
             historic = pd.read_csv(output/"diffusion_historical_summary.csv")
             target = pd.read_csv(output/"diffusion_oracle_summary.csv")
-            self.assertEqual(historic.loc[0, "observations"], 12)
-            self.assertEqual(target.loc[0, "observations"], 6)
+            self.assertEqual(historic.loc[0, "observations"], 10)
+            self.assertEqual(target.loc[0, "observations"], 5)
+            oracle_residuals = oracle_errors(frame, fit, score, 4)
+            self.assertAlmostEqual(target.loc[0, "observed_rmse"],
+                                   np.sqrt(np.mean(oracle_residuals[1:]**2)))
             self.assertTrue(np.isfinite(historic.loc[0, "mean_interval_nll"]))
             self.assertTrue(np.isfinite(target.loc[0, "mean_interval_nll"]))
             self.assertIn("historical_interval_nll", pd.read_csv(output/"diffusion_interval_parameters.csv").columns)
             self.assertIn("oracle_interval_nll", pd.read_csv(output/"diffusion_oracle_interval_scores.csv").columns)
-            self.assertAlmostEqual(target.loc[0, "observed_rmse"], np.sqrt(score["mse"]))
             metadata = json.loads((output/"diffusion_configuration.json").read_text())
             self.assertEqual(metadata["drift_parameter_refits"], 0)
+            self.assertTrue(metadata["scored_lead_hours"].startswith("1,...,k-1"))
+
+    def test_single_hour_horizon_has_no_scored_observations(self):
+        frame, fit, states, score = self.source_data()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root/"sweep"
+            source.mkdir()
+            config = {"version":EXPERIMENT_VERSION, "group":"ALL", "steps_per_hour":4,
+                      "baselines":["weekly_average"], "min_weekdays":2,
+                      "max_weekdays":2, "min_horizon":1, "max_horizon":1}
+            (source/"configuration.json").write_text(json.dumps(config), encoding="utf-8")
+            args = Namespace(group="ALL", source=str(source), output=str(root/"out"),
+                             evaluation="historical", cohort="all", baselines=None,
+                             start_day=None, end_day=None, min_weekdays=None,
+                             max_weekdays=None, min_horizon=None, max_horizon=None,
+                             progress_every=1, max_configurations=0)
+            with self.assertRaisesRegex(ValueError, "k=1"):
+                run(args)
 
     def test_historical_only_requires_no_target_oracle_scores(self):
         frame, fit, states, _ = self.source_data()
