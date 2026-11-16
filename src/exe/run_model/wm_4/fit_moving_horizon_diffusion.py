@@ -2,6 +2,8 @@
 
 No dynamical parameter or initial-state optimization is repeated. Each stochastic
 fit uses precisely the N historical k-hour trajectories of its saved drift fit.
+Only lead hours 1,...,k-1 enter the variance fit and all evaluation scores;
+lead hour 0 is a deterministic initialization and is never scored.
 
 Historical evaluation is in-sample. Target evaluation is ORACLE-CONDITIONED:
 the deterministic target initial state was fitted using target observations.
@@ -148,23 +150,29 @@ def oracle_errors(frame, row, score, steps_per_hour):
     return error
 
 
-def interval_nll(errors, variance, horizon):
-    """Sum Gaussian marginal NLL across each k-hour interval.
-
-    Predicted means are deterministic replay means. A numerical variance floor
-    makes degenerate nonnegative variance-QP fits scoreable without modifying
-    estimated tau2/q. No Kalman conditioning is performed between hours.
-    """
-    e = np.asarray(errors, dtype=float).reshape(-1)
-    v = np.asarray(variance, dtype=float).reshape(-1)
+def scored_hours(values, horizon):
+    """Flatten lead hours 1,...,k-1 from complete k-hour trajectories."""
     k = int(horizon)
-    if k < 1 or len(e) != len(v) or not len(e) or len(e) % k:
-        raise ValueError("NLL requires aligned, complete k-hour intervals.")
-    if not np.isfinite(e).all() or not np.isfinite(v).all() or np.any(v < 0):
-        raise ValueError("NLL requires finite residuals and nonnegative variances.")
+    data = np.asarray(values, dtype=float).reshape(-1)
+    if k < 2 or not len(data) or len(data) % k:
+        raise ValueError("Scoring requires complete k-hour intervals with k >= 2.")
+    return data.reshape(-1, k)[:, 1:].reshape(-1)
+
+
+def interval_nll(errors, variance, horizon):
+    """Sum marginal Gaussian NLL on lead hours 1,...,k-1 only.
+
+    Each input contains complete k-hour intervals (including initialization
+    hour 0); this routine excludes hour 0 from EVERY interval. Likelihoods
+    use a variance floor only for genuinely degenerate fitted variances.
+    No Kalman conditioning occurs between observations.
+    """
+    e = scored_hours(errors, horizon)
+    v = scored_hours(variance, horizon)
+    if len(e) != len(v) or not np.isfinite(e).all() or not np.isfinite(v).all() or np.any(v < 0):
+        raise ValueError("NLL requires aligned, finite residuals and nonnegative variances.")
     safe_v = np.maximum(v, NLL_VARIANCE_FLOOR)
     return float(np.sum(0.5*(np.log(2.*np.pi*safe_v)+e*e/safe_v)))
-
 
 def coverage(errors, variance):
     e = np.asarray(errors, dtype=float)
@@ -175,32 +183,34 @@ def coverage(errors, variance):
 def pooled_record(k):
     return {"k":int(k), "origins":0, "count":0,
             "observed_square":0., "expected_variance":0., "signed":0., "interval_nll_sum":0.,
-            "covered":0, "hourly_observed":np.zeros(k), "hourly_expected":np.zeros(k),
-            "hourly_count":np.zeros(k, dtype=np.int64),
+            "covered":0, "hourly_observed":np.zeros(k-1), "hourly_expected":np.zeros(k-1),
+            "hourly_count":np.zeros(k-1, dtype=np.int64),
             "tau2_sum":0., "q_sum":0., "tau_sum":0., "sigma_sum":0.,
             "identifiable":0, "histogram":np.zeros(len(HIST_BINS)-1, dtype=np.int64),
             "standardized":0, "zero_variance_errors":0}
 
 
 def update_pool(pool, key, errors, variance, tau2, q, identifiable, historical_N):
-    """Accumulate weighted observations, not a mean of individual interval RMSEs."""
-    e = np.asarray(errors, dtype=float).reshape(-1)
-    v = np.asarray(variance, dtype=float).reshape(-1)
+    """Pool only scored lead hours 1,...,k-1, keeping each origin as N intervals."""
+    full_e = np.asarray(errors, dtype=float).reshape(-1)
+    full_v = np.asarray(variance, dtype=float).reshape(-1)
     k = int(key[2])
-    if len(e) != len(v) or len(e) != historical_N*k:
-        raise ValueError("Each configuration must have exactly N*k historical or k target errors.")
-    if not np.isfinite(e).all() or not np.isfinite(v).all() or np.min(v) < -1e-12:
+    if k < 2 or len(full_e) != len(full_v) or len(full_e) != historical_N*k:
+        raise ValueError("Each configuration must have complete N*k historical or k target errors with k >= 2.")
+    if not np.isfinite(full_e).all() or not np.isfinite(full_v).all() or np.min(full_v) < -1e-12:
         raise ValueError("Invalid predicted variance or residual.")
+    e = scored_hours(full_e, k)
+    v = scored_hours(full_v, k)
     item = pool.setdefault(key, pooled_record(k))
     item["origins"] += 1
     item["count"] += len(e)
     item["observed_square"] += float(np.dot(e, e))
     item["expected_variance"] += float(v.sum())
     item["signed"] += float(e.sum())
-    item["interval_nll_sum"] += interval_nll(e, v, k)
+    item["interval_nll_sum"] += interval_nll(full_e, full_v, k)
     item["covered"] += int(np.count_nonzero(np.abs(e) <= Z_SCORE*np.sqrt(np.maximum(v, 0.))))
-    item["hourly_observed"] += np.square(e.reshape(historical_N, k)).sum(axis=0)
-    item["hourly_expected"] += v.reshape(historical_N, k).sum(axis=0)
+    item["hourly_observed"] += np.square(e.reshape(historical_N, k-1)).sum(axis=0)
+    item["hourly_expected"] += v.reshape(historical_N, k-1).sum(axis=0)
     item["hourly_count"] += historical_N
     item["tau2_sum"] += tau2
     item["q_sum"] += q
@@ -214,7 +224,6 @@ def update_pool(pool, key, errors, variance, tau2, q, identifiable, historical_N
                                             bins=HIST_BINS)[0].astype(np.int64)
         item["standardized"] += int(np.count_nonzero(good))
     item["zero_variance_errors"] += int(np.count_nonzero(~good & (e != 0.)))
-
 
 def ks_similarity(histogram, count):
     """Approximate 1-KS via fixed-width empirical CDF bins (width 0.00391).
@@ -244,7 +253,7 @@ def grid_summary(pool):
             "origins":origins, "observations":count,
             "observed_rmse":observed, "expected_rmse":expected,
             "rmse_absolute_error":abs(expected-observed),
-            "mean_interval_nll":x["interval_nll_sum"]/(count//k),
+            "mean_interval_nll":x["interval_nll_sum"]/(count//(k-1)),
             "mean_hourly_rmse_absolute_error":float(np.mean(np.abs(expected_hourly-observed_hourly))),
             "bias_observed_minus_predicted":x["signed"]/count,
             "coverage_95":x["covered"]/count,
@@ -264,9 +273,9 @@ def grid_summary(pool):
 def plot_grid(frame, filename, eval_name, names, ns, ks):
     if frame.empty: raise ValueError(f"No diffusion {eval_name} results available.")
     metrics = (
-        ("mean_interval_nll", "Mean interval marginal Gaussian NLL", "viridis", None, None),
-        ("ks_similarity", "Gaussian similarity (1 - KS)", "viridis", 0., 1.),
-        ("coverage_95", "Empirical 95% interval coverage", "viridis", 0., 1.),
+        ("mean_interval_nll", "Mean interval NLL (lead 1..k-1)", "viridis", None, None),
+        ("ks_similarity", "Gaussian similarity (1 - KS; lead 1..k-1)", "viridis", 0., 1.),
+        ("coverage_95", "Empirical 95% coverage (lead 1..k-1)", "viridis", 0., 1.),
     )
     fig, axes = plt.subplots(len(metrics), len(names), figsize=(max(10, 7.4*len(names)), 12),
                              squeeze=False, constrained_layout=True)
@@ -372,7 +381,13 @@ def run(args):
     if config.get("group") != args.group:
         raise ValueError(f"Saved group {config.get('group')} differs from --group {args.group}.")
     selection = bounds(config, args)
-    names, ns, ks, _, _ = selection
+    names, ns, ks, first, until = selection
+    if max(ks) < 2:
+        raise ValueError("k=1 has no post-initialization observations; select --max-horizon >= 2.")
+    if 1 in ks:
+        print("[ARM diffusion] excluding k=1: no scored lead hour after initialization.", flush=True)
+        ks = tuple(k for k in ks if k >= 2)
+        selection = (names, ns, ks, first, until)
     matched = common_origins(source, selection) if args.cohort == "matched" else None
     if matched is not None:
         print(f"[ARM diffusion] matched hourly origins={len(matched):,}", flush=True)
@@ -403,7 +418,7 @@ def run(args):
                 e = -historical_errors(history_frame, row, states, steps)
                 K = variance_kernel(float(row["theta_F"]), float(row["theta_R"]), steps, k)
                 K_hist = np.tile(K, n)
-                tau2, q, identifiable = fit_variances(e, K_hist)
+                tau2, q, identifiable = fit_variances(scored_hours(e, k), np.tile(K[1:], n))
                 v_hist = tau2+q*K_hist
                 update_pool(historical_pool, key, e, v_hist, tau2, q, identifiable, n)
                 writer_in.writerow({
@@ -412,10 +427,10 @@ def run(args):
                     "observation_sigma":float(np.sqrt(tau2)),
                     "process_variance_rate":q, "process_sigma":float(np.sqrt(q)),
                     "process_identifiable":identifiable, "historical_trajectories":n,
-                    "historical_observations":len(e),
-                    "historical_observed_rmse":float(np.sqrt(np.mean(e*e))),
-                    "historical_expected_rmse":float(np.sqrt(np.mean(v_hist))),
-                    "historical_coverage_95":coverage(e, v_hist),
+                    "historical_observations":n*(k-1),
+                    "historical_observed_rmse":float(np.sqrt(np.mean(scored_hours(e, k)**2))),
+                    "historical_expected_rmse":float(np.sqrt(np.mean(scored_hours(v_hist, k)))),
+                    "historical_coverage_95":coverage(scored_hours(e, k), scored_hours(v_hist, k)),
                     "historical_interval_nll":interval_nll(e, v_hist, k)/n,
                 })
                 if needs_target:
@@ -424,11 +439,11 @@ def run(args):
                     update_pool(oracle_pool, key, target, v_target, tau2, q, identifiable, 1)
                     writer_target.writerow({
                         "day":row["day"], "baseline":key[0], "training_weekdays":n,
-                        "horizon_hours":k, "observations":k,
-                        "oracle_observed_rmse":float(np.sqrt(np.mean(target*target))),
-                        "oracle_expected_rmse":float(np.sqrt(np.mean(v_target))),
-                        "oracle_coverage_95":coverage(target, v_target),
-                        "oracle_bias":float(np.mean(target)),
+                        "horizon_hours":k, "observations":k-1,
+                        "oracle_observed_rmse":float(np.sqrt(np.mean(target[1:]**2))),
+                        "oracle_expected_rmse":float(np.sqrt(np.mean(v_target[1:]))),
+                        "oracle_coverage_95":coverage(target[1:], v_target[1:]),
+                        "oracle_bias":float(np.mean(target[1:])),
                         "oracle_interval_nll":interval_nll(target, v_target, k),
                     })
                 processed += 1
@@ -456,7 +471,8 @@ def run(args):
             "distributions":"historical=in_sample; target=oracle_conditioned_not_operational",
             "ks":"binned_4096_edges_-8_8_approx_ks_distance_error_below_0.0016",
             "process_diffusion":"dR=sigma*dW; sigma2=q; observation_noise_variance=tau2",
-            "nll":"unfiltered marginal Gaussian, sum across k observed hours, mean over intervals; variance floor 1e-12 for likelihood only",
+            "scored_lead_hours":"1,...,k-1 (k-1 hourly scores per interval); hour 0 excluded from variance fitting, NLL, KS, coverage, and other residual summaries",
+            "nll":"unfiltered marginal Gaussian; sum across scored k-1 lead hours, mean over intervals; variance floor 1e-12 for likelihood only",
             "drift_parameter_refits":0, "fit_method":"analytic_exact_two_variable_nonnegative_least_squares"}
     (output/"diffusion_configuration.json").write_text(json.dumps(info, indent=2, default=str), encoding="utf-8")
     print(f"[ARM diffusion] complete={processed:,}; scanned={scanned:,}; drift QP refits=0", flush=True)
