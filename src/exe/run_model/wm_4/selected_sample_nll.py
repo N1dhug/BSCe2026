@@ -21,9 +21,13 @@ this is not an operational out-of-sample forecast score.
 
 Run from repository root:
     python -m src.exe.run_model.wm_4.selected_sample_nll
+
+Produces timing_per_day.csv, timing_average.csv and timing_average.png for
+all successfully scored sample dates, in addition to the NLL tables.
 """
 from argparse import ArgumentParser
 from pathlib import Path
+from time import perf_counter
 import json
 
 import numpy as np
@@ -34,6 +38,7 @@ from src.exe.run_model.wm_4.fit_moving_horizon_diffusion import fit_variances, v
 from src.exe.run_model.wm_4.moving_horizon_common import group_frame
 from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays
 from src.exe.run_model.wm_4.selected_bm_dates_arm import fit_origin
+from src.exe.run_model.wm_4.selected_bm_timing import timing_report
 from src.exe.run_model.wm_4.sweep_weekday_horizon import historical_calendar_days
 from src.tools.impute_hourly import impute_hourly_days
 
@@ -134,13 +139,21 @@ def score_marginal(observed,open_mean,theta,tau2,sigma2,steps_per_hour):
 
 
 def score_day(frame,day,steps_per_hour,min_tau):
+    """Score one ARM sample and measure actual computational stage runtimes.
+
+    The timings include both the variance fit within fit_origin and the
+    hours-1..23 variance refit used for the reported marginal likelihood.
+    """
+    sample_started=perf_counter()
     history=historical_weekdays(day,N)
     required=historical_calendar_days(history,K)
     training,imputation=impute_hourly_days(
         frame,days=required,columns=("I","U","Temp"),require_days=True)
     require_target(frame,day)
     result=fit_origin(frame,training,day,history,BASELINE,steps_per_hour)
+    variance_started=perf_counter()
     tau2,sigma2,regularized=positive_variances(result,steps_per_hour,min_tau)
+    variance_refit_seconds=perf_counter()-variance_started
     historical_observed,historical_predicted=historical_trajectories(result,steps_per_hour)
     historical_nll,variance=score_marginal(
         historical_observed,historical_predicted,result["theta"],
@@ -152,11 +165,19 @@ def score_day(frame,day,steps_per_hour,min_tau):
         raise RuntimeError("Historical and target marginal NLL sample counts are incorrect.")
     if not np.allclose(variance,target_variance,rtol=1e-13,atol=1e-13):
         raise RuntimeError("Historical and target scores used different variance kernels.")
+    result["sample_timing_seconds"]={
+        "drift_fit_seconds":float(result["drift_seconds"]),
+        "variance_fit_seconds":float(result["diffusion_seconds"]+variance_refit_seconds),
+        "variance_initial_fit_seconds":float(result["diffusion_seconds"]),
+        "variance_scoring_refit_seconds":float(variance_refit_seconds),
+        "oracle_optimization_seconds":float(result["oracle_seconds"]),
+        "complete_compute_seconds":float(perf_counter()-sample_started),
+    }
     return (result,history,imputation,historical_observed,historical_predicted,
             historical_nll,target_nll,variance,tau2,sigma2,regularized)
 
 
-def run(year=2022,steps_per_hour=60,output=OUTPUT,fail_fast=False,min_tau=DEFAULT_MIN_TAU):
+def run(year=2022,steps_per_hour=60,output=OUTPUT,fail_fast=False,min_tau=DEFAULT_MIN_TAU,show=False):
     if steps_per_hour<2: raise ValueError("steps_per_hour must be >= 2.")
     if not np.isfinite(min_tau) or min_tau<0: raise ValueError("min_tau must be nonnegative.")
     output=Path(output)
@@ -196,6 +217,7 @@ def run(year=2022,steps_per_hour=60,output=OUTPUT,fail_fast=False,min_tau=DEFAUL
                 "observation_variance_regularized":bool(regularized),
                 "historical_days":";".join(str(d.date()) for d in history),
                 "imputed_historical_hourly_slots":int(imputation["imputed_hourly_slots"]),
+                **result["sample_timing_seconds"],
             }
             daily.append(row)
             for hour in range(1,K):
@@ -256,6 +278,14 @@ def run(year=2022,steps_per_hour=60,output=OUTPUT,fail_fast=False,min_tau=DEFAUL
               f"mean/observation={ttotal/nt:+.8f} ({nt} observations).")
     print(f"Results: {output}",flush=True)
     if not daily: raise RuntimeError("No sample day could be scored; see skipped_days.csv.")
+    # The shared timing plot uses the actual stages measured in score_day.
+    # Complete time is inclusive, not the sum of the other three bars.
+    timing_report(pd.DataFrame(daily),"ARM",output,(
+        ("Deterministic drift QP","drift_fit_seconds"),
+        ("Variance fit (initial + NLL refit)","variance_fit_seconds"),
+        ("Oracle initial-state QP","oracle_optimization_seconds"),
+        ("Complete process","complete_compute_seconds"),
+    ),show=show,expected_days=len(daily))
     return pd.DataFrame(daily)
 
 
@@ -267,8 +297,10 @@ def main():
     parser.add_argument("--min-observation-sigma",type=float,default=DEFAULT_MIN_TAU,
                         help="Optional tau lower bound (default 0).")
     parser.add_argument("--fail-fast",action="store_true")
+    parser.add_argument("--show",action="store_true",help="Display the saved computational timing plot.")
     args=parser.parse_args()
-    return run(args.year,args.steps_per_hour,args.output,args.fail_fast,args.min_observation_sigma)
+    return run(args.year,args.steps_per_hour,args.output,args.fail_fast,args.min_observation_sigma,
+               show=args.show)
 
 
 if __name__=="__main__": main()
