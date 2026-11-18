@@ -110,3 +110,13 @@ class bm_1(bm):
             Dt_i = self.D(Bt_i, parameters[5], delta_i)
             EDt[i] = np.sum(Dt_i * p[i]) * dx
         return (self.t.copy(), x, p, coefficients, EXt, Ut, Bt, EDt)
+
+    def fixed_beta_estimator(self, degree=6, quadrature=48, steps_per_hour=2):
+        """Create Nielsen fixed-basis stochastic MLE bound to this BM1 model."""
+        from src.params.bm_1_fixed_beta import bm_1_fixed_beta_params
+        return bm_1_fixed_beta_params(degree, quadrature, steps_per_hour, model=self)
+
+    def fit_params_fixed_beta(self, datasets, *, degree=6, quadrature=48,
+                              steps_per_hour=2, **kwargs):
+        """Fit shared stochastic dynamics and one initial beta density per interval."""
+        return self.fixed_beta_estimator(degree, quadrature, steps_per_hour).fit(datasets, **kwargs)
