@@ -5,7 +5,7 @@ Run from repository root:
 
 The six matching historical weekdays fit shared BM1 dynamics and independent
 initial beta densities. Target observations select ONLY the oracle initial
-density location. Reported target NLL and intervals are OPEN-LOOP marginal
+density coefficients. Reported target NLL and intervals are OPEN-LOOP marginal
 quantities, not filtered sequential likelihoods or genuine day-ahead scores.
 """
 from argparse import ArgumentParser
