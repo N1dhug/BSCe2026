@@ -88,36 +88,28 @@ class bm_1_fixed_beta_params:
                 "degree":self.degree,"fit_method":"fixed_beta_fokker_planck_joint_mle"}
 
     def oracle(self, target, fitted, *, maxiter=35):
-        """Optimize only target initial distribution location against target demand.
+        """Retrospective simplex-constrained oracle initial density.
 
-        Historical dynamics and noise parameters are frozen. Target observations
-        are used solely for this retrospective oracle choice, never for filtering
-        the open-loop trajectory or re-estimating shared parameters.
+        Shared physical/noise parameters stay fixed. All target observations
+        enter only this initial-density optimization; the final density
+        propagation is open-loop without observation updates.
         """
         self._validate([target])
         initial = np.mean(np.asarray(fitted["initial_distributions"]),axis=0)
-        m = self.degree
-        support = np.arange(m+1,dtype=float)
-        center = float(np.dot(support,initial))
-        def shifted(location):
-            shifted_values = np.interp(support-(location-center),support,initial,left=0.,right=0.)
-            if shifted_values.sum() < 1e-14:
-                shifted_values = np.zeros(m+1); shifted_values[int(np.clip(round(location),0,m))] = 1.
-            return shifted_values/shifted_values.sum()
-        evaluations = {}
-        def loss(location):
-            location = float(location)
-            if location not in evaluations:
-                c = shifted(location)
-                pred = self.solver.simulate(target,fitted,c,observations=False)
-                evaluations[location] = float(np.mean((pred["mean"]-target["I"])**2))
-            return evaluations[location]
-        grid = np.linspace(0,m,2*m+1)
-        best = min(grid,key=loss)
-        opt = minimize_scalar(loss,bounds=(max(0.,best-.5),min(float(m),best+.5)),
-                              method="bounded",options={"maxiter":int(maxiter),"xatol":1e-3})
-        best = min((float(best),float(opt.x),0.,float(m)),key=loss)
-        coefficients = shifted(best)
+        initial /= initial.sum()
+        count = [0]
+        def objective(c):
+            count[0] += 1
+            if np.any(c < -1e-8) or not np.isfinite(c).all() or np.sum(c) <= 0.: return 1e9
+            weights = np.maximum(np.asarray(c,dtype=float),0.)
+            weights /= weights.sum()
+            forecast = self.solver.simulate(target,fitted,weights,observations=False)
+            return float(np.mean((forecast["mean"]-target["I"])**2))
+        fit = minimize(objective,initial,method="SLSQP",bounds=[(0.,1.)]*(self.degree+1),
+                       constraints=[{"type":"eq","fun":lambda c: np.sum(c)-1.}],
+                       options={"maxiter":int(maxiter),"ftol":1e-8,"eps":1e-4})
+        candidates = [initial,np.maximum(np.asarray(fit.x,dtype=float),0.)]
+        coefficients = min((c/c.sum() for c in candidates),key=objective)
         forecast = self.solver.simulate(target,fitted,coefficients,observations=False)
         lower,upper = self.solver.intervals(forecast,fitted["sigma_y"])
         residual = forecast["mean"] - np.asarray(target["I"],dtype=float)
@@ -128,4 +120,5 @@ class bm_1_fixed_beta_params:
                 "expected_demand_rmse":float(np.sqrt(np.mean(residual**2))),
                 "empirical_95_coverage":float(np.mean(coverage)),
                 "lower_95":lower,"upper_95":upper,
-                "oracle_location":float(best),"oracle_evaluations":len(evaluations)}
+                "oracle_converged":bool(fit.success),"oracle_message":str(fit.message),
+                "oracle_evaluations":count[0]}
