@@ -51,12 +51,15 @@ def timing_report(daily, model, output, stages, show=False, expected_days=7):
     summary.to_csv(output/"timing_average.csv",index=False)
     labels = summary["stage"].tolist()
     means = summary["mean_seconds"].to_numpy(dtype=float)
-    # Set the publication-style font only for this plot, not for other figures.
-    # Times New Roman is used where installed; Matplotlib otherwise falls back
-    # to its available serif font.
-    with plt.rc_context({"font.family":"serif","font.serif":["Times New Roman","DejaVu Serif"],
-                         "font.size":16,"axes.titlesize":21,"axes.labelsize":18,
-                         "xtick.labelsize":16,"ytick.labelsize":17}):
+    # Match the 12-day IM timing plot's Matplotlib sans-serif typeface for ARM.
+    # Keep the legacy IM seven-day timing chart's existing serif typography.
+    font_style = ({"font.family":"sans-serif","font.sans-serif":["DejaVu Sans"],
+                   "font.size":16,"axes.titlesize":21,"axes.labelsize":18,
+                   "xtick.labelsize":16,"ytick.labelsize":17} if model=="ARM"
+                  else {"font.family":"serif","font.serif":["Times New Roman","DejaVu Serif"],
+                        "font.size":16,"axes.titlesize":21,"axes.labelsize":18,
+                        "xtick.labelsize":16,"ytick.labelsize":17})
+    with plt.rc_context(font_style):
         fig,ax=plt.subplots(figsize=(13.8,6.5))
         color="tab:orange" if model=="IM" else "tab:blue"
         bars=ax.barh(np.arange(4),means,color=[color]*3+["0.40"],height=0.62)
