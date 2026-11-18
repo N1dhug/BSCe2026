@@ -47,20 +47,19 @@ class bm_1_fixed_beta:
             raise RuntimeError("Beta projection produced invalid simplex weights.")
         return answer
 
-    @staticmethod
-    def demand(x, b, u, p):
+    def demand(self, x, b, u, p):
         alpha, beta, k, xi = (p[name] for name in ("alpha", "beta", "k", "Xi"))
         fx = np.tanh(.5 * alpha * (.5 - x)) / np.tanh(alpha / 4.)
         gu = np.tanh(.5 * beta * (.5 - u)) / np.tanh(beta / 4.)
-        delta = np.tanh(.5 * k * (fx + gu))
-        return b + xi * delta * np.where(delta >= 0., 1. - b, b)
+        delta = self.model.l(fx, gu, k) if self.model is not None else np.tanh(.5 * k * (fx + gu))
+        return self.model.D(b, xi, delta) if self.model is not None else b + xi * delta * np.where(delta >= 0., 1. - b, b)
 
     def _fields(self, b, u, p):
         x = self.x
         alpha, beta, k, xi, capacity, sigma = (p[name] for name in ("alpha", "beta", "k", "Xi", "C", "sigma_x"))
         fx = np.tanh(.5 * alpha * (.5 - x)) / np.tanh(alpha / 4.)
         gu = np.tanh(.5 * beta * (.5 - u)) / np.tanh(beta / 4.)
-        delta = np.tanh(.5 * k * (fx + gu))
+        delta = self.model.l(fx, gu, k) if self.model is not None else np.tanh(.5 * k * (fx + gu))
         dfx = -.5 * alpha * (1. - np.tanh(.5 * alpha * (.5 - x))**2) / np.tanh(alpha / 4.)
         ddelta = .5 * k * (1. - delta**2) * dfx
         scale = np.where(delta >= 0., 1. - b, b)
