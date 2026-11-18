@@ -121,7 +121,13 @@ def test_report_has_historical_and_target_marginal_only(monkeypatch,tmp_path,cap
     def sample(frame,day,steps_per_hour,min_tau):
         result={
             "observed":np.zeros(K),"predicted":np.zeros(K),
-            "initial":[0.,0.],"theta":[-2.,-0.1,-0.5]
+            "initial":[0.,0.],"theta":[-2.,-0.1,-0.5],
+            "sample_timing_seconds":{
+                "drift_fit_seconds":0.10,"variance_fit_seconds":0.001,
+                "variance_initial_fit_seconds":0.0005,
+                "variance_scoring_refit_seconds":0.0005,
+                "oracle_optimization_seconds":0.03,"complete_compute_seconds":0.20,
+            },
         }
         return (result,history,{"imputed_hourly_slots":0},
                 np.zeros((N,K)),np.zeros((N,K)),
@@ -146,3 +152,11 @@ def test_report_has_historical_and_target_marginal_only(monkeypatch,tmp_path,cap
     assert "sequential" not in " ".join(daily.columns)
     assert "historical marginal NLL" in output
     assert "target marginal NLL" in output
+    timings=pd.read_csv(tmp_path/"timing_per_day.csv")
+    means=pd.read_csv(tmp_path/"timing_average.csv")
+    assert len(timings)==12*4
+    assert means["prediction_days"].eq(12).all()
+    assert len(means)==4
+    assert means.loc[means["key"]=="drift_fit_seconds","mean_seconds"].iloc[0]==pytest.approx(.1)
+    assert means.loc[means["key"]=="complete_compute_seconds","mean_seconds"].iloc[0]==pytest.approx(.2)
+    assert (tmp_path/"timing_average.png").is_file()
