@@ -20,7 +20,6 @@ from src.exe.run_model.wm_4.moving_horizon_common import group_frame
 from src.exe.run_model.wm_4.sweep_weekday_horizon import baseline_from_history, historical_calendar_days
 from src.tools.impute_hourly import impute_hourly_days
 from src.validation.exe.run_model.bm_1.fit_beta_moving_horizon import bm_1_beta_moving_horizon_validation as checks
-from src.params.bm_1_fixed_beta import bm_1_fixed_beta_params
 from src.model.bm_1 import bm_1
 
 N, K, BASELINE = 6, 24, "weekly_temperature"
@@ -49,7 +48,7 @@ def run(day="2022-08-22",tag="ALL",degree=6,quadrature=48,steps_per_hour=2,
     input_seconds = perf_counter()-started
     # BM1 supplies the actual response and demand functions to the numerical solver.
     bm = bm_1(lambda t: .5,lambda t: .5,(0.,float(K)),K+1)
-    estimator = bm_1_fixed_beta_params(degree,quadrature,steps_per_hour,model=bm)
+    estimator = bm.fixed_beta_estimator(degree,quadrature,steps_per_hour)
     fitted = estimator.fit(hist,maxiter=maxiter,maxfun=maxfun,progress=progress)
     oracle = estimator.oracle(target,fitted)
     total = perf_counter()-started
