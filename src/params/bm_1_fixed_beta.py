@@ -42,7 +42,30 @@ class bm_1_fixed_beta_params:
             if len({len(data[name]) for name in ("I","B","U")}) != 1:
                 raise ValueError("Inconsistent historical input lengths.")
 
-    def fit(self, datasets, *, maxiter=12, maxfun=400, progress=True, seed=None):
+    def initial_guess(self, datasets):
+        """Historical-data initial density guesses; no deterministic-state MLE.
+
+        Invert the BM1 first-hour demand response approximately on the fixed
+        spatial grid, then distribute mass among nearby beta basis means.
+        The seven shared parameters remain ordinary admissible seed values.
+        """
+        self._validate(datasets)
+        seed = dict(zip(self.NAMES, (2., 2., 1., .5, 2., .15, .075)))
+        centers = (np.arange(self.degree+1,dtype=float)+1.)/(self.degree+2.)
+        sigma = max(1./(self.degree+2.), .075)
+        initial = []
+        for data in datasets:
+            b,u,y = (float(data[key][0]) for key in ("B","U","I"))
+            response = self.solver.demand(self.solver.x,b,u,seed)
+            center = float(self.solver.x[np.argmin(np.abs(response-y))])
+            weights = np.exp(-.5*((centers-center)/sigma)**2)
+            weights += 1e-6
+            initial.append(weights/weights.sum())
+        return {"parameters":seed,"initial_distributions":np.array(initial,dtype=float),
+                "method":"first-hour inversion with smooth fixed-beta coefficient seed"}
+
+    def fit(self, datasets, *, maxiter=12, maxfun=400, progress=True, seed=None,
+            initial_distributions=None):
         self._validate(datasets)
         n, m = len(datasets), self.degree
         starting = np.array([2.,2.,1.,.5,2.,.15,.075])
@@ -53,8 +76,13 @@ class bm_1_fixed_beta_params:
         # A centered but nondegenerate distribution; each historical interval is free to move.
         seed_weights = np.exp(-.5*((np.arange(m+1)-m/2.)/max(1.,m/5.))**2)
         seed_weights /= seed_weights.sum()
-        logits = np.log(seed_weights[:-1]/seed_weights[-1])
-        x0 = np.r_[np.log(starting), np.tile(logits,n)]
+        if initial_distributions is None: initial_distributions = np.tile(seed_weights,(n,1))
+        initial_distributions = np.asarray(initial_distributions,dtype=float)
+        if (initial_distributions.shape != (n,m+1) or not np.isfinite(initial_distributions).all()
+                or np.any(initial_distributions <= 0.) or not np.allclose(initial_distributions.sum(axis=1),1.,atol=1e-9)):
+            raise ValueError("Provide N strictly positive normalized initial beta coefficient vectors.")
+        logits = np.log(initial_distributions[:,:-1]/initial_distributions[:,-1,None])
+        x0 = np.r_[np.log(starting), logits.ravel()]
         bounds = [(np.log(lo),np.log(hi)) for lo,hi in limits] + [(-10.,10.)]*(n*m)
         evaluations, invalid, best, started = 0, 0, [np.inf,None], perf_counter()
 
