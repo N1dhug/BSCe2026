@@ -11,8 +11,9 @@ from src.solver.active_set import active_set
 
 
 class bm_1_fixed_beta:
-    def __init__(self, degree=6, quadrature=48, steps_per_hour=2, ridge=1e-9):
+    def __init__(self, degree=6, quadrature=48, steps_per_hour=2, ridge=1e-9, model=None):
         self.degree, self.steps_per_hour = int(degree), int(steps_per_hour)
+        self.model = model
         if self.degree < 2 or quadrature < 2 * self.degree + 5 or self.steps_per_hour < 1:
             raise ValueError("Use degree>=2, quadrature>=2*degree+5, steps_per_hour>=1.")
         self.x, self.qw = np.polynomial.legendre.leggauss(int(quadrature))
