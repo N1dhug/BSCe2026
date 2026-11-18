@@ -10,12 +10,12 @@ from scipy.optimize import minimize, minimize_scalar
 from scipy.special import softmax
 
 from src.method.bm_1_fixed_beta import bm_1_fixed_beta
-from src.params.bm_1_beta import bm_1_beta_params
 
 
 class bm_1_fixed_beta_params:
     NAMES = ("alpha", "beta", "k", "Xi", "C", "sigma_x", "sigma_y")
-    BOUNDS = bm_1_beta_params.BOUNDS
+    BOUNDS = {"alpha":(.05,20.), "beta":(.05,20.), "k":(.05,12.), "Xi":(1e-4,1.),
+              "C":(.05,100.), "sigma_x":(1e-4,5.), "sigma_y":(.001,.5)}
 
     def __init__(self, degree=6, quadrature=48, steps_per_hour=2, model=None):
         self.solver = bm_1_fixed_beta(degree, quadrature, steps_per_hour, model=model)
@@ -76,7 +76,7 @@ class bm_1_fixed_beta_params:
                 return 1e9
 
         initial_nll = objective(x0)
-        result = minimize(objective,x0,method="L-BFGS-B",bounds=bounds,
+        result = minimize(objective,x0,method="L-BFGS-B",jac="2-point",bounds=bounds,
                           options={"maxiter":int(maxiter),"maxfun":int(maxfun),"ftol":1e-6,
                                    "finite_diff_rel_step":1e-4})
         if best[1] is None: raise RuntimeError("No admissible stochastic likelihood evaluation.")
