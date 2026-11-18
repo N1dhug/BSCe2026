@@ -1,4 +1,4 @@
-"""Seven-origin computational timing reports shared by IM and ARM sample fitters.
+"""Computational timing reports shared by IM and ARM sample fitters.
 
 Reads only timings produced during the actual fitting run; no reruns or
 estimated/cached timings. Complete time is inclusive of the preceding
@@ -11,15 +11,17 @@ import numpy as np
 import pandas as pd
 
 
-def timing_report(daily, model, output, stages, show=False):
+def timing_report(daily, model, output, stages, show=False, expected_days=7):
     """Save per-day stage costs, mean costs and a four-stage horizontal bar plot.
 
     stages is ordered (display_name, per_day_metrics_column) tuples. Last
-    entry is the inclusive complete process. All seven days must be present.
+    entry is the inclusive complete process. By default seven days are required;
+    pass expected_days=12 for the twelve-date selected sample.
     """
     output = Path(output)
-    if len(daily)!=7 or pd.to_datetime(daily["day"]).dt.normalize().nunique()!=7:
-        raise ValueError(f"{model} timing report requires seven distinct prediction dates.")
+    if (not isinstance(expected_days,int) or expected_days<1 or len(daily)!=expected_days
+            or pd.to_datetime(daily["day"]).dt.normalize().nunique()!=expected_days):
+        raise ValueError(f"{model} timing report requires {expected_days} distinct prediction dates.")
     if len(stages)!=4 or stages[-1][1] not in ("total_compute_seconds","complete_compute_seconds"):
         raise ValueError("Expected three optimization stages followed by complete process.")
     required = {"day",*(key for _,key in stages)}
@@ -62,8 +64,8 @@ def timing_report(daily, model, output, stages, show=False):
         ax.invert_yaxis()
         ax.set_xlim(0.,max(means.max()*1.25,1e-9))
         ax.set_xlabel("mean time (s)")
-        ax.set_title(f"{model} | Mean computation cost by stage | seven weekday samples",
-                     pad=18)
+        subtitle = "seven weekday samples" if expected_days==7 else f"{expected_days} selected target days"
+        ax.set_title(f"{model} | Mean computation cost by stage | {subtitle}",pad=18)
         ax.grid(axis="x",alpha=0.2)
         ax.set_axisbelow(True)
         for rect,value in zip(bars,means):
