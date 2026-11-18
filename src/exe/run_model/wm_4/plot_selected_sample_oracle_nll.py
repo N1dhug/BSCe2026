@@ -24,6 +24,7 @@ import pandas as pd
 from scipy.stats import norm
 
 from src.exe.run_model.wm_4.fit_moving_horizon_diffusion import variance_kernel
+from src.exe.run_model.wm_4.selected_bm_timing import timing_report
 from src.exe.run_model.wm_4.moving_horizon_common import group_frame
 from src.exe.run_model.wm_4.selected_sample_nll import (
     ROOT, DAYS, N, K, BASELINE, GROUP, DEFAULT_MIN_TAU, score_day,
@@ -59,7 +60,8 @@ def evaluate_days(year,steps_per_hour,min_tau):
                 "variance":variance,"nll_hourly":np.r_[np.nan,target_nll],
                 "mean_nll":score,"total_nll":float(np.sum(target_nll)),
                 "rmse":float(np.sqrt(np.mean((predicted-observed)**2))),
-                "historical_days":history,"oracle_initial":np.asarray(fit["initial"],dtype=float)}
+                "historical_days":history,"oracle_initial":np.asarray(fit["initial"],dtype=float),
+                "timing":dict(fit["sample_timing_seconds"])}
         results.append(result)
         print(f"[{number:02d}/{len(DAYS)}] {day:%Y-%m-%d} | "
               f"mean marginal NLL={score:+.5f} | oracle RMSE={result['rmse']:.5f}",flush=True)
@@ -171,6 +173,14 @@ def run(year=2022,steps_per_hour=60,min_tau=DEFAULT_MIN_TAU,
     image=output/f"arm_best_worst_oracle_{metric}.png"
     plot_ranked(best,worst,metric,image)
     save_tables(results,best,worst,metric,output)
+    # Reuse the timings measured during each evaluated sample; no second fit.
+    timing_report(pd.DataFrame([{"day":str(item["day"].date()),**item["timing"]}
+                                for item in results]),"ARM",output,(
+        ("Deterministic drift QP","drift_fit_seconds"),
+        ("Variance fit (initial + NLL refit)","variance_fit_seconds"),
+        ("Oracle initial-state QP","oracle_optimization_seconds"),
+        ("Complete process","complete_compute_seconds"),
+    ),expected_days=len(results))
     (output/"configuration.json").write_text(json.dumps({
         "year":year,"days":list(DAYS),"group":GROUP,"baseline":BASELINE,
         "N":N,"k":K,"origin_hour":0,"steps_per_hour":steps_per_hour,
