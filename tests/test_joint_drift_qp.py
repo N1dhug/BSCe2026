@@ -3,7 +3,6 @@ import unittest
 import numpy as np
 
 from src.solver.joint_drift_qp import joint_drift_qp
-from src.exe.run_model.wm_5.single_step_input import build
 
 
 class test_joint_drift_qp(unittest.TestCase):
@@ -26,15 +25,6 @@ class test_joint_drift_qp(unittest.TestCase):
                                       (A, b, lo, hi), enforce_path=False, ridge=0.0)
         np.testing.assert_allclose(result["coefficients"], theta, atol=1e-5)
         self.assertAlmostEqual(result["init_cond"][0], F0, places=4)
-
-    def test_price_step_contributions_match_drift(self):
-        for variant in ("wm_4", "wm_5"):
-            with self.subTest(variant=variant):
-                case = build(variant, duration=12.0, dt=0.02, step_at=1.0)
-                state = case["state"]
-                np.testing.assert_allclose(case["contributions"].sum(axis=1), state["R_dot"], atol=1e-10)
-                self.assertTrue(np.isfinite(state["F"]).all())
-                self.assertTrue(np.isfinite(state["R"]).all())
 
 
 if __name__ == "__main__": unittest.main()

@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.method.moving_horizon import (HOURS, group_frame, metrics, window_data,
-    historical_weekdays, BASELINES, corresponding_weekday_baseline,
+from src.method.moving_horizon import (HOURS, group_frame, metrics,
+    historical_weekdays, BASELINES,
     baseline_from_history, interval_window, historical_calendar_days, hourly_origins)
 from src.params.wm_4 import joint_qp_params
 from src.model.wm_4 import wm_4

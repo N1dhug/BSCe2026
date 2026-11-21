@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.sweep_weekday_horizon import (
-    BASELINE_NAMES, baseline_from_history, corresponding_weekday_baseline, evaluate_configuration,
+    BASELINE_NAMES, baseline_from_history, evaluate_configuration,
     historical_weekdays, historical_calendar_days, hourly_origins, load_tables, matched_cohort,
     report_only, save_top_three_plots, summarise,
 )
@@ -42,14 +42,6 @@ class test_wm4_weekday_horizon_sweep(unittest.TestCase):
         price = 0.25*np.sin(2*np.pi*hours/24+days/2)
         return pd.DataFrame({"I": demand, "U": price, "Temp": 5+5*np.cos(days/7)}, index=idx)
 
-    def test_corresponding_weekday_baseline_is_exact_historical_mean(self):
-        a = np.linspace(0.2, 0.6, 24)
-        b = np.linspace(0.6, 0.2, 24)
-        baseline = corresponding_weekday_baseline(np.vstack((a, b)))
-        timestamps = pd.to_datetime(["2022-04-04 00:00", "2022-04-04 00:30", "2022-04-04 23:30"])
-        expected = np.array([0.4, 0.4, 0.4])
-        np.testing.assert_allclose(baseline.predict(timestamps, np.zeros(3)), expected)
-        self.assertTrue(np.allclose(baseline.profile, 0.4))
 
     def test_historical_profiles_are_strictly_prior_and_matched(self):
         frame = self.sample_frame()

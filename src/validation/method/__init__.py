@@ -1,6 +1,5 @@
-"""Method-validation public API."""
+"""Fokker–Planck validation for the retained BM1 implementation."""
 
-from .euler_maruyama import euler_maruyama_validation
 from .fokker_planc import bm_1_fokker_planc_validation, wm_fokker_planc_validation
 
-__all__ = ["euler_maruyama_validation", "bm_1_fokker_planc_validation", "wm_fokker_planc_validation"]
+__all__ = ["bm_1_fokker_planc_validation", "wm_fokker_planc_validation"]
