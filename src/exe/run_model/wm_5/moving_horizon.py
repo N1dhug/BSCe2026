@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.moving_horizon_common import GROUPS, HOURS, baseline_before, group_frame, metrics, origins, save_table, window_data
+from src.method.moving_horizon import GROUPS, HOURS, baseline_before, group_frame, metrics, origins, save_table, window_data
 from src.model.wm_5 import response_library, wm_5
 from src.params.wm_4 import optimized_qp_params as wm4_optimized_qp
 from src.params.wm_5 import qp_params as wm5_qp_params

@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from src.exe.run_model.wm_4.moving_horizon_common import HOURS, group_frame, window_data
-from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays
+from src.method.moving_horizon import HOURS, group_frame, window_data
+from src.method.moving_horizon import historical_weekdays
 from src.exe.run_model.wm_4.sweep_weekday_horizon import (
     BASELINE_NAMES, baseline_from_history, RANKING_METRIC,
 )

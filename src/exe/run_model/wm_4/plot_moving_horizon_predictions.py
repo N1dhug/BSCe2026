@@ -23,9 +23,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame, metrics
-from src.exe.run_model.wm_4.methodology_uncertainty import demand_interval, fit_historical_uncertainty
-from src.exe.run_model.wm_4.plot_corresponding_interval_fit import (
+from src.method.moving_horizon import group_frame, metrics
+from src.method.moving_horizon_uncertainty import demand_interval, fit_historical_uncertainty
+from src.method.moving_horizon import (
     BASELINES, _fit_sparse_baseline, _intervals, _origin, _window,
 )
 from src.model.wm_4 import wm_4

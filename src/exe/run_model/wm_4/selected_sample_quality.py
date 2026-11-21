@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
-from src.exe.run_model.wm_4.fit_moving_horizon_diffusion import variance_kernel
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame
+from src.method.arm_variance import variance_kernel
+from src.method.moving_horizon import group_frame
 from src.exe.run_model.wm_4.selected_sample_nll import (
     ROOT, DAYS, N, K, BASELINE, GROUP, DEFAULT_MIN_TAU, score_day,
 )

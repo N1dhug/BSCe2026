@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.colors import Normalize
 
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame, window_data
+from src.method.moving_horizon import group_frame, window_data
 from src.exe.run_model.wm_4.sweep_weekday_horizon import baseline_from_history, load_tables
 from src.tools.impute_hourly import impute_hourly_days
 

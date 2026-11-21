@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame
+from src.method.moving_horizon import group_frame
 from src.exe.run_model.wm_4.plot_linear_rate_r2 import _one_configuration, _values, BASELINES, INPUT, ROOT
 from src.exe.run_model.wm_4.sweep_weekday_horizon import load_tables
 

@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame
+from src.method.moving_horizon import group_frame
 
 
 ROOT=Path(__file__).resolve().parents[3]

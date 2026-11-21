@@ -10,7 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from src.exe.run_model.wm_4.plot_demand_metric_grid import draw_demand_metric_grid
+from src.method.demand_metric_grid import draw_demand_metric_grid
 
 
 ROOT = Path(__file__).resolve().parents[4]

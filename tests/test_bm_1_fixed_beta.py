@@ -1,7 +1,7 @@
 """Fast synthetic smoke tests for the Nielsen fixed-basis BM1 solver."""
 import numpy as np
 
-from src.method.bm_1_fixed_beta import bm_1_fixed_beta
+from src.params.bm_1_fixed_beta import bm_1_fixed_beta
 
 
 def test_fixed_beta_probability_and_likelihood():

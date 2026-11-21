@@ -19,8 +19,9 @@ import numpy as np
 import pandas as pd
 
 from src.exe.run_model.wm_4.fit_moving_horizon_diffusion import (
-    OUTPUT as DIFFUSION_OUTPUT, TITLES, variance_kernel,
+    OUTPUT as DIFFUSION_OUTPUT, TITLES,
 )
+from src.method.arm_variance import variance_kernel
 from src.exe.run_model.wm_4.plot_moving_horizon_quality import configuration, bounds, selected
 from src.exe.run_model.wm_4.sweep_weekday_horizon import OUTPUT as SWEEP_OUTPUT
 

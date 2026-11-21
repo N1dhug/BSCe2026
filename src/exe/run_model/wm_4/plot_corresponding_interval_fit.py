@@ -21,126 +21,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame, metrics
-from src.exe.run_model.wm_4.methodology_uncertainty import demand_interval, fit_historical_uncertainty
+from src.method.moving_horizon import (group_frame, metrics, BASELINES,
+    _origin, _intervals, _fit_sparse_baseline, _window)
+from src.method.moving_horizon_uncertainty import demand_interval, fit_historical_uncertainty
 from src.model.wm_4 import wm_4
 from src.params.wm_4 import joint_qp_params, optimized_qp_params
-from src.tools.baseline import weekly_average, weekly_temperature, statistical_output
 from src.tools.impute_hourly import impute_hourly_days
 
 
 ROOT=Path(__file__).resolve().parents[4]
 OUTPUT=ROOT/"files"/"output"/"wm_4"/"corresponding_interval_fit"
-BASELINES={"weekly_average":weekly_average,"weekly_temperature":weekly_temperature,
-           "statistical_output":statistical_output}
-
-
-def _origin(day,hour):
-    date=pd.Timestamp(day)
-    if pd.isna(date) or date!=date.normalize():
-        raise ValueError("day must be a valid calendar date at midnight (YYYY-MM-DD).")
-    if not isinstance(hour,(int,np.integer)) or not 0<=hour<=23:
-        raise ValueError("hour must be an integer from 0 through 23.")
-    return date+pd.Timedelta(hours=int(hour))
-
-
-def _intervals(origin,k,N):
-    """Chronological weekly-offset starts (oldest through most recent)."""
-    if not isinstance(k,(int,np.integer)) or not 2<=k<=24:
-        raise ValueError("k must be an integer number of hours between 2 and 24.")
-    if not isinstance(N,(int,np.integer)) or N<1:
-        raise ValueError("N must be a positive integer.")
-    return [origin-pd.Timedelta(weeks=i) for i in range(N,0,-1)]
-
-
-def _fit_sparse_baseline(samples,B):
-    """Fit one of the existing baseline formulations on EXACT interval rows.
-
-    Baseline.fit() ordinarily imputes complete calendar days. For this
-    illustration it is important not to add out-of-window observations,
-    so use the same model mathematics directly on the selected samples.
-    """
-    if B not in BASELINES: raise ValueError(f"B must be one of {tuple(BASELINES)}.")
-    if not isinstance(samples.index,pd.DatetimeIndex) or samples.index.has_duplicates:
-        raise ValueError("Baseline training requires distinct datetime-indexed samples.")
-    if not {"I","Temp"}<=set(samples):
-        raise ValueError("Baseline data must contain I and Temp.")
-    samples=samples[["I","Temp"]].sort_index()
-    if samples.empty or not np.isfinite(samples.to_numpy(dtype=float)).all():
-        raise ValueError("Baseline training intervals must contain finite demand and temperature.")
-    model=BASELINES[B](min_samples=2)
-    index=samples.index
-    demand=samples["I"].to_numpy(dtype=float)
-    temp=samples["Temp"].to_numpy(dtype=float)
-
-    if isinstance(model,weekly_temperature):
-        groups=model._groups(index)
-        chill=np.maximum(0.0,model.base_temperature-temp)
-        mean_d=model._profile(groups,demand)
-        mean_c=model._profile(groups,chill)
-        centered_d=demand-mean_d[groups]
-        centered_c=chill-mean_c[groups]
-        denom=float(centered_c @ centered_c)
-        model.beta_C=float((centered_c @ centered_d)/denom) if denom>1e-12 else 0.0
-        model.chill_center=float(np.mean(chill))
-        model.levels=mean_d-model.beta_C*(mean_c-model.chill_center)
-        model.coef=np.r_[model.levels,model.beta_C]
-    elif isinstance(model,weekly_average):
-        groups=model._groups(index)
-        model.levels=model._profile(groups,demand)
-        model.coef=model.levels.copy()
-    else:
-        raw=model._features(index,temp)
-        X=model._standardize_fit(raw)
-        penalty=model.ridge*np.eye(X.shape[1],dtype=float)
-        penalty[0,0]=0.0
-        weights=np.ones(len(demand),dtype=float)
-        beta=np.zeros(X.shape[1],dtype=float)
-        for _ in range(model.max_iter):
-            root=np.sqrt(weights)
-            Xw,yw=X*root[:,None],demand*root
-            beta=np.linalg.solve(Xw.T@Xw+penalty,Xw.T@yw)
-            residual=demand-X@beta
-            center=np.median(residual)
-            scale=1.4826*np.median(np.abs(residual-center))
-            if not np.isfinite(scale) or scale<1e-10: break
-            limit=model.huber_delta*scale
-            absolute=np.abs(residual)
-            next_weights=np.ones_like(weights)
-            outside=absolute>limit
-            next_weights[outside]=limit/absolute[outside]
-            if np.max(np.abs(next_weights-weights))<1e-6: break
-            weights=next_weights
-        model.coef=beta
-
-    model.metadata={"samples":len(samples),"fitting_mode":"exact_corresponding_intervals",
-                    "start":str(index.min()),"end":str(index.max())}
-    return model
-
-
-def _window(frame,start,k,baseline,sph):
-    """Create exactly k hourly WM4 observations on the normalized-day grid."""
-    hourly=pd.date_range(start,periods=k,freq="h")
-    source=frame.reindex(hourly)[["I","U","Temp"]]
-    if source.isna().any().any() or not np.isfinite(source.to_numpy(dtype=float)).all():
-        raise ValueError(f"Missing historical inputs in [{start}, {start+pd.Timedelta(hours=k)}).")
-    elapsed=np.arange(k*sph+1,dtype=float)/sph
-    times=start+pd.to_timedelta(elapsed,unit="h")
-    sample_hours=np.arange(k+1,dtype=float)
-    D=np.interp(elapsed,sample_hours,np.r_[source["I"].to_numpy(),source["I"].iloc[-1]])
-    T=np.interp(elapsed,sample_hours,np.r_[source["Temp"].to_numpy(),source["Temp"].iloc[-1]])
-    U=np.r_[source["U"].to_numpy(),source["U"].iloc[-1]][
-        np.minimum(np.floor(elapsed+1e-10).astype(int),k)]
-    B=np.asarray(baseline.predict(times,T),dtype=float)
-    if not np.isfinite(B).all() or not np.isfinite(U).all():
-        raise ValueError("Baseline or price contains nonfinite samples.")
-    mask=np.zeros(len(elapsed),dtype=bool)
-    mask[np.arange(k)*sph]=True
-    transitions=np.zeros(len(elapsed)-1,dtype=bool)
-    transitions[:(k-1)*sph]=True
-    data={"I":D,"U":U,"PE":U.copy(),"Time":elapsed,"O":B,
-          "observation_mask":mask,"transition_mask":transitions}
-    return data
 
 
 def _context(frame,start,k,edge):
