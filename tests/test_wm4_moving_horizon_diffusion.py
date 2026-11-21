@@ -16,9 +16,19 @@ from src.exe.run_model.wm_4.fit_moving_horizon_diffusion import (
     run, update_pool, variance_kernel,
 )
 from src.exe.run_model.wm_4.sweep_weekday_horizon import EXPERIMENT_VERSION
-from src.exe.run_model.wm_4.sweep_weekday_horizon_diffusion import unit_process_variance
 from src.model.wm_4 import wm_4
 from src.tools.baseline import output_callable
+
+def reference_unit_process_variance(theta_F, theta_R, steps_per_hour, hour):
+    """Independent impulse-response sum for variance-kernel verification."""
+    dt=1.0/(24*steps_per_hour)
+    state=np.array([0.,1.])
+    A=np.array([[1.,dt],[dt*theta_F,1.+dt*theta_R]])
+    variance=0.
+    for _ in range(int(hour)*int(steps_per_hour)):
+        variance+=dt*state[1]**2
+        state=A@state
+    return variance
 
 
 class test_wm4_moving_horizon_diffusion(unittest.TestCase):
@@ -26,7 +36,7 @@ class test_wm4_moving_horizon_diffusion(unittest.TestCase):
         for theta_F, theta_R, steps in ((-1., -0.3, 2), (-0.8, -1.4, 4), (-0.2, -1., 8)):
             kernel = variance_kernel(theta_F, theta_R, steps, 12)
             expected = np.array([
-                unit_process_variance(theta_F, theta_R, steps, j) for j in range(12)
+                reference_unit_process_variance(theta_F, theta_R, steps, j) for j in range(12)
             ])
             np.testing.assert_allclose(kernel, expected, atol=1e-13, rtol=1e-13)
             self.assertEqual(kernel[0], 0.)

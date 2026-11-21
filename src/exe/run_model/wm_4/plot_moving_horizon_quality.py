@@ -228,7 +228,7 @@ def historical_summary(source, selection, steps_per_hour, group, cohort=None, pr
     The sweep appends one fit row followed by N initial-state rows for that fit,
     preserving the same configuration and horizon order in both CSVs.
     """
-    from src.exe.run_model.wm_4.moving_horizon_common import group_frame
+    from src.method.moving_horizon import group_frame
 
     fits = Path(source)/"parameter_estimates.csv"
     states = Path(source)/"historical_initial_states.csv"

@@ -49,7 +49,8 @@ def _clock_axis(start,k,edge):
     """Continuous clock-hour coordinates with labels wrapped to 00..23."""
     hour=int(pd.Timestamp(start).hour)
     left,right=hour-edge,hour+k+edge
-    ticks=np.unique(np.r_[np.arange(left,right+1,3,dtype=int),hour,hour+k])
+    midnights=np.arange(((left+23)//24)*24,right+1,24,dtype=int)
+    ticks=np.unique(np.r_[np.arange(left,right+1,3,dtype=int),midnights,hour,hour+k])
     return hour,left,right,ticks,[f"{int(tick)%24:02d}" for tick in ticks]
 
 
