@@ -132,7 +132,7 @@ class test_wm4_plot_moving_horizon_quality(unittest.TestCase):
                        "historical_F0":0., "historical_R0":0.} for day in (19, 26)]
             pd.DataFrame([row]).to_csv(output/"parameter_estimates.csv", index=False)
             pd.DataFrame(states).to_csv(output/"historical_initial_states.csv", index=False)
-            with patch("src.exe.run_model.wm_4.moving_horizon_common.group_frame", return_value=frame):
+            with patch("src.method.moving_horizon.group_frame", return_value=frame):
                 result = historical_summary(output, self.selection(), 4, "ALL")
             expected = historical_errors(frame, row, [
                 {key:str(value) for key, value in state.items()} for state in states
