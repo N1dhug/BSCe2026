@@ -14,6 +14,11 @@ from src.tools.baseline import output_callable, statistical_output, weekly_avera
 GROUPS = ("ALL", "MED")
 HOURS = 24
 
+DEFAULT_TRAINING_WEEKDAYS = 5
+BASELINES = {"statistical_output":statistical_output,
+             "weekly_average":weekly_average,
+             "weekly_temperature":weekly_temperature}
+
 
 def group_frame(group):
     if group not in GROUPS: raise ValueError(f"group must be one of {GROUPS}.")
