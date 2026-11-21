@@ -120,7 +120,7 @@ def predicted_mae(rows, steps):
 
 def replay_target_mae(rows,sweep_dir,steps,output):
     """Reconstruct oracle errors at saved initial states, evaluate hourly MAE."""
-    from src.exe.run_model.wm_4.moving_horizon_common import group_frame
+    from src.method.moving_horizon import group_frame
     wanted = {baseline:int(group["training_weekdays"].iloc[0])
               for baseline,group in rows.groupby("baseline")}
     states = selected_saved(sweep_dir/"oracle_horizon_scores.csv",wanted,
