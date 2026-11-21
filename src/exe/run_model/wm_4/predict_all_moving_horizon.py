@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.moving_horizon_common import HOURS, baseline_before, group_frame, metrics, window_data
+from src.method.moving_horizon import HOURS, baseline_before, group_frame, metrics, window_data, historical_weekdays
 from src.params.wm_4 import joint_qp_params, optimized_qp_params
 from src.validation.exe.run_model.wm_4.predict_all_moving_horizon import predict_all_moving_horizon_validation as validation
 
@@ -16,9 +16,6 @@ OUTPUT = ROOT / "files" / "output" / "wm_4" / "predict_all_moving_horizon"
 TRAINING_WEEKDAYS = 5
 QUINTILES = (0, 20, 40, 60, 80, 100)
 
-
-def historical_weekdays(day, count=TRAINING_WEEKDAYS):
-    return [pd.Timestamp(day) - pd.Timedelta(weeks=k) for k in range(count, 0, -1)]
 
 
 def oracle_initial_state(model, forecast, theta, steps_per_hour):

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.moving_horizon_common import GROUPS, HOURS, group_frame, metrics, origins, save_table, window_data
+from src.method.moving_horizon import GROUPS, HOURS, group_frame, metrics, origins, save_table, window_data
 from src.params.wm_4 import optimized_qp_params
 from src.tools.baseline import statistical_output, weekly_average, weekly_temperature
 from src.validation.exe.run_model.wm_4.compare_baselines import compare_baselines_validation

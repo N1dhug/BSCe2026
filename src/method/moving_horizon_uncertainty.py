@@ -8,7 +8,7 @@ observations do not enter the diffusion fit.
 """
 import numpy as np
 
-from src.exe.run_model.wm_4.fit_moving_horizon_diffusion import (
+from src.method.arm_variance import (
     Z_SCORE, fit_variances, variance_kernel,
 )
 

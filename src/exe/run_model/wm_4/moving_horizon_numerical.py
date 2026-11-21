@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.moving_horizon_common import OUTPUT, GROUPS, baseline_before, fit_row, group_frame, origins, plot_parameter_time, save_table, window_data
+from src.method.moving_horizon import OUTPUT, GROUPS, baseline_before, fit_row, group_frame, origins, plot_parameter_time, save_table, window_data
 
 
 def fit_windows(group, start, end, stride, steps_per_hour, max_iter, max_origins=0, fail_fast=False):

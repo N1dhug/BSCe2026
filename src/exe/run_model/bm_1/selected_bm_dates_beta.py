@@ -37,7 +37,7 @@ import pandas as pd
 from scipy.special import logsumexp
 from scipy.stats import norm
 
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame, metrics
+from src.method.moving_horizon import group_frame, metrics
 from src.exe.run_model.wm_4.selected_bm_dates_arm import (
     BASELINES, K, N, reference_week,
 )
@@ -46,7 +46,7 @@ from src.exe.run_model.wm_4.sweep_weekday_horizon import (
 )
 from src.method.bm_1_beta import bm_1_beta
 from src.params.bm_1_beta import bm_1_beta_params
-from src.exe.run_model.wm_4.selected_bm_timing import timing_report
+from src.method.sample_timing import timing_report
 from src.tools.impute_hourly import impute_hourly_days
 from src.validation.exe.run_model.bm_1.fit_beta_moving_horizon import (
     bm_1_beta_moving_horizon_validation as checks,

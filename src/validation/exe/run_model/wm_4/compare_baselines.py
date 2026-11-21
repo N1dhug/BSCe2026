@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.moving_horizon_common import GROUPS
+from src.method.moving_horizon import GROUPS
 
 
 class compare_baselines_validation:

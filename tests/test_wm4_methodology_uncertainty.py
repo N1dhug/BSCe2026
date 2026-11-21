@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 
 from src.exe.run_model.wm_4.fit_moving_horizon_diffusion import Z_SCORE, variance_kernel
-from src.exe.run_model.wm_4.methodology_uncertainty import (
+from src.method.moving_horizon_uncertainty import (
     demand_interval, fine_variance_kernel, fit_historical_uncertainty,
 )
 

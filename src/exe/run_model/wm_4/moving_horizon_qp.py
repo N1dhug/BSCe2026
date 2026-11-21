@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm, t
 
-from src.exe.run_model.wm_4.moving_horizon_common import OUTPUT, GROUPS, baseline_before, fit_row, group_frame, origins, plot_parameter_time, save_table, window_data
+from src.method.moving_horizon import OUTPUT, GROUPS, baseline_before, fit_row, group_frame, origins, plot_parameter_time, save_table, window_data
 from src.params.wm_4 import optimized_qp_params, qp_params
 
 

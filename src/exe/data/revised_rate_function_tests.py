@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import chi2, norm
 
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame
-from src.exe.run_model.wm_4.predict_all_moving_horizon import historical_weekdays
+from src.method.moving_horizon import group_frame
+from src.method.moving_horizon import historical_weekdays
 from src.tools.baseline import weekly_average, weekly_temperature
 from src.tools.impute_hourly import impute_hourly_days
 

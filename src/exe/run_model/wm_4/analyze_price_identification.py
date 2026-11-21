@@ -20,7 +20,7 @@ from scipy.stats import norm, spearmanr
 from src.exe.run_model.wm_4.analyze_oracle_8weekday import (
     HORIZON, N_WEEKDAYS, OUTPUT as ORACLE_OUTPUT, check_tables, save_figure,
 )
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame
+from src.method.moving_horizon import group_frame
 from src.tools.impute_hourly import impute_hourly_days
 
 

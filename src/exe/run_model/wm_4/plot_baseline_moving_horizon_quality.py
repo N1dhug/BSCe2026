@@ -22,8 +22,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.exe.run_model.wm_4.moving_horizon_common import group_frame
-from src.exe.run_model.wm_4.plot_demand_metric_grid import draw_demand_metric_grid
+from src.method.moving_horizon import group_frame
+from src.method.demand_metric_grid import draw_demand_metric_grid
 from src.exe.run_model.wm_4.plot_moving_horizon_quality import (
     bounds, common_origins, configuration, saved_baseline, selected,
 )
