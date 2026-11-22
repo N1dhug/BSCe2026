@@ -62,7 +62,8 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output,uncertainty):
     fig,axes=plt.subplots(nrows,ncols,figsize=(6*ncols,4.15*nrows),
                           sharex=True,sharey=True,squeeze=False)
     all_values=[]
-    fine=np.arange(k*sph+1,dtype=float)/sph
+    sample=np.arange(k)*sph
+    hours=np.arange(k,dtype=float)
     hour,left,right,xticks,labels=_clock_axis(starts[0],k,edge)
     rows=[]
     for m,(start,data,state) in enumerate(zip(starts,inputs,fit["deterministic_states"])):
@@ -84,17 +85,21 @@ def _plot(starts,frame,k,N,B,sph,fit,model,inputs,output,uncertainty):
         # Keep continuous hours for cross-midnight windows, but label actual
         # clock time, so a fitting origin at 06:00 appears at x=6.
         clock_hour=int(start.hour)
-        ax.axvspan(clock_hour,clock_hour+k,color="tab:blue",alpha=.08)
-        ax.axvline(clock_hour,color="0.55",lw=.8,ls=":")
-        ax.axvline(clock_hour+k,color="0.55",lw=.8,ls=":")
-        ax.step(offset+clock_hour,context,where="post",color="0.18",lw=1.8,
-                label="Observed demand (full context)")
-        ax.plot(fine+clock_hour,baseline,lw=2,color="tab:orange",ls="--",
+        if k<24:
+            ax.axvspan(clock_hour,clock_hour+k,color="tab:blue",alpha=.035)
+            ax.axvline(clock_hour,color="0.65",lw=.8,ls=":")
+            ax.axvline(clock_hour+k,color="0.65",lw=.8,ls=":")
+        # Display the same hourly samples as BM1, joined by ordinary lines.
+        # The sub-hour trajectory remains unchanged for fitting and scoring.
+        ax.plot(offset[:-1]+clock_hour,context[:-1],color="0.18",lw=1.5,
+                marker="o",markersize=2.8,label="Observed demand (full context)")
+        ax.plot(hours+clock_hour,baseline[sample],lw=1.8,color="tab:orange",ls="--",
                 label="Baseline (fitting interval)")
         lower,upper=demand_interval(fitted,uncertainty)
-        ax.fill_between(fine+clock_hour,lower,upper,color="tab:blue",alpha=.20,
-                        linewidth=0,label="95% demand interval (historical fit)")
-        ax.plot(fine+clock_hour,fitted,lw=2,color="tab:blue",
+        ax.fill_between(hours+clock_hour,lower[sample],upper[sample],
+                        color="tab:blue",alpha=.20,linewidth=0,
+                        label="95% demand interval (historical fit)")
+        ax.plot(hours+clock_hour,fitted[sample],lw=2,color="tab:blue",
                 label="ARM fit (fitting interval)")
         ax.set_title(f"Week -{N-m}: {start:%a %d %b %Y, %H:%M}  |  "
                      f"RMSE {score['rmse']:.4f}",fontsize=10)
@@ -138,8 +143,9 @@ def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output,uncertainty):
     edge=int(ceil((24-k)/2))
     hour,left,right,ticks,labels=_clock_axis(origin,k,edge)
     offset,context=_context(frame,origin,k,edge)
-    fine=np.arange(k*sph+1,dtype=float)/sph
-    observed=np.asarray(input_data["I"],dtype=float)[np.arange(k)*sph]
+    sample=np.arange(k)*sph
+    hours=np.arange(k,dtype=float)
+    observed=np.asarray(input_data["I"],dtype=float)[sample]
     baseline=np.asarray(input_data["O"],dtype=float)
     prediction=np.asarray(oracle["deterministic_state"]["I"],dtype=float)
     if prediction.shape!=(k*sph+1,) or not np.isfinite(prediction).all():
@@ -151,17 +157,18 @@ def _plot_oracle(origin,frame,k,N,B,sph,input_data,oracle,output,uncertainty):
         raise ValueError("WM4 oracle returned invalid initial state.")
 
     fig,ax=plt.subplots(figsize=(11.8,5.0))
-    ax.axvspan(hour,hour+k,color="tab:red",alpha=.07)
-    ax.axvline(hour,color="0.55",lw=.8,ls=":")
-    ax.axvline(hour+k,color="0.55",lw=.8,ls=":")
-    ax.step(offset+hour,context,where="post",color="0.18",lw=1.8,
-            label="Observed demand (full context)")
-    ax.plot(fine+hour,baseline,color="tab:orange",lw=2,ls="--",
+    if k<24:
+        ax.axvspan(hour,hour+k,color="tab:red",alpha=.035)
+        ax.axvline(hour,color="0.65",lw=.8,ls=":")
+        ax.axvline(hour+k,color="0.65",lw=.8,ls=":")
+    ax.plot(offset[:-1]+hour,context[:-1],color="0.18",lw=1.5,
+            marker="o",markersize=2.8,label="Observed demand (full context)")
+    ax.plot(hours+hour,baseline[sample],color="tab:orange",lw=1.8,ls="--",
             label="Fitted historical baseline (prediction interval)")
     lower,upper=demand_interval(prediction,uncertainty)
-    ax.fill_between(fine+hour,lower,upper,color="tab:red",alpha=.20,
+    ax.fill_between(hours+hour,lower[sample],upper[sample],color="tab:red",alpha=.20,
                     linewidth=0,label="95% oracle-conditioned demand interval")
-    ax.plot(fine+hour,prediction,color="red",lw=2.25,
+    ax.plot(hours+hour,prediction[sample],color="red",lw=2.25,
             label="ARM oracle prediction (prediction interval)")
     ax.set_xlim(left,right)
     ax.set_xticks(ticks)

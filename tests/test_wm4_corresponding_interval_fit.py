@@ -133,9 +133,17 @@ class test_wm4_corresponding_interval_fit(unittest.TestCase):
                     demand_line=next(line for line in ax.get_lines()
                                      if line.get_label()=="Observed demand (full context)")
                     self.assertAlmostEqual(float(fit_line.get_xdata()[0]),8)
-                    self.assertAlmostEqual(float(fit_line.get_xdata()[-1]),15)
+                    self.assertAlmostEqual(float(fit_line.get_xdata()[-1]),14)
+                    self.assertEqual(len(fit_line.get_xdata()),7)
+                    self.assertEqual(fit_line.get_drawstyle(),"default")
+                    self.assertEqual(baseline_line.get_drawstyle(),"default")
+                    np.testing.assert_array_equal(np.diff(fit_line.get_xdata()),np.ones(6))
+                    np.testing.assert_array_equal(np.diff(baseline_line.get_xdata()),np.ones(6))
                     self.assertAlmostEqual(float(baseline_line.get_xdata()[0]),8)
+                    self.assertEqual(len(baseline_line.get_xdata()),7)
                     self.assertAlmostEqual(float(demand_line.get_xdata()[0]),-1)
+                    self.assertEqual(demand_line.get_marker(),"o")
+                    self.assertEqual(demand_line.get_drawstyle(),"default")
                     self.assertEqual(ax.get_xticklabels()[list(ax.get_xticks()).index(8)].get_text(),"08")
                 self.assertEqual(len(prediction.axes),1)
                 self.assertTrue(any(collection.get_label()=="95% demand interval (historical fit)"
@@ -147,8 +155,10 @@ class test_wm4_corresponding_interval_fit(unittest.TestCase):
                                  if line.get_label()=="ARM oracle prediction (prediction interval)")
                 self.assertEqual(oracle_line.get_color(),"red")
                 self.assertAlmostEqual(float(oracle_line.get_xdata()[0]),8)
-                self.assertAlmostEqual(float(oracle_line.get_xdata()[-1]),15)
-                self.assertEqual(len(oracle_line.get_xdata()),7*4+1)
+                self.assertAlmostEqual(float(oracle_line.get_xdata()[-1]),14)
+                self.assertEqual(len(oracle_line.get_xdata()),7)
+                self.assertEqual(oracle_line.get_drawstyle(),"default")
+                np.testing.assert_array_equal(np.diff(oracle_line.get_xdata()),np.ones(6))
                 self.assertAlmostEqual(outcome["oracle"]["oracle_F0"],.12)
                 self.assertAlmostEqual(outcome["oracle"]["oracle_R0"],-.03)
                 self.assertAlmostEqual(outcome["oracle"]["oracle_rmse"],.002)
@@ -173,6 +183,61 @@ class test_wm4_corresponding_interval_fit(unittest.TestCase):
             self.assertEqual(outcome["baseline"].metadata["samples"],4*7)
             self.assertEqual(len(outcome["historical_intervals"]),4)
             self.assertTrue((outcome["summary"]["wm4_rmse"]>=0).all())
+
+
+    def test_full_day_historical_and_oracle_plots_connect_hourly_observations(self):
+        """At k=24, lines and intervals use the same hourly grid as BM1."""
+        from src.exe.run_model.wm_4.plot_corresponding_interval_fit import _plot, _plot_oracle
+        frame=self.frame()
+        origin=_origin("2022-06-20",0)
+        history=_intervals(origin,24,2)
+        baseline_frame=pd.concat([frame.reindex(pd.date_range(t,periods=24,freq="h"))[["I","Temp"]]
+                                  for t in history])
+        baseline=_fit_sparse_baseline(baseline_frame,"weekly_average")
+        sph=4
+        inputs=[_window(frame,start,24,baseline,sph) for start in history]
+        target=_window(frame,origin,24,baseline,sph)
+        fit={"r":np.array([-.8,-.1,-1.4]),"qp_loss":0.,
+             "init_cond":np.zeros((2,2)),
+             "deterministic_states":[{"I":item["I"]} for item in inputs]}
+        uncertainty={"sigma":.1,"tau":.01,"historical_coverage_95":1.,
+                     "sd_fine":np.full(24*sph+1,.025),
+                     "sd_hourly":np.full(24,.025)}
+        oracle={"init_cond":np.zeros(2),"deterministic_state":{"I":target["I"]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            historical_file=Path(tmp)/"history.png"
+            oracle_file=Path(tmp)/"oracle.png"
+            with patch("src.exe.run_model.wm_4.plot_corresponding_interval_fit.plt.close") as close_fig, \
+                 patch("matplotlib.axes.Axes.step",side_effect=AssertionError("No step plots")):
+                _plot(history,frame,24,2,"weekly_average",sph,fit,None,inputs,
+                      historical_file,uncertainty)
+                _plot_oracle(origin,frame,24,2,"weekly_average",sph,target,oracle,
+                             oracle_file,uncertainty)
+                hist_figure,oracle_figure=[call.args[0] for call in close_fig.call_args_list]
+                for index,ax in enumerate(hist_figure.axes):
+                    lines={line.get_label():line for line in ax.lines}
+                    for label,expected in (
+                        ("ARM fit (fitting interval)",inputs[index]["I"][np.arange(24)*sph]),
+                        ("Baseline (fitting interval)",inputs[index]["O"][np.arange(24)*sph])
+                    ):
+                        line=lines[label]
+                        np.testing.assert_array_equal(line.get_xdata(),np.arange(24))
+                        np.testing.assert_allclose(line.get_ydata(),expected)
+                        self.assertEqual(line.get_drawstyle(),"default")
+                    observed=lines["Observed demand (full context)"]
+                    self.assertEqual(observed.get_marker(),"o")
+                    self.assertEqual(len(observed.get_xdata()),24)
+                lines={line.get_label():line for line in oracle_figure.axes[0].lines}
+                predicted=lines["ARM oracle prediction (prediction interval)"]
+                np.testing.assert_array_equal(predicted.get_xdata(),np.arange(24))
+                np.testing.assert_allclose(predicted.get_ydata(),target["I"][np.arange(24)*sph])
+                self.assertEqual(predicted.get_drawstyle(),"default")
+                self.assertEqual(lines["Observed demand (full context)"].get_marker(),"o")
+                import matplotlib.pyplot as plt
+                plt.close(hist_figure)
+                plt.close(oracle_figure)
+            self.assertTrue(historical_file.is_file())
+            self.assertTrue(oracle_file.is_file())
 
 
 if __name__=="__main__":unittest.main()
