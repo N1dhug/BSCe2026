@@ -1,1 +1,0 @@
-{"identity":"e4d14ffe2473bf44dbfe3d6514ee13fd98e572234cb854f46255dd16f5afbeec","pieces":2,"candidate":{"pieces":2,"logits":[-1.059231944015732,-1.4934016800486938]},"objective":-10.155937279386325,"nfev":20,"status":0,"message":"The lower bound for the trust-region radius has been reached","converged":true,"algorithmic_local_termination_only":true,"scientific_acceptance":false}

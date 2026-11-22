@@ -1,3 +1,0 @@
-mode,q,sigma,calibration_days,validation_days,validation_start
-all,0.075701326008686,0.27513873956367174,127,127,2022-02-28
-chronological_holdout,0.0796955159852994,0.28230394256067237,88,39,2022-05-27

@@ -1,1 +1,0 @@
-{"identity":"e4d14ffe2473bf44dbfe3d6514ee13fd98e572234cb854f46255dd16f5afbeec","pieces":2,"candidate":{"pieces":2,"logits":[-1.0697627598794845,-1.4940067801109866]},"objective":-10.155866238911589,"nfev":17,"status":5,"message":"The maximum number of function evaluations has been exceeded","converged":false,"algorithmic_local_termination_only":true,"scientific_acceptance":false}

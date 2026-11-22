@@ -1,6 +1,6 @@
 # Reproducing report Chapters 3–5
 
-The maintained implementation contains only the BM1 fixed-beta and WM4/ARM workflows described by the report. Other research prototypes were removed from the current branch; Git history retains their revisions. The raw input spreadsheets and historical output artifacts remain untouched.
+The maintained implementation contains only the BM1 fixed-beta and WM4/ARM workflows described by the report. Other research prototypes were removed from the current branch; Git history retains their revisions. The original input spreadsheets remain untouched. Obsolete generated results were removed from `files/output/`; the active report procedures recreate their outputs when run.
 
 ## Data and descriptive statistics (Chapter 3)
 
@@ -42,7 +42,7 @@ To check the maintained tests:
 python -m pytest -q tests/test_report_imports.py tests/test_moving_horizon_method.py tests/test_bm_1_fixed_beta.py tests/test_wm4_weekday_horizon_sweep.py
 ```
 
-Full numerical reproductions require the original input data in `files/input/data`. The historical output archives under `files/output` are preserved rather than treated as unused source code.
+Full numerical reproductions require the original input data in `files/input/data`. The tracked output archives for retired models and exploratory experiments were removed, including older descriptive overview plots that are not used as report figures. Report-specific result folders are created automatically by the retained executables. Historical artifacts remain recoverable through Git history.
 
 
 ## Single-day reproducible fits (both models)
