@@ -7,6 +7,8 @@ REPORT_MODULES = (
     "src.exe.data.season_overview",
     "src.exe.data.weeks_overview",
     "src.exe.run_model.bm_1.evaluate_fixed_beta_samples",
+    "src.exe.run_model.bm_1.fit_single_day",
+    "src.exe.run_model.wm_4.fit_single_day",
     "src.exe.run_model.wm_4.fit_moving_horizon_diffusion",
     "src.exe.run_model.wm_4.plot_baseline_moving_horizon_quality",
     "src.exe.run_model.wm_4.plot_corresponding_interval_fit",

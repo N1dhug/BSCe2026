@@ -43,3 +43,31 @@ python -m pytest -q tests/test_report_imports.py tests/test_moving_horizon_metho
 ```
 
 Full numerical reproductions require the original input data in `files/input/data`. The historical output archives under `files/output` are preserved rather than treated as unused source code.
+
+
+## Single-day reproducible fits (both models)
+
+These entrypoints accept the same five primary settings:
+- `--day` is the prediction-origin calendar date (YYYY-MM-DD).
+- `--origin-point` is the origin hour of that date, 0 through 23.
+- `--k` is the k-hour fitting/prediction interval, 2 through 24.
+- `--N` is the number of earlier corresponding weekdays.
+- `--baseline` is one of `weekly_average`, `weekly_temperature`, `statistical_output`.
+
+```bash
+python -m src.exe.run_model.bm_1.fit_single_day --day 2022-08-20 --origin-point 8 --k 12 --N 6 --baseline weekly_temperature
+python -m src.exe.run_model.wm_4.fit_single_day --day 2022-08-20 --origin-point 8 --k 12 --N 6 --baseline weekly_temperature
+```
+
+The programs use the existing 2022 dataset, train their baseline and model
+parameters only on N matching historical k-hour intervals, and produce
+historical and target plots, hourly CSVs, and summary JSON under
+`files/output/<model>/single_day/`. Both use all consumers by default; add
+`--group MED` for the electrical-heating subset. BM1 converts normalized
+prices from the signed ARM range [-1,1] to [0,1]; WM4 retains signed prices.
+
+The BM1 historical scoring uses *filtered one-step-ahead conditional*
+likelihoods, but its target uses *open-loop marginal* likelihoods. WM4 fits a
+joint constrained drift QP and historical Gaussian noise parameters. Target
+initial conditions in **both** programs are retrospectively optimized using
+target observations (oracle analysis, not forward-looking validation).
