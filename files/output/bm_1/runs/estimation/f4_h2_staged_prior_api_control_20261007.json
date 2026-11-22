@@ -1,1 +1,0 @@
-{"status":"passed","source_sha256":"82563d75af33226d5a281c0befab83f675542d33c31784fea1e82f876e4ea183","prior":{"base":{"cells":1921,"finite_cells":1826},"fine":{"cells":2561,"finite_cells":2432}},"native_propagations":0,"reason":"Keyword-only alpha/beta API corrected after preparation-only failure; no prior model job to repeat."}

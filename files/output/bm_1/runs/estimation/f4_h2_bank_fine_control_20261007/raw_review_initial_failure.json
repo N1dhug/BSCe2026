@@ -1,1 +1,0 @@
-{"status": "failed", "native_propagations": 0, "reason": "Extra relative per-cell assertion failed for negligible tails; max absolute difference 5.43e-16, total mass difference below 9.41e-14. Existing native guards unchanged; review uses total-mass bound 1e-10.", "old_assertion": "np.allclose(rtol=1e-12,atol=0)"}
